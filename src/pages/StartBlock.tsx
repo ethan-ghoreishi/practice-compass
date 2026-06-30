@@ -1,0 +1,262 @@
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  BLOCK_MODE_LABELS,
+  DEFAULT_DURATION_MINUTES,
+  DURATION_PRESETS,
+  defaultFocusForItem,
+  defaultModeForStatus,
+  FOCUS_LABELS,
+  ITEM_TYPE_LABELS,
+  type BlockMode,
+  type FocusArea,
+  type ItemType,
+  type PracticeItem,
+  type Rating,
+} from '../domain';
+import { useStore } from '../store/useStore';
+import { itemsForInstrument, materialLabel, materialsForInstrument } from '../store/lookups';
+import { Field, OptionPills, RatingInput, StatusBadge } from '../components/ui';
+import { recordToOptions } from '../components/options';
+import { PlayIcon, PlusIcon } from '../components/icons';
+
+const MODE_OPTIONS = recordToOptions(BLOCK_MODE_LABELS);
+const FOCUS_OPTIONS = recordToOptions(FOCUS_LABELS);
+const TYPE_OPTIONS = recordToOptions(ITEM_TYPE_LABELS);
+
+export default function StartBlock() {
+  const db = useStore((s) => s.db);
+  const addItem = useStore((s) => s.addItem);
+  const startSession = useStore((s) => s.startSession);
+  const navigate = useNavigate();
+
+  const activeInstruments = db.instruments.filter((i) => i.active);
+  const [instrumentId, setInstrumentId] = useState(activeInstruments[0]?.id ?? '');
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+
+  // Block configuration
+  const [mode, setMode] = useState<BlockMode>('learn');
+  const [focus, setFocus] = useState<FocusArea>('other');
+  const [duration, setDuration] = useState<number>(DEFAULT_DURATION_MINUTES);
+
+  // New-item draft
+  const [title, setTitle] = useState('');
+  const [materialId, setMaterialId] = useState<string>('');
+  const [itemType, setItemType] = useState<ItemType>('phrase');
+  const [importance, setImportance] = useState<Rating>(3);
+  const [difficulty, setDifficulty] = useState<Rating>(3);
+
+  const items = useMemo(() => itemsForInstrument(db, instrumentId), [db, instrumentId]);
+  const materials = useMemo(() => materialsForInstrument(db, instrumentId), [db, instrumentId]);
+  const filtered = useMemo(
+    () =>
+      items.filter((i) => i.title.toLowerCase().includes(search.trim().toLowerCase())),
+    [items, search],
+  );
+  const selectedItem = items.find((i) => i.id === selectedItemId) ?? null;
+
+  function pickInstrument(id: string) {
+    setInstrumentId(id);
+    setSelectedItemId(null);
+    setCreating(false);
+    setMaterialId('');
+  }
+
+  function pickItem(item: PracticeItem) {
+    setSelectedItemId(item.id);
+    setCreating(false);
+    setMode(defaultModeForStatus(item.status));
+    setFocus(defaultFocusForItem(item));
+    setDuration(DEFAULT_DURATION_MINUTES);
+  }
+
+  function beginCreate() {
+    setCreating(true);
+    setSelectedItemId(null);
+    setMode('learn');
+    setFocus('other');
+    setDuration(DEFAULT_DURATION_MINUTES);
+  }
+
+  const ready = creating ? title.trim().length > 0 : selectedItem !== null;
+
+  function handleStart() {
+    if (!instrumentId) return;
+    let itemId = selectedItemId;
+    if (creating) {
+      if (!title.trim()) return;
+      itemId = addItem({
+        instrumentId,
+        title,
+        itemType,
+        materialId: materialId || undefined,
+        importance,
+        difficulty,
+        primaryFocus: focus !== 'other' ? focus : undefined,
+      });
+    }
+    if (!itemId) return;
+    startSession({
+      itemId,
+      instrumentId,
+      materialId: creating ? materialId || undefined : selectedItem?.materialId,
+      mode,
+      focus,
+      constraint: undefined,
+      targetMinutes: duration,
+    });
+    navigate('/active');
+  }
+
+  if (activeInstruments.length === 0) {
+    return (
+      <div className="stack">
+        <h1 className="page-title">Start a block</h1>
+        <div className="card small dim">
+          Add an instrument first in <span className="link" onClick={() => navigate('/more')}>More → Settings</span>.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack-lg">
+      <header className="stack-sm">
+        <h1 className="page-title">Start a block</h1>
+        <p className="page-sub">Three quick choices: what, how, how long.</p>
+      </header>
+
+      {/* Step 1 — instrument */}
+      <section className="stack-sm">
+        <div className="section-label">1 · Instrument</div>
+        <OptionPills
+          ariaLabel="Instrument"
+          value={instrumentId}
+          onChange={pickInstrument}
+          options={activeInstruments.map((i) => ({ value: i.id, label: i.name }))}
+        />
+      </section>
+
+      {/* Step 2 — item */}
+      <section className="stack-sm">
+        <div className="row between">
+          <div className="section-label">2 · Practice item</div>
+          <button className="btn btn-sm" onClick={creating ? () => setCreating(false) : beginCreate}>
+            {creating ? 'Pick existing' : <><PlusIcon /> New item</>}
+          </button>
+        </div>
+
+        {creating ? (
+          <div className="card stack">
+            <Field label="Title">
+              <input
+                className="input"
+                autoFocus
+                placeholder="e.g. Iraq phrase 4 ending"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </Field>
+            <div className="grid-2">
+              <Field label="Material (optional)">
+                <select className="select" value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
+                  <option value="">None</option>
+                  {materials.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {materialLabel(m)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Type">
+                <select className="select" value={itemType} onChange={(e) => setItemType(e.target.value as ItemType)}>
+                  {TYPE_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <div className="grid-2">
+              <Field label="Importance">
+                <RatingInput value={importance} onChange={setImportance} label="Importance" />
+              </Field>
+              <Field label="Difficulty">
+                <RatingInput value={difficulty} onChange={setDifficulty} label="Difficulty" />
+              </Field>
+            </div>
+            <span className="field-hint">You can fill in the rest later — keep starting fast.</span>
+          </div>
+        ) : (
+          <div className="stack-sm">
+            {items.length > 4 && (
+              <input
+                className="input"
+                placeholder="Search items…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            )}
+            {filtered.length === 0 ? (
+              <div className="card card-quiet small dim">
+                No items for this instrument yet. Use “New item”.
+              </div>
+            ) : (
+              <div className="card card-flush list">
+                {filtered.map((item) => (
+                  <button
+                    key={item.id}
+                    className="list-row"
+                    style={{
+                      background: item.id === selectedItemId ? 'var(--accent-soft)' : 'none',
+                      border: 'none',
+                      width: '100%',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: 'inherit',
+                    }}
+                    onClick={() => pickItem(item)}
+                  >
+                    <div className="grow">
+                      <div className="truncate">{item.title}</div>
+                      <div className="tiny faint">{ITEM_TYPE_LABELS[item.itemType]}</div>
+                    </div>
+                    <StatusBadge status={item.status} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Step 3 — mode / focus / duration */}
+      {ready && (
+        <section className="stack">
+          <div className="section-label">3 · Mode, focus &amp; duration</div>
+          <Field label="Mode">
+            <OptionPills ariaLabel="Mode" value={mode} onChange={setMode} options={MODE_OPTIONS} />
+          </Field>
+          <Field label="Focus">
+            <OptionPills ariaLabel="Focus" value={focus} onChange={setFocus} options={FOCUS_OPTIONS} />
+          </Field>
+          <Field label="Duration">
+            <OptionPills
+              ariaLabel="Duration"
+              value={String(duration)}
+              onChange={(v) => setDuration(Number(v))}
+              options={DURATION_PRESETS.map((d) => ({ value: String(d), label: `${d} min` }))}
+            />
+          </Field>
+        </section>
+      )}
+
+      <button className="btn btn-primary btn-lg btn-block" disabled={!ready} onClick={handleStart}>
+        <PlayIcon /> Begin practice
+      </button>
+    </div>
+  );
+}
