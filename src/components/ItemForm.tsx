@@ -1,21 +1,25 @@
 import { useState } from 'react';
 import {
   FOCUS_LABELS,
+  ITEM_STATUS_DESCRIPTIONS,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
+  REVIEW_MODE_LABELS,
   type FocusArea,
   type ItemStatus,
   type ItemType,
+  type ReviewMode,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { materialLabel, materialsForInstrument } from '../store/lookups';
-import { Field, RatingInput } from './ui';
+import { Field, OptionPills, RatingInput } from './ui';
 import { recordToOptions } from './options';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from './itemFields';
 import type { ItemFormValues } from './itemFormValues';
 
 const TYPE_OPTIONS = recordToOptions(ITEM_TYPE_LABELS);
+const REVIEW_MODE_OPTIONS = recordToOptions(REVIEW_MODE_LABELS);
 
 export default function ItemForm({
   initial,
@@ -79,7 +83,7 @@ export default function ItemForm({
       </div>
 
       <div className="grid-2">
-        <Field label="Status">
+        <Field label="Status" hint={ITEM_STATUS_DESCRIPTIONS[v.status]}>
           <select className="select" value={v.status} onChange={(e) => set({ status: e.target.value as ItemStatus })}>
             {ITEM_STATUS_ORDER.map((s) => (
               <option key={s} value={s}>
@@ -125,6 +129,37 @@ export default function ItemForm({
       <Field label="Tags" hint="Comma-separated">
         <input className="input" value={v.tags} onChange={(e) => set({ tags: e.target.value })} placeholder="e.g. foroud, evenness" />
       </Field>
+
+      <Field
+        label="Reminders"
+        hint={
+          v.reviewMode === 'auto'
+            ? 'The app decides how often to revisit, from status, importance, difficulty and how it goes.'
+            : v.reviewMode === 'interval'
+              ? 'Revisit on a fixed cadence you choose.'
+              : 'You set each next-review date yourself.'
+        }
+      >
+        <OptionPills
+          ariaLabel="Reminder mode"
+          value={v.reviewMode}
+          onChange={(reviewMode) => set({ reviewMode: reviewMode as ReviewMode })}
+          options={REVIEW_MODE_OPTIONS}
+        />
+      </Field>
+      {v.reviewMode === 'interval' && (
+        <Field label="Every how many days?">
+          <input
+            className="input"
+            type="number"
+            min={1}
+            value={v.reviewIntervalDays}
+            placeholder="7"
+            onChange={(e) => set({ reviewIntervalDays: e.target.value })}
+            style={{ maxWidth: 120 }}
+          />
+        </Field>
+      )}
 
       <button className="link small" style={{ background: 'none', border: 'none', textAlign: 'left' }} onClick={() => setShowPersian((s) => !s)}>
         {showPersian ? '− Hide' : '+ Add'} Persian-specific fields

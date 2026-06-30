@@ -1,5 +1,6 @@
 import type { PracticeBlock, PracticeDB, PracticeItem } from './types';
-import { emptyCurriculumProgress, SCHEMA_VERSION } from './types';
+import { SCHEMA_VERSION } from './types';
+import { seedPathways } from './pathwaySeed';
 import {
   createBlock,
   createInstrument,
@@ -243,6 +244,8 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     createReview({ practiceItemId: daramad.id, dueDate: reviewDates[daramad.id], reviewType: 'maintenance', reason: 'Routine upkeep.' }, now),
   ];
 
+  const pathways = seedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
+
   return {
     schemaVersion: SCHEMA_VERSION,
     instruments: [setar, tar, guitar],
@@ -250,7 +253,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     items,
     blocks,
     reviews,
-    curriculum: emptyCurriculumProgress(),
+    ...pathways,
   };
 }
 
@@ -262,6 +265,9 @@ export function emptyDB(): PracticeDB {
     items: [],
     blocks: [],
     reviews: [],
-    curriculum: emptyCurriculumProgress(),
+    pathways: [],
+    pathwayStages: [],
+    pathwaySteps: [],
+    pathwayRoutines: [],
   };
 }

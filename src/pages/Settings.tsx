@@ -77,6 +77,24 @@ export default function Settings() {
       </section>
 
       <section className="stack-sm">
+        <div className="section-label">Install as an app</div>
+        <div className="card stack-sm small dim">
+          <div>
+            <strong style={{ color: 'var(--text)' }}>iPhone / iPad (Safari):</strong> tap the Share button, then{' '}
+            <strong style={{ color: 'var(--text)' }}>“Add to Home Screen.”</strong>
+          </div>
+          <div>
+            <strong style={{ color: 'var(--text)' }}>Android (Chrome):</strong> menu (⋮) →{' '}
+            <strong style={{ color: 'var(--text)' }}>“Install app.”</strong>
+          </div>
+          <div>
+            <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
+          </div>
+          <div className="tiny faint">It opens full-screen, works offline, and keeps all data on the device.</div>
+        </div>
+      </section>
+
+      <section className="stack-sm">
         <div className="section-label">Instruments</div>
         <div className="card stack-sm">
           {db.instruments.map((inst) => (

@@ -34,18 +34,28 @@ even if it's "useful".
 
 ## The Pathway is a trust anchor — keep it that way
 
-The curriculum/pathway exists so the user can **stop deciding what's next and just
-practise**, at their own pace, on a route they trust. Protect that:
+Pathways exist so the user can **stop deciding what's next and just practise**, at their
+own pace, on a route they trust. Protect that:
 
 - **Structure, not gamification.** Show honest position (steps done / current / ahead).
   Never add streaks, scores, deadlines, "you're behind" nudges, or a fabricated mastery %.
-- **Never fabricate curriculum detail.** Level 1A is seeded from the real CGS syllabus;
-  other stages are mapped from the real course structure. If you extend it, use the user's
-  actual materials — an honest outline beats invented lesson names.
-- **Content in code, progress in the store.** Curriculum content lives in
-  `src/domain/curriculum.ts` with stable step ids; only progress is persisted. Improve the
-  path freely without a migration, but never change an existing step id (it orphans progress).
+- **Pathways are editable data, one per instrument.** They live in the store
+  (`pathways`, `pathwayStages`, `pathwaySteps`, `pathwayRoutines`) with full CRUD — the
+  user can rename, reorder, add, and delete anything. Don't hardcode pathways back into code.
+- **Seeds are honest starting points, never fabricated authority.** Guitar = CGS (1A from
+  the real syllabus; 1B–3F from the real course structure). Setar = a radif/dastgāh map
+  (teacher-driven, explicitly "reorder me"). Tar = the Honarestān two-book method. Keep
+  Persian content grounded in real pedagogy and clearly editable; don't invent specific
+  lesson names as if canonical. Default seed step ids are stable (used by the v2→v3 migration).
 - **Calm, self-paced copy.** "Move on when it feels right, not by a deadline" is the voice.
+
+## Review scheduling stays explainable
+
+`planNextReview` (in `scheduling.ts`) blends status (mastery), importance, difficulty and
+the last result into one interval, and supports per-item overrides (Auto / fixed cadence /
+Manual). Keep it deterministic and explainable (it returns a `rationale`); don't turn it
+into an opaque model. Item status labels are plain-language for the user — keep the enum
+keys stable and only change the display labels in `labels.ts`.
 
 ## Architecture rules
 

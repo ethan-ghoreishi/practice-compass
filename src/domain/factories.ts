@@ -16,6 +16,7 @@ import type {
   PracticeItem,
   Rating,
   Review,
+  ReviewMode,
   ReviewType,
 } from './types';
 import { newId, nowISO } from './util';
@@ -85,6 +86,8 @@ export interface CreateItemInput {
   teacherQuestion?: string;
   tags?: string[];
   nextReviewDate?: ISODate;
+  reviewMode?: ReviewMode;
+  reviewIntervalDays?: number;
   persian?: PersianFields;
   guitar?: GuitarFields;
 }
@@ -106,6 +109,8 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     teacherQuestion: input.teacherQuestion?.trim() || undefined,
     tags: input.tags ?? [],
     nextReviewDate: input.nextReviewDate,
+    reviewMode: input.reviewMode,
+    reviewIntervalDays: input.reviewIntervalDays,
     lastPractisedAt: undefined,
     timesPractised: 0,
     totalMinutes: 0,

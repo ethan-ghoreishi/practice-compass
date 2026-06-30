@@ -1,151 +1,148 @@
-import { useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   currentStage,
-  getCurriculum,
-  overallProgress,
+  pathwayProgress,
   stageProgress,
-  stagesForLevel,
-  stepsForStage,
-  type CurriculumStage,
+  stepsOfStage,
+  type Pathway as PathwayT,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { CheckIcon, ChevronRightIcon } from '../components/icons';
+import { instrumentName } from '../store/lookups';
+import { Field } from '../components/ui';
+import { ChevronRightIcon, PathIcon, PlusIcon } from '../components/icons';
 
 export default function Pathway() {
-  const progress = useStore((s) => s.db.curriculum);
+  const db = useStore((s) => s.db);
+  const addPathway = useStore((s) => s.addPathway);
+  const reseedDefaultPathways = useStore((s) => s.reseedDefaultPathways);
   const navigate = useNavigate();
-  const curriculum = useMemo(() => getCurriculum(), []);
 
-  const current = currentStage(curriculum, progress);
-  const overall = overallProgress(curriculum, progress);
-  const currentIndex = current ? curriculum.stages.findIndex((s) => s.id === current.id) : 0;
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState('');
+  const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
+  const [source, setSource] = useState('');
+  const [note, setNote] = useState('');
+
+  const pathways = useMemo(() => [...db.pathways].sort((a, b) => a.order - b.order), [db.pathways]);
+
+  function create() {
+    if (!name.trim()) return;
+    const id = addPathway({ name, instrumentId: instrumentId || undefined, source, note });
+    setName('');
+    setSource('');
+    setNote('');
+    setCreating(false);
+    navigate(`/pathway/${id}`);
+  }
 
   return (
     <div className="stack-lg">
-      <header className="stack-sm">
-        <div className="eyebrow">{curriculum.name}</div>
-        <h1 className="page-title">Your pathway</h1>
-        <p className="page-sub">{curriculum.description}</p>
+      <header className="row between">
+        <div>
+          <h1 className="page-title">Pathways</h1>
+          <p className="page-sub">Trusted routes to follow at your own pace — one per instrument, fully yours to edit.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setCreating((c) => !c)}>
+          <PlusIcon /> New
+        </button>
       </header>
 
-      {current && (
-        <article className="card card-accent stack-sm">
-          <div className="row between">
-            <span className="eyebrow">You are here</span>
-            <span className="tiny faint">
-              Stage {currentIndex + 1} of {overall.stagesTotal}
-            </span>
+      {creating && (
+        <div className="card stack">
+          <Field label="Name">
+            <input className="input" autoFocus placeholder="e.g. Tar · my teacher's plan" value={name} onChange={(e) => setName(e.target.value)} />
+          </Field>
+          <Field label="Instrument">
+            <select className="select" value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
+              <option value="">General (no instrument)</option>
+              {db.instruments.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Source (optional)">
+            <input className="input" placeholder="e.g. Radif of Mirzā Abdollāh" value={source} onChange={(e) => setSource(e.target.value)} />
+          </Field>
+          <Field label="How you'll use it (optional)">
+            <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="row">
+            <button className="btn btn-primary grow" disabled={!name.trim()} onClick={create}>
+              Create pathway
+            </button>
+            <button className="btn" onClick={() => setCreating(false)}>
+              Cancel
+            </button>
           </div>
-          <div className="title-md" style={{ fontSize: '1.25rem' }}>
-            {current.code} · {current.title}
-          </div>
-          <ProgressBar value={stageDone(curriculum, progress, current)} total={stageTotal(curriculum, progress, current)} />
-          <div className="row" style={{ marginTop: 4 }}>
-            <Link to={`/pathway/${current.code}`} className="btn btn-primary grow">
-              Continue this stage
-            </Link>
-          </div>
-          <div className="tiny faint">
-            {overall.stepsDone} of {overall.stepsTotal} steps done across the whole path · no rush, move on when it feels right.
-          </div>
-        </article>
+        </div>
       )}
 
-      {curriculum.levels.map((level) => {
-        const stages = stagesForLevel(curriculum, level.number);
-        return (
-          <section key={level.number} className="stack-sm">
-            <div>
-              <h2 className="title-md">{level.title}</h2>
-              <p className="small dim" style={{ marginTop: 2 }}>
-                {level.summary}
-              </p>
-            </div>
+      {pathways.length === 0 ? (
+        <div className="card stack-sm">
+          <div className="small dim">You have no pathways yet.</div>
+          <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={reseedDefaultPathways}>
+            Restore the default pathways
+          </button>
+        </div>
+      ) : (
+        <div className="stack">
+          {pathways.map((p) => (
+            <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`)} />
+          ))}
+        </div>
+      )}
 
-            {!level.available || stages.length === 0 ? (
-              <div className="card card-quiet small faint">On the road ahead — add these stages when you arrive.</div>
-            ) : (
-              <div className="stack-sm">
-                {stages.map((stage) => (
-                  <StageRow
-                    key={stage.id}
-                    stage={stage}
-                    isCurrent={stage.id === current?.id}
-                    done={stageDone(curriculum, progress, stage)}
-                    total={stageTotal(curriculum, progress, stage)}
-                    onOpen={() => navigate(`/pathway/${stage.code}`)}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-        );
-      })}
+      <button className="link small" style={{ background: 'none', border: 'none', width: 'fit-content' }} onClick={reseedDefaultPathways}>
+        Restore any missing default pathways
+      </button>
     </div>
   );
 }
 
-function stageDone(c: ReturnType<typeof getCurriculum>, p: ReturnType<typeof useStore.getState>['db']['curriculum'], stage: CurriculumStage) {
-  return stageProgress(stepsForStage(c, p, stage.id), p).done;
-}
-function stageTotal(c: ReturnType<typeof getCurriculum>, p: ReturnType<typeof useStore.getState>['db']['curriculum'], stage: CurriculumStage) {
-  return stepsForStage(c, p, stage.id).length;
-}
-
-function StageRow({
-  stage,
-  isCurrent,
-  done,
-  total,
+function PathwayCard({
+  pathway,
+  db,
   onOpen,
 }: {
-  stage: CurriculumStage;
-  isCurrent: boolean;
-  done: number;
-  total: number;
+  pathway: PathwayT;
+  db: ReturnType<typeof useStore.getState>['db'];
   onOpen: () => void;
 }) {
-  const complete = total > 0 && done === total;
-  return (
-    <button
-      className={`card card-link list-row${isCurrent ? ' card-accent' : ''}`}
-      style={{ width: '100%', textAlign: 'left', padding: 'var(--space-3) var(--space-4)' }}
-      onClick={onOpen}
-    >
-      <div
-        className="stage-badge"
-        style={{
-          background: complete ? 'var(--tone-good-soft)' : isCurrent ? 'var(--accent-soft)' : 'var(--surface-2)',
-          color: complete ? 'var(--tone-good)' : isCurrent ? 'var(--accent)' : 'var(--text-dim)',
-        }}
-      >
-        {complete ? <CheckIcon width={18} height={18} /> : stage.code}
-      </div>
-      <div className="grow">
-        <div className="row" style={{ gap: 8 }}>
-          <span>{stage.code}</span>
-          {isCurrent && <span className="badge tone-progress">Current</span>}
-          {complete && <span className="badge tone-good">Complete</span>}
-        </div>
-        <div className="tiny faint">{stage.title === stage.code ? stage.mainAreas.slice(0, 4).join(' · ') : stage.title}</div>
-        <ProgressBar value={done} total={total} compact />
-      </div>
-      <ChevronRightIcon width={16} height={16} className="faint" />
-    </button>
-  );
-}
+  const stage = currentStage(db.pathwayStages, db.pathwaySteps, pathway.id);
+  const prog = pathwayProgress(db.pathwayStages, db.pathwaySteps, pathway.id);
+  const sp = stage ? stageProgress(stepsOfStage(db.pathwaySteps, stage.id)) : null;
 
-function ProgressBar({ value, total, compact }: { value: number; total: number; compact?: boolean }) {
-  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
-    <div className="row" style={{ gap: 8, marginTop: compact ? 6 : 0 }}>
-      <span className="balance-track grow">
-        <span className="balance-fill" style={{ width: `${pct}%` }} />
-      </span>
-      <span className="tiny faint mono-num" style={{ minWidth: 38, textAlign: 'right' }}>
-        {value}/{total}
-      </span>
-    </div>
+    <button className="card card-link stack-sm" style={{ width: '100%', textAlign: 'left' }} onClick={onOpen}>
+      <div className="row between">
+        <div className="row" style={{ gap: 8 }}>
+          <PathIcon width={16} height={16} style={{ color: 'var(--accent)' }} />
+          <span className="title-md">{pathway.name}</span>
+        </div>
+        <ChevronRightIcon width={16} height={16} className="faint" />
+      </div>
+      <div className="tiny faint">
+        {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
+        {pathway.source ? ` · ${pathway.source}` : ''}
+      </div>
+      {stage && (
+        <div className="row between" style={{ marginTop: 2 }}>
+          <span className="small dim truncate">
+            Now: <strong style={{ color: 'var(--text)' }}>{stage.code}</strong> {stage.title !== stage.code ? `· ${stage.title}` : ''}
+          </span>
+        </div>
+      )}
+      <div className="row" style={{ gap: 8 }}>
+        <span className="balance-track grow">
+          <span className="balance-fill" style={{ width: `${sp?.percent ?? 0}%` }} />
+        </span>
+        <span className="tiny faint mono-num">
+          {prog.stepsDone}/{prog.stepsTotal}
+        </span>
+      </div>
+    </button>
   );
 }

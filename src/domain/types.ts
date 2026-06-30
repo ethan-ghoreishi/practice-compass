@@ -26,7 +26,10 @@ export interface Instrument {
 
 export type MaterialSourceType =
   | 'radif'
+  | 'method_book'
+  | 'repertoire'
   | 'piece'
+  | 'song'
   | 'course'
   | 'lesson'
   | 'etude'
@@ -63,6 +66,7 @@ export type ItemType =
   | 'phrase'
   | 'section'
   | 'bar'
+  | 'gusheh'
   | 'full_piece'
   | 'exercise'
   | 'technique'
@@ -70,6 +74,9 @@ export type ItemType =
   | 'body'
   | 'memory'
   | 'other';
+
+/** How the next-review date is decided for an item. */
+export type ReviewMode = 'auto' | 'interval' | 'manual';
 
 export type ItemStatus =
   | 'new'
@@ -125,6 +132,10 @@ export interface PracticeItem {
   teacherQuestion?: string;
   tags: string[];
   nextReviewDate?: ISODate;
+  /** How nextReviewDate is chosen. Defaults to 'auto' (the scheduling engine). */
+  reviewMode?: ReviewMode;
+  /** Fixed cadence in days, used when reviewMode === 'interval'. */
+  reviewIntervalDays?: number;
   lastPractisedAt?: ISODateTime;
   timesPractised: number;
   totalMinutes: number;
@@ -156,12 +167,15 @@ export type FocusArea =
   | 'fingering'
   | 'right_hand'
   | 'left_hand'
+  | 'mezrab'
   | 'relaxation'
   | 'memory'
   | 'phrase_direction'
   | 'ornament'
+  | 'tahrir'
   | 'transition'
   | 'musical_meaning'
+  | 'dynamics'
   | 'tempo'
   | 'body'
   | 'other';
@@ -216,23 +230,29 @@ export interface Review {
   updatedAt: ISODateTime;
 }
 
-// --- Curriculum / Pathway ---------------------------------------------------
+// --- Pathways ---------------------------------------------------------------
 //
-// A curriculum is a fixed, trustable path to mastery (e.g. Classical Guitar
-// Shed's Woodshed program): Levels → Stages (sub-levels like "1A") → Steps.
-// The *content* is defined in code (src/domain/curriculum.ts); only the user's
-// progress is persisted, so the path can be improved without data migrations.
+// A Pathway is a fully editable, trustable route to mastery — for any
+// instrument. Pathway → Stages → Steps (+ optional guided Routines). Unlike
+// the first version, pathways are persisted DATA the user can create, rename,
+// reorder and delete. Seeded defaults exist for Guitar (CGS), Setar (radif &
+// repertoire) and Tar (Honarestān method), all freely editable.
 
 export type StepStrand =
   | 'warmup'
   | 'right_hand'
   | 'left_hand'
+  | 'mezrab'
   | 'chords'
   | 'arpeggios'
   | 'scales'
   | 'exercise'
   | 'rhythm'
   | 'sight_reading'
+  | 'radif'
+  | 'repertoire'
+  | 'improvisation'
+  | 'ornament'
   | 'piece'
   | 'phrasing'
   | 'fretboard'
@@ -245,76 +265,74 @@ export type StepKind = 'video' | 'exercise' | 'drill' | 'piece' | 'reading' | 'c
 
 export type StepStatus = 'todo' | 'in_progress' | 'done';
 
-export interface CurriculumStep {
+export interface Pathway {
   id: ID;
+  /** The instrument this path is for (undefined = general / cross-instrument). */
+  instrumentId?: ID;
+  name: string;
+  source?: string;
+  description?: string;
+  /** Free-form guidance shown at the top of the path (e.g. how it's used). */
+  note?: string;
+  archived?: boolean;
+  order: number;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface PathwayStage {
+  id: ID;
+  pathwayId: ID;
+  /** Short label, e.g. "1A", "Shur", "Book 1". Free text. */
+  code: string;
+  title: string;
+  /** Optional section heading to group stages under (e.g. "Level 1", "Book 1"). */
+  group?: string;
+  intro?: string;
+  order: number;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface PathwayStep {
+  id: ID;
+  pathwayId: ID;
   stageId: ID;
   title: string;
   strand: StepStrand;
   kind: StepKind;
   notes?: string;
   targetBpm?: number;
+  status: StepStatus;
+  /** Linked practice item, if the user has started practising this step. */
+  itemId?: ID;
   order: number;
-  /** True for steps the user added to flesh out an outline stage. */
-  custom?: boolean;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
 }
 
 export interface RoutineSegment {
   label: string;
   minutes: number;
   note?: string;
-  /** CGS marks "if rushed, do these" segments with ***. */
   essential?: boolean;
 }
 
-export interface CurriculumRoutine {
+export interface PathwayRoutine {
   id: ID;
-  stageId: ID;
+  pathwayId: ID;
+  /** Optional stage the routine belongs to (undefined = whole pathway). */
+  stageId?: ID;
   name: string;
   segments: RoutineSegment[];
-}
-
-/** A sub-level, e.g. "1A". */
-export interface CurriculumStage {
-  id: ID;
-  levelNumber: number;
-  code: string;
-  title: string;
   order: number;
-  intro?: string;
-  mainAreas: string[];
-  /** True when full step detail is seeded; false when only the outline is. */
-  detailed: boolean;
-}
-
-export interface CurriculumLevel {
-  number: number;
-  title: string;
-  summary: string;
-  /** False for levels that exist on the path but aren't loaded yet (e.g. 4–5). */
-  available: boolean;
-}
-
-export interface Curriculum {
-  id: ID;
-  name: string;
-  source: string;
-  description: string;
-  levels: CurriculumLevel[];
-  stages: CurriculumStage[];
-  steps: CurriculumStep[];
-  routines: CurriculumRoutine[];
-}
-
-/** The only persisted curriculum data: the user's progress and additions. */
-export interface CurriculumProgress {
-  stepStatus: Record<ID, StepStatus>;
-  stepItemId: Record<ID, ID>;
-  customSteps: CurriculumStep[];
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
 }
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -323,11 +341,10 @@ export interface PracticeDB {
   items: PracticeItem[];
   blocks: PracticeBlock[];
   reviews: Review[];
-  curriculum: CurriculumProgress;
-}
-
-export function emptyCurriculumProgress(): CurriculumProgress {
-  return { stepStatus: {}, stepItemId: {}, customSteps: [] };
+  pathways: Pathway[];
+  pathwayStages: PathwayStage[];
+  pathwaySteps: PathwayStep[];
+  pathwayRoutines: PathwayRoutine[];
 }
 
 /** Shape of a JSON export file. */

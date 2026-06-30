@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  planNextReview,
   RESULT_LABELS,
   REVIEW_TYPE_LABELS,
-  suggestReview,
   suggestStatusAfterBlock,
   ITEM_STATUS_LABELS,
   type BlockResult,
@@ -58,8 +58,8 @@ export default function CloseBlock() {
   }, [db, item, result]);
 
   const reviewSuggestion = useMemo(
-    () => (result ? suggestReview({ result, mode: active?.mode, status: item?.status, now }) : null),
-    [result, active?.mode, item?.status, now],
+    () => (item && result ? planNextReview({ item, result, now }) : null),
+    [item, result, now],
   );
 
   const statusSuggestion = useMemo(
@@ -72,14 +72,14 @@ export default function CloseBlock() {
 
   function pickResult(r: BlockResult) {
     setResult(r);
-    const s = suggestReview({ result: r, mode: active?.mode, status: item?.status, now });
+    if (!item) return;
+    const s = planNextReview({ item, result: r, now });
+    setComeBack(true);
     if (s) {
-      setComeBack(true);
       setReviewDate(s.dueDate);
       setReviewType(s.reviewType);
-    } else {
-      setComeBack(false);
     }
+    // Manual mode (s === null): keep the date the user chooses.
   }
 
   if (!active || !item) {

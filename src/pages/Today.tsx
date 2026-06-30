@@ -5,15 +5,12 @@ import {
   dueReviews,
   fragileItems,
   generateInsights,
-  getCurriculum,
   instrumentBalance,
   insightOfTheDay,
-  nextStepInStage,
   recommend,
   stageProgress,
-  stepsForStage,
+  stepsOfStage,
   ITEM_STATUS_LABELS,
-  type CurriculumStep,
   type PracticeItem,
 } from '../domain';
 import type { Recommendation } from '../domain';
@@ -23,6 +20,7 @@ import { defaultStartInput } from '../store/sessionHelpers';
 import { Badge, EmptyState, StatusBadge } from '../components/ui';
 import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, SparkIcon } from '../components/icons';
 import { relativeDay } from '../components/format';
+import InstallHint from '../components/InstallHint';
 
 const KIND_LABEL: Record<Recommendation['kind'], string> = {
   best: 'Best next focus',
@@ -34,7 +32,6 @@ export default function Today() {
   const db = useStore((s) => s.db);
   const active = useStore((s) => s.active);
   const startSession = useStore((s) => s.startSession);
-  const startStepSession = useStore((s) => s.startStepSession);
   const completeReview = useStore((s) => s.completeReview);
   const navigate = useNavigate();
 
@@ -51,24 +48,10 @@ export default function Today() {
     [db, now],
   );
 
-  const curriculum = useMemo(() => getCurriculum(), []);
-  const stage = useMemo(() => currentStage(curriculum, db.curriculum), [curriculum, db.curriculum]);
-  const stageSp = useMemo(
-    () => (stage ? stageProgress(stepsForStage(curriculum, db.curriculum, stage.id), db.curriculum) : null),
-    [curriculum, db.curriculum, stage],
-  );
-  const nextStep = useMemo(
-    () => (stage ? nextStepInStage(curriculum, db.curriculum, stage.id) : null),
-    [curriculum, db.curriculum, stage],
-  );
+  const pathways = useMemo(() => [...db.pathways].sort((a, b) => a.order - b.order), [db.pathways]);
 
   const start = (item: PracticeItem) => {
     startSession(defaultStartInput(item));
-    navigate('/active');
-  };
-
-  const practiseStep = (step: CurriculumStep) => {
-    startStepSession(step);
     navigate('/active');
   };
 
@@ -83,6 +66,8 @@ export default function Today() {
         <p className="page-sub">One item, one focus. Pick a card or start your own block.</p>
       </header>
 
+      <InstallHint />
+
       {active && (
         <Link to="/active" className="card card-accent card-link row between">
           <div>
@@ -95,53 +80,44 @@ export default function Today() {
         </Link>
       )}
 
-      {stage && (
-        <section className="card stack-sm">
+      {pathways.length > 0 && (
+        <section className="stack-sm">
           <div className="row between">
-            <span className="eyebrow">
-              <PathIcon width={13} height={13} style={{ verticalAlign: '-2px', marginRight: 5 }} />
-              Your pathway
-            </span>
+            <h2 className="title-md row" style={{ gap: 6 }}>
+              <PathIcon width={16} height={16} style={{ color: 'var(--accent)' }} /> Your pathways
+            </h2>
             <Link to="/pathway" className="tiny link">
-              View path
+              Manage
             </Link>
           </div>
-          <Link to={`/pathway/${stage.code}`} className="title-md" style={{ color: 'var(--text)' }}>
-            {stage.code} · {stage.title}
-          </Link>
-          {stageSp && (
-            <div className="row" style={{ gap: 8 }}>
-              <span className="balance-track grow">
-                <span className="balance-fill" style={{ width: `${stageSp.percent}%` }} />
-              </span>
-              <span className="tiny faint mono-num">
-                {stageSp.done}/{stageSp.total}
-              </span>
-            </div>
-          )}
-          {nextStep ? (
-            <>
-              <div className="small dim">Next: {nextStep.title}</div>
-              <div className="row">
-                {nextStep.kind !== 'checkpoint' ? (
-                  <button className="btn btn-primary grow" onClick={() => practiseStep(nextStep)}>
-                    <PlayIcon /> Practise next step
-                  </button>
-                ) : (
-                  <Link to={`/pathway/${stage.code}`} className="btn btn-primary grow">
-                    Review checkpoint
-                  </Link>
-                )}
-                <Link to={`/pathway/${stage.code}`} className="btn">
-                  Open
+          <div className="card card-flush list">
+            {pathways.map((p) => {
+              const cur = currentStage(db.pathwayStages, db.pathwaySteps, p.id);
+              const sp = cur ? stageProgress(stepsOfStage(db.pathwaySteps, cur.id)) : null;
+              return (
+                <Link key={p.id} to={cur ? `/pathway/${p.id}/${cur.id}` : `/pathway/${p.id}`} className="list-row card-link" style={{ borderRadius: 0 }}>
+                  <div className="grow">
+                    <div className="truncate">{p.name}</div>
+                    <div className="tiny faint truncate">
+                      {p.instrumentId ? instrumentName(db, p.instrumentId) : 'General'}
+                      {cur ? ` · now: ${cur.code}${cur.title !== cur.code ? ` ${cur.title}` : ''}` : ''}
+                    </div>
+                    {sp && (
+                      <div className="row" style={{ gap: 8, marginTop: 6 }}>
+                        <span className="balance-track grow" style={{ maxWidth: 160 }}>
+                          <span className="balance-fill" style={{ width: `${sp.percent}%` }} />
+                        </span>
+                        <span className="tiny faint mono-num">
+                          {sp.done}/{sp.total}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRightIcon width={16} height={16} className="faint" />
                 </Link>
-              </div>
-            </>
-          ) : (
-            <Link to={`/pathway/${stage.code}`} className="btn btn-primary">
-              Open stage
-            </Link>
-          )}
+              );
+            })}
+          </div>
         </section>
       )}
 

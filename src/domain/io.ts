@@ -1,5 +1,5 @@
-import type { CurriculumProgress, ExportFile, PracticeDB } from './types';
-import { emptyCurriculumProgress, SCHEMA_VERSION } from './types';
+import type { ExportFile, PracticeDB } from './types';
+import { SCHEMA_VERSION } from './types';
 import { nowISO } from './util';
 
 // ---------------------------------------------------------------------------
@@ -21,7 +21,17 @@ export function serializeExport(db: PracticeDB, now: Date = new Date()): string 
   return JSON.stringify(buildExport(db, now), null, 2);
 }
 
-const ARRAY_KEYS = ['instruments', 'materials', 'items', 'blocks', 'reviews'] as const;
+const ARRAY_KEYS = [
+  'instruments',
+  'materials',
+  'items',
+  'blocks',
+  'reviews',
+  'pathways',
+  'pathwayStages',
+  'pathwaySteps',
+  'pathwayRoutines',
+] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -43,16 +53,6 @@ export function validateDB(input: unknown): PracticeDB {
     }
   }
 
-  const curriculum = isRecord(raw.curriculum)
-    ? {
-        stepStatus: (raw.curriculum as Record<string, unknown>).stepStatus ?? {},
-        stepItemId: (raw.curriculum as Record<string, unknown>).stepItemId ?? {},
-        customSteps: Array.isArray((raw.curriculum as Record<string, unknown>).customSteps)
-          ? (raw.curriculum as Record<string, unknown>).customSteps
-          : [],
-      }
-    : emptyCurriculumProgress();
-
   const db: PracticeDB = {
     schemaVersion: typeof raw.schemaVersion === 'number' ? (raw.schemaVersion as number) : SCHEMA_VERSION,
     instruments: (raw.instruments as PracticeDB['instruments']) ?? [],
@@ -60,7 +60,10 @@ export function validateDB(input: unknown): PracticeDB {
     items: (raw.items as PracticeDB['items']) ?? [],
     blocks: (raw.blocks as PracticeDB['blocks']) ?? [],
     reviews: (raw.reviews as PracticeDB['reviews']) ?? [],
-    curriculum: curriculum as CurriculumProgress,
+    pathways: (raw.pathways as PracticeDB['pathways']) ?? [],
+    pathwayStages: (raw.pathwayStages as PracticeDB['pathwayStages']) ?? [],
+    pathwaySteps: (raw.pathwaySteps as PracticeDB['pathwaySteps']) ?? [],
+    pathwayRoutines: (raw.pathwayRoutines as PracticeDB['pathwayRoutines']) ?? [],
   };
 
   // Minimal per-entity sanity: every record needs an id.

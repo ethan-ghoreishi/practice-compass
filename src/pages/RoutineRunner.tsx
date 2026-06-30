@@ -1,15 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { getCurriculum } from '../domain';
+import { useStore } from '../store/useStore';
 import { formatClock } from '../components/format';
 import { CheckIcon, PauseIcon, PlayIcon, XIcon } from '../components/icons';
 
 export default function RoutineRunner() {
   const { routineId } = useParams();
   const navigate = useNavigate();
-  const curriculum = useMemo(() => getCurriculum(), []);
-  const routine = curriculum.routines.find((r) => r.id === routineId);
-  const stage = routine ? curriculum.stages.find((s) => s.id === routine.stageId) : undefined;
+  const db = useStore((s) => s.db);
+  const routine = db.pathwayRoutines.find((r) => r.id === routineId);
+  const stage = routine?.stageId ? db.pathwayStages.find((s) => s.id === routine.stageId) : undefined;
 
   const segments = routine?.segments ?? [];
   const [segIndex, setSegIndex] = useState(0);
@@ -44,18 +44,20 @@ export default function RoutineRunner() {
     return () => clearInterval(id);
   }, [running, finished, segments.length]);
 
-  if (!routine || !stage) {
+  if (!routine) {
     return (
       <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
         <h1 className="page-title">Routine not found</h1>
         <Link to="/pathway" className="btn btn-primary">
-          Back to pathway
+          Back to pathways
         </Link>
       </div>
     );
   }
 
-  const backTo = `/pathway/${stage.code}`;
+  const backTo = routine.stageId
+    ? `/pathway/${routine.pathwayId}/${routine.stageId}`
+    : `/pathway/${routine.pathwayId}`;
 
   if (finished) {
     return (
@@ -68,7 +70,7 @@ export default function RoutineRunner() {
         </div>
         <p className="page-sub">Nicely done. Short and steady is the whole game.</p>
         <button className="btn btn-primary btn-lg" onClick={() => navigate(backTo)}>
-          Back to {stage.code}
+          Back to {stage?.code ?? 'pathway'}
         </button>
       </div>
     );
@@ -83,7 +85,8 @@ export default function RoutineRunner() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
       <header className="stack-sm">
         <div className="eyebrow">
-          {stage.code} · {routine.name}
+          {stage ? `${stage.code} · ` : ''}
+          {routine.name}
         </div>
         <div className="faint tiny">
           Segment {segIndex + 1} of {segments.length}

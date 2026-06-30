@@ -6,6 +6,7 @@ import type {
   PersianFields,
   PracticeItem,
   Rating,
+  ReviewMode,
 } from '../domain';
 
 export interface ItemFormValues {
@@ -21,6 +22,8 @@ export interface ItemFormValues {
   bestStrategy: string;
   teacherQuestion: string;
   tags: string;
+  reviewMode: ReviewMode;
+  reviewIntervalDays: string;
   persian: PersianFields;
   guitar: GuitarFields;
 }
@@ -39,6 +42,8 @@ export function emptyItemValues(instrumentId: string): ItemFormValues {
     bestStrategy: '',
     teacherQuestion: '',
     tags: '',
+    reviewMode: 'auto',
+    reviewIntervalDays: '',
     persian: {},
     guitar: {},
   };
@@ -58,6 +63,8 @@ export function itemToValues(item: PracticeItem): ItemFormValues {
     bestStrategy: item.bestStrategy ?? '',
     teacherQuestion: item.teacherQuestion ?? '',
     tags: item.tags.join(', '),
+    reviewMode: item.reviewMode ?? 'auto',
+    reviewIntervalDays: item.reviewIntervalDays ? String(item.reviewIntervalDays) : '',
     persian: item.persian ?? {},
     guitar: item.guitar ?? {},
   };
@@ -86,6 +93,8 @@ export function valuesToCreateInput(v: ItemFormValues) {
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean),
+    reviewMode: v.reviewMode,
+    reviewIntervalDays: v.reviewMode === 'interval' ? Math.max(1, Number(v.reviewIntervalDays) || 7) : undefined,
     persian: cleanRecord(v.persian),
     guitar: cleanRecord(v.guitar),
   };

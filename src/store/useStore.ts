@@ -10,55 +10,40 @@ import {
   createSeedDB,
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
-  emptyCurriculumProgress,
   emptyDB,
-  getCurriculum,
   newId,
   nowISO,
   SCHEMA_VERSION,
+  seedPathways,
   STRAND_TO_FOCUS,
+  STRAND_TO_ITEM_TYPE,
   validateDB,
   type BlockMode,
   type BlockResult,
-  type CurriculumStep,
   type FocusArea,
   type GuitarFields,
   type ID,
   type Instrument,
   type ISODate,
   type ItemStatus,
-  type ItemType,
   type Material,
   type MaterialSourceType,
   type MaterialStatus,
+  type Pathway,
+  type PathwayRoutine,
+  type PathwayStage,
+  type PathwayStep,
   type PersianFields,
   type PracticeDB,
   type PracticeItem,
   type Rating,
+  type ReviewMode,
   type ReviewType,
   type StepKind,
   type StepStatus,
   type StepStrand,
 } from '../domain';
 import type { CreateItemInput } from '../domain/factories';
-
-function strandToItemType(strand: StepStrand): ItemType {
-  switch (strand) {
-    case 'piece':
-      return 'full_piece';
-    case 'rhythm':
-    case 'sight_reading':
-    case 'exercise':
-      return 'exercise';
-    case 'reading_theory':
-    case 'practice_skills':
-      return 'other';
-    case 'warmup':
-      return 'body';
-    default:
-      return 'technique';
-  }
-}
 
 // ---------------------------------------------------------------------------
 // The single app store. Holds the whole local database, the live practice
@@ -103,7 +88,7 @@ export interface StartSessionInput {
   targetMinutes: number;
 }
 
-export interface AddCustomStepInput {
+export interface StepInput {
   title: string;
   strand: StepStrand;
   kind?: StepKind;
@@ -139,6 +124,8 @@ export interface ItemPatch {
   teacherQuestion?: string;
   tags?: string[];
   nextReviewDate?: ISODate;
+  reviewMode?: ReviewMode;
+  reviewIntervalDays?: number;
   persian?: PersianFields;
   guitar?: GuitarFields;
 }
@@ -186,14 +173,25 @@ interface StoreState {
   // Reviews
   completeReview: (id: ID, result?: BlockResult) => void;
 
-  // Curriculum / pathway
-  setStepStatus: (stepId: ID, status: StepStatus) => void;
-  addCustomStep: (stageId: ID, input: AddCustomStepInput) => ID;
-  deleteCustomStep: (stepId: ID) => void;
-  linkStepItem: (stepId: ID, itemId: ID) => void;
-  resetCurriculumProgress: () => void;
+  // Pathways
+  addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
+  updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived'>>) => void;
+  deletePathway: (id: ID) => void;
+  reseedDefaultPathways: () => void;
+
+  addStage: (pathwayId: ID, input: { code: string; title: string; group?: string; intro?: string }) => ID;
+  updateStage: (id: ID, patch: Partial<Pick<PathwayStage, 'code' | 'title' | 'group' | 'intro'>>) => void;
+  deleteStage: (id: ID) => void;
+  moveStage: (id: ID, dir: -1 | 1) => void;
+
+  addStep: (stageId: ID, input: StepInput) => ID;
+  updateStep: (id: ID, patch: Partial<Pick<PathwayStep, 'title' | 'strand' | 'kind' | 'notes' | 'targetBpm'>>) => void;
+  setStepStatus: (id: ID, status: StepStatus) => void;
+  deleteStep: (id: ID) => void;
+  moveStep: (id: ID, dir: -1 | 1) => void;
+
   /** Create/link a practice item for a step and begin a session on it. */
-  startStepSession: (step: CurriculumStep) => void;
+  startStepSession: (step: PathwayStep) => void;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -204,6 +202,62 @@ interface StoreState {
 
 function touch<T extends { updatedAt: string }>(entity: T, now: Date): T {
   return { ...entity, updatedAt: nowISO(now) };
+}
+
+const EMPTY_PATHWAY_FIELDS = {
+  pathways: [] as Pathway[],
+  pathwayStages: [] as PathwayStage[],
+  pathwaySteps: [] as PathwayStep[],
+  pathwayRoutines: [] as PathwayRoutine[],
+};
+
+/**
+ * v2 → v3: pathways became editable data. Seed the default pathways from the
+ * db's instruments and carry over any old `curriculum` progress (step status,
+ * linked items, custom steps), then drop the old field.
+ */
+function migrateToV3(db: PracticeDB): PracticeDB {
+  if (db.pathways && db.pathways.length > 0) {
+    return { ...EMPTY_PATHWAY_FIELDS, ...db };
+  }
+  const ids = {
+    guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
+    setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
+    tar:
+      db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
+  };
+  const seeded = seedPathways(ids);
+
+  const old = (db as unknown as { curriculum?: { stepStatus?: Record<string, StepStatus>; stepItemId?: Record<string, ID>; customSteps?: PathwayStep[] } }).curriculum;
+  let steps = seeded.pathwaySteps;
+  if (old) {
+    steps = steps.map((s) => ({
+      ...s,
+      status: old.stepStatus?.[s.id] ?? s.status,
+      itemId: old.stepItemId?.[s.id] ?? s.itemId,
+    }));
+    const customs = (old.customSteps ?? []).map((c, i) => ({
+      ...c,
+      pathwayId: 'cgs',
+      status: old.stepStatus?.[c.id] ?? c.status ?? 'todo',
+      itemId: old.stepItemId?.[c.id],
+      order: c.order ?? 1000 + i,
+      createdAt: c.createdAt ?? nowISO(),
+      updatedAt: c.updatedAt ?? nowISO(),
+    })) as PathwayStep[];
+    steps = [...steps, ...customs];
+  }
+
+  const next: PracticeDB & { curriculum?: unknown } = {
+    ...db,
+    pathways: seeded.pathways,
+    pathwayStages: seeded.pathwayStages,
+    pathwaySteps: steps,
+    pathwayRoutines: seeded.pathwayRoutines,
+    schemaVersion: SCHEMA_VERSION,
+  };
+  delete next.curriculum;
+  return next;
 }
 
 export const useStore = create<StoreState>()(
@@ -428,86 +482,201 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      // --- Curriculum / pathway --------------------------------------------
+      // --- Pathways --------------------------------------------------------
 
-      setStepStatus: (stepId, status) => {
+      addPathway: (input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const pathway: Pathway = {
+          id: newId(),
+          instrumentId: input.instrumentId,
+          name: input.name.trim(),
+          source: input.source?.trim() || undefined,
+          description: input.description?.trim() || undefined,
+          note: input.note?.trim() || undefined,
+          order: get().db.pathways.length,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        set((s) => ({ db: { ...s.db, pathways: [...s.db.pathways, pathway] } }));
+        return pathway.id;
+      },
+
+      updatePathway: (id, patch) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)) },
+        }));
+      },
+
+      deletePathway: (id) => {
         set((s) => ({
           db: {
             ...s.db,
-            curriculum: {
-              ...s.db.curriculum,
-              stepStatus: { ...s.db.curriculum.stepStatus, [stepId]: status },
-            },
+            pathways: s.db.pathways.filter((p) => p.id !== id),
+            pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
+            pathwaySteps: s.db.pathwaySteps.filter((sp) => sp.pathwayId !== id),
+            pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.pathwayId !== id),
           },
         }));
       },
 
-      addCustomStep: (stageId, input) => {
-        const existing = get().db.curriculum.customSteps.filter((s) => s.stageId === stageId).length;
-        const step: CurriculumStep = {
+      reseedDefaultPathways: () => {
+        const now = new Date();
+        const { db } = get();
+        const ids = {
+          guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
+          setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
+          tar:
+            db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
+        };
+        const seeded = seedPathways(ids, now);
+        const have = new Set(db.pathways.map((p) => p.id));
+        const newP = seeded.pathways.filter((p) => !have.has(p.id));
+        const newIds = new Set(newP.map((p) => p.id));
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathways: [...s.db.pathways, ...newP],
+            pathwayStages: [...s.db.pathwayStages, ...seeded.pathwayStages.filter((x) => newIds.has(x.pathwayId))],
+            pathwaySteps: [...s.db.pathwaySteps, ...seeded.pathwaySteps.filter((x) => newIds.has(x.pathwayId))],
+            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => newIds.has(x.pathwayId))],
+          },
+        }));
+      },
+
+      addStage: (pathwayId, input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const order = get().db.pathwayStages.filter((s) => s.pathwayId === pathwayId).length;
+        const stage: PathwayStage = {
           id: newId(),
+          pathwayId,
+          code: input.code.trim() || 'New',
+          title: input.title.trim(),
+          group: input.group?.trim() || undefined,
+          intro: input.intro?.trim() || undefined,
+          order,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        set((s) => ({ db: { ...s.db, pathwayStages: [...s.db.pathwayStages, stage] } }));
+        return stage.id;
+      },
+
+      updateStage: (id, patch) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, pathwayStages: s.db.pathwayStages.map((st) => (st.id === id ? touch({ ...st, ...patch }, now) : st)) },
+        }));
+      },
+
+      deleteStage: (id) => {
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayStages: s.db.pathwayStages.filter((st) => st.id !== id),
+            pathwaySteps: s.db.pathwaySteps.filter((sp) => sp.stageId !== id),
+            pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.stageId !== id),
+          },
+        }));
+      },
+
+      moveStage: (id, dir) => {
+        set((s) => {
+          const stage = s.db.pathwayStages.find((x) => x.id === id);
+          if (!stage) return s;
+          const sibs = s.db.pathwayStages
+            .filter((x) => x.pathwayId === stage.pathwayId)
+            .sort((a, b) => a.order - b.order);
+          const idx = sibs.findIndex((x) => x.id === id);
+          const swap = sibs[idx + dir];
+          if (!swap) return s;
+          const now = new Date();
+          return {
+            db: {
+              ...s.db,
+              pathwayStages: s.db.pathwayStages.map((x) =>
+                x.id === stage.id ? touch({ ...x, order: swap.order }, now) : x.id === swap.id ? touch({ ...x, order: stage.order }, now) : x,
+              ),
+            },
+          };
+        });
+      },
+
+      addStep: (stageId, input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const { db } = get();
+        const stage = db.pathwayStages.find((s) => s.id === stageId);
+        if (!stage) return '';
+        const order = db.pathwaySteps.filter((s) => s.stageId === stageId).length;
+        const step: PathwayStep = {
+          id: newId(),
+          pathwayId: stage.pathwayId,
           stageId,
           title: input.title.trim(),
           strand: input.strand,
           kind: input.kind ?? 'drill',
           notes: input.notes?.trim() || undefined,
           targetBpm: input.targetBpm,
-          order: 1000 + existing,
-          custom: true,
+          status: 'todo',
+          order,
+          createdAt: ts,
+          updatedAt: ts,
         };
-        set((s) => ({
-          db: {
-            ...s.db,
-            curriculum: { ...s.db.curriculum, customSteps: [...s.db.curriculum.customSteps, step] },
-          },
-        }));
+        set((s) => ({ db: { ...s.db, pathwaySteps: [...s.db.pathwaySteps, step] } }));
         return step.id;
       },
 
-      deleteCustomStep: (stepId) => {
+      updateStep: (id, patch) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, pathwaySteps: s.db.pathwaySteps.map((sp) => (sp.id === id ? touch({ ...sp, ...patch }, now) : sp)) },
+        }));
+      },
+
+      setStepStatus: (id, status) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, pathwaySteps: s.db.pathwaySteps.map((sp) => (sp.id === id ? touch({ ...sp, status }, now) : sp)) },
+        }));
+      },
+
+      deleteStep: (id) => {
+        set((s) => ({ db: { ...s.db, pathwaySteps: s.db.pathwaySteps.filter((sp) => sp.id !== id) } }));
+      },
+
+      moveStep: (id, dir) => {
         set((s) => {
-          const stepStatus = { ...s.db.curriculum.stepStatus };
-          delete stepStatus[stepId];
-          const stepItemId = { ...s.db.curriculum.stepItemId };
-          delete stepItemId[stepId];
+          const step = s.db.pathwaySteps.find((x) => x.id === id);
+          if (!step) return s;
+          const sibs = s.db.pathwaySteps.filter((x) => x.stageId === step.stageId).sort((a, b) => a.order - b.order);
+          const idx = sibs.findIndex((x) => x.id === id);
+          const swap = sibs[idx + dir];
+          if (!swap) return s;
+          const now = new Date();
           return {
             db: {
               ...s.db,
-              curriculum: {
-                stepStatus,
-                stepItemId,
-                customSteps: s.db.curriculum.customSteps.filter((c) => c.id !== stepId),
-              },
+              pathwaySteps: s.db.pathwaySteps.map((x) =>
+                x.id === step.id ? touch({ ...x, order: swap.order }, now) : x.id === swap.id ? touch({ ...x, order: step.order }, now) : x,
+              ),
             },
           };
         });
       },
 
-      linkStepItem: (stepId, itemId) => {
-        set((s) => ({
-          db: {
-            ...s.db,
-            curriculum: {
-              ...s.db.curriculum,
-              stepItemId: { ...s.db.curriculum.stepItemId, [stepId]: itemId },
-            },
-          },
-        }));
-      },
-
-      resetCurriculumProgress: () => {
-        set((s) => ({ db: { ...s.db, curriculum: emptyCurriculumProgress() } }));
-      },
-
       startStepSession: (step) => {
         const now = new Date();
         const { db } = get();
-        const stage = getCurriculum().stages.find((s) => s.id === step.stageId);
+        const pathway = db.pathways.find((p) => p.id === step.pathwayId);
+        const stage = db.pathwayStages.find((s) => s.id === step.stageId);
 
-        // Ensure a guitar instrument exists to attach the work to.
+        // Use the pathway's instrument; fall back to any active one.
         let instrument =
-          db.instruments.find((i) => /guitar/i.test(i.name)) ??
-          db.instruments.find((i) => i.active) ??
+          (pathway?.instrumentId && db.instruments.find((i) => i.id === pathway.instrumentId)) ||
+          db.instruments.find((i) => i.active) ||
           db.instruments[0];
         let instruments = db.instruments;
         if (!instrument) {
@@ -516,52 +685,44 @@ export const useStore = create<StoreState>()(
         }
 
         // Reuse the linked item, or create one for this step.
-        let itemId = db.curriculum.stepItemId[step.id];
-        let item = itemId ? db.items.find((i) => i.id === itemId) : undefined;
+        let item = step.itemId ? db.items.find((i) => i.id === step.itemId) : undefined;
         let items = db.items;
-        let stepItemId = db.curriculum.stepItemId;
+        let linkedItemId = step.itemId;
         if (!item) {
           const created = createItem(
             {
               instrumentId: instrument.id,
               title: stage ? `${stage.code} · ${step.title}` : step.title,
-              itemType: strandToItemType(step.strand),
+              itemType: STRAND_TO_ITEM_TYPE[step.strand],
               status: 'new',
               importance: 3,
               difficulty: 3,
               primaryFocus: STRAND_TO_FOCUS[step.strand],
               currentProblem: step.notes,
-              tags: ['cgs', stage?.code ?? ''].filter(Boolean),
+              tags: stage ? [stage.code] : [],
             },
             now,
           );
           items = [...db.items, created];
-          itemId = created.id;
           item = created;
-          stepItemId = { ...db.curriculum.stepItemId, [step.id]: created.id };
+          linkedItemId = created.id;
         }
 
-        // Touching a step moves it into "in progress" if it was still to-do.
-        const cur = db.curriculum.stepStatus[step.id] ?? 'todo';
-        const stepStatus =
-          cur === 'todo'
-            ? { ...db.curriculum.stepStatus, [step.id]: 'in_progress' as StepStatus }
-            : db.curriculum.stepStatus;
+        // Touching a step links the item and moves it into "in progress".
+        const pathwaySteps = db.pathwaySteps.map((s) =>
+          s.id === step.id
+            ? { ...s, itemId: linkedItemId, status: s.status === 'todo' ? ('in_progress' as StepStatus) : s.status, updatedAt: nowISO(now) }
+            : s,
+        );
 
-        set({
-          db: { ...db, instruments, items, curriculum: { ...db.curriculum, stepItemId, stepStatus } },
-          active: {
-            itemId: item.id,
-            instrumentId: instrument.id,
-            materialId: item.materialId,
-            mode: defaultModeForStatus(item.status),
-            focus: STRAND_TO_FOCUS[step.strand],
-            targetMinutes: DEFAULT_DURATION_MINUTES,
-            startedAt: nowISO(now),
-            accumulatedSeconds: 0,
-            running: true,
-            segmentStartedAt: nowISO(now),
-          },
+        set({ db: { ...db, instruments, items, pathwaySteps } });
+        get().startSession({
+          itemId: item.id,
+          instrumentId: instrument.id,
+          materialId: item.materialId,
+          mode: defaultModeForStatus(item.status),
+          focus: STRAND_TO_FOCUS[step.strand],
+          targetMinutes: DEFAULT_DURATION_MINUTES,
         });
       },
 
@@ -582,19 +743,16 @@ export const useStore = create<StoreState>()(
       partialize: (s) => ({ db: s.db, active: s.active, theme: s.theme }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;
-        // v1 → v2: introduce curriculum progress.
-        if (version < 2 && state?.db && !state.db.curriculum) {
-          state.db.curriculum = emptyCurriculumProgress();
-          state.db.schemaVersion = SCHEMA_VERSION;
+        // v1/v2 → v3: pathways become editable data.
+        if (version < 3 && state?.db) {
+          state.db = migrateToV3(state.db);
         }
         return state as unknown;
       },
-      // Guarantee newer fields exist after rehydration, whatever the source.
+      // Guarantee the pathway arrays exist after rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db
-          ? { ...p.db, curriculum: p.db.curriculum ?? emptyCurriculumProgress() }
-          : current.db;
+        const db = p.db ? { ...EMPTY_PATHWAY_FIELDS, ...p.db } : current.db;
         return { ...current, ...p, db };
       },
     },

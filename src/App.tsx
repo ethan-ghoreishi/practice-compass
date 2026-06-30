@@ -11,6 +11,7 @@ import ItemDetail from './pages/ItemDetail';
 import Materials from './pages/Materials';
 import Insights from './pages/Insights';
 import Pathway from './pages/Pathway';
+import PathwayDetail from './pages/PathwayDetail';
 import StageDetail from './pages/StageDetail';
 import RoutineRunner from './pages/RoutineRunner';
 import TeacherReport from './pages/TeacherReport';
@@ -39,7 +40,8 @@ export default function App() {
         <Route path="items" element={<Items />} />
         <Route path="items/:id" element={<ItemDetail />} />
         <Route path="pathway" element={<Pathway />} />
-        <Route path="pathway/:code" element={<StageDetail />} />
+        <Route path="pathway/:pathwayId" element={<PathwayDetail />} />
+        <Route path="pathway/:pathwayId/:stageId" element={<StageDetail />} />
         <Route path="routine/:routineId" element={<RoutineRunner />} />
         <Route path="materials" element={<Materials />} />
         <Route path="insights" element={<Insights />} />

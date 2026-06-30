@@ -18,12 +18,13 @@ backup at any time.
 
 ## What it does
 
-- **Gives you a path to trust.** A built-in **Pathway** follows the Classical Guitar Shed
-  "Woodshed" program — Levels 1–5, sub-levels (1A, 1B…), each a set of steps. You always
-  see exactly where you stand and what's ahead, and you move on at your own pace. No rush,
-  no deadlines, no competition. Level 1A is seeded in full from the official syllabus
-  (with its two 20-minute guided routines); Levels 1–3 (18 sub-levels) are mapped from the
-  real course structure.
+- **Gives you a path to trust — for every instrument.** Editable **Pathways** you follow
+  at your own pace, always seeing where you stand and what's ahead. No rush, no deadlines,
+  no competition. Three are seeded and fully editable: **Classical Guitar Shed** (1A from
+  the official syllabus with two guided routines; Levels 1–3 from the real course),
+  **Setar · Radif & Repertoire** (a dastgāh/āvāz/gusheh map, teacher-driven and reorderable),
+  and **Tar · Honarestān method** (the two-book conservatory curriculum, as taught on
+  Khonyagar.com). Create your own, rename, reorder, add or delete anything.
 - **Walks you through a session.** Guided routines run as a hands-free, segment-by-segment
   timer — just follow along.
 - **Tells you what to practise next.** A deterministic recommendation engine surfaces
@@ -149,24 +150,38 @@ suggests promotion to *usable*).
 
 ---
 
-## The Pathway (curriculum)
+## Pathways
 
-The pathway is **structure, not gamification** — it shows your honest position on a fixed
-route to mastery so you can stop deciding "what next" and just practise.
+Pathways are **structure, not gamification** — they show your honest position on a route to
+mastery so you can stop deciding "what next" and just practise.
 
-- Content lives in code ([`src/domain/curriculum.ts`](src/domain/curriculum.ts)); only your
-  *progress* is persisted, so the path can be improved without data migrations.
-- **Levels → Stages (sub-levels) → Steps.** Each step has a strand (warm-up, right hand,
-  chords, rhythm, sight-reading, piece…), guidance notes and an optional target tempo.
-- Your **current stage** is derived automatically (the first stage that isn't complete);
-  Today shows it with a "practise the next step" button.
+- **Editable data, one per instrument.** Pathways live in the store with full CRUD; seeds
+  ([`src/domain/pathwaySeed.ts`](src/domain/pathwaySeed.ts)) are honest starting points you
+  can rename, reorder, extend or delete. Pure derivations + tests are in
+  [`pathways.ts`](src/domain/pathways.ts).
+- **Pathway → Stages → Steps (+ guided Routines).** Each step has a strand (mezrāb, radif,
+  chords, sight-reading, piece…), notes and an optional target tempo, and its own status.
+- Your **current stage** is derived automatically; Today lists every pathway with its
+  current stage and progress.
 - **Guided routines** ([`RoutineRunner`](src/pages/RoutineRunner.tsx)) walk you through a
-  20-minute session segment by segment.
-- Practising a step creates/links a normal practice item, so the pathway plugs straight
-  into the recommendation engine, stats and teacher report.
-- Outline stages (everything past 1A) seed one step per real practice area; add your own
-  steps from each CGS sub-level's materials as you reach it. Pure helpers and tests live in
-  [`curriculumProgress.ts`](src/domain/curriculumProgress.ts).
+  session segment by segment, hands-free.
+- Practising a step creates/links a normal practice item, so pathways plug straight into
+  the recommendation engine, stats and teacher report.
+
+## Review scheduling
+
+When you close a block, [`planNextReview`](src/domain/scheduling.ts) proposes the next
+review date from the item's **mastery (status), importance, difficulty and the latest
+result** — important and difficult things come back sooner; things that held up are spaced
+further out. It returns a one-line rationale. Per item you can override the mode:
+
+- **Auto** — the engine decides (default).
+- **Every N days** — a fixed cadence you choose.
+- **Manual** — you set each date yourself.
+
+Item statuses use plain language — *Just started · Shaky · Fixing problems · Coming
+together · Solid · Performance-ready · Keeping fresh · Resting* — with a one-line
+description in the picker.
 
 ## Install as an app (PWA)
 
@@ -195,9 +210,10 @@ Calm, focused, serious, elegant, fast, uncluttered — encouraging but never che
 - Calendar reminders
 - Simple audio note per practice block
 - Teacher‑sharing PDF
-- Seed Levels 1B–5 in full detail from each sub-level's syllabus
+- Seed Levels 1B–5 of CGS in full detail from each sub-level's syllabus
 
-Done: ✅ PWA offline install · ✅ Trustable curriculum / pathway.
+Done: ✅ PWA offline install · ✅ Editable, per-instrument pathways (Guitar / Setar / Tar) ·
+✅ Metric-driven review scheduling with manual override.
 
 See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
 [`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.
