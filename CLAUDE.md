@@ -26,8 +26,12 @@ even if it's "useful".
 
 - ❌ **No gamification** — no streaks, points, badges, XP, leaderboards, confetti,
   or fake "mastery %". Progress is shown as honest status + result, nothing else.
-- ❌ **No backend / auth / cloud sync** in v1. The app is local‑first; data lives in
-  `localStorage` and moves via JSON export/import only.
+- ❌ **No backend / auth / cloud sync.** The app is local‑first: **IndexedDB (Dexie) is
+  the source of truth** on the device (app state in the `kv` table, attachment blobs in
+  the `attachments` table). It moves between devices only via the full backup file (JSON
+  data + base64 files) — export/import. Serving the built PWA privately from the NAS
+  (Web Station over Tailscale, like hess) is fine; that is static hosting, not an app
+  server or sync.
 - ❌ **No AI or audio analysis** in v1 — no tone scoring, pitch detection, posture
   tracking, or "AI teacher" judgement. The app organises; it does not grade.
 - ❌ **No guilt‑driven copy.** Insights are neutral observations, never nags.
@@ -51,11 +55,21 @@ own pace, on a route they trust. Protect that:
 
 ## Review scheduling stays explainable
 
-`planNextReview` (in `scheduling.ts`) blends status (mastery), importance, difficulty and
-the last result into one interval, and supports per-item overrides (Auto / fixed cadence /
-Manual). Keep it deterministic and explainable (it returns a `rationale`); don't turn it
-into an opaque model. Item status labels are plain-language for the user — keep the enum
-keys stable and only change the display labels in `labels.ts`.
+`computeReview` (in `scheduling.ts`) is an **SM-2 spaced-repetition engine** adapted to
+music: per item it tracks `srReps` / `srEase` / `srIntervalDays`; good reviews expand the
+interval, a slip resets it, and importance/difficulty pull material a little sooner. It
+supports per-item overrides (Auto / fixed cadence / Manual) and returns a plain `rationale`.
+Keep it deterministic and explainable — don't turn it into an opaque model, and keep the
+SM-2 tests green. Item status labels are plain-language for the user — keep the enum keys
+stable and only change the display labels in `labels.ts`.
+
+## Device & infrastructure
+
+This app is **iPhone-first**, installed as a PWA and served privately from the Synology NAS
+(Web Station over Tailscale) via `npm run deploy` — the same pattern as **hess**, chosen
+because the data + attachments are personal (never public GitHub Pages). CI (`.github/
+workflows/ci.yml`) runs lint + tests + build on push; deployment stays a local one-liner.
+The prod base path is `/practice-compass/` (override with `PC_BASE`).
 
 ## Architecture rules
 
@@ -65,8 +79,13 @@ keys stable and only change the display labels in `labels.ts`.
 - **The recommendation engine stays deterministic and explainable.** Every recommended
   card must produce a one‑sentence reason from the same numbers that ranked it. No
   hidden heuristics, no models.
-- **The store is the only place that mutates data.** UI components call store actions;
-  they never touch `localStorage` or rebuild domain objects by hand.
+- **The store is the only place that mutates app data.** UI components call store actions;
+  they never touch IndexedDB or rebuild domain objects by hand. Attachment **blobs** are the
+  one exception: they live in IndexedDB via `src/store/idb.ts` and the `attachments.ts`
+  service (too big for the reactive JSON); only their lightweight metadata sits in the store.
+- **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
+  `hydrated`. Persistence changes must keep the `migrate` + `merge` paths working and bump
+  `SCHEMA_VERSION`.
 - **One file per route** under `src/pages/`. Shared UI primitives live in
   `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
   React Fast Refresh and the `react-refresh` lint rule happy).

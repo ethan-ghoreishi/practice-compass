@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
-import { parseImport, serializeExport } from '../domain';
 import { useStore, type ThemePref } from '../store/useStore';
+import { buildFullBackup, importFullBackup } from '../store/backup';
 import { Field } from '../components/ui';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
@@ -16,40 +16,48 @@ export default function Settings() {
   const setTheme = useStore((s) => s.setTheme);
   const addInstrument = useStore((s) => s.addInstrument);
   const updateInstrument = useStore((s) => s.updateInstrument);
-  const importDB = useStore((s) => s.importDB);
   const resetDemo = useStore((s) => s.resetDemo);
   const clearAll = useStore((s) => s.clearAll);
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [newInstrument, setNewInstrument] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   function flash(msg: string) {
     setMessage(msg);
-    setTimeout(() => setMessage(null), 2400);
+    setTimeout(() => setMessage(null), 3000);
   }
 
-  function exportFile() {
-    const blob = new Blob([serializeExport(db)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `practice-compass-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    flash('Exported backup file.');
+  async function exportFile() {
+    setBusy(true);
+    try {
+      const json = await buildFullBackup();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `practice-compass-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      flash('Backup exported (data + files).');
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const text = await file.text();
-    const result = parseImport(text);
-    if (!result.ok) {
-      flash(`Import failed: ${result.error}`);
-    } else if (confirm('Importing will replace all current data. Continue?')) {
-      importDB(result.db);
-      flash('Data imported.');
+    if (confirm('Importing will replace all current data and files. Continue?')) {
+      setBusy(true);
+      try {
+        const text = await file.text();
+        const result = await importFullBackup(text);
+        flash(result.ok ? `Imported (${result.fileCount} file${result.fileCount === 1 ? '' : 's'}).` : `Import failed: ${result.error}`);
+      } finally {
+        setBusy(false);
+      }
     }
     if (fileRef.current) fileRef.current.value = '';
   }
@@ -144,17 +152,18 @@ export default function Settings() {
         <div className="section-label">Data &amp; backup</div>
         <div className="card stack-sm">
           <div className="row-wrap small dim">
-            {db.instruments.length} instruments · {db.materials.length} materials · {db.items.length} items ·{' '}
-            {db.blocks.length} blocks
+            {db.items.length} items · {db.blocks.length} blocks · {db.pathways.length} pathways ·{' '}
+            {db.attachments.length} file{db.attachments.length === 1 ? '' : 's'}
           </div>
           <div className="grid-2">
-            <button className="btn" onClick={exportFile}>
-              <DownloadIcon /> Export JSON
+            <button className="btn" onClick={exportFile} disabled={busy}>
+              <DownloadIcon /> {busy ? 'Working…' : 'Export backup'}
             </button>
-            <button className="btn" onClick={() => fileRef.current?.click()}>
-              <UploadIcon /> Import JSON
+            <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>
+              <UploadIcon /> Import backup
             </button>
           </div>
+          <div className="tiny faint">A backup is one file with all your data and attached files — save it to your NAS or iCloud.</div>
           <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onImportFile} />
           <Field hint="Replaces all data with the original demo dataset.">
             <button

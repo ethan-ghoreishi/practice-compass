@@ -130,12 +130,21 @@ export interface PracticeItem {
   primaryFocus?: FocusArea;
   bestStrategy?: string;
   teacherQuestion?: string;
+  /** Free-form running notes / annotations (your "notebook" for this item). */
+  notes?: string;
   tags: string[];
   nextReviewDate?: ISODate;
   /** How nextReviewDate is chosen. Defaults to 'auto' (the scheduling engine). */
   reviewMode?: ReviewMode;
   /** Fixed cadence in days, used when reviewMode === 'interval'. */
   reviewIntervalDays?: number;
+  // --- Spaced-repetition state (SM-2-style; maintained by the review engine) ---
+  /** Consecutive successful reviews. */
+  srReps?: number;
+  /** Ease factor (how fast intervals grow); starts at 2.5, floor 1.3. */
+  srEase?: number;
+  /** The interval (days) that produced the current nextReviewDate. */
+  srIntervalDays?: number;
   lastPractisedAt?: ISODateTime;
   timesPractised: number;
   totalMinutes: number;
@@ -330,9 +339,26 @@ export interface PathwayRoutine {
   updatedAt: ISODateTime;
 }
 
+// --- Attachments ------------------------------------------------------------
+//
+// File metadata is persisted in the main DB (small, reactive); the actual file
+// bytes live as Blobs in IndexedDB (see src/store/idb.ts), keyed by id.
+
+export type AttachmentKind = 'pdf' | 'image' | 'audio' | 'other';
+
+export interface AttachmentMeta {
+  id: ID;
+  itemId: ID;
+  name: string;
+  mime: string;
+  size: number;
+  kind: AttachmentKind;
+  createdAt: ISODateTime;
+}
+
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -345,6 +371,7 @@ export interface PracticeDB {
   pathwayStages: PathwayStage[];
   pathwaySteps: PathwayStep[];
   pathwayRoutines: PathwayRoutine[];
+  attachments: AttachmentMeta[];
 }
 
 /** Shape of a JSON export file. */

@@ -31,6 +31,7 @@ const ARRAY_KEYS = [
   'pathwayStages',
   'pathwaySteps',
   'pathwayRoutines',
+  'attachments',
 ] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -64,6 +65,7 @@ export function validateDB(input: unknown): PracticeDB {
     pathwayStages: (raw.pathwayStages as PracticeDB['pathwayStages']) ?? [],
     pathwaySteps: (raw.pathwaySteps as PracticeDB['pathwaySteps']) ?? [],
     pathwayRoutines: (raw.pathwayRoutines as PracticeDB['pathwayRoutines']) ?? [],
+    attachments: (raw.attachments as PracticeDB['attachments']) ?? [],
   };
 
   // Minimal per-entity sanity: every record needs an id.

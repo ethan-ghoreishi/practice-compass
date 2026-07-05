@@ -190,7 +190,10 @@ export default function CloseBlock() {
         </div>
         {comeBack && (
           <div className="grid-2">
-            <Field label="Next review" hint={reviewSuggestion ? `Suggested ${relativeDay(reviewSuggestion.dueDate, now)}` : undefined}>
+            <Field
+              label="Next review"
+              hint={reviewSuggestion ? `${relativeDay(reviewSuggestion.dueDate, now)} · ${reviewSuggestion.rationale}` : 'Set a date yourself.'}
+            >
               <input className="input" type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} />
             </Field>
             <Field label="Review type">

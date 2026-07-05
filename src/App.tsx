@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
+import { CompassIcon } from './components/icons';
 import { useStore } from './store/useStore';
 import Today from './pages/Today';
 import StartBlock from './pages/StartBlock';
@@ -29,6 +30,20 @@ function useThemeAttribute() {
 
 export default function App() {
   useThemeAttribute();
+  const hydrated = useStore((s) => s.hydrated);
+
+  // Wait for the async IndexedDB store before rendering (avoids a flash of
+  // empty/seed data on load).
+  if (!hydrated) {
+    return (
+      <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--text-faint)' }}>
+        <div className="stack-sm" style={{ alignItems: 'center' }}>
+          <CompassIcon width={30} height={30} style={{ color: 'var(--accent)' }} />
+          <span className="small dim">Loading…</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Routes>

@@ -7,12 +7,13 @@ import {
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
 import { Stars, StatusBadge } from './ui';
-import { ClockIcon, FlagIcon } from './icons';
+import { ClockIcon, FlagIcon, PaperclipIcon } from './icons';
 import { formatMinutes, relativeDay, relativeFromDateTime } from './format';
 
 export default function ItemCard({ item, now = new Date() }: { item: PracticeItem; now?: Date }) {
   const db = useStore((s) => s.db);
   const inst = instrumentName(db, item.instrumentId);
+  const fileCount = db.attachments.filter((a) => a.itemId === item.id).length;
 
   return (
     <Link to={`/items/${item.id}`} className="card card-link">
@@ -55,6 +56,11 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
         {item.teacherQuestion && (
           <span className="row warn-flag" style={{ gap: 4 }}>
             <FlagIcon width={12} height={12} /> teacher
+          </span>
+        )}
+        {fileCount > 0 && (
+          <span className="row" style={{ gap: 4 }}>
+            <PaperclipIcon width={12} height={12} /> {fileCount}
           </span>
         )}
         {item.saturationWarning && <span className="warn-flag">saturated</span>}

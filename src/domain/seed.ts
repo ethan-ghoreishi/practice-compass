@@ -254,6 +254,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     blocks,
     reviews,
     ...pathways,
+    attachments: [],
   };
 }
 
@@ -269,5 +270,6 @@ export function emptyDB(): PracticeDB {
     pathwayStages: [],
     pathwaySteps: [],
     pathwayRoutines: [],
+    attachments: [],
   };
 }

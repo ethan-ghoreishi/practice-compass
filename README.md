@@ -11,8 +11,9 @@ and for any future instrument, piece, étude, technical drill, lesson, improvisa
 prompt or repertoire item.
 
 There is no backend, no account, no cloud, no audio analysis and no AI judgement.
-Everything lives in your browser's `localStorage`, and you can export/import a JSON
-backup at any time.
+**IndexedDB on the device is the source of truth** (app data + attached files), and a
+single backup file (JSON data + embedded files) exports/imports everything. It's built
+**iPhone-first** and served privately from a home NAS (see *Deploy*).
 
 ---
 
@@ -36,6 +37,9 @@ backup at any time.
   and gentle suggestions for the next review date and status change.
 - **Notices patterns.** The Insights screen offers calm, neutral observations
   (balance, neglect, saturation, repeated "same" results, cross‑instrument bottlenecks…).
+- **Holds everything for a piece.** Attach your teacher's PDFs, photos of scores, or
+  recordings to any item, and keep free-form notes — so the app is the single source for
+  your practice, not a notebook full of glued printouts.
 - **Prepares your lessons.** A copyable Teacher Report summarises what you worked on,
   what improved, what's still fragile and what to ask.
 
@@ -55,20 +59,35 @@ npm test           # run the Vitest suite once
 npm run test:watch # watch mode
 ```
 
-The app is a static single‑page app — `npm run build` produces a `dist/` folder you
-can host anywhere (it uses hash routing, so it works from any path or even `file://`).
+## Deploy (private, on the NAS)
+
+Like [hess](https://github.com/ethan-ghoreishi/hess), this app holds personal data (your
+practice history and your teacher's files), so it is **not** published to public GitHub
+Pages. It's served privately from the Synology NAS Web Station share over Tailscale:
+
+```bash
+npm run deploy   # builds and rsyncs dist/ to /Volumes/web/practice-compass/
+```
+
+Then open it on your phone (Tailscale on) at
+`https://ds220plus.taild1d1f7.ts.net/practice-compass/` and **Add to Home Screen**.
+GitHub Actions runs lint + tests + build on every push; deployment stays a local one-liner.
+The prod base path is `/practice-compass/` (override with `PC_BASE=/`).
 
 ---
 
 ## Tech stack
 
-| Concern        | Choice                                  |
-| -------------- | --------------------------------------- |
-| UI             | React 19 + TypeScript + Vite            |
-| State          | Zustand with `persist` → `localStorage` |
-| Routing        | React Router (hash router)              |
-| Styling        | Hand‑written CSS design system (no framework) |
-| Tests          | Vitest (pure domain logic)              |
+| Concern        | Choice                                             |
+| -------------- | -------------------------------------------------- |
+| UI             | React 19 + TypeScript + Vite                       |
+| State          | Zustand, persisted to **IndexedDB (Dexie)**        |
+| Files          | Attachment blobs in IndexedDB (Dexie table)        |
+| Routing        | React Router (hash router)                         |
+| PWA / offline  | `vite-plugin-pwa` (Workbox)                        |
+| Styling        | Hand‑written CSS design system (no framework)      |
+| Tests          | Vitest (pure domain logic)                         |
+| Host           | Private — Synology NAS (Web Station) over Tailscale |
 
 The codebase is deliberately split into a **pure domain layer** (no React, fully
 unit‑tested) and a thin UI layer on top.
@@ -170,10 +189,11 @@ mastery so you can stop deciding "what next" and just practise.
 
 ## Review scheduling
 
-When you close a block, [`planNextReview`](src/domain/scheduling.ts) proposes the next
-review date from the item's **mastery (status), importance, difficulty and the latest
-result** — important and difficult things come back sooner; things that held up are spaced
-further out. It returns a one-line rationale. Per item you can override the mode:
+Reviews use a **spaced-repetition engine** (SM-2 — the algorithm behind Anki), adapted to
+music in [`scheduling.ts`](src/domain/scheduling.ts). Each item tracks reps, an ease factor
+and its interval: every time a piece/gushe holds up, the gap before you revisit it grows;
+when it slips, the gap resets so you relearn it. Importance and difficulty pull material a
+little sooner. It returns a one-line rationale. Per item you can override the mode:
 
 - **Auto** — the engine decides (default).
 - **Every N days** — a fixed cadence you choose.
@@ -205,15 +225,15 @@ Calm, focused, serious, elegant, fast, uncluttered — encouraging but never che
 
 ## Future roadmap
 
-- Audio recording attachment per block
 - CSV export
 - Calendar reminders
-- Simple audio note per practice block
 - Teacher‑sharing PDF
 - Seed Levels 1B–5 of CGS in full detail from each sub-level's syllabus
 
 Done: ✅ PWA offline install · ✅ Editable, per-instrument pathways (Guitar / Setar / Tar) ·
-✅ Metric-driven review scheduling with manual override.
+✅ SM-2 spaced-repetition review with manual override · ✅ IndexedDB source of truth ·
+✅ File & note attachments per item (single source of truth) · ✅ Full backup with files ·
+✅ Private NAS deploy + CI.
 
 See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
 [`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.

@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { clearBlobs, deleteBlobsForItem, idbStorage, storageWasEmpty } from './idb';
 import {
   applyBlockStats,
+  computeReview,
   createBlock,
   createInstrument,
   createItem,
@@ -24,6 +26,7 @@ import {
   type GuitarFields,
   type ID,
   type Instrument,
+  type AttachmentMeta,
   type ISODate,
   type ItemStatus,
   type Material,
@@ -122,6 +125,7 @@ export interface ItemPatch {
   primaryFocus?: FocusArea;
   bestStrategy?: string;
   teacherQuestion?: string;
+  notes?: string;
   tags?: string[];
   nextReviewDate?: ISODate;
   reviewMode?: ReviewMode;
@@ -134,8 +138,14 @@ interface StoreState {
   db: PracticeDB;
   active: ActiveSession | null;
   theme: ThemePref;
+  /** True once the async IndexedDB store has finished rehydrating. */
+  hydrated: boolean;
 
   setTheme: (t: ThemePref) => void;
+
+  // Attachments (metadata; blobs live in IndexedDB via src/store/idb.ts)
+  addAttachmentMeta: (meta: AttachmentMeta) => void;
+  removeAttachmentMeta: (id: ID) => void;
 
   // Instruments
   addInstrument: (input: { name: string; family?: string }) => ID;
@@ -204,11 +214,12 @@ function touch<T extends { updatedAt: string }>(entity: T, now: Date): T {
   return { ...entity, updatedAt: nowISO(now) };
 }
 
-const EMPTY_PATHWAY_FIELDS = {
+const EMPTY_DB_FIELDS = {
   pathways: [] as Pathway[],
   pathwayStages: [] as PathwayStage[],
   pathwaySteps: [] as PathwayStep[],
   pathwayRoutines: [] as PathwayRoutine[],
+  attachments: [] as AttachmentMeta[],
 };
 
 /**
@@ -218,7 +229,7 @@ const EMPTY_PATHWAY_FIELDS = {
  */
 function migrateToV3(db: PracticeDB): PracticeDB {
   if (db.pathways && db.pathways.length > 0) {
-    return { ...EMPTY_PATHWAY_FIELDS, ...db };
+    return { ...EMPTY_DB_FIELDS, ...db };
   }
   const ids = {
     guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
@@ -260,14 +271,27 @@ function migrateToV3(db: PracticeDB): PracticeDB {
   return next;
 }
 
+/** v3 → v4: introduce the attachments array. */
+function migrateToV4(db: PracticeDB): PracticeDB {
+  return { ...db, attachments: db.attachments ?? [], schemaVersion: SCHEMA_VERSION };
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
-      db: createSeedDB(),
+      db: emptyDB(),
       active: null,
       theme: 'system',
+      hydrated: false,
 
       setTheme: (theme) => set({ theme }),
+
+      addAttachmentMeta: (meta) => {
+        set((s) => ({ db: { ...s.db, attachments: [...s.db.attachments, meta] } }));
+      },
+      removeAttachmentMeta: (id) => {
+        set((s) => ({ db: { ...s.db, attachments: s.db.attachments.filter((a) => a.id !== id) } }));
+      },
 
       addInstrument: (input) => {
         const now = new Date();
@@ -348,12 +372,18 @@ export const useStore = create<StoreState>()(
       },
 
       deleteItem: (id) => {
+        void deleteBlobsForItem(id);
         set((s) => ({
           db: {
             ...s.db,
             items: s.db.items.filter((i) => i.id !== id),
             blocks: s.db.blocks.filter((b) => b.practiceItemId !== id),
             reviews: s.db.reviews.filter((r) => r.practiceItemId !== id),
+            attachments: s.db.attachments.filter((a) => a.itemId !== id),
+            // Unlink the item from any pathway step that referenced it.
+            pathwaySteps: s.db.pathwaySteps.map((st) =>
+              st.itemId === id ? { ...st, itemId: undefined } : st,
+            ),
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -429,13 +459,27 @@ export const useStore = create<StoreState>()(
           now,
         );
 
+        // Spaced-repetition update (deterministic from the result + item state).
+        const comp = computeReview(item, input.result, now);
+        const nextReviewDate = input.scheduleReview
+          ? (input.nextReviewDate ?? comp?.dueDate ?? item.nextReviewDate)
+          : item.nextReviewDate;
+
         const existing = db.blocks.filter((b) => b.practiceItemId === item.id);
         let updatedItem = applyBlockStats(item, block, {
           itemBlocksIncludingNew: [...existing, block],
           now,
           newStatus: input.newStatus,
-          nextReviewDate: input.scheduleReview ? input.nextReviewDate : item.nextReviewDate,
+          nextReviewDate,
         });
+        if (comp) {
+          updatedItem = {
+            ...updatedItem,
+            srReps: comp.srReps,
+            srEase: comp.srEase,
+            srIntervalDays: comp.srIntervalDays,
+          };
+        }
         if (input.teacherQuestion !== undefined) {
           updatedItem = { ...updatedItem, teacherQuestion: input.teacherQuestion.trim() || undefined };
         }
@@ -733,28 +777,44 @@ export const useStore = create<StoreState>()(
         set({ db: { ...db, schemaVersion: SCHEMA_VERSION }, active: null });
       },
 
-      resetDemo: () => set({ db: createSeedDB(), active: null }),
+      resetDemo: () => {
+        void clearBlobs();
+        set({ db: createSeedDB(), active: null });
+      },
 
-      clearAll: () => set({ db: emptyDB(), active: null }),
+      clearAll: () => {
+        void clearBlobs();
+        set({ db: emptyDB(), active: null });
+      },
     }),
     {
       name: 'practice-compass',
       version: SCHEMA_VERSION,
+      storage: createJSONStorage(() => idbStorage),
       partialize: (s) => ({ db: s.db, active: s.active, theme: s.theme }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;
-        // v1/v2 → v3: pathways become editable data.
-        if (version < 3 && state?.db) {
-          state.db = migrateToV3(state.db);
-        }
+        if (version < 3 && state?.db) state.db = migrateToV3(state.db);
+        if (version < 4 && state?.db) state.db = migrateToV4(state.db);
         return state as unknown;
       },
-      // Guarantee the pathway arrays exist after rehydration, whatever the source.
+      // Guarantee newer DB arrays exist after rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db ? { ...EMPTY_PATHWAY_FIELDS, ...p.db } : current.db;
+        const db = p.db ? { ...EMPTY_DB_FIELDS, ...p.db } : current.db;
         return { ...current, ...p, db };
       },
     },
   ),
 );
+
+// Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
+function finishHydration() {
+  if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
+    useStore.setState({ db: createSeedDB(), hydrated: true });
+  } else {
+    useStore.setState({ hydrated: true });
+  }
+}
+if (useStore.persist.hasHydrated()) finishHydration();
+else useStore.persist.onFinishHydration(finishHydration);

@@ -161,6 +161,12 @@ export const SparkIcon = (p: P) => (
   </svg>
 );
 
+export const PaperclipIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7L10 17.3a1.6 1.6 0 0 1-2.3-2.3l7.6-7.6" />
+  </svg>
+);
+
 export const PathIcon = (p: P) => (
   <svg {...base(p)}>
     <circle cx="6" cy="18" r="2.4" />

@@ -1,55 +1,81 @@
 import { describe, expect, it } from 'vitest';
 import {
+  computeReview,
   planNextReview,
   shouldSuggestDormant,
   suggestStatusAfterBlock,
 } from './scheduling';
 import { createItem } from './factories';
 import { addDays, toISODate } from './util';
-import type { ItemStatus, Rating } from './types';
+import type { ItemStatus, PracticeItem, Rating } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
-function item(o: Partial<{ status: ItemStatus; importance: Rating; difficulty: Rating; reviewMode: 'auto' | 'interval' | 'manual'; reviewIntervalDays: number }>) {
-  const it = createItem({ instrumentId: 'i', title: 't', status: o.status ?? 'usable', importance: o.importance ?? 3, difficulty: o.difficulty ?? 3 }, NOW);
-  return { ...it, reviewMode: o.reviewMode, reviewIntervalDays: o.reviewIntervalDays };
+function item(o: Partial<PracticeItem> & { status?: ItemStatus; importance?: Rating; difficulty?: Rating } = {}): PracticeItem {
+  const base = createItem(
+    { instrumentId: 'i', title: 't', status: o.status ?? 'usable', importance: o.importance ?? 3, difficulty: o.difficulty ?? 3 },
+    NOW,
+  );
+  return { ...base, ...o };
 }
 
-describe('planNextReview · auto mode', () => {
-  it('uses the status base interval with neutral metrics', () => {
-    expect(planNextReview({ item: item({ status: 'integrated' }), now: NOW })?.intervalDays).toBe(10);
-    expect(planNextReview({ item: item({ status: 'performable' }), now: NOW })?.intervalDays).toBe(21);
-    expect(planNextReview({ item: item({ status: 'fragile' }), now: NOW })?.intervalDays).toBe(1);
+describe('computeReview · spaced repetition (auto)', () => {
+  it('grows the interval across successful reviews', () => {
+    const r1 = computeReview(item(), 'stable_alone', NOW)!; // 1st good rep
+    expect(r1.srReps).toBe(1);
+    expect(r1.intervalDays).toBe(2);
+
+    const r2 = computeReview(item({ srReps: 1, srIntervalDays: 2, srEase: 2.5 }), 'stable_alone', NOW)!;
+    expect(r2.srReps).toBe(2);
+    expect(r2.intervalDays).toBe(6);
+
+    const r3 = computeReview(item({ srReps: 2, srIntervalDays: 6, srEase: 2.5 }), 'stable_in_context', NOW)!;
+    expect(r3.srReps).toBe(3);
+    expect(r3.intervalDays).toBe(15); // round(6 * 2.5)
   });
 
-  it('shrinks the interval on a poor result and stretches it on a good one', () => {
-    const base = item({ status: 'usable' }); // base 4
-    expect(planNextReview({ item: base, result: 'worse', now: NOW })?.intervalDays).toBe(2); // 4*0.5
-    expect(planNextReview({ item: base, result: 'stable_in_context', now: NOW })?.intervalDays).toBe(9); // 4*2.2
+  it('resets to tomorrow when it slips (poor result)', () => {
+    const r = computeReview(item({ srReps: 4, srIntervalDays: 30 }), 'worse', NOW)!;
+    expect(r.srReps).toBe(0);
+    expect(r.intervalDays).toBe(1);
   });
 
-  it('reviews important and difficult items sooner', () => {
-    const plain = planNextReview({ item: item({ status: 'integrated', importance: 3, difficulty: 3 }), now: NOW })!;
-    const urgent = planNextReview({ item: item({ status: 'integrated', importance: 5, difficulty: 5 }), now: NOW })!;
+  it('flags a strategy change on "same" and resets', () => {
+    const r = computeReview(item({ srReps: 3, srIntervalDays: 20 }), 'same', NOW)!;
+    expect(r.changeStrategy).toBe(true);
+    expect(r.intervalDays).toBe(1);
+  });
+
+  it('pulls important & difficult material sooner', () => {
+    const plain = computeReview(item({ srReps: 2, srIntervalDays: 6, importance: 3, difficulty: 3 }), 'stable_in_context', NOW)!;
+    const urgent = computeReview(item({ srReps: 2, srIntervalDays: 6, importance: 5, difficulty: 5 }), 'stable_in_context', NOW)!;
     expect(urgent.intervalDays).toBeLessThan(plain.intervalDays);
   });
 
-  it('flags a strategy change on "same" and sets the due date from today', () => {
-    const p = planNextReview({ item: item({ status: 'repairing' }), result: 'same', now: NOW })!;
-    expect(p.changeStrategy).toBe(true);
-    expect(p.dueDate).toBe(toISODate(addDays(NOW, p.intervalDays)));
+  it('sets the due date from today + interval', () => {
+    const r = computeReview(item(), 'stable_alone', NOW)!;
+    expect(r.dueDate).toBe(toISODate(addDays(NOW, r.intervalDays)));
   });
 });
 
-describe('planNextReview · manual & interval modes', () => {
-  it('returns null in manual mode (user sets the date)', () => {
-    expect(planNextReview({ item: item({ reviewMode: 'manual' }), now: NOW })).toBeNull();
+describe('computeReview · modes', () => {
+  it('returns null in manual mode and for unlogged blocks', () => {
+    expect(computeReview(item({ reviewMode: 'manual' }), 'stable_alone', NOW)).toBeNull();
+    expect(computeReview(item(), 'not_logged', NOW)).toBeNull();
   });
 
   it('uses the fixed cadence in interval mode', () => {
-    const p = planNextReview({ item: item({ reviewMode: 'interval', reviewIntervalDays: 3 }), now: NOW })!;
-    expect(p.intervalDays).toBe(3);
-    expect(p.dueDate).toBe(toISODate(addDays(NOW, 3)));
+    const r = computeReview(item({ reviewMode: 'interval', reviewIntervalDays: 3 }), 'stable_alone', NOW)!;
+    expect(r.intervalDays).toBe(3);
+    expect(r.dueDate).toBe(toISODate(addDays(NOW, 3)));
+  });
+});
+
+describe('planNextReview preview', () => {
+  it('mirrors computeReview without the SR-state fields', () => {
+    const p = planNextReview({ item: item(), result: 'stable_alone', now: NOW })!;
+    expect(p.intervalDays).toBe(2);
+    expect('srReps' in p).toBe(false);
   });
 });
 

@@ -17,6 +17,8 @@ import { defaultStartInput } from '../store/sessionHelpers';
 import ItemForm from '../components/ItemForm';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
+import Attachments from '../components/Attachments';
+import ItemNotes from '../components/ItemNotes';
 import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
 import { ArrowLeftIcon, PlayIcon } from '../components/icons';
 import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
@@ -141,6 +143,15 @@ export default function ItemDetail() {
         <Stat value={relativeFromDateTime(item.lastPractisedAt, now)} label="Last practised" />
         <Stat value={item.nextReviewDate ? relativeDay(item.nextReviewDate, now) : '—'} label="Next review" />
       </div>
+      <div className="tiny faint" style={{ marginTop: -6 }}>
+        {(item.reviewMode ?? 'auto') === 'manual'
+          ? 'Reviews: you set the dates.'
+          : (item.reviewMode ?? 'auto') === 'interval'
+            ? `Reviews: every ${item.reviewIntervalDays ?? 7} days.`
+            : item.srReps
+              ? `Spaced repetition · ${item.srReps} good review${item.srReps === 1 ? '' : 's'} · ease ${(item.srEase ?? 2.5).toFixed(1)}.`
+              : 'Reviews: spaced repetition (auto).'}
+      </div>
 
       <section className="stack-sm">
         <div className="section-label">Status</div>
@@ -170,6 +181,10 @@ export default function ItemDetail() {
           ))}
         </div>
       )}
+
+      <ItemNotes itemId={item.id} />
+
+      <Attachments itemId={item.id} />
 
       {trend.length > 0 && (
         <section className="stack-sm">

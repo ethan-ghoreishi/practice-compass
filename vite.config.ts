@@ -3,11 +3,14 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Served from the Synology Web Station `web` share as /practice-compass/
+// (private, over Tailscale — this app holds personal practice data + your
+// teacher's files). Override with PC_BASE=/ if it ever moves to its own host.
+const prodBase = process.env.PC_BASE ?? '/practice-compass/';
+
 // https://vite.dev/config/
-export default defineConfig({
-  // Relative base so the app (and its hash routes) work from any path,
-  // including static hosting under a sub-folder.
-  base: './',
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? prodBase : '/',
   plugins: [
     react(),
     VitePWA({
@@ -40,4 +43,4 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
   },
-});
+}));

@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "deploy": "bash scripts/deploy-nas.sh",
     "gen:icons": "node scripts/gen-icons.mjs",
     "lint": "eslint .",
     "test": "vitest run",
@@ -21,6 +22,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "dexie": "^4.4.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.0",
