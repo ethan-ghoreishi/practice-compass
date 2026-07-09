@@ -1,15 +1,18 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  assignedForLesson,
   currentStage,
+  daysUntil,
   dueReviews,
   fragileItems,
   generateInsights,
   instrumentBalance,
   insightOfTheDay,
+  nextLessonDates,
   recommend,
   stageProgress,
-  stepsOfStage,
+  stageUnits,
   ITEM_STATUS_LABELS,
   type PracticeItem,
 } from '../domain';
@@ -36,7 +39,17 @@ export default function Today() {
   const navigate = useNavigate();
 
   const now = useMemo(() => new Date(), []);
-  const recs = useMemo(() => recommend(db.items, db.blocks, now), [db.items, db.blocks, now]);
+  const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
+  const recs = useMemo(
+    () => recommend(db.items, db.blocks, now, lessonDates),
+    [db.items, db.blocks, now, lessonDates],
+  );
+  const classWork = useMemo(() => {
+    const flagged = assignedForLesson(db.items).filter((i) => lessonDates.has(i.instrumentId));
+    return flagged
+      .map((item) => ({ item, days: daysUntil(lessonDates.get(item.instrumentId)!, now) }))
+      .sort((a, b) => a.days - b.days);
+  }, [db.items, lessonDates, now]);
   const reviews = useMemo(() => dueReviews(db.reviews, now), [db.reviews, now]);
   const fragile = useMemo(() => fragileItems(db.items), [db.items]);
   const balance = useMemo(
@@ -80,20 +93,48 @@ export default function Today() {
         </Link>
       )}
 
+      {classWork.length > 0 && (
+        <section className="stack-sm">
+          <h2 className="title-md">
+            Before your {instrumentName(db, classWork[0].item.instrumentId)} class
+            <span className="dim" style={{ fontWeight: 400 }}>
+              {' '}
+              · {classWork[0].days <= 0 ? 'today' : `in ${classWork[0].days} day${classWork[0].days === 1 ? '' : 's'}`}
+            </span>
+          </h2>
+          <div className="card card-flush list">
+            {classWork.map(({ item }) => (
+              <div key={item.id} className="list-row">
+                <Link to={`/items/${item.id}`} className="grow" style={{ minWidth: 0 }}>
+                  <div className="truncate" dir="auto">
+                    {item.title}
+                  </div>
+                  <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
+                </Link>
+                <StatusBadge status={item.status} />
+                <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
+                  <PlayIcon />
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {pathways.length > 0 && (
         <section className="stack-sm">
           <div className="row between">
             <h2 className="title-md row" style={{ gap: 6 }}>
               <PathIcon width={16} height={16} style={{ color: 'var(--accent)' }} /> Your pathways
             </h2>
-            <Link to="/pathway" className="tiny link">
+            <Link to="/repertoire" className="tiny link">
               Manage
             </Link>
           </div>
           <div className="card card-flush list">
             {pathways.map((p) => {
-              const cur = currentStage(db.pathwayStages, db.pathwaySteps, p.id);
-              const sp = cur ? stageProgress(stepsOfStage(db.pathwaySteps, cur.id)) : null;
+              const cur = currentStage(db.pathwayStages, db.items, p.id);
+              const sp = cur ? stageProgress(stageUnits(cur, db.items)) : null;
               return (
                 <Link key={p.id} to={cur ? `/pathway/${p.id}/${cur.id}` : `/pathway/${p.id}`} className="list-row card-link" style={{ borderRadius: 0 }}>
                   <div className="grow">
@@ -125,7 +166,7 @@ export default function Today() {
         <div className="card">
           <EmptyState icon={<MusicIcon />} title="Your library is empty">
             Create your first practice item to get recommendations.{' '}
-            <Link to="/items" className="link">
+            <Link to="/repertoire" className="link">
               Add an item
             </Link>
             .

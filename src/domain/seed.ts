@@ -1,10 +1,11 @@
 import type { PracticeBlock, PracticeDB, PracticeItem } from './types';
 import { SCHEMA_VERSION } from './types';
-import { seedPathways } from './pathwaySeed';
+import { SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
 import {
   createBlock,
   createInstrument,
   createItem,
+  createLesson,
   createMaterial,
   createReview,
 } from './factories';
@@ -76,6 +77,10 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: setar.id,
       materialId: mAfshari.id,
+      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'Afshārī'),
+      strand: 'radif',
+      catalogKey: 'iraq',
+      assignedForLesson: true,
       title: 'Iraq phrase 4 ending',
       itemType: 'phrase',
       status: 'repairing',
@@ -98,6 +103,8 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: tar.id,
       materialId: mMezrab.id,
+      stageId: stageIdFor(SEED_PATHWAY_IDS.tar, 'RH basics'),
+      strand: 'mezrab',
       title: 'Rizeh clarity on open string',
       itemType: 'technique',
       status: 'fragile',
@@ -150,6 +157,9 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: setar.id,
       materialId: mAfshari.id,
+      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'Afshārī'),
+      strand: 'radif',
+      catalogKey: 'daramad',
       title: 'Afshari darāmad (opening)',
       itemType: 'section',
       status: 'integrated',
@@ -246,6 +256,20 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
 
   const pathways = seedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
 
+  // --- Lessons (a monthly Setar class: last one + the next one) -------------
+  const lessons = [
+    createLesson(
+      {
+        instrumentId: setar.id,
+        date: agoDate(now, -16),
+        notes:
+          'Worked on Afshārī: darāmad review and the Iraq phrase endings. Teacher: land the foroud without the ornament first, then add it back. تاکید روی فرود — اول بدون تحریر.',
+      },
+      now,
+    ),
+    createLesson({ instrumentId: setar.id, date: agoDate(now, 14) }, now),
+  ];
+
   return {
     schemaVersion: SCHEMA_VERSION,
     instruments: [setar, tar, guitar],
@@ -255,6 +279,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     reviews,
     ...pathways,
     attachments: [],
+    lessons,
   };
 }
 
@@ -268,8 +293,8 @@ export function emptyDB(): PracticeDB {
     reviews: [],
     pathways: [],
     pathwayStages: [],
-    pathwaySteps: [],
     pathwayRoutines: [],
     attachments: [],
+    lessons: [],
   };
 }

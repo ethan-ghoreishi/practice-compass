@@ -108,6 +108,7 @@ export interface ScoreParts {
   teacher: number;
   neglected: number;
   saturationPenalty: number;
+  lesson: number;
 }
 
 export interface ItemScore {
@@ -117,12 +118,34 @@ export interface ItemScore {
   saturated: boolean;
   overdueDays: number | null;
   daysSincePractised: number | null;
+  /** Days until the instrument's next lesson (if assigned); null otherwise. */
+  daysToLesson: number | null;
+}
+
+/**
+ * Priority boost for an item flagged to complete before its next lesson — it
+ * climbs as the class approaches, so assigned work gets finished on time.
+ */
+export function lessonUrgencyScore(
+  item: PracticeItem,
+  nextLessonDate: string | undefined,
+  now: Date,
+): number {
+  if (!item.assignedForLesson || !nextLessonDate) return 0;
+  const d = dayDiff(now, parseISODate(nextLessonDate));
+  if (d <= 0) return 8; // due for / past the class
+  if (d <= 2) return 7;
+  if (d <= 5) return 6;
+  if (d <= 10) return 5;
+  if (d <= 20) return 4;
+  return 3;
 }
 
 export function scoreItem(
   item: PracticeItem,
   itemBlocks: PracticeBlock[],
   now: Date,
+  nextLessonDate?: string,
 ): ItemScore {
   const parts: ScoreParts = {
     importance: item.importance * 2,
@@ -132,6 +155,7 @@ export function scoreItem(
     teacher: teacherRelevanceScore(item),
     neglected: neglectedScore(item, now),
     saturationPenalty: saturationPenalty(itemBlocks, now),
+    lesson: lessonUrgencyScore(item, nextLessonDate, now),
   };
 
   const total =
@@ -140,7 +164,8 @@ export function scoreItem(
     parts.fragility +
     parts.overdue +
     parts.teacher +
-    parts.neglected -
+    parts.neglected +
+    parts.lesson -
     parts.saturationPenalty;
 
   return {
@@ -150,6 +175,8 @@ export function scoreItem(
     saturated: isSaturated(itemBlocks, now),
     overdueDays: overdueDays(item, now),
     daysSincePractised: daysSince(item.lastPractisedAt, now) ?? null,
+    daysToLesson:
+      item.assignedForLesson && nextLessonDate ? dayDiff(now, parseISODate(nextLessonDate)) : null,
   };
 }
 
@@ -158,9 +185,10 @@ export function scoreItems(
   items: PracticeItem[],
   blocksByItem: Map<string, PracticeBlock[]>,
   now: Date,
+  lessonDates?: Map<string, string>,
 ): ItemScore[] {
   return items
-    .map((item) => scoreItem(item, blocksByItem.get(item.id) ?? [], now))
+    .map((item) => scoreItem(item, blocksByItem.get(item.id) ?? [], now, lessonDates?.get(item.instrumentId)))
     .sort((a, b) => b.total - a.total);
 }
 

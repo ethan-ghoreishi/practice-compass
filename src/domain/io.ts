@@ -29,9 +29,9 @@ const ARRAY_KEYS = [
   'reviews',
   'pathways',
   'pathwayStages',
-  'pathwaySteps',
   'pathwayRoutines',
   'attachments',
+  'lessons',
 ] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -54,18 +54,32 @@ export function validateDB(input: unknown): PracticeDB {
     }
   }
 
+  // Legacy (schema ≤ 4) backups had a pathwaySteps array carrying item↔stage
+  // links; fold those into the items so old backups keep their placements.
+  let items = (raw.items as PracticeDB['items']) ?? [];
+  const legacySteps = raw.pathwaySteps;
+  if (Array.isArray(legacySteps)) {
+    const stageByItem = new Map<string, string>();
+    for (const s of legacySteps as { itemId?: string; stageId?: string }[]) {
+      if (s?.itemId && s?.stageId) stageByItem.set(s.itemId, s.stageId);
+    }
+    if (stageByItem.size) {
+      items = items.map((i) => (i.stageId || !stageByItem.has(i.id) ? i : { ...i, stageId: stageByItem.get(i.id) }));
+    }
+  }
+
   const db: PracticeDB = {
     schemaVersion: typeof raw.schemaVersion === 'number' ? (raw.schemaVersion as number) : SCHEMA_VERSION,
     instruments: (raw.instruments as PracticeDB['instruments']) ?? [],
     materials: (raw.materials as PracticeDB['materials']) ?? [],
-    items: (raw.items as PracticeDB['items']) ?? [],
+    items,
     blocks: (raw.blocks as PracticeDB['blocks']) ?? [],
     reviews: (raw.reviews as PracticeDB['reviews']) ?? [],
     pathways: (raw.pathways as PracticeDB['pathways']) ?? [],
     pathwayStages: (raw.pathwayStages as PracticeDB['pathwayStages']) ?? [],
-    pathwaySteps: (raw.pathwaySteps as PracticeDB['pathwaySteps']) ?? [],
     pathwayRoutines: (raw.pathwayRoutines as PracticeDB['pathwayRoutines']) ?? [],
     attachments: (raw.attachments as PracticeDB['attachments']) ?? [],
+    lessons: (raw.lessons as PracticeDB['lessons']) ?? [],
   };
 
   // Minimal per-entity sanity: every record needs an id.

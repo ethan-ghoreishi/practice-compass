@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import { CompassIcon } from './components/icons';
 import { useStore } from './store/useStore';
@@ -7,13 +7,13 @@ import Today from './pages/Today';
 import StartBlock from './pages/StartBlock';
 import ActiveBlock from './pages/ActiveBlock';
 import CloseBlock from './pages/CloseBlock';
-import Items from './pages/Items';
 import ItemDetail from './pages/ItemDetail';
 import Materials from './pages/Materials';
 import Insights from './pages/Insights';
-import Pathway from './pages/Pathway';
+import Repertoire from './pages/Repertoire';
 import PathwayDetail from './pages/PathwayDetail';
 import StageDetail from './pages/StageDetail';
+import Lessons from './pages/Lessons';
 import RoutineRunner from './pages/RoutineRunner';
 import TeacherReport from './pages/TeacherReport';
 import Settings from './pages/Settings';
@@ -52,11 +52,13 @@ export default function App() {
         <Route path="start" element={<StartBlock />} />
         <Route path="active" element={<ActiveBlock />} />
         <Route path="close" element={<CloseBlock />} />
-        <Route path="items" element={<Items />} />
+        <Route path="repertoire" element={<Repertoire />} />
+        <Route path="items" element={<Navigate to="/repertoire" replace />} />
         <Route path="items/:id" element={<ItemDetail />} />
-        <Route path="pathway" element={<Pathway />} />
+        <Route path="pathway" element={<Navigate to="/repertoire" replace />} />
         <Route path="pathway/:pathwayId" element={<PathwayDetail />} />
         <Route path="pathway/:pathwayId/:stageId" element={<StageDetail />} />
+        <Route path="lessons" element={<Lessons />} />
         <Route path="routine/:routineId" element={<RoutineRunner />} />
         <Route path="materials" element={<Materials />} />
         <Route path="insights" element={<Insights />} />

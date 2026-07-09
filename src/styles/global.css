@@ -622,6 +622,12 @@ select {
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
+/* Farsi-friendly: every text field lays out by its own content direction
+   (the CSS equivalent of dir="auto"). */
+.input,
+.textarea {
+  unicode-bidi: plaintext;
+}
 .textarea {
   min-height: 80px;
   padding: var(--space-3);
@@ -835,6 +841,15 @@ select {
 @media (min-width: 620px) {
   .scrollx > * {
     flex-basis: 48%;
+  }
+}
+
+/* Desktop (MacBook) comfort: practice stays phone-first, but long note-taking
+   after a class is nicer with room to write. */
+@media (min-width: 760px) {
+  .textarea {
+    min-height: 120px;
+    font-size: 15px;
   }
 }
 

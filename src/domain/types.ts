@@ -22,6 +22,23 @@ export interface Instrument {
   updatedAt: ISODateTime;
 }
 
+// --- Lessons (classes with a teacher) --------------------------------------
+//
+// A per-instrument log of lessons/classes. Each has a date and free-form notes
+// (e.g. what your teacher said, taken while rewatching the recording — Farsi
+// welcome). The nearest upcoming lesson is the deadline that prioritises items
+// flagged "for next class". Available for every instrument.
+
+export interface Lesson {
+  id: ID;
+  instrumentId: ID;
+  date: ISODate;
+  /** Free-form class notes (Farsi supported). */
+  notes?: string;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
 // --- Material ---------------------------------------------------------------
 
 export type MaterialSourceType =
@@ -121,6 +138,14 @@ export interface PracticeItem {
   id: ID;
   instrumentId: ID;
   materialId?: ID;
+  /** Optional placement in a pathway stage — this is how items live *in* a path. */
+  stageId?: ID;
+  /** Optional pathway category (for grouping/labelling within a stage). */
+  strand?: StepStrand;
+  /** Reference-catalog entry this item was created from (dedupes suggestions). */
+  catalogKey?: string;
+  /** Flagged to complete before the instrument's next lesson/class. */
+  assignedForLesson?: boolean;
   title: string;
   itemType: ItemType;
   status: ItemStatus;
@@ -303,21 +328,24 @@ export interface PathwayStage {
   updatedAt: ISODateTime;
 }
 
-export interface PathwayStep {
-  id: ID;
-  pathwayId: ID;
+/**
+ * A reference suggestion shown inside a stage (e.g. a gushe in the radif, a CGS
+ * lesson area). It is *not* persisted data — it's code-defined guidance the user
+ * turns into a real PracticeItem with one tap. `key` is stable within its stage.
+ */
+export interface CatalogEntry {
+  key: string;
   stageId: ID;
   title: string;
   strand: StepStrand;
   kind: StepKind;
+  /** "What it is / what to notice" — supports conscious practice. */
+  about?: string;
+  /** Practice guidance. */
   notes?: string;
   targetBpm?: number;
-  status: StepStatus;
-  /** Linked practice item, if the user has started practising this step. */
-  itemId?: ID;
-  order: number;
-  createdAt: ISODateTime;
-  updatedAt: ISODateTime;
+  persian?: PersianFields;
+  guitar?: GuitarFields;
 }
 
 export interface RoutineSegment {
@@ -358,7 +386,7 @@ export interface AttachmentMeta {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -369,9 +397,9 @@ export interface PracticeDB {
   reviews: Review[];
   pathways: Pathway[];
   pathwayStages: PathwayStage[];
-  pathwaySteps: PathwayStep[];
   pathwayRoutines: PathwayRoutine[];
   attachments: AttachmentMeta[];
+  lessons: Lesson[];
 }
 
 /** Shape of a JSON export file. */

@@ -1,9 +1,11 @@
 import type {
+  CatalogEntry,
+  GuitarFields,
   ID,
   Pathway,
   PathwayRoutine,
   PathwayStage,
-  PathwayStep,
+  PersianFields,
   RoutineSegment,
   StepKind,
   StepStrand,
@@ -29,7 +31,10 @@ interface StepSeed {
   strand: StepStrand;
   kind?: StepKind;
   notes?: string;
+  about?: string;
   bpm?: number;
+  persian?: PersianFields;
+  guitar?: GuitarFields;
 }
 interface StageSeed {
   code: string;
@@ -213,8 +218,18 @@ const CGS: PathSeed = {
 // Setar · Radif & Repertoire
 // ===========================================================================
 
-const gusheh = (names: string[]): StepSeed[] =>
-  names.map((n) => ({ title: n, strand: 'radif' as StepStrand, kind: 'piece' as StepKind }));
+/** The standing conscious-practice prompt for any gushe (kept generic — your
+ *  teacher's account of each gushe is the authority; write it in the item's notes). */
+const GUSHEH_ABOUT = (context: string) =>
+  `A gushe of ${context}. Before playing, listen for: its shāhed (the note it circles), its ist (where phrases rest), and how it foruds back home. Hum the opening line first — know where it's headed before your hands move.`;
+
+const gusheh = (names: string[], context = 'this dastgāh'): StepSeed[] =>
+  names.map((n) => ({
+    title: n,
+    strand: 'radif' as StepStrand,
+    kind: 'piece' as StepKind,
+    about: GUSHEH_ABOUT(context),
+  }));
 
 const SETAR: PathSeed = {
   id: 'setar-radif',
@@ -265,25 +280,88 @@ const SETAR: PathSeed = {
       code: 'Shur',
       group: 'Dastgāh-e Shur & its āvāz-hā',
       title: 'Dastgāh-e Shur',
-      intro: 'Shur is the cornerstone of Persian music and usually where learners begin.',
-      steps: gusheh(['Darāmad-e Shur', 'Kereshmeh', 'Rohāb', 'Salmak', 'Golriz', 'Shahnāz', 'Qarche', 'Hosseini', 'Forud']),
+      intro:
+        'Shur is the cornerstone of Persian music and usually where learners begin — inward, tender, and the mother of four āvāz-hā. Notice how nearly everything gravitates back to its shāhed.',
+      steps: gusheh(['Darāmad-e Shur', 'Kereshmeh', 'Rohāb', 'Salmak', 'Golriz', 'Shahnāz', 'Qarche', 'Hosseini', 'Forud'], 'Shur'),
     },
-    { code: 'Abu‘atā', group: 'Dastgāh-e Shur & its āvāz-hā', title: 'Āvāz-e Abu‘atā', steps: gusheh(['Darāmad', 'Sayakhi', 'Hejāz', 'Chāhārbāgh', 'Forud']) },
-    { code: 'Bayāt-e Tork', group: 'Dastgāh-e Shur & its āvāz-hā', title: 'Āvāz-e Bayāt-e Tork', steps: gusheh(['Darāmad', 'Dogāh', 'Mehrabāni', 'Qatār', 'Forud']) },
-    { code: 'Afshārī', group: 'Dastgāh-e Shur & its āvāz-hā', title: 'Āvāz-e Afshārī', steps: gusheh(['Darāmad', 'Jāmedarān', 'Iraq', 'Forud']) },
-    { code: 'Dashtī', group: 'Dastgāh-e Shur & its āvāz-hā', title: 'Āvāz-e Dashtī', steps: gusheh(['Darāmad', 'Gilaki', 'Bayāt-e Rājeh', 'Forud']) },
+    {
+      code: 'Abu‘atā',
+      group: 'Dastgāh-e Shur & its āvāz-hā',
+      title: 'Āvāz-e Abu‘atā',
+      intro: 'An āvāz of Shur with a plaintive, folk-tinged colour. Hear how it leans on Shur and returns to it.',
+      steps: gusheh(['Darāmad', 'Sayakhi', 'Hejāz', 'Chāhārbāgh', 'Forud'], 'Abu‘atā'),
+    },
+    {
+      code: 'Bayāt-e Tork',
+      group: 'Dastgāh-e Shur & its āvāz-hā',
+      title: 'Āvāz-e Bayāt-e Tork',
+      intro: 'An āvāz of Shur with a brighter, open character — often heard in devotional singing.',
+      steps: gusheh(['Darāmad', 'Dogāh', 'Mehrabāni', 'Qatār', 'Forud'], 'Bayāt-e Tork'),
+    },
+    {
+      code: 'Afshārī',
+      group: 'Dastgāh-e Shur & its āvāz-hā',
+      title: 'Āvāz-e Afshārī',
+      intro:
+        'An āvāz of Shur — searching and bittersweet, with a characteristic wandering quality. Its forud back to Shur is the moment to listen for.',
+      steps: gusheh(['Darāmad', 'Jāmedarān', 'Iraq', 'Forud'], 'Afshārī'),
+    },
+    {
+      code: 'Dashtī',
+      group: 'Dastgāh-e Shur & its āvāz-hā',
+      title: 'Āvāz-e Dashtī',
+      intro: 'An āvāz of Shur, lyrical and melancholic — the voice of many folk melodies. Its shāhed famously wavers.',
+      steps: gusheh(['Darāmad', 'Gilaki', 'Bayāt-e Rājeh', 'Forud'], 'Dashtī'),
+    },
     {
       code: 'Homāyun',
       group: 'The other dastgāh-hā',
       title: 'Dastgāh-e Homāyun',
-      steps: gusheh(['Darāmad-e Homāyun', 'Chakāvak', 'Bidād', 'Ney-Dāvud', 'Forud']),
+      intro: 'Majestic and grieving at once. Listen for its distinctive opening leap and the pull of Bidād.',
+      steps: gusheh(['Darāmad-e Homāyun', 'Chakāvak', 'Bidād', 'Ney-Dāvud', 'Forud'], 'Homāyun'),
     },
-    { code: 'Esfahān', group: 'The other dastgāh-hā', title: 'Āvāz-e Bayāt-e Esfahān', steps: gusheh(['Darāmad', 'Jāmedarān', 'Bayāt-e Rājeh', 'Forud']) },
-    { code: 'Segāh', group: 'The other dastgāh-hā', title: 'Dastgāh-e Segāh', steps: gusheh(['Darāmad-e Segāh', 'Zābol', 'Mokhālef', 'Maqlub', 'Forud']) },
-    { code: 'Chahārgāh', group: 'The other dastgāh-hā', title: 'Dastgāh-e Chahārgāh', steps: gusheh(['Darāmad-e Chahārgāh', 'Zābol', 'Mokhālef', 'Mansuri', 'Forud']) },
-    { code: 'Māhur', group: 'The other dastgāh-hā', title: 'Dastgāh-e Māhur', steps: gusheh(['Darāmad-e Māhur', 'Dād', 'Khosravāni', 'Delkash', 'Forud']) },
-    { code: 'Navā', group: 'The other dastgāh-hā', title: 'Dastgāh-e Navā', steps: gusheh(['Darāmad-e Navā', 'Gardāniyeh', 'Nahoft', 'Forud']) },
-    { code: 'Rāst-Panjgāh', group: 'The other dastgāh-hā', title: 'Dastgāh-e Rāst-Panjgāh', steps: gusheh(['Darāmad-e Rāst-Panjgāh', 'Parvāneh', 'Qarache', 'Forud']) },
+    {
+      code: 'Esfahān',
+      group: 'The other dastgāh-hā',
+      title: 'Āvāz-e Bayāt-e Esfahān',
+      intro: 'An āvāz of Homāyun — romantic and warm, close to a Western harmonic-minor colour.',
+      steps: gusheh(['Darāmad', 'Jāmedarān', 'Bayāt-e Rājeh', 'Forud'], 'Bayāt-e Esfahān'),
+    },
+    {
+      code: 'Segāh',
+      group: 'The other dastgāh-hā',
+      title: 'Dastgāh-e Segāh',
+      intro: 'Plaintive and pleading, built around its quarter-tone shāhed. Mokhālef is its emotional peak — notice the shift of register.',
+      steps: gusheh(['Darāmad-e Segāh', 'Zābol', 'Mokhālef', 'Maqlub', 'Forud'], 'Segāh'),
+    },
+    {
+      code: 'Chahārgāh',
+      group: 'The other dastgāh-hā',
+      title: 'Dastgāh-e Chahārgāh',
+      intro: 'Bright, heroic, celebratory — often compared to sunrise. Feel the symmetry of its tetrachords around the shāhed.',
+      steps: gusheh(['Darāmad-e Chahārgāh', 'Zābol', 'Mokhālef', 'Mansuri', 'Forud'], 'Chahārgāh'),
+    },
+    {
+      code: 'Māhur',
+      group: 'The other dastgāh-hā',
+      title: 'Dastgāh-e Māhur',
+      intro: 'Open and joyful — the closest to the Western major scale. Delkash is the famous turn: hear it borrow the colour of Shur.',
+      steps: gusheh(['Darāmad-e Māhur', 'Dād', 'Khosravāni', 'Delkash', 'Forud'], 'Māhur'),
+    },
+    {
+      code: 'Navā',
+      group: 'The other dastgāh-hā',
+      title: 'Dastgāh-e Navā',
+      intro: 'Calm, meditative, balanced — often kept for late night. Related to Shur; notice the more settled centre.',
+      steps: gusheh(['Darāmad-e Navā', 'Gardāniyeh', 'Nahoft', 'Forud'], 'Navā'),
+    },
+    {
+      code: 'Rāst-Panjgāh',
+      group: 'The other dastgāh-hā',
+      title: 'Dastgāh-e Rāst-Panjgāh',
+      intro: 'The rarest dastgāh — stately, wide-ranging, a favourite for modulation between modes.',
+      steps: gusheh(['Darāmad-e Rāst-Panjgāh', 'Parvāneh', 'Qarache', 'Forud'], 'Rāst-Panjgāh'),
+    },
     {
       code: 'Forms',
       group: 'Composed forms & repertoire',
@@ -402,12 +480,25 @@ const TAR: PathSeed = {
 };
 
 // --- Expansion --------------------------------------------------------------
+//
+// Pathways/stages/routines are seeded as editable DATA. The per-stage entries
+// become a code-defined CATALOG of suggestions (not persisted) that the user
+// turns into real items — this is how the pathway connects to items.
 
 export interface SeededPathways {
   pathways: Pathway[];
   pathwayStages: PathwayStage[];
-  pathwaySteps: PathwayStep[];
   pathwayRoutines: PathwayRoutine[];
+}
+
+const ALL_SEEDS: { seed: PathSeed; key: 'guitar' | 'setar' | 'tar'; order: number }[] = [
+  { seed: SETAR, key: 'setar', order: 0 },
+  { seed: TAR, key: 'tar', order: 1 },
+  { seed: CGS, key: 'guitar', order: 2 },
+];
+
+export function stageIdFor(pathwayId: string, code: string): string {
+  return `${pathwayId}-${slug(code)}`;
 }
 
 function expand(seed: PathSeed, instrumentId: ID, pathOrder: number, now: Date): SeededPathways {
@@ -423,56 +514,28 @@ function expand(seed: PathSeed, instrumentId: ID, pathOrder: number, now: Date):
     createdAt: ts,
     updatedAt: ts,
   };
-  const stages: PathwayStage[] = [];
-  const steps: PathwayStep[] = [];
-  const routines: PathwayRoutine[] = [];
-
-  seed.stages.forEach((st, si) => {
-    const stageId = `${seed.id}-${slug(st.code)}`;
-    stages.push({
-      id: stageId,
-      pathwayId: seed.id,
-      code: st.code,
-      title: st.title,
-      group: st.group,
-      intro: st.intro,
-      order: si,
-      createdAt: ts,
-      updatedAt: ts,
-    });
-    st.steps.forEach((sp, pi) => {
-      steps.push({
-        id: `${stageId}-${slug(sp.title)}`,
-        pathwayId: seed.id,
-        stageId,
-        title: sp.title,
-        strand: sp.strand,
-        kind: sp.kind ?? DEFAULT_KIND[sp.strand] ?? 'drill',
-        notes: sp.notes,
-        targetBpm: sp.bpm,
-        status: 'todo',
-        order: pi,
-        createdAt: ts,
-        updatedAt: ts,
-      });
-    });
-  });
-
-  (seed.routines ?? []).forEach((r, ri) => {
-    const stageId = r.stageCode ? `${seed.id}-${slug(r.stageCode)}` : undefined;
-    routines.push({
-      id: `${seed.id}-routine-${slug(r.name)}`,
-      pathwayId: seed.id,
-      stageId,
-      name: r.name,
-      segments: r.segments,
-      order: ri,
-      createdAt: ts,
-      updatedAt: ts,
-    });
-  });
-
-  return { pathways: [pathway], pathwayStages: stages, pathwaySteps: steps, pathwayRoutines: routines };
+  const stages: PathwayStage[] = seed.stages.map((st, si) => ({
+    id: stageIdFor(seed.id, st.code),
+    pathwayId: seed.id,
+    code: st.code,
+    title: st.title,
+    group: st.group,
+    intro: st.intro,
+    order: si,
+    createdAt: ts,
+    updatedAt: ts,
+  }));
+  const routines: PathwayRoutine[] = (seed.routines ?? []).map((r, ri) => ({
+    id: `${seed.id}-routine-${slug(r.name)}`,
+    pathwayId: seed.id,
+    stageId: r.stageCode ? stageIdFor(seed.id, r.stageCode) : undefined,
+    name: r.name,
+    segments: r.segments,
+    order: ri,
+    createdAt: ts,
+    updatedAt: ts,
+  }));
+  return { pathways: [pathway], pathwayStages: stages, pathwayRoutines: routines };
 }
 
 /** Build all seeded pathways for the given instrument ids. */
@@ -480,17 +543,47 @@ export function seedPathways(
   instrumentIds: { guitar: ID; setar: ID; tar: ID },
   now: Date = new Date(),
 ): SeededPathways {
-  const parts = [
-    expand(SETAR, instrumentIds.setar, 0, now),
-    expand(TAR, instrumentIds.tar, 1, now),
-    expand(CGS, instrumentIds.guitar, 2, now),
-  ];
+  const parts = ALL_SEEDS.map(({ seed, key, order }) => expand(seed, instrumentIds[key], order, now));
   return {
     pathways: parts.flatMap((p) => p.pathways),
     pathwayStages: parts.flatMap((p) => p.pathwayStages),
-    pathwaySteps: parts.flatMap((p) => p.pathwaySteps),
     pathwayRoutines: parts.flatMap((p) => p.pathwayRoutines),
   };
+}
+
+// --- Catalog (reference suggestions per stage) ------------------------------
+
+let catalogCache: Record<string, CatalogEntry[]> | null = null;
+
+function buildCatalog(): Record<string, CatalogEntry[]> {
+  const map: Record<string, CatalogEntry[]> = {};
+  for (const { seed } of ALL_SEEDS) {
+    for (const st of seed.stages) {
+      const stageId = stageIdFor(seed.id, st.code);
+      map[stageId] = st.steps.map((sp) => ({
+        key: slug(sp.title),
+        stageId,
+        title: sp.title,
+        strand: sp.strand,
+        kind: sp.kind ?? DEFAULT_KIND[sp.strand] ?? 'drill',
+        about: sp.about,
+        notes: sp.notes,
+        targetBpm: sp.bpm,
+        persian: sp.persian,
+        guitar: sp.guitar,
+      }));
+    }
+  }
+  return map;
+}
+
+export function getCatalog(): Record<string, CatalogEntry[]> {
+  if (!catalogCache) catalogCache = buildCatalog();
+  return catalogCache;
+}
+
+export function catalogForStage(stageId: string): CatalogEntry[] {
+  return getCatalog()[stageId] ?? [];
 }
 
 export const SEED_PATHWAY_IDS = { guitar: CGS.id, setar: SETAR.id, tar: TAR.id };

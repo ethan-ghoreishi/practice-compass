@@ -44,7 +44,7 @@ export default function ActiveBlock() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
       <header className="stack-sm">
         <div className="eyebrow">{instrumentName(db, active.instrumentId)}</div>
-        <h1 className="page-title" style={{ fontSize: '1.5rem' }}>
+        <h1 className="page-title" dir="auto" style={{ fontSize: '1.5rem' }}>
           {item?.title ?? 'Practice'}
         </h1>
         <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
@@ -53,6 +53,10 @@ export default function ActiveBlock() {
         </div>
         {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
       </header>
+
+      {item && (item.notes || item.currentProblem) && (
+        <AboutThisPiece notes={item.notes} problem={item.currentProblem} />
+      )}
 
       <div
         className="timer-ring"
@@ -112,6 +116,45 @@ export default function ActiveBlock() {
       >
         Discard block
       </button>
+    </div>
+  );
+}
+
+/**
+ * Conscious practice: keep "what this piece is and what to notice" one tap
+ * away during the block, with the standing question that turns repetition
+ * into awareness.
+ */
+function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card card-quiet stack-sm" style={{ textAlign: 'left' }}>
+      <button
+        className="row between"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="section-label">About this piece</span>
+        <span className="tiny faint">{open ? 'hide' : 'show'}</span>
+      </button>
+      {open && (
+        <>
+          {notes && (
+            <div className="small dim" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>
+              {notes}
+            </div>
+          )}
+          {problem && (
+            <div className="small" dir="auto">
+              <span className="faint">Working on: </span>
+              {problem}
+            </div>
+          )}
+          <div className="tiny" style={{ color: 'var(--gold)' }}>
+            Keep asking: what is going on here — where does it rest, and where is it headed?
+          </div>
+        </>
+      )}
     </div>
   );
 }

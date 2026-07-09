@@ -14,10 +14,12 @@ import type {
   PersianFields,
   PracticeBlock,
   PracticeItem,
+  Lesson,
   Rating,
   Review,
   ReviewMode,
   ReviewType,
+  StepStrand,
 } from './types';
 import { newId, nowISO } from './util';
 
@@ -77,6 +79,10 @@ export interface CreateItemInput {
   title: string;
   itemType?: ItemType;
   materialId?: ID;
+  stageId?: ID;
+  strand?: StepStrand;
+  catalogKey?: string;
+  assignedForLesson?: boolean;
   status?: ItemStatus;
   importance?: Rating;
   difficulty?: Rating;
@@ -84,6 +90,7 @@ export interface CreateItemInput {
   primaryFocus?: FocusArea;
   bestStrategy?: string;
   teacherQuestion?: string;
+  notes?: string;
   tags?: string[];
   nextReviewDate?: ISODate;
   reviewMode?: ReviewMode;
@@ -98,6 +105,10 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     id: newId(),
     instrumentId: input.instrumentId,
     materialId: input.materialId,
+    stageId: input.stageId,
+    strand: input.strand,
+    catalogKey: input.catalogKey,
+    assignedForLesson: input.assignedForLesson,
     title: input.title.trim(),
     itemType: input.itemType ?? 'other',
     status: input.status ?? 'new',
@@ -107,6 +118,7 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     primaryFocus: input.primaryFocus,
     bestStrategy: input.bestStrategy?.trim() || undefined,
     teacherQuestion: input.teacherQuestion?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
     tags: input.tags ?? [],
     nextReviewDate: input.nextReviewDate,
     reviewMode: input.reviewMode,
@@ -182,6 +194,21 @@ export function createReview(
     reason: input.reason?.trim() || undefined,
     completedAt: undefined,
     result: undefined,
+    createdAt: ts,
+    updatedAt: ts,
+  };
+}
+
+export function createLesson(
+  input: { instrumentId: ID; date: ISODate; notes?: string },
+  now: Date = new Date(),
+): Lesson {
+  const ts = nowISO(now);
+  return {
+    id: newId(),
+    instrumentId: input.instrumentId,
+    date: input.date,
+    notes: input.notes?.trim() || undefined,
     createdAt: ts,
     updatedAt: ts,
   };

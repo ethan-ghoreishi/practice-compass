@@ -99,6 +99,12 @@ export default function Settings() {
             <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
           </div>
           <div className="tiny faint">It opens full-screen, works offline, and keeps all data on the device.</div>
+          <div className="tiny faint">
+            Best setup: practise from the <strong style={{ color: 'var(--text)' }}>iPhone app</strong> (timer in hand,
+            files at the music stand); after a class, type up notes on the{' '}
+            <strong style={{ color: 'var(--text)' }}>MacBook</strong> at the same address. Data lives per device — move
+            it with Export/Import below.
+          </div>
         </div>
       </section>
 

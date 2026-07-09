@@ -41,17 +41,35 @@ even if it's "useful".
 Pathways exist so the user can **stop deciding what's next and just practise**, at their
 own pace, on a route they trust. Protect that:
 
-- **Structure, not gamification.** Show honest position (steps done / current / ahead).
-  Never add streaks, scores, deadlines, "you're behind" nudges, or a fabricated mastery %.
-- **Pathways are editable data, one per instrument.** They live in the store
-  (`pathways`, `pathwayStages`, `pathwaySteps`, `pathwayRoutines`) with full CRUD — the
-  user can rename, reorder, add, and delete anything. Don't hardcode pathways back into code.
-- **Seeds are honest starting points, never fabricated authority.** Guitar = CGS (1A from
-  the real syllabus; 1B–3F from the real course structure). Setar = a radif/dastgāh map
-  (teacher-driven, explicitly "reorder me"). Tar = the Honarestān two-book method. Keep
-  Persian content grounded in real pedagogy and clearly editable; don't invent specific
-  lesson names as if canonical. Default seed step ids are stable (used by the v2→v3 migration).
+- **The item is the only unit of work — pathways are a view over items.** There is no
+  separate "step" object. A `PracticeItem` may carry a `stageId` (placing it inside a
+  pathway stage), a `strand`, and a `catalogKey`. Stage progress is *derived* from the
+  mastery status of the items in it (`itemStageState` in `pathways.ts`). Never reintroduce
+  a parallel to-do list next to items.
+- **The catalog is reference data in code, not persisted.** `pathwaySeed.ts` defines
+  per-stage `CatalogEntry` suggestions (gushes, lesson areas) with `about` guidance for
+  conscious practice; `addFromCatalog` turns one into a real item with one tap. Improving
+  the catalog needs no migration; keep entry keys stable within a stage.
+- **Structure, not gamification.** Show honest position (items solid / in progress /
+  suggestions remaining). No streaks, scores, or fabricated mastery %.
+- **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
+  with full CRUD. Deleting a stage or pathway must never delete items — only detach them.
+- **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
+  a radif/dastgāh map (teacher-driven, explicitly "reorder me"). Tar = the Honarestān
+  method. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
+  generic conscious-practice prompt (shāhed / ist / forud) — the teacher's account is the
+  authority, never invent specifics as if canonical.
 - **Calm, self-paced copy.** "Move on when it feels right, not by a deadline" is the voice.
+
+## Lessons (classes) and the deadline exception
+
+`Lesson` records (per instrument, date + free-form notes) support the user's real
+workflow: record the class, rewatch it, type up notes (often **in Farsi** — all free-text
+fields must stay direction-aware; `unicode-bidi: plaintext` handles this globally).
+Items flagged `assignedForLesson` get a priority boost that climbs as the next lesson
+approaches (`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app —
+it exists because a monthly class is a real commitment, not a manufactured streak.
+Keep it per-instrument and generic (future Tar/Guitar teachers), never guilt-toned.
 
 ## Review scheduling stays explainable
 

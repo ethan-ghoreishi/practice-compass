@@ -49,9 +49,14 @@ const STATUS_PHRASE: Partial<Record<ItemStatus, string>> = {
 
 /** Build a single neutral sentence explaining why an item surfaced. */
 export function buildReason(score: ItemScore, kind: RecommendationKind): string {
-  const { item, parts, overdueDays, daysSincePractised } = score;
+  const { item, parts, overdueDays, daysSincePractised, daysToLesson } = score;
   const drivers: string[] = [];
 
+  if (parts.lesson > 0 && daysToLesson != null) {
+    drivers.push(
+      daysToLesson <= 0 ? 'due for your class' : `for your class in ${daysToLesson}d`,
+    );
+  }
   if (item.importance >= 4) drivers.push('important');
   if (STATUS_PHRASE[item.status] && (parts.fragility >= 3 || item.status === 'dormant')) {
     drivers.push(STATUS_PHRASE[item.status]!);
@@ -92,9 +97,10 @@ export function recommend(
   items: PracticeItem[],
   blocks: PracticeBlock[],
   now: Date,
+  lessonDates?: Map<string, string>,
 ): Recommendations {
   const blocksByItem = groupBlocksByItem(blocks);
-  const scored = scoreItems(items, blocksByItem, now); // already sorted desc
+  const scored = scoreItems(items, blocksByItem, now, lessonDates); // already sorted desc
   const used = new Set<string>();
 
   const take = (s: ItemScore | undefined, kind: RecommendationKind): Recommendation | null => {

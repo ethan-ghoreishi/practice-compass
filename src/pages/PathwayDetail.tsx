@@ -6,7 +6,7 @@ import {
   pathwayProgress,
   stageProgress,
   stagesOfPathway,
-  stepsOfStage,
+  stageUnits,
   type PathwayStage,
 } from '../domain';
 import { useStore } from '../store/useStore';
@@ -35,16 +35,16 @@ export default function PathwayDetail() {
   if (!pathway) {
     return (
       <div className="stack">
-        <Link to="/pathway" className="link">
-          ← Back to pathways
+        <Link to="/repertoire" className="link">
+          ← Back to repertoire
         </Link>
         <div className="card">That pathway doesn’t exist.</div>
       </div>
     );
   }
 
-  const current = currentStage(db.pathwayStages, db.pathwaySteps, pathway.id);
-  const prog = pathwayProgress(db.pathwayStages, db.pathwaySteps, pathway.id);
+  const current = currentStage(db.pathwayStages, db.items, pathway.id);
+  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id);
   const grouped = groupStages(stages);
 
   function submitStage() {
@@ -57,8 +57,8 @@ export default function PathwayDetail() {
 
   return (
     <div className="stack-lg">
-      <Link to="/pathway" className="link row" style={{ gap: 4, width: 'fit-content' }}>
-        <ArrowLeftIcon width={16} height={16} /> Pathways
+      <Link to="/repertoire" className="link row" style={{ gap: 4, width: 'fit-content' }}>
+        <ArrowLeftIcon width={16} height={16} /> Repertoire
       </Link>
 
       {editing ? (
@@ -93,7 +93,7 @@ export default function PathwayDetail() {
               onClick={() => {
                 if (confirm(`Delete the pathway “${pathway.name}” and all its stages? Your practice items are kept.`)) {
                   deletePathway(pathway.id);
-                  navigate('/pathway');
+                  navigate('/repertoire');
                 }
               }}
             >
@@ -108,7 +108,7 @@ export default function PathwayDetail() {
           <div className="row between">
             <span className="eyebrow">You are here</span>
             <span className="tiny faint mono-num">
-              {prog.stepsDone}/{prog.stepsTotal} steps
+              {prog.done}/{prog.total} solid
             </span>
           </div>
           <div className="title-md" style={{ fontSize: '1.2rem' }}>
@@ -186,8 +186,7 @@ function StageRow({
   onOpen: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
-  const steps = stepsOfStage(db.pathwaySteps, stage.id);
-  const sp = stageProgress(steps);
+  const sp = stageProgress(stageUnits(stage, db.items));
   return (
     <div className={`card list-row${isCurrent ? ' card-accent' : ''}`} style={{ padding: 'var(--space-3) var(--space-4)' }}>
       <div
@@ -204,8 +203,11 @@ function StageRow({
           <span>{stage.code}</span>
           {isCurrent && <span className="badge tone-progress">Current</span>}
           {sp.complete && <span className="badge tone-good">Done</span>}
+          {sp.addedItems > 0 && !sp.complete && (
+            <span className="tiny faint">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
+          )}
         </div>
-        <div className="tiny faint">{stage.title !== stage.code ? stage.title : `${sp.total} step${sp.total === 1 ? '' : 's'}`}</div>
+        <div className="tiny faint" dir="auto">{stage.title !== stage.code ? stage.title : `${sp.total} piece${sp.total === 1 ? '' : 's'}`}</div>
         <div className="row" style={{ gap: 8, marginTop: 6 }}>
           <span className="balance-track grow" style={{ maxWidth: 180 }}>
             <span className="balance-fill" style={{ width: `${sp.percent}%` }} />

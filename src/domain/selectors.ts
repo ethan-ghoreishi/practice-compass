@@ -1,16 +1,52 @@
 import type {
   ID,
   Instrument,
+  ISODate,
+  Lesson,
   PracticeBlock,
   PracticeItem,
   Review,
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
-import { dayDiff, hoursSince, parseISODate } from './util';
+import { dayDiff, hoursSince, parseISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Derived lists used across the Today, Items and Insights screens. All pure.
 // ---------------------------------------------------------------------------
+
+/** The nearest upcoming (today or later) lesson for an instrument, if any. */
+export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
+  const today = todayISODate(now);
+  return lessons
+    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+/** A map of instrumentId → nearest upcoming lesson date. */
+export function nextLessonDates(lessons: Lesson[], now: Date): Map<ID, ISODate> {
+  const map = new Map<ID, ISODate>();
+  const today = todayISODate(now);
+  for (const l of lessons) {
+    if (l.date < today) continue;
+    const cur = map.get(l.instrumentId);
+    if (!cur || l.date < cur) map.set(l.instrumentId, l.date);
+  }
+  return map;
+}
+
+/** Whole days from now until a calendar date (negative if past). */
+export function daysUntil(dateISO: ISODate, now: Date): number {
+  return dayDiff(now, parseISODate(dateISO));
+}
+
+export function lessonsForInstrument(lessons: Lesson[], instrumentId: ID): Lesson[] {
+  return lessons.filter((l) => l.instrumentId === instrumentId).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Items flagged to complete before their instrument's next lesson. */
+export function assignedForLesson(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.assignedForLesson);
+}
 
 export function isDue(item: PracticeItem, now: Date): boolean {
   const d = overdueDays(item, now);

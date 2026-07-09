@@ -3,35 +3,28 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   routinesOfStage,
   stageProgress,
-  stepsOfStage,
-  STEP_KIND_LABELS,
-  STEP_STATUS_LABELS,
+  stageUnits,
+  ITEM_STATUS_LABELS,
   STRAND_LABELS,
-  STRAND_ORDER,
   type PathwayRoutine,
-  type PathwayStep,
-  type StepKind,
-  type StepStatus,
-  type StepStrand,
+  type StageUnit,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { Field } from '../components/ui';
-import { ArrowLeftIcon, ClockIcon, PlayIcon, PlusIcon } from '../components/icons';
-
-const STATUS_ORDER: StepStatus[] = ['todo', 'in_progress', 'done'];
-const KINDS = Object.keys(STEP_KIND_LABELS) as StepKind[];
+import QuickAdd from '../components/QuickAdd';
+import { Field, StatusBadge } from '../components/ui';
+import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, PlayIcon, PlusIcon } from '../components/icons';
 
 export default function StageDetail() {
   const { pathwayId, stageId } = useParams();
   const db = useStore((s) => s.db);
   const updateStage = useStore((s) => s.updateStage);
   const deleteStage = useStore((s) => s.deleteStage);
-  const addStep = useStore((s) => s.addStep);
-  const startStepSession = useStore((s) => s.startStepSession);
+  const addFromCatalog = useStore((s) => s.addFromCatalog);
+  const startItemSession = useStore((s) => s.startItemSession);
   const navigate = useNavigate();
 
   const stage = db.pathwayStages.find((s) => s.id === stageId);
-  const steps = useMemo(() => (stage ? stepsOfStage(db.pathwaySteps, stage.id) : []), [db.pathwaySteps, stage]);
+  const units = useMemo(() => (stage ? stageUnits(stage, db.items) : []), [stage, db.items]);
   const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
 
   const [editing, setEditing] = useState(false);
@@ -39,22 +32,18 @@ export default function StageDetail() {
   const [editTitle, setEditTitle] = useState('');
   const [editIntro, setEditIntro] = useState('');
 
-  const [adding, setAdding] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newStrand, setNewStrand] = useState<StepStrand>('exercise');
-
   if (!stage) {
     return (
       <div className="stack">
-        <Link to="/pathway" className="link">
-          ← Back to pathways
+        <Link to="/repertoire" className="link">
+          ← Back to repertoire
         </Link>
-        <div className="card">That stage doesn’t exist.</div>
+        <div className="card">That stage doesn't exist.</div>
       </div>
     );
   }
 
-  const sp = stageProgress(steps);
+  const sp = stageProgress(units);
   const backTo = `/pathway/${pathwayId}`;
 
   function startEdit() {
@@ -64,14 +53,18 @@ export default function StageDetail() {
     setEditing(true);
   }
   function saveEdit() {
-    updateStage(stage!.id, { code: editCode.trim() || stage!.code, title: editTitle.trim() || editCode, intro: editIntro.trim() || undefined });
+    updateStage(stage!.id, {
+      code: editCode.trim() || stage!.code,
+      title: editTitle.trim() || editCode,
+      intro: editIntro.trim() || undefined,
+    });
     setEditing(false);
   }
-  function submitNew() {
-    if (!newTitle.trim()) return;
-    addStep(stage!.id, { title: newTitle, strand: newStrand });
-    setNewTitle('');
-    setAdding(false);
+
+  function practise(unit: StageUnit) {
+    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key);
+    startItemSession(itemId);
+    navigate('/active');
   }
 
   return (
@@ -84,14 +77,14 @@ export default function StageDetail() {
         <div className="card stack-sm">
           <div className="grid-2">
             <Field label="Code">
-              <input className="input" value={editCode} onChange={(e) => setEditCode(e.target.value)} />
+              <input className="input" dir="auto" value={editCode} onChange={(e) => setEditCode(e.target.value)} />
             </Field>
             <Field label="Title">
-              <input className="input" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+              <input className="input" dir="auto" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
             </Field>
           </div>
           <Field label="Intro">
-            <textarea className="textarea" value={editIntro} onChange={(e) => setEditIntro(e.target.value)} />
+            <textarea className="textarea" dir="auto" value={editIntro} onChange={(e) => setEditIntro(e.target.value)} />
           </Field>
           <div className="row">
             <button className="btn btn-primary grow" onClick={saveEdit}>
@@ -99,6 +92,17 @@ export default function StageDetail() {
             </button>
             <button className="btn" onClick={() => setEditing(false)}>
               Cancel
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => {
+                if (confirm(`Delete the stage "${stage.code}"? Your items are kept — they just leave the stage.`)) {
+                  deleteStage(stage.id);
+                  navigate(backTo);
+                }
+              }}
+            >
+              Delete
             </button>
           </div>
         </div>
@@ -114,23 +118,10 @@ export default function StageDetail() {
               <span className="balance-fill" style={{ width: `${sp.percent}%` }} />
             </span>
             <span className="tiny faint mono-num">
-              {sp.done}/{sp.total} done
+              {sp.done}/{sp.total} solid
             </span>
-          </div>
-          <div className="row" style={{ gap: 8, marginTop: 2 }}>
-            <button className="btn btn-sm" onClick={startEdit}>
-              Edit stage
-            </button>
-            <button
-              className="btn btn-sm btn-danger"
-              onClick={() => {
-                if (confirm(`Delete the stage “${stage.code}” and its steps?`)) {
-                  deleteStage(stage.id);
-                  navigate(backTo);
-                }
-              }}
-            >
-              Delete
+            <button className="btn btn-ghost btn-sm" onClick={startEdit}>
+              Edit
             </button>
           </div>
         </header>
@@ -146,161 +137,80 @@ export default function StageDetail() {
       )}
 
       <section className="stack-sm">
-        <div className="row between">
-          <div className="section-label">Steps</div>
-          <button className="btn btn-ghost btn-sm" onClick={() => setAdding((a) => !a)}>
-            <PlusIcon /> Add step
-          </button>
-        </div>
-
-        {adding && (
-          <div className="card stack-sm">
-            <input className="input" autoFocus placeholder="Step title…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitNew()} />
-            <div className="row" style={{ gap: 8 }}>
-              <select className="select grow" value={newStrand} onChange={(e) => setNewStrand(e.target.value as StepStrand)}>
-                {STRAND_ORDER.map((s) => (
-                  <option key={s} value={s}>
-                    {STRAND_LABELS[s]}
-                  </option>
-                ))}
-              </select>
-              <button className="btn btn-primary" disabled={!newTitle.trim()} onClick={submitNew}>
-                Add
-              </button>
-            </div>
-          </div>
-        )}
-
+        <div className="section-label">In this stage</div>
         <div className="stack-sm">
-          {steps.map((step) => (
-            <StepCard key={step.id} step={step} isLast={step.order === steps[steps.length - 1].order} onPractise={() => { startStepSession(step); navigate('/active'); }} />
+          {units.map((u) => (
+            <UnitRow key={u.key} unit={u} onPractise={() => practise(u)} onAdd={() => addFromCatalog(stage.id, u.key)} />
           ))}
-          {steps.length === 0 && <div className="card card-quiet small dim">No steps yet — add the first one above.</div>}
+          {units.length === 0 && (
+            <div className="card card-quiet small dim">Nothing here yet — add your first piece below.</div>
+          )}
+        </div>
+        <QuickAdd stageId={stage.id} />
+        <div className="tiny faint">
+          Anything you add here is a normal practice item — it also appears under “All items” and in recommendations.
         </div>
       </section>
     </div>
   );
 }
 
-function StepCard({ step, onPractise }: { step: PathwayStep; isLast: boolean; onPractise: () => void }) {
-  const setStepStatus = useStore((s) => s.setStepStatus);
-  const updateStep = useStore((s) => s.updateStep);
-  const deleteStep = useStore((s) => s.deleteStep);
-  const moveStep = useStore((s) => s.moveStep);
-
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(step.title);
-  const [strand, setStrand] = useState<StepStrand>(step.strand);
-  const [kind, setKind] = useState<StepKind>(step.kind);
-  const [notes, setNotes] = useState(step.notes ?? '');
-  const [bpm, setBpm] = useState(step.targetBpm ? String(step.targetBpm) : '');
-
-  function save() {
-    updateStep(step.id, {
-      title: title.trim() || step.title,
-      strand,
-      kind,
-      notes: notes.trim() || undefined,
-      targetBpm: bpm ? Number(bpm) : undefined,
-    });
-    setEditing(false);
-  }
-
-  if (editing) {
-    return (
-      <div className="card stack-sm">
-        <Field label="Title">
-          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
-        </Field>
-        <div className="grid-2">
-          <Field label="Strand">
-            <select className="select" value={strand} onChange={(e) => setStrand(e.target.value as StepStrand)}>
-              {STRAND_ORDER.map((s) => (
-                <option key={s} value={s}>
-                  {STRAND_LABELS[s]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Kind">
-            <select className="select" value={kind} onChange={(e) => setKind(e.target.value as StepKind)}>
-              {KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {STEP_KIND_LABELS[k]}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <Field label="Notes">
-          <textarea className="textarea" value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </Field>
-        <Field label="Target BPM (optional)">
-          <input className="input" type="number" value={bpm} onChange={(e) => setBpm(e.target.value)} style={{ maxWidth: 120 }} />
-        </Field>
-        <div className="row">
-          <button className="btn btn-primary grow" onClick={save}>
-            Save
-          </button>
-          <button className="btn" onClick={() => setEditing(false)}>
-            Cancel
-          </button>
-          <button className="btn btn-danger" onClick={() => deleteStep(step.id)}>
-            Delete
-          </button>
-        </div>
-      </div>
-    );
-  }
+function UnitRow({ unit, onPractise, onAdd }: { unit: StageUnit; onPractise: () => void; onAdd: () => void }) {
+  const navigate = useNavigate();
+  const item = unit.item;
 
   return (
-    <div className={`card stack-sm${step.status === 'done' ? ' card-quiet' : ''}`}>
-      <div className="row between" style={{ alignItems: 'flex-start' }}>
-        <div className="grow">
-          <div className="row" style={{ gap: 8 }}>
-            <span className="chip">{STRAND_LABELS[step.strand]}</span>
-            {step.targetBpm && (
-              <span className="chip">
-                <ClockIcon width={12} height={12} /> {step.targetBpm} bpm
-              </span>
-            )}
-          </div>
-          <div className="title-md" style={{ fontSize: '1.02rem', marginTop: 6 }}>
-            {step.title}
-          </div>
-          {step.notes && (
-            <div className="small dim" style={{ marginTop: 4 }}>
-              {step.notes}
-            </div>
+    <div className={`card row${unit.state === 'done' ? ' card-quiet' : ''}`} style={{ gap: 10 }}>
+      <span
+        className="stage-badge"
+        style={{
+          width: 34,
+          height: 34,
+          background:
+            unit.state === 'done' ? 'var(--tone-good-soft)' : unit.state === 'in_progress' ? 'var(--accent-soft)' : 'var(--surface-2)',
+          color: unit.state === 'done' ? 'var(--tone-good)' : unit.state === 'in_progress' ? 'var(--accent)' : 'var(--text-faint)',
+        }}
+      >
+        {unit.state === 'done' ? <CheckIcon width={16} height={16} /> : unit.state === 'in_progress' ? '·' : ''}
+      </span>
+
+      <button
+        className="grow"
+        style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
+        onClick={() => (item ? navigate(`/items/${item.id}`) : onAdd())}
+        title={item ? 'Open item' : 'Add to your items'}
+      >
+        <div className="truncate" dir="auto">
+          {unit.title}
+        </div>
+        <div className="tiny faint row" style={{ gap: 6 }}>
+          {unit.strand && <span>{STRAND_LABELS[unit.strand]}</span>}
+          {item ? (
+            <span>· {ITEM_STATUS_LABELS[item.status]}{item.assignedForLesson ? ' · for class' : ''}</span>
+          ) : (
+            <span>· suggestion — tap to add</span>
           )}
         </div>
-        <div className="stack" style={{ gap: 2 }}>
-          <button className="btn btn-ghost btn-sm" style={{ minHeight: 22, padding: '0 6px' }} onClick={() => moveStep(step.id, -1)} aria-label="Move up">
-            ↑
-          </button>
-          <button className="btn btn-ghost btn-sm" style={{ minHeight: 22, padding: '0 6px' }} onClick={() => moveStep(step.id, 1)} aria-label="Move down">
-            ↓
-          </button>
-        </div>
-      </div>
-
-      <div className="row between">
-        <div className="options">
-          {STATUS_ORDER.map((st) => (
-            <button key={st} className={`option${step.status === st ? ' selected' : ''}`} onClick={() => setStepStatus(step.id, st)}>
-              {STEP_STATUS_LABELS[st]}
-            </button>
-          ))}
-        </div>
-        {step.kind !== 'checkpoint' && (
-          <button className="btn btn-sm btn-primary" onClick={onPractise}>
-            <PlayIcon /> Practise
-          </button>
+        {unit.entry?.about && !item && (
+          <div className="tiny dim" style={{ marginTop: 3 }}>
+            {unit.entry.about}
+          </div>
         )}
-      </div>
-      <button className="link tiny" style={{ background: 'none', border: 'none', width: 'fit-content' }} onClick={() => setEditing(true)}>
-        Edit step
       </button>
+
+      {item ? (
+        <>
+          <StatusBadge status={item.status} />
+          <button className="btn btn-sm btn-primary" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
+            <PlayIcon />
+          </button>
+        </>
+      ) : (
+        <button className="btn btn-sm" onClick={onAdd} aria-label={`Add ${unit.title}`}>
+          <PlusIcon /> Add
+        </button>
+      )}
+      {item && <ChevronRightIcon width={14} height={14} className="faint" style={{ flex: 'none' }} />}
     </div>
   );
 }

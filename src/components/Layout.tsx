@@ -52,9 +52,9 @@ export default function Layout() {
               <TodayIcon />
               <span>Today</span>
             </NavLink>
-            <NavLink to="/pathway" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+            <NavLink to="/repertoire" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
               <PathIcon />
-              <span>Pathway</span>
+              <span>Repertoire</span>
             </NavLink>
 
             <div className="tab tab-start">
@@ -64,9 +64,9 @@ export default function Layout() {
               <span className="tab-start-label">Start</span>
             </div>
 
-            <NavLink to="/items" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+            <NavLink to="/lessons" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
               <ItemsIcon />
-              <span>Items</span>
+              <span>Lessons</span>
             </NavLink>
             <NavLink to="/more" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
               <MoreIcon />

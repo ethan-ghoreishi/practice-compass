@@ -4,6 +4,7 @@ import {
   fragilityScore,
   isSaturated,
   lastResultsAllSame,
+  lessonUrgencyScore,
   neglectedScore,
   overdueScore,
   recentBlockCount,
@@ -84,7 +85,7 @@ describe('priority score', () => {
     item.nextReviewDate = toISODate(addDays(NOW, -5)); // overdue band 3
 
     const score = scoreItem(item, [], NOW);
-    // 5*2 + 4 + 5 + 3 + 3 + 2 - 0 = 27
+    // 5*2 + 4 + 5 + 3 + 3 + 2 + 0 - 0 = 27
     expect(score.parts).toEqual({
       importance: 10,
       difficulty: 4,
@@ -93,6 +94,7 @@ describe('priority score', () => {
       teacher: 3,
       neglected: 2,
       saturationPenalty: 0,
+      lesson: 0,
     });
     expect(score.total).toBe(27);
     expect(score.saturated).toBe(false);
@@ -109,6 +111,26 @@ describe('priority score', () => {
     const score = scoreItem(item, blocks, NOW);
     expect(score.parts.saturationPenalty).toBe(3);
     expect(score.saturated).toBe(true);
+  });
+
+  it('boosts items assigned for an approaching class', () => {
+    const base = itemAt({ instrumentId: 'i', title: 't', status: 'usable' });
+    const assigned = { ...base, assignedForLesson: true };
+    const lessonAt = (d: number) => toISODate(addDays(NOW, d));
+
+    // Climbs as the class approaches.
+    expect(lessonUrgencyScore(assigned, lessonAt(25), NOW)).toBe(3);
+    expect(lessonUrgencyScore(assigned, lessonAt(8), NOW)).toBe(5);
+    expect(lessonUrgencyScore(assigned, lessonAt(1), NOW)).toBe(7);
+    expect(lessonUrgencyScore(assigned, lessonAt(0), NOW)).toBe(8);
+    // No boost without the flag or without a planned class.
+    expect(lessonUrgencyScore(base, lessonAt(1), NOW)).toBe(0);
+    expect(lessonUrgencyScore(assigned, undefined, NOW)).toBe(0);
+
+    // And it feeds the total via scoreItem's lesson part.
+    const score = scoreItem(assigned, [], NOW, lessonAt(1));
+    expect(score.parts.lesson).toBe(7);
+    expect(score.daysToLesson).toBe(1);
   });
 });
 

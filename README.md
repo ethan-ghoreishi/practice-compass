@@ -169,23 +169,32 @@ suggests promotion to *usable*).
 
 ---
 
-## Pathways
+## Repertoire: pathways and items are one thing
 
-Pathways are **structure, not gamification** — they show your honest position on a route to
-mastery so you can stop deciding "what next" and just practise.
+The **item is the only unit of work**; a pathway is a *view over your items*, not a
+separate to-do list. The Repertoire tab shows the same items two ways — by pathway, or as
+a filterable list.
 
-- **Editable data, one per instrument.** Pathways live in the store with full CRUD; seeds
-  ([`src/domain/pathwaySeed.ts`](src/domain/pathwaySeed.ts)) are honest starting points you
-  can rename, reorder, extend or delete. Pure derivations + tests are in
-  [`pathways.ts`](src/domain/pathways.ts).
-- **Pathway → Stages → Steps (+ guided Routines).** Each step has a strand (mezrāb, radif,
-  chords, sight-reading, piece…), notes and an optional target tempo, and its own status.
-- Your **current stage** is derived automatically; Today lists every pathway with its
-  current stage and progress.
+- An item can be **placed in a pathway stage** (`stageId`); stage progress is derived
+  from the mastery status of the items in it. Nothing to tick off separately.
+- Each stage lays your items over a **reference catalog** of known gushes / lesson areas
+  ([`pathwaySeed.ts`](src/domain/pathwaySeed.ts)) — one tap turns a suggestion into a real
+  item, pre-filled with type, focus and conscious-practice guidance. Pure derivations +
+  tests in [`pathways.ts`](src/domain/pathways.ts).
+- **Conscious practice**: dastgāh stages carry character intros (what to listen for), each
+  gushe carries a standing prompt (find the shāhed, the ist, the forud), and the practice
+  screen keeps "About this piece" one tap away with the question *what is going on here?*
 - **Guided routines** ([`RoutineRunner`](src/pages/RoutineRunner.tsx)) walk you through a
   session segment by segment, hands-free.
-- Practising a step creates/links a normal practice item, so pathways plug straight into
-  the recommendation engine, stats and teacher report.
+- Pathways and stages are fully editable; deleting them never deletes your items.
+
+## Lessons (classes with a teacher)
+
+Per-instrument lesson log — dates plus the notes you type up after rewatching your class
+recording (**Farsi welcome**: every text field is direction-aware). Flag any item
+“complete before next class” and it gets a priority boost that climbs as the class
+approaches; Today shows a *Before your class* strip with the countdown. Works for every
+instrument, ready for future Tar / Guitar teachers.
 
 ## Review scheduling
 
@@ -230,10 +239,10 @@ Calm, focused, serious, elegant, fast, uncluttered — encouraging but never che
 - Teacher‑sharing PDF
 - Seed Levels 1B–5 of CGS in full detail from each sub-level's syllabus
 
-Done: ✅ PWA offline install · ✅ Editable, per-instrument pathways (Guitar / Setar / Tar) ·
+Done: ✅ PWA offline install · ✅ Pathways unified with items (catalog + one-tap add) ·
 ✅ SM-2 spaced-repetition review with manual override · ✅ IndexedDB source of truth ·
 ✅ File & note attachments per item (single source of truth) · ✅ Full backup with files ·
-✅ Private NAS deploy + CI.
+✅ Lesson log with class-deadline prioritising (Farsi-aware) · ✅ Private NAS deploy + CI.
 
 See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
 [`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.

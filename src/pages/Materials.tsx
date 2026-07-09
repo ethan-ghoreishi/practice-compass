@@ -210,7 +210,7 @@ export default function Materials() {
         })
       )}
 
-      <Link to="/items" className="link small">
+      <Link to="/repertoire" className="link small">
         ← Back to items
       </Link>
     </div>

@@ -6,6 +6,7 @@ import {
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
+  nextLessonFor,
   RESULT_LABELS,
   type BlockResult,
   type GuitarFields,
@@ -20,7 +21,7 @@ import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
 import Attachments from '../components/Attachments';
 import ItemNotes from '../components/ItemNotes';
 import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
-import { ArrowLeftIcon, PlayIcon } from '../components/icons';
+import { ArrowLeftIcon, FlagIcon, PlayIcon } from '../components/icons';
 import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
 
 const RESULT_TONE: Record<BlockResult, string> = {
@@ -50,6 +51,7 @@ export default function ItemDetail() {
   const setItemStatus = useStore((s) => s.setItemStatus);
   const updateItem = useStore((s) => s.updateItem);
   const deleteItem = useStore((s) => s.deleteItem);
+  const toggleAssignedForLesson = useStore((s) => s.toggleAssignedForLesson);
   const navigate = useNavigate();
   const now = useMemo(() => new Date(), []);
   const [editing, setEditing] = useState(false);
@@ -60,8 +62,8 @@ export default function ItemDetail() {
   if (!item) {
     return (
       <div className="stack">
-        <Link to="/items" className="link">
-          ← Back to items
+        <Link to="/repertoire" className="link">
+          ← Back to repertoire
         </Link>
         <div className="card">This item no longer exists.</div>
       </div>
@@ -69,6 +71,8 @@ export default function ItemDetail() {
   }
 
   const material = getMaterial(db, item.materialId);
+  const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
+  const nextLesson = nextLessonFor(db.lessons, item.instrumentId, now);
   const persianEntries = PERSIAN_FIELDS.filter((f) => item.persian?.[f.key as keyof PersianFields]);
   const guitarEntries = GUITAR_FIELDS.filter((f) => item.guitar?.[f.key as keyof GuitarFields]);
   const trend = [...blocks].reverse(); // chronological
@@ -99,19 +103,29 @@ export default function ItemDetail() {
 
   return (
     <div className="stack-lg">
-      <Link to="/items" className="link row" style={{ gap: 4, width: 'fit-content' }}>
-        <ArrowLeftIcon width={16} height={16} /> Items
+      <Link to="/repertoire" className="link row" style={{ gap: 4, width: 'fit-content' }}>
+        <ArrowLeftIcon width={16} height={16} /> Repertoire
       </Link>
 
       <header className="stack-sm">
         <div className="row between" style={{ alignItems: 'flex-start' }}>
-          <h1 className="page-title">{item.title}</h1>
+          <h1 className="page-title" dir="auto">
+            {item.title}
+          </h1>
           <StatusBadge status={item.status} />
         </div>
         <div className="row-wrap small dim">
           <span>{instrumentName(db, item.instrumentId)}</span>
           <span className="faint">·</span>
           <span>{ITEM_TYPE_LABELS[item.itemType]}</span>
+          {stage && (
+            <>
+              <span className="faint">·</span>
+              <Link to={`/pathway/${stage.pathwayId}/${stage.id}`} className="link">
+                {stage.code}
+              </Link>
+            </>
+          )}
           {material && (
             <>
               <span className="faint">·</span>
@@ -136,6 +150,20 @@ export default function ItemDetail() {
           Edit
         </button>
       </div>
+
+      <button
+        className={`btn btn-sm${item.assignedForLesson ? ' btn-primary' : ''}`}
+        style={{ width: 'fit-content' }}
+        onClick={() => toggleAssignedForLesson(item.id)}
+        title="Prioritise this to be ready before your next class"
+      >
+        <FlagIcon width={14} height={14} />
+        {item.assignedForLesson
+          ? nextLesson
+            ? `For class ${relativeDay(nextLesson.date, now)} ✓`
+            : 'For next class ✓'
+          : 'Complete before next class?'}
+      </button>
 
       <div className="card grid-stats">
         <Stat value={item.timesPractised} label="Blocks" />
