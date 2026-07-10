@@ -13,10 +13,10 @@ import { formatMinutes, relativeDay, relativeFromDateTime } from './format';
 export default function ItemCard({ item, now = new Date() }: { item: PracticeItem; now?: Date }) {
   const db = useStore((s) => s.db);
   const inst = instrumentName(db, item.instrumentId);
-  const fileCount = db.attachments.filter((a) => a.itemId === item.id).length;
+  const fileCount = db.attachments.filter((a) => a.ownerId === item.id).length;
 
   return (
-    <Link to={`/items/${item.id}`} className="card card-link">
+    <Link to={`/items/${item.id}`} state={{ from: '/repertoire' }} className="card card-link">
       <div className="row between" style={{ alignItems: 'flex-start' }}>
         <div className="grow">
           <div className="title-md">{item.title}</div>

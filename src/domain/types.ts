@@ -35,6 +35,12 @@ export interface Lesson {
   date: ISODate;
   /** Free-form class notes (Farsi supported). */
   notes?: string;
+  /**
+   * Practice items worked on / created in this lesson. A link, not ownership:
+   * unlinking never deletes the item, and this is separate from the item's
+   * `assignedForLesson` flag (work *for the next* class).
+   */
+  itemIds?: ID[];
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -112,6 +118,10 @@ export type Rating = 1 | 2 | 3 | 4 | 5;
 export interface PersianFields {
   dastgahAvaz?: string;
   gusheh?: string;
+  /** Musical form, e.g. pish-darāmad, chahār-mezrāb, tasnif, reng, qet‘e. */
+  form?: string;
+  /** Composer / maestro, e.g. Darvish Khān, Sabā. */
+  composer?: string;
   phraseLabel?: string;
   shahed?: string;
   ist?: string;
@@ -146,6 +156,12 @@ export interface PracticeItem {
   catalogKey?: string;
   /** Flagged to complete before the instrument's next lesson/class. */
   assignedForLesson?: boolean;
+  /**
+   * Parent piece/étude when this item is one of its parts (a phrase, bars, a
+   * section, a technical problem). Parts are ordinary items; this only groups
+   * them under the parent for the calm "practise this part next" view.
+   */
+  parentItemId?: ID;
   title: string;
   itemType: ItemType;
   status: ItemStatus;
@@ -308,6 +324,12 @@ export interface Pathway {
   description?: string;
   /** Free-form guidance shown at the top of the path (e.g. how it's used). */
   note?: string;
+  /**
+   * User-pinned "where I am now". Teacher-led work jumps around, so the
+   * current stage is the user's choice; when unset (or stale) it falls back
+   * to the first stage that isn't complete.
+   */
+  currentStageId?: ID;
   archived?: boolean;
   order: number;
   createdAt: ISODateTime;
@@ -374,9 +396,14 @@ export interface PathwayRoutine {
 
 export type AttachmentKind = 'pdf' | 'image' | 'audio' | 'other';
 
+/** What an attachment belongs to. */
+export type AttachmentOwnerType = 'item' | 'lesson';
+
 export interface AttachmentMeta {
   id: ID;
-  itemId: ID;
+  ownerType: AttachmentOwnerType;
+  /** Id of the owning PracticeItem or Lesson. */
+  ownerId: ID;
   name: string;
   mime: string;
   size: number;
@@ -386,7 +413,7 @@ export interface AttachmentMeta {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export interface PracticeDB {
   schemaVersion: number;

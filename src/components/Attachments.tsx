@@ -1,24 +1,47 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AttachmentMeta } from '../domain';
+import type { AttachmentMeta, AttachmentOwnerType } from '../domain';
 import { useStore } from '../store/useStore';
-import { addAttachment, attachmentObjectURL, formatBytes, removeAttachment } from '../store/attachments';
+import {
+  addAttachment,
+  attachmentObjectURL,
+  formatBytes,
+  LARGE_FILE_BYTES,
+  removeAttachment,
+} from '../store/attachments';
 import { MusicIcon, PlusIcon, ReportIcon } from './icons';
 
-export default function Attachments({ itemId }: { itemId: string }) {
+/** File list + upload for anything that owns attachments (item or lesson). */
+export default function Attachments({
+  ownerType,
+  ownerId,
+  emptyHint,
+}: {
+  ownerType: AttachmentOwnerType;
+  ownerId: string;
+  emptyHint?: string;
+}) {
   const all = useStore((s) => s.db.attachments);
   const list = useMemo(
-    () => all.filter((a) => a.itemId === itemId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [all, itemId],
+    () => all.filter((a) => a.ownerId === ownerId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [all, ownerId],
   );
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
+  const [sizeNote, setSizeNote] = useState<string | null>(null);
 
   async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     setBusy(true);
     try {
-      for (const f of Array.from(files)) await addAttachment(itemId, f);
+      for (const f of Array.from(files)) {
+        await addAttachment(ownerType, ownerId, f);
+        if (f.size > LARGE_FILE_BYTES) {
+          setSizeNote(
+            `“${f.name}” is ${formatBytes(f.size)}. Large files are fine here, but they make your backup file just as large — for class videos, your session folders are the better home.`,
+          );
+        }
+      }
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = '';
@@ -41,10 +64,18 @@ export default function Attachments({ itemId }: { itemId: string }) {
         hidden
         onChange={onFiles}
       />
+      {sizeNote && (
+        <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
+          {sizeNote}{' '}
+          <button className="link tiny" style={{ background: 'none', border: 'none' }} onClick={() => setSizeNote(null)}>
+            OK
+          </button>
+        </div>
+      )}
       {list.length === 0 ? (
         <div className="card card-quiet small dim">
-          Attach the PDFs, photos or scores for this item — your teacher's hand-outs, a page from the radif, a
-          recording. They're stored on your device.
+          {emptyHint ??
+            "Attach the PDFs, photos or scores for this item — your teacher's hand-outs, a page from the radif, a recording. They're stored on your device."}
         </div>
       ) : (
         <div className="stack-sm">

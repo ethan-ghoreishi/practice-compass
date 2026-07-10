@@ -1,6 +1,7 @@
 import type { ItemStatus, PracticeBlock, PracticeItem } from './types';
 import {
   groupBlocksByItem,
+  lastResultsAllSame,
   neglectedScore,
   overdueScore,
   scoreItems,
@@ -54,20 +55,23 @@ export function buildReason(score: ItemScore, kind: RecommendationKind): string 
 
   if (parts.lesson > 0 && daysToLesson != null) {
     drivers.push(
-      daysToLesson <= 0 ? 'due for your class' : `for your class in ${daysToLesson}d`,
+      daysToLesson <= 0 ? 'you committed it for your class' : `committed for your class in ${daysToLesson} day${daysToLesson === 1 ? '' : 's'}`,
     );
   }
-  if (item.importance >= 4) drivers.push('important');
-  if (STATUS_PHRASE[item.status] && (parts.fragility >= 3 || item.status === 'dormant')) {
-    drivers.push(STATUS_PHRASE[item.status]!);
+  if (overdueDays === 0) drivers.push('its review is due today');
+  else if (overdueDays !== null && overdueDays > 0) {
+    drivers.push(`its review is ${overdueDays} day${overdueDays === 1 ? '' : 's'} overdue`);
   }
-  if (overdueDays === 0) drivers.push('due today');
-  else if (overdueDays !== null && overdueDays > 0) drivers.push(`${overdueDays}d overdue`);
-  if (parts.teacher > 0) drivers.push('linked to a teacher question');
+  if (STATUS_PHRASE[item.status] && (parts.fragility >= 3 || item.status === 'dormant')) {
+    drivers.push(`it's ${STATUS_PHRASE[item.status]!}`);
+  }
+  if (item.importance >= 4) drivers.push('you marked it important');
+  if (item.difficulty >= 4) drivers.push('it is demanding, so little-and-often helps');
+  if (parts.teacher > 0) drivers.push('it carries a question for your teacher');
   if (parts.neglected >= 2 && daysSincePractised != null) {
-    drivers.push(`untouched for ${daysSincePractised} days`);
+    drivers.push(`it's been ${daysSincePractised} days since you touched it`);
   } else if (parts.neglected >= 2) {
-    drivers.push('neglected');
+    drivers.push('it has been resting a while');
   }
 
   const lead =
@@ -75,12 +79,12 @@ export function buildReason(score: ItemScore, kind: RecommendationKind): string 
       ? 'A quick win'
       : kind === 'maintenance'
         ? 'Worth keeping fresh'
-        : 'Top priority';
+        : 'Next up';
 
   if (drivers.length === 0) {
     return `${lead} — a good place to put your attention next.`;
   }
-  return `${lead} — ${joinNicely(drivers)}.`;
+  return `${lead}: ${joinNicely(drivers.slice(0, 3))}.`;
 }
 
 function joinNicely(parts: string[]): string {
@@ -137,4 +141,64 @@ export function recommend(
   const maintenanceRec = take(maintenance, 'maintenance');
 
   return { best: bestRec, quickWin: quickWinRec, maintenance: maintenanceRec };
+}
+
+/**
+ * Session-scoped recommendations: only the chosen instrument's items and
+ * history are considered, so a Setar session never surfaces Tar or Guitar work.
+ */
+export function recommendForInstrument(
+  instrumentId: string,
+  items: PracticeItem[],
+  blocks: PracticeBlock[],
+  now: Date,
+  lessonDates?: Map<string, string>,
+): Recommendations {
+  return recommend(
+    items.filter((i) => i.instrumentId === instrumentId),
+    blocks.filter((b) => b.instrumentId === instrumentId),
+    now,
+    lessonDates,
+  );
+}
+
+// --- Études / pieces broken into parts ---------------------------------------
+//
+// A part is an ordinary PracticeItem with `parentItemId` set. The calm answer
+// to "I feel lost in this étude" is one concrete part, chosen by the same
+// deterministic scoring as everything else.
+
+export function partsOf(parentId: string, items: PracticeItem[]): PracticeItem[] {
+  return items
+    .filter((i) => i.parentItemId === parentId)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+/**
+ * The one part to practise now: highest-priority non-saturated part; falls
+ * back to the highest-priority part, and to null when there are no parts.
+ */
+export function pickNextPart(
+  parentId: string,
+  items: PracticeItem[],
+  blocks: PracticeBlock[],
+  now: Date,
+): Recommendation | null {
+  const parts = partsOf(parentId, items);
+  if (parts.length === 0) return null;
+  const scored = scoreItems(parts, groupBlocksByItem(blocks), now);
+  const pick = scored.find((s) => !s.saturated) ?? scored[0];
+  return pick ? { kind: 'best', score: pick, reason: buildReason(pick, 'best') } : null;
+}
+
+/**
+ * Calm stall advice when an item keeps producing "same": suggest a smaller
+ * unit or a different strategy — never guilt, quotas, or fake progress.
+ */
+export function stallHint(item: PracticeItem, itemBlocks: PracticeBlock[]): string | null {
+  if (!lastResultsAllSame(itemBlocks)) return null;
+  const isWhole = item.itemType === 'full_piece' || item.itemType === 'section' || item.itemType === 'exercise';
+  return isWhole
+    ? 'Three “same” results in a row. Try a smaller unit: pick one phrase or a couple of bars, make that its own part, and work just on it.'
+    : 'Three “same” results in a row. Try a different strategy — slower, hands separately, or a new constraint — rather than more repetitions.';
 }

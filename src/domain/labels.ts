@@ -19,7 +19,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export const ITEM_STATUS_LABELS: Record<ItemStatus, string> = {
-  new: 'Just started',
+  new: 'Not practised yet',
   fragile: 'Shaky',
   repairing: 'Fixing problems',
   usable: 'Coming together',
@@ -31,7 +31,7 @@ export const ITEM_STATUS_LABELS: Record<ItemStatus, string> = {
 
 /** One-line plain-language description of each status, shown in pickers. */
 export const ITEM_STATUS_DESCRIPTIONS: Record<ItemStatus, string> = {
-  new: 'Just added — barely touched yet.',
+  new: 'In your library — no practice logged yet.',
   fragile: 'Falls apart easily; needs careful attention.',
   repairing: 'Working through specific problems.',
   usable: 'Works, but not reliable yet.',

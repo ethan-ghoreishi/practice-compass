@@ -27,10 +27,56 @@ function base64ToBlob(b64: string, mime: string): Blob {
 
 interface BackupFile {
   id: string;
-  itemId: string;
+  ownerId: string;
+  /** Legacy (schema ≤ 5) backups used itemId. */
+  itemId?: string;
   mime: string;
   name: string;
   data: string; // base64
+}
+
+/** Metadata describing where/when a backup was made (for safe handoff). */
+export interface BackupMeta {
+  deviceName?: string;
+  /** Most recent updatedAt across the data — "how new is this backup". */
+  lastModified?: string;
+}
+
+const DEVICE_NAME_KEY = 'pc-device-name';
+
+/** Per-device label; deliberately in localStorage, NOT in the backup data. */
+export function getDeviceName(): string {
+  try {
+    return localStorage.getItem(DEVICE_NAME_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setDeviceName(name: string): void {
+  try {
+    localStorage.setItem(DEVICE_NAME_KEY, name.trim());
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Most recent updatedAt/createdAt across everything — the data's "age". */
+export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']): string {
+  let max = '';
+  const scan = (rows: { updatedAt?: string; createdAt?: string; startedAt?: string }[]) => {
+    for (const r of rows) {
+      const t = r.updatedAt ?? r.startedAt ?? r.createdAt ?? '';
+      if (t > max) max = t;
+    }
+  };
+  scan(db.items);
+  scan(db.blocks);
+  scan(db.lessons);
+  scan(db.materials);
+  scan(db.pathwayStages);
+  scan(db.attachments);
+  return max;
 }
 
 export async function buildFullBackup(now: Date = new Date()): Promise<string> {
@@ -41,7 +87,7 @@ export async function buildFullBackup(now: Date = new Date()): Promise<string> {
       const meta = db.attachments.find((a) => a.id === b.id);
       return {
         id: b.id,
-        itemId: b.itemId,
+        ownerId: b.ownerId,
         mime: meta?.mime ?? b.blob.type ?? 'application/octet-stream',
         name: meta?.name ?? 'file',
         data: await blobToBase64(b.blob),
@@ -52,9 +98,21 @@ export async function buildFullBackup(now: Date = new Date()): Promise<string> {
     app: 'practice-compass',
     schemaVersion: SCHEMA_VERSION,
     exportedAt: nowISO(now),
+    deviceName: getDeviceName() || undefined,
+    lastModified: lastModifiedOf(db) || undefined,
     data: db,
     files,
   });
+}
+
+/** Peek at a backup's provenance without importing it. */
+export function readBackupMeta(text: string): (BackupMeta & { exportedAt?: string }) | null {
+  try {
+    const parsed = JSON.parse(text) as { exportedAt?: string; deviceName?: string; lastModified?: string };
+    return { exportedAt: parsed.exportedAt, deviceName: parsed.deviceName, lastModified: parsed.lastModified };
+  } catch {
+    return null;
+  }
 }
 
 export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
@@ -77,7 +135,7 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
     for (const f of files) {
       if (f?.id && typeof f.data === 'string') {
         try {
-          await putBlob(f.id, f.itemId ?? '', base64ToBlob(f.data, f.mime || 'application/octet-stream'));
+          await putBlob(f.id, f.ownerId ?? f.itemId ?? '', base64ToBlob(f.data, f.mime || 'application/octet-stream'));
           fileCount += 1;
         } catch {
           /* skip a corrupt file rather than fail the whole import */

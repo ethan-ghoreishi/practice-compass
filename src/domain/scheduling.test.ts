@@ -3,6 +3,7 @@ import {
   computeReview,
   planNextReview,
   shouldSuggestDormant,
+  snoozePlan,
   suggestStatusAfterBlock,
 } from './scheduling';
 import { createItem } from './factories';
@@ -87,6 +88,18 @@ describe('suggestStatusAfterBlock', () => {
     const s = suggestStatusAfterBlock({ item: item({ status: 'fragile' }), result: 'same', last3AllSame: true });
     expect(s.suggestedStatus).toBeUndefined();
     expect(s.message).toMatch(/strategy/i);
+  });
+});
+
+describe('snoozePlan ("not now" with an honest date move)', () => {
+  it('pushes the due date N days from today — not from the stale old due date', () => {
+    expect(snoozePlan(2, NOW).dueDate).toBe(toISODate(addDays(NOW, 2)));
+    expect(snoozePlan(7, NOW).dueDate).toBe(toISODate(addDays(NOW, 7)));
+  });
+
+  it('never snoozes into the past or by zero', () => {
+    expect(snoozePlan(0, NOW).dueDate).toBe(toISODate(addDays(NOW, 1)));
+    expect(snoozePlan(-3, NOW).dueDate).toBe(toISODate(addDays(NOW, 1)));
   });
 });
 

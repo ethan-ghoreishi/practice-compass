@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   assignedForLesson,
   daysUntil,
+  ITEM_STATUS_LABELS,
   lessonsForInstrument,
   nextLessonFor,
   todayISODate,
@@ -10,8 +11,10 @@ import {
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { Field } from '../components/ui';
-import { PlusIcon } from '../components/icons';
+import { PlusIcon, XIcon } from '../components/icons';
 import { relativeDay } from '../components/format';
+import Attachments from '../components/Attachments';
+import QuickAdd from '../components/QuickAdd';
 
 /**
  * The class workflow: log each lesson's date, then — after rewatching your
@@ -151,11 +154,20 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
             onChange={(e) => setText(e.target.value)}
             onBlur={save}
           />
+
+          <LessonItems lesson={lesson} />
+
+          <Attachments
+            ownerType="lesson"
+            ownerId={lesson.id}
+            emptyHint="Attach the hand-outs for this class — PDFs of pieces, photos of notation. Keep the class video recordings in your session folders; they'd bloat the backup."
+          />
+
           <button
             className="link tiny"
             style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
             onClick={() => {
-              if (confirm(`Delete the ${lesson.date} lesson?`)) onDelete();
+              if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
             }}
           >
             Delete lesson
@@ -163,5 +175,88 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
         </>
       )}
     </article>
+  );
+}
+
+/** The items worked on / created in this lesson: link, create, flag, unlink. */
+function LessonItems({ lesson }: { lesson: Lesson }) {
+  const db = useStore((s) => s.db);
+  const linkItemToLesson = useStore((s) => s.linkItemToLesson);
+  const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
+  const toggleAssignedForLesson = useStore((s) => s.toggleAssignedForLesson);
+  const [linking, setLinking] = useState(false);
+
+  const linked = (lesson.itemIds ?? [])
+    .map((id) => db.items.find((i) => i.id === id))
+    .filter((i): i is NonNullable<typeof i> => !!i);
+  const linkable = db.items.filter(
+    (i) => i.instrumentId === lesson.instrumentId && !(lesson.itemIds ?? []).includes(i.id),
+  );
+
+  return (
+    <div className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Worked on in this class</div>
+        {linkable.length > 0 && (
+          <button className="btn btn-ghost btn-sm" onClick={() => setLinking((v) => !v)}>
+            Link existing…
+          </button>
+        )}
+      </div>
+
+      {linking && (
+        <select
+          className="select"
+          aria-label="Link an existing item to this lesson"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              linkItemToLesson(lesson.id, e.target.value);
+              setLinking(false);
+            }
+          }}
+        >
+          <option value="">Choose an item…</option>
+          {linkable.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.title}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {linked.length > 0 && (
+        <div className="card card-flush list">
+          {linked.map((item) => (
+            <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
+              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" style={{ minWidth: 0 }}>
+                <div className="truncate" dir="auto">
+                  {item.title}
+                </div>
+                <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
+              </Link>
+              <button
+                className={`btn btn-sm${item.assignedForLesson ? ' btn-primary' : ''}`}
+                aria-pressed={!!item.assignedForLesson}
+                title="Work on this before the next class"
+                onClick={() => toggleAssignedForLesson(item.id)}
+              >
+                {item.assignedForLesson ? 'Next class ✓' : 'For next class'}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Unlink from this lesson (the item is kept)"
+                aria-label={`Unlink ${item.title} from this lesson — the item is kept`}
+                onClick={() => unlinkItemFromLesson(lesson.id, item.id)}
+              >
+                <XIcon width={14} height={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <QuickAdd lessonId={lesson.id} />
+    </div>
   );
 }

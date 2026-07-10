@@ -196,3 +196,25 @@ export function shouldSuggestDormant(item: PracticeItem, now: Date): boolean {
   if (item.status === 'maintenance' || item.status === 'dormant') return false;
   return daysSinceTouched(item, now) >= 30;
 }
+
+// --- Review actions that are NOT practice ------------------------------------
+//
+// Practising (closing a block) is the only thing that *completes* a review and
+// advances SM-2. The other actions have deliberately small, honest semantics:
+//   • snooze  — "not now": push the due date N days from today. No SM-2 change,
+//               no pretend result. The overdue nag disappears because the date
+//               genuinely moved.
+//   • (there is no "mark done without practising" — that would fabricate data.)
+
+export const SNOOZE_DAYS_DEFAULT = 2;
+
+export interface SnoozePlan {
+  dueDate: ISODate;
+}
+
+/** New due date when snoozing a review: N days from today (not from the old,
+ *  possibly long-past due date). */
+export function snoozePlan(days: number, now: Date = new Date()): SnoozePlan {
+  const d = Math.max(1, Math.round(days));
+  return { dueDate: addDaysISODate(todayISODate(now), d) };
+}

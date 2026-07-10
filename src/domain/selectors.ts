@@ -101,7 +101,11 @@ export function blocksInWindow(
   days: number,
 ): PracticeBlock[] {
   const hours = days * 24;
-  return blocks.filter((b) => hoursSince(b.startedAt, now) <= hours);
+  // Future-dated blocks (clock skew, edited data) must not shape history.
+  return blocks.filter((b) => {
+    const h = hoursSince(b.startedAt, now);
+    return h >= 0 && h <= hours;
+  });
 }
 
 export interface InstrumentBalanceRow {

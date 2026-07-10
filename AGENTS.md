@@ -1,4 +1,4 @@
-# CLAUDE.md — development rules for Practice Compass
+# AGENTS.md — development rules for Practice Compass
 
 This file is the contract for anyone (human or AI) extending this app. Read it before
 adding features. The whole value of the tool comes from what it *refuses* to do.

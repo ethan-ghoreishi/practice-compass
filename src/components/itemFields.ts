@@ -3,6 +3,8 @@ import type { GuitarFields, PersianFields } from '../domain';
 export const PERSIAN_FIELDS: { key: keyof PersianFields; label: string }[] = [
   { key: 'dastgahAvaz', label: 'Dastgāh / Āvāz' },
   { key: 'gusheh', label: 'Gusheh' },
+  { key: 'form', label: 'Form (pish-darāmad, chahār-mezrāb…)' },
+  { key: 'composer', label: 'Composer / maestro' },
   { key: 'phraseLabel', label: 'Phrase label' },
   { key: 'shahed', label: 'Shāhed' },
   { key: 'ist', label: 'Ist' },

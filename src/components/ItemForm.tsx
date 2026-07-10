@@ -33,12 +33,22 @@ export default function ItemForm({
   onCancel: () => void;
 }) {
   const db = useStore((s) => s.db);
+  const addMaterial = useStore((s) => s.addMaterial);
   const [v, setV] = useState<ItemFormValues>(initial);
   const [showPersian, setShowPersian] = useState(Object.values(initial.persian).some(Boolean));
   const [showGuitar, setShowGuitar] = useState(Object.values(initial.guitar).some(Boolean));
+  const [newSourceName, setNewSourceName] = useState('');
 
   const materials = materialsForInstrument(db, v.instrumentId);
   const set = (patch: Partial<ItemFormValues>) => setV((cur) => ({ ...cur, ...patch }));
+
+  const creatingSource = v.materialId === '__new__';
+  function createSource() {
+    if (!newSourceName.trim()) return;
+    const id = addMaterial({ instrumentId: v.instrumentId, title: newSourceName });
+    setNewSourceName('');
+    set({ materialId: id });
+  }
 
   return (
     <div className="card stack">
@@ -61,14 +71,15 @@ export default function ItemForm({
       </Field>
 
       <div className="grid-2">
-        <Field label="Material">
+        <Field label="Source" hint="The book, radif, course or collection it comes from — optional.">
           <select className="select" value={v.materialId} onChange={(e) => set({ materialId: e.target.value })}>
-            <option value="">None</option>
+            <option value="">No source</option>
             {materials.map((m) => (
               <option key={m.id} value={m.id}>
                 {materialLabel(m)}
               </option>
             ))}
+            <option value="__new__">New source…</option>
           </select>
         </Field>
         <Field label="Type">
@@ -81,6 +92,23 @@ export default function ItemForm({
           </select>
         </Field>
       </div>
+
+      {creatingSource && (
+        <div className="row" style={{ gap: 8 }}>
+          <input
+            className="input grow"
+            dir="auto"
+            aria-label="New source name"
+            placeholder="e.g. Radif Mirzā Abdollāh · Honarestān Book 2 · CGS Level 2"
+            value={newSourceName}
+            onChange={(e) => setNewSourceName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && createSource()}
+          />
+          <button type="button" className="btn" disabled={!newSourceName.trim()} onClick={createSource}>
+            Create
+          </button>
+        </div>
+      )}
 
       <div className="grid-2">
         <Field label="Status" hint={ITEM_STATUS_DESCRIPTIONS[v.status]}>

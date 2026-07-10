@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { clearBlobs, deleteBlobsForItem, idbStorage, storageWasEmpty } from './idb';
+import { clearBlobs, deleteBlobsForOwner, idbStorage, storageWasEmpty } from './idb';
 import {
   applyBlockStats,
   catalogForStage,
@@ -12,6 +12,10 @@ import {
   createMaterial,
   createReview,
   createSeedDB,
+  itemFromCatalogEntry,
+  snoozePlan,
+  SNOOZE_DAYS_DEFAULT,
+  todayISODate,
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
@@ -20,7 +24,6 @@ import {
   SCHEMA_VERSION,
   seedPathways,
   STRAND_TO_FOCUS,
-  STRAND_TO_ITEM_TYPE,
   validateDB,
   type BlockMode,
   type BlockResult,
@@ -131,8 +134,16 @@ interface StoreState {
   theme: ThemePref;
   /** True once the async IndexedDB store has finished rehydrating. */
   hydrated: boolean;
+  /**
+   * The instrument the user chose to practise right now ("I'm practising Setar").
+   * Persisted so Today reopens where they left off. Null = overview.
+   */
+  sessionInstrumentId: ID | null;
+  /** Reviews the user said "not now" to — hidden for the rest of *today* only. */
+  notNow: { date: string; ids: ID[] };
 
   setTheme: (t: ThemePref) => void;
+  setSessionInstrument: (id: ID | null) => void;
 
   // Attachments (metadata; blobs live in IndexedDB via src/store/idb.ts)
   addAttachmentMeta: (meta: AttachmentMeta) => void;
@@ -146,6 +157,9 @@ interface StoreState {
   addLesson: (input: { instrumentId: ID; date: ISODate; notes?: string }) => ID;
   updateLesson: (id: ID, patch: { date?: ISODate; notes?: string }) => void;
   deleteLesson: (id: ID) => void;
+  /** Link/unlink an existing item to a lesson (a link, never ownership). */
+  linkItemToLesson: (lessonId: ID, itemId: ID) => void;
+  unlinkItemFromLesson: (lessonId: ID, itemId: ID) => void;
 
   // Materials
   addMaterial: (input: {
@@ -184,10 +198,14 @@ interface StoreState {
 
   // Reviews
   completeReview: (id: ID, result?: BlockResult) => void;
+  /** "Not now": hide a due review for the rest of today (no schedule change). */
+  notNowReview: (id: ID) => void;
+  /** Snooze: honestly move the due date N days from today (no SM-2 change). */
+  snoozeReview: (id: ID, days?: number) => void;
 
   // Pathways
   addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
-  updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived'>>) => void;
+  updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived' | 'currentStageId'>>) => void;
   deletePathway: (id: ID) => void;
   reseedDefaultPathways: () => void;
 
@@ -195,6 +213,8 @@ interface StoreState {
   updateStage: (id: ID, patch: Partial<Pick<PathwayStage, 'code' | 'title' | 'group' | 'intro'>>) => void;
   deleteStage: (id: ID) => void;
   moveStage: (id: ID, dir: -1 | 1) => void;
+  /** Rename a section heading across all of a pathway's stages. */
+  renameSection: (pathwayId: ID, oldGroup: string | undefined, newGroup: string) => void;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -256,6 +276,22 @@ function migrateToV5(db: PracticeDB): PracticeDB {
   return next;
 }
 
+/**
+ * v5 → v6: attachments can belong to an item OR a lesson. Old metadata carried
+ * `itemId`; fold it into `ownerType: 'item'` + `ownerId` (lossless).
+ */
+function migrateToV6(db: PracticeDB): PracticeDB {
+  const attachments = (db.attachments ?? []).map((a) => {
+    const legacy = a as AttachmentMeta & { itemId?: string };
+    if (!legacy.ownerId && legacy.itemId) {
+      const { itemId, ...rest } = legacy;
+      return { ...rest, ownerType: 'item' as const, ownerId: itemId };
+    }
+    return a;
+  });
+  return { ...db, attachments, lessons: db.lessons ?? [] };
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
@@ -263,8 +299,12 @@ export const useStore = create<StoreState>()(
       active: null,
       theme: 'system',
       hydrated: false,
+      sessionInstrumentId: null,
+      notNow: { date: '', ids: [] },
 
       setTheme: (theme) => set({ theme }),
+
+      setSessionInstrument: (sessionInstrumentId) => set({ sessionInstrumentId }),
 
       addAttachmentMeta: (meta) => {
         set((s) => ({ db: { ...s.db, attachments: [...s.db.attachments, meta] } }));
@@ -312,7 +352,43 @@ export const useStore = create<StoreState>()(
       },
 
       deleteLesson: (id) => {
-        set((s) => ({ db: { ...s.db, lessons: s.db.lessons.filter((l) => l.id !== id) } }));
+        // The lesson owns its attachments; linked items are never touched.
+        void deleteBlobsForOwner(id);
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.filter((l) => l.id !== id),
+            attachments: s.db.attachments.filter((a) => a.ownerId !== id),
+          },
+        }));
+      },
+
+      linkItemToLesson: (lessonId, itemId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId && !(l.itemIds ?? []).includes(itemId)
+                ? touch({ ...l, itemIds: [...(l.itemIds ?? []), itemId] }, now)
+                : l,
+            ),
+          },
+        }));
+      },
+
+      unlinkItemFromLesson: (lessonId, itemId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId
+                ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== itemId) }, now)
+                : l,
+            ),
+          },
+        }));
       },
 
       addMaterial: (input) => {
@@ -375,14 +451,23 @@ export const useStore = create<StoreState>()(
       },
 
       deleteItem: (id) => {
-        void deleteBlobsForItem(id);
+        void deleteBlobsForOwner(id);
+        const now = new Date();
         set((s) => ({
           db: {
             ...s.db,
-            items: s.db.items.filter((i) => i.id !== id),
+            items: s.db.items
+              .filter((i) => i.id !== id)
+              // Parts of a deleted piece stay, but ungrouped.
+              .map((i) => (i.parentItemId === id ? touch({ ...i, parentItemId: undefined }, now) : i)),
             blocks: s.db.blocks.filter((b) => b.practiceItemId !== id),
             reviews: s.db.reviews.filter((r) => r.practiceItemId !== id),
-            attachments: s.db.attachments.filter((a) => a.itemId !== id),
+            attachments: s.db.attachments.filter((a) => a.ownerId !== id),
+            lessons: s.db.lessons.map((l) =>
+              (l.itemIds ?? []).includes(id)
+                ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== id) }, now)
+                : l,
+            ),
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -425,22 +510,9 @@ export const useStore = create<StoreState>()(
           db.instruments[0]?.id ||
           '';
         const now = new Date();
-        const item = createItem(
-          {
-            instrumentId,
-            title: entry?.title ?? 'New item',
-            stageId,
-            strand: entry?.strand,
-            catalogKey: entryKey,
-            itemType: entry ? STRAND_TO_ITEM_TYPE[entry.strand] : 'other',
-            primaryFocus: entry ? STRAND_TO_FOCUS[entry.strand] : undefined,
-            currentProblem: entry?.notes,
-            notes: entry?.about,
-            persian: entry?.persian,
-            guitar: entry?.guitar,
-          },
-          now,
-        );
+        const item = entry
+          ? itemFromCatalogEntry(entry, instrumentId, now)
+          : createItem({ instrumentId, title: 'New item', stageId }, now);
         set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
         return item.id;
       },
@@ -596,6 +668,37 @@ export const useStore = create<StoreState>()(
         }));
       },
 
+      notNowReview: (id) => {
+        const today = todayISODate();
+        set((s) => {
+          const sameDay = s.notNow.date === today;
+          return {
+            notNow: { date: today, ids: sameDay ? [...new Set([...s.notNow.ids, id])] : [id] },
+          };
+        });
+      },
+
+      snoozeReview: (id, days = SNOOZE_DAYS_DEFAULT) => {
+        const now = new Date();
+        const { dueDate } = snoozePlan(days, now);
+        set((s) => {
+          const review = s.db.reviews.find((r) => r.id === id);
+          if (!review) return s;
+          return {
+            db: {
+              ...s.db,
+              reviews: s.db.reviews.map((r) =>
+                r.id === id ? { ...r, dueDate, updatedAt: nowISO(now) } : r,
+              ),
+              // Keep the item's own schedule in step so nothing shows overdue.
+              items: s.db.items.map((i) =>
+                i.id === review.practiceItemId ? touch({ ...i, nextReviewDate: dueDate }, now) : i,
+              ),
+            },
+          };
+        });
+      },
+
       // --- Pathways --------------------------------------------------------
 
       addPathway: (input) => {
@@ -700,6 +803,25 @@ export const useStore = create<StoreState>()(
             pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.stageId !== id),
             // Items stay — they just leave the stage.
             items: s.db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
+            // Un-pin any pathway pointing at the removed stage.
+            pathways: s.db.pathways.map((p) =>
+              p.currentStageId === id ? touch({ ...p, currentStageId: undefined }, now) : p,
+            ),
+          },
+        }));
+      },
+
+      renameSection: (pathwayId, oldGroup, newGroup) => {
+        const now = new Date();
+        const next = newGroup.trim() || undefined;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayStages: s.db.pathwayStages.map((st) =>
+              st.pathwayId === pathwayId && (st.group ?? undefined) === (oldGroup ?? undefined)
+                ? touch({ ...st, group: next }, now)
+                : st,
+            ),
           },
         }));
       },
@@ -747,12 +869,19 @@ export const useStore = create<StoreState>()(
       name: 'practice-compass',
       version: SCHEMA_VERSION,
       storage: createJSONStorage(() => idbStorage),
-      partialize: (s) => ({ db: s.db, active: s.active, theme: s.theme }),
+      partialize: (s) => ({
+        db: s.db,
+        active: s.active,
+        theme: s.theme,
+        sessionInstrumentId: s.sessionInstrumentId,
+        notNow: s.notNow,
+      }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;
         if (version < 3 && state?.db) state.db = migrateToV3(state.db);
         if (version < 4 && state?.db) state.db = migrateToV4(state.db);
         if (version < 5 && state?.db) state.db = migrateToV5(state.db);
+        if (version < 6 && state?.db) state.db = migrateToV6(state.db);
         if (state?.db) state.db.schemaVersion = SCHEMA_VERSION;
         return state as unknown;
       },
@@ -760,7 +889,7 @@ export const useStore = create<StoreState>()(
       // rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db ? { ...EMPTY_DB_FIELDS, ...p.db } : current.db;
+        const db = p.db ? migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db }) : current.db;
         delete (db as unknown as Record<string, unknown>).pathwaySteps;
         delete (db as unknown as Record<string, unknown>).curriculum;
         return { ...current, ...p, db };

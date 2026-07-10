@@ -1,6 +1,13 @@
 import { useRef, useState } from 'react';
 import { useStore, type ThemePref } from '../store/useStore';
-import { buildFullBackup, importFullBackup } from '../store/backup';
+import {
+  buildFullBackup,
+  getDeviceName,
+  importFullBackup,
+  lastModifiedOf,
+  readBackupMeta,
+  setDeviceName,
+} from '../store/backup';
 import { Field } from '../components/ui';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
@@ -9,6 +16,8 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
 ];
+
+const LAST_EXPORT_KEY = 'pc-last-export';
 
 export default function Settings() {
   const db = useStore((s) => s.db);
@@ -23,6 +32,14 @@ export default function Settings() {
   const [newInstrument, setNewInstrument] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deviceName, setDeviceNameState] = useState(getDeviceName());
+  const [lastExport, setLastExport] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(LAST_EXPORT_KEY);
+    } catch {
+      return null;
+    }
+  });
 
   function flash(msg: string) {
     setMessage(msg);
@@ -37,9 +54,17 @@ export default function Settings() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `practice-compass-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const device = getDeviceName() ? `-${getDeviceName().toLowerCase().replace(/\s+/g, '-')}` : '';
+      a.download = `practice-compass${device}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      const ts = new Date().toISOString();
+      try {
+        localStorage.setItem(LAST_EXPORT_KEY, ts);
+      } catch {
+        /* ignore */
+      }
+      setLastExport(ts);
       flash('Backup exported (data + files).');
     } finally {
       setBusy(false);
@@ -49,17 +74,32 @@ export default function Settings() {
   async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (confirm('Importing will replace all current data and files. Continue?')) {
-      setBusy(true);
-      try {
-        const text = await file.text();
+    setBusy(true);
+    try {
+      const text = await file.text();
+
+      // Warn when the backup looks OLDER than what's on this device.
+      const meta = readBackupMeta(text);
+      const localLatest = lastModifiedOf(db);
+      const backupLatest = meta?.lastModified ?? meta?.exportedAt ?? '';
+      let ok: boolean;
+      if (backupLatest && localLatest && backupLatest < localLatest) {
+        ok = confirm(
+          `⚠️ This backup looks OLDER than the data on this device.\n\nBackup${meta?.deviceName ? ` (from “${meta.deviceName}”)` : ''}: last change ${backupLatest.slice(0, 16).replace('T', ' ')}\nThis device: last change ${localLatest.slice(0, 16).replace('T', ' ')}\n\nImporting replaces EVERYTHING here with the older copy. Continue?`,
+        );
+      } else {
+        ok = confirm(
+          `Importing replaces all data and files on this device${meta?.deviceName ? ` with the backup from “${meta.deviceName}”` : ''}. Continue?`,
+        );
+      }
+      if (ok) {
         const result = await importFullBackup(text);
         flash(result.ok ? `Imported (${result.fileCount} file${result.fileCount === 1 ? '' : 's'}).` : `Import failed: ${result.error}`);
-      } finally {
-        setBusy(false);
       }
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
-    if (fileRef.current) fileRef.current.value = '';
   }
 
   return (
@@ -150,6 +190,31 @@ export default function Settings() {
             >
               <PlusIcon /> Add
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="stack-sm">
+        <div className="section-label">Device &amp; handoff</div>
+        <div className="card stack-sm">
+          <div className="small dim">
+            Your data lives <strong style={{ color: 'var(--text)' }}>on this device only</strong> — the app never syncs.
+            Moving to another device is an explicit transfer: export a backup here, import it there. The import replaces
+            that device's data, so treat one device as the primary home of your data.
+          </div>
+          <Field label="This device's name" hint="Stamped into backups so you can tell them apart (e.g. iPhone, MacBook).">
+            <input
+              className="input"
+              placeholder="e.g. iPhone"
+              value={deviceName}
+              onChange={(e) => setDeviceNameState(e.target.value)}
+              onBlur={() => setDeviceName(deviceName)}
+              style={{ maxWidth: 240 }}
+            />
+          </Field>
+          <div className="tiny faint">
+            Last export from this device: {lastExport ? lastExport.slice(0, 16).replace('T', ' ') : 'never'} · latest
+            change here: {lastModifiedOf(db) ? lastModifiedOf(db).slice(0, 16).replace('T', ' ') : '—'}
           </div>
         </div>
       </section>

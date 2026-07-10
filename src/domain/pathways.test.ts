@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { itemFromCatalogEntry } from './factories';
 import { catalogForStage, SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
 import {
   currentStage,
@@ -122,5 +123,28 @@ describe('progress & navigation', () => {
     const groups = groupStages(stages);
     expect(groups[0].group).toBe('Foundations');
     expect(groups.some((g) => g.group === 'Dastgāh-e Shur & its āvāz-hā')).toBe(true);
+  });
+
+  it('a user-pinned stage wins over "first incomplete" (teacher-led paths)', () => {
+    // Nothing complete → fallback is the first stage…
+    expect(currentStage(seed.pathwayStages, [], SEED_PATHWAY_IDS.setar)?.id).toBe(first.id);
+    // …but a pin (e.g. "we are in Afshārī now") takes precedence.
+    expect(currentStage(seed.pathwayStages, [], SEED_PATHWAY_IDS.setar, AFSHARI)?.id).toBe(AFSHARI);
+    // A stale pin (deleted stage / other pathway) falls back safely.
+    expect(currentStage(seed.pathwayStages, [], SEED_PATHWAY_IDS.setar, 'gone')?.id).toBe(first.id);
+  });
+});
+
+describe('itemFromCatalogEntry', () => {
+  it('creates an honest "Not practised yet" item — no implied progress', () => {
+    const entry = catalogForStage(AFSHARI).find((e) => e.key === 'iraq')!;
+    const item = itemFromCatalogEntry(entry, 'setar-1', NOW);
+    expect(item.status).toBe('new');
+    expect(item.timesPractised).toBe(0);
+    expect(item.totalMinutes).toBe(0);
+    expect(item.lastPractisedAt).toBeUndefined();
+    expect(item.stageId).toBe(AFSHARI);
+    expect(item.catalogKey).toBe('iraq');
+    expect(item.instrumentId).toBe('setar-1');
   });
 });

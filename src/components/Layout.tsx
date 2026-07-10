@@ -41,10 +41,9 @@ export default function Layout() {
         </button>
       </header>
 
-      <main className="main">
-        <Outlet />
-      </main>
-
+      {/* Navigation sits BEFORE the page content in the DOM (screen readers
+          and keyboard users reach it first); CSS pins it to the bottom on
+          phones and keeps it at the top on wide screens. */}
       {!focused && (
         <nav className="tabbar" aria-label="Primary">
           <div className="tabbar-inner">
@@ -75,6 +74,10 @@ export default function Layout() {
           </div>
         </nav>
       )}
+
+      <main className="main">
+        <Outlet />
+      </main>
     </div>
   );
 }

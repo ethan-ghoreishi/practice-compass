@@ -75,12 +75,14 @@ export function Field({
   hint?: string;
   children: ReactNode;
 }) {
+  // A div, not a <label>: Field often wraps button groups and pickers, and
+  // interactive controls must never be nested inside a label element.
   return (
-    <label className="field">
+    <div className="field" role="group" aria-label={label}>
       {label && <span className="field-label">{label}</span>}
       {children}
       {hint && <span className="field-hint">{hint}</span>}
-    </label>
+    </div>
   );
 }
 
@@ -102,6 +104,7 @@ export function OptionPills<T extends string>({
           key={o.value}
           type="button"
           className={`option${o.value === value ? ' selected' : ''}`}
+          aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
         >
           {o.label}

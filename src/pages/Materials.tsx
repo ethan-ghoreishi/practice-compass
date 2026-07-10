@@ -90,8 +90,8 @@ export default function Materials() {
     <div className="stack-lg">
       <header className="row between">
         <div>
-          <h1 className="page-title">Materials</h1>
-          <p className="page-sub">Sources and collections your items belong to</p>
+          <h1 className="page-title">Sources</h1>
+          <p className="page-sub">The books, radifs and courses your items come from</p>
         </div>
         {db.instruments.length > 0 && (
           <button className="btn btn-primary" onClick={() => setDraft(emptyDraft(db.instruments[0].id))}>
@@ -159,7 +159,7 @@ export default function Materials() {
           </Field>
           <div className="row">
             <button className="btn btn-primary grow" disabled={!draft.title.trim()} onClick={save}>
-              {draft.id ? 'Save changes' : 'Create material'}
+              {draft.id ? 'Save changes' : 'Create source'}
             </button>
             <button className="btn" onClick={() => setDraft(null)}>
               Cancel
@@ -170,8 +170,8 @@ export default function Materials() {
 
       {db.materials.length === 0 && !draft ? (
         <div className="card">
-          <EmptyState icon={<FolderIcon />} title="No materials yet">
-            Materials group your items — a radif, a course, a set of études.
+          <EmptyState icon={<FolderIcon />} title="No sources yet">
+            A source is where an item comes from — a radif, a method book, a course, a set of études. Optional, but handy for grouping.
           </EmptyState>
         </div>
       ) : (

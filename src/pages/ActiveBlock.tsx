@@ -88,7 +88,15 @@ export default function ActiveBlock() {
             <PlayIcon /> Resume
           </button>
         )}
-        <button className="btn btn-primary btn-lg" onClick={() => navigate('/close')}>
+        <button
+          className="btn btn-primary btn-lg"
+          onClick={() => {
+            // Freeze the clock the moment you finish — reflection time is
+            // yours, not silently added to the block.
+            pauseSession();
+            navigate('/close');
+          }}
+        >
           Finish
         </button>
       </div>

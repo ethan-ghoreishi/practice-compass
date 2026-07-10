@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   BLOCK_MODE_LABELS,
   FOCUS_LABELS,
@@ -7,10 +7,14 @@ import {
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
   nextLessonFor,
+  partsOf,
+  pickNextPart,
   RESULT_LABELS,
+  stallHint,
   type BlockResult,
   type GuitarFields,
   type PersianFields,
+  type PracticeItem,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store/lookups';
@@ -53,6 +57,10 @@ export default function ItemDetail() {
   const deleteItem = useStore((s) => s.deleteItem);
   const toggleAssignedForLesson = useStore((s) => s.toggleAssignedForLesson);
   const navigate = useNavigate();
+  const location = useLocation();
+  // Explicit, safe return context: back to where the item was opened from.
+  const from = (location.state as { from?: string } | null)?.from ?? '/repertoire';
+  const fromLabel = from === '/' ? 'Today' : from.startsWith('/lessons') ? 'Lessons' : from.startsWith('/pathway') ? 'Stage' : from.startsWith('/items/') ? 'Piece' : 'Repertoire';
   const now = useMemo(() => new Date(), []);
   const [editing, setEditing] = useState(false);
 
@@ -103,8 +111,8 @@ export default function ItemDetail() {
 
   return (
     <div className="stack-lg">
-      <Link to="/repertoire" className="link row" style={{ gap: 4, width: 'fit-content' }}>
-        <ArrowLeftIcon width={16} height={16} /> Repertoire
+      <Link to={from} className="link row" style={{ gap: 4, width: 'fit-content' }}>
+        <ArrowLeftIcon width={16} height={16} /> {fromLabel}
       </Link>
 
       <header className="stack-sm">
@@ -210,9 +218,13 @@ export default function ItemDetail() {
         </div>
       )}
 
+      <PartsSection item={item} now={now} />
+
+      <ConnectionsSection item={item} />
+
       <ItemNotes itemId={item.id} />
 
-      <Attachments itemId={item.id} />
+      <Attachments ownerType="item" ownerId={item.id} />
 
       {trend.length > 0 && (
         <section className="stack-sm">
@@ -285,13 +297,201 @@ export default function ItemDetail() {
         onClick={() => {
           if (confirm(`Delete "${item.title}" and its ${blocks.length} block(s)? This cannot be undone.`)) {
             deleteItem(item.id);
-            navigate('/items');
+            navigate(from);
           }
         }}
       >
         Delete item
       </button>
     </div>
+  );
+}
+
+/**
+ * Études & pieces: real practice items grouped under this one. The calm answer
+ * to "where do I even start" is one concrete part, picked deterministically.
+ */
+function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
+  const db = useStore((s) => s.db);
+  const addItem = useStore((s) => s.addItem);
+  const startItemSession = useStore((s) => s.startItemSession);
+  const navigate = useNavigate();
+  const [title, setTitle] = useState('');
+
+  const parts = useMemo(() => partsOf(item.id, db.items), [item.id, db.items]);
+  const canHaveParts =
+    item.itemType === 'full_piece' || item.itemType === 'exercise' || item.itemType === 'section' || parts.length > 0;
+  const next = useMemo(
+    () => (parts.length > 0 ? pickNextPart(item.id, db.items, db.blocks, now) : null),
+    [parts.length, item.id, db.items, db.blocks, now],
+  );
+  const hint = useMemo(
+    () => stallHint(item, db.blocks.filter((b) => b.practiceItemId === item.id)),
+    [item, db.blocks],
+  );
+
+  if (!canHaveParts) return null;
+
+  function addPart() {
+    if (!title.trim()) return;
+    addItem({
+      instrumentId: item.instrumentId,
+      title,
+      parentItemId: item.id,
+      itemType: 'section',
+      materialId: item.materialId,
+      stageId: item.stageId,
+    });
+    setTitle('');
+  }
+
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Parts</div>
+
+      {hint && <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>{hint}</div>}
+
+      {next && (
+        <div className="card card-accent row" style={{ gap: 10 }}>
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="tiny" style={{ color: 'var(--accent)' }}>
+              Practise this part now · 10 min
+            </div>
+            <div className="truncate" dir="auto">
+              {next.score.item.title}
+            </div>
+            <div className="tiny faint truncate">{next.reason}</div>
+          </div>
+          <button
+            className="btn btn-sm btn-primary"
+            onClick={() => {
+              startItemSession(next.score.item.id);
+              navigate('/active');
+            }}
+            aria-label={`Practise ${next.score.item.title}`}
+          >
+            <PlayIcon />
+          </button>
+        </div>
+      )}
+
+      {parts.length > 0 && (
+        <div className="card card-flush list">
+          {parts.map((p) => (
+            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" style={{ borderRadius: 0 }}>
+              <div className="grow truncate" dir="auto">
+                {p.title}
+              </div>
+              <StatusBadge status={p.status} />
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          className="input grow"
+          dir="auto"
+          aria-label="New part title"
+          placeholder="Break off a part… e.g. bars 9–16, the forud"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addPart()}
+        />
+        <button className="btn" disabled={!title.trim()} onClick={addPart}>
+          Add part
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** Where this item lives: its pathway stage and the lessons it appeared in. */
+function ConnectionsSection({ item }: { item: PracticeItem }) {
+  const db = useStore((s) => s.db);
+  const placeItemInStage = useStore((s) => s.placeItemInStage);
+  const linkItemToLesson = useStore((s) => s.linkItemToLesson);
+  const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
+
+  const stages = useMemo(() => {
+    const pathways = db.pathways.filter((p) => !p.instrumentId || p.instrumentId === item.instrumentId);
+    return pathways.flatMap((p) =>
+      db.pathwayStages
+        .filter((s) => s.pathwayId === p.id)
+        .sort((a, b) => a.order - b.order)
+        .map((s) => ({ stage: s, pathway: p })),
+    );
+  }, [db.pathways, db.pathwayStages, item.instrumentId]);
+
+  const linkedLessons = useMemo(
+    () => db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date)),
+    [db.lessons, item.id],
+  );
+  const linkableLessons = useMemo(
+    () =>
+      db.lessons
+        .filter((l) => l.instrumentId === item.instrumentId && !(l.itemIds ?? []).includes(item.id))
+        .sort((a, b) => b.date.localeCompare(a.date)),
+    [db.lessons, item.instrumentId, item.id],
+  );
+
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Connections</div>
+      <div className="card stack-sm">
+        <div className="field">
+          <span className="field-label">Pathway stage</span>
+          <select
+            className="select"
+            aria-label="Pathway stage this item belongs to"
+            value={item.stageId ?? ''}
+            onChange={(e) => placeItemInStage(item.id, e.target.value || undefined)}
+          >
+            <option value="">Not in a pathway</option>
+            {stages.map(({ stage, pathway }) => (
+              <option key={stage.id} value={stage.id}>
+                {pathway.name} — {stage.code}
+                {stage.title !== stage.code ? ` · ${stage.title}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="field">
+          <span className="field-label">Lessons this appeared in</span>
+          {linkedLessons.length === 0 && <span className="tiny faint">None linked yet.</span>}
+          {linkedLessons.map((l) => (
+            <div key={l.id} className="row between small">
+              <Link to="/lessons" className="link">
+                Class on {l.date}
+              </Link>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Unlink (keeps both)"
+                onClick={() => unlinkItemFromLesson(l.id, item.id)}
+              >
+                Unlink
+              </button>
+            </div>
+          ))}
+          {linkableLessons.length > 0 && (
+            <select
+              className="select"
+              aria-label="Link this item to a lesson"
+              value=""
+              onChange={(e) => e.target.value && linkItemToLesson(e.target.value, item.id)}
+            >
+              <option value="">Link to a class…</option>
+              {linkableLessons.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.date}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

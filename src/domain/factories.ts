@@ -1,6 +1,7 @@
 import type {
   BlockMode,
   BlockResult,
+  CatalogEntry,
   FocusArea,
   GuitarFields,
   ID,
@@ -21,6 +22,7 @@ import type {
   ReviewType,
   StepStrand,
 } from './types';
+import { STRAND_TO_FOCUS, STRAND_TO_ITEM_TYPE } from './labels';
 import { newId, nowISO } from './util';
 
 // ---------------------------------------------------------------------------
@@ -83,6 +85,7 @@ export interface CreateItemInput {
   strand?: StepStrand;
   catalogKey?: string;
   assignedForLesson?: boolean;
+  parentItemId?: ID;
   status?: ItemStatus;
   importance?: Rating;
   difficulty?: Rating;
@@ -109,6 +112,7 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     strand: input.strand,
     catalogKey: input.catalogKey,
     assignedForLesson: input.assignedForLesson,
+    parentItemId: input.parentItemId,
     title: input.title.trim(),
     itemType: input.itemType ?? 'other',
     status: input.status ?? 'new',
@@ -209,7 +213,37 @@ export function createLesson(
     instrumentId: input.instrumentId,
     date: input.date,
     notes: input.notes?.trim() || undefined,
+    itemIds: [],
     createdAt: ts,
     updatedAt: ts,
   };
+}
+
+/**
+ * Turn a stage's reference-catalog suggestion into a real practice item.
+ * Deliberately starts as "Not practised yet" (`status: 'new'`, zero stats):
+ * adding a suggestion is organisation, not practice.
+ */
+export function itemFromCatalogEntry(
+  entry: CatalogEntry,
+  instrumentId: ID,
+  now: Date = new Date(),
+): PracticeItem {
+  return createItem(
+    {
+      instrumentId,
+      title: entry.title,
+      stageId: entry.stageId,
+      strand: entry.strand,
+      catalogKey: entry.key,
+      itemType: STRAND_TO_ITEM_TYPE[entry.strand],
+      primaryFocus: STRAND_TO_FOCUS[entry.strand],
+      currentProblem: entry.notes,
+      notes: entry.about,
+      persian: entry.persian,
+      guitar: entry.guitar,
+      status: 'new',
+    },
+    now,
+  );
 }

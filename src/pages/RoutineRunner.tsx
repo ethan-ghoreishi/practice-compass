@@ -89,7 +89,7 @@ export default function RoutineRunner() {
           {routine.name}
         </div>
         <div className="faint tiny">
-          Segment {segIndex + 1} of {segments.length}
+          Segment {segIndex + 1} of {segments.length} · warm-up — not logged as practice
         </div>
       </header>
 

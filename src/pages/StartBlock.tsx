@@ -28,10 +28,16 @@ export default function StartBlock() {
   const db = useStore((s) => s.db);
   const addItem = useStore((s) => s.addItem);
   const startSession = useStore((s) => s.startSession);
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
   const navigate = useNavigate();
 
   const activeInstruments = db.instruments.filter((i) => i.active);
-  const [instrumentId, setInstrumentId] = useState(activeInstruments[0]?.id ?? '');
+  // Inherit the session's instrument ("I'm practising Setar now").
+  const sessionDefault =
+    sessionInstrumentId && sessionInstrumentId !== 'all'
+      ? activeInstruments.find((i) => i.id === sessionInstrumentId)?.id
+      : undefined;
+  const [instrumentId, setInstrumentId] = useState(sessionDefault ?? activeInstruments[0]?.id ?? '');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');

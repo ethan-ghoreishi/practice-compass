@@ -9,7 +9,7 @@ import {
 
 const LINKS = [
   { to: '/insights', label: 'Insights', desc: 'Calm patterns from your practice', icon: InsightsIcon },
-  { to: '/materials', label: 'Materials', desc: 'Sources & collections', icon: FolderIcon },
+  { to: '/materials', label: 'Sources', desc: 'Books, radifs, courses your items come from', icon: FolderIcon },
   { to: '/report', label: 'Teacher report', desc: 'Copyable lesson summary', icon: ReportIcon },
   { to: '/settings', label: 'Settings & backup', desc: 'Theme, instruments, export/import', icon: SettingsIcon },
 ];

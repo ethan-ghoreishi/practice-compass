@@ -12,18 +12,21 @@ import {
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
 import { Field, StatusBadge } from '../components/ui';
-import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, PlayIcon, PlusIcon } from '../components/icons';
+import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
 
 export default function StageDetail() {
   const { pathwayId, stageId } = useParams();
   const db = useStore((s) => s.db);
   const updateStage = useStore((s) => s.updateStage);
   const deleteStage = useStore((s) => s.deleteStage);
+  const updatePathway = useStore((s) => s.updatePathway);
   const addFromCatalog = useStore((s) => s.addFromCatalog);
+  const deleteItem = useStore((s) => s.deleteItem);
   const startItemSession = useStore((s) => s.startItemSession);
   const navigate = useNavigate();
 
   const stage = db.pathwayStages.find((s) => s.id === stageId);
+  const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
   const units = useMemo(() => (stage ? stageUnits(stage, db.items) : []), [stage, db.items]);
   const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
 
@@ -31,6 +34,7 @@ export default function StageDetail() {
   const [editCode, setEditCode] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editIntro, setEditIntro] = useState('');
+  const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
 
   if (!stage) {
     return (
@@ -45,6 +49,9 @@ export default function StageDetail() {
 
   const sp = stageProgress(units);
   const backTo = `/pathway/${pathwayId}`;
+  const here = `/pathway/${pathwayId}/${stageId}`;
+  const isPinned = pathway?.currentStageId === stage.id;
+  const hasSuggestions = units.some((u) => !u.item);
 
   function startEdit() {
     setEditCode(stage!.code);
@@ -59,6 +66,12 @@ export default function StageDetail() {
       intro: editIntro.trim() || undefined,
     });
     setEditing(false);
+  }
+
+  function addSuggestion(unit: StageUnit) {
+    const id = addFromCatalog(stage!.id, unit.key);
+    setUndo({ id, title: unit.title });
+    setTimeout(() => setUndo((cur) => (cur?.id === id ? null : cur)), 8000);
   }
 
   function practise(unit: StageUnit) {
@@ -120,6 +133,18 @@ export default function StageDetail() {
             <span className="tiny faint mono-num">
               {sp.done}/{sp.total} solid
             </span>
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            {pathway && (
+              <button
+                className={`btn btn-sm${isPinned ? ' btn-primary' : ''}`}
+                aria-pressed={isPinned}
+                title="Make this the stage Today points to for this instrument"
+                onClick={() => updatePathway(pathway.id, { currentStageId: isPinned ? undefined : stage.id })}
+              >
+                {isPinned ? 'Current stage ✓' : 'Set as current stage'}
+              </button>
+            )}
             <button className="btn btn-ghost btn-sm" onClick={startEdit}>
               Edit
             </button>
@@ -138,9 +163,25 @@ export default function StageDetail() {
 
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
+        {undo && (
+          <div className="card card-quiet row between small">
+            <span className="truncate" dir="auto">
+              Added “{undo.title}” — not practised yet.
+            </span>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                deleteItem(undo.id);
+                setUndo(null);
+              }}
+            >
+              Undo
+            </button>
+          </div>
+        )}
         <div className="stack-sm">
           {units.map((u) => (
-            <UnitRow key={u.key} unit={u} onPractise={() => practise(u)} onAdd={() => addFromCatalog(stage.id, u.key)} />
+            <UnitRow key={u.key} unit={u} returnTo={here} onPractise={() => practise(u)} onAdd={() => addSuggestion(u)} />
           ))}
           {units.length === 0 && (
             <div className="card card-quiet small dim">Nothing here yet — add your first piece below.</div>
@@ -149,14 +190,33 @@ export default function StageDetail() {
         <QuickAdd stageId={stage.id} />
         <div className="tiny faint">
           Anything you add here is a normal practice item — it also appears under “All items” and in recommendations.
+          {hasSuggestions && (
+            <>
+              {' '}
+              Greyed entries are <strong>reference suggestions</strong>
+              {pathway?.source ? ` (from ${pathway.source})` : ''} — a starting aid, not a fixed syllabus; everything is
+              editable once added.
+            </>
+          )}
         </div>
       </section>
     </div>
   );
 }
 
-function UnitRow({ unit, onPractise, onAdd }: { unit: StageUnit; onPractise: () => void; onAdd: () => void }) {
+function UnitRow({
+  unit,
+  returnTo,
+  onPractise,
+  onAdd,
+}: {
+  unit: StageUnit;
+  returnTo: string;
+  onPractise: () => void;
+  onAdd: () => void;
+}) {
   const navigate = useNavigate();
+  const placeItemInStage = useStore((s) => s.placeItemInStage);
   const item = unit.item;
 
   return (
@@ -177,7 +237,7 @@ function UnitRow({ unit, onPractise, onAdd }: { unit: StageUnit; onPractise: () 
       <button
         className="grow"
         style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
-        onClick={() => (item ? navigate(`/items/${item.id}`) : onAdd())}
+        onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : onAdd())}
         title={item ? 'Open item' : 'Add to your items'}
       >
         <div className="truncate" dir="auto">
@@ -188,7 +248,7 @@ function UnitRow({ unit, onPractise, onAdd }: { unit: StageUnit; onPractise: () 
           {item ? (
             <span>· {ITEM_STATUS_LABELS[item.status]}{item.assignedForLesson ? ' · for class' : ''}</span>
           ) : (
-            <span>· suggestion — tap to add</span>
+            <span>· reference suggestion — tap to add</span>
           )}
         </div>
         {unit.entry?.about && !item && (
@@ -204,13 +264,21 @@ function UnitRow({ unit, onPractise, onAdd }: { unit: StageUnit; onPractise: () 
           <button className="btn btn-sm btn-primary" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
             <PlayIcon />
           </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ minHeight: 30, padding: '0 6px' }}
+            title="Remove from this stage (the item itself is kept)"
+            aria-label={`Remove ${unit.title} from this stage — the item is kept`}
+            onClick={() => placeItemInStage(item.id, undefined)}
+          >
+            <XIcon width={14} height={14} />
+          </button>
         </>
       ) : (
         <button className="btn btn-sm" onClick={onAdd} aria-label={`Add ${unit.title}`}>
           <PlusIcon /> Add
         </button>
       )}
-      {item && <ChevronRightIcon width={14} height={14} className="faint" style={{ flex: 'none' }} />}
     </div>
   );
 }
@@ -224,7 +292,7 @@ function RoutineCard({ routine, onStart }: { routine: PathwayRoutine; onStart: (
           {routine.name}
         </div>
         <div className="tiny faint">
-          {routine.segments.length} segments · {total} min
+          {routine.segments.length} segments · {total} min · guided warm-up, not logged as practice
         </div>
       </div>
       <button className="btn btn-primary btn-sm" onClick={onStart}>

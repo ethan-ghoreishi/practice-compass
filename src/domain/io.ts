@@ -68,6 +68,18 @@ export function validateDB(input: unknown): PracticeDB {
     }
   }
 
+  // Legacy (schema ≤ 5) attachment metadata carried `itemId`; normalise to the
+  // owner shape so old backups import losslessly.
+  const attachments = (((raw.attachments as unknown[]) ?? []) as (PracticeDB['attachments'][number] & {
+    itemId?: string;
+  })[]).map((a) => {
+    if (a && typeof a === 'object' && !a.ownerId && a.itemId) {
+      const { itemId, ...rest } = a;
+      return { ...rest, ownerType: 'item' as const, ownerId: itemId };
+    }
+    return a;
+  });
+
   const db: PracticeDB = {
     schemaVersion: typeof raw.schemaVersion === 'number' ? (raw.schemaVersion as number) : SCHEMA_VERSION,
     instruments: (raw.instruments as PracticeDB['instruments']) ?? [],
@@ -78,7 +90,7 @@ export function validateDB(input: unknown): PracticeDB {
     pathways: (raw.pathways as PracticeDB['pathways']) ?? [],
     pathwayStages: (raw.pathwayStages as PracticeDB['pathwayStages']) ?? [],
     pathwayRoutines: (raw.pathwayRoutines as PracticeDB['pathwayRoutines']) ?? [],
-    attachments: (raw.attachments as PracticeDB['attachments']) ?? [],
+    attachments,
     lessons: (raw.lessons as PracticeDB['lessons']) ?? [],
   };
 

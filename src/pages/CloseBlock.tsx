@@ -30,16 +30,21 @@ export default function CloseBlock() {
   const active = useStore((s) => s.active);
   const closeSession = useStore((s) => s.closeSession);
   const cancelSession = useStore((s) => s.cancelSession);
+  const resumeSession = useStore((s) => s.resumeSession);
   const navigate = useNavigate();
   const now = useMemo(() => new Date(), []);
 
   const item = active ? getItem(db, active.itemId) : undefined;
+  // The clock was paused on Finish, so this figure is frozen — reflection
+  // time is not silently counted.
   const defaultMinutes = active ? Math.max(1, Math.round(sessionElapsedSeconds(active) / 60)) : 10;
 
   const [result, setResult] = useState<BlockResult | null>(null);
   const [duration, setDuration] = useState(defaultMinutes);
   const [observation, setObservation] = useState(active?.note ?? '');
   const [nextAction, setNextAction] = useState('');
+  const [bodyNote, setBodyNote] = useState('');
+  const [showBodyNote, setShowBodyNote] = useState(false);
   const [comeBack, setComeBack] = useState(true);
   const [reviewDate, setReviewDate] = useState('');
   const [reviewType, setReviewType] = useState<ReviewType>('retention');
@@ -103,6 +108,7 @@ export default function CloseBlock() {
       durationMinutes: duration,
       observation: observation.trim() || undefined,
       nextAction: nextAction.trim() || undefined,
+      bodyNote: bodyNote.trim() || undefined,
       newStatus,
       scheduleReview: comeBack && !!reviewDate,
       nextReviewDate: reviewDate || undefined,
@@ -129,6 +135,7 @@ export default function CloseBlock() {
               key={o.value}
               type="button"
               className={`option${result === o.value ? ' selected' : ''}`}
+              aria-pressed={result === o.value}
               onClick={() => pickResult(o.value)}
             >
               {o.label}
@@ -171,6 +178,26 @@ export default function CloseBlock() {
           onChange={(e) => setNextAction(e.target.value)}
         />
       </Field>
+
+      {showBodyNote ? (
+        <Field label="Body / tension note">
+          <input
+            className="input"
+            placeholder="e.g. right shoulder crept up in the riz"
+            value={bodyNote}
+            onChange={(e) => setBodyNote(e.target.value)}
+            autoFocus
+          />
+        </Field>
+      ) : (
+        <button
+          className="link small"
+          style={{ background: 'none', border: 'none', textAlign: 'left', width: 'fit-content' }}
+          onClick={() => setShowBodyNote(true)}
+        >
+          + Body / tension note
+        </button>
+      )}
 
       {statusSuggestion.suggestedStatus && (
         <div className="card card-quiet">
@@ -230,7 +257,13 @@ export default function CloseBlock() {
         <button className="btn btn-primary btn-lg grow" onClick={handleSave}>
           <CheckIcon /> Save block
         </button>
-        <button className="btn" onClick={() => navigate('/active')}>
+        <button
+          className="btn"
+          onClick={() => {
+            resumeSession();
+            navigate('/active');
+          }}
+        >
           <PlayIcon /> Back
         </button>
       </div>
@@ -259,11 +292,11 @@ function YesNo({
   no?: string;
 }) {
   return (
-    <div className="options">
-      <button type="button" className={`option${value ? ' selected' : ''}`} onClick={() => onChange(true)}>
+    <div className="options" role="group">
+      <button type="button" className={`option${value ? ' selected' : ''}`} aria-pressed={value} onClick={() => onChange(true)}>
         {yes}
       </button>
-      <button type="button" className={`option${!value ? ' selected' : ''}`} onClick={() => onChange(false)}>
+      <button type="button" className={`option${!value ? ' selected' : ''}`} aria-pressed={!value} onClick={() => onChange(false)}>
         {no}
       </button>
     </div>

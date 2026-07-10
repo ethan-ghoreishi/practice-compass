@@ -19,17 +19,25 @@ single backup file (JSON data + embedded files) exports/imports everything. It's
 
 ## What it does
 
+- **Opens on YOUR session.** Today starts with "which instrument am I practising now?" —
+  pick Setar and everything on screen is Setar's: one clear *Practise now* card (with a
+  plain-language reason), that instrument's class work, due reviews, and pathway position.
+  Other instruments never leak in; a cross-instrument Overview is one deliberate tap away.
 - **Gives you a path to trust — for every instrument.** Editable **Pathways** you follow
   at your own pace, always seeing where you stand and what's ahead. No rush, no deadlines,
   no competition. Three are seeded and fully editable: **Classical Guitar Shed** (1A from
   the official syllabus with two guided routines; Levels 1–3 from the real course),
   **Setar · Radif & Repertoire** (a dastgāh/āvāz/gusheh map, teacher-driven and reorderable),
   and **Tar · Honarestān method** (the two-book conservatory curriculum, as taught on
-  Khonyagar.com). Create your own, rename, reorder, add or delete anything.
+  Khonyagar.com). Create your own; rename/reorder sections and stages; pin the stage
+  you're actually in (teacher-led work doesn't move linearly).
 - **Walks you through a session.** Guided routines run as a hands-free, segment-by-segment
-  timer — just follow along.
+  timer — clearly labelled as a warm-up, not logged practice.
 - **Tells you what to practise next.** A deterministic recommendation engine surfaces
   three explained cards: *Best Next Focus*, *Quick Win*, and *Maintenance*.
+- **Keeps études concrete.** Break a piece into parts (bars, phrases, one technical
+  problem); the piece page always names *one* part to practise now, for 10 minutes, and
+  suggests a smaller unit or new strategy when things stall — never quotas.
 - **Makes starting trivial.** A quick‑start flow gets you practising in under 30 seconds
   with smart defaults (status → mode, item → focus, 10‑minute default).
 - **Keeps the practice screen quiet.** Just the item, the mode, the focus and a timer.
@@ -190,11 +198,14 @@ a filterable list.
 
 ## Lessons (classes with a teacher)
 
-Per-instrument lesson log — dates plus the notes you type up after rewatching your class
-recording (**Farsi welcome**: every text field is direction-aware). Flag any item
-“complete before next class” and it gets a priority boost that climbs as the class
-approaches; Today shows a *Before your class* strip with the countdown. Works for every
-instrument, ready for future Tar / Guitar teachers.
+Per-instrument lesson log matching the real workflow: record the class → rewatch →
+type up notes (**Farsi welcome**: every text field is direction-aware) → create or link
+the concrete practice items right on the lesson card → they appear in that instrument's
+Today. Each lesson lists what was worked on (a link — unlinking never deletes the item),
+can hold its own attachments (hand-out PDFs, photos; class videos stay in your session
+folders), and any item can be flagged *for next class*, which gives it a priority boost
+that climbs as **that instrument's** class approaches. Works for every instrument, ready
+for future Tar / Guitar teachers.
 
 ## Review scheduling
 
@@ -208,9 +219,19 @@ little sooner. It returns a one-line rationale. Per item you can override the mo
 - **Every N days** — a fixed cadence you choose.
 - **Manual** — you set each date yourself.
 
-Item statuses use plain language — *Just started · Shaky · Fixing problems · Coming
-together · Solid · Performance-ready · Keeping fresh · Resting* — with a one-line
-description in the picker.
+Due reviews offer three honest actions: **practise** (the only thing that completes a
+review), **not now** (hidden until tomorrow, no schedule change), and **+2d** (genuinely
+moves the date). Item statuses use plain language — *Not practised yet · Shaky · Fixing
+problems · Coming together · Solid · Performance-ready · Keeping fresh · Resting* — with
+a one-line description in the picker.
+
+## Devices & handoff
+
+Each browser/device keeps its **own** local data — the app never syncs. Moving between
+iPhone and MacBook is an explicit transfer: export the full backup (one JSON with data +
+files, stamped with the device name and last-change time) and import it on the other
+device. The import warns you before an older backup overwrites newer local data.
+Settings → *Device & handoff* explains this and names the current device.
 
 ## Install as an app (PWA)
 
@@ -239,10 +260,12 @@ Calm, focused, serious, elegant, fast, uncluttered — encouraging but never che
 - Teacher‑sharing PDF
 - Seed Levels 1B–5 of CGS in full detail from each sub-level's syllabus
 
-Done: ✅ PWA offline install · ✅ Pathways unified with items (catalog + one-tap add) ·
-✅ SM-2 spaced-repetition review with manual override · ✅ IndexedDB source of truth ·
-✅ File & note attachments per item (single source of truth) · ✅ Full backup with files ·
-✅ Lesson log with class-deadline prioritising (Farsi-aware) · ✅ Private NAS deploy + CI.
+Done: ✅ PWA offline install · ✅ Pathways unified with items (catalog + one-tap add +
+undo) · ✅ SM-2 spaced-repetition review with manual override, snooze & not-now ·
+✅ IndexedDB source of truth · ✅ Attachments on items *and* lessons · ✅ Full backup with
+files + device handoff warnings · ✅ Lesson↔item linking with per-instrument class
+deadlines (Farsi-aware) · ✅ Per-instrument session workspace · ✅ Sections, stage pinning
+& étude parts · ✅ Private NAS deploy + CI.
 
 See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
 [`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.

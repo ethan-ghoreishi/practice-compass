@@ -5,7 +5,8 @@ import type { StateStorage } from 'zustand/middleware';
 // IndexedDB is the source of truth on the device (matching the systema / hess
 // house style). Two tables:
 //   • kv          — the serialised app state (one row; Zustand persists here)
-//   • attachments — file blobs (PDFs, images, audio) keyed by id, per item
+//   • attachments — file blobs (PDFs, images, audio) keyed by id, owned by a
+//                   practice item OR a lesson (ownerId)
 // This lifts the ~5 MB localStorage ceiling and lets the app hold the user's
 // scores and teacher hand-outs as a genuine single source of truth.
 // ---------------------------------------------------------------------------
@@ -17,7 +18,8 @@ export interface KV {
 
 export interface AttachmentBlob {
   id: string;
-  itemId: string;
+  /** Id of the owning PracticeItem or Lesson. */
+  ownerId: string;
   blob: Blob;
 }
 
@@ -27,10 +29,26 @@ class PracticeCompassDB extends Dexie {
 
   constructor() {
     super('practice-compass');
+    // v1: blobs keyed per item (itemId).
     this.version(1).stores({
       kv: 'key',
       attachments: 'id, itemId',
     });
+    // v2: attachments can belong to an item or a lesson → generic ownerId.
+    this.version(2)
+      .stores({
+        kv: 'key',
+        attachments: 'id, ownerId',
+      })
+      .upgrade(async (tx) => {
+        await tx
+          .table('attachments')
+          .toCollection()
+          .modify((row: AttachmentBlob & { itemId?: string }) => {
+            row.ownerId = row.ownerId ?? row.itemId ?? '';
+            delete row.itemId;
+          });
+      });
   }
 }
 
@@ -73,8 +91,8 @@ export const idbStorage: StateStorage = {
 
 // --- Attachment blob helpers -----------------------------------------------
 
-export async function putBlob(id: string, itemId: string, blob: Blob): Promise<void> {
-  await idb.attachments.put({ id, itemId, blob });
+export async function putBlob(id: string, ownerId: string, blob: Blob): Promise<void> {
+  await idb.attachments.put({ id, ownerId, blob });
 }
 
 export async function getBlob(id: string): Promise<Blob | undefined> {
@@ -85,8 +103,8 @@ export async function deleteBlob(id: string): Promise<void> {
   await idb.attachments.delete(id);
 }
 
-export async function deleteBlobsForItem(itemId: string): Promise<void> {
-  await idb.attachments.where('itemId').equals(itemId).delete();
+export async function deleteBlobsForOwner(ownerId: string): Promise<void> {
+  await idb.attachments.where('ownerId').equals(ownerId).delete();
 }
 
 export async function clearBlobs(): Promise<void> {

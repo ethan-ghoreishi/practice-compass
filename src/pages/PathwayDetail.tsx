@@ -21,6 +21,7 @@ export default function PathwayDetail() {
   const deletePathway = useStore((s) => s.deletePathway);
   const addStage = useStore((s) => s.addStage);
   const moveStage = useStore((s) => s.moveStage);
+  const renameSection = useStore((s) => s.renameSection);
   const navigate = useNavigate();
 
   const pathway = db.pathways.find((p) => p.id === pathwayId);
@@ -30,7 +31,11 @@ export default function PathwayDetail() {
   const [addingStage, setAddingStage] = useState(false);
   const [stageCode, setStageCode] = useState('');
   const [stageTitle, setStageTitle] = useState('');
+  /** '' = no section; '__new__' = create a new section name. */
   const [stageGroup, setStageGroup] = useState('');
+  const [newGroupName, setNewGroupName] = useState('');
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   if (!pathway) {
     return (
@@ -43,15 +48,22 @@ export default function PathwayDetail() {
     );
   }
 
-  const current = currentStage(db.pathwayStages, db.items, pathway.id);
+  const current = currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId);
   const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id);
   const grouped = groupStages(stages);
+  const groupNames = [...new Set(stages.map((s) => s.group).filter((g): g is string => !!g))];
 
   function submitStage() {
     if (!stageTitle.trim() && !stageCode.trim()) return;
-    addStage(pathway!.id, { code: stageCode || stageTitle.slice(0, 6), title: stageTitle || stageCode, group: stageGroup });
+    const group = stageGroup === '__new__' ? newGroupName.trim() : stageGroup;
+    addStage(pathway!.id, {
+      code: stageCode || stageTitle.slice(0, 6),
+      title: stageTitle || stageCode,
+      group: group || undefined,
+    });
     setStageCode('');
     setStageTitle('');
+    setNewGroupName('');
     setAddingStage(false);
   }
 
@@ -133,14 +145,27 @@ export default function PathwayDetail() {
           <div className="card stack-sm">
             <div className="grid-2">
               <Field label="Short code">
-                <input className="input" placeholder="e.g. 2A / Shur" value={stageCode} onChange={(e) => setStageCode(e.target.value)} />
+                <input className="input" dir="auto" placeholder="e.g. 2A / Shur" value={stageCode} onChange={(e) => setStageCode(e.target.value)} />
               </Field>
-              <Field label="Group (optional)">
-                <input className="input" placeholder="e.g. Level 2 / Book 1" value={stageGroup} onChange={(e) => setStageGroup(e.target.value)} />
+              <Field label="Section" hint="Which part of the path this stage sits in.">
+                <select className="select" value={stageGroup} onChange={(e) => setStageGroup(e.target.value)} aria-label="Section for the new stage">
+                  <option value="">No section</option>
+                  {groupNames.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                  <option value="__new__">New section…</option>
+                </select>
               </Field>
             </div>
+            {stageGroup === '__new__' && (
+              <Field label="New section name">
+                <input className="input" dir="auto" placeholder="e.g. Book 3" value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
+              </Field>
+            )}
             <Field label="Title">
-              <input className="input" value={stageTitle} onChange={(e) => setStageTitle(e.target.value)} />
+              <input className="input" dir="auto" value={stageTitle} onChange={(e) => setStageTitle(e.target.value)} />
             </Field>
             <button className="btn btn-primary" onClick={submitStage}>
               Add stage
@@ -150,7 +175,55 @@ export default function PathwayDetail() {
 
         {grouped.map((g, gi) => (
           <div key={gi} className="stack-sm">
-            {g.group && <div className="small dim" style={{ marginTop: gi ? 8 : 0, fontWeight: 600 }}>{g.group}</div>}
+            {g.group &&
+              (renamingGroup === g.group ? (
+                <div className="row" style={{ gap: 8, marginTop: gi ? 8 : 0 }}>
+                  <input
+                    className="input grow"
+                    dir="auto"
+                    value={renameValue}
+                    autoFocus
+                    aria-label={`Rename section ${g.group}`}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && renameValue.trim()) {
+                        renameSection(pathway.id, g.group, renameValue);
+                        setRenamingGroup(null);
+                      }
+                      if (e.key === 'Escape') setRenamingGroup(null);
+                    }}
+                  />
+                  <button
+                    className="btn btn-sm btn-primary"
+                    disabled={!renameValue.trim()}
+                    onClick={() => {
+                      renameSection(pathway.id, g.group, renameValue);
+                      setRenamingGroup(null);
+                    }}
+                  >
+                    Save
+                  </button>
+                  <button className="btn btn-sm" onClick={() => setRenamingGroup(null)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="row between" style={{ marginTop: gi ? 8 : 0 }}>
+                  <div className="small dim" style={{ fontWeight: 600 }} dir="auto">
+                    {g.group}
+                  </div>
+                  <button
+                    className="link tiny"
+                    style={{ background: 'none', border: 'none' }}
+                    onClick={() => {
+                      setRenamingGroup(g.group!);
+                      setRenameValue(g.group!);
+                    }}
+                  >
+                    rename
+                  </button>
+                </div>
+              ))}
             {g.stages.map((stage) => (
               <StageRow
                 key={stage.id}
@@ -158,6 +231,7 @@ export default function PathwayDetail() {
                 num={stages.findIndex((s) => s.id === stage.id) + 1}
                 db={db}
                 isCurrent={stage.id === current?.id}
+                isPinned={pathway.currentStageId === stage.id}
                 onOpen={() => navigate(`/pathway/${pathway.id}/${stage.id}`)}
                 onMove={(d) => moveStage(stage.id, d)}
               />
@@ -176,6 +250,7 @@ function StageRow({
   num,
   db,
   isCurrent,
+  isPinned,
   onOpen,
   onMove,
 }: {
@@ -183,6 +258,7 @@ function StageRow({
   num: number;
   db: ReturnType<typeof useStore.getState>['db'];
   isCurrent: boolean;
+  isPinned: boolean;
   onOpen: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
@@ -200,8 +276,8 @@ function StageRow({
       </div>
       <button className="grow" style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit' }} onClick={onOpen}>
         <div className="row" style={{ gap: 8 }}>
-          <span>{stage.code}</span>
-          {isCurrent && <span className="badge tone-progress">Current</span>}
+          <span dir="auto">{stage.code}</span>
+          {isCurrent && <span className="badge tone-progress">{isPinned ? 'Current · pinned' : 'Current'}</span>}
           {sp.complete && <span className="badge tone-good">Done</span>}
           {sp.addedItems > 0 && !sp.complete && (
             <span className="tiny faint">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>

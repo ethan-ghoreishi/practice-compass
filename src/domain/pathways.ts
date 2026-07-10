@@ -103,13 +103,22 @@ export function stageProgress(units: StageUnit[]): StageProgress {
   };
 }
 
-/** The first stage that isn't fully complete (or the last stage if all done). */
+/**
+ * Where the user is in a pathway. Teacher-led work jumps around, so a
+ * user-pinned stage (`pinnedStageId`, from `Pathway.currentStageId`) always
+ * wins; the "first incomplete stage" is only the fallback for linear paths.
+ */
 export function currentStage(
   stages: PathwayStage[],
   items: PracticeItem[],
   pathwayId: string,
+  pinnedStageId?: string,
 ): PathwayStage | null {
   const ordered = stagesOfPathway(stages, pathwayId);
+  if (pinnedStageId) {
+    const pinned = ordered.find((s) => s.id === pinnedStageId);
+    if (pinned) return pinned;
+  }
   for (const stage of ordered) {
     if (!stageProgress(stageUnits(stage, items)).complete) return stage;
   }

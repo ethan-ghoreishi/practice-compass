@@ -80,7 +80,7 @@ export function valuesToCreateInput(v: ItemFormValues) {
   return {
     instrumentId: v.instrumentId,
     title: v.title.trim(),
-    materialId: v.materialId || undefined,
+    materialId: v.materialId && v.materialId !== '__new__' ? v.materialId : undefined,
     itemType: v.itemType,
     status: v.status,
     importance: v.importance,

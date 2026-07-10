@@ -853,6 +853,15 @@ select {
   }
 }
 
+@media (min-width: 1200px) {
+  :root {
+    --maxw: 860px;
+  }
+  .textarea {
+    min-height: 160px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
