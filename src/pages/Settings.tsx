@@ -8,6 +8,7 @@ import {
   readBackupMeta,
   setDeviceName,
 } from '../store/backup';
+import { getSyncConfig, resolveConflict, setSyncConfig, syncNow, useSyncStatus } from '../store/githubSync';
 import { Field } from '../components/ui';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
@@ -138,15 +139,18 @@ export default function Settings() {
           <div>
             <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
           </div>
-          <div className="tiny faint">It opens full-screen, works offline, and keeps all data on the device.</div>
+          <div>
+            <strong style={{ color: 'var(--text)' }}>Mac (Safari):</strong> File →{' '}
+            <strong style={{ color: 'var(--text)' }}>“Add to Dock.”</strong>
+          </div>
           <div className="tiny faint">
-            Best setup: practise from the <strong style={{ color: 'var(--text)' }}>iPhone app</strong> (timer in hand,
-            files at the music stand); after a class, type up notes on the{' '}
-            <strong style={{ color: 'var(--text)' }}>MacBook</strong> at the same address. Data lives per device — move
-            it with Export/Import below.
+            It opens full-screen as its own app, works offline, and keeps all data on the device. With sync (below)
+            turned on, the MacBook and iPhone apps stay on the same data.
           </div>
         </div>
       </section>
+
+      <SyncSection />
 
       <section className="stack-sm">
         <div className="section-label">Instruments</div>
@@ -198,14 +202,15 @@ export default function Settings() {
         <div className="section-label">Device &amp; handoff</div>
         <div className="card stack-sm">
           <div className="small dim">
-            Your data lives <strong style={{ color: 'var(--text)' }}>on this device only</strong> — the app never syncs.
-            Moving to another device is an explicit transfer: export a backup here, import it there. The import replaces
-            that device's data, so treat one device as the primary home of your data.
+            Each device keeps its own local copy (everything works offline). With{' '}
+            <strong style={{ color: 'var(--text)' }}>sync</strong> on, devices exchange whole snapshots through your
+            GitHub repo — newest copy wins, and if both changed you choose. Without sync, moving data is a manual
+            export → import.
           </div>
-          <Field label="This device's name" hint="Stamped into backups so you can tell them apart (e.g. iPhone, MacBook).">
+          <Field label="This device's name" hint="Stamped into backups and sync commits so you can tell devices apart (e.g. iPhone, MacBook).">
             <input
               className="input"
-              placeholder="e.g. iPhone"
+              placeholder="e.g. MacBook"
               value={deviceName}
               onChange={(e) => setDeviceNameState(e.target.value)}
               onBlur={() => setDeviceName(deviceName)}
@@ -267,5 +272,132 @@ export default function Settings() {
 
       {message && <div className="toast">{message}</div>}
     </div>
+  );
+}
+
+/**
+ * Mac ↔ iPhone sync through a GitHub repo the user owns. Free, no server of
+ * ours, and honest: whole snapshots, newest wins, conflicts are an explicit
+ * choice. The token stays in this browser's localStorage only.
+ */
+function SyncSection() {
+  const status = useSyncStatus();
+  const [cfg, setCfg] = useState(() => getSyncConfig());
+  const [repo, setRepo] = useState(cfg?.repo ?? 'ethan-ghoreishi/practice-compass-data');
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function connectAndSync() {
+    const next = { repo: repo.trim().replace(/^https?:\/\/github\.com\//, ''), token: token.trim() };
+    setSyncConfig(next);
+    setCfg(next);
+    setToken('');
+    setBusy(true);
+    await syncNow();
+    setBusy(false);
+  }
+
+  async function manualSync() {
+    setBusy(true);
+    await syncNow();
+    setBusy(false);
+  }
+
+  async function resolve(keep: 'local' | 'remote') {
+    setBusy(true);
+    await resolveConflict(keep);
+    setBusy(false);
+  }
+
+  const fmt = (iso?: string | null) => (iso ? iso.slice(0, 16).replace('T', ' ') : '—');
+
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Sync (GitHub)</div>
+      <div className="card stack-sm">
+        {!cfg ? (
+          <>
+            <div className="small dim">
+              Keep the MacBook and iPhone on the same data through a private GitHub repo you own — free, works from
+              anywhere, no server. The app stays fully offline-capable; sync happens when you're online.
+            </div>
+            <Field label="Repository" hint="owner/name of a repo dedicated to this app's data.">
+              <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="you/practice-compass-data" />
+            </Field>
+            <Field
+              label="Access token"
+              hint="GitHub → Settings → Developer settings → Fine-grained tokens → New: select ONLY that repo, permission “Contents: Read and write”. Stored in this browser only."
+            >
+              <input
+                className="input"
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="github_pat_…"
+                autoComplete="off"
+              />
+            </Field>
+            <button className="btn btn-primary" disabled={!repo.trim() || !token.trim() || busy} onClick={connectAndSync}>
+              Connect &amp; sync
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="row between small">
+              <span className="dim">
+                Repo: <strong style={{ color: 'var(--text)' }}>{cfg.repo}</strong>
+              </span>
+              <span className="tiny faint">last sync {fmt(status.lastSyncAt)}</span>
+            </div>
+
+            <div className="small" style={{ color: status.phase === 'error' ? 'var(--tone-alert)' : undefined }}>
+              {status.phase === 'syncing' ? 'Syncing…' : status.message}
+            </div>
+
+            {status.phase === 'conflict' && status.conflict && (
+              <div className="card card-quiet stack-sm">
+                <div className="small">Both copies have changes. Which one should win? The other is replaced.</div>
+                <div className="tiny dim">
+                  This device ({status.conflict.local.deviceName || 'unnamed'}): last change{' '}
+                  {fmt(status.conflict.local.lastModified)}
+                  <br />
+                  GitHub copy{status.conflict.remote.deviceName ? ` (from ${status.conflict.remote.deviceName})` : ''}:
+                  last change {fmt(status.conflict.remote.lastModified)}
+                </div>
+                <div className="grid-2">
+                  <button className="btn" disabled={busy} onClick={() => resolve('local')}>
+                    Keep this device's copy
+                  </button>
+                  <button className="btn" disabled={busy} onClick={() => resolve('remote')}>
+                    Take the GitHub copy
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn" disabled={busy || status.phase === 'syncing'} onClick={manualSync}>
+                Sync now
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  if (confirm('Turn sync off on this device? Data stays put; only the connection is removed.')) {
+                    setSyncConfig(null);
+                    setCfg(null);
+                  }
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
+            <div className="tiny faint">
+              Syncs automatically when the app opens and shortly after changes. Attachments upload once; only new or
+              deleted files transfer.
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }

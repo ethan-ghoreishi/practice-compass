@@ -15,12 +15,23 @@ import { useStore } from '../store/useStore';
 import { materialLabel, materialsForInstrument } from '../store/lookups';
 import { Field, OptionPills, RatingInput } from './ui';
 import { recordToOptions } from './options';
-import { GUITAR_FIELDS, PERSIAN_FIELDS } from './itemFields';
+import {
+  DASTGAH_SUGGESTIONS,
+  FORM_SUGGESTIONS,
+  GUITAR_DETAIL_FIELDS,
+  GUITAR_IDENTITY_FIELDS,
+  PERSIAN_DETAIL_FIELDS,
+} from './itemFields';
 import type { ItemFormValues } from './itemFormValues';
 
 const TYPE_OPTIONS = recordToOptions(ITEM_TYPE_LABELS);
 const REVIEW_MODE_OPTIONS = recordToOptions(REVIEW_MODE_LABELS);
 
+/**
+ * The one full item form — everything (source, placement, focus, importance,
+ * Persian identity…) is settable at creation time, in logical groups. Only
+ * the title is required; everything else has a sensible default.
+ */
 export default function ItemForm({
   initial,
   submitLabel,
@@ -35,12 +46,34 @@ export default function ItemForm({
   const db = useStore((s) => s.db);
   const addMaterial = useStore((s) => s.addMaterial);
   const [v, setV] = useState<ItemFormValues>(initial);
-  const [showPersian, setShowPersian] = useState(Object.values(initial.persian).some(Boolean));
-  const [showGuitar, setShowGuitar] = useState(Object.values(initial.guitar).some(Boolean));
+  const [showWorking, setShowWorking] = useState(
+    Boolean(
+      initial.currentProblem ||
+        initial.bestStrategy ||
+        initial.teacherQuestion ||
+        initial.tags ||
+        Object.entries(initial.persian).some(([k, val]) => val && !['dastgahAvaz', 'form', 'composer', 'gusheh'].includes(k)) ||
+        Object.entries(initial.guitar).some(([k, val]) => val && !['lessonNumber', 'barRange'].includes(k)),
+    ),
+  );
   const [newSourceName, setNewSourceName] = useState('');
 
-  const materials = materialsForInstrument(db, v.instrumentId);
   const set = (patch: Partial<ItemFormValues>) => setV((cur) => ({ ...cur, ...patch }));
+
+  const instrument = db.instruments.find((i) => i.id === v.instrumentId);
+  const isPersian = instrument?.family === 'Persian';
+  const isGuitar = !isPersian && /guitar/i.test(instrument?.name ?? '');
+  const materials = materialsForInstrument(db, v.instrumentId);
+
+  // Stages of this instrument's pathways, for optional placement.
+  const stageOptions = db.pathways
+    .filter((p) => !p.instrumentId || p.instrumentId === v.instrumentId)
+    .flatMap((p) =>
+      db.pathwayStages
+        .filter((s) => s.pathwayId === p.id)
+        .sort((a, b) => a.order - b.order)
+        .map((s) => ({ id: s.id, label: `${p.name} — ${s.code}${s.title !== s.code ? ` · ${s.title}` : ''}` })),
+    );
 
   const creatingSource = v.materialId === '__new__';
   function createSource() {
@@ -52,26 +85,113 @@ export default function ItemForm({
 
   return (
     <div className="card stack">
-      <Field label="Instrument">
-        <select
-          className="select"
-          value={v.instrumentId}
-          onChange={(e) => set({ instrumentId: e.target.value, materialId: '' })}
-        >
-          {db.instruments.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-
-      <Field label="Title">
-        <input className="input" value={v.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
-      </Field>
+      {/* ---- 1 · The piece itself ---- */}
+      <div className="section-label">What it is</div>
 
       <div className="grid-2">
-        <Field label="Source" hint="The book, radif, course or collection it comes from — optional.">
+        <Field label="Instrument">
+          <select
+            className="select"
+            value={v.instrumentId}
+            onChange={(e) => set({ instrumentId: e.target.value, materialId: '', stageId: '' })}
+          >
+            {db.instruments.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Type">
+          <select className="select" value={v.itemType} onChange={(e) => set({ itemType: e.target.value as ItemType })}>
+            {TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+
+      <Field label="Title">
+        <input className="input" dir="auto" value={v.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
+      </Field>
+
+      {isPersian && (
+        <>
+          <div className="grid-2">
+            <Field label="Dastgāh / Āvāz">
+              <input
+                className="input"
+                dir="auto"
+                list="pc-dastgah-list"
+                placeholder="e.g. Afshāri"
+                value={v.persian.dastgahAvaz ?? ''}
+                onChange={(e) => set({ persian: { ...v.persian, dastgahAvaz: e.target.value } })}
+              />
+              <datalist id="pc-dastgah-list">
+                {DASTGAH_SUGGESTIONS.map((d) => (
+                  <option key={d} value={d} />
+                ))}
+              </datalist>
+            </Field>
+            <Field label="Form">
+              <input
+                className="input"
+                dir="auto"
+                list="pc-form-list"
+                placeholder="e.g. Chahār-mezrāb"
+                value={v.persian.form ?? ''}
+                onChange={(e) => set({ persian: { ...v.persian, form: e.target.value } })}
+              />
+              <datalist id="pc-form-list">
+                {FORM_SUGGESTIONS.map((f) => (
+                  <option key={f} value={f} />
+                ))}
+              </datalist>
+            </Field>
+          </div>
+          <div className="grid-2">
+            <Field label="Composer / maestro" hint="For composed pieces — e.g. Sabā, Shahnāzi, Vaziri.">
+              <input
+                className="input"
+                dir="auto"
+                value={v.persian.composer ?? ''}
+                onChange={(e) => set({ persian: { ...v.persian, composer: e.target.value } })}
+              />
+            </Field>
+            <Field label="Gusheh" hint="Radif material only.">
+              <input
+                className="input"
+                dir="auto"
+                value={v.persian.gusheh ?? ''}
+                onChange={(e) => set({ persian: { ...v.persian, gusheh: e.target.value } })}
+              />
+            </Field>
+          </div>
+        </>
+      )}
+
+      {isGuitar && (
+        <div className="grid-2">
+          {GUITAR_IDENTITY_FIELDS.map((f) => (
+            <Field key={f.key} label={f.label}>
+              <input
+                className="input"
+                value={v.guitar[f.key] ?? ''}
+                onChange={(e) => set({ guitar: { ...v.guitar, [f.key]: e.target.value } })}
+              />
+            </Field>
+          ))}
+        </div>
+      )}
+
+      {/* ---- 2 · Where it lives ---- */}
+      <div className="section-label" style={{ marginTop: 4 }}>
+        Where it lives
+      </div>
+      <div className="grid-2">
+        <Field label="Source" hint="The book, radif, course or collection it comes from.">
           <select className="select" value={v.materialId} onChange={(e) => set({ materialId: e.target.value })}>
             <option value="">No source</option>
             {materials.map((m) => (
@@ -82,11 +202,12 @@ export default function ItemForm({
             <option value="__new__">New source…</option>
           </select>
         </Field>
-        <Field label="Type">
-          <select className="select" value={v.itemType} onChange={(e) => set({ itemType: e.target.value as ItemType })}>
-            {TYPE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
+        <Field label="Pathway stage" hint="Optional place on your route.">
+          <select className="select" value={v.stageId} onChange={(e) => set({ stageId: e.target.value })}>
+            <option value="">Not in a pathway</option>
+            {stageOptions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
               </option>
             ))}
           </select>
@@ -110,6 +231,10 @@ export default function ItemForm({
         </div>
       )}
 
+      {/* ---- 3 · How to practise it ---- */}
+      <div className="section-label" style={{ marginTop: 4 }}>
+        How to practise it
+      </div>
       <div className="grid-2">
         <Field label="Status" hint={ITEM_STATUS_DESCRIPTIONS[v.status]}>
           <select className="select" value={v.status} onChange={(e) => set({ status: e.target.value as ItemStatus })}>
@@ -145,19 +270,6 @@ export default function ItemForm({
         </Field>
       </div>
 
-      <Field label="Current problem">
-        <textarea className="textarea" value={v.currentProblem} onChange={(e) => set({ currentProblem: e.target.value })} />
-      </Field>
-      <Field label="Best strategy">
-        <textarea className="textarea" value={v.bestStrategy} onChange={(e) => set({ bestStrategy: e.target.value })} />
-      </Field>
-      <Field label="Teacher question">
-        <textarea className="textarea" value={v.teacherQuestion} onChange={(e) => set({ teacherQuestion: e.target.value })} />
-      </Field>
-      <Field label="Tags" hint="Comma-separated">
-        <input className="input" value={v.tags} onChange={(e) => set({ tags: e.target.value })} placeholder="e.g. foroud, evenness" />
-      </Field>
-
       <Field
         label="Reminders"
         hint={
@@ -189,38 +301,56 @@ export default function ItemForm({
         </Field>
       )}
 
-      <button className="link small" style={{ background: 'none', border: 'none', textAlign: 'left' }} onClick={() => setShowPersian((s) => !s)}>
-        {showPersian ? '− Hide' : '+ Add'} Persian-specific fields
+      {/* ---- 4 · Working notes (progressive — usually filled while practising) ---- */}
+      <button
+        className="link small"
+        style={{ background: 'none', border: 'none', textAlign: 'left' }}
+        onClick={() => setShowWorking((s) => !s)}
+      >
+        {showWorking ? '− Hide' : '+ Add'} working notes (problem, strategy, teacher question…)
       </button>
-      {showPersian && (
-        <div className="grid-2">
-          {PERSIAN_FIELDS.map((f) => (
-            <Field key={f.key} label={f.label}>
-              <input
-                className="input"
-                value={v.persian[f.key] ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, [f.key]: e.target.value } })}
-              />
-            </Field>
-          ))}
-        </div>
-      )}
-
-      <button className="link small" style={{ background: 'none', border: 'none', textAlign: 'left' }} onClick={() => setShowGuitar((s) => !s)}>
-        {showGuitar ? '− Hide' : '+ Add'} Classical-guitar fields
-      </button>
-      {showGuitar && (
-        <div className="grid-2">
-          {GUITAR_FIELDS.map((f) => (
-            <Field key={f.key} label={f.label}>
-              <input
-                className="input"
-                value={v.guitar[f.key] ?? ''}
-                onChange={(e) => set({ guitar: { ...v.guitar, [f.key]: e.target.value } })}
-              />
-            </Field>
-          ))}
-        </div>
+      {showWorking && (
+        <>
+          <Field label="Current problem">
+            <textarea className="textarea" dir="auto" value={v.currentProblem} onChange={(e) => set({ currentProblem: e.target.value })} />
+          </Field>
+          <Field label="Best strategy">
+            <textarea className="textarea" dir="auto" value={v.bestStrategy} onChange={(e) => set({ bestStrategy: e.target.value })} />
+          </Field>
+          <Field label="Teacher question">
+            <textarea className="textarea" dir="auto" value={v.teacherQuestion} onChange={(e) => set({ teacherQuestion: e.target.value })} />
+          </Field>
+          <Field label="Tags" hint="Comma-separated">
+            <input className="input" dir="auto" value={v.tags} onChange={(e) => set({ tags: e.target.value })} placeholder="e.g. foroud, evenness" />
+          </Field>
+          {isPersian && (
+            <div className="grid-2">
+              {PERSIAN_DETAIL_FIELDS.map((f) => (
+                <Field key={f.key} label={f.label}>
+                  <input
+                    className="input"
+                    dir="auto"
+                    value={v.persian[f.key] ?? ''}
+                    onChange={(e) => set({ persian: { ...v.persian, [f.key]: e.target.value } })}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
+          {isGuitar && (
+            <div className="grid-2">
+              {GUITAR_DETAIL_FIELDS.map((f) => (
+                <Field key={f.key} label={f.label}>
+                  <input
+                    className="input"
+                    value={v.guitar[f.key] ?? ''}
+                    onChange={(e) => set({ guitar: { ...v.guitar, [f.key]: e.target.value } })}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <div className="row">

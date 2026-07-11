@@ -10,10 +10,12 @@ It works out of the box for **Persian Setar**, **Persian Tar** and **Classical G
 and for any future instrument, piece, étude, technical drill, lesson, improvisation
 prompt or repertoire item.
 
-There is no backend, no account, no cloud, no audio analysis and no AI judgement.
-**IndexedDB on the device is the source of truth** (app data + attached files), and a
-single backup file (JSON data + embedded files) exports/imports everything. It's built
-**iPhone-first** and served privately from a home NAS (see *Deploy*).
+There is no backend, no account, no audio analysis and no AI judgement.
+**IndexedDB on the device is the source of truth** (app data + attached files); every
+install works fully offline. Devices stay in sync through a GitHub repo you own
+(whole snapshots, newest wins — see *Using it*), and a single backup file (JSON data +
+embedded files) exports/imports everything as a fallback. Hosted free on GitHub Pages;
+daily home is the **MacBook**, with the **iPhone** as companion.
 
 ---
 
@@ -35,6 +37,16 @@ single backup file (JSON data + embedded files) exports/imports everything. It's
   timer — clearly labelled as a warm-up, not logged practice.
 - **Tells you what to practise next.** A deterministic recommendation engine surfaces
   three explained cards: *Best Next Focus*, *Quick Win*, and *Maintenance*.
+- **Maps the whole Persian repertoire.** Repertoire → *Persian pieces* groups every item
+  by dastgāh/āvāz — radif gushehs and composed maestro pieces (a chahār-mezrāb of Sabā in
+  Afshāri, a pish-darāmad of Darvish Khān in Māhur) side by side, with form and composer
+  on each row. Spelling variants fold into one group; your own text is never rewritten.
+- **Creates items in one step.** Quick Add stays title-only; the full form sets type,
+  source (creatable inline), pathway stage, focus, importance, difficulty and Persian
+  identity together — no create-then-edit round trips.
+- **Stays in sync across devices.** MacBook and iPhone share the same data through a
+  GitHub repo you own — free, automatic, offline-tolerant, with honest newest-wins
+  semantics and explicit conflict choices.
 - **Keeps études concrete.** Break a piece into parts (bars, phrases, one technical
   problem); the piece page always names *one* part to practise now, for 10 minutes, and
   suggests a smaller unit or new strategy when things stall — never quotas.
@@ -53,7 +65,37 @@ single backup file (JSON data + embedded files) exports/imports everything. It's
 
 ---
 
-## Running it
+## Using it (MacBook + iPhone)
+
+The app lives at **https://ethan-ghoreishi.github.io/practice-compass/** — published
+automatically from `main` by GitHub Actions (`deploy.yml`). Install it once per device
+and it runs as its own offline app; no terminal, no dev server, no VPN:
+
+- **Mac (Safari):** open the URL → File → **Add to Dock**. (Chrome: install icon in the
+  address bar.) It opens as a dock app, full-screen, works with no internet.
+- **iPhone (Safari):** open the URL → Share → **Add to Home Screen**.
+
+Being a PWA, each install keeps working entirely offline; an internet connection is only
+used to fetch app updates and to sync data.
+
+### Sync between devices (free, via GitHub)
+
+Data syncs through a small private GitHub repo you own
+(`ethan-ghoreishi/practice-compass-data`) — no server, no cost:
+
+1. Create a **fine-grained personal access token**: GitHub → Settings → Developer
+   settings → Fine-grained tokens → Generate new. Repository access: **only**
+   `practice-compass-data`. Permissions → **Contents: Read and write**.
+2. In the app on each device: **Settings → Sync (GitHub)** → paste the repo and token →
+   **Connect & sync**.
+3. That's it. It syncs when the app opens and shortly after changes (whole snapshots,
+   newest wins). If both devices changed since the last sync, the app shows both
+   timestamps and asks which copy to keep — it never merges silently.
+
+Manual **Export/Import backup** (one JSON file with data + attachments) remains in
+Settings as a belt-and-braces fallback.
+
+## Developing
 
 Requires Node 20+ (developed on Node 26).
 
@@ -67,20 +109,10 @@ npm test           # run the Vitest suite once
 npm run test:watch # watch mode
 ```
 
-## Deploy (private, on the NAS)
-
-Like [hess](https://github.com/ethan-ghoreishi/hess), this app holds personal data (your
-practice history and your teacher's files), so it is **not** published to public GitHub
-Pages. It's served privately from the Synology NAS Web Station share over Tailscale:
-
-```bash
-npm run deploy   # builds and rsyncs dist/ to /Volumes/web/practice-compass/
-```
-
-Then open it on your phone (Tailscale on) at
-`https://ds220plus.taild1d1f7.ts.net/practice-compass/` and **Add to Home Screen**.
-GitHub Actions runs lint + tests + build on every push; deployment stays a local one-liner.
-The prod base path is `/practice-compass/` (override with `PC_BASE=/`).
+Pushing to `main` deploys to GitHub Pages (CI runs lint + tests + build first). The prod
+base path is `/practice-compass/` (override with `PC_BASE=/`).
+`scripts/deploy-nas.sh` optionally mirrors the same build onto a locally mounted NAS
+share for a LAN-only copy — handy, never required.
 
 ---
 
@@ -95,7 +127,8 @@ The prod base path is `/practice-compass/` (override with `PC_BASE=/`).
 | PWA / offline  | `vite-plugin-pwa` (Workbox)                        |
 | Styling        | Hand‑written CSS design system (no framework)      |
 | Tests          | Vitest (pure domain logic)                         |
-| Host           | Private — Synology NAS (Web Station) over Tailscale |
+| Host           | GitHub Pages (auto-deploy from `main`)             |
+| Sync           | User-owned GitHub repo via the Contents API        |
 
 The codebase is deliberately split into a **pure domain layer** (no React, fully
 unit‑tested) and a thin UI layer on top.
@@ -225,21 +258,20 @@ moves the date). Item statuses use plain language — *Not practised yet · Shak
 problems · Coming together · Solid · Performance-ready · Keeping fresh · Resting* — with
 a one-line description in the picker.
 
-## Devices & handoff
+## Devices, sync & handoff
 
-Each browser/device keeps its **own** local data — the app never syncs. Moving between
-iPhone and MacBook is an explicit transfer: export the full backup (one JSON with data +
-files, stamped with the device name and last-change time) and import it on the other
-device. The import warns you before an older backup overwrites newer local data.
-Settings → *Device & handoff* explains this and names the current device.
+Each device keeps its **own local copy** (IndexedDB) and works fully offline. With
+**Sync (GitHub)** connected in Settings, devices exchange whole snapshots through your
+data repo: newest copy wins, per-device names in the commit log, and an explicit
+two-button choice when both sides changed. Attachments upload once each (immutable);
+only new or deleted files transfer. Without sync, moving data is a manual backup
+export → import, with a warning before an older backup overwrites newer local data.
 
 ## Install as an app (PWA)
 
 Practice Compass is an installable, offline-capable Progressive Web App (via
-`vite-plugin-pwa`). After `npm run build && npm run preview` (or any host), open it on
-your phone and choose **Add to Home Screen** — it launches full-screen, works offline, and
-keeps all data on the device. Icons are generated from [`public/icon.svg`](public/icon.svg)
-with `npm run gen:icons`.
+`vite-plugin-pwa`) — see **Using it** above for the per-device steps. Icons are
+generated from [`public/icon.svg`](public/icon.svg) with `npm run gen:icons`.
 
 ## Design principles
 
@@ -265,7 +297,8 @@ undo) · ✅ SM-2 spaced-repetition review with manual override, snooze & not-no
 ✅ IndexedDB source of truth · ✅ Attachments on items *and* lessons · ✅ Full backup with
 files + device handoff warnings · ✅ Lesson↔item linking with per-instrument class
 deadlines (Farsi-aware) · ✅ Per-instrument session workspace · ✅ Sections, stage pinning
-& étude parts · ✅ Private NAS deploy + CI.
+& étude parts · ✅ Persian repertoire view (dastgāh × form × composer) · ✅ One-step item
+creation · ✅ GitHub Pages hosting + device sync via GitHub · ✅ CI.
 
 See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
 [`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.

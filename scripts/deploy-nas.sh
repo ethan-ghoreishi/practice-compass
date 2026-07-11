@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Deploys the built app to the Synology Web Station `web` share — same pattern
-# as hess / the systema receiver: files copied onto the mounted share, no SSH.
-# This app holds personal practice data + your teacher's files, so it is served
-# privately from the NAS over Tailscale, never public Pages.
+# OPTIONAL local mirror. The primary home of the app is GitHub Pages
+# (deployed automatically by .github/workflows/deploy.yml on every push).
+# This script copies the same static build onto a locally mounted NAS share
+# for a LAN-only mirror — handy, never required.
+#
+#   PC_DEPLOY_DIR=/Volumes/web/practice-compass ./scripts/deploy-nas.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -10,8 +12,7 @@ DEST="${PC_DEPLOY_DIR:-/Volumes/web/practice-compass}"
 SHARE="$(dirname "$DEST")"
 
 if [ ! -d "$SHARE" ]; then
-  echo "NAS web share is not mounted at $SHARE."
-  echo "Finder -> Go -> Connect to Server -> smb://192.168.0.20 -> mount 'web', then retry."
+  echo "Share not mounted at $SHARE — mount it (Finder → Go → Connect to Server) or set PC_DEPLOY_DIR."
   exit 1
 fi
 
@@ -22,6 +23,4 @@ mkdir -p "$DEST"
 rsync -rv --delete --exclude '.DS_Store' dist/ "$DEST"/
 
 echo
-echo "Deployed to $DEST"
-echo "Phone (Tailscale on): https://ds220plus.taild1d1f7.ts.net/practice-compass/"
-echo "LAN quick check:      http://192.168.0.20/practice-compass/  (no service worker over http)"
+echo "Mirrored to $DEST"

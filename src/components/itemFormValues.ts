@@ -13,6 +13,7 @@ export interface ItemFormValues {
   instrumentId: string;
   title: string;
   materialId: string;
+  stageId: string;
   itemType: ItemType;
   status: ItemStatus;
   importance: Rating;
@@ -33,6 +34,7 @@ export function emptyItemValues(instrumentId: string): ItemFormValues {
     instrumentId,
     title: '',
     materialId: '',
+    stageId: '',
     itemType: 'phrase',
     status: 'new',
     importance: 3,
@@ -54,6 +56,7 @@ export function itemToValues(item: PracticeItem): ItemFormValues {
     instrumentId: item.instrumentId,
     title: item.title,
     materialId: item.materialId ?? '',
+    stageId: item.stageId ?? '',
     itemType: item.itemType,
     status: item.status,
     importance: item.importance,
@@ -81,6 +84,7 @@ export function valuesToCreateInput(v: ItemFormValues) {
     instrumentId: v.instrumentId,
     title: v.title.trim(),
     materialId: v.materialId && v.materialId !== '__new__' ? v.materialId : undefined,
+    stageId: v.stageId || undefined,
     itemType: v.itemType,
     status: v.status,
     importance: v.importance,

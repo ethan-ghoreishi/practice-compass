@@ -62,7 +62,8 @@ export default function ItemDetail() {
   const from = (location.state as { from?: string } | null)?.from ?? '/repertoire';
   const fromLabel = from === '/' ? 'Today' : from.startsWith('/lessons') ? 'Lessons' : from.startsWith('/pathway') ? 'Stage' : from.startsWith('/items/') ? 'Piece' : 'Repertoire';
   const now = useMemo(() => new Date(), []);
-  const [editing, setEditing] = useState(false);
+  // Arriving via "add details" (QuickAdd) opens the form straight away.
+  const [editing, setEditing] = useState(Boolean((location.state as { edit?: boolean } | null)?.edit));
 
   const item = db.items.find((i) => i.id === id);
   const blocks = useMemo(() => (item ? itemBlocks(db, item.id) : []), [db, item]);

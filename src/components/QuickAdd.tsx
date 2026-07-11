@@ -95,7 +95,7 @@ export default function QuickAdd({
       {lastAddedId && (
         <div className="tiny" style={{ color: 'var(--tone-good)' }}>
           Added ✓{' '}
-          <Link to={`/items/${lastAddedId}`} className="link">
+          <Link to={`/items/${lastAddedId}`} state={{ edit: true }} className="link">
             add details
           </Link>
         </div>

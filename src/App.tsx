@@ -1,13 +1,15 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import { CompassIcon } from './components/icons';
 import { useStore } from './store/useStore';
+import { getSyncConfig, syncNow } from './store/githubSync';
 import Today from './pages/Today';
 import StartBlock from './pages/StartBlock';
 import ActiveBlock from './pages/ActiveBlock';
 import CloseBlock from './pages/CloseBlock';
 import ItemDetail from './pages/ItemDetail';
+import NewItem from './pages/NewItem';
 import Materials from './pages/Materials';
 import Insights from './pages/Insights';
 import Repertoire from './pages/Repertoire';
@@ -28,9 +30,31 @@ function useThemeAttribute() {
   }, [theme]);
 }
 
+/**
+ * Opportunistic GitHub sync: once when the app opens, then 30 quiet seconds
+ * after the last data change. Unconfigured or offline, it does nothing.
+ */
+function useAutoSync(hydrated: boolean) {
+  const db = useStore((s) => s.db);
+  const opened = useRef(false);
+
+  useEffect(() => {
+    if (!hydrated || opened.current || !getSyncConfig()) return;
+    opened.current = true;
+    void syncNow();
+  }, [hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !opened.current || !getSyncConfig()) return;
+    const t = setTimeout(() => void syncNow(), 30_000);
+    return () => clearTimeout(t);
+  }, [db, hydrated]);
+}
+
 export default function App() {
   useThemeAttribute();
   const hydrated = useStore((s) => s.hydrated);
+  useAutoSync(hydrated);
 
   // Wait for the async IndexedDB store before rendering (avoids a flash of
   // empty/seed data on load).
@@ -54,6 +78,7 @@ export default function App() {
         <Route path="close" element={<CloseBlock />} />
         <Route path="repertoire" element={<Repertoire />} />
         <Route path="items" element={<Navigate to="/repertoire" replace />} />
+        <Route path="items/new" element={<NewItem />} />
         <Route path="items/:id" element={<ItemDetail />} />
         <Route path="pathway" element={<Navigate to="/repertoire" replace />} />
         <Route path="pathway/:pathwayId" element={<PathwayDetail />} />

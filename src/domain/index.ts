@@ -8,6 +8,8 @@ export * from './scheduling';
 export * from './blocks';
 export * from './pathways';
 export * from './pathwaySeed';
+export * from './persian';
+export * from './sync';
 export * from './selectors';
 export * from './insights';
 export * from './report';

@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { useSyncStatus } from '../store/githubSync';
 import {
   CompassIcon,
   ItemsIcon,
@@ -15,6 +17,12 @@ export default function Layout() {
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
   const location = useLocation();
+
+  // Every tab opens at the top — otherwise the sticky nav sits at a different
+  // height depending on how far the previous page happened to be scrolled.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   // Hide chrome during focused practice to keep attention on the timer.
   const focused =
@@ -76,8 +84,27 @@ export default function Layout() {
       )}
 
       <main className="main">
+        <SyncNotice pathname={location.pathname} />
         <Outlet />
       </main>
+    </div>
+  );
+}
+
+/** Calm, non-blocking notice when sync needs a decision or hit an error. */
+function SyncNotice({ pathname }: { pathname: string }) {
+  const phase = useSyncStatus((s) => s.phase);
+  const message = useSyncStatus((s) => s.message);
+  if (pathname === '/settings') return null; // Settings shows the full panel.
+  if (phase !== 'conflict' && phase !== 'error') return null;
+  return (
+    <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
+      <span className="dim">
+        {phase === 'conflict' ? 'Sync needs a decision.' : `Sync problem: ${message}`}
+      </span>
+      <NavLink to="/settings" className="link" style={{ flex: 'none' }}>
+        Open Settings
+      </NavLink>
     </div>
   );
 }

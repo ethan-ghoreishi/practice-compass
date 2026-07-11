@@ -316,7 +316,19 @@ select {
   color: var(--text-faint);
 }
 
+/* Wide screens: exactly ONE sticky element (the nav). The brand header goes
+   back into the flow — two competing sticky top:0 elements made the nav land
+   at a different height depending on each tab's scroll position. */
 @media (min-width: 760px) {
+  .app-header {
+    position: static;
+    background: transparent;
+    backdrop-filter: none;
+    border-bottom: none;
+    max-width: var(--maxw);
+    margin: 0 auto;
+    width: 100%;
+  }
   .tabbar {
     position: sticky;
     top: 0;

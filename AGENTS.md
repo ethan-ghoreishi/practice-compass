@@ -21,6 +21,12 @@ even if it's "useful".
 - Smart defaults are a feature, not a convenience. Status → mode, item → focus,
   10‑minute duration. If you add a concept, give it a sensible default too.
 - Inline item creation must keep working from the Start screen and from recommendations.
+- **Two creation paths, both one-step.** QuickAdd = title only. The full form
+  (`/items/new`, also inline edit) sets EVERYTHING at creation — type, source (inline
+  new), pathway stage, focus, importance, difficulty, Persian identity — in logical
+  groups ("What it is / Where it lives / How to practise it"), so nothing requires a
+  create-then-edit round trip. QuickAdd's "add details" opens the item already in edit
+  mode. Never split these across screens again.
 
 ## Today is a session workspace, scoped to one instrument
 
@@ -44,12 +50,16 @@ the clock (`pauseSession`) before the close screen; reflection time is not count
 
 - ❌ **No gamification** — no streaks, points, badges, XP, leaderboards, confetti,
   or fake "mastery %". Progress is shown as honest status + result, nothing else.
-- ❌ **No backend / auth / cloud sync.** The app is local‑first: **IndexedDB (Dexie) is
-  the source of truth** on the device (app state in the `kv` table, attachment blobs in
-  the `attachments` table). It moves between devices only via the full backup file (JSON
-  data + base64 files) — export/import. Serving the built PWA privately from the NAS
-  (Web Station over Tailscale, like hess) is fine; that is static hosting, not an app
-  server or sync.
+- ❌ **No backend, no auth server, no service of our own.** The app is local‑first:
+  **IndexedDB (Dexie) is the source of truth** on each device (app state in the `kv`
+  table, attachment blobs in the `attachments` table) and everything works offline.
+  **Amended by explicit user decision (2026‑07‑11):** device sync IS sanctioned — via
+  the **user's own GitHub repo** (Contents API + fine‑grained PAT in localStorage,
+  `src/store/githubSync.ts`). Sync moves whole snapshots of the proven backup format
+  (state.json + one file per attachment), newest copy wins, and ambiguity is surfaced
+  as an explicit conflict choice (`decideSync` in `src/domain/sync.ts`, tested) — never
+  a silent merge, never per-field magic, never a custom server. Manual export/import
+  stays as the fallback. Free tiers only; no paid services.
 - ❌ **No AI or audio analysis** in v1 — no tone scoring, pitch detection, posture
   tracking, or "AI teacher" judgement. The app organises; it does not grade.
 - ❌ **No guilt‑driven copy.** Insights are neutral observations, never nags.
@@ -82,6 +92,18 @@ own pace, on a route they trust. Protect that:
 - **Pieces can have parts** (`parentItemId`): parts are ordinary items grouped under a
   piece/étude, with a deterministic "practise this part now" pick (`pickNextPart`) and a
   calm stall hint (`stallHint`) — smaller unit or new strategy, never quotas.
+- **The Persian repertoire beyond the radif is a DERIVED view, not new structure.**
+  Maestro pieces (chahār-mezrāb, pish-darāmad, tasnif…) are ordinary items carrying
+  `persian.dastgahAvaz` / `form` / `composer`; Repertoire → "Persian pieces" groups them
+  by dastgāh via `groupByDastgah` (`src/domain/persian.ts`, tested — folds spelling
+  variants into one group, labels with the user's own majority spelling, standard
+  dastgāh order). Dastgāh/form suggestions are datalists (reference aids), free text
+  always wins. Never invent a parallel "pieces" object.
+- **Sources stay simple.** A Material is instrument + one clear name + kind + status +
+  note. Piece-level detail (dastgāh, gusheh, composer, teacher) belongs on items, never
+  on sources — the removed parent-title/section/teacher-source fields must not return.
+  Sources are reached from Repertoire (not More), and are creatable inline from the
+  item form.
 - **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
   a radif/dastgāh map (teacher-driven, explicitly "reorder me"). Tar = the Honarestān
   method. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
@@ -116,19 +138,25 @@ stable and only change the display labels in `labels.ts`.
 
 ## Device & infrastructure
 
-This app is **iPhone-first**, installed as a PWA and served privately from the Synology NAS
-(Web Station over Tailscale) via `npm run deploy` — the same pattern as **hess**, chosen
-because the data + attachments are personal (never public GitHub Pages). CI (`.github/
-workflows/ci.yml`) runs lint + tests + build on push; deployment stays a local one-liner.
-The prod base path is `/practice-compass/` (override with `PC_BASE`).
+**MacBook-first in daily use** (laptop open while practising — notes, files, webcam as
+mirror), iPhone as the companion; the phone constraint still binds (primary
+recommendation above the fold at 390×844). Both run the **same installed PWA** served
+from **GitHub Pages** (`.github/workflows/deploy.yml` publishes `dist/` on every push to
+main; the repo is public by explicit user decision, 2026‑07‑11 — the user does not need
+the app or data private). Prod base `/practice-compass/` (override with `PC_BASE`)
+matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
+installed PWA works fully offline; hosting reliability only affects updates.
+`scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
+Tailscale requirement in the main flow.
 
-**Devices don't sync, and the UI must never imply they do.** Each browser/device has its
-own IndexedDB; moving data is an explicit backup export → import (Settings → Device &
-handoff: per-device name in localStorage, export stamped with `deviceName`/`lastModified`,
-and a warning before importing a backup older than local data). Navigation returns to the
-explicit origin via router state (`state.from` with a safe fallback), the primary nav
-renders before the page content in the DOM (bottom-fixed on phones, top on wide screens),
-and the manifest has no orientation lock.
+**Devices sync via the user's GitHub data repo** (Settings → Sync): auto on app open and
+30 quiet seconds after changes, manual "Sync now", per-device names in commits, and an
+explicit two-button conflict choice showing both timestamps. The UI must stay honest
+about the model: whole snapshots, newest wins, no field-level merging. Navigation
+returns to the explicit origin via router state (`state.from` with a safe fallback), the
+primary nav renders before the page content in the DOM and there is exactly ONE sticky
+element on wide screens (the nav — a second sticky header made the bar jump between
+tabs), every route change scrolls to top, and the manifest has no orientation lock.
 
 ## Architecture rules
 

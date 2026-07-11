@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   currentStage,
   groupBlocksByItem,
+  groupByDastgah,
   isDue,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
@@ -14,6 +15,7 @@ import {
   scoreItems,
   stageProgress,
   stageUnits,
+  UNCLASSIFIED_DASTGAH,
   type ItemStatus,
   type ItemType,
   type Pathway as PathwayT,
@@ -22,31 +24,165 @@ import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
 import ItemCard from '../components/ItemCard';
 import QuickAdd from '../components/QuickAdd';
-import { Field } from '../components/ui';
+import { Field, StatusBadge } from '../components/ui';
 import { recordToOptions } from '../components/options';
+import { relativeFromDateTime } from '../components/format';
 import { ChevronRightIcon, ItemsIcon, PathIcon, PlusIcon } from '../components/icons';
 import { EmptyState } from '../components/ui';
 
-type View = 'paths' | 'all';
+type View = 'paths' | 'persian' | 'all';
 
 export default function Repertoire() {
+  const db = useStore((s) => s.db);
   const [view, setView] = useState<View>('paths');
+  const navigate = useNavigate();
+
+  const hasPersian = db.instruments.some((i) => i.family === 'Persian' && i.active);
 
   return (
     <div className="stack-lg">
       <header className="stack-sm">
-        <h1 className="page-title">Repertoire</h1>
-        <div className="options">
-          <button className={`option${view === 'paths' ? ' selected' : ''}`} onClick={() => setView('paths')}>
+        <div className="row between">
+          <h1 className="page-title">Repertoire</h1>
+          <div className="row" style={{ gap: 8 }}>
+            <Link to="/materials" state={{ from: '/repertoire' }} className="btn btn-ghost btn-sm">
+              Sources
+            </Link>
+            <button className="btn btn-primary btn-sm" onClick={() => navigate('/items/new', { state: { from: '/repertoire' } })}>
+              <PlusIcon /> New item
+            </button>
+          </div>
+        </div>
+        <div className="options" role="group" aria-label="Repertoire view">
+          <button className={`option${view === 'paths' ? ' selected' : ''}`} aria-pressed={view === 'paths'} onClick={() => setView('paths')}>
             By pathway
           </button>
-          <button className={`option${view === 'all' ? ' selected' : ''}`} onClick={() => setView('all')}>
+          {hasPersian && (
+            <button
+              className={`option${view === 'persian' ? ' selected' : ''}`}
+              aria-pressed={view === 'persian'}
+              onClick={() => setView('persian')}
+            >
+              Persian pieces
+            </button>
+          )}
+          <button className={`option${view === 'all' ? ' selected' : ''}`} aria-pressed={view === 'all'} onClick={() => setView('all')}>
             All items
           </button>
         </div>
       </header>
 
-      {view === 'paths' ? <PathwaysView /> : <AllItemsView />}
+      {view === 'paths' ? <PathwaysView /> : view === 'persian' ? <PersianView /> : <AllItemsView />}
+    </div>
+  );
+}
+
+// --- Persian pieces: the repertoire beyond the radif -------------------------
+//
+// Maestro pieces (a chahār-mezrāb of Sabā in Afshāri, a pish-darāmad of
+// Shahnāzi…) are ordinary items carrying dastgāh/form/composer — this view
+// groups them by dastgāh so the whole Persian repertoire is visible in one
+// musical map, radif and composed pieces side by side.
+
+function PersianView() {
+  const db = useStore((s) => s.db);
+  const navigate = useNavigate();
+  const now = useMemo(() => new Date(), []);
+
+  const persianIds = useMemo(
+    () => new Set(db.instruments.filter((i) => i.family === 'Persian').map((i) => i.id)),
+    [db.instruments],
+  );
+  const [instrumentId, setInstrumentId] = useState('');
+
+  const groups = useMemo(() => {
+    const items = db.items.filter(
+      (i) => persianIds.has(i.instrumentId) && (!instrumentId || i.instrumentId === instrumentId),
+    );
+    return groupByDastgah(items);
+  }, [db.items, persianIds, instrumentId]);
+
+  const persianInstruments = db.instruments.filter((i) => persianIds.has(i.id) && i.active);
+
+  return (
+    <div className="stack">
+      <p className="page-sub" style={{ marginTop: -8 }}>
+        Everything you play in each dastgāh and āvāz — radif gushehs and composed pieces from the maestros together.
+        Give an item a dastgāh, form or composer and it appears here.
+      </p>
+
+      {persianInstruments.length > 1 && (
+        <div className="options" role="group" aria-label="Instrument">
+          <button className={`option${!instrumentId ? ' selected' : ''}`} aria-pressed={!instrumentId} onClick={() => setInstrumentId('')}>
+            Both
+          </button>
+          {persianInstruments.map((i) => (
+            <button
+              key={i.id}
+              className={`option${instrumentId === i.id ? ' selected' : ''}`}
+              aria-pressed={instrumentId === i.id}
+              onClick={() => setInstrumentId(i.id)}
+            >
+              {i.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {groups.length === 0 && (
+        <div className="card">
+          <EmptyState icon={<ItemsIcon />} title="Nothing classified yet">
+            Add a dastgāh, form or composer to any Setar/Tar item (or create a new one) and it shows up here, grouped
+            by dastgāh.
+          </EmptyState>
+        </div>
+      )}
+
+      {groups.map((g) => (
+        <section key={g.dastgah} className="stack-sm">
+          <div className="row between">
+            <h2 className="title-md" dir="auto">
+              {g.dastgah === UNCLASSIFIED_DASTGAH ? 'No dastgāh yet' : g.dastgah}
+            </h2>
+            <span className="tiny faint">
+              {g.items.length} piece{g.items.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="card card-flush list">
+            {g.items.map((item) => (
+              <Link
+                key={item.id}
+                to={`/items/${item.id}`}
+                state={{ from: '/repertoire' }}
+                className="list-row card-link"
+                style={{ borderRadius: 0 }}
+              >
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <div className="truncate" dir="auto">
+                    {item.title}
+                  </div>
+                  <div className="tiny faint truncate" dir="auto">
+                    {[
+                      item.persian?.form,
+                      item.persian?.composer,
+                      item.persian?.gusheh && `gusheh: ${item.persian.gusheh}`,
+                      instrumentName(db, item.instrumentId),
+                      item.lastPractisedAt ? `last ${relativeFromDateTime(item.lastPractisedAt, now)}` : 'not practised yet',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </div>
+                </div>
+                <StatusBadge status={item.status} />
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <button className="btn" style={{ width: 'fit-content' }} onClick={() => navigate('/items/new', { state: { from: '/repertoire' } })}>
+        <PlusIcon /> Add a piece with details
+      </button>
     </div>
   );
 }
