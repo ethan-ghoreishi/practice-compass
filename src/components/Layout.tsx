@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { useSyncStatus } from '../store/githubSync';
@@ -17,11 +17,12 @@ export default function Layout() {
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
   const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
 
-  // Every tab opens at the top — otherwise the sticky nav sits at a different
-  // height depending on how far the previous page happened to be scrolled.
+  // Only <main> scrolls (the shell is fixed-height) — reset it so every
+  // route opens at the top.
   useEffect(() => {
-    window.scrollTo(0, 0);
+    mainRef.current?.scrollTo(0, 0);
   }, [location.pathname]);
 
   // Hide chrome during focused practice to keep attention on the timer.
@@ -83,9 +84,11 @@ export default function Layout() {
         </nav>
       )}
 
-      <main className="main">
-        <SyncNotice pathname={location.pathname} />
-        <Outlet />
+      <main className="main" ref={mainRef}>
+        <div className="main-inner">
+          <SyncNotice pathname={location.pathname} />
+          <Outlet />
+        </div>
       </main>
     </div>
   );
