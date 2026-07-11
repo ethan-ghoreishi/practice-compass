@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AttachmentMeta, AttachmentOwnerType } from '../domain';
+import { attachmentPolicy, type AttachmentMeta, type AttachmentOwnerType } from '../domain';
 import { useStore } from '../store/useStore';
 import {
   addAttachment,
   attachmentObjectURL,
   formatBytes,
-  LARGE_FILE_BYTES,
   removeAttachment,
 } from '../store/attachments';
 import { MusicIcon, PlusIcon, ReportIcon } from './icons';
@@ -35,11 +34,14 @@ export default function Attachments({
     setBusy(true);
     try {
       for (const f of Array.from(files)) {
+        const policy = attachmentPolicy(f.size, f.type || '');
+        if (policy.level === 'block') {
+          setSizeNote(`“${f.name}” (${formatBytes(f.size)}) was not added: ${policy.message}`);
+          continue;
+        }
         await addAttachment(ownerType, ownerId, f);
-        if (f.size > LARGE_FILE_BYTES) {
-          setSizeNote(
-            `“${f.name}” is ${formatBytes(f.size)}. Large files are fine here, but they make your backup file just as large — for class videos, your session folders are the better home.`,
-          );
+        if (policy.level === 'warn') {
+          setSizeNote(`“${f.name}” is ${formatBytes(f.size)}. ${policy.message}`);
         }
       }
     } finally {

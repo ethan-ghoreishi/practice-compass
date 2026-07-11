@@ -79,8 +79,8 @@ export default function Materials() {
 
       <header className="row between">
         <div>
-          <h1 className="page-title">Sources</h1>
-          <p className="page-sub">The books, radifs and courses your items come from</p>
+          <h1 className="page-title">Study sources</h1>
+          <p className="page-sub">Where practice items come from — a radif, method book, collection, course or teacher handout. Nothing else lives here.</p>
         </div>
         {db.instruments.length > 0 && (
           <button className="btn btn-primary" onClick={() => setDraft(emptyDraft(db.instruments[0].id))}>
@@ -157,7 +157,7 @@ export default function Materials() {
 
       {db.materials.length === 0 && !draft ? (
         <div className="card">
-          <EmptyState icon={<FolderIcon />} title="No sources yet">
+          <EmptyState icon={<FolderIcon />} title="No study sources yet">
             A source is where an item comes from — a radif, a method book, a course, a set of études. Optional, but
             handy for grouping. You can also create one inline while creating an item.
           </EmptyState>

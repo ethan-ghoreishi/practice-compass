@@ -1,20 +1,24 @@
 /**
  * Sync decision logic — pure and deterministic. The transport (GitHub) lives
- * in the store layer; this module only answers: given what changed where,
- * which way should data flow? Whole-snapshot, newest-wins, and any ambiguity
- * is surfaced as an explicit conflict — never silently merged.
+ * in the store layer; this module only answers: given what the data LOOKS
+ * LIKE on each side, which way should it flow?
+ *
+ * Decisions compare whole-state content hashes (see canonical.ts), three-way
+ * against the hash both sides agreed on at the last sync — like git, and
+ * immune to device clocks. Whole snapshots move; any ambiguity is an explicit
+ * conflict for the user — never a silent merge, and "newest" is only ever a
+ * recommendation, never an automatic winner.
  */
 
 export type SyncDirection = 'first-push' | 'push' | 'pull' | 'in-sync' | 'conflict';
 
-export interface SyncSnapshot {
-  /** Newest change on this device (ISO datetime; '' when the DB is empty). */
-  localLastModified: string;
-  /** Newest change in the remote copy, or null when nothing exists remotely. */
-  remoteLastModified: string | null;
-  /** What this device saw at its last successful sync (null = never synced). */
-  lastSyncedLocal: string | null;
-  lastSyncedRemote: string | null;
+export interface SyncComparison {
+  /** Content hash of this device's data. */
+  localHash: string;
+  /** Content hash of the remote copy, or null when nothing exists remotely. */
+  remoteHash: string | null;
+  /** The hash both sides agreed on at this device's last successful sync. */
+  lastSyncedHash: string | null;
 }
 
 export interface SyncDecision {
@@ -22,25 +26,25 @@ export interface SyncDecision {
   reason: string;
 }
 
-export function decideSync(s: SyncSnapshot): SyncDecision {
-  if (s.remoteLastModified === null) {
-    return { direction: 'first-push', reason: 'Nothing on GitHub yet — this device’s copy becomes the first backup.' };
+export function decideSync(c: SyncComparison): SyncDecision {
+  if (c.remoteHash === null) {
+    return { direction: 'first-push', reason: 'Nothing on GitHub yet — this device’s copy becomes the first snapshot.' };
+  }
+  if (c.remoteHash === c.localHash) {
+    return { direction: 'in-sync', reason: 'Both copies hold identical data.' };
   }
 
-  // Never synced on this device but a remote copy exists: don't guess which
-  // copy the user wants — ask once, showing both timestamps.
-  if (!s.lastSyncedLocal || !s.lastSyncedRemote) {
-    if (s.remoteLastModified === s.localLastModified) {
-      return { direction: 'in-sync', reason: 'Both copies show the same latest change.' };
-    }
+  // Never synced on this device but a different remote copy exists: don't
+  // guess which copy the user wants — ask once, showing both.
+  if (!c.lastSyncedHash) {
     return {
       direction: 'conflict',
-      reason: 'First sync on this device and a copy already exists on GitHub — choose which one to keep.',
+      reason: 'First sync on this device and a different copy already exists on GitHub — choose which one to keep.',
     };
   }
 
-  const localChanged = s.localLastModified > s.lastSyncedLocal;
-  const remoteChanged = s.remoteLastModified !== s.lastSyncedRemote;
+  const localChanged = c.localHash !== c.lastSyncedHash;
+  const remoteChanged = c.remoteHash !== c.lastSyncedHash;
 
   if (localChanged && remoteChanged) {
     return {
@@ -48,7 +52,6 @@ export function decideSync(s: SyncSnapshot): SyncDecision {
       reason: 'Both this device and the GitHub copy changed since the last sync — choose which one to keep.',
     };
   }
-  if (localChanged) return { direction: 'push', reason: 'This device has newer work — sending it to GitHub.' };
-  if (remoteChanged) return { direction: 'pull', reason: 'The GitHub copy is newer — bringing it onto this device.' };
-  return { direction: 'in-sync', reason: 'Nothing changed since the last sync.' };
+  if (localChanged) return { direction: 'push', reason: 'This device has changes the GitHub copy lacks — sending them.' };
+  return { direction: 'pull', reason: 'The GitHub copy has changes this device lacks — bringing them in.' };
 }

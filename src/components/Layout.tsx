@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { useSyncStatus } from '../store/githubSync';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   CompassIcon,
   ItemsIcon,
@@ -51,8 +52,10 @@ export default function Layout() {
       </header>
 
       {/* Navigation sits BEFORE the page content in the DOM (screen readers
-          and keyboard users reach it first); CSS pins it to the bottom on
-          phones and keeps it at the top on wide screens. */}
+          and keyboard users reach it first); CSS places it at the visual
+          bottom on phones and under the header on wide screens. Five equal,
+          stable targets — Today carries the primary Start action, so the bar
+          needs no raised centre button. */}
       {!focused && (
         <nav className="tabbar" aria-label="Primary">
           <div className="tabbar-inner">
@@ -64,14 +67,10 @@ export default function Layout() {
               <PathIcon />
               <span>Repertoire</span>
             </NavLink>
-
-            <div className="tab tab-start">
-              <NavLink to="/start" className="tab-start-btn" aria-label="Start a practice block">
-                <PlayIcon />
-              </NavLink>
-              <span className="tab-start-label">Start</span>
-            </div>
-
+            <NavLink to="/start" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+              <PlayIcon />
+              <span>Start</span>
+            </NavLink>
             <NavLink to="/lessons" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
               <ItemsIcon />
               <span>Lessons</span>
@@ -85,11 +84,62 @@ export default function Layout() {
       )}
 
       <main className="main" ref={mainRef}>
-        <div className="main-inner">
+        <div className={`main-inner${pageWidthClass(location.pathname)}`}>
+          <UpdateBanner />
           <SyncNotice pathname={location.pathname} />
           <Outlet />
         </div>
       </main>
+    </div>
+  );
+}
+
+/**
+ * Per-route page widths: focused practice stays narrow, Today comfortable,
+ * browsing/notes screens use real desktop room (CSS caps them on phones).
+ */
+function pageWidthClass(pathname: string): string {
+  if (pathname === '/active' || pathname === '/close' || pathname.startsWith('/routine')) return ' main-inner--narrow';
+  if (
+    pathname.startsWith('/repertoire') ||
+    pathname.startsWith('/items') ||
+    pathname.startsWith('/pathway') ||
+    pathname.startsWith('/lessons') ||
+    pathname.startsWith('/materials') ||
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/insights') ||
+    pathname.startsWith('/report')
+  )
+    return ' main-inner--wide';
+  return '';
+}
+
+/**
+ * Honest PWA updates: the service worker is registered in prompt mode, a new
+ * build shows this banner, and one tap reloads into it — no reinstalling.
+ * Updates are also checked hourly and whenever the app becomes visible
+ * (installed iOS apps otherwise only check on cold launch).
+ */
+function UpdateBanner() {
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      setInterval(() => void registration.update(), 60 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void registration.update();
+      });
+    },
+  });
+  if (!needRefresh) return null;
+  return (
+    <div className="card card-accent row between small" style={{ marginBottom: 'var(--space-4)' }}>
+      <span>A new version is ready.</span>
+      <button className="btn btn-primary btn-sm" style={{ flex: 'none' }} onClick={() => void updateServiceWorker(true)}>
+        Reload
+      </button>
     </div>
   );
 }

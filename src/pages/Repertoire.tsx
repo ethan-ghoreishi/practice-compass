@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   currentStage,
+  formsPresent,
   groupBlocksByItem,
   groupByDastgah,
   isDue,
@@ -15,10 +16,12 @@ import {
   scoreItems,
   stageProgress,
   stageUnits,
+  repertoireWorks,
   UNCLASSIFIED_DASTGAH,
   type ItemStatus,
   type ItemType,
   type Pathway as PathwayT,
+  type RepertoireWork,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
@@ -30,14 +33,11 @@ import { relativeFromDateTime } from '../components/format';
 import { ChevronRightIcon, ItemsIcon, PathIcon, PlusIcon } from '../components/icons';
 import { EmptyState } from '../components/ui';
 
-type View = 'paths' | 'persian' | 'all';
+type View = 'paths' | 'works' | 'all';
 
 export default function Repertoire() {
-  const db = useStore((s) => s.db);
   const [view, setView] = useState<View>('paths');
   const navigate = useNavigate();
-
-  const hasPersian = db.instruments.some((i) => i.family === 'Persian' && i.active);
 
   return (
     <div className="stack-lg">
@@ -46,77 +46,114 @@ export default function Repertoire() {
           <h1 className="page-title">Repertoire</h1>
           <div className="row" style={{ gap: 8 }}>
             <Link to="/materials" state={{ from: '/repertoire' }} className="btn btn-ghost btn-sm">
-              Sources
+              Study sources
             </Link>
             <button className="btn btn-primary btn-sm" onClick={() => navigate('/items/new', { state: { from: '/repertoire' } })}>
-              <PlusIcon /> New item
+              <PlusIcon /> Add practice item
             </button>
           </div>
         </div>
+        <p className="page-sub" style={{ margin: 0 }}>
+          Practice items are what you do. Pathways, study sources and lessons simply connect the same items in
+          different ways.
+        </p>
         <div className="options" role="group" aria-label="Repertoire view">
           <button className={`option${view === 'paths' ? ' selected' : ''}`} aria-pressed={view === 'paths'} onClick={() => setView('paths')}>
-            By pathway
+            Pathways
           </button>
-          {hasPersian && (
-            <button
-              className={`option${view === 'persian' ? ' selected' : ''}`}
-              aria-pressed={view === 'persian'}
-              onClick={() => setView('persian')}
-            >
-              Persian pieces
-            </button>
-          )}
+          <button
+            className={`option${view === 'works' ? ' selected' : ''}`}
+            aria-pressed={view === 'works'}
+            onClick={() => setView('works')}
+          >
+            My repertoire
+          </button>
           <button className={`option${view === 'all' ? ' selected' : ''}`} aria-pressed={view === 'all'} onClick={() => setView('all')}>
-            All items
+            Practice list
           </button>
         </div>
       </header>
 
-      {view === 'paths' ? <PathwaysView /> : view === 'persian' ? <PersianView /> : <AllItemsView />}
+      {view === 'paths' ? <PathwaysView /> : view === 'works' ? <MyRepertoireView /> : <AllItemsView />}
     </div>
   );
 }
 
-// --- Persian pieces: the repertoire beyond the radif -------------------------
+// --- My repertoire: the works you actually play -------------------------------
 //
-// Maestro pieces (a chahār-mezrāb of Sabā in Afshāri, a pish-darāmad of
-// Shahnāzi…) are ordinary items carrying dastgāh/form/composer — this view
-// groups them by dastgāh so the whole Persian repertoire is visible in one
-// musical map, radif and composed pieces side by side.
+// A LENS over ordinary practice items (domain/repertoire.ts) — never a
+// parallel database. Persian instruments group by dastgāh/āvāz with radif
+// gushehs and composed maestro pieces side by side (a chahārmezrāb of Sabā in
+// Afshāri is repertoire, not a stage); other instruments group by study
+// source. Parent works appear once; parts stay nested beneath them.
 
-function PersianView() {
+function MyRepertoireView() {
   const db = useStore((s) => s.db);
   const navigate = useNavigate();
   const now = useMemo(() => new Date(), []);
+
+  const activeInstruments = db.instruments.filter((i) => i.active);
+  const [instrumentId, setInstrumentId] = useState('');
+  const [formFilter, setFormFilter] = useState('');
+
+  const scope = useMemo(
+    () => db.items.filter((i) => !instrumentId || i.instrumentId === instrumentId),
+    [db.items, instrumentId],
+  );
+  const works = useMemo(() => repertoireWorks(scope), [scope]);
+  const forms = useMemo(() => formsPresent(works), [works]);
+
+  const filtered = useMemo(
+    () => (formFilter ? works.filter((w) => (w.work.persian?.form ?? '').toLowerCase() === formFilter.toLowerCase()) : works),
+    [works, formFilter],
+  );
 
   const persianIds = useMemo(
     () => new Set(db.instruments.filter((i) => i.family === 'Persian').map((i) => i.id)),
     [db.instruments],
   );
-  const [instrumentId, setInstrumentId] = useState('');
+  const persianWorks = filtered.filter((w) => persianIds.has(w.work.instrumentId));
+  const otherWorks = filtered.filter((w) => !persianIds.has(w.work.instrumentId));
 
-  const groups = useMemo(() => {
-    const items = db.items.filter(
-      (i) => persianIds.has(i.instrumentId) && (!instrumentId || i.instrumentId === instrumentId),
-    );
-    return groupByDastgah(items);
-  }, [db.items, persianIds, instrumentId]);
+  // Persian works by dastgāh (works only — parts are attached to each work).
+  const dastgahGroups = useMemo(() => {
+    const byId = new Map(persianWorks.map((w) => [w.work.id, w]));
+    return groupByDastgah(persianWorks.map((w) => w.work)).map((g) => ({
+      dastgah: g.dastgah,
+      works: g.items.map((i) => byId.get(i.id)!),
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, instrumentId]);
 
-  const persianInstruments = db.instruments.filter((i) => persianIds.has(i.id) && i.active);
+  // Other instruments (e.g. Classical Guitar): group by study source.
+  const sourceGroups = useMemo(() => {
+    const map = new Map<string, typeof otherWorks>();
+    for (const w of otherWorks) {
+      const key = w.work.materialId ?? '';
+      map.set(key, [...(map.get(key) ?? []), w]);
+    }
+    return [...map.entries()]
+      .map(([materialId, ws]) => ({
+        label: materialId ? (db.materials.find((m) => m.id === materialId)?.title ?? 'Unknown source') : 'No study source yet',
+        works: ws,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, instrumentId, db.materials]);
 
   return (
     <div className="stack">
       <p className="page-sub" style={{ marginTop: -8 }}>
-        Everything you play in each dastgāh and āvāz — radif gushehs and composed pieces from the maestros together.
-        Give an item a dastgāh, form or composer and it appears here.
+        The works and gushehs you play. Radif and composed maestro pieces sit together under their dastgāh; parts stay
+        under their parent work.
       </p>
 
-      {persianInstruments.length > 1 && (
+      {activeInstruments.length > 1 && (
         <div className="options" role="group" aria-label="Instrument">
           <button className={`option${!instrumentId ? ' selected' : ''}`} aria-pressed={!instrumentId} onClick={() => setInstrumentId('')}>
-            Both
+            All
           </button>
-          {persianInstruments.map((i) => (
+          {activeInstruments.map((i) => (
             <button
               key={i.id}
               className={`option${instrumentId === i.id ? ' selected' : ''}`}
@@ -129,60 +166,131 @@ function PersianView() {
         </div>
       )}
 
-      {groups.length === 0 && (
+      {forms.length > 1 && (
+        <div className="row-wrap" role="group" aria-label="Filter by form">
+          {forms.map((f) => (
+            <button
+              key={f}
+              className={`chip${formFilter.toLowerCase() === f.toLowerCase() ? ' tone-progress' : ''}`}
+              style={{ cursor: 'pointer' }}
+              aria-pressed={formFilter.toLowerCase() === f.toLowerCase()}
+              onClick={() => setFormFilter((cur) => (cur.toLowerCase() === f.toLowerCase() ? '' : f))}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {filtered.length === 0 && (
         <div className="card">
-          <EmptyState icon={<ItemsIcon />} title="Nothing classified yet">
-            Add a dastgāh, form or composer to any Setar/Tar item (or create a new one) and it shows up here, grouped
-            by dastgāh.
+          <EmptyState icon={<ItemsIcon />} title="No works here yet">
+            Add a gusheh or a composed piece (with its dastgāh, form, composer) — or a guitar piece — and it appears
+            here. Technique drills stay in the Practice list.
           </EmptyState>
         </div>
       )}
 
-      {groups.map((g) => (
+      {dastgahGroups.map((g) => (
         <section key={g.dastgah} className="stack-sm">
           <div className="row between">
             <h2 className="title-md" dir="auto">
               {g.dastgah === UNCLASSIFIED_DASTGAH ? 'No dastgāh yet' : g.dastgah}
             </h2>
             <span className="tiny faint">
-              {g.items.length} piece{g.items.length === 1 ? '' : 's'}
+              {g.works.length} work{g.works.length === 1 ? '' : 's'}
             </span>
           </div>
           <div className="card card-flush list">
-            {g.items.map((item) => (
-              <Link
-                key={item.id}
-                to={`/items/${item.id}`}
-                state={{ from: '/repertoire' }}
-                className="list-row card-link"
-                style={{ borderRadius: 0 }}
-              >
-                <div className="grow" style={{ minWidth: 0 }}>
-                  <div className="truncate" dir="auto">
-                    {item.title}
-                  </div>
-                  <div className="tiny faint truncate" dir="auto">
-                    {[
-                      item.persian?.form,
-                      item.persian?.composer,
-                      item.persian?.gusheh && `gusheh: ${item.persian.gusheh}`,
-                      instrumentName(db, item.instrumentId),
-                      item.lastPractisedAt ? `last ${relativeFromDateTime(item.lastPractisedAt, now)}` : 'not practised yet',
-                    ]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </div>
-                </div>
-                <StatusBadge status={item.status} />
-              </Link>
+            {g.works.map((w) => (
+              <WorkRow key={w.work.id} entry={w} db={db} now={now} />
             ))}
           </div>
         </section>
       ))}
 
+      {otherWorks.length > 0 &&
+        sourceGroups.map((g) => (
+          <section key={g.label} className="stack-sm">
+            <div className="row between">
+              <h2 className="title-md" dir="auto">
+                {g.label}
+              </h2>
+              <span className="tiny faint">
+                {g.works.length} work{g.works.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <div className="card card-flush list">
+              {g.works.map((w) => (
+                <WorkRow key={w.work.id} entry={w} db={db} now={now} />
+              ))}
+            </div>
+          </section>
+        ))}
+
       <button className="btn" style={{ width: 'fit-content' }} onClick={() => navigate('/items/new', { state: { from: '/repertoire' } })}>
-        <PlusIcon /> Add a piece with details
+        <PlusIcon /> Add practice item
       </button>
+    </div>
+  );
+}
+
+function WorkRow({
+  entry,
+  db,
+  now,
+}: {
+  entry: RepertoireWork;
+  db: ReturnType<typeof useStore.getState>['db'];
+  now: Date;
+}) {
+  const { work, parts } = entry;
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="list-row" style={{ flexWrap: 'wrap' }}>
+      <Link to={`/items/${work.id}`} state={{ from: '/repertoire' }} className="grow row" style={{ minWidth: 0, gap: 10 }}>
+        <div className="grow" style={{ minWidth: 0 }}>
+          <div className="truncate" dir="auto">
+            {work.title}
+          </div>
+          <div className="tiny faint truncate" dir="auto">
+            {[
+              work.persian?.form,
+              work.persian?.composer,
+              work.persian?.gusheh && `gusheh: ${work.persian.gusheh}`,
+              instrumentName(db, work.instrumentId),
+              work.lastPractisedAt ? `last ${relativeFromDateTime(work.lastPractisedAt, now)}` : 'not practised yet',
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        </div>
+        <StatusBadge status={work.status} />
+      </Link>
+      {parts.length > 0 && (
+        <>
+          <button
+            className="link tiny"
+            style={{ background: 'none', border: 'none', flex: 'none' }}
+            aria-expanded={open}
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? '− parts' : `${parts.length} part${parts.length === 1 ? '' : 's'} ›`}
+          </button>
+          {open && (
+            <div className="stack-sm" style={{ width: '100%', paddingLeft: 14, marginTop: 6 }}>
+              {parts.map((p) => (
+                <Link key={p.id} to={`/items/${p.id}`} state={{ from: '/repertoire' }} className="row between small card-link" style={{ minWidth: 0 }}>
+                  <span className="truncate dim" dir="auto">
+                    {p.title}
+                  </span>
+                  <StatusBadge status={p.status} />
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

@@ -1,26 +1,32 @@
 import { create } from 'zustand';
-import { decideSync, type SyncDecision } from '../domain';
-import { buildFullBackup, getDeviceName, importFullBackup, lastModifiedOf } from './backup';
+import { hashState, shortHash } from '../domain';
+import { buildFullBackup, getDeviceName, importFullBackup } from './backup';
+import { loadPreSyncArchive, loadPreSyncArchiveMeta, savePreSyncArchive, type PreSyncArchiveMeta } from './idb';
+import { makeGitHubRemote } from './gitRemote';
+import {
+  resolveSyncConflict,
+  runSync,
+  type LocalSnapshot,
+  type RemoteSideMeta,
+  type SnapshotFile,
+  type SyncBook,
+  type SyncPorts,
+} from './syncEngine';
 import { useStore } from './useStore';
 
 // ---------------------------------------------------------------------------
-// Device sync over a GitHub repo — free, reliable, no server of our own.
+// Device sync over a GitHub repo the user owns — free, no server of ours.
+// This module only WIRES the tested engine (syncEngine.ts) to the real app:
+// local snapshots come from the proven backup format, the remote is the Git
+// Data API (gitRemote.ts), decisions compare content hashes (domain/sync.ts),
+// and both sides of a conflict are preserved before anything is replaced.
 //
-// The remote is just the proven backup format, split so pushes stay small:
-//   state.json   — the full app data (small JSON, changes every session)
-//   files/{id}   — one JSON entry per attachment (immutable: add/delete only)
-//
-// IndexedDB remains the source of truth on each device; sync moves whole
-// snapshots, newest wins, and any ambiguity is surfaced as an explicit
-// conflict for the user to resolve — never a silent merge.
-//
-// The token and sync bookkeeping live in localStorage (per device, never
-// inside the synced data itself).
+// The token and sync bookkeeping stay in localStorage — per device, never
+// inside backups or synced data.
 // ---------------------------------------------------------------------------
 
 const CONFIG_KEY = 'pc-sync-config';
-const STATE_KEY = 'pc-sync-state';
-const API = 'https://api.github.com';
+const BOOK_KEY = 'pc-sync-state';
 
 export interface SyncConfig {
   /** owner/name, e.g. "ethan-ghoreishi/practice-compass-data" */
@@ -28,38 +34,47 @@ export interface SyncConfig {
   token: string;
 }
 
-interface SyncBookkeeping {
-  lastSyncedLocal: string | null;
-  lastSyncedRemote: string | null;
-  lastSyncAt: string | null;
-}
-
-export interface RemoteMeta {
-  lastModified: string;
-  deviceName?: string;
-  exportedAt?: string;
-}
-
 export type SyncPhase = 'off' | 'idle' | 'syncing' | 'synced' | 'conflict' | 'error';
+
+export interface ConflictSide {
+  deviceName?: string;
+  savedAt?: string;
+  rev?: number;
+  hash?: string;
+}
 
 export interface SyncStatus {
   phase: SyncPhase;
   message: string;
   lastSyncAt: string | null;
+  /** Short content hash of the local data (display only). */
+  localHash: string;
   /** Present while phase === 'conflict'. */
-  conflict?: { local: RemoteMeta; remote: RemoteMeta; reason: string };
+  conflict?: { local: ConflictSide; remote: ConflictSide | null; reason: string };
+  /** A pre-sync archive exists and can be restored. */
+  archiveAvailable: boolean;
+  archiveMeta?: PreSyncArchiveMeta | null;
 }
 
-/** Small UI-facing status store (not persisted). */
 export const useSyncStatus = create<SyncStatus>(() => ({
   phase: getSyncConfig() ? 'idle' : 'off',
   message: getSyncConfig() ? 'Not synced yet this session.' : 'Sync is off.',
-  lastSyncAt: loadBookkeeping().lastSyncAt,
+  lastSyncAt: loadBook().lastSyncAt,
+  localHash: '—',
+  archiveAvailable: false,
 }));
 
 function setStatus(patch: Partial<SyncStatus>) {
   useSyncStatus.setState(patch);
 }
+
+/** Refresh the archive flag (called on init and after archive writes). */
+export async function refreshArchiveStatus(): Promise<void> {
+  const meta = await loadPreSyncArchiveMeta();
+  setStatus({ archiveAvailable: !!meta, archiveMeta: meta });
+}
+
+// ---- Config + bookkeeping (localStorage, per device) ------------------------
 
 export function getSyncConfig(): SyncConfig | null {
   try {
@@ -77,7 +92,7 @@ export function setSyncConfig(cfg: SyncConfig | null): void {
     if (cfg) localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
     else {
       localStorage.removeItem(CONFIG_KEY);
-      localStorage.removeItem(STATE_KEY);
+      localStorage.removeItem(BOOK_KEY);
     }
   } catch {
     /* ignore */
@@ -89,251 +104,164 @@ export function setSyncConfig(cfg: SyncConfig | null): void {
   );
 }
 
-function loadBookkeeping(): SyncBookkeeping {
+function loadBook(): SyncBook {
   try {
-    const raw = localStorage.getItem(STATE_KEY);
-    if (raw) return JSON.parse(raw) as SyncBookkeeping;
+    const raw = localStorage.getItem(BOOK_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<SyncBook>;
+      // Legacy bookkeeping (timestamp era) lacks lastSyncedHash → treated as
+      // a first sync: identical data lands in-sync, differing data is an
+      // explicit conflict. Safe either way.
+      return {
+        lastSyncedHash: parsed.lastSyncedHash ?? null,
+        lastRemoteCommit: parsed.lastRemoteCommit ?? null,
+        lastSyncAt: parsed.lastSyncAt ?? null,
+      };
+    }
   } catch {
     /* ignore */
   }
-  return { lastSyncedLocal: null, lastSyncedRemote: null, lastSyncAt: null };
+  return { lastSyncedHash: null, lastRemoteCommit: null, lastSyncAt: null };
 }
 
-function saveBookkeeping(b: SyncBookkeeping): void {
+function saveBook(book: SyncBook): void {
   try {
-    localStorage.setItem(STATE_KEY, JSON.stringify(b));
+    localStorage.setItem(BOOK_KEY, JSON.stringify(book));
   } catch {
     /* ignore */
   }
 }
 
-// ---- Encoding helpers (data may contain Farsi — never plain btoa) ----------
-
-function b64encodeText(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
-
-// ---- GitHub Contents API ----------------------------------------------------
-
-async function gh(cfg: SyncConfig, path: string, init: RequestInit = {}, raw = false): Promise<Response> {
-  return fetch(`${API}/repos/${cfg.repo}/${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${cfg.token}`,
-      Accept: raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-      ...init.headers,
-    },
-  });
-}
-
-async function ghGetRawText(cfg: SyncConfig, path: string): Promise<string | null> {
-  const res = await gh(cfg, path, {}, true);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub ${res.status} reading ${path}`);
-  return res.text();
-}
-
-/** sha of a content file, or null when it doesn't exist. */
-async function ghGetSha(cfg: SyncConfig, path: string): Promise<string | null> {
-  // Object media type returns metadata (incl. sha) without the payload.
-  const res = await gh(cfg, path, { headers: { Accept: 'application/vnd.github.object+json' } });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`GitHub ${res.status} reading ${path}`);
-  const obj = (await res.json()) as { sha?: string };
-  return obj.sha ?? null;
-}
-
-async function ghPut(cfg: SyncConfig, path: string, contentB64: string, message: string, sha?: string | null) {
-  const res = await gh(cfg, path, {
-    method: 'PUT',
-    body: JSON.stringify({ message, content: contentB64, ...(sha ? { sha } : {}) }),
-  });
-  if (!res.ok) throw new Error(`GitHub ${res.status} writing ${path}: ${(await res.text()).slice(0, 200)}`);
-}
-
-async function ghDelete(cfg: SyncConfig, path: string, sha: string, message: string) {
-  const res = await gh(cfg, path, { method: 'DELETE', body: JSON.stringify({ message, sha }) });
-  if (!res.ok && res.status !== 404) throw new Error(`GitHub ${res.status} deleting ${path}`);
-}
-
-async function listRemoteFiles(cfg: SyncConfig): Promise<{ name: string; sha: string }[]> {
-  const res = await gh(cfg, 'contents/files');
-  if (res.status === 404) return [];
-  if (!res.ok) throw new Error(`GitHub ${res.status} listing files`);
-  const arr = (await res.json()) as { name: string; sha: string }[];
-  return Array.isArray(arr) ? arr.map(({ name, sha }) => ({ name, sha })) : [];
-}
+// ---- Ports ------------------------------------------------------------------
 
 interface BackupShape {
-  lastModified?: string;
-  exportedAt?: string;
-  deviceName?: string;
-  files: { id: string; ownerId: string; mime: string; name: string; data: string }[];
+  data?: unknown;
+  files: SnapshotFile[];
   [k: string]: unknown;
 }
 
-/** Remote state.json meta (cheap-ish: one raw read of the small state file). */
-async function getRemoteMeta(cfg: SyncConfig): Promise<RemoteMeta | null> {
-  const text = await ghGetRawText(cfg, 'contents/state.json');
-  if (text === null) return null;
-  const parsed = JSON.parse(text) as BackupShape;
-  return {
-    lastModified: parsed.lastModified ?? parsed.exportedAt ?? '',
-    deviceName: parsed.deviceName,
-    exportedAt: parsed.exportedAt,
-  };
-}
-
-async function pushSnapshot(cfg: SyncConfig): Promise<void> {
-  const device = getDeviceName() || 'unnamed device';
+async function buildLocalSnapshot(): Promise<LocalSnapshot> {
   const backup = JSON.parse(await buildFullBackup()) as BackupShape;
   const files = backup.files;
   backup.files = [];
-
-  const stateSha = await ghGetSha(cfg, 'contents/state.json');
-  await ghPut(cfg, 'contents/state.json', b64encodeText(JSON.stringify(backup)), `sync: state from ${device}`, stateSha);
-
-  // Attachments are immutable (added/deleted, never edited): upload the
-  // missing ones, remove the deleted ones, skip the rest.
-  const remote = await listRemoteFiles(cfg);
-  const remoteNames = new Set(remote.map((r) => r.name));
-  const localIds = new Set(files.map((f) => f.id));
-  for (const f of files) {
-    if (!remoteNames.has(f.id)) {
-      await ghPut(cfg, `contents/files/${f.id}`, b64encodeText(JSON.stringify(f)), `sync: file ${f.name} from ${device}`);
-    }
-  }
-  for (const r of remote) {
-    if (!localIds.has(r.name)) {
-      await ghDelete(cfg, `contents/files/${r.name}`, r.sha, `sync: remove ${r.name} (deleted on ${device})`);
-    }
-  }
+  return {
+    stateText: JSON.stringify(backup),
+    files,
+    hash: await hashState(backup.data ?? {}),
+    rev: useStore.getState().rev,
+    deviceName: getDeviceName(),
+  };
 }
 
-async function pullSnapshot(cfg: SyncConfig): Promise<void> {
-  const text = await ghGetRawText(cfg, 'contents/state.json');
-  if (text === null) throw new Error('No copy on GitHub yet.');
-  const backup = JSON.parse(text) as BackupShape;
-  const remote = await listRemoteFiles(cfg);
-  const entries = await Promise.all(
-    remote.map(async (r) => {
-      const fileText = await ghGetRawText(cfg, `contents/files/${r.name}`);
-      return fileText ? (JSON.parse(fileText) as BackupShape['files'][number]) : null;
-    }),
-  );
-  backup.files = entries.filter((e): e is BackupShape['files'][number] => !!e);
-  const result = await importFullBackup(JSON.stringify(backup));
-  if (!result.ok) throw new Error(result.error);
+function makePorts(cfg: SyncConfig): SyncPorts {
+  return {
+    remote: makeGitHubRemote(cfg),
+    local: {
+      buildSnapshot: buildLocalSnapshot,
+      applySnapshot: async (stateText, files) => {
+        const backup = JSON.parse(stateText) as BackupShape;
+        backup.files = files;
+        const result = await importFullBackup(JSON.stringify(backup));
+        if (!result.ok) throw new Error(result.error);
+      },
+      archivePreSync: async (reason) => {
+        const backupText = await buildFullBackup();
+        await savePreSyncArchive(
+          { savedAt: new Date().toISOString(), reason, deviceName: getDeviceName() || undefined },
+          backupText,
+        );
+        await refreshArchiveStatus();
+      },
+    },
+    book: { load: loadBook, save: saveBook },
+    now: () => new Date(),
+  };
 }
 
-// ---- Orchestration ----------------------------------------------------------
+// ---- Public API ---------------------------------------------------------------
 
 let running = false;
 
-export interface SyncOutcome {
-  decision: SyncDecision['direction'] | 'error' | 'skipped';
-  detail: string;
+function conflictSideOfLocal(local: LocalSnapshot): ConflictSide {
+  return { deviceName: local.deviceName || 'this device', rev: local.rev, hash: local.hash };
 }
 
-export async function syncNow(): Promise<SyncOutcome> {
+function conflictSideOfRemote(remote: RemoteSideMeta | null): ConflictSide | null {
+  return remote ? { deviceName: remote.deviceName, savedAt: remote.savedAt, rev: remote.rev, hash: remote.hash } : null;
+}
+
+async function applyOutcome(outcome: Awaited<ReturnType<typeof runSync>>): Promise<void> {
+  const at = new Date().toISOString();
+  switch (outcome.kind) {
+    case 'in-sync':
+      setStatus({ phase: 'synced', message: 'Already in sync.', lastSyncAt: at, conflict: undefined });
+      break;
+    case 'pushed':
+      setStatus({
+        phase: 'synced',
+        message: outcome.direction === 'first-push' ? 'First snapshot pushed to GitHub.' : 'Sent this device’s changes to GitHub.',
+        lastSyncAt: at,
+        conflict: undefined,
+      });
+      break;
+    case 'pulled':
+      setStatus({
+        phase: 'synced',
+        message: `Brought the GitHub copy${outcome.remote.deviceName ? ` (from “${outcome.remote.deviceName}”)` : ''} onto this device. The previous copy is archived and restorable below.`,
+        lastSyncAt: at,
+        conflict: undefined,
+      });
+      break;
+    case 'conflict':
+      setStatus({
+        phase: 'conflict',
+        message: outcome.reason,
+        conflict: { local: conflictSideOfLocal(outcome.local), remote: conflictSideOfRemote(outcome.remote), reason: outcome.reason },
+      });
+      break;
+    case 'error':
+      setStatus({ phase: 'error', message: outcome.message });
+      break;
+  }
+  const local = useStore.getState();
+  setStatus({ localHash: `r${local.rev} · ${shortHash(await hashState(local.db))}` });
+}
+
+export async function syncNow(): Promise<void> {
   const cfg = getSyncConfig();
-  if (!cfg) return { decision: 'skipped', detail: 'Sync is not set up.' };
+  if (!cfg) return;
   if (!navigator.onLine) {
     setStatus({ phase: 'idle', message: 'Offline — will sync when back online.' });
-    return { decision: 'skipped', detail: 'Offline.' };
+    return;
   }
-  if (running) return { decision: 'skipped', detail: 'A sync is already running.' };
+  if (running) return;
   running = true;
   setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
-
   try {
-    const db = useStore.getState().db;
-    const local = lastModifiedOf(db);
-    const remoteMeta = await getRemoteMeta(cfg);
-    const book = loadBookkeeping();
-    const decision = decideSync({
-      localLastModified: local,
-      remoteLastModified: remoteMeta ? remoteMeta.lastModified : null,
-      lastSyncedLocal: book.lastSyncedLocal,
-      lastSyncedRemote: book.lastSyncedRemote,
-    });
-
-    switch (decision.direction) {
-      case 'first-push':
-      case 'push': {
-        await pushSnapshot(cfg);
-        finishSync(local, local, decision.direction === 'first-push' ? 'First backup pushed to GitHub.' : 'Sent this device’s changes to GitHub.');
-        return { decision: decision.direction, detail: decision.reason };
-      }
-      case 'pull': {
-        await pullSnapshot(cfg);
-        const newLocal = lastModifiedOf(useStore.getState().db);
-        finishSync(newLocal, newLocal, `Brought the newer GitHub copy${remoteMeta?.deviceName ? ` (from “${remoteMeta.deviceName}”)` : ''} onto this device.`);
-        return { decision: 'pull', detail: decision.reason };
-      }
-      case 'in-sync': {
-        finishSync(book.lastSyncedLocal ?? local, book.lastSyncedRemote ?? local, 'Already in sync.');
-        return { decision: 'in-sync', detail: decision.reason };
-      }
-      case 'conflict': {
-        setStatus({
-          phase: 'conflict',
-          message: decision.reason,
-          conflict: {
-            local: { lastModified: local, deviceName: getDeviceName() || 'this device' },
-            remote: remoteMeta ?? { lastModified: '' },
-            reason: decision.reason,
-          },
-        });
-        return { decision: 'conflict', detail: decision.reason };
-      }
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Sync failed.';
-    setStatus({ phase: 'error', message: msg });
-    return { decision: 'error', detail: msg };
+    await applyOutcome(await runSync(makePorts(cfg)));
   } finally {
     running = false;
   }
 }
 
-function finishSync(local: string, remote: string, message: string) {
-  const at = new Date().toISOString();
-  saveBookkeeping({ lastSyncedLocal: local, lastSyncedRemote: remote, lastSyncAt: at });
-  setStatus({ phase: 'synced', message, lastSyncAt: at, conflict: undefined });
-}
-
-/** Explicit conflict resolution — the user chose which whole copy wins. */
-export async function resolveConflict(keep: 'local' | 'remote'): Promise<SyncOutcome> {
+export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
   const cfg = getSyncConfig();
-  if (!cfg) return { decision: 'skipped', detail: 'Sync is not set up.' };
-  if (running) return { decision: 'skipped', detail: 'A sync is already running.' };
+  if (!cfg || running) return;
   running = true;
-  setStatus({ phase: 'syncing', message: keep === 'local' ? 'Sending this device’s copy…' : 'Taking the GitHub copy…' });
+  setStatus({ phase: 'syncing', message: keep === 'local' ? 'Keeping this device’s copy…' : 'Archiving this copy, then taking GitHub’s…' });
   try {
-    if (keep === 'local') {
-      await pushSnapshot(cfg);
-      const local = lastModifiedOf(useStore.getState().db);
-      finishSync(local, local, 'Kept this device’s copy — GitHub now matches it.');
-      return { decision: 'push', detail: 'Kept local copy.' };
-    }
-    await pullSnapshot(cfg);
-    const local = lastModifiedOf(useStore.getState().db);
-    finishSync(local, local, 'Took the GitHub copy — this device now matches it.');
-    return { decision: 'pull', detail: 'Kept remote copy.' };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Sync failed.';
-    setStatus({ phase: 'error', message: msg });
-    return { decision: 'error', detail: msg };
+    await applyOutcome(await resolveSyncConflict(makePorts(cfg), keep));
   } finally {
     running = false;
   }
+}
+
+/** Restore the pre-sync archive (the copy preserved before the last replace). */
+export async function restorePreSyncArchive(): Promise<{ ok: boolean; error?: string }> {
+  const text = await loadPreSyncArchive();
+  if (!text) return { ok: false, error: 'No archived copy exists.' };
+  const result = await importFullBackup(text);
+  if (!result.ok) return { ok: false, error: result.error };
+  setStatus({ phase: 'idle', message: 'Archived copy restored. Sync again when ready — a differing GitHub copy will show as an explicit choice.' });
+  return { ok: true };
 }

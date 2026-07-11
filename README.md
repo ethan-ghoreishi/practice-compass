@@ -13,8 +13,9 @@ prompt or repertoire item.
 There is no backend, no account, no audio analysis and no AI judgement.
 **IndexedDB on the device is the source of truth** (app data + attached files); every
 install works fully offline. Devices stay in sync through a GitHub repo you own
-(whole snapshots, newest wins — see *Using it*), and a single backup file (JSON data +
-embedded files) exports/imports everything as a fallback. Hosted free on GitHub Pages;
+(atomic whole snapshots, compared by content hash, conflicts archived — see *Using
+it*), and a single backup file (JSON data + embedded files) exports/imports everything
+as a fallback. Hosted free on GitHub Pages;
 daily home is the **MacBook**, with the **iPhone** as companion.
 
 ---
@@ -37,16 +38,21 @@ daily home is the **MacBook**, with the **iPhone** as companion.
   timer — clearly labelled as a warm-up, not logged practice.
 - **Tells you what to practise next.** A deterministic recommendation engine surfaces
   three explained cards: *Best Next Focus*, *Quick Win*, and *Maintenance*.
-- **Maps the whole Persian repertoire.** Repertoire → *Persian pieces* groups every item
-  by dastgāh/āvāz — radif gushehs and composed maestro pieces (a chahār-mezrāb of Sabā in
-  Afshāri, a pish-darāmad of Darvish Khān in Māhur) side by side, with form and composer
-  on each row. Spelling variants fold into one group; your own text is never rewritten.
-- **Creates items in one step.** Quick Add stays title-only; the full form sets type,
-  source (creatable inline), pathway stage, focus, importance, difficulty and Persian
-  identity together — no create-then-edit round trips.
-- **Stays in sync across devices.** MacBook and iPhone share the same data through a
-  GitHub repo you own — free, automatic, offline-tolerant, with honest newest-wins
-  semantics and explicit conflict choices.
+- **Maps the whole repertoire.** Repertoire → *My repertoire* shows the works you
+  actually play: radif gushehs and composed maestro pieces (a chahārmezrāb of Sabā in
+  Afshāri, a pish-darāmad of Darvish Khān in Māhur) side by side under their dastgāh,
+  with form and composer on each row — and guitar pieces through the same lens, grouped
+  by study source. Parent works appear once; parts stay nested. Spelling variants fold
+  into one group; your own text is never rewritten.
+- **Creates items in one step.** Quick add stays title-only; "Add practice item" asks
+  what you're adding first (gusheh, composed piece, passage, étude, technique…) and
+  shows only the fields that kind needs, with study source (creatable inline), pathway
+  stage, lesson and parent work connectable at creation — no create-then-edit round
+  trips.
+- **Stays in sync across devices — safely.** MacBook and iPhone share the same data
+  through a GitHub repo you own: snapshots publish atomically (one git commit each),
+  changes are compared by content hash (not clocks), both copies are archived before
+  any conflict resolution, and everything is recoverable from the repo's history.
 - **Keeps études concrete.** Break a piece into parts (bars, phrases, one technical
   problem); the piece page always names *one* part to practise now, for 10 minutes, and
   suggests a smaller unit or new strategy when things stall — never quotas.
@@ -88,9 +94,11 @@ Data syncs through a small private GitHub repo you own
    `practice-compass-data`. Permissions → **Contents: Read and write**.
 2. In the app on each device: **Settings → Sync (GitHub)** → paste the repo and token →
    **Connect & sync**.
-3. That's it. It syncs when the app opens and shortly after changes (whole snapshots,
-   newest wins). If both devices changed since the last sync, the app shows both
-   timestamps and asks which copy to keep — it never merges silently.
+3. That's it. It syncs when the app opens, shortly after changes, and when you come
+   back online. If both devices changed since the last sync, the app asks which copy to
+   keep — and archives the other one (in-app restore slot + an `archive/…` branch in
+   the repo) before replacing anything. It never merges silently, and an interrupted
+   sync never leaves a half-written copy on either side.
 
 Manual **Export/Import backup** (one JSON file with data + attachments) remains in
 Settings as a belt-and-braces fallback.
@@ -262,10 +270,20 @@ a one-line description in the picker.
 
 Each device keeps its **own local copy** (IndexedDB) and works fully offline. With
 **Sync (GitHub)** connected in Settings, devices exchange whole snapshots through your
-data repo: newest copy wins, per-device names in the commit log, and an explicit
-two-button choice when both sides changed. Attachments upload once each (immutable);
-only new or deleted files transfer. Without sync, moving data is a manual backup
-export → import, with a warning before an older backup overwrites newer local data.
+data repo — one git commit per snapshot, published atomically (a failed or interrupted
+sync leaves the previous snapshot untouched). Sync compares content hashes three-way
+(like git), so pathway edits, deletions and attachment changes all count; when both
+sides changed you choose explicitly, and the losing copy is archived first — in-app
+("Restore it" in Settings) and as an `archive/…` branch in the repo. Attachments
+upload once each (immutable); only new or deleted files transfer. PDFs and photos are
+welcome; files over 40 MB are refused with a clear message (class videos belong in
+your session folders). Without sync, moving data is a manual backup export → import.
+
+## Updates
+
+The app updates itself: when a new build is published, an in-app banner offers
+**Reload** (updates are also checked hourly and when the app regains focus). The
+running build is shown at the bottom of Settings. Reinstalling is never required.
 
 ## Install as an app (PWA)
 

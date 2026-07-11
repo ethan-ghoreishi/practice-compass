@@ -1,11 +1,12 @@
-# Checks only. Deployment is local (npm run deploy -> NAS Web Station); this
-# repo is private and deliberately not published to Pages, because the data and
-# attachments are personal.
+# Checks for branches and pull requests. Pushes to main are checked AND
+# deployed by deploy.yml (lint + tests + build gate the Pages deployment in
+# one dependency chain there).
 name: CI
 
 on:
+  pull_request:
   push:
-    branches: [main]
+    branches-ignore: [main]
   workflow_dispatch:
 
 jobs:

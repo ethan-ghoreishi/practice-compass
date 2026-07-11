@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore, type ThemePref } from '../store/useStore';
 import {
   buildFullBackup,
@@ -8,7 +8,15 @@ import {
   readBackupMeta,
   setDeviceName,
 } from '../store/backup';
-import { getSyncConfig, resolveConflict, setSyncConfig, syncNow, useSyncStatus } from '../store/githubSync';
+import {
+  getSyncConfig,
+  refreshArchiveStatus,
+  resolveConflict,
+  restorePreSyncArchive,
+  setSyncConfig,
+  syncNow,
+  useSyncStatus,
+} from '../store/githubSync';
 import { Field } from '../components/ui';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
@@ -270,6 +278,10 @@ export default function Settings() {
         </div>
       </section>
 
+      <div className="tiny faint" style={{ textAlign: 'center' }}>
+        Practice Compass · build {__APP_VERSION__}
+      </div>
+
       {message && <div className="toast">{message}</div>}
     </div>
   );
@@ -277,8 +289,10 @@ export default function Settings() {
 
 /**
  * Mac ↔ iPhone sync through a GitHub repo the user owns. Free, no server of
- * ours, and honest: whole snapshots, newest wins, conflicts are an explicit
- * choice. The token stays in this browser's localStorage only.
+ * ours, and honest: whole snapshots compared by content hash, an explicit
+ * two-button choice when both changed (the newer side is only a
+ * recommendation), and both copies preserved before anything is replaced.
+ * The token stays in this browser's localStorage only.
  */
 function SyncSection() {
   const status = useSyncStatus();
@@ -286,6 +300,10 @@ function SyncSection() {
   const [repo, setRepo] = useState(cfg?.repo ?? 'ethan-ghoreishi/practice-compass-data');
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void refreshArchiveStatus();
+  }, []);
 
   async function connectAndSync() {
     const next = { repo: repo.trim().replace(/^https?:\/\/github\.com\//, ''), token: token.trim() };
@@ -309,7 +327,17 @@ function SyncSection() {
     setBusy(false);
   }
 
+  async function restoreArchive() {
+    if (!confirm('Restore the archived copy? It replaces the data currently on this device (the current data is what sync last wrote here).')) return;
+    setBusy(true);
+    const result = await restorePreSyncArchive();
+    setBusy(false);
+    if (!result.ok) alert(result.error);
+  }
+
   const fmt = (iso?: string | null) => (iso ? iso.slice(0, 16).replace('T', ' ') : '—');
+  const remoteNewer =
+    status.conflict?.remote?.savedAt && status.lastSyncAt ? status.conflict.remote.savedAt > status.lastSyncAt : false;
 
   return (
     <section className="stack-sm">
@@ -326,7 +354,7 @@ function SyncSection() {
             </Field>
             <Field
               label="Access token"
-              hint="GitHub → Settings → Developer settings → Fine-grained tokens → New: select ONLY that repo, permission “Contents: Read and write”. Stored in this browser only."
+              hint="GitHub → Settings → Developer settings → Fine-grained tokens → New: select ONLY that repo, permission “Contents: Read and write”. Stored in this browser only — never in backups or synced data."
             >
               <input
                 className="input"
@@ -347,22 +375,34 @@ function SyncSection() {
               <span className="dim">
                 Repo: <strong style={{ color: 'var(--text)' }}>{cfg.repo}</strong>
               </span>
-              <span className="tiny faint">last sync {fmt(status.lastSyncAt)}</span>
+              <span className="tiny faint">
+                {getDeviceName() || 'unnamed device'} · last sync {fmt(status.lastSyncAt)} · data {status.localHash}
+              </span>
             </div>
 
             <div className="small" style={{ color: status.phase === 'error' ? 'var(--tone-alert)' : undefined }}>
               {status.phase === 'syncing' ? 'Syncing…' : status.message}
             </div>
 
+            {status.phase === 'error' && (
+              <div className="tiny dim">
+                Nothing was replaced — an interrupted sync never leaves a half-written copy on either side. Check the
+                connection or token, then “Sync now”.
+              </div>
+            )}
+
             {status.phase === 'conflict' && status.conflict && (
               <div className="card card-quiet stack-sm">
-                <div className="small">Both copies have changes. Which one should win? The other is replaced.</div>
+                <div className="small">
+                  Both copies have changes. Choose which one to continue from — the other is <strong>archived, not
+                  destroyed</strong> (restorable below / from the repo's archive branches).
+                </div>
                 <div className="tiny dim">
-                  This device ({status.conflict.local.deviceName || 'unnamed'}): last change{' '}
-                  {fmt(status.conflict.local.lastModified)}
+                  This device ({status.conflict.local.deviceName || 'unnamed'}) · revision r{status.conflict.local.rev ?? '—'}
                   <br />
-                  GitHub copy{status.conflict.remote.deviceName ? ` (from ${status.conflict.remote.deviceName})` : ''}:
-                  last change {fmt(status.conflict.remote.lastModified)}
+                  GitHub copy{status.conflict.remote?.deviceName ? ` (from ${status.conflict.remote.deviceName})` : ''} · saved{' '}
+                  {fmt(status.conflict.remote?.savedAt)}
+                  {remoteNewer && ' · more recent'}
                 </div>
                 <div className="grid-2">
                   <button className="btn" disabled={busy} onClick={() => resolve('local')}>
@@ -391,9 +431,22 @@ function SyncSection() {
                 Disconnect
               </button>
             </div>
+
+            {status.archiveAvailable && (
+              <div className="row between tiny dim" style={{ gap: 8 }}>
+                <span>
+                  Archived copy from {fmt(status.archiveMeta?.savedAt)} ({status.archiveMeta?.reason ?? 'pre-sync'}) is
+                  kept on this device.
+                </span>
+                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={restoreArchive} style={{ flex: 'none' }}>
+                  Restore it
+                </button>
+              </div>
+            )}
+
             <div className="tiny faint">
-              Syncs automatically when the app opens and shortly after changes. Attachments upload once; only new or
-              deleted files transfer.
+              Syncs when the app opens, after a quiet moment following changes, when you come back online, and on “Sync
+              now”. Attachments upload once; only new or deleted files transfer.
             </div>
           </>
         )}

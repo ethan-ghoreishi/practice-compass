@@ -114,3 +114,41 @@ export async function clearBlobs(): Promise<void> {
 export async function allBlobs(): Promise<AttachmentBlob[]> {
   return idb.attachments.toArray();
 }
+
+// --- Pre-sync archive slot ---------------------------------------------------
+// Before sync replaces local data (pull or conflict resolution), the entire
+// current copy — one full backup JSON including file payloads — is preserved
+// here so "Take the GitHub copy" is never destructive. One slot; each new
+// archive replaces the previous one.
+
+const ARCHIVE_KEY = 'pc-pre-sync-archive';
+
+export interface PreSyncArchiveMeta {
+  savedAt: string;
+  reason: string;
+  deviceName?: string;
+}
+
+export async function savePreSyncArchive(meta: PreSyncArchiveMeta, backupText: string): Promise<void> {
+  await idb.kv.put({ key: ARCHIVE_KEY, value: JSON.stringify({ meta, backupText }) });
+}
+
+export async function loadPreSyncArchiveMeta(): Promise<PreSyncArchiveMeta | null> {
+  const row = await idb.kv.get(ARCHIVE_KEY);
+  if (!row) return null;
+  try {
+    return (JSON.parse(row.value) as { meta: PreSyncArchiveMeta }).meta;
+  } catch {
+    return null;
+  }
+}
+
+export async function loadPreSyncArchive(): Promise<string | null> {
+  const row = await idb.kv.get(ARCHIVE_KEY);
+  if (!row) return null;
+  try {
+    return (JSON.parse(row.value) as { backupText: string }).backupText;
+  } catch {
+    return null;
+  }
+}

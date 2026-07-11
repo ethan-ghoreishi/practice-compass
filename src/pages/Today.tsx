@@ -52,8 +52,6 @@ export default function Today() {
 
   return (
     <div className="stack-lg">
-      <InstallHint />
-
       <nav className="options" aria-label="Which instrument are you practising?">
         {instruments.map((i) => (
           <button
@@ -94,6 +92,9 @@ export default function Today() {
       ) : (
         <SessionView instrumentId={selected.id} instrumentName={selected.name} now={now} />
       )}
+
+      {/* One-time, dismissible, hidden once installed — after the session, never in its place. */}
+      <InstallHint />
     </div>
   );
 }

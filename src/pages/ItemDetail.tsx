@@ -174,6 +174,8 @@ export default function ItemDetail() {
           : 'Complete before next class?'}
       </button>
 
+      <ConnectedTo item={item} />
+
       <div className="card grid-stats">
         <Stat value={item.timesPractised} label="Blocks" />
         <Stat value={formatMinutes(item.totalMinutes)} label="Total time" />
@@ -404,6 +406,68 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
         </button>
       </div>
     </section>
+  );
+}
+
+/**
+ * Concise "why does this item exist" summary near the top: study source,
+ * pathway stage, lessons, parent work — the same links, at a glance, without
+ * hunting through sections. Editing them happens in Connections below.
+ */
+function ConnectedTo({ item }: { item: PracticeItem }) {
+  const db = useStore((s) => s.db);
+  const material = item.materialId ? db.materials.find((m) => m.id === item.materialId) : undefined;
+  const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
+  const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
+  const lessons = db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date));
+  const parent = item.parentItemId ? db.items.find((i) => i.id === item.parentItemId) : undefined;
+
+  if (!material && !stage && lessons.length === 0 && !parent) return null;
+
+  return (
+    <div className="card card-quiet stack-sm" style={{ paddingTop: 'var(--space-3)', paddingBottom: 'var(--space-3)' }}>
+      <div className="section-label" style={{ marginBottom: 0 }}>
+        Connected to
+      </div>
+      <div className="row-wrap small" style={{ gap: 14, rowGap: 6 }}>
+        {parent && (
+          <span className="dim">
+            Part of{' '}
+            <Link to={`/items/${parent.id}`} state={{ from: `/items/${item.id}` }} className="link" dir="auto">
+              {parent.title}
+            </Link>
+          </span>
+        )}
+        {material && (
+          <span className="dim" dir="auto">
+            Study source: <strong style={{ color: 'var(--text)' }}>{material.title}</strong>
+          </span>
+        )}
+        {stage && (
+          <span className="dim">
+            Path:{' '}
+            <Link to={`/pathway/${stage.pathwayId}/${stage.id}`} className="link" dir="auto">
+              {pathway ? `${pathway.name} — ` : ''}
+              {stage.code}
+            </Link>
+          </span>
+        )}
+        {lessons.length > 0 && (
+          <span className="dim">
+            Lessons:{' '}
+            {lessons.slice(0, 3).map((l, i) => (
+              <span key={l.id}>
+                {i > 0 && ', '}
+                <Link to="/lessons" className="link">
+                  {l.date}
+                </Link>
+              </span>
+            ))}
+            {lessons.length > 3 && ` +${lessons.length - 3}`}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

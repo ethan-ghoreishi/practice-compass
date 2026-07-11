@@ -1,25 +1,28 @@
-import { useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import { CompassIcon } from './components/icons';
 import { useStore } from './store/useStore';
 import { getSyncConfig, syncNow } from './store/githubSync';
+// Today stays in the entry chunk (it is always the first screen); every other
+// route loads on demand — smaller initial JS, and the PWA precaches all
+// chunks anyway so offline still has everything.
 import Today from './pages/Today';
-import StartBlock from './pages/StartBlock';
-import ActiveBlock from './pages/ActiveBlock';
-import CloseBlock from './pages/CloseBlock';
-import ItemDetail from './pages/ItemDetail';
-import NewItem from './pages/NewItem';
-import Materials from './pages/Materials';
-import Insights from './pages/Insights';
-import Repertoire from './pages/Repertoire';
-import PathwayDetail from './pages/PathwayDetail';
-import StageDetail from './pages/StageDetail';
-import Lessons from './pages/Lessons';
-import RoutineRunner from './pages/RoutineRunner';
-import TeacherReport from './pages/TeacherReport';
-import Settings from './pages/Settings';
-import More from './pages/More';
+const StartBlock = lazy(() => import('./pages/StartBlock'));
+const ActiveBlock = lazy(() => import('./pages/ActiveBlock'));
+const CloseBlock = lazy(() => import('./pages/CloseBlock'));
+const ItemDetail = lazy(() => import('./pages/ItemDetail'));
+const NewItem = lazy(() => import('./pages/NewItem'));
+const Materials = lazy(() => import('./pages/Materials'));
+const Insights = lazy(() => import('./pages/Insights'));
+const Repertoire = lazy(() => import('./pages/Repertoire'));
+const PathwayDetail = lazy(() => import('./pages/PathwayDetail'));
+const StageDetail = lazy(() => import('./pages/StageDetail'));
+const Lessons = lazy(() => import('./pages/Lessons'));
+const RoutineRunner = lazy(() => import('./pages/RoutineRunner'));
+const TeacherReport = lazy(() => import('./pages/TeacherReport'));
+const Settings = lazy(() => import('./pages/Settings'));
+const More = lazy(() => import('./pages/More'));
 
 function useThemeAttribute() {
   const theme = useStore((s) => s.theme);
@@ -31,24 +34,39 @@ function useThemeAttribute() {
 }
 
 /**
- * Opportunistic GitHub sync: once when the app opens, then 30 quiet seconds
- * after the last data change. Unconfigured or offline, it does nothing.
+ * Opportunistic GitHub sync: once when the app opens, 30 quiet seconds after
+ * the last data change (the revision counter bumps on every mutation), and
+ * again the moment the device comes back online. Sync configured after
+ * startup joins in automatically — every trigger re-checks the config.
+ * Unconfigured or offline, each trigger is a no-op.
  */
 function useAutoSync(hydrated: boolean) {
-  const db = useStore((s) => s.db);
-  const opened = useRef(false);
+  const rev = useStore((s) => s.rev);
+  const openedRev = useRef<number | null>(null);
 
+  // On open (first hydrated render).
   useEffect(() => {
-    if (!hydrated || opened.current || !getSyncConfig()) return;
-    opened.current = true;
-    void syncNow();
-  }, [hydrated]);
+    if (!hydrated || openedRev.current !== null) return;
+    openedRev.current = rev;
+    if (getSyncConfig()) void syncNow();
+  }, [hydrated, rev]);
 
+  // Quiet period after changes.
   useEffect(() => {
-    if (!hydrated || !opened.current || !getSyncConfig()) return;
+    if (!hydrated || openedRev.current === null || rev === openedRev.current) return;
+    if (!getSyncConfig()) return;
     const t = setTimeout(() => void syncNow(), 30_000);
     return () => clearTimeout(t);
-  }, [db, hydrated]);
+  }, [rev, hydrated]);
+
+  // Returning online after offline practice.
+  useEffect(() => {
+    const onOnline = () => {
+      if (getSyncConfig()) void syncNow();
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, []);
 }
 
 export default function App() {
@@ -70,7 +88,8 @@ export default function App() {
   }
 
   return (
-    <Routes>
+    <Suspense fallback={<div className="small dim" style={{ padding: 'var(--space-5)' }}>Loading…</div>}>
+      <Routes>
       <Route element={<Layout />}>
         <Route index element={<Today />} />
         <Route path="start" element={<StartBlock />} />
@@ -92,6 +111,7 @@ export default function App() {
         <Route path="more" element={<More />} />
         <Route path="*" element={<Today />} />
       </Route>
-    </Routes>
+      </Routes>
+    </Suspense>
   );
 }

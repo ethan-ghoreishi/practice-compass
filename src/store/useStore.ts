@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlobsForOwner, idbStorage, storageWasEmpty } from './idb';
+import { withRevision } from './revision';
 import {
   applyBlockStats,
   catalogForStage,
@@ -130,6 +131,8 @@ export interface ItemPatch {
 
 interface StoreState {
   db: PracticeDB;
+  /** Monotonic data revision — bumped by middleware on every db mutation. */
+  rev: number;
   active: ActiveSession | null;
   theme: ThemePref;
   /** True once the async IndexedDB store has finished rehydrating. */
@@ -294,8 +297,9 @@ function migrateToV6(db: PracticeDB): PracticeDB {
 
 export const useStore = create<StoreState>()(
   persist(
-    (set, get) => ({
+    withRevision((set, get) => ({
       db: emptyDB(),
+      rev: 0,
       active: null,
       theme: 'system',
       hydrated: false,
@@ -864,13 +868,14 @@ export const useStore = create<StoreState>()(
         void clearBlobs();
         set({ db: emptyDB(), active: null });
       },
-    }),
+    })),
     {
       name: 'practice-compass',
       version: SCHEMA_VERSION,
       storage: createJSONStorage(() => idbStorage),
       partialize: (s) => ({
         db: s.db,
+        rev: s.rev,
         active: s.active,
         theme: s.theme,
         sessionInstrumentId: s.sessionInstrumentId,

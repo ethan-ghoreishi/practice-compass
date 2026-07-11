@@ -14,6 +14,10 @@ export interface ItemFormValues {
   title: string;
   materialId: string;
   stageId: string;
+  /** Link to a lesson at creation time (create flow only). */
+  lessonId: string;
+  /** Parent work for passages/parts. */
+  parentItemId: string;
   itemType: ItemType;
   status: ItemStatus;
   importance: Rating;
@@ -35,6 +39,8 @@ export function emptyItemValues(instrumentId: string): ItemFormValues {
     title: '',
     materialId: '',
     stageId: '',
+    lessonId: '',
+    parentItemId: '',
     itemType: 'phrase',
     status: 'new',
     importance: 3,
@@ -57,6 +63,8 @@ export function itemToValues(item: PracticeItem): ItemFormValues {
     title: item.title,
     materialId: item.materialId ?? '',
     stageId: item.stageId ?? '',
+    lessonId: '',
+    parentItemId: item.parentItemId ?? '',
     itemType: item.itemType,
     status: item.status,
     importance: item.importance,
@@ -85,6 +93,7 @@ export function valuesToCreateInput(v: ItemFormValues) {
     title: v.title.trim(),
     materialId: v.materialId && v.materialId !== '__new__' ? v.materialId : undefined,
     stageId: v.stageId || undefined,
+    parentItemId: v.parentItemId || undefined,
     itemType: v.itemType,
     status: v.status,
     importance: v.importance,

@@ -337,8 +337,8 @@ function PathwayEditForm({
           ))}
         </select>
       </Field>
-      <Field label="Source">
-        <input className="input" value={source} onChange={(e) => setSource(e.target.value)} />
+      <Field label="Based on / reference" hint="Where this route comes from — e.g. CGS syllabus, your teacher's plan.">
+        <input className="input" dir="auto" value={source} onChange={(e) => setSource(e.target.value)} />
       </Field>
       <Field label="Description">
         <textarea className="textarea" value={description} onChange={(e) => setDescription(e.target.value)} />

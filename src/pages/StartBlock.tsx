@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   BLOCK_MODE_LABELS,
   DEFAULT_DURATION_MINUTES,
@@ -10,19 +10,16 @@ import {
   ITEM_TYPE_LABELS,
   type BlockMode,
   type FocusArea,
-  type ItemType,
   type PracticeItem,
-  type Rating,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { itemsForInstrument, materialLabel, materialsForInstrument } from '../store/lookups';
-import { Field, OptionPills, RatingInput, StatusBadge } from '../components/ui';
+import { itemsForInstrument } from '../store/lookups';
+import { Field, OptionPills, StatusBadge } from '../components/ui';
 import { recordToOptions } from '../components/options';
 import { PlayIcon, PlusIcon } from '../components/icons';
 
 const MODE_OPTIONS = recordToOptions(BLOCK_MODE_LABELS);
 const FOCUS_OPTIONS = recordToOptions(FOCUS_LABELS);
-const TYPE_OPTIONS = recordToOptions(ITEM_TYPE_LABELS);
 
 export default function StartBlock() {
   const db = useStore((s) => s.db);
@@ -30,6 +27,8 @@ export default function StartBlock() {
   const startSession = useStore((s) => s.startSession);
   const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
   const navigate = useNavigate();
+  const location = useLocation();
+  const preselect = (location.state as { selectItem?: string } | null)?.selectItem;
 
   const activeInstruments = db.instruments.filter((i) => i.active);
   // Inherit the session's instrument ("I'm practising Setar now").
@@ -37,25 +36,24 @@ export default function StartBlock() {
     sessionInstrumentId && sessionInstrumentId !== 'all'
       ? activeInstruments.find((i) => i.id === sessionInstrumentId)?.id
       : undefined;
-  const [instrumentId, setInstrumentId] = useState(sessionDefault ?? activeInstruments[0]?.id ?? '');
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const preselected = preselect ? db.items.find((i) => i.id === preselect) : undefined;
+  const [instrumentId, setInstrumentId] = useState(
+    preselected?.instrumentId ?? sessionDefault ?? activeInstruments[0]?.id ?? '',
+  );
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(preselected?.id ?? null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
 
-  // Block configuration
-  const [mode, setMode] = useState<BlockMode>('learn');
-  const [focus, setFocus] = useState<FocusArea>('other');
+  // Block configuration (smart defaults from the preselected item, if any)
+  const [mode, setMode] = useState<BlockMode>(preselected ? defaultModeForStatus(preselected.status) : 'learn');
+  const [focus, setFocus] = useState<FocusArea>(preselected ? defaultFocusForItem(preselected) : 'other');
   const [duration, setDuration] = useState<number>(DEFAULT_DURATION_MINUTES);
 
-  // New-item draft
+  // Quick-create draft: TITLE ONLY. Anything richer goes through the one
+  // complete "Add practice item" form (which returns here ready to begin).
   const [title, setTitle] = useState('');
-  const [materialId, setMaterialId] = useState<string>('');
-  const [itemType, setItemType] = useState<ItemType>('phrase');
-  const [importance, setImportance] = useState<Rating>(3);
-  const [difficulty, setDifficulty] = useState<Rating>(3);
 
   const items = useMemo(() => itemsForInstrument(db, instrumentId), [db, instrumentId]);
-  const materials = useMemo(() => materialsForInstrument(db, instrumentId), [db, instrumentId]);
   const filtered = useMemo(
     () =>
       items.filter((i) => i.title.toLowerCase().includes(search.trim().toLowerCase())),
@@ -67,7 +65,6 @@ export default function StartBlock() {
     setInstrumentId(id);
     setSelectedItemId(null);
     setCreating(false);
-    setMaterialId('');
   }
 
   function pickItem(item: PracticeItem) {
@@ -93,21 +90,13 @@ export default function StartBlock() {
     let itemId = selectedItemId;
     if (creating) {
       if (!title.trim()) return;
-      itemId = addItem({
-        instrumentId,
-        title,
-        itemType,
-        materialId: materialId || undefined,
-        importance,
-        difficulty,
-        primaryFocus: focus !== 'other' ? focus : undefined,
-      });
+      itemId = addItem({ instrumentId, title });
     }
     if (!itemId) return;
     startSession({
       itemId,
       instrumentId,
-      materialId: creating ? materialId || undefined : selectedItem?.materialId,
+      materialId: creating ? undefined : selectedItem?.materialId,
       mode,
       focus,
       constraint: undefined,
@@ -150,51 +139,29 @@ export default function StartBlock() {
         <div className="row between">
           <div className="section-label">2 · Practice item</div>
           <button className="btn btn-sm" onClick={creating ? () => setCreating(false) : beginCreate}>
-            {creating ? 'Pick existing' : <><PlusIcon /> New item</>}
+            {creating ? 'Pick existing' : <><PlusIcon /> Quick add</>}
           </button>
         </div>
 
         {creating ? (
-          <div className="card stack">
-            <Field label="Title">
+          <div className="card stack-sm">
+            <Field label="Title" hint="Just a name — add and begin. Details can wait.">
               <input
                 className="input"
+                dir="auto"
                 autoFocus
                 placeholder="e.g. Iraq phrase 4 ending"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </Field>
-            <div className="grid-2">
-              <Field label="Material (optional)">
-                <select className="select" value={materialId} onChange={(e) => setMaterialId(e.target.value)}>
-                  <option value="">None</option>
-                  {materials.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {materialLabel(m)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Type">
-                <select className="select" value={itemType} onChange={(e) => setItemType(e.target.value as ItemType)}>
-                  {TYPE_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            <div className="grid-2">
-              <Field label="Importance">
-                <RatingInput value={importance} onChange={setImportance} label="Importance" />
-              </Field>
-              <Field label="Difficulty">
-                <RatingInput value={difficulty} onChange={setDifficulty} label="Difficulty" />
-              </Field>
-            </div>
-            <span className="field-hint">You can fill in the rest later — keep starting fast.</span>
+            <button
+              className="link small"
+              style={{ background: 'none', border: 'none', textAlign: 'left', width: 'fit-content' }}
+              onClick={() => navigate('/items/new', { state: { from: '/start' } })}
+            >
+              Need the full form (source, dastgāh, importance…)? Add with details →
+            </button>
           </div>
         ) : (
           <div className="stack-sm">

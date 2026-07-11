@@ -1,4 +1,5 @@
 import {
+  attachmentPolicy,
   newId,
   nowISO,
   type AttachmentKind,
@@ -14,9 +15,6 @@ import { useStore } from './useStore';
 // item OR a lesson (ownerType + ownerId).
 // ---------------------------------------------------------------------------
 
-/** Files above this are allowed, but the user is warned about backup size. */
-export const LARGE_FILE_BYTES = 25 * 1024 * 1024;
-
 export function kindForMime(mime: string): AttachmentKind {
   if (mime === 'application/pdf') return 'pdf';
   if (mime.startsWith('image/')) return 'image';
@@ -29,6 +27,8 @@ export async function addAttachment(
   ownerId: string,
   file: File,
 ): Promise<AttachmentMeta> {
+  const policy = attachmentPolicy(file.size, file.type || '');
+  if (policy.level === 'block') throw new Error(policy.message);
   const id = newId();
   await putBlob(id, ownerId, file);
   const meta: AttachmentMeta = {

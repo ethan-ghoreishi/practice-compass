@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   assignedForLesson,
@@ -25,6 +25,7 @@ export default function Lessons() {
   const db = useStore((s) => s.db);
   const now = useMemo(() => new Date(), []);
   const instruments = db.instruments.filter((i) => i.active);
+  const wide = useIsWide();
 
   return (
     <div className="stack-lg">
@@ -35,9 +36,137 @@ export default function Lessons() {
         </p>
       </header>
 
-      {instruments.map((inst) => (
-        <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
-      ))}
+      {wide ? (
+        <WideLessons now={now} />
+      ) : (
+        instruments.map((inst) => (
+          <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function useIsWide(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1000px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+/**
+ * MacBook layout: lesson list on the left, the open lesson (long Farsi notes,
+ * linked items, files) with real room on the right. Phones keep the simple
+ * drill-down cards.
+ */
+function WideLessons({ now }: { now: Date }) {
+  const db = useStore((s) => s.db);
+  const addLesson = useStore((s) => s.addLesson);
+  const deleteLesson = useStore((s) => s.deleteLesson);
+  const instruments = db.instruments.filter((i) => i.active);
+
+  const allLessons = useMemo(
+    () => [...db.lessons].sort((a, b) => b.date.localeCompare(a.date)),
+    [db.lessons],
+  );
+  const defaultSelection = useMemo(() => {
+    const upcoming = [...allLessons].reverse().find((l) => l.date >= todayISODate(now));
+    return upcoming?.id ?? allLessons[0]?.id ?? null;
+  }, [allLessons, now]);
+  const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
+  const selected = allLessons.find((l) => l.id === selectedId) ?? null;
+
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISODate(now));
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
+      <div className="stack">
+        {instruments.map((inst) => {
+          const lessons = lessonsForInstrument(db.lessons, inst.id);
+          const next = nextLessonFor(db.lessons, inst.id, now);
+          const flagged = assignedForLesson(db.items).filter((i) => i.instrumentId === inst.id);
+          return (
+            <section key={inst.id} className="stack-sm">
+              <div className="row between">
+                <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
+                  {inst.name}
+                </h2>
+                {next && <span className="badge tone-progress">next {relativeDay(next.date, now)}</span>}
+              </div>
+              {next && flagged.length > 0 && (
+                <div className="tiny dim">
+                  {flagged.length} item{flagged.length === 1 ? '' : 's'} to prepare · {daysUntil(next.date, now)} day
+                  {daysUntil(next.date, now) === 1 ? '' : 's'} left
+                </div>
+              )}
+              <div className="card card-flush list">
+                {lessons.map((l) => (
+                  <button
+                    key={l.id}
+                    className="list-row"
+                    style={{
+                      background: l.id === selectedId ? 'var(--accent-soft)' : 'none',
+                      border: 'none',
+                      width: '100%',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: 'inherit',
+                    }}
+                    onClick={() => setSelectedId(l.id)}
+                  >
+                    <span className="grow">{l.date}</span>
+                    <span className="tiny faint">{l.notes ? 'notes ✓' : l.date >= todayISODate(now) ? 'upcoming' : '—'}</span>
+                  </button>
+                ))}
+                {lessons.length === 0 && <div className="list-row tiny faint">No classes logged.</div>}
+              </div>
+              {addingFor === inst.id ? (
+                <div className="row" style={{ gap: 8 }}>
+                  <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const id = addLesson({ instrumentId: inst.id, date });
+                      setAddingFor(null);
+                      setSelectedId(id);
+                    }}
+                  >
+                    Add
+                  </button>
+                  <button className="btn btn-sm" onClick={() => setAddingFor(null)}>
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={() => setAddingFor(inst.id)}>
+                  <PlusIcon /> Add a class
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="card stack-sm" style={{ minHeight: 320 }}>
+        {selected ? (
+          <>
+            <div className="row between">
+              <strong>
+                {instruments.find((i) => i.id === selected.instrumentId)?.name} · {selected.date}
+              </strong>
+              <span className="tiny faint">{relativeDay(selected.date, now)}</span>
+            </div>
+            <LessonDetail lesson={selected} onDelete={() => deleteLesson(selected.id)} />
+          </>
+        ) : (
+          <div className="small dim">Pick a class on the left — or add one.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -118,15 +247,8 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 }
 
 function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDelete: () => void }) {
-  const updateLesson = useStore((s) => s.updateLesson);
   const upcoming = lesson.date >= todayISODate(now);
   const [open, setOpen] = useState(upcoming || !lesson.notes);
-  const [text, setText] = useState(lesson.notes ?? '');
-
-  function save() {
-    const next = text.trim() || undefined;
-    if ((lesson.notes ?? undefined) !== next) updateLesson(lesson.id, { notes: next });
-  }
 
   return (
     <article className="card stack-sm">
@@ -143,38 +265,57 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
         <span className="tiny faint">{open ? 'close' : lesson.notes ? 'notes ✓' : 'add notes'}</span>
       </button>
 
-      {open && (
-        <>
-          <textarea
-            className="textarea"
-            dir="auto"
-            style={{ minHeight: 120 }}
-            placeholder="Notes from the class — what was covered, what your teacher said, what to prepare… (فارسی هم می‌شود)"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onBlur={save}
-          />
-
-          <LessonItems lesson={lesson} />
-
-          <Attachments
-            ownerType="lesson"
-            ownerId={lesson.id}
-            emptyHint="Attach the hand-outs for this class — PDFs of pieces, photos of notation. Keep the class video recordings in your session folders; they'd bloat the backup."
-          />
-
-          <button
-            className="link tiny"
-            style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
-            onClick={() => {
-              if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
-            }}
-          >
-            Delete lesson
-          </button>
-        </>
-      )}
+      {open && <LessonDetail lesson={lesson} onDelete={onDelete} />}
     </article>
+  );
+}
+
+/** Notes, linked items, files and delete — the body of an open lesson. */
+function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
+  const updateLesson = useStore((s) => s.updateLesson);
+  const [text, setText] = useState(lesson.notes ?? '');
+
+  // Editing a different lesson resets the draft (wide-screen pane reuse).
+  useEffect(() => {
+    setText(lesson.notes ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson.id]);
+
+  function save() {
+    const next = text.trim() || undefined;
+    if ((lesson.notes ?? undefined) !== next) updateLesson(lesson.id, { notes: next });
+  }
+
+  return (
+    <>
+      <textarea
+        className="textarea"
+        dir="auto"
+        style={{ minHeight: 160 }}
+        placeholder="Notes from the class — what was covered, what your teacher said, what to prepare… (فارسی هم می‌شود)"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={save}
+      />
+
+      <LessonItems lesson={lesson} />
+
+      <Attachments
+        ownerType="lesson"
+        ownerId={lesson.id}
+        emptyHint="Attach the hand-outs for this class — PDFs of pieces, photos of notation. Keep the class video recordings in your session folders; they'd bloat the backup."
+      />
+
+      <button
+        className="link tiny"
+        style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
+        onClick={() => {
+          if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
+        }}
+      >
+        Delete lesson
+      </button>
+    </>
   );
 }
 

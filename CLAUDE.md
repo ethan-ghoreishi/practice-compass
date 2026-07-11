@@ -21,12 +21,16 @@ even if it's "useful".
 - Smart defaults are a feature, not a convenience. Status → mode, item → focus,
   10‑minute duration. If you add a concept, give it a sensible default too.
 - Inline item creation must keep working from the Start screen and from recommendations.
-- **Two creation paths, both one-step.** QuickAdd = title only. The full form
-  (`/items/new`, also inline edit) sets EVERYTHING at creation — type, source (inline
-  new), pathway stage, focus, importance, difficulty, Persian identity — in logical
-  groups ("What it is / Where it lives / How to practise it"), so nothing requires a
-  create-then-edit round trip. QuickAdd's "add details" opens the item already in edit
-  mode. Never split these across screens again.
+- **Exactly two creation paths, both one-step.** Quick add = title only (Start's
+  inline create is also title-only, with a link to the full form that returns to Start
+  with the item preselected). The full form ("Add practice item", `/items/new`, also
+  inline edit) is KIND-FIRST: it asks what you're adding (gusheh / composed piece /
+  piece / étude / passage / technique — `src/components/itemKinds.ts`, tested) and
+  shows only that kind's identity fields, in three groups: "What are you adding? /
+  Connect it (optional) / First practice setup". Connections (study source with inline
+  create, pathway stage, lesson, parent work) are settable AT creation — no
+  create-then-edit round trips, and never a third half-detailed path. Item detail
+  shows a "Connected to" summary near the top.
 
 ## Today is a session workspace, scoped to one instrument
 
@@ -54,12 +58,21 @@ the clock (`pauseSession`) before the close screen; reflection time is not count
   **IndexedDB (Dexie) is the source of truth** on each device (app state in the `kv`
   table, attachment blobs in the `attachments` table) and everything works offline.
   **Amended by explicit user decision (2026‑07‑11):** device sync IS sanctioned — via
-  the **user's own GitHub repo** (Contents API + fine‑grained PAT in localStorage,
-  `src/store/githubSync.ts`). Sync moves whole snapshots of the proven backup format
-  (state.json + one file per attachment), newest copy wins, and ambiguity is surfaced
-  as an explicit conflict choice (`decideSync` in `src/domain/sync.ts`, tested) — never
-  a silent merge, never per-field magic, never a custom server. Manual export/import
-  stays as the fallback. Free tiers only; no paid services.
+  the **user's own GitHub repo**. The engine (`src/store/syncEngine.ts`, port-injected
+  and fully unit-tested; GitHub transport in `gitRemote.ts`; wiring in `githubSync.ts`)
+  publishes whole snapshots ATOMICALLY with the Git Data API: blobs → tree → commit →
+  fast-forward-only ref update, so a race or partial failure never leaves a broken
+  remote. Decisions are three-way CONTENT-HASH comparisons (`decideSync` +
+  `canonicalStringify`/`hashState` in `src/domain/`), never timestamps — pathway-only
+  edits and deletions sync like everything else, and a store middleware
+  (`src/store/revision.ts`) bumps a `rev` counter on every db mutation. Both-changed =
+  explicit two-button conflict ("newest" is a hint, never an auto-winner), and BOTH
+  copies are preserved before any replace: the local copy goes to an in-app restore
+  slot (idb) and an `archive/…` branch; the remote copy stays reachable as the parent
+  commit. Legacy `state.json`+`files/` remotes stay readable; the first new push
+  migrates the format with the old snapshot kept in git history. Never a silent merge,
+  never per-field magic, never a custom server. Manual export/import stays as the
+  fallback. Free tiers only; no paid services.
 - ❌ **No AI or audio analysis** in v1 — no tone scoring, pitch detection, posture
   tracking, or "AI teacher" judgement. The app organises; it does not grade.
 - ❌ **No guilt‑driven copy.** Insights are neutral observations, never nags.
@@ -92,13 +105,17 @@ own pace, on a route they trust. Protect that:
 - **Pieces can have parts** (`parentItemId`): parts are ordinary items grouped under a
   piece/étude, with a deterministic "practise this part now" pick (`pickNextPart`) and a
   calm stall hint (`stallHint`) — smaller unit or new strategy, never quotas.
-- **The Persian repertoire beyond the radif is a DERIVED view, not new structure.**
-  Maestro pieces (chahār-mezrāb, pish-darāmad, tasnif…) are ordinary items carrying
-  `persian.dastgahAvaz` / `form` / `composer`; Repertoire → "Persian pieces" groups them
-  by dastgāh via `groupByDastgah` (`src/domain/persian.ts`, tested — folds spelling
-  variants into one group, labels with the user's own majority spelling, standard
-  dastgāh order). Dastgāh/form suggestions are datalists (reference aids), free text
-  always wins. Never invent a parallel "pieces" object.
+- **"My repertoire" is a DERIVED lens, not new structure.** Repertoire has exactly
+  three views: **Pathways · My repertoire · Practice list**. A "work" is any top-level
+  item with Persian identity (dastgāh/form/composer/gusheh) or a full piece/gusheh type
+  (`isWork`/`repertoireWorks` in `src/domain/repertoire.ts`, tested). Persian works
+  group by dastgāh via `groupByDastgah` (`src/domain/persian.ts` — folds spelling
+  variants, labels with the user's own majority spelling, standard dastgāh order) with
+  radif gushehs and composed maestro pieces side by side; other instruments group by
+  study source. Parent works appear ONCE; parts stay nested (never standalone
+  duplicates). Form/composer are compact metadata + filter chips, never a deep
+  hierarchy. Dastgāh/form suggestions are datalists (reference aids), free text always
+  wins. Never invent a parallel "pieces" object or a guitar-specific model.
 - **Sources stay simple.** A Material is instrument + one clear name + kind + status +
   note. Piece-level detail (dastgāh, gusheh, composer, teacher) belongs on items, never
   on sources — the removed parent-title/section/teacher-source fields must not return.
@@ -149,14 +166,38 @@ installed PWA works fully offline; hosting reliability only affects updates.
 `scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
 Tailscale requirement in the main flow.
 
-**Devices sync via the user's GitHub data repo** (Settings → Sync): auto on app open and
-30 quiet seconds after changes, manual "Sync now", per-device names in commits, and an
-explicit two-button conflict choice showing both timestamps. The UI must stay honest
-about the model: whole snapshots, newest wins, no field-level merging. Navigation
-returns to the explicit origin via router state (`state.from` with a safe fallback), the
-primary nav renders before the page content in the DOM and there is exactly ONE sticky
-element on wide screens (the nav — a second sticky header made the bar jump between
-tabs), every route change scrolls to top, and the manifest has no orientation lock.
+**Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
+30 quiet seconds following changes (rev-driven), on returning online, and manually.
+Status shows device name, last sync, current revision + short content hash, plain
+errors, and a "restore archived copy" recovery action. The UI must stay honest about
+the model: whole snapshots, hash-compared, explicit conflicts, both sides preserved.
+The PAT is scoped to the single data repo (Contents R/W) and lives only in
+localStorage — never in backups or synced data.
+
+**Attachment size policy is enforced, not claimed** (`attachmentPolicy` in
+`src/domain/files.ts`, tested): warn over 10 MB and for any video, refuse over 40 MB
+with a clear message. Class videos live in the user's session folders, never the app.
+
+**The app shell is a fixed-height flex column and only `<main>` scrolls** — nothing is
+`position: fixed/sticky`, so the nav bar cannot drift (iOS PWAs moved a fixed bottom
+bar on short pages). Five EQUAL nav tabs (no raised centre button — Today owns the
+primary Start action); safe-area padding at the bar's bottom; route changes scroll
+`<main>` to top; per-route page widths (narrow for focused practice, wide ~1100px for
+browsing/notes on desktop); serif is for headings only, controls/nav/metadata are
+sans. The service worker registers in PROMPT mode: updates show an in-app "new version
+→ Reload" banner (checked hourly and on visibilitychange) and the build stamp
+(`__APP_VERSION__`) is visible in Settings — reinstalling is never the update path.
+The public build ships a restrictive CSP meta (self + api.github.com only), injected
+at build time (`cspPlugin` in vite.config.ts). Pages deploys ONLY behind lint + tests
++ build (deploy.yml single dependency chain).
+
+**Canonical names in user-facing copy:** practice item (the only unit of work) ·
+Study source (where an item comes from: radif, method book, collection, course,
+teacher handout — nothing else) · Pathways / My repertoire / Practice list (the three
+Repertoire views) · "Add practice item" (full form) · "Based on / reference" (a
+pathway's provenance) · "Connect it (optional)" (the links group). A practice item may
+link to a study source, a stage, lessons and a parent work at once; links never
+duplicate the item.
 
 ## Architecture rules
 
