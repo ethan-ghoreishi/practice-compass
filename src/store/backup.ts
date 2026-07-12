@@ -61,6 +61,30 @@ export function setDeviceName(name: string): void {
   }
 }
 
+const NAS_BASE_URL_KEY = 'pc-nas-base-url';
+
+/**
+ * Base URL for resolving relative class-recording paths (e.g. the NAS Tailscale
+ * HTTPS root that serves the video folders). Per-device in localStorage — it is
+ * environment config, never synced or written into backups, and never a place
+ * for a password.
+ */
+export function getNasBaseUrl(): string {
+  try {
+    return localStorage.getItem(NAS_BASE_URL_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setNasBaseUrl(url: string): void {
+  try {
+    localStorage.setItem(NAS_BASE_URL_KEY, url.trim());
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Most recent updatedAt/createdAt across everything — the data's "age". */
 export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']): string {
   let max = '';

@@ -24,6 +24,7 @@ import {
   nowISO,
   SCHEMA_VERSION,
   seedPathways,
+  buildSetarClassLessons,
   STRAND_TO_FOCUS,
   validateDB,
   type BlockMode,
@@ -36,6 +37,7 @@ import {
   type ISODate,
   type ItemStatus,
   type Lesson,
+  type LessonRecording,
   type Material,
   type MaterialSourceType,
   type MaterialStatus,
@@ -162,6 +164,13 @@ interface StoreState {
   deleteLesson: (id: ID) => void;
   /** Link/unlink an existing item to a lesson (a link, never ownership). */
   linkItemToLesson: (lessonId: ID, itemId: ID) => void;
+  addLessonRecording: (
+    lessonId: ID,
+    input: { title: string; path: string; date?: ISODate; sizeBytes?: number; durationLabel?: string; notes?: string },
+  ) => ID;
+  removeLessonRecording: (lessonId: ID, recordingId: ID) => void;
+  /** Additively import the Setar class history (NAS references). Returns count added. */
+  importSetarClasses: (instrumentId: ID) => number;
   unlinkItemFromLesson: (lessonId: ID, itemId: ID) => void;
 
   // Materials
@@ -295,6 +304,13 @@ function migrateToV6(db: PracticeDB): PracticeDB {
   return { ...db, attachments, lessons: db.lessons ?? [] };
 }
 
+// v7: lessons gained optional `recordings` (NAS references). Nothing to
+// rewrite — the field is optional — but normalise it to an array so callers
+// never guard against undefined.
+function migrateToV7(db: PracticeDB): PracticeDB {
+  return { ...db, lessons: (db.lessons ?? []).map((l) => ({ ...l, recordings: l.recordings ?? [] })) };
+}
+
 export const useStore = create<StoreState>()(
   persist(
     withRevision((set, get) => ({
@@ -379,6 +395,62 @@ export const useStore = create<StoreState>()(
             ),
           },
         }));
+      },
+
+      addLessonRecording: (lessonId, input) => {
+        const now = new Date();
+        const rec: LessonRecording = {
+          id: newId(),
+          title: input.title.trim() || 'Class recording',
+          path: input.path.trim(),
+          date: input.date,
+          sizeBytes: input.sizeBytes,
+          durationLabel: input.durationLabel,
+          notes: input.notes?.trim() || undefined,
+          createdAt: nowISO(now),
+        };
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId ? touch({ ...l, recordings: [...(l.recordings ?? []), rec] }, now) : l,
+            ),
+          },
+        }));
+        return rec.id;
+      },
+
+      // Removes only the REFERENCE. The NAS file is never touched.
+      removeLessonRecording: (lessonId, recordingId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId
+                ? touch({ ...l, recordings: (l.recordings ?? []).filter((r) => r.id !== recordingId) }, now)
+                : l,
+            ),
+          },
+        }));
+      },
+
+      // Additively import the user's Setar class history as lessons with NAS
+      // recording references. Skips dates that already have a lesson for that
+      // instrument, so it is safe to run more than once. Returns how many were
+      // added.
+      importSetarClasses: (instrumentId) => {
+        const now = new Date();
+        const existing = new Set(
+          get()
+            .db.lessons.filter((l) => l.instrumentId === instrumentId)
+            .map((l) => l.date),
+        );
+        const added = buildSetarClassLessons(instrumentId, existing, now);
+        if (added.length > 0) {
+          set((s) => ({ db: { ...s.db, lessons: [...s.db.lessons, ...added] } }));
+        }
+        return added.length;
       },
 
       unlinkItemFromLesson: (lessonId, itemId) => {
@@ -887,6 +959,7 @@ export const useStore = create<StoreState>()(
         if (version < 4 && state?.db) state.db = migrateToV4(state.db);
         if (version < 5 && state?.db) state.db = migrateToV5(state.db);
         if (version < 6 && state?.db) state.db = migrateToV6(state.db);
+        if (version < 7 && state?.db) state.db = migrateToV7(state.db);
         if (state?.db) state.db.schemaVersion = SCHEMA_VERSION;
         return state as unknown;
       },
@@ -894,7 +967,7 @@ export const useStore = create<StoreState>()(
       // rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db ? migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db }) : current.db;
+        const db = p.db ? migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db })) : current.db;
         delete (db as unknown as Record<string, unknown>).pathwaySteps;
         delete (db as unknown as Record<string, unknown>).curriculum;
         return { ...current, ...p, db };

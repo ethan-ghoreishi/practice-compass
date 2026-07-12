@@ -134,11 +134,8 @@
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
-  height: 100%;
-}
+/* Root height is set once in the App-shell section below (100dvh with a 100vh
+   fallback) so the installed iOS PWA fills to the true bottom. */
 
 body {
   margin: 0;
@@ -189,11 +186,28 @@ select {
    is position:fixed or sticky, so the nav bar cannot drift — iOS moved a
    fixed bottom bar up on short pages in the installed PWA. Flex `order`
    places the bar visually (bottom on phones, under the header on wide
-   screens) while the DOM keeps nav before content for keyboard/SR users. */
+   screens) while the DOM keeps nav before content for keyboard/SR users.
+
+   HEIGHT: in an installed iOS PWA with viewport-fit=cover, `height: 100%`
+   resolves against the layout viewport, which STOPS above the home-indicator
+   safe area. That left the shell (and the nav) floating above the physical
+   bottom with dead space beneath it. `100dvh` is the dynamic viewport and
+   DOES include the safe area, so the shell reaches the true bottom; the bar's
+   own safe-area padding then lifts just its content clear of the indicator.
+   `100vh` stays as the fallback for engines without dvh. */
 html,
-body {
+body,
+#root {
+  height: 100vh;
   overflow: hidden;
   overscroll-behavior: none;
+}
+@supports (height: 100dvh) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+  }
 }
 
 .app {
@@ -270,7 +284,10 @@ body {
   display: flex;
   justify-content: center;
   gap: 2px;
-  padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom));
+  /* Safe-area padding lives INSIDE the bar: the bar background reaches the
+     physical bottom (the shell is 100dvh) while its buttons stay clear of the
+     home indicator. `env(..., 0px)` keeps non-notched devices flush. */
+  padding: var(--space-2) var(--space-3) calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
   background: var(--surface);
   border-top: 1px solid var(--border);
 }
@@ -349,6 +366,43 @@ body {
     color: var(--accent);
     background: var(--accent-soft);
   }
+}
+
+/* ---- Pathway catalogue row -----------------------------------------------
+   A stable 3-column grid: leading state icon · flexible text · ONE fixed
+   44×44 action. Adding a suggestion only swaps the action's icon (+ → ▶) — the
+   text column never narrows or reflows, because the action slot is the same
+   size in both states. */
+.stage-unit {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) var(--tap);
+  align-items: center;
+  gap: var(--space-3);
+}
+.stage-unit-text {
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: start;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.stage-unit-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+.stage-unit-action {
+  width: var(--tap);
+  height: var(--tap);
+  display: grid;
+  place-items: center;
+  padding: 0;
 }
 
 /* ---- Layout primitives ---- */
@@ -885,5 +939,34 @@ body {
   * {
     transition: none !important;
     animation: none !important;
+  }
+}
+
+/* ---- Print sheet (Questions for next class) ------------------------------
+   An off-screen plain-text sheet that becomes the ONLY thing printed. Keeps
+   the export identical to Copy/Download and free of app chrome. */
+.print-sheet {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  white-space: pre-wrap;
+  font-family: var(--font-sans);
+}
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-sheet,
+  .print-sheet * {
+    visibility: visible;
+  }
+  .print-sheet {
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 24px;
+    color: #000;
+    font-size: 13px;
+    line-height: 1.5;
   }
 }

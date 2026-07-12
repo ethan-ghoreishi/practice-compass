@@ -26,10 +26,10 @@ function sameBlocks(item: PracticeItem, n = 3) {
 describe('recommend', () => {
   it('selects three distinct, explained cards from the seed data', () => {
     const db = createSeedDB(NOW);
-    const byTitle = (t: string) => db.items.find((i) => i.title.includes(t))!;
-    const rizeh = byTitle('Rizeh');
-    const shift = byTitle('shift');
-    const daramad = byTitle('darāmad');
+    // Seed titles are Farsi for Setar/Tar; select by stable properties instead.
+    const rizeh = db.items.find((i) => i.status === 'fragile')!; // the Tar rizeh item
+    const shift = db.items.find((i) => i.title.includes('shift'))!; // guitar item, English
+    const daramad = db.items.find((i) => i.catalogKey === 'daramad')!; // Setar maintenance item
 
     const recs = recommend(db.items, db.blocks, NOW);
 

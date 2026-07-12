@@ -1,42 +1,58 @@
 import type { PracticeItem } from './types';
+import { faCollator, normalizePersian } from './farsi';
 
 /**
  * The Persian repertoire view: radif gushehs and composed maestro pieces are
  * all ordinary items — this groups them by their dastgāh/āvāz so the whole
- * repertoire reads as one musical map. Pure and deterministic.
+ * repertoire reads as one musical map. Pure and deterministic. Works for both
+ * Farsi and Latin spellings (the canonical seed data is Farsi, but users may
+ * type either).
  */
 
 export const UNCLASSIFIED_DASTGAH = '__unclassified__';
 
-/** Standard concert order of the seven dastgāh and five āvāz, for stable grouping. */
-const DASTGAH_ORDER = [
-  'shur',
-  'abu',
-  'tork',
-  'afshar',
-  'dashti',
-  'nava',
-  'homayun',
-  'esfahan',
-  'segah',
-  'chahargah',
-  'mahur',
-  'rast',
+/**
+ * Standard concert order of the seven dastgāh and five āvāz. Each entry lists
+ * fold-keys (Farsi + Latin) that identify it; grouping ranks by the first
+ * token found in the folded dastgāh name.
+ */
+const DASTGAH_RANK: [tokens: string[], rank: number][] = [
+  [['شور', 'shur'], 0],
+  [['ابوعطا', 'abuata', 'abu'], 1],
+  [['ترک', 'tork'], 2],
+  [['افشار', 'afshar'], 3],
+  [['دشتی', 'dasht'], 4],
+  [['همایون', 'homayun'], 5],
+  [['اصفهان', 'esfahan', 'esfah'], 6],
+  [['سهگاه', 'segah'], 7],
+  [['چهارگاه', 'chahargah'], 8],
+  [['ماهور', 'mahur'], 9],
+  [['نوا', 'nava'], 10],
+  [['راست', 'rast'], 11],
 ];
 
-/** Diacritic-insensitive fold so "Āvāz-e Afshāri", "Afshari", "AFSHĀRI" agree. */
+/**
+ * Fold a dastgāh name to a comparison key: normalize Persian variants, drop
+ * ZWNJ / spaces / latin diacritics, lowercase. So "Āvāz-e Afshāri",
+ * "افشاری", "افشاري" all fold together.
+ */
 function fold(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/^avaz[- e]+|^dastgah[- e]+/, '')
-    .trim();
+  let s = normalizePersian(name).replace(/‌/g, '').replace(/\s+/g, '');
+  // Farsi "āvāz"/"dastgāh" prefix — strip while still composed (before NFD,
+  // which would decompose آ and break the match).
+  s = s.replace(/^(آواز|دستگاه)/, '');
+  // Latin fold: lowercase, drop combining diacritics.
+  s = s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // Latin "āvāz-e"/"dastgāh-e" prefix, now diacritic-free.
+  s = s.replace(/^(avaz|dastgah)[-e]*/, '');
+  return s;
 }
 
-function dastgahRank(folded: string): number {
-  const idx = DASTGAH_ORDER.findIndex((k) => folded.includes(k));
-  return idx === -1 ? DASTGAH_ORDER.length : idx;
+function dastgahRank(foldedKey: string): number {
+  for (const [tokens, rank] of DASTGAH_RANK) {
+    if (tokens.some((t) => foldedKey.includes(t))) return rank;
+  }
+  return DASTGAH_RANK.length;
 }
 
 export interface DastgahGroup {
@@ -75,8 +91,8 @@ export function groupByDastgah(items: PracticeItem[]): DastgahGroup[] {
     const label =
       key === UNCLASSIFIED_DASTGAH
         ? UNCLASSIFIED_DASTGAH
-        : [...g.spellings.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0][0];
-    return { key, dastgah: label, items: [...g.items].sort((a, b) => a.title.localeCompare(b.title)) };
+        : [...g.spellings.entries()].sort((a, b) => b[1] - a[1] || faCollator.compare(a[0], b[0]))[0][0];
+    return { key, dastgah: label, items: [...g.items].sort((a, b) => faCollator.compare(a.title, b.title)) };
   });
 
   return groups
@@ -85,7 +101,7 @@ export function groupByDastgah(items: PracticeItem[]): DastgahGroup[] {
       if (b.key === UNCLASSIFIED_DASTGAH) return -1;
       const ra = dastgahRank(a.key);
       const rb = dastgahRank(b.key);
-      return ra !== rb ? ra - rb : a.key.localeCompare(b.key);
+      return ra !== rb ? ra - rb : faCollator.compare(a.key, b.key);
     })
     .map(({ dastgah, items: list }) => ({ dastgah, items: list }));
 }

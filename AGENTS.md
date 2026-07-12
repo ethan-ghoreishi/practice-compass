@@ -62,7 +62,10 @@ the clock (`pauseSession`) before the close screen; reflection time is not count
   and fully unit-tested; GitHub transport in `gitRemote.ts`; wiring in `githubSync.ts`)
   publishes whole snapshots ATOMICALLY with the Git Data API: blobs → tree → commit →
   fast-forward-only ref update, so a race or partial failure never leaves a broken
-  remote. Decisions are three-way CONTENT-HASH comparisons (`decideSync` +
+  remote. A brand-new EMPTY data repo is bootstrapped first via the Contents API
+  (`RemotePort.initialize()`) — the git-data endpoints 409 on an empty repo — then the
+  first snapshot commits as a child of that bootstrap commit; init failures surface a
+  clear message with the manual README fallback and never leave a partial snapshot. Decisions are three-way CONTENT-HASH comparisons (`decideSync` +
   `canonicalStringify`/`hashState` in `src/domain/`), never timestamps — pathway-only
   edits and deletions sync like everything else, and a store middleware
   (`src/store/revision.ts`) bumps a `rev` counter on every db mutation. Both-changed =
@@ -140,8 +143,37 @@ priority boost that climbs as that instrument's next lesson approaches
 (`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app — a monthly
 class is a real commitment, not a manufactured streak. Keep it per-instrument and
 generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
-OR a lesson (`AttachmentMeta.ownerType/ownerId`; blobs keyed by `ownerId` in Dexie) —
-class videos stay in the user's session folders, not in the app.
+OR a lesson (`AttachmentMeta.ownerType/ownerId`; blobs keyed by `ownerId` in Dexie) for
+SMALL files (PDFs/photos/short audio, size-capped). **Full class videos are NAS
+references, never bytes:** `Lesson.recordings` (`LessonRecording`) holds title + a
+relative NAS path (or full https URL) + size/notes; `resolveRecordingUrl`
+(`src/domain/recordings.ts`, tested) joins it under the per-device NAS base URL
+(Settings, localStorage) and the video opens only on explicit tap — never at startup,
+never in IndexedDB/sync/backups. Removing a reference never touches the NAS file. The
+user's Setar class history imports additively via `buildSetarClassLessons`
+(`src/domain/setarClasses.ts`, tested) → `importSetarClasses`.
+
+## Questions for next class
+
+`questionsForNextClass` (`src/domain/questions.ts`, tested) collects items where
+`assignedForLesson === true` AND `teacherQuestion` is non-empty, scoped to one
+instrument, ordered by the Persian collator. Shown on the upcoming lesson and the
+Teacher Report with Copy / Download / print-friendly export (`ClassQuestions`). A
+question is NEVER auto-cleared by practising; the user edits the item to remove it.
+
+## Persian text is canonical, and direction-aware
+
+Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
+composers, study sources, seeded items) is authored in **Farsi**; generic app UI and
+Classical Guitar stay English. STABLE ascii identifiers are decoupled from Farsi
+display: `StageSeed.slug` / `StepSeed.key` in `pathwaySeed.ts` keep stage ids and
+catalog keys byte-stable (fall back to `slug(code)`/`slug(title)` for English seeds), so
+the Farsi conversion needs no migration. `src/domain/farsi.ts` (tested) provides
+`normalizePersian` (fold Arabic↔Persian yeh/kaf, digits, ZWNJ, whitespace — preserves
+آ), `faCollator` for sorting, and Latin transliteration aliases for search
+(`persianSearchMatch`); `groupByDastgah` folds spelling variants and ranks by Farsi or
+Latin dastgāh names. All Farsi surfaces use `dir="auto"` + the global
+`unicode-bidi: plaintext`.
 
 ## Review scheduling stays explainable
 
@@ -176,15 +208,30 @@ localStorage — never in backups or synced data.
 
 **Attachment size policy is enforced, not claimed** (`attachmentPolicy` in
 `src/domain/files.ts`, tested): warn over 10 MB and for any video, refuse over 40 MB
-with a clear message. Class videos live in the user's session folders, never the app.
+with a clear message. Class videos live on the NAS as recording references, never the app.
+
+**Hybrid storage — keep the roles distinct (Settings explains them):** LOCAL data
+(IndexedDB) is the source of truth and works offline. GITHUB SYNC is the small,
+versioned multi-device state transport — one private data repo per app that genuinely
+needs it; a phone-only app uses local + NAS backup and needs no GitHub repo. NAS BACKUP
+is the user's own independent full export — never treat sync git history as the only
+backup. NAS RECORDINGS hold the large videos the other three must never carry. Do not
+replace GitHub sync with a NAS backend, and do not fold recordings into sync/backup.
 
 **The app shell is a fixed-height flex column and only `<main>` scrolls** — nothing is
-`position: fixed/sticky`, so the nav bar cannot drift (iOS PWAs moved a fixed bottom
-bar on short pages). Five EQUAL nav tabs (no raised centre button — Today owns the
-primary Start action); safe-area padding at the bar's bottom; route changes scroll
-`<main>` to top; per-route page widths (narrow for focused practice, wide ~1100px for
-browsing/notes on desktop); serif is for headings only, controls/nav/metadata are
-sans. The service worker registers in PROMPT mode: updates show an in-app "new version
+`position: fixed/sticky`, so the nav bar cannot drift. The shell height is **`100dvh`
+(dynamic viewport) with a `100vh` fallback via `@supports`**, NOT `height: 100%`: in an
+installed iOS PWA with `viewport-fit=cover`, `100%` resolves to the layout viewport
+which stops above the home-indicator safe area, leaving the bar floating above the
+physical bottom with dead space beneath. With `100dvh` the shell reaches the true
+bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
+clear. Five EQUAL nav tabs (no raised centre button — Today owns the primary Start
+action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
+practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
+controls/nav/metadata are sans. Pathway catalogue rows use a stable
+`[state · minmax(0,1fr) · one 44×44 action]` grid so adding a suggestion swaps only the
+action icon (+→▶) without reflowing the text; status shows once (no duplicate badge);
+detach lives in the item's "Connected to", not the row. The service worker registers in PROMPT mode: updates show an in-app "new version
 → Reload" banner (checked hourly and on visibilitychange) and the build stamp
 (`__APP_VERSION__`) is visible in Settings — reinstalling is never the update path.
 The public build ships a restrictive CSP meta (self + api.github.com only), injected

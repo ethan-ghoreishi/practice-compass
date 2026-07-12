@@ -10,7 +10,7 @@ import {
   createReview,
 } from './factories';
 import { isSaturated } from './scoring';
-import { addDays, nowISO, toISODate } from './util';
+import { addDays, newId, nowISO, toISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Demo dataset. Small but deliberately shaped so every screen has something
@@ -36,21 +36,18 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
   const mAfshari = createMaterial(
     {
       instrumentId: setar.id,
-      title: 'Afshari / Iraq',
+      title: 'ردیف میرزا عبدالله',
       sourceType: 'radif',
-      sourceName: 'Radif Mirza Abdollah',
-      parentTitle: 'Afshari',
-      section: 'Iraq',
-      teacherOrSource: 'Lessons with teacher',
+      sourceName: 'ردیف میرزا عبدالله',
     },
     now,
   );
   const mMezrab = createMaterial(
     {
       instrumentId: tar.id,
-      title: 'Mezrab clarity',
+      title: 'تمرین‌های مضراب',
       sourceType: 'technique',
-      sourceName: 'Teacher Exercises',
+      sourceName: 'تمرین‌های استاد',
     },
     now,
   );
@@ -77,24 +74,24 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: setar.id,
       materialId: mAfshari.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'Afshārī'),
+      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
       strand: 'radif',
       catalogKey: 'iraq',
       assignedForLesson: true,
-      title: 'Iraq phrase 4 ending',
+      title: 'پایان‌بندیِ عبارتِ ۴ (عراق)',
       itemType: 'phrase',
       status: 'repairing',
       importance: 5,
       difficulty: 4,
-      currentProblem: 'Foroud unclear when connected to the previous phrase.',
+      currentProblem: 'فرود هنگام اتصال به عبارتِ پیشین روشن نیست.',
       primaryFocus: 'phrase_direction',
-      teacherQuestion: 'Is my landing point correct, or is the ornament obscuring the foroud?',
+      teacherQuestion: 'آیا نقطهٔ فرودم درست است، یا زینت دارد فرود را می‌پوشاند؟',
       persian: {
-        dastgahAvaz: 'Afshari',
-        gusheh: 'Iraq',
-        phraseLabel: 'Phrase 4',
-        foroud: 'Uncertain landing',
-        ornamentIssue: 'Ornament may obscure the foroud',
+        dastgahAvaz: 'افشاری',
+        gusheh: 'عراق',
+        phraseLabel: 'عبارت ۴',
+        foroud: 'فرودِ نامطمئن',
+        ornamentIssue: 'زینت ممکن است فرود را بپوشاند',
       },
     },
     now,
@@ -103,16 +100,16 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: tar.id,
       materialId: mMezrab.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.tar, 'RH basics'),
+      stageId: stageIdFor(SEED_PATHWAY_IDS.tar, 'rh-basics'),
       strand: 'mezrab',
-      title: 'Rizeh clarity on open string',
+      title: 'وضوحِ ریز روی سیمِ باز',
       itemType: 'technique',
       status: 'fragile',
       importance: 4,
       difficulty: 4,
-      currentProblem: 'Uneven attack — some strokes drop out.',
+      currentProblem: 'حمله ناهموار است — برخی مضراب‌ها می‌افتند.',
       primaryFocus: 'right_hand',
-      persian: { mezrabIssue: 'Uneven rizeh on the open string' },
+      persian: { mezrabIssue: 'ریزِ ناهموار روی سیمِ باز' },
     },
     now,
   );
@@ -157,16 +154,16 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: setar.id,
       materialId: mAfshari.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'Afshārī'),
+      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
       strand: 'radif',
       catalogKey: 'daramad',
-      title: 'Afshari darāmad (opening)',
+      title: 'درآمد افشاری (آغاز)',
       itemType: 'section',
       status: 'integrated',
       importance: 3,
       difficulty: 2,
       primaryFocus: 'musical_meaning',
-      persian: { dastgahAvaz: 'Afshari', gusheh: 'Darāmad' },
+      persian: { dastgahAvaz: 'افشاری', gusheh: 'درآمد' },
     },
     now,
   );
@@ -202,12 +199,12 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
 
   const blocks: PracticeBlock[] = [
     // Iraq — stuck on "same" (saturated, triggers strategy insight)
-    b(iraq, 5, 12, 'same', 'phrase_direction', 'repair', 'Landing still vague.'),
+    b(iraq, 5, 12, 'same', 'phrase_direction', 'repair', 'فرود هنوز مبهم است.'),
     b(iraq, 3, 10, 'same', 'phrase_direction', 'repair'),
-    b(iraq, 1, 11, 'same', 'phrase_direction', 'repair', 'Same as before, foroud unclear.'),
+    b(iraq, 1, 11, 'same', 'phrase_direction', 'repair', 'مثل قبل، فرود نامشخص.'),
     // Rizeh — improving but fragile and overdue (a strong next focus)
-    b(rizeh, 7, 8, 'worse', 'right_hand', 'repair', 'Attack fell apart when I sped up.'),
-    b(rizeh, 5, 10, 'slightly_better', 'right_hand', 'repair', 'Slower tempo helped evenness.'),
+    b(rizeh, 7, 8, 'worse', 'right_hand', 'repair', 'با تندتر کردن، حمله از هم پاشید.'),
+    b(rizeh, 5, 10, 'slightly_better', 'right_hand', 'repair', 'تمپوِ آهسته‌تر به یکدستی کمک کرد.'),
     // Shift — steady progress
     b(shift, 6, 9, 'same', 'left_hand', 'repair'),
     b(shift, 4, 8, 'slightly_better', 'left_hand', 'repair', 'Dropping the shoulder helped.'),
@@ -247,26 +244,39 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
 
   // --- Reviews (pending, so Today shows due reviews) -----------------------
   const reviews = [
-    createReview({ practiceItemId: iraq.id, dueDate: reviewDates[iraq.id], reviewType: 'repair', reason: 'Same result three times — change strategy.' }, now),
+    createReview({ practiceItemId: iraq.id, dueDate: reviewDates[iraq.id], reviewType: 'repair', reason: 'سه بار نتیجهٔ یکسان — راهبرد را عوض کن.' }, now),
     createReview({ practiceItemId: rizeh.id, dueDate: reviewDates[rizeh.id], reviewType: 'repair' }, now),
     createReview({ practiceItemId: studyC.id, dueDate: reviewDates[studyC.id], reviewType: 'integration' }, now),
     createReview({ practiceItemId: shift.id, dueDate: reviewDates[shift.id], reviewType: 'repair' }, now),
-    createReview({ practiceItemId: daramad.id, dueDate: reviewDates[daramad.id], reviewType: 'maintenance', reason: 'Routine upkeep.' }, now),
+    createReview({ practiceItemId: daramad.id, dueDate: reviewDates[daramad.id], reviewType: 'maintenance', reason: 'نگهداریِ معمول.' }, now),
   ];
 
   const pathways = seedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
 
   // --- Lessons (a monthly Setar class: last one + the next one) -------------
+  const pastLesson = createLesson(
+    {
+      instrumentId: setar.id,
+      date: agoDate(now, -16),
+      notes:
+        'روی افشاری کار شد: مرورِ درآمد و پایان‌بندی‌های عبارتِ عراق. استاد: اول فرود را بدون زینت بیاور، بعد زینت را اضافه کن. تأکید روی فرود — اول بدون تحریر.',
+    },
+    now,
+  );
+  // A class recording lives on the NAS, referenced (never stored) by the app.
+  pastLesson.recordings = [
+    {
+      id: newId(),
+      title: 'ضبطِ کلاس',
+      path: 'setar-classes/session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
+      date: agoDate(now, -16),
+      sizeBytes: 686136347,
+      notes: undefined,
+      createdAt: nowISO(now),
+    },
+  ];
   const lessons = [
-    createLesson(
-      {
-        instrumentId: setar.id,
-        date: agoDate(now, -16),
-        notes:
-          'Worked on Afshārī: darāmad review and the Iraq phrase endings. Teacher: land the foroud without the ornament first, then add it back. تاکید روی فرود — اول بدون تحریر.',
-      },
-      now,
-    ),
+    pastLesson,
     createLesson({ instrumentId: setar.id, date: agoDate(now, 14) }, now),
   ];
 

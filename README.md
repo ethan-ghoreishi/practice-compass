@@ -67,7 +67,13 @@ daily home is the **MacBook**, with the **iPhone** as companion.
   recordings to any item, and keep free-form notes — so the app is the single source for
   your practice, not a notebook full of glued printouts.
 - **Prepares your lessons.** A copyable Teacher Report summarises what you worked on,
-  what improved, what's still fragile and what to ask.
+  what improved, what's still fragile and what to ask — plus a dedicated
+  **Questions for next class** list (Copy / Download / print).
+- **Speaks Persian.** The built-in Setar and Tar pathways, dastgāhs, gushehs, forms and
+  composers are all in Farsi (radif of Mirzā Abdollāh; the Honarestān method), rendered
+  right-to-left, searchable by Latin transliteration.
+- **Links your class recordings.** Full class videos stay on your NAS; each lesson holds
+  a small link that opens the recording on demand — nothing large ever enters the app.
 
 ---
 
@@ -243,10 +249,20 @@ Per-instrument lesson log matching the real workflow: record the class → rewat
 type up notes (**Farsi welcome**: every text field is direction-aware) → create or link
 the concrete practice items right on the lesson card → they appear in that instrument's
 Today. Each lesson lists what was worked on (a link — unlinking never deletes the item),
-can hold its own attachments (hand-out PDFs, photos; class videos stay in your session
-folders), and any item can be flagged *for next class*, which gives it a priority boost
-that climbs as **that instrument's** class approaches. Works for every instrument, ready
-for future Tar / Guitar teachers.
+and any item can be flagged *for next class*, which gives it a priority boost that
+climbs as **that instrument's** class approaches.
+
+**Small hand-outs are app attachments** (PDFs, photos, short audio — size-capped).
+**Full class videos are NAS references, never bytes:** a lesson holds a small link
+(title + relative NAS path, or a full HTTPS URL) that resolves against the NAS base URL
+you set in Settings; the video opens only when you tap it, and never enters local
+storage, sync, or backups. Removing a link never deletes the NAS file. Your logged Setar
+class history (37 monthly classes) imports additively from Settings.
+
+**Questions for next class:** flag an item *for next class* and give it a teacher
+question, and it collects into a per-instrument list on the upcoming lesson and the
+Teacher Report — with Copy, Download and print-friendly export (Farsi-aware). Practising
+never erases a question; you remove it by editing the item.
 
 ## Review scheduling
 
@@ -271,13 +287,19 @@ a one-line description in the picker.
 Each device keeps its **own local copy** (IndexedDB) and works fully offline. With
 **Sync (GitHub)** connected in Settings, devices exchange whole snapshots through your
 data repo — one git commit per snapshot, published atomically (a failed or interrupted
-sync leaves the previous snapshot untouched). Sync compares content hashes three-way
-(like git), so pathway edits, deletions and attachment changes all count; when both
-sides changed you choose explicitly, and the losing copy is archived first — in-app
-("Restore it" in Settings) and as an `archive/…` branch in the repo. Attachments
-upload once each (immutable); only new or deleted files transfer. PDFs and photos are
-welcome; files over 40 MB are refused with a clear message (class videos belong in
-your session folders). Without sync, moving data is a manual backup export → import.
+sync leaves the previous snapshot untouched). A brand-new empty data repo is bootstrapped
+automatically on the first sync (the older builds errored with *“Git Repository is
+empty”*). Sync compares content hashes three-way (like git), so pathway edits, deletions
+and attachment changes all count; when both sides changed you choose explicitly, and the
+losing copy is archived first — in-app ("Restore it" in Settings) and as an `archive/…`
+branch in the repo. Attachments upload once each (immutable); only new or deleted files
+transfer. Without sync, moving data is a manual backup export → import.
+
+**Four storage roles, kept distinct** (Settings explains them): **local data** is the
+offline source of truth; **GitHub sync** is the small versioned multi-device transport
+(one private repo per app that needs it — a phone-only app needs none); **NAS backup**
+is your own independent full export (don't treat the sync repo as your only backup); and
+**NAS recordings** hold the large class videos the other three never carry.
 
 ## Updates
 

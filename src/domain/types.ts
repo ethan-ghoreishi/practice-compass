@@ -41,8 +41,29 @@ export interface Lesson {
    * `assignedForLesson` flag (work *for the next* class).
    */
   itemIds?: ID[];
+  /**
+   * REFERENCES to full class recordings that live on the NAS — never the video
+   * bytes. A large class video must not become an app attachment, a GitHub
+   * blob, a backup payload, or a service-worker asset; it stays on the NAS and
+   * the app only remembers where it is.
+   */
+  recordings?: LessonRecording[];
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+}
+
+/** A pointer to a class recording stored on the NAS (or any HTTPS location). */
+export interface LessonRecording {
+  id: ID;
+  title: string;
+  /** A relative path under the NAS base URL (Settings), OR a full https:// URL. */
+  path: string;
+  /** Optional metadata — display only, never used to fetch at startup. */
+  date?: ISODate;
+  sizeBytes?: number;
+  durationLabel?: string;
+  notes?: string;
+  createdAt: ISODateTime;
 }
 
 // --- Material ---------------------------------------------------------------
@@ -413,7 +434,7 @@ export interface AttachmentMeta {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export interface PracticeDB {
   schemaVersion: number;

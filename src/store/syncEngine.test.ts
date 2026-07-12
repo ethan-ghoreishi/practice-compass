@@ -29,14 +29,46 @@ class FakeGit implements RemotePort {
   refs = new Map<string, string>(); // branch → sha
   failNextCreateBlob = 0;
   raceOnAdvance = false;
+  // Empty-repo modelling: git-data endpoints refuse to run before any commit.
+  repoInitialized = false;
+  initializeCalls = 0;
+  failInitialize = false;
+  /** If set, initialize() finds this head already present (concurrent device). */
+  initializeRaceHead: string | null = null;
   private seq = 0;
 
   private sha(prefix: string) {
     return `${prefix}-${++this.seq}`;
   }
 
+  private requireInitialized(op: string) {
+    if (!this.repoInitialized) throw new Error(`GitHub 409 ${op}: Git Repository is empty.`);
+  }
+
   async getHead() {
     return this.refs.get('main') ?? null;
+  }
+
+  async initialize() {
+    this.initializeCalls += 1;
+    const head = this.refs.get('main');
+    if (head) {
+      this.repoInitialized = true;
+      return head;
+    }
+    if (this.failInitialize) throw new Error('GitHub 403 initializing repo: no permission.');
+    if (this.initializeRaceHead) {
+      // Another device bootstrapped between our getHead and our write.
+      this.refs.set('main', this.initializeRaceHead);
+      this.repoInitialized = true;
+      return this.initializeRaceHead;
+    }
+    const sha = this.sha('bootstrap');
+    this.commits.set(sha, { tree: new Map([['README.md', 'readme-blob']]), parents: [], message: 'init' });
+    this.blobs.set('readme-blob', encodeB64('# data'));
+    this.refs.set('main', sha);
+    this.repoInitialized = true;
+    return sha;
   }
   async readText(path: string, ref: string) {
     const commit = this.commits.get(ref);
@@ -60,6 +92,7 @@ class FakeGit implements RemotePort {
     return b;
   }
   async createBlobBase64(b64: string) {
+    this.requireInitialized('uploading blob');
     if (this.failNextCreateBlob > 0 && --this.failNextCreateBlob === 0) throw new Error('network died mid-upload');
     const sha = this.sha('blob');
     this.blobs.set(sha, b64);
@@ -69,11 +102,13 @@ class FakeGit implements RemotePort {
     return this.createBlobBase64(encodeB64(text));
   }
   async createTree(entries: { path: string; sha: string }[]) {
+    this.requireInitialized('creating tree');
     const sha = this.sha('tree');
     this.trees.set(sha, new Map(entries.map((e) => [e.path, e.sha])));
     return sha;
   }
   async createCommit(message: string, treeSha: string, parents: string[]) {
+    this.requireInitialized('creating commit');
     const sha = this.sha('commit');
     this.commits.set(sha, { tree: this.trees.get(treeSha)!, parents, message });
     return sha;
@@ -163,6 +198,64 @@ beforeEach(() => {
   git = new FakeGit();
   mac = makeDevice('MacBook');
   phone = makeDevice('iPhone');
+});
+
+describe('empty repository bootstrap', () => {
+  it('first sync into a brand-new empty repo bootstraps it, then publishes atomically', async () => {
+    // Sanity: the fake refuses git-data writes before initialization, like GitHub.
+    await expect(git.createTextBlob('x')).rejects.toThrow(/Git Repository is empty/);
+
+    const out = await runSync(portsFor(mac, git));
+    expect(out.kind).toBe('pushed');
+    expect(git.initializeCalls).toBe(1);
+
+    const head = await git.getHead();
+    const manifest = JSON.parse((await git.readText('manifest.json', head!))!);
+    expect(manifest.hash).toBe(await hashState(mac.db));
+
+    // The snapshot commit descends from the bootstrap commit — real history.
+    const commit = git.commits.get(head!)!;
+    expect(commit.parents).toHaveLength(1);
+    expect(git.commits.get(commit.parents[0])!.message).toBe('init');
+  });
+
+  it('an already-initialized repo is not re-bootstrapped', async () => {
+    await runSync(portsFor(mac, git)); // initializes + first snapshot
+    const calls = git.initializeCalls;
+    mutate(mac, { items: [{ id: 'i1', title: 'edit' }] });
+    await runSync(portsFor(mac, git)); // normal push, head already exists
+    // A push with an existing head never needs initialize().
+    expect(git.initializeCalls).toBe(calls);
+  });
+
+  it('initialization failure surfaces a clear error and leaves NO partial snapshot', async () => {
+    git.failInitialize = true;
+    const out = await runSync(portsFor(mac, git));
+    expect(out.kind).toBe('error');
+    expect((out as { message: string }).message).toMatch(/no permission|initializing/i);
+    // Nothing was written: still empty, no book progress.
+    expect(await git.getHead()).toBeNull();
+    expect(git.repoInitialized).toBe(false);
+    expect(mac.book.lastSyncedHash).toBeNull();
+  });
+
+  it('a concurrent device initializing first is tolerated (idempotent), first snapshot still lands', async () => {
+    git.initializeRaceHead = 'bootstrap-from-other-device';
+    git.commits.set('bootstrap-from-other-device', { tree: new Map(), parents: [], message: 'init' });
+    const out = await runSync(portsFor(mac, git));
+    expect(out.kind).toBe('pushed');
+    // Built on the other device's bootstrap, not a duplicate of our own.
+    const head = await git.getHead();
+    const commit = git.commits.get(head!)!;
+    expect(commit.parents).toContain('bootstrap-from-other-device');
+  });
+
+  it('after bootstrap, a second device reads the snapshot and lands in-sync', async () => {
+    await runSync(portsFor(mac, git)); // bootstrap + push
+    const out = await runSync(portsFor(phone, git));
+    expect(out.kind).toBe('in-sync');
+    expect(git.initializeCalls).toBe(1); // phone never re-initializes
+  });
 });
 
 describe('sync engine protocol', () => {
@@ -321,7 +414,9 @@ describe('sync engine protocol', () => {
   });
 
   it('legacy remotes (state.json + JSON-wrapped files/, no manifest) pull losslessly', async () => {
-    // Hand-craft a format-1 remote, as the previous app version wrote it.
+    // Hand-craft a format-1 remote, as the previous app version wrote it. That
+    // version already had commits, so mark the fake repo initialized.
+    git.repoInitialized = true;
     const legacyDb = { items: [{ id: 'L1', title: 'legacy item' }], pathways: [] };
     const legacyFile = { id: 'lf1', ownerId: 'L1', mime: 'image/png', name: 'photo.png', data: encodeB64('PNG') };
     const stateSha = await git.createTextBlob(JSON.stringify({ app: 'practice-compass', data: legacyDb, deviceName: 'old-mac', files: [] }));

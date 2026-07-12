@@ -1,19 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   assignedForLesson,
   daysUntil,
+  formatFileSize,
   ITEM_STATUS_LABELS,
   lessonsForInstrument,
+  needsBaseUrl,
   nextLessonFor,
+  questionsForNextClass,
+  resolveRecordingUrl,
   todayISODate,
   type Lesson,
 } from '../domain';
 import { useStore } from '../store/useStore';
+import { getNasBaseUrl } from '../store/backup';
 import { Field } from '../components/ui';
 import { PlusIcon, XIcon } from '../components/icons';
 import { relativeDay } from '../components/format';
 import Attachments from '../components/Attachments';
+import ClassQuestions from '../components/ClassQuestions';
 import QuickAdd from '../components/QuickAdd';
 
 /**
@@ -272,7 +278,9 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
 
 /** Notes, linked items, files and delete — the body of an open lesson. */
 function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
+  const db = useStore((s) => s.db);
   const updateLesson = useStore((s) => s.updateLesson);
+  const now = useMemo(() => new Date(), []);
   const [text, setText] = useState(lesson.notes ?? '');
 
   // Editing a different lesson resets the draft (wide-screen pane reuse).
@@ -285,6 +293,13 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
     const next = text.trim() || undefined;
     if ((lesson.notes ?? undefined) !== next) updateLesson(lesson.id, { notes: next });
   }
+
+  const upcoming = lesson.date >= todayISODate(now);
+  const questions = useMemo(
+    () => questionsForNextClass(db.items, lesson.instrumentId),
+    [db.items, lesson.instrumentId],
+  );
+  const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
 
   return (
     <>
@@ -300,10 +315,15 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
 
       <LessonItems lesson={lesson} />
 
+      {/* Questions belong to the class ahead — show them on the upcoming lesson. */}
+      {upcoming && <ClassQuestions instrumentName={instrumentName} dateLabel={lesson.date} questions={questions} />}
+
+      <LessonRecordings lesson={lesson} />
+
       <Attachments
         ownerType="lesson"
         ownerId={lesson.id}
-        emptyHint="Attach the hand-outs for this class — PDFs of pieces, photos of notation. Keep the class video recordings in your session folders; they'd bloat the backup."
+        emptyHint="Attach small hand-outs for this class — PDFs of pieces, photos of notation, short audio. Full class videos are too big for the app: add them as a Class recording above (a NAS link), not here."
       />
 
       <button
@@ -316,6 +336,132 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
         Delete lesson
       </button>
     </>
+  );
+}
+
+/**
+ * Class recordings — REFERENCES to videos on the NAS, never the bytes. The
+ * video is only fetched when the user taps "Open recording"; deleting a
+ * reference never touches the NAS file.
+ */
+function LessonRecordings({ lesson }: { lesson: Lesson }) {
+  const addLessonRecording = useStore((s) => s.addLessonRecording);
+  const removeLessonRecording = useStore((s) => s.removeLessonRecording);
+  const navigate = useNavigate();
+  const baseUrl = getNasBaseUrl();
+  const recordings = lesson.recordings ?? [];
+
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [path, setPath] = useState('');
+  const [notes, setNotes] = useState('');
+
+  function add() {
+    if (!path.trim()) return;
+    addLessonRecording(lesson.id, {
+      title: title.trim() || 'Class recording',
+      path: path.trim(),
+      date: lesson.date,
+      notes: notes.trim() || undefined,
+    });
+    setTitle('');
+    setPath('');
+    setNotes('');
+    setAdding(false);
+  }
+
+  function open(rec: (typeof recordings)[number]) {
+    const url = resolveRecordingUrl(baseUrl, rec);
+    if (!url) return; // guarded by needsBaseUrl below
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+
+  return (
+    <div className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Class recording</div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>
+          {adding ? 'Cancel' : <><PlusIcon /> Add recording</>}
+        </button>
+      </div>
+
+      {recordings.length === 0 && !adding && (
+        <div className="card card-quiet small dim">
+          Full class videos live on your NAS, not in the app. Add a link to this class’s recording so you can open it
+          from here.
+        </div>
+      )}
+
+      {recordings.map((rec) => {
+        const missingBase = needsBaseUrl(baseUrl, rec);
+        const size = formatFileSize(rec.sizeBytes);
+        return (
+          <div key={rec.id} className="card row between" style={{ gap: 10 }}>
+            <div className="grow" style={{ minWidth: 0 }}>
+              <div className="truncate" dir="auto">
+                {rec.title}
+              </div>
+              <div className="tiny faint">
+                Stored on NAS{size ? ` · ${size}` : ''}{rec.durationLabel ? ` · ${rec.durationLabel}` : ''}
+              </div>
+              {rec.notes && (
+                <div className="tiny dim" dir="auto">
+                  {rec.notes}
+                </div>
+              )}
+              {missingBase && (
+                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
+                  Set your NAS base URL in{' '}
+                  <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                    Settings
+                  </button>{' '}
+                  to open this.
+                </div>
+              )}
+            </div>
+            <button className="btn btn-sm btn-primary" disabled={missingBase} onClick={() => open(rec)}>
+              Open recording
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              aria-label="Remove this recording reference (the NAS file is kept)"
+              title="Remove reference (the NAS file is kept)"
+              onClick={() => {
+                if (confirm('Remove this recording link? The video on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
+              }}
+            >
+              <XIcon width={14} height={14} />
+            </button>
+          </div>
+        );
+      })}
+
+      {adding && (
+        <div className="card stack-sm">
+          <input
+            className="input"
+            dir="auto"
+            placeholder="Title — e.g. Class recording"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="NAS path or https:// link — e.g. setar-classes/session-37-09-07-2026/class.mp4"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+          />
+          <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="tiny faint">
+            A relative path is resolved against your NAS base URL (Settings). Full https:// links are used as-is. The
+            video is opened only when you tap “Open recording”.
+          </div>
+          <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
+            Add recording link
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

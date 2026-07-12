@@ -1,7 +1,15 @@
 import { useMemo, useState } from 'react';
-import { addDays, buildTeacherReport, toISODate, todayISODate } from '../domain';
+import {
+  addDays,
+  buildTeacherReport,
+  nextLessonFor,
+  questionsForNextClass,
+  toISODate,
+  todayISODate,
+} from '../domain';
 import { useStore } from '../store/useStore';
 import { Field } from '../components/ui';
+import ClassQuestions from '../components/ClassQuestions';
 
 export default function TeacherReport() {
   const db = useStore((s) => s.db);
@@ -16,6 +24,13 @@ export default function TeacherReport() {
     () => (instrumentId ? buildTeacherReport(db, { instrumentId, from, to, now }) : ''),
     [db, instrumentId, from, to, now],
   );
+
+  const questions = useMemo(
+    () => (instrumentId ? questionsForNextClass(db.items, instrumentId) : []),
+    [db.items, instrumentId],
+  );
+  const nextClass = instrumentId ? nextLessonFor(db.lessons, instrumentId, now) : null;
+  const instrumentName = db.instruments.find((i) => i.id === instrumentId)?.name ?? 'Instrument';
 
   async function copy() {
     try {
@@ -56,6 +71,14 @@ export default function TeacherReport() {
 
       {instrumentId ? (
         <>
+          <div className="card">
+            <ClassQuestions
+              instrumentName={instrumentName}
+              dateLabel={nextClass ? nextClass.date : 'next class'}
+              questions={questions}
+            />
+          </div>
+
           <button className="btn btn-primary btn-block" onClick={copy}>
             {copied ? 'Copied ✓' : 'Copy report'}
           </button>

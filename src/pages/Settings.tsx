@@ -3,10 +3,12 @@ import { useStore, type ThemePref } from '../store/useStore';
 import {
   buildFullBackup,
   getDeviceName,
+  getNasBaseUrl,
   importFullBackup,
   lastModifiedOf,
   readBackupMeta,
   setDeviceName,
+  setNasBaseUrl,
 } from '../store/backup';
 import {
   getSyncConfig,
@@ -115,8 +117,30 @@ export default function Settings() {
     <div className="stack-lg">
       <header className="stack-sm">
         <h1 className="page-title">Settings &amp; backup</h1>
-        <p className="page-sub">Everything stays on this device.</p>
+        <p className="page-sub">Your practice lives on this device; the rest is on your terms.</p>
       </header>
+
+      <section className="stack-sm">
+        <div className="section-label">How your data is stored</div>
+        <div className="card stack-sm small">
+          <StorageRole
+            title="On this device"
+            body="The source of truth. Everything works fully offline; nothing here needs the internet."
+          />
+          <StorageRole
+            title="GitHub sync (optional)"
+            body="Keeps the MacBook and iPhone on the same data — small, versioned snapshots through one private repo you own. Use it only for apps you actually use on more than one device; a phone-only app doesn’t need it."
+          />
+          <StorageRole
+            title="NAS backup (optional)"
+            body="Your own full export (data + files) kept independently on the NAS. Sync history is convenient, but keep a real backup too — don’t rely on the sync repo as your only copy."
+          />
+          <StorageRole
+            title="NAS recordings"
+            body="Large class videos stay on the NAS; the app only stores small links to them. Videos never enter local storage, sync, or backups."
+          />
+        </div>
+      </section>
 
       <section className="stack-sm">
         <div className="section-label">Appearance</div>
@@ -231,6 +255,8 @@ export default function Settings() {
           </div>
         </div>
       </section>
+
+      <NasRecordingsSection onFlash={flash} />
 
       <section className="stack-sm">
         <div className="section-label">Data &amp; backup</div>
@@ -452,5 +478,68 @@ function SyncSection() {
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * NAS recordings: the base URL that resolves relative class-recording paths,
+ * plus a one-tap importer for the Setar class history. Full videos never enter
+ * the app — only these references do.
+ */
+function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
+  const db = useStore((s) => s.db);
+  const importSetarClasses = useStore((s) => s.importSetarClasses);
+  const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
+
+  const setar = db.instruments.find((i) => i.family === 'Persian' && /setar|سه‌تار|سه تار/i.test(i.name));
+
+  function runImport() {
+    if (!setar) {
+      onFlash('Add a Setar instrument first.');
+      return;
+    }
+    const count = importSetarClasses(setar.id);
+    onFlash(count > 0 ? `Imported ${count} Setar class${count === 1 ? '' : 'es'}.` : 'All Setar classes are already imported.');
+  }
+
+  return (
+    <section className="stack-sm">
+      <div className="section-label">NAS recordings</div>
+      <div className="card stack-sm">
+        <div className="small dim">
+          Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
+          to each recording; set the base URL that serves your recording folders and the links resolve against it.
+        </div>
+        <Field
+          label="NAS recordings base URL"
+          hint="e.g. https://your-nas.ts.net/media — relative recording paths are joined onto this. Stored on this device only; never synced, never a password."
+        >
+          <input
+            className="input"
+            type="url"
+            placeholder="https://your-nas.ts.net/media"
+            value={baseUrl}
+            onChange={(e) => setBaseUrlState(e.target.value)}
+            onBlur={() => setNasBaseUrl(baseUrl)}
+          />
+        </Field>
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">Import your logged Setar classes as lessons (recording links, no video).</div>
+          <button className="btn btn-sm" style={{ flex: 'none' }} onClick={runImport}>
+            Import Setar classes
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** One row of the storage-model explainer. */
+function StorageRole({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 600 }}>{title}</div>
+      <div className="dim">{body}</div>
+    </div>
   );
 }

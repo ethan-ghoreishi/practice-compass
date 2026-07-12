@@ -11,8 +11,8 @@ import {
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
-import { Field, StatusBadge } from '../components/ui';
-import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
+import { Field } from '../components/ui';
+import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon } from '../components/icons';
 
 export default function StageDetail() {
   const { pathwayId, stageId } = useParams();
@@ -216,11 +216,20 @@ function UnitRow({
   onAdd: () => void;
 }) {
   const navigate = useNavigate();
-  const placeItemInStage = useStore((s) => s.placeItemInStage);
   const item = unit.item;
 
+  // One line of metadata, never duplicated: strand, then the item's status
+  // (which is exactly "Not practised yet" for a freshly-added suggestion), or
+  // the reference hint before it is added. The status lives here alone — there
+  // is no separate status badge on the row.
+  const meta = [
+    unit.strand ? STRAND_LABELS[unit.strand] : null,
+    item ? ITEM_STATUS_LABELS[item.status] : 'reference suggestion — tap to add',
+    item?.assignedForLesson ? 'for class' : null,
+  ].filter(Boolean);
+
   return (
-    <div className={`card row${unit.state === 'done' ? ' card-quiet' : ''}`} style={{ gap: 10 }}>
+    <div className={`card stage-unit${unit.state === 'done' ? ' card-quiet' : ''}`}>
       <span
         className="stage-badge"
         style={{
@@ -235,22 +244,14 @@ function UnitRow({
       </span>
 
       <button
-        className="grow"
-        style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
+        className="stage-unit-text"
         onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : onAdd())}
         title={item ? 'Open item' : 'Add to your items'}
       >
-        <div className="truncate" dir="auto">
+        <div className="stage-unit-title" dir="auto">
           {unit.title}
         </div>
-        <div className="tiny faint row" style={{ gap: 6 }}>
-          {unit.strand && <span>{STRAND_LABELS[unit.strand]}</span>}
-          {item ? (
-            <span>· {ITEM_STATUS_LABELS[item.status]}{item.assignedForLesson ? ' · for class' : ''}</span>
-          ) : (
-            <span>· reference suggestion — tap to add</span>
-          )}
-        </div>
+        <div className="tiny faint">{meta.join(' · ')}</div>
         {unit.entry?.about && !item && (
           <div className="tiny dim" style={{ marginTop: 3 }}>
             {unit.entry.about}
@@ -258,25 +259,15 @@ function UnitRow({
         )}
       </button>
 
+      {/* Single fixed-size trailing action: Play once added, Add before. Detach
+          lives in the item's "Connected to" details, off the busy list. */}
       {item ? (
-        <>
-          <StatusBadge status={item.status} />
-          <button className="btn btn-sm btn-primary" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
-            <PlayIcon />
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            style={{ minHeight: 30, padding: '0 6px' }}
-            title="Remove from this stage (the item itself is kept)"
-            aria-label={`Remove ${unit.title} from this stage — the item is kept`}
-            onClick={() => placeItemInStage(item.id, undefined)}
-          >
-            <XIcon width={14} height={14} />
-          </button>
-        </>
+        <button className="btn btn-primary stage-unit-action" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
+          <PlayIcon />
+        </button>
       ) : (
-        <button className="btn btn-sm" onClick={onAdd} aria-label={`Add ${unit.title}`}>
-          <PlusIcon /> Add
+        <button className="btn stage-unit-action" onClick={onAdd} aria-label={`Add ${unit.title} to your items`}>
+          <PlusIcon />
         </button>
       )}
     </div>

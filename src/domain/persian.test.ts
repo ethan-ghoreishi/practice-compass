@@ -43,4 +43,23 @@ describe('groupByDastgah', () => {
     ]);
     expect(groups[0].items.map((i) => i.title)).toEqual(['Moqaddameh', 'Zang-e shotor']);
   });
+
+  it('groups canonical FARSI dastgāh names in standard order', () => {
+    const groups = groupByDastgah([
+      item('چهارمضراب صبا', { dastgahAvaz: 'افشاری', form: 'چهارمضراب', composer: 'ابوالحسن صبا' }),
+      item('درآمد شور', { dastgahAvaz: 'شور' }),
+      item('درآمد ماهور', { dastgahAvaz: 'ماهور' }),
+    ]);
+    expect(groups.map((g) => g.dastgah)).toEqual(['شور', 'افشاری', 'ماهور']);
+  });
+
+  it('folds Farsi spelling variants (Arabic yeh, آواز prefix) into one group', () => {
+    const groups = groupByDastgah([
+      item('الف', { dastgahAvaz: 'افشاری' }), // Persian yeh
+      item('ب', { dastgahAvaz: 'افشاري' }), // Arabic yeh
+      item('ج', { dastgahAvaz: 'آواز افشاری' }), // with āvāz prefix
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items).toHaveLength(3);
+  });
 });

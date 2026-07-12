@@ -9,6 +9,16 @@ import type { RemotePort, TreeEntry } from './syncEngine';
 const API = 'https://api.github.com';
 const BRANCH = 'main';
 
+const BOOTSTRAP_README = `# Practice Compass — data
+
+This repository is the private sync + backup store for the Practice Compass app.
+It holds whole-snapshot commits (\`manifest.json\`, \`state.json\`, \`files/\`) written
+by the app; it is not meant to be edited by hand.
+
+If sync ever reports the repo is empty and cannot initialize it, this first
+commit is the manual fallback — the app takes over from here on the next sync.
+`;
+
 export interface GitHubConfig {
   /** owner/name */
   repo: string;
@@ -51,6 +61,40 @@ export function makeGitHubRemote(cfg: GitHubConfig): RemotePort {
       if (res.status === 404 || res.status === 409) return null;
       const data = await ok<{ object: { sha: string } }>(res, 'reading branch head');
       return data.object.sha;
+    },
+
+    async initialize() {
+      const existing = await this.getHead();
+      if (existing) return existing;
+
+      // The Contents API can make the FIRST commit in an empty repo (the
+      // git-data endpoints cannot). This bootstrap file holds no user data —
+      // the first real snapshot replaces the tree entirely; it just exists so
+      // the repository has a history.
+      const res = await gh(`contents/README.md`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          message: 'Initialize Practice Compass data repository',
+          content: b64encodeText(BOOTSTRAP_README),
+          branch: BRANCH,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { commit: { sha: string } };
+        return data.commit.sha;
+      }
+      // 409/422 here usually means another device initialized it a moment ago
+      // (the file or branch now exists). Re-read the head and use it.
+      if (res.status === 409 || res.status === 422) {
+        const head = await this.getHead();
+        if (head) return head;
+      }
+      const detail = (await res.text()).slice(0, 180);
+      throw new Error(
+        `Couldn't set up the empty GitHub repo automatically (${res.status}: ${detail}). ` +
+          `Add any first commit to ${cfg.repo} — e.g. create a README on github.com — then Sync again. ` +
+          `See the README's "Sync" section for the manual fallback.`,
+      );
     },
 
     async readText(path, ref) {

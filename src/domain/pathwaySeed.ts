@@ -28,6 +28,9 @@ import { nowISO } from './util';
 
 interface StepSeed {
   title: string;
+  /** STABLE ascii catalog key. Defaults to slug(title) for English seeds; the
+   *  Farsi seeds set it explicitly so keys never change when titles do. */
+  key?: string;
   strand: StepStrand;
   kind?: StepKind;
   notes?: string;
@@ -38,6 +41,9 @@ interface StepSeed {
 }
 interface StageSeed {
   code: string;
+  /** STABLE ascii id part. Defaults to slug(code); Farsi seeds set it so the
+   *  stage id stays identical even though the displayed code is now Farsi. */
+  slug?: string;
   title: string;
   group?: string;
   intro?: string;
@@ -218,14 +224,17 @@ const CGS: PathSeed = {
 // Setar · Radif & Repertoire
 // ===========================================================================
 
-/** The standing conscious-practice prompt for any gushe (kept generic — your
+/** The standing conscious-practice prompt for any gushe (kept generic — the
  *  teacher's account of each gushe is the authority; write it in the item's notes). */
 const GUSHEH_ABOUT = (context: string) =>
-  `A gushe of ${context}. Before playing, listen for: its shāhed (the note it circles), its ist (where phrases rest), and how it foruds back home. Hum the opening line first — know where it's headed before your hands move.`;
+  `گوشه‌ای از ${context}. پیش از نواختن، گوش بسپار به: شاهد (نتی که ملودی حول آن می‌گردد)، ایست (جایی که عبارت‌ها می‌آسایند) و شیوهٔ فرود آن به خانه. اول خط آغازین را زمزمه کن — پیش از آنکه دست‌ها حرکت کنند، بدان به کجا می‌رود.`;
 
-const gusheh = (names: string[], context = 'this dastgāh'): StepSeed[] =>
-  names.map((n) => ({
-    title: n,
+/** Each gushe as [Farsi display name, stable ascii key]. The key was the old
+ *  slug of the English name, so existing catalog links stay valid. */
+const gusheh = (entries: [string, string][], context: string): StepSeed[] =>
+  entries.map(([title, key]) => ({
+    title,
+    key,
     strand: 'radif' as StepStrand,
     kind: 'piece' as StepKind,
     about: GUSHEH_ABOUT(context),
@@ -234,146 +243,269 @@ const gusheh = (names: string[], context = 'this dastgāh'): StepSeed[] =>
 const SETAR: PathSeed = {
   id: 'setar-radif',
   instrumentKey: 'setar',
-  name: 'Setar · Radif & Repertoire',
-  source: 'Radif of Mirzā Abdollāh + teacher repertoire',
+  name: 'سه‌تار · ردیف و رپرتوار',
+  source: 'ردیف میرزا عبدالله + رپرتوار استاد',
   description:
-    'A flexible map of Persian classical music for setar, organised by the dastgāh / āvāz system.',
+    'نقشه‌ای انعطاف‌پذیر از موسیقی کلاسیک ایرانی برای سه‌تار، بر پایهٔ نظام دستگاه و آواز.',
   note:
-    'Your setar lessons are teacher-driven and change with your needs — radif gusheh-hā one week, a qet‘e or pish-darāmad from a master the next. Treat this as a living map: reorder it, and add the gusheh and pieces your teacher gives you. There’s no fixed order to rush through.',
+    'درس‌های سه‌تار تو استادمحور است و با نیازت تغییر می‌کند — یک هفته گوشه‌های ردیف، هفتهٔ بعد قطعه یا پیش‌درآمدی از یک استاد. این را نقشه‌ای زنده بدان: ترتیبش را عوض کن و گوشه‌ها و قطعه‌هایی را که استادت می‌دهد بیفزای. ترتیب ثابتی برای عجله کردن نیست.',
   stages: [
     {
-      code: 'Setup',
-      group: 'Foundations',
-      title: 'Posture & hand position',
-      intro: 'A relaxed, sustainable setup is the foundation of good tone and avoids tension.',
+      code: 'نشست',
+      slug: 'setup',
+      group: 'مبانی',
+      title: 'نشستن و وضعیت دست‌ها',
+      intro: 'نشستِ آسوده و پایدار، بنیانِ صدای خوب است و از تنش جلوگیری می‌کند.',
       steps: [
-        { title: 'Sitting & holding the setar', strand: 'warmup', notes: 'Relaxed shoulders, balanced instrument, free right wrist.' },
-        { title: 'Right-hand position (mezrāb finger)', strand: 'mezrab', notes: 'The setar is played with the nail of the index finger. Find a relaxed angle with an even tone on down (rāst) strokes.' },
-        { title: 'Left-hand position & relaxation', strand: 'left_hand', notes: 'Light, curved fingers; thumb behind the neck; no squeezing.' },
+        { title: 'نشستن و در دست گرفتن سه‌تار', key: 'sitting-holding-the-setar', strand: 'warmup', notes: 'شانه‌های رها، سازِ متعادل، مچِ راستِ آزاد.' },
+        { title: 'وضعیت دست راست (انگشت مضراب)', key: 'right-hand-position-mezrab-finger', strand: 'mezrab', notes: 'سه‌تار با ناخنِ انگشت اشاره نواخته می‌شود. زاویه‌ای آسوده با صدایی یکدست در مضرابِ راست (پایین) بیاب.' },
+        { title: 'وضعیت و رهایی دست چپ', key: 'left-hand-position-relaxation', strand: 'left_hand', notes: 'انگشتانِ سبک و خمیده؛ شست پشتِ دسته؛ بدون فشار.' },
       ],
     },
     {
-      code: 'Mezrāb',
-      group: 'Foundations',
-      title: 'Right-hand technique (mezrāb)',
-      intro: 'Even, clear strokes are the heart of setar tone.',
+      code: 'مضراب',
+      slug: 'mezrab',
+      group: 'مبانی',
+      title: 'تکنیک دست راست (مضراب)',
+      intro: 'مضراب‌های یکدست و روشن، قلبِ صدای سه‌تار است.',
       steps: [
-        { title: 'Rāst (down-stroke) on open strings', strand: 'mezrab', notes: 'Even tone, relaxed finger.' },
-        { title: 'Chap (up-stroke)', strand: 'mezrab' },
-        { title: 'Rāst–chap alternation', strand: 'mezrab', bpm: 60, notes: 'Aim for identical tone on both directions.' },
-        { title: 'Riz (tremolo)', strand: 'mezrab', notes: 'Start slow and even; speed comes from relaxation, not force.' },
-        { title: 'Dynamics & evenness', strand: 'mezrab', kind: 'drill', notes: 'Soft to loud while keeping evenness.' },
+        { title: 'راست (مضرابِ پایین) روی سیمِ باز', key: 'rast-down-stroke-on-open-strings', strand: 'mezrab', notes: 'صدای یکدست، انگشتِ رها.' },
+        { title: 'چپ (مضرابِ بالا)', key: 'chap-up-stroke', strand: 'mezrab' },
+        { title: 'تناوبِ راست–چپ', key: 'rast-chap-alternation', strand: 'mezrab', bpm: 60, notes: 'صدای یکسان در هر دو جهت را هدف بگیر.' },
+        { title: 'ریز (تِرِمولو)', key: 'riz-tremolo', strand: 'mezrab', notes: 'آهسته و یکدست آغاز کن؛ سرعت از رهایی می‌آید، نه از زور.' },
+        { title: 'دینامیک و یکدستی', key: 'dynamics-evenness', strand: 'mezrab', kind: 'drill', notes: 'از آرام به بلند، با حفظِ یکدستی.' },
       ],
     },
     {
-      code: 'Left hand',
-      group: 'Foundations',
-      title: 'Left hand, intonation & ornaments',
+      code: 'دست چپ',
+      slug: 'left-hand',
+      group: 'مبانی',
+      title: 'دست چپ، کوک و زینت‌ها',
       steps: [
-        { title: 'Finger placement & intonation', strand: 'left_hand' },
-        { title: 'Position shifts (dast)', strand: 'left_hand' },
-        { title: 'Tekiye & left-hand ornaments', strand: 'ornament' },
-        { title: 'Tahrir-style ornaments', strand: 'ornament', kind: 'drill' },
+        { title: 'انگشت‌گذاری و کوک', key: 'finger-placement-intonation', strand: 'left_hand' },
+        { title: 'تغییر دست (پوزیسیون)', key: 'position-shifts-dast', strand: 'left_hand' },
+        { title: 'تکیه و زینت‌های دست چپ', key: 'tekiye-left-hand-ornaments', strand: 'ornament' },
+        { title: 'زینت‌های تحریرگونه', key: 'tahrir-style-ornaments', strand: 'ornament', kind: 'drill' },
       ],
     },
     {
-      code: 'Shur',
-      group: 'Dastgāh-e Shur & its āvāz-hā',
-      title: 'Dastgāh-e Shur',
+      code: 'شور',
+      slug: 'shur',
+      group: 'دستگاه شور و آوازهای آن',
+      title: 'دستگاه شور',
       intro:
-        'Shur is the cornerstone of Persian music and usually where learners begin — inward, tender, and the mother of four āvāz-hā. Notice how nearly everything gravitates back to its shāhed.',
-      steps: gusheh(['Darāmad-e Shur', 'Kereshmeh', 'Rohāb', 'Salmak', 'Golriz', 'Shahnāz', 'Qarche', 'Hosseini', 'Forud'], 'Shur'),
+        'شور سنگ‌بنای موسیقی ایرانی است و معمولاً آغازگاهِ هنرجویان — درون‌گرا، لطیف، و مادرِ چهار آواز. توجه کن که چگونه تقریباً همه‌چیز به شاهدِ آن بازمی‌گردد.',
+      steps: gusheh(
+        [
+          ['درآمد شور', 'daramad-e-shur'],
+          ['کرشمه', 'kereshmeh'],
+          ['رهاب', 'rohab'],
+          ['سلمک', 'salmak'],
+          ['گلریز', 'golriz'],
+          ['شهناز', 'shahnaz'],
+          ['قرچه', 'qarche'],
+          ['حسینی', 'hosseini'],
+          ['فرود', 'forud'],
+        ],
+        'شور',
+      ),
     },
     {
-      code: 'Abu‘atā',
-      group: 'Dastgāh-e Shur & its āvāz-hā',
-      title: 'Āvāz-e Abu‘atā',
-      intro: 'An āvāz of Shur with a plaintive, folk-tinged colour. Hear how it leans on Shur and returns to it.',
-      steps: gusheh(['Darāmad', 'Sayakhi', 'Hejāz', 'Chāhārbāgh', 'Forud'], 'Abu‘atā'),
+      code: 'ابوعطا',
+      slug: 'abu-ata',
+      group: 'دستگاه شور و آوازهای آن',
+      title: 'آواز ابوعطا',
+      intro: 'آوازی از شور با رنگی سوزناک و مردمی. بشنو که چگونه بر شور تکیه می‌زند و به آن بازمی‌گردد.',
+      steps: gusheh(
+        [
+          ['درآمد', 'daramad'],
+          ['سیخی', 'sayakhi'],
+          ['حجاز', 'hejaz'],
+          ['چهارباغ', 'chaharbagh'],
+          ['فرود', 'forud'],
+        ],
+        'ابوعطا',
+      ),
     },
     {
-      code: 'Bayāt-e Tork',
-      group: 'Dastgāh-e Shur & its āvāz-hā',
-      title: 'Āvāz-e Bayāt-e Tork',
-      intro: 'An āvāz of Shur with a brighter, open character — often heard in devotional singing.',
-      steps: gusheh(['Darāmad', 'Dogāh', 'Mehrabāni', 'Qatār', 'Forud'], 'Bayāt-e Tork'),
+      code: 'بیات ترک',
+      slug: 'bayat-e-tork',
+      group: 'دستگاه شور و آوازهای آن',
+      title: 'آواز بیات ترک',
+      intro: 'آوازی از شور با نمایی روشن‌تر و بازتر — که بسیار در آواز مذهبی شنیده می‌شود.',
+      steps: gusheh(
+        [
+          ['درآمد', 'daramad'],
+          ['دوگاه', 'dogah'],
+          ['مهربانی', 'mehrabani'],
+          ['قطار', 'qatar'],
+          ['فرود', 'forud'],
+        ],
+        'بیات ترک',
+      ),
     },
     {
-      code: 'Afshārī',
-      group: 'Dastgāh-e Shur & its āvāz-hā',
-      title: 'Āvāz-e Afshārī',
+      code: 'افشاری',
+      slug: 'afshari',
+      group: 'دستگاه شور و آوازهای آن',
+      title: 'آواز افشاری',
       intro:
-        'An āvāz of Shur — searching and bittersweet, with a characteristic wandering quality. Its forud back to Shur is the moment to listen for.',
-      steps: gusheh(['Darāmad', 'Jāmedarān', 'Iraq', 'Forud'], 'Afshārī'),
+        'آوازی از شور — جستجوگر و تلخ‌وشیرین، با کیفیتی سرگردان و ویژه. فرودِ آن به شور، لحظه‌ای است که باید به آن گوش سپرد.',
+      steps: gusheh(
+        [
+          ['درآمد', 'daramad'],
+          ['جامه‌دران', 'jamedaran'],
+          ['عراق', 'iraq'],
+          ['فرود', 'forud'],
+        ],
+        'افشاری',
+      ),
     },
     {
-      code: 'Dashtī',
-      group: 'Dastgāh-e Shur & its āvāz-hā',
-      title: 'Āvāz-e Dashtī',
-      intro: 'An āvāz of Shur, lyrical and melancholic — the voice of many folk melodies. Its shāhed famously wavers.',
-      steps: gusheh(['Darāmad', 'Gilaki', 'Bayāt-e Rājeh', 'Forud'], 'Dashtī'),
+      code: 'دشتی',
+      slug: 'dashti',
+      group: 'دستگاه شور و آوازهای آن',
+      title: 'آواز دشتی',
+      intro: 'آوازی از شور، غنایی و اندوهگین — صدای بسیاری از نغمه‌های محلی. شاهدِ آن به‌طرزی نامدار می‌لرزد.',
+      steps: gusheh(
+        [
+          ['درآمد', 'daramad'],
+          ['گیلکی', 'gilaki'],
+          ['بیات راجه', 'bayat-e-rajeh'],
+          ['فرود', 'forud'],
+        ],
+        'دشتی',
+      ),
     },
     {
-      code: 'Homāyun',
-      group: 'The other dastgāh-hā',
-      title: 'Dastgāh-e Homāyun',
-      intro: 'Majestic and grieving at once. Listen for its distinctive opening leap and the pull of Bidād.',
-      steps: gusheh(['Darāmad-e Homāyun', 'Chakāvak', 'Bidād', 'Ney-Dāvud', 'Forud'], 'Homāyun'),
+      code: 'همایون',
+      slug: 'homayun',
+      group: 'دیگر دستگاه‌ها',
+      title: 'دستگاه همایون',
+      intro: 'هم‌زمان باشکوه و سوگوار. به جهشِ آغازینِ ویژه‌اش و کششِ بیداد گوش بسپار.',
+      steps: gusheh(
+        [
+          ['درآمد همایون', 'daramad-e-homayun'],
+          ['چکاوک', 'chakavak'],
+          ['بیداد', 'bidad'],
+          ['نی‌داوود', 'ney-davud'],
+          ['فرود', 'forud'],
+        ],
+        'همایون',
+      ),
     },
     {
-      code: 'Esfahān',
-      group: 'The other dastgāh-hā',
-      title: 'Āvāz-e Bayāt-e Esfahān',
-      intro: 'An āvāz of Homāyun — romantic and warm, close to a Western harmonic-minor colour.',
-      steps: gusheh(['Darāmad', 'Jāmedarān', 'Bayāt-e Rājeh', 'Forud'], 'Bayāt-e Esfahān'),
+      code: 'اصفهان',
+      slug: 'esfahan',
+      group: 'دیگر دستگاه‌ها',
+      title: 'آواز بیات اصفهان',
+      intro: 'آوازی از همایون — عاشقانه و گرم، نزدیک به رنگِ مینورِ هارمونیکِ غربی.',
+      steps: gusheh(
+        [
+          ['درآمد', 'daramad'],
+          ['جامه‌دران', 'jamedaran'],
+          ['بیات راجه', 'bayat-e-rajeh'],
+          ['فرود', 'forud'],
+        ],
+        'بیات اصفهان',
+      ),
     },
     {
-      code: 'Segāh',
-      group: 'The other dastgāh-hā',
-      title: 'Dastgāh-e Segāh',
-      intro: 'Plaintive and pleading, built around its quarter-tone shāhed. Mokhālef is its emotional peak — notice the shift of register.',
-      steps: gusheh(['Darāmad-e Segāh', 'Zābol', 'Mokhālef', 'Maqlub', 'Forud'], 'Segāh'),
+      code: 'سه‌گاه',
+      slug: 'segah',
+      group: 'دیگر دستگاه‌ها',
+      title: 'دستگاه سه‌گاه',
+      intro: 'اندوهگین و التماس‌گر، حول شاهدِ ربع‌پرده‌اش ساخته شده. مخالف اوجِ عاطفیِ آن است — به تغییرِ رجیستر توجه کن.',
+      steps: gusheh(
+        [
+          ['درآمد سه‌گاه', 'daramad-e-segah'],
+          ['زابل', 'zabol'],
+          ['مخالف', 'mokhalef'],
+          ['مقلوب', 'maqlub'],
+          ['فرود', 'forud'],
+        ],
+        'سه‌گاه',
+      ),
     },
     {
-      code: 'Chahārgāh',
-      group: 'The other dastgāh-hā',
-      title: 'Dastgāh-e Chahārgāh',
-      intro: 'Bright, heroic, celebratory — often compared to sunrise. Feel the symmetry of its tetrachords around the shāhed.',
-      steps: gusheh(['Darāmad-e Chahārgāh', 'Zābol', 'Mokhālef', 'Mansuri', 'Forud'], 'Chahārgāh'),
+      code: 'چهارگاه',
+      slug: 'chahargah',
+      group: 'دیگر دستگاه‌ها',
+      title: 'دستگاه چهارگاه',
+      intro: 'روشن، حماسی، جشن‌گونه — که اغلب با طلوعِ آفتاب مقایسه می‌شود. تقارنِ دانگ‌هایش را حول شاهد حس کن.',
+      steps: gusheh(
+        [
+          ['درآمد چهارگاه', 'daramad-e-chahargah'],
+          ['زابل', 'zabol'],
+          ['مخالف', 'mokhalef'],
+          ['منصوری', 'mansuri'],
+          ['فرود', 'forud'],
+        ],
+        'چهارگاه',
+      ),
     },
     {
-      code: 'Māhur',
-      group: 'The other dastgāh-hā',
-      title: 'Dastgāh-e Māhur',
-      intro: 'Open and joyful — the closest to the Western major scale. Delkash is the famous turn: hear it borrow the colour of Shur.',
-      steps: gusheh(['Darāmad-e Māhur', 'Dād', 'Khosravāni', 'Delkash', 'Forud'], 'Māhur'),
+      code: 'ماهور',
+      slug: 'mahur',
+      group: 'دیگر دستگاه‌ها',
+      title: 'دستگاه ماهور',
+      intro: 'باز و شادمان — نزدیک‌ترین به گامِ ماژورِ غربی. دلکش گردشِ نامدار است: بشنو که چگونه رنگِ شور را وام می‌گیرد.',
+      steps: gusheh(
+        [
+          ['درآمد ماهور', 'daramad-e-mahur'],
+          ['داد', 'dad'],
+          ['خسروانی', 'khosravani'],
+          ['دلکش', 'delkash'],
+          ['فرود', 'forud'],
+        ],
+        'ماهور',
+      ),
     },
     {
-      code: 'Navā',
-      group: 'The other dastgāh-hā',
-      title: 'Dastgāh-e Navā',
-      intro: 'Calm, meditative, balanced — often kept for late night. Related to Shur; notice the more settled centre.',
-      steps: gusheh(['Darāmad-e Navā', 'Gardāniyeh', 'Nahoft', 'Forud'], 'Navā'),
+      code: 'نوا',
+      slug: 'nava',
+      group: 'دیگر دستگاه‌ها',
+      title: 'دستگاه نوا',
+      intro: 'آرام، مراقبه‌گون، متعادل — اغلب برای پاسی از شب نگه داشته می‌شود. خویشاوندِ شور؛ به مرکزِ آرام‌ترش توجه کن.',
+      steps: gusheh(
+        [
+          ['درآمد نوا', 'daramad-e-nava'],
+          ['گردانیه', 'gardaniyeh'],
+          ['نهفت', 'nahoft'],
+          ['فرود', 'forud'],
+        ],
+        'نوا',
+      ),
     },
     {
-      code: 'Rāst-Panjgāh',
-      group: 'The other dastgāh-hā',
-      title: 'Dastgāh-e Rāst-Panjgāh',
-      intro: 'The rarest dastgāh — stately, wide-ranging, a favourite for modulation between modes.',
-      steps: gusheh(['Darāmad-e Rāst-Panjgāh', 'Parvāneh', 'Qarache', 'Forud'], 'Rāst-Panjgāh'),
+      code: 'راست‌پنجگاه',
+      slug: 'rast-panjgah',
+      group: 'دیگر دستگاه‌ها',
+      title: 'دستگاه راست‌پنجگاه',
+      intro: 'کمیاب‌ترین دستگاه — باوقار، گسترده، و محبوب برای مدولاسیون میان مُدها.',
+      steps: gusheh(
+        [
+          ['درآمد راست‌پنجگاه', 'daramad-e-rast-panjgah'],
+          ['پروانه', 'parvaneh'],
+          ['قرچه', 'qarache'],
+          ['فرود', 'forud'],
+        ],
+        'راست‌پنجگاه',
+      ),
     },
     {
-      code: 'Forms',
-      group: 'Composed forms & repertoire',
-      title: 'Composed forms & improvisation',
-      intro: 'The repertoire your teacher gives you from different masters lives here.',
+      code: 'فرم‌ها',
+      slug: 'forms',
+      group: 'فرم‌های ساخته‌شده و رپرتوار',
+      title: 'فرم‌های ساخته‌شده و بداهه',
+      intro: 'رپرتواری که استادت از استادانِ گوناگون به تو می‌دهد اینجا جای می‌گیرد.',
       steps: [
-        { title: 'Pish-darāmad', strand: 'repertoire' },
-        { title: 'Chahār-mezrāb', strand: 'repertoire', notes: 'Rhythmic showpiece — great for right-hand control.' },
-        { title: 'Qet‘e (composed pieces)', strand: 'repertoire' },
-        { title: 'Tasnif (songs)', strand: 'repertoire' },
-        { title: 'Reng (dance pieces)', strand: 'repertoire' },
-        { title: 'Bedāhe-navāzi (improvisation)', strand: 'improvisation', notes: 'Improvise within a dastgāh you know well.' },
+        { title: 'پیش‌درآمد', key: 'pish-daramad', strand: 'repertoire' },
+        { title: 'چهارمضراب', key: 'chahar-mezrab', strand: 'repertoire', notes: 'نمایشِ ریتمیک — عالی برای کنترلِ دست راست.' },
+        { title: 'قطعه (قطعه‌های ساخته‌شده)', key: 'qet-e-composed-pieces', strand: 'repertoire' },
+        { title: 'تصنیف (آوازها)', key: 'tasnif-songs', strand: 'repertoire' },
+        { title: 'رِنگ (قطعه‌های رقص)', key: 'reng-dance-pieces', strand: 'repertoire' },
+        { title: 'بداهه‌نوازی', key: 'bedahe-navazi-improvisation', strand: 'improvisation', notes: 'در دستگاهی که خوب می‌شناسی بداهه بنواز.' },
       ],
     },
   ],
@@ -386,95 +518,111 @@ const SETAR: PathSeed = {
 const TAR: PathSeed = {
   id: 'tar-honarestan',
   instrumentKey: 'tar',
-  name: 'Tar · Honarestān method',
-  source: 'Honarestān books · via Khonyagar.com',
+  name: 'تار · روش هنرستان',
+  source: 'کتاب‌های هنرستان · از طریق خنیاگر',
   description:
-    'The classic two-book Honarestān (Tehran Conservatory) curriculum for tar — in Western notation, progressing from basics to dastgāh-based pieces.',
+    'برنامهٔ کلاسیکِ دو‌جلدیِ هنرستان (هنرستان موسیقی تهران) برای تار — با نت‌نویسیِ غربی، از مبانی تا قطعه‌های دستگاهی.',
   note:
-    'Following Khonyagar.com, which teaches the Honarestān method. This is a scaffold of the two books — add or rename the exact lessons, exercises and pieces as you cover them with the platform.',
+    'برگرفته از خنیاگر که روش هنرستان را آموزش می‌دهد. این چارچوبی از دو کتاب است — درس‌ها، تمرین‌ها و قطعه‌های دقیق را همان‌طور که در پلتفرم پیش می‌روی بیفزای یا نامشان را عوض کن.',
   stages: [
     {
-      code: 'Setup',
-      group: 'Book 1 · Ketāb-e Avval',
-      title: 'Holding the tar & mezrāb',
+      code: 'نشست',
+      slug: 'setup',
+      group: 'کتاب اول هنرستان',
+      title: 'در دست گرفتن تار و مضراب',
       steps: [
-        { title: 'Posture & holding the tar', strand: 'warmup' },
-        { title: 'Holding the mezrāb (plectrum)', strand: 'mezrab', notes: 'Relaxed grip; the stroke comes from the wrist.' },
+        { title: 'نشست و در دست گرفتن تار', key: 'posture-holding-the-tar', strand: 'warmup' },
+        { title: 'در دست گرفتن مضراب', key: 'holding-the-mezrab-plectrum', strand: 'mezrab', notes: 'گرفتنِ رها؛ مضراب از مچ می‌آید.' },
       ],
     },
     {
-      code: 'RH basics',
-      group: 'Book 1 · Ketāb-e Avval',
-      title: 'Right-hand mezrāb on open strings',
+      code: 'مبانی دست راست',
+      slug: 'rh-basics',
+      group: 'کتاب اول هنرستان',
+      title: 'مضرابِ دست راست روی سیم‌های باز',
       steps: [
-        { title: 'Rāst (down) on open strings', strand: 'mezrab' },
-        { title: 'Chap (up)', strand: 'mezrab' },
-        { title: 'Rāst–chap alternation', strand: 'mezrab', bpm: 60 },
+        { title: 'راست (پایین) روی سیم‌های باز', key: 'rast-down-on-open-strings', strand: 'mezrab' },
+        { title: 'چپ (بالا)', key: 'chap-up', strand: 'mezrab' },
+        { title: 'تناوبِ راست–چپ', key: 'rast-chap-alternation', strand: 'mezrab', bpm: 60 },
       ],
     },
     {
-      code: 'Reading',
-      group: 'Book 1 · Ketāb-e Avval',
-      title: 'First notes & reading',
+      code: 'نت‌خوانی',
+      slug: 'reading',
+      group: 'کتاب اول هنرستان',
+      title: 'نت‌های نخست و نت‌خوانی',
       steps: [
-        { title: 'Note reading (Western staff)', strand: 'reading_theory', kind: 'reading', notes: 'The Honarestān books use Western notation.' },
-        { title: 'First-position notes', strand: 'sight_reading' },
-        { title: 'Simple note exercises', strand: 'exercise' },
+        { title: 'نت‌خوانی (خطِ حاملِ غربی)', key: 'note-reading-western-staff', strand: 'reading_theory', kind: 'reading', notes: 'کتاب‌های هنرستان از نت‌نویسیِ غربی استفاده می‌کنند.' },
+        { title: 'نت‌های پوزیسیونِ اول', key: 'first-position-notes', strand: 'sight_reading' },
+        { title: 'تمرین‌های سادهٔ نت', key: 'simple-note-exercises', strand: 'exercise' },
       ],
     },
     {
-      code: 'Exercises 1',
-      group: 'Book 1 · Ketāb-e Avval',
-      title: 'Beginning exercises',
+      code: 'تمرین‌ها ۱',
+      slug: 'exercises-1',
+      group: 'کتاب اول هنرستان',
+      title: 'تمرین‌های آغازین',
       steps: [
-        { title: 'Beginning technical exercises', strand: 'exercise' },
-        { title: 'Basic rhythm & meter', strand: 'rhythm' },
+        { title: 'تمرین‌های تکنیکیِ آغازین', key: 'beginning-technical-exercises', strand: 'exercise' },
+        { title: 'ریتم و وزنِ پایه', key: 'basic-rhythm-meter', strand: 'rhythm' },
       ],
     },
     {
-      code: 'Pieces 1',
-      group: 'Book 1 · Ketāb-e Avval',
-      title: 'First short pieces (qet‘e)',
+      code: 'قطعه‌ها ۱',
+      slug: 'pieces-1',
+      group: 'کتاب اول هنرستان',
+      title: 'نخستین قطعه‌های کوتاه',
       steps: [
-        { title: 'First short pieces in Māhur', strand: 'repertoire' },
-        { title: 'First short pieces in Shur', strand: 'repertoire' },
+        { title: 'نخستین قطعه‌های کوتاه در ماهور', key: 'first-short-pieces-in-mahur', strand: 'repertoire' },
+        { title: 'نخستین قطعه‌های کوتاه در شور', key: 'first-short-pieces-in-shur', strand: 'repertoire' },
       ],
     },
     {
-      code: 'Positions',
-      group: 'Book 2 · Ketāb-e Dovvom',
-      title: 'Higher positions & shifts',
+      code: 'پوزیسیون‌ها',
+      slug: 'positions',
+      group: 'کتاب دوم هنرستان',
+      title: 'پوزیسیون‌های بالاتر و تغییر دست',
       steps: [
-        { title: 'Higher positions', strand: 'left_hand' },
-        { title: 'Position shifts', strand: 'left_hand' },
+        { title: 'پوزیسیون‌های بالاتر', key: 'higher-positions', strand: 'left_hand' },
+        { title: 'تغییر پوزیسیون', key: 'position-shifts', strand: 'left_hand' },
       ],
     },
     {
-      code: 'Chahār-mezrāb',
-      group: 'Book 2 · Ketāb-e Dovvom',
-      title: 'Chahār-mezrāb studies',
-      steps: [{ title: 'Chahār-mezrāb (rhythmic studies)', strand: 'repertoire', notes: 'Builds right-hand stamina and evenness.' }],
+      code: 'چهارمضراب',
+      slug: 'chahar-mezrab',
+      group: 'کتاب دوم هنرستان',
+      title: 'چهارمضرابِ تمرینی',
+      steps: [{ title: 'چهارمضراب (تمرین‌های ریتمیک)', key: 'chahar-mezrab-rhythmic-studies', strand: 'repertoire', notes: 'استقامت و یکدستیِ دست راست را می‌سازد.' }],
     },
     {
-      code: 'Dastgāh pieces',
-      group: 'Book 2 · Ketāb-e Dovvom',
-      title: 'Pieces in the dastgāh-hā',
-      steps: gusheh(['Pieces in Shur', 'Pieces in Māhur', 'Pieces in Segāh', 'Pieces in Chahārgāh', 'Pieces in Homāyun']).map((s) => ({ ...s, strand: 'repertoire' })),
-    },
-    {
-      code: 'Reng & Tasnif',
-      group: 'Book 2 · Ketāb-e Dovvom',
-      title: 'Dance pieces & songs',
+      code: 'قطعه‌های دستگاهی',
+      slug: 'dastgah-pieces',
+      group: 'کتاب دوم هنرستان',
+      title: 'قطعه‌ها در دستگاه‌ها',
       steps: [
-        { title: 'Reng (dance pieces)', strand: 'repertoire' },
-        { title: 'Tasnif (songs)', strand: 'repertoire' },
+        { title: 'قطعه‌هایی در شور', key: 'pieces-in-shur', strand: 'repertoire' },
+        { title: 'قطعه‌هایی در ماهور', key: 'pieces-in-mahur', strand: 'repertoire' },
+        { title: 'قطعه‌هایی در سه‌گاه', key: 'pieces-in-segah', strand: 'repertoire' },
+        { title: 'قطعه‌هایی در چهارگاه', key: 'pieces-in-chahargah', strand: 'repertoire' },
+        { title: 'قطعه‌هایی در همایون', key: 'pieces-in-homayun', strand: 'repertoire' },
       ],
     },
     {
-      code: 'Radif intro',
-      group: 'Book 2 · Ketāb-e Dovvom',
-      title: 'Introduction to the radif',
-      steps: [{ title: 'First radif gusheh-hā', strand: 'radif', notes: 'A bridge towards studying the radif itself.' }],
+      code: 'رِنگ و تصنیف',
+      slug: 'reng-tasnif',
+      group: 'کتاب دوم هنرستان',
+      title: 'قطعه‌های رقص و آوازها',
+      steps: [
+        { title: 'رِنگ (قطعه‌های رقص)', key: 'reng-dance-pieces', strand: 'repertoire' },
+        { title: 'تصنیف (آوازها)', key: 'tasnif-songs', strand: 'repertoire' },
+      ],
+    },
+    {
+      code: 'آشنایی با ردیف',
+      slug: 'radif-intro',
+      group: 'کتاب دوم هنرستان',
+      title: 'آشنایی با ردیف',
+      steps: [{ title: 'نخستین گوشه‌های ردیف', key: 'first-radif-gusheh-ha', strand: 'radif', notes: 'پلی به‌سوی مطالعهٔ خودِ ردیف.' }],
     },
   ],
 };
@@ -515,7 +663,7 @@ function expand(seed: PathSeed, instrumentId: ID, pathOrder: number, now: Date):
     updatedAt: ts,
   };
   const stages: PathwayStage[] = seed.stages.map((st, si) => ({
-    id: stageIdFor(seed.id, st.code),
+    id: stageIdFor(seed.id, st.slug ?? st.code),
     pathwayId: seed.id,
     code: st.code,
     title: st.title,
@@ -559,9 +707,9 @@ function buildCatalog(): Record<string, CatalogEntry[]> {
   const map: Record<string, CatalogEntry[]> = {};
   for (const { seed } of ALL_SEEDS) {
     for (const st of seed.stages) {
-      const stageId = stageIdFor(seed.id, st.code);
+      const stageId = stageIdFor(seed.id, st.slug ?? st.code);
       map[stageId] = st.steps.map((sp) => ({
-        key: slug(sp.title),
+        key: sp.key ?? slug(sp.title),
         stageId,
         title: sp.title,
         strand: sp.strand,

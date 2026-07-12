@@ -64,6 +64,15 @@ export interface TreeEntry {
 export interface RemotePort {
   /** Head commit sha of the data branch, or null when the repo/branch is empty. */
   getHead(): Promise<string | null>;
+  /**
+   * Ensure the repo has at least one commit and return its head sha. The Git
+   * Data endpoints (blobs/trees/commits) refuse to run in a brand-new empty
+   * repository ("Git Repository is empty", 409), so the first snapshot must be
+   * preceded by a commit made through the Contents API. Idempotent: returns
+   * the existing head when the repo is already initialized, and tolerates a
+   * concurrent device having initialized it first.
+   */
+  initialize(): Promise<string>;
   /** Text content of a path at a commit; null when the path doesn't exist. */
   readText(path: string, ref: string): Promise<string | null>;
   /** Directory listing at a commit (legacy format only); [] when missing. */
@@ -180,11 +189,18 @@ async function publish(
 ): Promise<'race' | string> {
   const { remote } = ports;
 
+  // A brand-new empty repo has no commit, and git-data endpoints refuse to run
+  // there. Bootstrap it through the Contents API first; the returned commit
+  // becomes the parent, so the snapshot still lands as one atomic commit on a
+  // real history (nothing partial: if bootstrap fails, we throw before writing
+  // any blob).
+  const base = parent ?? (await remote.initialize());
+
   // Reuse blob shas for attachments the previous manifest already holds —
   // attachments are immutable (added/deleted, never edited).
   const known = new Map<string, ManifestAttachment>();
-  if (parent) {
-    const prevText = await remote.readText('manifest.json', parent);
+  if (base) {
+    const prevText = await remote.readText('manifest.json', base);
     if (prevText) {
       for (const a of (JSON.parse(prevText) as RemoteManifest).attachments) known.set(a.id, a);
     }
@@ -220,8 +236,8 @@ async function publish(
   ];
 
   const tree = await remote.createTree(entries);
-  const commit = await remote.createCommit(message, tree, parent ? [parent] : []);
-  const result = await remote.advanceHead(commit, parent);
+  const commit = await remote.createCommit(message, tree, base ? [base] : []);
+  const result = await remote.advanceHead(commit, base);
   return result === 'race' ? 'race' : commit;
 }
 

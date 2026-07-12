@@ -121,8 +121,9 @@ describe('progress & navigation', () => {
 
   it('groupStages keeps order and groups by heading', () => {
     const groups = groupStages(stages);
-    expect(groups[0].group).toBe('Foundations');
-    expect(groups.some((g) => g.group === 'Dastgāh-e Shur & its āvāz-hā')).toBe(true);
+    // Setar section headings are now Farsi (built-in Persian-music data).
+    expect(groups[0].group).toBe('مبانی');
+    expect(groups.some((g) => g.group === 'دستگاه شور و آوازهای آن')).toBe(true);
   });
 
   it('a user-pinned stage wins over "first incomplete" (teacher-led paths)', () => {
