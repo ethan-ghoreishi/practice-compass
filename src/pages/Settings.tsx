@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { normalizeBaseUrl, resolveRecording, SETAR_CLASS_SESSIONS } from '../domain';
 import { useStore, type ThemePref } from '../store/useStore';
 import {
   buildFullBackup,
@@ -492,6 +493,18 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
   const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
 
   const setar = db.instruments.find((i) => i.family === 'Persian' && /setar|سه‌تار|سه تار/i.test(i.name));
+  const trimmed = baseUrl.trim();
+  const normalized = trimmed ? normalizeBaseUrl(trimmed) : null;
+  const invalid = trimmed.length > 0 && normalized === null;
+
+  function commitBaseUrl() {
+    // Normalise on blur so a scheme-less host (the reported bug) becomes a real
+    // https URL, and echo the cleaned value back into the field.
+    const clean = normalizeBaseUrl(baseUrl);
+    const next = clean ?? baseUrl.trim();
+    setBaseUrlState(next);
+    setNasBaseUrl(next);
+  }
 
   function runImport() {
     if (!setar) {
@@ -501,6 +514,20 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
     const count = importSetarClasses(setar.id);
     onFlash(count > 0 ? `Imported ${count} Setar class${count === 1 ? '' : 'es'}.` : 'All Setar classes are already imported.');
   }
+
+  function testLink() {
+    const first = SETAR_CLASS_SESSIONS[0];
+    const r = resolveRecording(normalizeBaseUrl(baseUrl) ?? baseUrl, { path: first.video });
+    if (r.status === 'ok') {
+      window.open(r.url, '_blank', 'noopener,noreferrer');
+    } else if (r.status === 'bad-base') {
+      onFlash('That base URL isn’t valid — check it and try again.');
+    } else {
+      onFlash('Enter a base URL first.');
+    }
+  }
+
+  const testUrl = resolveRecording(normalized ?? undefined, { path: SETAR_CLASS_SESSIONS[0].video });
 
   return (
     <section className="stack-sm">
@@ -512,17 +539,37 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
         </div>
         <Field
           label="NAS recordings base URL"
-          hint="e.g. https://your-nas.ts.net/media — relative recording paths are joined onto this. Stored on this device only; never synced, never a password."
+          hint="e.g. https://ds220plus.taild1d1f7.ts.net/media — relative recording paths are joined onto this. Stored on this device only; never synced, never a password. See DECISIONS.md to serve the folder over HTTPS."
         >
           <input
             className="input"
             type="url"
-            placeholder="https://your-nas.ts.net/media"
+            inputMode="url"
+            enterKeyHint="done"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="https://ds220plus.taild1d1f7.ts.net/media"
             value={baseUrl}
             onChange={(e) => setBaseUrlState(e.target.value)}
-            onBlur={() => setNasBaseUrl(baseUrl)}
+            onBlur={commitBaseUrl}
           />
         </Field>
+        {invalid ? (
+          <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+            That doesn’t look like a valid web address.
+          </div>
+        ) : normalized ? (
+          <div className="tiny faint">Resolves to: {normalized}/…</div>
+        ) : null}
+
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">Open session 1’s recording to check the base URL works.</div>
+          <button className="btn btn-sm" style={{ flex: 'none' }} disabled={!normalized || testUrl.status !== 'ok'} onClick={testLink}>
+            Test link
+          </button>
+        </div>
+
         <div className="row between" style={{ gap: 8 }}>
           <div className="tiny faint">Import your logged Setar classes as lessons (recording links, no video).</div>
           <button className="btn btn-sm" style={{ flex: 'none' }} onClick={runImport}>

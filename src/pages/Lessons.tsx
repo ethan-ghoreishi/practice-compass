@@ -6,10 +6,9 @@ import {
   formatFileSize,
   ITEM_STATUS_LABELS,
   lessonsForInstrument,
-  needsBaseUrl,
   nextLessonFor,
   questionsForNextClass,
-  resolveRecordingUrl,
+  resolveRecording,
   todayISODate,
   type Lesson,
 } from '../domain';
@@ -371,9 +370,9 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
   }
 
   function open(rec: (typeof recordings)[number]) {
-    const url = resolveRecordingUrl(baseUrl, rec);
-    if (!url) return; // guarded by needsBaseUrl below
-    window.open(url, '_blank', 'noopener,noreferrer');
+    const r = resolveRecording(baseUrl, rec);
+    if (r.status !== 'ok') return; // button is disabled unless resolvable
+    window.open(r.url, '_blank', 'noopener,noreferrer');
   }
 
   return (
@@ -393,7 +392,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
       )}
 
       {recordings.map((rec) => {
-        const missingBase = needsBaseUrl(baseUrl, rec);
+        const resolution = resolveRecording(baseUrl, rec);
         const size = formatFileSize(rec.sizeBytes);
         return (
           <div key={rec.id} className="card row between" style={{ gap: 10 }}>
@@ -409,7 +408,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
                   {rec.notes}
                 </div>
               )}
-              {missingBase && (
+              {resolution.status === 'no-base' && (
                 <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
                   Set your NAS base URL in{' '}
                   <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
@@ -418,8 +417,17 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
                   to open this.
                 </div>
               )}
+              {resolution.status === 'bad-base' && (
+                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+                  Your NAS base URL isn’t a valid web address — fix it in{' '}
+                  <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                    Settings
+                  </button>
+                  .
+                </div>
+              )}
             </div>
-            <button className="btn btn-sm btn-primary" disabled={missingBase} onClick={() => open(rec)}>
+            <button className="btn btn-sm btn-primary" disabled={resolution.status !== 'ok'} onClick={() => open(rec)}>
               Open recording
             </button>
             <button
