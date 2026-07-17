@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { useSyncStatus } from '../store/githubSync';
+import { useViewportGuard } from './useViewportGuard';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import {
   CompassIcon,
@@ -19,6 +20,9 @@ export default function Layout() {
   const setTheme = useStore((s) => s.setTheme);
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
+
+  // Undo iOS's layout-viewport displacement when the keyboard opens/closes.
+  useViewportGuard();
 
   // Only <main> scrolls (the shell is fixed-height) — reset it so every
   // route opens at the top.
