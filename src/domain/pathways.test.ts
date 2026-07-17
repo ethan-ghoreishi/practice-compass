@@ -4,6 +4,7 @@ import { catalogForStage, SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './p
 import {
   currentStage,
   groupStages,
+  isLosslesslyRemovable,
   itemStageState,
   nextUnitInStage,
   pathwayProgress,
@@ -147,5 +148,30 @@ describe('itemFromCatalogEntry', () => {
     expect(item.stageId).toBe(AFSHARI);
     expect(item.catalogKey).toBe('iraq');
     expect(item.instrumentId).toBe('setar-1');
+  });
+});
+
+describe('isLosslesslyRemovable', () => {
+  const fresh = itemIn(AFSHARI, 'iraq', { status: 'new', timesPractised: 0 });
+
+  it('is true for a fresh catalog item with no blocks', () => {
+    expect(isLosslesslyRemovable(fresh, [])).toBe(true);
+  });
+
+  it('is false once any block is logged against it', () => {
+    // A block existing is enough even if stats weren't recomputed.
+    expect(isLosslesslyRemovable(fresh, [{ practiceItemId: fresh.id } as never])).toBe(false);
+  });
+
+  it('is false once it has been practised (timesPractised > 0)', () => {
+    expect(isLosslesslyRemovable({ ...fresh, timesPractised: 1 }, [])).toBe(false);
+  });
+
+  it('is false once its status has moved on', () => {
+    expect(isLosslesslyRemovable({ ...fresh, status: 'fragile' }, [])).toBe(false);
+  });
+
+  it('is false for a hand-made item (no catalogKey)', () => {
+    expect(isLosslesslyRemovable(itemIn(AFSHARI, undefined, { status: 'new' }), [])).toBe(false);
   });
 });

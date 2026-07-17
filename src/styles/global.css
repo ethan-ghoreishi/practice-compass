@@ -379,6 +379,13 @@ body,
   align-items: center;
   gap: var(--space-3);
 }
+/* A freshly-added catalog item gains a lossless Remove: a second fixed 44×44
+   slot appears beside the play action. The text column still uses minmax(0,1fr)
+   so it shrinks by exactly the extra slot — it never overflows. */
+.stage-unit--removable {
+  grid-template-columns: 34px minmax(0, 1fr) var(--tap) var(--tap);
+  gap: var(--space-2);
+}
 .stage-unit-text {
   min-width: 0;
   background: none;

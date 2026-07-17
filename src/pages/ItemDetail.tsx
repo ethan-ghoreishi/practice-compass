@@ -6,6 +6,7 @@ import {
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
+  isLosslesslyRemovable,
   nextLessonFor,
   partsOf,
   pickNextPart,
@@ -416,11 +417,15 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
  */
 function ConnectedTo({ item }: { item: PracticeItem }) {
   const db = useStore((s) => s.db);
+  const removeCatalogItem = useStore((s) => s.removeCatalogItem);
+  const navigate = useNavigate();
   const material = item.materialId ? db.materials.find((m) => m.id === item.materialId) : undefined;
   const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
   const lessons = db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date));
   const parent = item.parentItemId ? db.items.find((i) => i.id === item.parentItemId) : undefined;
+  const losslessInStage =
+    !!stage && isLosslesslyRemovable(item, db.blocks.filter((b) => b.practiceItemId === item.id));
 
   if (!material && !stage && lessons.length === 0 && !parent) return null;
 
@@ -467,6 +472,18 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
           </span>
         )}
       </div>
+      {losslessInStage && (
+        <button
+          className="link tiny"
+          style={{ background: 'none', border: 'none', width: 'fit-content', textAlign: 'left' }}
+          onClick={() => {
+            // Provably lossless (no practice logged): revert to a suggestion.
+            if (removeCatalogItem(item.id)) navigate(`/pathway/${stage!.pathwayId}/${stage!.id}`);
+          }}
+        >
+          Remove from stage (no practice logged)
+        </button>
+      )}
     </div>
   );
 }

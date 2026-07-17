@@ -5,6 +5,7 @@ import { withRevision } from './revision';
 import {
   applyBlockStats,
   catalogForStage,
+  isLosslesslyRemovable,
   computeReview,
   createBlock,
   createInstrument,
@@ -193,6 +194,8 @@ interface StoreState {
   updateItem: (id: ID, patch: ItemPatch) => void;
   setItemStatus: (id: ID, status: ItemStatus) => void;
   deleteItem: (id: ID) => void;
+  /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
+  removeCatalogItem: (id: ID) => boolean;
   placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
   toggleAssignedForLesson: (itemId: ID) => void;
   /** Create a practice item from a stage's reference catalog entry; returns its id. */
@@ -547,6 +550,18 @@ export const useStore = create<StoreState>()(
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
+      },
+
+      removeCatalogItem: (id) => {
+        const s = get();
+        const item = s.db.items.find((i) => i.id === id);
+        if (!item) return false;
+        const itemBlocks = s.db.blocks.filter((b) => b.practiceItemId === id);
+        // Only proceed when the deletion is provably lossless — a fresh,
+        // never-practised catalog item reverting to a suggestion.
+        if (!isLosslesslyRemovable(item, itemBlocks)) return false;
+        get().deleteItem(id);
+        return true;
       },
 
       placeItemInStage: (itemId, stageId) => {

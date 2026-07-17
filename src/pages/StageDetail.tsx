@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  isLosslesslyRemovable,
   routinesOfStage,
   stageProgress,
   stageUnits,
@@ -12,7 +13,7 @@ import {
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
 import { Field } from '../components/ui';
-import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon } from '../components/icons';
+import { ArrowLeftIcon, CheckIcon, MinusIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
 
 export default function StageDetail() {
   const { pathwayId, stageId } = useParams();
@@ -22,6 +23,7 @@ export default function StageDetail() {
   const updatePathway = useStore((s) => s.updatePathway);
   const addFromCatalog = useStore((s) => s.addFromCatalog);
   const deleteItem = useStore((s) => s.deleteItem);
+  const removeCatalogItem = useStore((s) => s.removeCatalogItem);
   const startItemSession = useStore((s) => s.startItemSession);
   const navigate = useNavigate();
 
@@ -29,6 +31,7 @@ export default function StageDetail() {
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
   const units = useMemo(() => (stage ? stageUnits(stage, db.items) : []), [stage, db.items]);
   const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
+  const blocksOf = (itemId: string) => db.blocks.filter((b) => b.practiceItemId === itemId);
 
   const [editing, setEditing] = useState(false);
   const [editCode, setEditCode] = useState('');
@@ -70,8 +73,9 @@ export default function StageDetail() {
 
   function addSuggestion(unit: StageUnit) {
     const id = addFromCatalog(stage!.id, unit.key);
+    // Adding is organisation, not commitment — the undo card lingers calmly
+    // until dismissed or you leave, rather than vanishing on a timer.
     setUndo({ id, title: unit.title });
-    setTimeout(() => setUndo((cur) => (cur?.id === id ? null : cur)), 8000);
   }
 
   function practise(unit: StageUnit) {
@@ -164,24 +168,44 @@ export default function StageDetail() {
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
         {undo && (
-          <div className="card card-quiet row between small">
+          <div className="card card-quiet row between small" style={{ gap: 8 }}>
             <span className="truncate" dir="auto">
               Added “{undo.title}” — not practised yet.
             </span>
-            <button
-              className="btn btn-sm"
-              onClick={() => {
-                deleteItem(undo.id);
-                setUndo(null);
-              }}
-            >
-              Undo
-            </button>
+            <div className="row" style={{ gap: 6, flex: 'none' }}>
+              <button
+                className="btn btn-sm"
+                onClick={() => {
+                  deleteItem(undo.id);
+                  setUndo(null);
+                }}
+              >
+                Undo
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                aria-label="Dismiss"
+                style={{ minHeight: 30, padding: '0 6px' }}
+                onClick={() => setUndo(null)}
+              >
+                <XIcon width={14} height={14} />
+              </button>
+            </div>
           </div>
         )}
         <div className="stack-sm">
           {units.map((u) => (
-            <UnitRow key={u.key} unit={u} returnTo={here} onPractise={() => practise(u)} onAdd={() => addSuggestion(u)} />
+            <UnitRow
+              key={u.key}
+              unit={u}
+              returnTo={here}
+              removable={!!u.item && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
+              onPractise={() => practise(u)}
+              onAdd={() => addSuggestion(u)}
+              onRemove={() => {
+                if (u.item) removeCatalogItem(u.item.id);
+              }}
+            />
           ))}
           {units.length === 0 && (
             <div className="card card-quiet small dim">Nothing here yet — add your first piece below.</div>
@@ -207,13 +231,17 @@ export default function StageDetail() {
 function UnitRow({
   unit,
   returnTo,
+  removable,
   onPractise,
   onAdd,
+  onRemove,
 }: {
   unit: StageUnit;
   returnTo: string;
+  removable: boolean;
   onPractise: () => void;
   onAdd: () => void;
+  onRemove: () => void;
 }) {
   const navigate = useNavigate();
   const item = unit.item;
@@ -229,7 +257,7 @@ function UnitRow({
   ].filter(Boolean);
 
   return (
-    <div className={`card stage-unit${unit.state === 'done' ? ' card-quiet' : ''}`}>
+    <div className={`card stage-unit${removable ? ' stage-unit--removable' : ''}${unit.state === 'done' ? ' card-quiet' : ''}`}>
       <span
         className="stage-badge"
         style={{
@@ -259,8 +287,21 @@ function UnitRow({
         )}
       </button>
 
-      {/* Single fixed-size trailing action: Play once added, Add before. Detach
-          lives in the item's "Connected to" details, off the busy list. */}
+      {/* A freshly-added catalog item (no practice logged) keeps a lossless
+          Remove so undo stays reachable after the banner is gone — it reverts
+          the row to a suggestion. It disappears the moment practice begins. */}
+      {removable && (
+        <button
+          className="btn btn-ghost stage-unit-action"
+          onClick={onRemove}
+          aria-label={`Remove ${unit.title} — no practice logged`}
+          title="Remove (no practice logged)"
+        >
+          <MinusIcon />
+        </button>
+      )}
+
+      {/* Fixed-size trailing action: Play once added, Add before. */}
       {item ? (
         <button className="btn btn-primary stage-unit-action" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
           <PlayIcon />

@@ -120,6 +120,12 @@ export const XIcon = (p: P) => (
   </svg>
 );
 
+export const MinusIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 12h14" />
+  </svg>
+);
+
 export const DownloadIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M12 3v12M7 10l5 5 5-5" />

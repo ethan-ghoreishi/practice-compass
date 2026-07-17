@@ -2,6 +2,7 @@ import type {
   CatalogEntry,
   PathwayRoutine,
   PathwayStage,
+  PracticeBlock,
   PracticeItem,
   StepStrand,
 } from './types';
@@ -23,6 +24,21 @@ export function itemStageState(item: PracticeItem): StageState {
   if (DONE_STATUSES.has(item.status)) return 'done';
   if (item.timesPractised > 0 || ACTIVE_STATUSES.has(item.status)) return 'in_progress';
   return 'todo';
+}
+
+/**
+ * True when an item came from a stage's reference catalog and no practice has
+ * ever been logged against it — so deleting it loses nothing (it just reverts
+ * to being a suggestion again). Adding a catalog item is organisation, not
+ * commitment; this makes the reversal provably lossless so it needs no confirm.
+ */
+export function isLosslesslyRemovable(item: PracticeItem, itemBlocks: PracticeBlock[]): boolean {
+  return (
+    !!item.catalogKey &&
+    item.status === 'new' &&
+    item.timesPractised === 0 &&
+    itemBlocks.length === 0
+  );
 }
 
 /** A unit shown inside a stage: a catalog suggestion, your item, or both. */
