@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   assignedForLesson,
+  cleanFileTitle,
   daysUntil,
   formatFileSize,
   ITEM_STATUS_LABELS,
@@ -12,11 +13,12 @@ import {
   resolveRecording,
   todayISODate,
   type Lesson,
+  type LessonFileKind,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { getNasBaseUrl } from '../store/backup';
 import { Field } from '../components/ui';
-import { PlusIcon, XIcon } from '../components/icons';
+import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/icons';
 import { relativeDay } from '../components/format';
 import Attachments from '../components/Attachments';
 import ClassQuestions from '../components/ClassQuestions';
@@ -385,17 +387,41 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
   );
 }
 
+/** Guess a reference's kind from its path extension (used when adding). */
+function inferKind(path: string): LessonFileKind {
+  const ext = (path.split('.').pop() ?? '').toLowerCase();
+  if (['mp4', 'mov', 'm4v', 'webm', 'mkv'].includes(ext)) return 'video';
+  if (ext === 'pdf') return 'pdf';
+  if (['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(ext)) return 'audio';
+  if (['doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'heic'].includes(ext)) return 'doc';
+  return 'video';
+}
+
+const KIND_ORDER: Record<LessonFileKind, number> = { video: 0, pdf: 1, doc: 2, audio: 3 };
+
+function KindIcon({ kind }: { kind: LessonFileKind }) {
+  if (kind === 'video') return <PlayIcon width={16} height={16} />;
+  if (kind === 'audio') return <MusicIcon width={16} height={16} />;
+  return <ReportIcon width={16} height={16} />; // pdf / doc
+}
+
 /**
- * Class recordings — REFERENCES to videos on the NAS, never the bytes. The
- * video is only fetched when the user taps "Open recording"; deleting a
- * reference never touches the NAS file.
+ * Lesson NAS references — the class video plus score PDFs/docs, all links,
+ * never the bytes. A file is only fetched when the user taps Open; deleting a
+ * reference never touches the NAS file. Video first, then scores/docs.
  */
 function LessonRecordings({ lesson }: { lesson: Lesson }) {
   const addLessonRecording = useStore((s) => s.addLessonRecording);
   const removeLessonRecording = useStore((s) => s.removeLessonRecording);
   const navigate = useNavigate();
   const baseUrl = getNasBaseUrl();
-  const recordings = lesson.recordings ?? [];
+  const recordings = useMemo(
+    () =>
+      [...(lesson.recordings ?? [])].sort(
+        (a, b) => KIND_ORDER[a.kind ?? 'video'] - KIND_ORDER[b.kind ?? 'video'],
+      ),
+    [lesson.recordings],
+  );
 
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
@@ -405,8 +431,9 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
   function add() {
     if (!path.trim()) return;
     addLessonRecording(lesson.id, {
-      title: title.trim() || 'Class recording',
+      title: title.trim() || cleanFileTitle(path.trim()) || 'Class file',
       path: path.trim(),
+      kind: inferKind(path.trim()),
       date: lesson.date,
       notes: notes.trim() || undefined,
     });
@@ -425,31 +452,35 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
   return (
     <div className="stack-sm">
       <div className="row between">
-        <div className="section-label">Class recording</div>
+        <div className="section-label">Class recording &amp; scores</div>
         <button className="btn btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : <><PlusIcon /> Add recording</>}
+          {adding ? 'Cancel' : <><PlusIcon /> Add link</>}
         </button>
       </div>
 
       {recordings.length === 0 && !adding && (
         <div className="card card-quiet small dim">
-          Full class videos live on your NAS, not in the app. Add a link to this class’s recording so you can open it
-          from here.
+          Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
         </div>
       )}
 
       {recordings.map((rec) => {
         const resolution = resolveRecording(baseUrl, rec);
+        const kind = rec.kind ?? 'video';
         const size = formatFileSize(rec.sizeBytes);
+        const meta = ['Stored on NAS', kind === 'video' ? null : kind.toUpperCase(), size, rec.durationLabel]
+          .filter(Boolean)
+          .join(' · ');
         return (
           <div key={rec.id} className="card row between" style={{ gap: 10 }}>
+            <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
+              <KindIcon kind={kind} />
+            </span>
             <div className="grow" style={{ minWidth: 0 }}>
               <div className="truncate" dir="auto">
                 {rec.title}
               </div>
-              <div className="tiny faint">
-                Stored on NAS{size ? ` · ${size}` : ''}{rec.durationLabel ? ` · ${rec.durationLabel}` : ''}
-              </div>
+              <div className="tiny faint">{meta}</div>
               {rec.notes && (
                 <div className="tiny dim" dir="auto">
                   {rec.notes}
@@ -475,14 +506,14 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
               )}
             </div>
             <button className="btn btn-sm btn-primary" disabled={resolution.status !== 'ok'} onClick={() => open(rec)}>
-              Open recording
+              Open
             </button>
             <button
               className="btn btn-ghost btn-sm"
-              aria-label="Remove this recording reference (the NAS file is kept)"
-              title="Remove reference (the NAS file is kept)"
+              aria-label="Remove this link (the NAS file is kept)"
+              title="Remove link (the NAS file is kept)"
               onClick={() => {
-                if (confirm('Remove this recording link? The video on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
+                if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
               }}
             >
               <XIcon width={14} height={14} />
@@ -502,17 +533,17 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
           />
           <input
             className="input"
-            placeholder="NAS path or https:// link — e.g. setar-classes/session-37-09-07-2026/class.mp4"
+            placeholder="NAS path or https:// link — e.g. setar-classes/session-37/class.mp4 or …/score.pdf"
             value={path}
             onChange={(e) => setPath(e.target.value)}
           />
           <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
           <div className="tiny faint">
-            A relative path is resolved against your NAS base URL (Settings). Full https:// links are used as-is. The
-            video is opened only when you tap “Open recording”.
+            Video, PDF or audio — the kind is detected from the file. A relative path resolves against your NAS base
+            URL (Settings); full https:// links are used as-is. The file opens only when you tap “Open”.
           </div>
           <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
-            Add recording link
+            Add link
           </button>
         </div>
       )}

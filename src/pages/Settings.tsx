@@ -137,8 +137,8 @@ export default function Settings() {
             body="Your own full export (data + files) kept independently on the NAS. Sync history is convenient, but keep a real backup too — don’t rely on the sync repo as your only copy."
           />
           <StorageRole
-            title="NAS recordings"
-            body="Large class videos stay on the NAS; the app only stores small links to them. Videos never enter local storage, sync, or backups."
+            title="NAS recordings & scores"
+            body="Large class videos — and score PDFs/docs — stay on the NAS; the app only stores small links to them. They never enter local storage, sync, or backups. Small ad-hoc photos and snippets can still be attached to a lesson directly."
           />
         </div>
       </section>

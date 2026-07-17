@@ -26,6 +26,8 @@ import {
   SCHEMA_VERSION,
   seedPathways,
   buildSetarClassLessons,
+  missingSessionReferences,
+  SETAR_CLASS_SESSIONS,
   STRAND_TO_FOCUS,
   validateDB,
   type BlockMode,
@@ -38,6 +40,7 @@ import {
   type ISODate,
   type ItemStatus,
   type Lesson,
+  type LessonFileKind,
   type LessonRecording,
   type Material,
   type MaterialSourceType,
@@ -167,7 +170,15 @@ interface StoreState {
   linkItemToLesson: (lessonId: ID, itemId: ID) => void;
   addLessonRecording: (
     lessonId: ID,
-    input: { title: string; path: string; date?: ISODate; sizeBytes?: number; durationLabel?: string; notes?: string },
+    input: {
+      title: string;
+      path: string;
+      kind?: LessonFileKind;
+      date?: ISODate;
+      sizeBytes?: number;
+      durationLabel?: string;
+      notes?: string;
+    },
   ) => ID;
   removeLessonRecording: (lessonId: ID, recordingId: ID) => void;
   /** Additively import the Setar class history (NAS references). Returns count added. */
@@ -320,6 +331,18 @@ function migrateToV8(db: PracticeDB): PracticeDB {
   return db;
 }
 
+// v9: lesson recordings gained a `kind`. Every existing reference was a class
+// video, so stamp the missing kind explicitly.
+function migrateToV9(db: PracticeDB): PracticeDB {
+  return {
+    ...db,
+    lessons: (db.lessons ?? []).map((l) => ({
+      ...l,
+      recordings: (l.recordings ?? []).map((r) => ({ ...r, kind: r.kind ?? ('video' as const) })),
+    })),
+  };
+}
+
 export const useStore = create<StoreState>()(
   persist(
     withRevision((set, get) => ({
@@ -412,6 +435,7 @@ export const useStore = create<StoreState>()(
           id: newId(),
           title: input.title.trim() || 'Class recording',
           path: input.path.trim(),
+          kind: input.kind ?? 'video',
           date: input.date,
           sizeBytes: input.sizeBytes,
           durationLabel: input.durationLabel,
@@ -445,20 +469,41 @@ export const useStore = create<StoreState>()(
       },
 
       // Additively import the user's Setar class history as lessons with NAS
-      // recording references. Skips dates that already have a lesson for that
-      // instrument, so it is safe to run more than once. Returns how many were
-      // added.
+      // references (class video + score PDFs/docs). New dates become new
+      // lessons; dates that already have a lesson get any MISSING references
+      // backfilled (path-deduped) — so a re-run after PDFs were added fills
+      // them in without ever duplicating. Idempotent. Returns lessons added.
       importSetarClasses: (instrumentId) => {
         const now = new Date();
-        const existing = new Set(
-          get()
-            .db.lessons.filter((l) => l.instrumentId === instrumentId)
-            .map((l) => l.date),
-        );
-        const added = buildSetarClassLessons(instrumentId, existing, now);
-        if (added.length > 0) {
-          set((s) => ({ db: { ...s.db, lessons: [...s.db.lessons, ...added] } }));
+        const ownLessons = get().db.lessons.filter((l) => l.instrumentId === instrumentId);
+        const existingDates = new Set(ownLessons.map((l) => l.date));
+        const added = buildSetarClassLessons(instrumentId, existingDates, now);
+
+        // Backfill references onto lessons that already exist for a session date.
+        const byDate = new Map(ownLessons.map((l) => [l.date, l]));
+        const backfill = new Map<string, LessonRecording[]>();
+        for (const session of SETAR_CLASS_SESSIONS) {
+          const lesson = byDate.get(session.date);
+          if (!lesson) continue;
+          const havePaths = new Set((lesson.recordings ?? []).map((r) => r.path));
+          const missing = missingSessionReferences(session, havePaths, now);
+          if (missing.length > 0) backfill.set(lesson.id, missing);
         }
+
+        if (added.length === 0 && backfill.size === 0) return 0;
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: [
+              ...s.db.lessons.map((l) =>
+                backfill.has(l.id)
+                  ? touch({ ...l, recordings: [...(l.recordings ?? []), ...backfill.get(l.id)!] }, now)
+                  : l,
+              ),
+              ...added,
+            ],
+          },
+        }));
         return added.length;
       },
 
@@ -982,6 +1027,7 @@ export const useStore = create<StoreState>()(
         if (version < 6 && state?.db) state.db = migrateToV6(state.db);
         if (version < 7 && state?.db) state.db = migrateToV7(state.db);
         if (version < 8 && state?.db) state.db = migrateToV8(state.db);
+        if (version < 9 && state?.db) state.db = migrateToV9(state.db);
         if (state?.db) state.db.schemaVersion = SCHEMA_VERSION;
         return state as unknown;
       },
@@ -989,7 +1035,9 @@ export const useStore = create<StoreState>()(
       // rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db ? migrateToV8(migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db }))) : current.db;
+        const db = p.db
+          ? migrateToV9(migrateToV8(migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db }))))
+          : current.db;
         delete (db as unknown as Record<string, unknown>).pathwaySteps;
         delete (db as unknown as Record<string, unknown>).curriculum;
         return { ...current, ...p, db };

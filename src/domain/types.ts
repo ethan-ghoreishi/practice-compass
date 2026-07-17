@@ -55,11 +55,23 @@ export interface Lesson {
 }
 
 /** A pointer to a class recording stored on the NAS (or any HTTPS location). */
+/** What a lesson NAS reference points at. Defaults to 'video' for legacy refs. */
+export type LessonFileKind = 'video' | 'pdf' | 'doc' | 'audio';
+
+/**
+ * A pointer to a file on the NAS (or any HTTPS location) that belongs to a
+ * lesson — a class video, a score PDF, a hand-out. The app stores the
+ * reference, never the bytes. The type/field name stay `LessonRecording` /
+ * `Lesson.recordings` for backward compatibility even though they now cover
+ * scores and docs too.
+ */
 export interface LessonRecording {
   id: ID;
   title: string;
   /** A relative path under the NAS base URL (Settings), OR a full https:// URL. */
   path: string;
+  /** Video / PDF / doc / audio. Absent on legacy refs ⇒ treated as 'video'. */
+  kind?: LessonFileKind;
   /** Optional metadata — display only, never used to fetch at startup. */
   date?: ISODate;
   sizeBytes?: number;
@@ -436,7 +448,7 @@ export interface AttachmentMeta {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export interface PracticeDB {
   schemaVersion: number;
