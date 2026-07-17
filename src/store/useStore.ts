@@ -160,8 +160,8 @@ interface StoreState {
   updateInstrument: (id: ID, patch: Partial<Pick<Instrument, 'name' | 'family' | 'active'>>) => void;
 
   // Lessons (classes with a teacher)
-  addLesson: (input: { instrumentId: ID; date: ISODate; notes?: string }) => ID;
-  updateLesson: (id: ID, patch: { date?: ISODate; notes?: string }) => void;
+  addLesson: (input: { instrumentId: ID; date: ISODate; notes?: string; number?: number }) => ID;
+  updateLesson: (id: ID, patch: { date?: ISODate; notes?: string; number?: number }) => void;
   deleteLesson: (id: ID) => void;
   /** Link/unlink an existing item to a lesson (a link, never ownership). */
   linkItemToLesson: (lessonId: ID, itemId: ID) => void;
@@ -312,6 +312,12 @@ function migrateToV6(db: PracticeDB): PracticeDB {
 // never guard against undefined.
 function migrateToV7(db: PracticeDB): PracticeDB {
   return { ...db, lessons: (db.lessons ?? []).map((l) => ({ ...l, recordings: l.recordings ?? [] })) };
+}
+
+// v8: lessons gained an optional `number`. Existing lessons stay unnumbered
+// (undefined) — nothing to backfill.
+function migrateToV8(db: PracticeDB): PracticeDB {
+  return db;
 }
 
 export const useStore = create<StoreState>()(
@@ -975,6 +981,7 @@ export const useStore = create<StoreState>()(
         if (version < 5 && state?.db) state.db = migrateToV5(state.db);
         if (version < 6 && state?.db) state.db = migrateToV6(state.db);
         if (version < 7 && state?.db) state.db = migrateToV7(state.db);
+        if (version < 8 && state?.db) state.db = migrateToV8(state.db);
         if (state?.db) state.db.schemaVersion = SCHEMA_VERSION;
         return state as unknown;
       },
@@ -982,7 +989,7 @@ export const useStore = create<StoreState>()(
       // rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db ? migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db })) : current.db;
+        const db = p.db ? migrateToV8(migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db }))) : current.db;
         delete (db as unknown as Record<string, unknown>).pathwaySteps;
         delete (db as unknown as Record<string, unknown>).curriculum;
         return { ...current, ...p, db };

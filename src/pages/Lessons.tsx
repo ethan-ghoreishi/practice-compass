@@ -7,6 +7,7 @@ import {
   ITEM_STATUS_LABELS,
   lessonsForInstrument,
   nextLessonFor,
+  nextLessonNumber,
   questionsForNextClass,
   resolveRecording,
   todayISODate,
@@ -20,6 +21,11 @@ import { relativeDay } from '../components/format';
 import Attachments from '../components/Attachments';
 import ClassQuestions from '../components/ClassQuestions';
 import QuickAdd from '../components/QuickAdd';
+
+/** "Class 37 · 2026-07-09" when numbered, else just the date. */
+function lessonLabel(lesson: Lesson): string {
+  return typeof lesson.number === 'number' ? `Class ${lesson.number} · ${lesson.date}` : lesson.date;
+}
 
 /**
  * The class workflow: log each lesson's date, then — after rewatching your
@@ -87,6 +93,7 @@ function WideLessons({ now }: { now: Date }) {
 
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [date, setDate] = useState(todayISODate(now));
+  const [num, setNum] = useState('');
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
@@ -124,7 +131,7 @@ function WideLessons({ now }: { now: Date }) {
                     }}
                     onClick={() => setSelectedId(l.id)}
                   >
-                    <span className="grow">{l.date}</span>
+                    <span className="grow">{lessonLabel(l)}</span>
                     <span className="tiny faint">{l.notes ? 'notes ✓' : l.date >= todayISODate(now) ? 'upcoming' : '—'}</span>
                   </button>
                 ))}
@@ -132,23 +139,42 @@ function WideLessons({ now }: { now: Date }) {
               </div>
               {addingFor === inst.id ? (
                 <div className="row" style={{ gap: 8 }}>
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    aria-label="Class number (optional)"
+                    placeholder="No."
+                    value={num}
+                    onChange={(e) => setNum(e.target.value)}
+                    style={{ width: 72 }}
+                  />
                   <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                   <button
                     className="btn btn-sm btn-primary"
                     onClick={() => {
-                      const id = addLesson({ instrumentId: inst.id, date });
+                      const id = addLesson({ instrumentId: inst.id, date, number: num.trim() ? Number(num) : undefined });
                       setAddingFor(null);
+                      setNum('');
                       setSelectedId(id);
                     }}
                   >
                     Add
                   </button>
-                  <button className="btn btn-sm" onClick={() => setAddingFor(null)}>
+                  <button className="btn btn-sm" aria-label="Cancel" onClick={() => setAddingFor(null)}>
                     ✕
                   </button>
                 </div>
               ) : (
-                <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={() => setAddingFor(inst.id)}>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ width: 'fit-content' }}
+                  onClick={() => {
+                    setNum(String(nextLessonNumber(db.lessons, inst.id)));
+                    setAddingFor(inst.id);
+                  }}
+                >
                   <PlusIcon /> Add a class
                 </button>
               )}
@@ -162,7 +188,7 @@ function WideLessons({ now }: { now: Date }) {
           <>
             <div className="row between">
               <strong>
-                {instruments.find((i) => i.id === selected.instrumentId)?.name} · {selected.date}
+                {instruments.find((i) => i.id === selected.instrumentId)?.name} · {lessonLabel(selected)}
               </strong>
               <span className="tiny faint">{relativeDay(selected.date, now)}</span>
             </div>
@@ -190,6 +216,7 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 
   const [adding, setAdding] = useState(false);
   const [date, setDate] = useState(todayISODate(now));
+  const [num, setNum] = useState('');
 
   return (
     <section className="stack-sm">
@@ -225,6 +252,18 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 
       {adding ? (
         <div className="card row" style={{ gap: 8 }}>
+          <Field label="Class no.">
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              placeholder="No."
+              value={num}
+              onChange={(e) => setNum(e.target.value)}
+              style={{ width: 72 }}
+            />
+          </Field>
           <Field label="Class date">
             <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
@@ -232,7 +271,8 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
             className="btn btn-primary"
             style={{ alignSelf: 'flex-end' }}
             onClick={() => {
-              addLesson({ instrumentId, date });
+              addLesson({ instrumentId, date, number: num.trim() ? Number(num) : undefined });
+              setNum('');
               setAdding(false);
             }}
           >
@@ -243,7 +283,14 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
           </button>
         </div>
       ) : (
-        <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={() => setAdding(true)}>
+        <button
+          className="btn btn-sm"
+          style={{ width: 'fit-content' }}
+          onClick={() => {
+            setNum(String(nextLessonNumber(db.lessons, instrumentId)));
+            setAdding(true);
+          }}
+        >
           <PlusIcon /> Add a class
         </button>
       )}
@@ -263,7 +310,7 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
         onClick={() => setOpen((o) => !o)}
       >
         <span className="row" style={{ gap: 8 }}>
-          <strong>{lesson.date}</strong>
+          <strong>{lessonLabel(lesson)}</strong>
           <span className="tiny faint">{relativeDay(lesson.date, now)}</span>
           {upcoming && <span className="badge tone-progress">upcoming</span>}
         </span>
@@ -315,7 +362,7 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
       <LessonItems lesson={lesson} />
 
       {/* Questions belong to the class ahead — show them on the upcoming lesson. */}
-      {upcoming && <ClassQuestions instrumentName={instrumentName} dateLabel={lesson.date} questions={questions} />}
+      {upcoming && <ClassQuestions instrumentName={instrumentName} dateLabel={lessonLabel(lesson)} questions={questions} />}
 
       <LessonRecordings lesson={lesson} />
 

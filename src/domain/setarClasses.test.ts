@@ -24,6 +24,12 @@ describe('Setar class import', () => {
     }
   });
 
+  it('numbers each lesson from the session number', () => {
+    const lessons = buildSetarClassLessons('setar', new Set(), NOW);
+    const byDate = new Map(lessons.map((l) => [l.date, l.number]));
+    for (const s of SETAR_CLASS_SESSIONS) expect(byDate.get(s.date)).toBe(s.n);
+  });
+
   it('is additive — skips dates that already have a lesson (safe to re-run)', () => {
     const firstDate = SETAR_CLASS_SESSIONS[0].date;
     const lessons = buildSetarClassLessons('setar', new Set([firstDate]), NOW);

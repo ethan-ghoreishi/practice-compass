@@ -73,7 +73,7 @@ export function buildSetarClassLessons(
 ): Lesson[] {
   const ts = nowISO(now);
   return SETAR_CLASS_SESSIONS.filter((s) => !existingDates.has(s.date)).map((s) => {
-    const lesson = createLesson({ instrumentId, date: s.date }, now);
+    const lesson = createLesson({ instrumentId, date: s.date, number: s.n }, now);
     lesson.recordings = s.video
       ? [
           {

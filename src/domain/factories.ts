@@ -204,7 +204,7 @@ export function createReview(
 }
 
 export function createLesson(
-  input: { instrumentId: ID; date: ISODate; notes?: string },
+  input: { instrumentId: ID; date: ISODate; notes?: string; number?: number },
   now: Date = new Date(),
 ): Lesson {
   const ts = nowISO(now);
@@ -212,6 +212,7 @@ export function createLesson(
     id: newId(),
     instrumentId: input.instrumentId,
     date: input.date,
+    number: typeof input.number === 'number' ? input.number : undefined,
     notes: input.notes?.trim() || undefined,
     itemIds: [],
     createdAt: ts,

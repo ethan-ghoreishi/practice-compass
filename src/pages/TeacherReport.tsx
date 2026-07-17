@@ -74,7 +74,13 @@ export default function TeacherReport() {
           <div className="card">
             <ClassQuestions
               instrumentName={instrumentName}
-              dateLabel={nextClass ? nextClass.date : 'next class'}
+              dateLabel={
+                nextClass
+                  ? typeof nextClass.number === 'number'
+                    ? `Class ${nextClass.number} · ${nextClass.date}`
+                    : nextClass.date
+                  : 'next class'
+              }
               questions={questions}
             />
           </div>

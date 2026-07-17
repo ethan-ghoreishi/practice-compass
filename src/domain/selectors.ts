@@ -43,6 +43,14 @@ export function lessonsForInstrument(lessons: Lesson[], instrumentId: ID): Lesso
   return lessons.filter((l) => l.instrumentId === instrumentId).sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/** Suggested next class number for an instrument: max existing + 1, or 1. */
+export function nextLessonNumber(lessons: Lesson[], instrumentId: ID): number {
+  const max = lessons
+    .filter((l) => l.instrumentId === instrumentId && typeof l.number === 'number')
+    .reduce((m, l) => Math.max(m, l.number as number), 0);
+  return max + 1;
+}
+
 /** Items flagged to complete before their instrument's next lesson. */
 export function assignedForLesson(items: PracticeItem[]): PracticeItem[] {
   return items.filter((i) => i.assignedForLesson);

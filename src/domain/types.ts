@@ -33,6 +33,8 @@ export interface Lesson {
   id: ID;
   instrumentId: ID;
   date: ISODate;
+  /** Optional class number (e.g. "Class 37"), per instrument. Never required. */
+  number?: number;
   /** Free-form class notes (Farsi supported). */
   notes?: string;
   /**
@@ -434,7 +436,7 @@ export interface AttachmentMeta {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export interface PracticeDB {
   schemaVersion: number;
