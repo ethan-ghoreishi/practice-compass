@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { normalizeBaseUrl, resolveRecording, SETAR_CLASS_SESSIONS } from '../domain';
+import {
+  clampSchedulingParams,
+  normalizeBaseUrl,
+  resolveRecording,
+  SCHEDULING_BOUNDS,
+  SETAR_CLASS_SESSIONS,
+  type SchedulingParams,
+} from '../domain';
 import { useStore, type ThemePref } from '../store/useStore';
 import {
   buildFullBackup,
@@ -258,6 +265,8 @@ export default function Settings() {
       </section>
 
       <NasRecordingsSection onFlash={flash} />
+
+      <SchedulingSection />
 
       <section className="stack-sm">
         <div className="section-label">Data &amp; backup</div>
@@ -574,6 +583,95 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
           <div className="tiny faint">Import your logged Setar classes as lessons (recording links, no video).</div>
           <button className="btn btn-sm" style={{ flex: 'none' }} onClick={runImport}>
             Import Setar classes
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// --- Scheduling explainer + knobs -------------------------------------------
+
+const PARAM_ROWS: {
+  key: keyof SchedulingParams;
+  label: string;
+  hint: string;
+  step: number;
+}[] = [
+  { key: 'sm2FirstIntervalDays', label: 'First review gap (days)', hint: 'How long after the first good review before it comes back.', step: 1 },
+  { key: 'sm2SecondIntervalDays', label: 'Second review gap (days)', hint: 'The gap after the second good review; it keeps expanding from there.', step: 1 },
+  { key: 'sm2SlipResetDays', label: 'Relearn gap after a slip (days)', hint: 'When something slips, it returns this soon to relearn.', step: 1 },
+];
+
+function SchedulingSection() {
+  const settings = useStore((s) => s.db.settings);
+  const update = useStore((s) => s.updateSchedulingParams);
+  const p = clampSchedulingParams(settings);
+  const customised = settings !== undefined;
+
+  return (
+    <section className="stack-sm">
+      <div className="section-label" id="how-scheduling-works">How scheduling works</div>
+      <div className="card stack-sm small">
+        <div className="dim">
+          Every item gets a plain priority score, then the review date comes from spaced repetition. Nothing here is a
+          black box — these are the exact numbers.
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 600 }}>What to practise (priority)</div>
+          <div className="dim">
+            <code>importance×2 + difficulty + fragility + overdue + teacher-question + neglected − saturation</code>. A
+            lesson item you flagged “work on before class” also climbs as that class nears.
+          </div>
+        </div>
+
+        <div>
+          <div style={{ fontWeight: 600 }}>When to revisit (spaced repetition)</div>
+          <div className="dim">
+            Each item tracks its reps, an ease factor and its current gap. A good review widens the gap
+            (≈ {p.sm2FirstIntervalDays} → {p.sm2SecondIntervalDays} days → gap × ease); a slip resets it to{' '}
+            {p.sm2SlipResetDays === 1 ? 'the next day' : `${p.sm2SlipResetDays} days`}. Important or hard material is
+            pulled a little sooner. You can override any item to a fixed cadence or manual.
+          </div>
+        </div>
+
+        <div className="stack-sm" style={{ marginTop: 4 }}>
+          {PARAM_ROWS.map((row) => {
+            const [lo, hi] = SCHEDULING_BOUNDS[row.key];
+            return (
+              <Field key={row.key} label={`${row.label} (${lo}–${hi})`} hint={row.hint}>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="numeric"
+                  enterKeyHint="done"
+                  min={lo}
+                  max={hi}
+                  step={row.step}
+                  value={p[row.key]}
+                  style={{ maxWidth: 120 }}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isFinite(n)) update({ [row.key]: n });
+                  }}
+                />
+              </Field>
+            );
+          })}
+        </div>
+
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">
+            {customised ? 'Using your adjusted values.' : 'Using the recommended defaults.'}
+          </div>
+          <button
+            className="btn btn-sm"
+            style={{ flex: 'none' }}
+            disabled={!customised}
+            onClick={() => update(null)}
+          >
+            Reset to recommended
           </button>
         </div>
       </div>

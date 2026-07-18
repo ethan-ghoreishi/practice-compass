@@ -446,9 +446,34 @@ export interface AttachmentMeta {
   createdAt: ISODateTime;
 }
 
+// --- Scheduling settings ----------------------------------------------------
+
+/**
+ * User-adjustable knobs for the review engine and the Session Plan. Every field
+ * has a sane default (`DEFAULT_SCHEDULING_PARAMS` in `scheduling.ts`), so an
+ * absent `PracticeDB.settings` means "use the defaults" — nothing is required.
+ * Bounds are enforced by `clampSchedulingParams`, never claimed only in docs.
+ */
+export interface SchedulingParams {
+  /** Days after the 1st good review (SM-2). Bounds 1–4, default 2. */
+  sm2FirstIntervalDays: number;
+  /** Days after the 2nd good review (SM-2). Bounds 3–10, default 6. */
+  sm2SecondIntervalDays: number;
+  /** Days to relearn after a slip (SM-2 reset). Bounds 1–3, default 1. */
+  sm2SlipResetDays: number;
+  /** Share of a session's minutes reserved for warm-up. Bounds 0.10–0.15. */
+  warmupShare: number;
+  /** Share of a session's minutes reserved for deep work. Bounds 0.25–0.40. */
+  deepWorkShare: number;
+  /** Shortest review slot in the plan, minutes. Bounds 2–5, default 3. */
+  reviewSlotMinMinutes: number;
+  /** Longest review slot in the plan, minutes. Bounds 5–12, default 7. */
+  reviewSlotMaxMinutes: number;
+}
+
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -462,6 +487,8 @@ export interface PracticeDB {
   pathwayRoutines: PathwayRoutine[];
   attachments: AttachmentMeta[];
   lessons: Lesson[];
+  /** Optional scheduling knobs; undefined ⇒ DEFAULT_SCHEDULING_PARAMS. */
+  settings?: SchedulingParams;
 }
 
 /** Shape of a JSON export file. */

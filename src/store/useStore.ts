@@ -7,6 +7,7 @@ import {
   catalogForStage,
   isLosslesslyRemovable,
   computeReview,
+  clampSchedulingParams,
   createBlock,
   createInstrument,
   createItem,
@@ -54,6 +55,7 @@ import {
   type Rating,
   type ReviewMode,
   type ReviewType,
+  type SchedulingParams,
 } from '../domain';
 import type { CreateItemInput } from '../domain/factories';
 
@@ -153,6 +155,9 @@ interface StoreState {
 
   setTheme: (t: ThemePref) => void;
   setSessionInstrument: (id: ID | null) => void;
+
+  /** Merge + clamp scheduling knobs. Passing null resets to the defaults. */
+  updateSchedulingParams: (patch: Partial<SchedulingParams> | null) => void;
 
   // Attachments (metadata; blobs live in IndexedDB via src/store/idb.ts)
   addAttachmentMeta: (meta: AttachmentMeta) => void;
@@ -343,6 +348,12 @@ function migrateToV9(db: PracticeDB): PracticeDB {
   };
 }
 
+// v10: the DB gained optional scheduling `settings`. Existing DBs leave it
+// undefined (⇒ DEFAULT_SCHEDULING_PARAMS); nothing to backfill.
+function migrateToV10(db: PracticeDB): PracticeDB {
+  return db;
+}
+
 export const useStore = create<StoreState>()(
   persist(
     withRevision((set, get) => ({
@@ -355,6 +366,15 @@ export const useStore = create<StoreState>()(
       notNow: { date: '', ids: [] },
 
       setTheme: (theme) => set({ theme }),
+
+      updateSchedulingParams: (patch) =>
+        set((s) => ({
+          db: {
+            ...s.db,
+            // null ⇒ reset (drop the field so it falls back to defaults).
+            settings: patch === null ? undefined : clampSchedulingParams({ ...s.db.settings, ...patch }),
+          },
+        })),
 
       setSessionInstrument: (sessionInstrumentId) => set({ sessionInstrumentId }),
 
@@ -744,7 +764,7 @@ export const useStore = create<StoreState>()(
         );
 
         // Spaced-repetition update (deterministic from the result + item state).
-        const comp = computeReview(item, input.result, now);
+        const comp = computeReview(item, input.result, now, clampSchedulingParams(db.settings));
         const nextReviewDate = input.scheduleReview
           ? (input.nextReviewDate ?? comp?.dueDate ?? item.nextReviewDate)
           : item.nextReviewDate;
@@ -1028,6 +1048,7 @@ export const useStore = create<StoreState>()(
         if (version < 7 && state?.db) state.db = migrateToV7(state.db);
         if (version < 8 && state?.db) state.db = migrateToV8(state.db);
         if (version < 9 && state?.db) state.db = migrateToV9(state.db);
+        if (version < 10 && state?.db) state.db = migrateToV10(state.db);
         if (state?.db) state.db.schemaVersion = SCHEMA_VERSION;
         return state as unknown;
       },
@@ -1036,7 +1057,7 @@ export const useStore = create<StoreState>()(
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
         const db = p.db
-          ? migrateToV9(migrateToV8(migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db }))))
+          ? migrateToV10(migrateToV9(migrateToV8(migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db })))))
           : current.db;
         delete (db as unknown as Record<string, unknown>).pathwaySteps;
         delete (db as unknown as Record<string, unknown>).curriculum;

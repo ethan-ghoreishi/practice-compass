@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
+  clampSchedulingParams,
   planNextReview,
   RESULT_LABELS,
   REVIEW_TYPE_LABELS,
@@ -62,9 +63,13 @@ export default function CloseBlock() {
     return combined.length >= 3 && combined.slice(0, 3).every((r) => r === 'same');
   }, [db, item, result]);
 
+  // Use the same scheduling knobs the store will persist with, so the date
+  // previewed here is exactly the date that gets saved.
+  const params = useMemo(() => clampSchedulingParams(db.settings), [db.settings]);
+
   const reviewSuggestion = useMemo(
-    () => (item && result ? planNextReview({ item, result, now }) : null),
-    [item, result, now],
+    () => (item && result ? planNextReview({ item, result, now, params }) : null),
+    [item, result, now, params],
   );
 
   const statusSuggestion = useMemo(
@@ -78,7 +83,7 @@ export default function CloseBlock() {
   function pickResult(r: BlockResult) {
     setResult(r);
     if (!item) return;
-    const s = planNextReview({ item, result: r, now });
+    const s = planNextReview({ item, result: r, now, params });
     setComeBack(true);
     if (s) {
       setReviewDate(s.dueDate);
@@ -222,6 +227,11 @@ export default function CloseBlock() {
               hint={reviewSuggestion ? `${relativeDay(reviewSuggestion.dueDate, now)} · ${reviewSuggestion.rationale}` : 'Set a date yourself.'}
             >
               <input className="input" type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} />
+              {reviewSuggestion && (
+                <Link to="/settings#how-scheduling-works" className="tiny faint" style={{ textDecoration: 'underline' }}>
+                  Why this date?
+                </Link>
+              )}
             </Field>
             <Field label="Review type">
               <OptionPills

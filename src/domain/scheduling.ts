@@ -4,6 +4,7 @@ import type {
   ItemStatus,
   PracticeItem,
   ReviewType,
+  SchedulingParams,
 } from './types';
 import { addDaysISODate, todayISODate } from './util';
 import { daysSinceTouched } from './scoring';
@@ -25,8 +26,57 @@ import { daysSinceTouched } from './scoring';
 export const DEFAULT_REVIEW_INTERVAL_DAYS = 7;
 export const DEFAULT_EASE = 2.5;
 const MIN_EASE = 1.3;
-const FIRST_INTERVAL = 2; // days after the 1st good review
-const SECOND_INTERVAL = 6; // days after the 2nd
+
+// --- Adjustable scheduling knobs --------------------------------------------
+//
+// These are the *defaults*: the exact intervals the engine has always used
+// (first=2, second=6, slip-reset=1). Passing no `params` reproduces the old
+// behaviour byte-for-byte — the tests assert this. A user can widen or tighten
+// them in Settings; nothing is required and every value is clamped to sane
+// bounds (`clampSchedulingParams`) rather than trusted blindly.
+
+export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = {
+  sm2FirstIntervalDays: 2,
+  sm2SecondIntervalDays: 6,
+  sm2SlipResetDays: 1,
+  warmupShare: 0.12,
+  deepWorkShare: 0.33,
+  reviewSlotMinMinutes: 3,
+  reviewSlotMaxMinutes: 7,
+};
+
+/** Inclusive bounds for each param, kept next to the defaults they guard. */
+export const SCHEDULING_BOUNDS: Record<keyof SchedulingParams, [number, number]> = {
+  sm2FirstIntervalDays: [1, 4],
+  sm2SecondIntervalDays: [3, 10],
+  sm2SlipResetDays: [1, 3],
+  warmupShare: [0.1, 0.15],
+  deepWorkShare: [0.25, 0.4],
+  reviewSlotMinMinutes: [2, 5],
+  reviewSlotMaxMinutes: [5, 12],
+};
+
+/**
+ * Coerce a partial/untrusted params object into a full, in-bounds
+ * SchedulingParams. Missing fields fall back to the default; out-of-range or
+ * non-finite values are clamped. Integer fields are rounded; shares are not.
+ */
+export function clampSchedulingParams(partial?: Partial<SchedulingParams>): SchedulingParams {
+  const out = { ...DEFAULT_SCHEDULING_PARAMS };
+  for (const key of Object.keys(DEFAULT_SCHEDULING_PARAMS) as (keyof SchedulingParams)[]) {
+    const raw = partial?.[key];
+    const [lo, hi] = SCHEDULING_BOUNDS[key];
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      const isShare = key === 'warmupShare' || key === 'deepWorkShare';
+      out[key] = clamp(isShare ? raw : Math.round(raw), lo, hi);
+    }
+  }
+  // Keep the review slot window coherent even after independent clamping.
+  if (out.reviewSlotMaxMinutes < out.reviewSlotMinMinutes) {
+    out.reviewSlotMaxMinutes = out.reviewSlotMinMinutes;
+  }
+  return out;
+}
 
 /** Map a block result to an SM-2 quality grade (0–5). */
 const QUALITY: Record<BlockResult, number> = {
@@ -77,6 +127,7 @@ export function computeReview(
   item: PracticeItem,
   result: BlockResult | undefined,
   now: Date = new Date(),
+  params: SchedulingParams = DEFAULT_SCHEDULING_PARAMS,
 ): ReviewComputation | null {
   const mode = item.reviewMode ?? 'auto';
   if (mode === 'manual') return null;
@@ -108,13 +159,13 @@ export function computeReview(
   let base: number; // the SM-2 interval before urgency modifiers
 
   if (q < 3) {
-    // Slipped — reset and relearn tomorrow.
+    // Slipped — reset and relearn after the slip-reset gap.
     reps = 0;
-    base = 1;
+    base = params.sm2SlipResetDays;
   } else {
     reps = reps0 + 1;
-    if (reps === 1) base = FIRST_INTERVAL;
-    else if (reps === 2) base = SECOND_INTERVAL;
+    if (reps === 1) base = params.sm2FirstIntervalDays;
+    else if (reps === 2) base = params.sm2SecondIntervalDays;
     else base = Math.round(base0 * ease0);
     ease = Math.max(MIN_EASE, ease0 + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
   }
@@ -125,7 +176,9 @@ export function computeReview(
 
   let rationale: string;
   if (q < 3) {
-    rationale = 'Spaced repetition: it slipped — back tomorrow to relearn.';
+    const when =
+      params.sm2SlipResetDays === 1 ? 'back tomorrow' : `back in ${params.sm2SlipResetDays} days`;
+    rationale = `Spaced repetition: it slipped — ${when} to relearn.`;
   } else {
     const sooner = mod < 0.95 ? ' — a little sooner (important / hard)' : '';
     rationale = `Spaced repetition: ${reps} good review${reps === 1 ? '' : 's'} → ${intervalDays} day${intervalDays === 1 ? '' : 's'}${sooner}.`;
@@ -156,8 +209,9 @@ export function planNextReview(args: {
   item: PracticeItem;
   result?: BlockResult;
   now?: Date;
+  params?: SchedulingParams;
 }): ReviewPlan | null {
-  const c = computeReview(args.item, args.result, args.now);
+  const c = computeReview(args.item, args.result, args.now, args.params);
   if (!c) return null;
   const { intervalDays, dueDate, reviewType, changeStrategy, rationale } = c;
   return { intervalDays, dueDate, reviewType, changeStrategy, rationale };

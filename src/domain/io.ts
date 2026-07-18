@@ -92,6 +92,9 @@ export function validateDB(input: unknown): PracticeDB {
     pathwayRoutines: (raw.pathwayRoutines as PracticeDB['pathwayRoutines']) ?? [],
     attachments,
     lessons: (raw.lessons as PracticeDB['lessons']) ?? [],
+    // Optional scheduling knobs — a top-level object, not an array. Carry it
+    // through so a user's adjusted params survive export/import round-trips.
+    ...(isRecord(raw.settings) ? { settings: raw.settings as unknown as PracticeDB['settings'] } : {}),
   };
 
   // Minimal per-entity sanity: every record needs an id.
