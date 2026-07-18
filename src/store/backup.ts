@@ -149,6 +149,13 @@ export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error
  * IndexedDB transaction (`replaceAllBlobs`) and only then does the JSON `db`
  * get swapped — so a mid-write failure can never leave attachment metadata
  * pointing at blobs that no longer exist.
+ *
+ * A `files` key that is ENTIRELY ABSENT (not just an empty array) means this
+ * isn't a full backup — e.g. a bare state-only export, or a hand-edited file.
+ * That case must never be read as "zero attachments" and wipe every existing
+ * blob to match; existing blobs are left untouched. A present `files: []` IS
+ * treated as a real full backup with no attachments, and does replace (that's
+ * the whole point of restoring to a snapshot).
  */
 export async function importFullBackup(text: string): Promise<ImportOutcome> {
   let parsed: unknown;
@@ -161,8 +168,9 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
   if (!validated.ok) return { ok: false, error: validated.error };
 
   const files = (parsed as { files?: BackupFile[] }).files;
+  const isFullBackup = Array.isArray(files);
   const rows: AttachmentBlob[] = [];
-  if (Array.isArray(files)) {
+  if (isFullBackup) {
     for (const f of files) {
       if (!f?.id || typeof f.data !== 'string') continue;
       try {
@@ -178,7 +186,10 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
   }
 
   try {
-    await replaceAllBlobs(rows);
+    // Only touch attachment blobs for a genuine full backup (files array
+    // present, however short). A file with no `files` key at all leaves
+    // today's attachments exactly as they are.
+    if (isFullBackup) await replaceAllBlobs(rows);
   } catch (e) {
     return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
   }
