@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   currentStage,
@@ -99,6 +99,64 @@ export default function Today() {
   );
 }
 
+// --- Session Plan doorway ----------------------------------------------------
+
+const PLAN_DURATIONS = [15, 20, 30, 45, 60] as const;
+
+function PlanCard({ instrumentId }: { instrumentId: string }) {
+  const activePlan = useStore((s) => s.activePlan);
+  const planMinutes = useStore((s) => s.planMinutesByInstrument);
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+
+  // Resume takes priority: if a plan is running (for any instrument), offer it.
+  if (activePlan) {
+    const done = activePlan.segments.filter((s) => s.status === 'done').length;
+    return (
+      <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
+        <span style={{ fontWeight: 600 }}>Resume your plan</span>
+        <span className="small">{done} of {activePlan.segments.length} · {activePlan.budgetMinutes} min ▸</span>
+      </button>
+    );
+  }
+
+  const defaultMinutes = planMinutes[instrumentId] ?? 20;
+
+  if (!open) {
+    return (
+      <button
+        className="card card-quiet row between"
+        style={{ width: '100%', cursor: 'pointer' }}
+        onClick={() => setOpen(true)}
+        aria-expanded={false}
+      >
+        <span style={{ fontWeight: 600 }}>Plan this session</span>
+        <span className="faint small">choose a length ▸</span>
+      </button>
+    );
+  }
+
+  return (
+    <section className="card card-quiet stack-sm">
+      <div className="row between">
+        <span style={{ fontWeight: 600 }}>How long today?</span>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
+      </div>
+      <div className="options">
+        {PLAN_DURATIONS.map((m) => (
+          <button
+            key={m}
+            className={`option${m === defaultMinutes ? ' selected' : ''}`}
+            onClick={() => navigate(`/plan?minutes=${m}`)}
+          >
+            {m} min
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 // --- The per-instrument session ----------------------------------------------
 
 function SessionView({
@@ -177,6 +235,10 @@ function SessionView({
 
   return (
     <div className="stack-lg">
+      {/* 0 · A collapsed doorway to the time-budgeted plan (kept compact so the
+             primary recommendation stays above the fold at 390×844). */}
+      <PlanCard instrumentId={instrumentId} />
+
       {/* 1 · The one thing to practise now — above the fold. */}
       {recs.best && (
         <article className="card card-accent">

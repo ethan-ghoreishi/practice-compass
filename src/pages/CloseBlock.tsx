@@ -120,7 +120,8 @@ export default function CloseBlock() {
       reviewType,
       teacherQuestion: becomeTeacherQ ? teacherQText.trim() : undefined,
     });
-    navigate('/');
+    // If a Session Plan is running, return to it (closeSession advanced it).
+    navigate(useStore.getState().activePlan ? '/plan' : '/');
   }
 
   return (
@@ -281,7 +282,7 @@ export default function CloseBlock() {
         className="btn btn-ghost btn-sm"
         onClick={() => {
           cancelSession();
-          navigate('/');
+          navigate(useStore.getState().activePlan ? '/plan' : '/');
         }}
       >
         Discard without saving

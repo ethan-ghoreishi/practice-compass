@@ -56,6 +56,8 @@ import {
   type ReviewMode,
   type ReviewType,
   type SchedulingParams,
+  type PlanSegment,
+  type SessionPlan,
 } from '../domain';
 import type { CreateItemInput } from '../domain/factories';
 
@@ -90,6 +92,33 @@ export function sessionElapsedSeconds(s: ActiveSession, now: Date = new Date()):
     ? (now.getTime() - new Date(s.segmentStartedAt).getTime()) / 1000
     : 0;
   return Math.max(0, Math.floor(s.accumulatedSeconds + live));
+}
+
+/** A plan segment plus its live run status. */
+export interface PlanSegmentState extends PlanSegment {
+  status: 'pending' | 'done' | 'skipped';
+}
+
+/** The Session Plan currently being run (ephemeral — never in PracticeDB). */
+export interface ActivePlan {
+  instrumentId: ID;
+  budgetMinutes: number;
+  startedAt: string;
+  /** Index of the next segment to practise. */
+  pointer: number;
+  segments: PlanSegmentState[];
+}
+
+/** Advance the pointer to the next still-pending segment (or one past the end). */
+function advancePointer(segments: PlanSegmentState[], from: number): number {
+  for (let i = from + 1; i < segments.length; i++) {
+    if (segments[i].status === 'pending') return i;
+  }
+  // Nothing pending after `from`; look from the start (skips may have been jumped).
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].status === 'pending') return i;
+  }
+  return segments.length;
 }
 
 export interface StartSessionInput {
@@ -152,12 +181,28 @@ interface StoreState {
   sessionInstrumentId: ID | null;
   /** Reviews the user said "not now" to — hidden for the rest of *today* only. */
   notNow: { date: string; ids: ID[] };
+  /** The Session Plan being run right now (ephemeral; not in PracticeDB). */
+  activePlan: ActivePlan | null;
+  /** Last chosen plan duration per instrument, so the picker remembers. */
+  planMinutesByInstrument: Record<ID, number>;
 
   setTheme: (t: ThemePref) => void;
   setSessionInstrument: (id: ID | null) => void;
 
   /** Merge + clamp scheduling knobs. Passing null resets to the defaults. */
   updateSchedulingParams: (patch: Partial<SchedulingParams> | null) => void;
+
+  // Session Plan (a time-budgeted programme over real practice blocks)
+  /** Remember the chosen duration for an instrument's next plan. */
+  setPlanMinutes: (instrumentId: ID, minutes: number) => void;
+  /** Begin running a built plan (segments become pending). */
+  startPlan: (plan: SessionPlan) => void;
+  /** Start a real block seeded from the current segment (→ /active → /close). */
+  beginPlanSegment: () => void;
+  /** Mark the current segment skipped and advance (no data written). */
+  skipPlanSegment: () => void;
+  /** End the running plan (clears it). */
+  endPlan: () => void;
 
   // Attachments (metadata; blobs live in IndexedDB via src/store/idb.ts)
   addAttachmentMeta: (meta: AttachmentMeta) => void;
@@ -364,6 +409,8 @@ export const useStore = create<StoreState>()(
       hydrated: false,
       sessionInstrumentId: null,
       notNow: { date: '', ids: [] },
+      activePlan: null,
+      planMinutesByInstrument: {},
 
       setTheme: (theme) => set({ theme }),
 
@@ -375,6 +422,54 @@ export const useStore = create<StoreState>()(
             settings: patch === null ? undefined : clampSchedulingParams({ ...s.db.settings, ...patch }),
           },
         })),
+
+      setPlanMinutes: (instrumentId, minutes) =>
+        set((s) => ({
+          planMinutesByInstrument: { ...s.planMinutesByInstrument, [instrumentId]: Math.max(5, Math.round(minutes)) },
+        })),
+
+      startPlan: (plan) =>
+        set({
+          activePlan: {
+            instrumentId: plan.instrumentId,
+            budgetMinutes: plan.budgetMinutes,
+            startedAt: nowISO(),
+            pointer: 0,
+            segments: plan.segments.map((seg) => ({ ...seg, status: 'pending' as const })),
+          },
+        }),
+
+      beginPlanSegment: () => {
+        const { activePlan, db } = get();
+        if (!activePlan) return;
+        const seg = activePlan.segments[activePlan.pointer];
+        if (!seg) return;
+        const item = db.items.find((i) => i.id === seg.itemId);
+        if (!item) {
+          // The item was deleted since the plan was built — skip past it.
+          get().skipPlanSegment();
+          return;
+        }
+        get().startSession({
+          itemId: item.id,
+          instrumentId: item.instrumentId,
+          materialId: item.materialId,
+          mode: seg.mode,
+          focus: seg.focus,
+          targetMinutes: seg.minutes,
+        });
+      },
+
+      skipPlanSegment: () =>
+        set((s) => {
+          if (!s.activePlan) return {};
+          const segments = s.activePlan.segments.map((seg, i) =>
+            i === s.activePlan!.pointer && seg.status === 'pending' ? { ...seg, status: 'skipped' as const } : seg,
+          );
+          return { activePlan: { ...s.activePlan, segments, pointer: advancePointer(segments, s.activePlan.pointer) } };
+        }),
+
+      endPlan: () => set({ activePlan: null }),
 
       setSessionInstrument: (sessionInstrumentId) => set({ sessionInstrumentId }),
 
@@ -735,7 +830,7 @@ export const useStore = create<StoreState>()(
 
       closeSession: (input) => {
         const now = new Date();
-        const { active, db } = get();
+        const { active, db, activePlan } = get();
         if (!active) return;
         const item = db.items.find((i) => i.id === active.itemId);
         if (!item) {
@@ -807,6 +902,20 @@ export const useStore = create<StoreState>()(
           );
         }
 
+        // If a Session Plan is running and this block closed its current
+        // segment's item, mark that segment done and advance. The plain flow
+        // (no active plan) is byte-identical to before.
+        let nextPlan = activePlan;
+        if (activePlan) {
+          const seg = activePlan.segments[activePlan.pointer];
+          if (seg && seg.itemId === item.id && seg.status === 'pending') {
+            const segments = activePlan.segments.map((s, i) =>
+              i === activePlan.pointer ? { ...s, status: 'done' as const } : s,
+            );
+            nextPlan = { ...activePlan, segments, pointer: advancePointer(segments, activePlan.pointer) };
+          }
+        }
+
         set({
           db: {
             ...db,
@@ -815,6 +924,7 @@ export const useStore = create<StoreState>()(
             reviews,
           },
           active: null,
+          activePlan: nextPlan,
         });
       },
 
@@ -1038,6 +1148,8 @@ export const useStore = create<StoreState>()(
         theme: s.theme,
         sessionInstrumentId: s.sessionInstrumentId,
         notNow: s.notNow,
+        activePlan: s.activePlan,
+        planMinutesByInstrument: s.planMinutesByInstrument,
       }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;

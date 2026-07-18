@@ -20,6 +20,7 @@ const PathwayDetail = lazy(() => import('./pages/PathwayDetail'));
 const StageDetail = lazy(() => import('./pages/StageDetail'));
 const Lessons = lazy(() => import('./pages/Lessons'));
 const RoutineRunner = lazy(() => import('./pages/RoutineRunner'));
+const SessionPlan = lazy(() => import('./pages/SessionPlan'));
 const TeacherReport = lazy(() => import('./pages/TeacherReport'));
 const Settings = lazy(() => import('./pages/Settings'));
 const More = lazy(() => import('./pages/More'));
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="pathway/:pathwayId/:stageId" element={<StageDetail />} />
         <Route path="lessons" element={<Lessons />} />
         <Route path="routine/:routineId" element={<RoutineRunner />} />
+        <Route path="plan" element={<SessionPlan />} />
         <Route path="materials" element={<Materials />} />
         <Route path="insights" element={<Insights />} />
         <Route path="report" element={<TeacherReport />} />

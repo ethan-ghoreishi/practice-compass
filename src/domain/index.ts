@@ -18,6 +18,7 @@ export * from './sync';
 export * from './canonical';
 export * from './files';
 export * from './selectors';
+export * from './plan';
 export * from './insights';
 export * from './report';
 export * from './factories';
