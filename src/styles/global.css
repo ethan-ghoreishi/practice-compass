@@ -447,8 +447,16 @@ body,
 }
 .grid-2 {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-3);
+}
+/* Below iPhone SE width (or larger text/Dynamic Type), stack rather than
+   squeeze two columns — protects fields like CloseBlock's review date +
+   review-type pills from crowding or overlapping. */
+@media (max-width: 340px) {
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
 }
 .grid-stats {
   display: grid;

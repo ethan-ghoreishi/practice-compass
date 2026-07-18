@@ -140,7 +140,7 @@ function PlanCard({ instrumentId }: { instrumentId: string }) {
     <section className="card card-quiet stack-sm">
       <div className="row between">
         <span style={{ fontWeight: 600 }}>How long today?</span>
-        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
+        <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
       </div>
       <div className="options">
         {PLAN_DURATIONS.map((m) => (

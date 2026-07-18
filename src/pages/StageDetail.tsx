@@ -22,7 +22,6 @@ export default function StageDetail() {
   const deleteStage = useStore((s) => s.deleteStage);
   const updatePathway = useStore((s) => s.updatePathway);
   const addFromCatalog = useStore((s) => s.addFromCatalog);
-  const deleteItem = useStore((s) => s.deleteItem);
   const removeCatalogItem = useStore((s) => s.removeCatalogItem);
   const startItemSession = useStore((s) => s.startItemSession);
   const navigate = useNavigate();
@@ -176,7 +175,9 @@ export default function StageDetail() {
               <button
                 className="btn btn-sm"
                 onClick={() => {
-                  deleteItem(undo.id);
+                  // Re-checks live state (a block may have been logged since the
+                  // banner appeared) — never silently deletes practised work.
+                  removeCatalogItem(undo.id);
                   setUndo(null);
                 }}
               >

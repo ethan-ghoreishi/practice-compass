@@ -305,7 +305,9 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
 /**
  * Apportion `B` whole minutes across the given buckets so the total is exactly
  * `B`, every segment ≥ MIN_SEGMENT. Deterministic largest-remainder split by
- * bucket weight, then a priority-ordered ±1 fix.
+ * bucket weight, a priority-ordered ±1 fix, then review segments are clamped
+ * into `[reviewSlotMinMinutes, reviewSlotMaxMinutes]` with the difference
+ * moved to/from the other segments by priority.
  */
 export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: SchedulingParams): number[] {
   const B = Math.max(MIN_SEGMENT, Math.round(budget));
@@ -361,6 +363,56 @@ export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: 
     }
     if (!changed) break; // all at floor — 2*n <= B guarantees this can't happen while total>B
   }
+
+  // Keep review segments within the configured slot window (reviewSlotMin/Max
+  // — otherwise a two-segment plan can hand a review far more time than a
+  // "quick retrieval check" should get). Any minutes taken from a review go to
+  // the highest-priority other segment; any minutes a too-small review needs
+  // come from the lowest-priority other segment that stays ≥ MIN_SEGMENT. Σ
+  // stays exactly B throughout.
+  const reviewIdx = list.map((b, i) => (b === 'review' ? i : -1)).filter((i) => i >= 0);
+  if (reviewIdx.length > 0) {
+    const others = byPriority.filter((i) => list[i] !== 'review');
+    const othersLowestFirst = others.slice().reverse();
+    for (const i of reviewIdx) {
+      const original = alloc[i];
+      const desired = Math.min(Math.max(original, p.reviewSlotMinMinutes), p.reviewSlotMaxMinutes);
+      const diff = original - desired; // >0: had too much; <0: had too little
+      if (diff > 0 && others.length > 0) {
+        alloc[i] = desired;
+        let give = diff;
+        let g = 0;
+        while (give > 0 && g++ < 10000) {
+          for (const j of others) {
+            if (give <= 0) break;
+            alloc[j] += 1;
+            give -= 1;
+          }
+        }
+      } else if (diff < 0) {
+        const need = -diff;
+        let taken = 0;
+        let g = 0;
+        while (taken < need && g++ < 10000) {
+          let changed = false;
+          for (const j of othersLowestFirst) {
+            if (taken >= need) break;
+            if (alloc[j] > MIN_SEGMENT) {
+              alloc[j] -= 1;
+              taken += 1;
+              changed = true;
+            }
+          }
+          if (!changed) break;
+        }
+        // Only credit what was actually fundable — if nothing could be taken
+        // from elsewhere (everyone at the floor), the review stays at its
+        // original allocation rather than breaking the Σ==B invariant.
+        alloc[i] = original + taken;
+      }
+    }
+  }
+
   return alloc;
 }
 

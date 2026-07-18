@@ -594,25 +594,36 @@ export const useStore = create<StoreState>()(
         const existingDates = new Set(ownLessons.map((l) => l.date));
         const added = buildSetarClassLessons(instrumentId, existingDates, now);
 
-        // Backfill references onto lessons that already exist for a session date.
+        // Backfill references AND missing lesson numbers onto lessons that
+        // already exist for a session date. A number is only ever filled in
+        // when absent — a user-edited number is never overwritten.
         const byDate = new Map(ownLessons.map((l) => [l.date, l]));
         const backfill = new Map<string, LessonRecording[]>();
+        const numberBackfill = new Map<string, number>();
         for (const session of SETAR_CLASS_SESSIONS) {
           const lesson = byDate.get(session.date);
           if (!lesson) continue;
           const havePaths = new Set((lesson.recordings ?? []).map((r) => r.path));
           const missing = missingSessionReferences(session, havePaths, now);
           if (missing.length > 0) backfill.set(lesson.id, missing);
+          if (lesson.number === undefined) numberBackfill.set(lesson.id, session.n);
         }
 
-        if (added.length === 0 && backfill.size === 0) return 0;
+        if (added.length === 0 && backfill.size === 0 && numberBackfill.size === 0) return 0;
         set((s) => ({
           db: {
             ...s.db,
             lessons: [
               ...s.db.lessons.map((l) =>
-                backfill.has(l.id)
-                  ? touch({ ...l, recordings: [...(l.recordings ?? []), ...backfill.get(l.id)!] }, now)
+                backfill.has(l.id) || numberBackfill.has(l.id)
+                  ? touch(
+                      {
+                        ...l,
+                        recordings: backfill.has(l.id) ? [...(l.recordings ?? []), ...backfill.get(l.id)!] : l.recordings,
+                        number: numberBackfill.get(l.id) ?? l.number,
+                      },
+                      now,
+                    )
                   : l,
               ),
               ...added,

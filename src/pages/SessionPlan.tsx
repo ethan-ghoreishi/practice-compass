@@ -60,7 +60,6 @@ function PlanPreview() {
       stageItemIds,
       params: clampSchedulingParams(db.settings),
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.pathways, db.pathwayStages, db.settings, now]);
 
   const [plan, setPlan] = useState<SessionPlanT>(build);
@@ -113,7 +112,7 @@ function PlanPreview() {
       <header className="stack-sm">
         <div className="row between">
           <h1 className="page-title">Your {instrumentName(db, instrumentId)} session</h1>
-          <Link to="/" className="btn btn-ghost btn-sm" aria-label="Back to Today">
+          <Link to="/" className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} aria-label="Back to Today">
             <XIcon />
           </Link>
         </div>
@@ -140,7 +139,7 @@ function PlanPreview() {
               <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
                 Swap
               </button>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 'none', minWidth: 44 }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
+              <button className="btn btn-ghost" style={{ flex: 'none', minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
                 <MinusIcon />
               </button>
             </div>
@@ -192,7 +191,7 @@ function PlanRunner() {
       <header className="stack-sm">
         <div className="row between">
           <h1 className="page-title">{instrumentName(db, activePlan.instrumentId)} session</h1>
-          <button className="btn btn-ghost btn-sm" onClick={finish} aria-label="End the plan">
+          <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={finish} aria-label="End the plan">
             <XIcon />
           </button>
         </div>

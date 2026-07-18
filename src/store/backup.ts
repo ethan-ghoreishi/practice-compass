@@ -1,5 +1,5 @@
 import { nowISO, parseImport, SCHEMA_VERSION } from '../domain';
-import { allBlobs, clearBlobs, putBlob } from './idb';
+import { allBlobs, replaceAllBlobs, type AttachmentBlob } from './idb';
 import { useStore } from './useStore';
 
 // ---------------------------------------------------------------------------
@@ -141,6 +141,15 @@ export function readBackupMeta(text: string): (BackupMeta & { exportedAt?: strin
 
 export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
 
+/**
+ * Import a full backup. Decodes every file BEFORE touching any existing data —
+ * a single corrupt file aborts the whole import with nothing changed, rather
+ * than clearing existing blobs and silently losing the ones that fail to
+ * decode. Once every file decodes cleanly, the blob replacement runs as one
+ * IndexedDB transaction (`replaceAllBlobs`) and only then does the JSON `db`
+ * get swapped — so a mid-write failure can never leave attachment metadata
+ * pointing at blobs that no longer exist.
+ */
 export async function importFullBackup(text: string): Promise<ImportOutcome> {
   let parsed: unknown;
   try {
@@ -151,23 +160,29 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
   const validated = parseImport(text);
   if (!validated.ok) return { ok: false, error: validated.error };
 
-  // Replace all local blobs with the backup's.
-  await clearBlobs();
   const files = (parsed as { files?: BackupFile[] }).files;
-  let fileCount = 0;
+  const rows: AttachmentBlob[] = [];
   if (Array.isArray(files)) {
     for (const f of files) {
-      if (f?.id && typeof f.data === 'string') {
-        try {
-          await putBlob(f.id, f.ownerId ?? f.itemId ?? '', base64ToBlob(f.data, f.mime || 'application/octet-stream'));
-          fileCount += 1;
-        } catch {
-          /* skip a corrupt file rather than fail the whole import */
-        }
+      if (!f?.id || typeof f.data !== 'string') continue;
+      try {
+        rows.push({
+          id: f.id,
+          ownerId: f.ownerId ?? f.itemId ?? '',
+          blob: base64ToBlob(f.data, f.mime || 'application/octet-stream'),
+        });
+      } catch {
+        return { ok: false, error: `File "${f.name ?? f.id}" in the backup is corrupt — nothing was changed.` };
       }
     }
   }
 
+  try {
+    await replaceAllBlobs(rows);
+  } catch (e) {
+    return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
+  }
+
   useStore.getState().importDB(parsed);
-  return { ok: true, fileCount };
+  return { ok: true, fileCount: rows.length };
 }

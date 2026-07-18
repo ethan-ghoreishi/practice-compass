@@ -596,11 +596,16 @@ const PARAM_ROWS: {
   key: keyof SchedulingParams;
   label: string;
   hint: string;
-  step: number;
+  /** 'percent' shows/edits the value ×100 (shares are stored as 0–1 fractions). */
+  unit?: 'percent';
 }[] = [
-  { key: 'sm2FirstIntervalDays', label: 'First review gap (days)', hint: 'How long after the first good review before it comes back.', step: 1 },
-  { key: 'sm2SecondIntervalDays', label: 'Second review gap (days)', hint: 'The gap after the second good review; it keeps expanding from there.', step: 1 },
-  { key: 'sm2SlipResetDays', label: 'Relearn gap after a slip (days)', hint: 'When something slips, it returns this soon to relearn.', step: 1 },
+  { key: 'sm2FirstIntervalDays', label: 'First review gap (days)', hint: 'How long after the first good review before it comes back.' },
+  { key: 'sm2SecondIntervalDays', label: 'Second review gap (days)', hint: 'The gap after the second good review; it keeps expanding from there.' },
+  { key: 'sm2SlipResetDays', label: 'Relearn gap after a slip (days)', hint: 'When something slips, it returns this soon to relearn.' },
+  { key: 'warmupShare', label: 'Warm-up share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for warm-up.', unit: 'percent' },
+  { key: 'deepWorkShare', label: 'Deep-work share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for the focus block.', unit: 'percent' },
+  { key: 'reviewSlotMinMinutes', label: 'Shortest review slot (min)', hint: 'A review segment in the Session Plan never gets less than this.' },
+  { key: 'reviewSlotMaxMinutes', label: 'Longest review slot (min)', hint: 'A review segment in the Session Plan never gets more than this.' },
 ];
 
 function SchedulingSection() {
@@ -638,7 +643,10 @@ function SchedulingSection() {
 
         <div className="stack-sm" style={{ marginTop: 4 }}>
           {PARAM_ROWS.map((row) => {
-            const [lo, hi] = SCHEDULING_BOUNDS[row.key];
+            const [loRaw, hiRaw] = SCHEDULING_BOUNDS[row.key];
+            const scale = row.unit === 'percent' ? 100 : 1;
+            const lo = Math.round(loRaw * scale);
+            const hi = Math.round(hiRaw * scale);
             return (
               <Field key={row.key} label={`${row.label} (${lo}–${hi})`} hint={row.hint}>
                 <input
@@ -648,12 +656,12 @@ function SchedulingSection() {
                   enterKeyHint="done"
                   min={lo}
                   max={hi}
-                  step={row.step}
-                  value={p[row.key]}
+                  step={1}
+                  value={Math.round(p[row.key] * scale)}
                   style={{ maxWidth: 120 }}
                   onChange={(e) => {
                     const n = Number(e.target.value);
-                    if (Number.isFinite(n)) update({ [row.key]: n });
+                    if (Number.isFinite(n)) update({ [row.key]: n / scale });
                   }}
                 />
               </Field>

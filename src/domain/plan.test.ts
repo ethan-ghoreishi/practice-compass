@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allocateMinutes, buildSessionPlan, redistributePlan, swapSegment, type BuildPlanArgs } from './plan';
+import { DEFAULT_SCHEDULING_PARAMS } from './scheduling';
 import { createItem, createBlock, createReview } from './factories';
 import type { ItemStatus, ItemType, PracticeBlock, PracticeItem, Review } from './types';
 
@@ -151,6 +152,33 @@ describe('allocateMinutes', () => {
     const m = allocateMinutes(['warmup', 'deep', 'lesson', 'review', 'cooldown'], 5);
     expect(m.length).toBeLessThanOrEqual(2);
     expect(sum(m)).toBe(5);
+  });
+
+  it('clamps a review segment to reviewSlotMax, giving the surplus to deep', () => {
+    // 2 segments, 30 min: unclamped weighting would hand review ~9 min.
+    const params = { ...DEFAULT_SCHEDULING_PARAMS, reviewSlotMinMinutes: 3, reviewSlotMaxMinutes: 7 };
+    const m = allocateMinutes(['deep', 'review'], 30, params);
+    expect(m[1]).toBe(7);
+    expect(sum(m)).toBe(30);
+  });
+
+  it('clamps a review segment up to reviewSlotMin, taking it from a lower-priority segment', () => {
+    // reviewSlotMinMinutes is bounded to [2,5]; 15 min naturally gives review
+    // only 4, so a min of 5 (the bound's ceiling) should bump it.
+    const params = { ...DEFAULT_SCHEDULING_PARAMS, reviewSlotMinMinutes: 5, reviewSlotMaxMinutes: 7 };
+    const unclamped = allocateMinutes(['deep', 'review', 'cooldown'], 15, DEFAULT_SCHEDULING_PARAMS);
+    expect(unclamped[1]).toBeLessThan(5); // sanity: the natural share is below the floor we're about to set
+    const m = allocateMinutes(['deep', 'review', 'cooldown'], 15, params);
+    expect(m[1]).toBeGreaterThanOrEqual(5);
+    expect(sum(m)).toBe(15);
+  });
+
+  it('a wider warmupShare gives the warm-up segment more real minutes', () => {
+    const narrow = allocateMinutes(['warmup', 'deep'], 40, { ...DEFAULT_SCHEDULING_PARAMS, warmupShare: 0.1 });
+    const wide = allocateMinutes(['warmup', 'deep'], 40, { ...DEFAULT_SCHEDULING_PARAMS, warmupShare: 0.15 });
+    expect(wide[0]).toBeGreaterThan(narrow[0]);
+    expect(sum(narrow)).toBe(40);
+    expect(sum(wide)).toBe(40);
   });
 });
 

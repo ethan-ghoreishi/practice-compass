@@ -111,6 +111,18 @@ export async function clearBlobs(): Promise<void> {
   await idb.attachments.clear();
 }
 
+/**
+ * Atomically replace every attachment blob: clear the table and write the new
+ * set in one IndexedDB transaction. If anything throws mid-write, Dexie rolls
+ * the whole transaction back — existing blobs are never left half-cleared.
+ */
+export async function replaceAllBlobs(rows: AttachmentBlob[]): Promise<void> {
+  await idb.transaction('rw', idb.attachments, async () => {
+    await idb.attachments.clear();
+    if (rows.length > 0) await idb.attachments.bulkPut(rows);
+  });
+}
+
 export async function allBlobs(): Promise<AttachmentBlob[]> {
   return idb.attachments.toArray();
 }
