@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "deploy": "bash scripts/deploy-nas.sh",
     "gen:icons": "node scripts/gen-icons.mjs",
+    "scan:setar": "node scripts/scan-setar-classes.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"
