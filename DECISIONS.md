@@ -44,3 +44,35 @@ Web Station static vhost with the Tailscale cert is a viable fallback if Serve i
 unavailable, but Serve needs no DSM vhost config and is simpler.
 
 **Never modify the recordings themselves** — the app only stores references.
+
+---
+
+## Session Plan — algorithm & evidence (2026-07-18)
+
+The Session Plan (`src/domain/plan.ts`) lays out a time-budgeted session as ordered
+segments in five buckets (warm-up · lesson · review · deep · cool-down). It reuses the
+recommendation engine's `scoreItems` — no second ranking — and is pure and deterministic.
+
+**Decisions.**
+- **Minutes always sum to the budget.** A largest-remainder split by bucket weight, each
+  segment ≥ 2 min; when the budget can't seat every segment, the lowest-priority ones are
+  dropped before allocation. This is the one load-bearing invariant and is tested across
+  15/20/30/45/60 and the edge cases.
+- **The plan runs REAL blocks, not a countdown.** The runner drives the existing
+  start→active→close flow; `closeSession` advances the plan only when the closed block was
+  the current segment. `RoutineRunner` (the warm-up timer) is deliberately left untouched.
+- **The running plan is ephemeral** (store-only, never in `PracticeDB`) so it never syncs
+  or lands in a backup as data.
+- **Shares are sane defaults, adjustable, never "optimal".** Bucket minute shares come from
+  `SchedulingParams` (Settings) — the app makes no claim of an ideal ratio.
+
+**Evidence (used as rationale for the SHAPE, not as precise prescriptions).**
+- Spacing effect → short, spaced segments + SM-2 (Cepeda et al. 2006; Simmons 2012).
+- Contextual interference / interleaving → the no-adjacent-same-item mix and the "it feels
+  harder; that's the point" framing (Shea & Morgan 1979; Carter & Grahn 2016; Stambaugh 2011).
+- Retrieval practice → short review slots (Roediger & Karpicke 2006).
+- Deliberate, goal-directed practice → one focus per segment (Ericsson et al. 1993;
+  Duke, Simmons & Cash 2009).
+- Sleep consolidation → cool-down / end-on-stability (Simmons & Duke 2006).
+
+No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.

@@ -96,6 +96,14 @@ own pace, on a route they trust. Protect that:
   item is honestly **"Not practised yet"** (status `new`, zero stats) with an immediate
   Undo — adding is organisation, not progress. Label suggestions as reference aids, never
   canonical. Improving the catalog needs no migration; keep entry keys stable per stage.
+- **Adding from the catalog is losslessly reversible.** The Undo is DURABLE (persists until
+  dismissed or the item is practised — no timeout), and a fresh catalog item shows a "Remove"
+  affordance on its row and in the item's "Connected to". `isLosslesslyRemovable`
+  (`pathways.ts`, tested) gates this: `catalogKey` set AND status `new` AND zero blocks AND
+  `timesPractised === 0`. The store's `removeCatalogItem` re-checks the predicate against
+  LIVE blocks before delegating to `deleteItem`; once anything is logged, only the ordinary
+  delete-with-confirm remains. This is the one place a stage row grows a second 44×44 action
+  (− beside ▶); it disappears the moment the item is practised.
 - **Structure, not gamification.** Show honest position (items solid / in progress /
   suggestions remaining). No streaks, scores, or fabricated mastery %.
 - **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
@@ -144,14 +152,25 @@ priority boost that climbs as that instrument's next lesson approaches
 class is a real commitment, not a manufactured streak. Keep it per-instrument and
 generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
 OR a lesson (`AttachmentMeta.ownerType/ownerId`; blobs keyed by `ownerId` in Dexie) for
-SMALL files (PDFs/photos/short audio, size-capped). **Full class videos are NAS
-references, never bytes:** `Lesson.recordings` (`LessonRecording`) holds title + a
-relative NAS path (or full https URL) + size/notes; `resolveRecordingUrl`
-(`src/domain/recordings.ts`, tested) joins it under the per-device NAS base URL
-(Settings, localStorage) and the video opens only on explicit tap — never at startup,
-never in IndexedDB/sync/backups. Removing a reference never touches the NAS file. The
-user's Setar class history imports additively via `buildSetarClassLessons`
-(`src/domain/setarClasses.ts`, tested) → `importSetarClasses`.
+SMALL files (PDFs/photos/short audio, size-capped). **Full class videos — and score
+PDFs/docs — are NAS references, never bytes:** `Lesson.recordings` (`LessonRecording`)
+holds title + a relative NAS path (or full https URL) + size/notes + an optional `kind`
+(`LessonFileKind` = video/pdf/doc/audio; schema **v9** stamps legacy refs `kind:'video'`).
+`resolveRecording` (`src/domain/recordings.ts`, tested) returns a discriminated
+`ok|no-base|bad-base|empty` result — the scheme-less-base bug is fixed by
+`normalizeBaseUrl` (prepends `https://`, rejects non-http(s), validates via `new URL`);
+`resolveRecordingUrl`/`needsBaseUrl` are thin wrappers. It joins the ref under the
+per-device NAS base URL (Settings, localStorage) and opens only on explicit tap — never at
+startup, never in IndexedDB/sync/backups; a `bad-base` never `window.open`s. Removing a
+reference never touches the NAS file. Lessons carry an optional `number`
+(`nextLessonNumber` prefills it, editable, never required; shown as "Class N · date"); refs
+render video-first then scores/docs with kind icons. The user's Setar class history imports
+additively via `buildSetarClassLessons` (`src/domain/setarClasses.ts`, tested) →
+`importSetarClasses`, which also **backfills** missing refs (video + one per PDF/doc,
+path-deduped) onto already-imported lessons — idempotent. `SETAR_CLASS_SESSIONS` lives
+between `// [scan:begin]`/`// [scan:end]` markers and is regenerated from the real NAS
+folder by `npm run scan:setar` (`scripts/scan-setar-classes.mjs`, stdlib, dry-run by
+default; pure helpers unit-tested) — references only, never copying bytes.
 
 ## Questions for next class
 
@@ -184,6 +203,52 @@ supports per-item overrides (Auto / fixed cadence / Manual) and returns a plain 
 Keep it deterministic and explainable — don't turn it into an opaque model, and keep the
 SM-2 tests green. Item status labels are plain-language for the user — keep the enum keys
 stable and only change the display labels in `labels.ts`.
+
+**The engine is visible AND adjustable, never magic.** `SchedulingParams`
+(`src/domain/types.ts`) holds bounded knobs — the SM-2 first/second/slip-reset gaps and
+the Session Plan minute shares — persisted as an OPTIONAL `PracticeDB.settings` (schema
+**v10**; `undefined ⇒ DEFAULT_SCHEDULING_PARAMS`, so old backups import unchanged and
+`validateDB` carries the field through). `DEFAULT_SCHEDULING_PARAMS` reproduces the
+historical constants EXACTLY — `computeReview`/`planNextReview` take an optional `params`
+whose default is byte-identical to before (a snapshot test guards this). Every call site
+that shows OR persists a date must thread the SAME params (`db.settings`): the store into
+`closeSession`, `CloseBlock` into both preview calls — the date shown must equal the date
+saved. `clampSchedulingParams` enforces the bounds (never trust raw input). Settings' "How
+scheduling works" section states the real priority formula and the SM-2 rungs in plain
+English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
+review row links to it ("Why this date?").
+
+## The Session Plan is a view over real blocks, not a new to-do list
+
+The Session Plan (`src/domain/plan.ts`, pure + fully tested; `/plan` page) lays out one
+time-budgeted session for the current instrument: ordered segments in five buckets
+(`warmup · lesson · review · deep · cooldown`), each with minutes, a mode/focus, and a
+one-sentence reason. It **reuses the same `scoreItems` priority numbers** as the
+recommendation engine — no second, hidden ranking. It is organisation, never judgement:
+no scores, no "optimal" claims, no gamification.
+
+- **The invariant: segment minutes ALWAYS sum to the budget** (`buildSessionPlan`,
+  `allocateMinutes` — largest-remainder split, min 2/segment, drops the lowest-priority
+  segments when the budget can't seat them all). Keep it deterministic (explicit `now`,
+  stable score-desc-then-id tiebreaks) and keep the sum==budget tests green across
+  15/20/30/45/60 and the edge cases (0 items, 1 item, all-saturated, everything
+  practised-today → falls back and says so). `redistributePlan`/`swapSegment` are the pure
+  editors; the preview page tweaks a LOCAL copy before `startPlan`.
+- **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
+  warm-up timer) stays untouched. The runner orchestrates the existing
+  start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
+  segment (its minutes become the target). `closeSession` has a tail that, when a plan is
+  running and the closed block was the current segment, marks it `done` and advances the
+  pointer — **the plain flow (no active plan) is byte-identical to before.** Skipping logs
+  nothing. Practising is still the only thing that completes a review / advances SM-2.
+- **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
+  store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
+  never syncs/backs-up as data.**
+- **Today's plan card stays collapsed (~50px) above "Practise now"** so the primary
+  recommendation stays above the fold at 390×844 (verified). It becomes "Resume your plan"
+  while one runs. The evidence behind the bucket shape (spacing, interleaving, retrieval
+  practice, end-on-stability) is cited soberly in `plan.ts` and `DECISIONS.md` — sane
+  defaults, adjustable via `SchedulingParams`, never dressed up as an optimum.
 
 ## Device & infrastructure
 
@@ -225,7 +290,12 @@ installed iOS PWA with `viewport-fit=cover`, `100%` resolves to the layout viewp
 which stops above the home-indicator safe area, leaving the bar floating above the
 physical bottom with dead space beneath. With `100dvh` the shell reaches the true
 bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
-clear. Five EQUAL nav tabs (no raised centre button — Today owns the primary Start
+clear. **The iOS software keyboard must not drift the shell:** `useViewportGuard`
+(`src/components/useViewportGuard.ts`, wired once in `Layout`) listens to `visualViewport`
+and, when no editable is focused, resets any layout-viewport displacement to 0; on focus it
+scrolls the field into `<main>` instead. It is a no-op without `visualViewport` and must
+stay pure glue — never restructure the shell to "fix" the keyboard. Five EQUAL nav tabs
+(no raised centre button — Today owns the primary Start
 action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
 practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
 controls/nav/metadata are sans. Pathway catalogue rows use a stable

@@ -138,9 +138,9 @@ function PlanPreview() {
                 <div className="tiny faint" dir="auto">{seg.reason}</div>
               </div>
               <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
-                <PlayIcon />
+                Swap
               </button>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
+              <button className="btn btn-ghost btn-sm" style={{ flex: 'none', minWidth: 44 }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
                 <MinusIcon />
               </button>
             </div>
