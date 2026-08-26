@@ -21,3 +21,6 @@ npm-debug.log*
 
 # TS incremental build info
 *.tsbuildinfo
+.prismatica/evidence/blobs/
+.claude/prismatica-scope-hook.mjs
+.claude/settings.local.json
