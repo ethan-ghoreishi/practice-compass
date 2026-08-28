@@ -1,6 +1,6 @@
 ---
 contractId: 20260828-stop-a-just-practised-item-from-still-re-bf98
-at: 2026-08-28T14:59:34.300Z
+at: 2026-08-28T15:30:53.123Z
 by: agent
 none: false
 entries:
@@ -72,21 +72,6 @@ entries:
     steps:
       - 7
     reverify: []
-  - flowId: clear-a-due-review
-    status: unchanged
-    reason: "This lane deliberately refactors snoozeReview to route through the
-      shared resolveReviewDate/applyReviewDateToRows coupling (the model every
-      other write now follows) rather than its own bespoke logic, but its
-      observable behaviour is unchanged: '+2d' still moves the review's dueDate
-      and the item's nextReviewDate to the same date, counted from today, with
-      SM-2 state (srReps/srEase/srIntervalDays) untouched. 'Not now' is
-      untouched entirely — notNowReview was not modified. Pinned by
-      scheduling.test.ts 'snooze moves the same date on the item and the review
-      without changing SM-2 state', which builds an item with SM-2 fields set
-      and asserts both writes land on the same date while those three fields are
-      unchanged."
-    steps: []
-    reverify: []
   - flowId: browse-my-repertoire
     status: unchanged
     reason: Shares the PracticeItem entity only because closeSession/updateItem now
@@ -135,6 +120,28 @@ entries:
       syncEngine.ts and gitRemote.ts are untouched.
     steps: []
     reverify: []
+  - flowId: clear-a-due-review
+    status: unchanged
+    reason: "snoozeReview resolves the tri-state date once via resolveReviewDate
+      (the shared primitive), but the row write itself is scoped to the SELECTED
+      review by id via applyReviewDateToRow — not the item-scoped
+      applyReviewDateToRows used by closeSession/updateItem. A fresh-eyes review
+      (sealed, request_changes) caught that routing snooze through the
+      item-scoped coupling silently moved every open review row for the item,
+      not just the one snoozed; applyReviewDateToRow was added as the row-scoped
+      sibling to fix that while keeping the tri-state resolution shared.
+      Observable behaviour is unchanged from before this lane: '+2d' still moves
+      only the selected review's dueDate and the item's nextReviewDate to the
+      same date, counted from today, with SM-2 state
+      (srReps/srEase/srIntervalDays) untouched. 'Not now' is untouched entirely
+      — notNowReview was not modified. Pinned by scheduling.test.ts 'snooze
+      moves the same date on the item and the review without changing SM-2
+      state' (now exercises applyReviewDateToRow) and the new discriminating
+      regression 'moves only the selected row, leaving a second open review for
+      the SAME item untouched', which builds two open rows on one item and
+      asserts only the targeted row moves."
+    steps: []
+    reverify: []
 ---
 
 ## adjust-how-scheduling-works — mechanics-updated
@@ -167,10 +174,6 @@ Step 7 claims the next review 'is scheduled on the date that was shown'. Before 
 
 Steps: 7
 
-## clear-a-due-review — unchanged
-
-This lane deliberately refactors snoozeReview to route through the shared resolveReviewDate/applyReviewDateToRows coupling (the model every other write now follows) rather than its own bespoke logic, but its observable behaviour is unchanged: '+2d' still moves the review's dueDate and the item's nextReviewDate to the same date, counted from today, with SM-2 state (srReps/srEase/srIntervalDays) untouched. 'Not now' is untouched entirely — notNowReview was not modified. Pinned by scheduling.test.ts 'snooze moves the same date on the item and the review without changing SM-2 state', which builds an item with SM-2 fields set and asserts both writes land on the same date while those three fields are unchanged.
-
 ## browse-my-repertoire — unchanged
 
 Shares the PracticeItem entity only because closeSession/updateItem now write nextReviewDate/srReps/srEase/srIntervalDays more precisely; Repertoire's views (Pathways/My repertoire/Practice list) group and list items by identity, status and kind, none of which this lane touches. No file this flow maps to (repertoire.ts, Repertoire.tsx) changed.
@@ -194,6 +197,10 @@ Shares the PracticeItem entity because Insights reads item stats, but scoring.ts
 ## sync-devices-via-github — unchanged
 
 Shares the /settings route only because 'How scheduling works' also lives there; the sync engine hash-compares whatever PracticeItem/Review state exists and is agnostic to which code wrote it — canonical.ts, syncEngine.ts and gitRemote.ts are untouched.
+
+## clear-a-due-review — unchanged
+
+snoozeReview resolves the tri-state date once via resolveReviewDate (the shared primitive), but the row write itself is scoped to the SELECTED review by id via applyReviewDateToRow — not the item-scoped applyReviewDateToRows used by closeSession/updateItem. A fresh-eyes review (sealed, request_changes) caught that routing snooze through the item-scoped coupling silently moved every open review row for the item, not just the one snoozed; applyReviewDateToRow was added as the row-scoped sibling to fix that while keeping the tri-state resolution shared. Observable behaviour is unchanged from before this lane: '+2d' still moves only the selected review's dueDate and the item's nextReviewDate to the same date, counted from today, with SM-2 state (srReps/srEase/srIntervalDays) untouched. 'Not now' is untouched entirely — notNowReview was not modified. Pinned by scheduling.test.ts 'snooze moves the same date on the item and the review without changing SM-2 state' (now exercises applyReviewDateToRow) and the new discriminating regression 'moves only the selected row, leaving a second open review for the SAME item untouched', which builds two open rows on one item and asserts only the targeted row moves.
 
 ## Read these claims with this in mind
 

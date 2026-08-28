@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyReviewDateToRow,
   applyReviewDateToRows,
   clampSchedulingParams,
   computeReview,
@@ -159,12 +160,18 @@ describe("applyReviewDateToRows — the coupled write to an item's Review rows",
 
   it('snooze moves the same date on the item and the review without changing SM-2 state', () => {
     const stale = item({ nextReviewDate: toISODate(addDays(NOW, -3)), srReps: 3, srEase: 2.6, srIntervalDays: 15 });
-    const reviews = [openReview(toISODate(addDays(NOW, -3)))];
+    const review = openReview(toISODate(addDays(NOW, -3)));
     const { dueDate } = snoozePlan(2, NOW);
 
-    // The two writes snoozeReview actually performs: the row, via the shared
-    // coupling, and the item, from the same resolved value.
-    const updatedReviews = applyReviewDateToRows({ reviews, practiceItemId: itemId, instruction: dueDate, now: NOW })!;
+    // The two writes snoozeReview actually performs: the SELECTED row (by
+    // its own id — applyReviewDateToRow, not the item-scoped
+    // applyReviewDateToRows), and the item, from the same resolved value.
+    const updatedReviews = applyReviewDateToRow({
+      reviews: [review],
+      reviewId: review.id,
+      instruction: dueDate,
+      now: NOW,
+    })!;
     const write = resolveReviewDate(dueDate)!;
     const updatedItem = { ...stale, nextReviewDate: write.nextReviewDate };
 
@@ -176,7 +183,64 @@ describe("applyReviewDateToRows — the coupled write to an item's Review rows",
   });
 });
 
+describe('applyReviewDateToRow — the row-scoped write snoozeReview needs', () => {
+  const itemId = 'item-1';
+
+  function openReview(dueDate: string) {
+    return createReview({ practiceItemId: itemId, dueDate, reviewType: 'retention' }, NOW);
+  }
+
+  it('leaves the row untouched when the instruction is absent', () => {
+    const reviews = [openReview(toISODate(addDays(NOW, -14)))];
+    expect(
+      applyReviewDateToRow({ reviews, reviewId: reviews[0].id, instruction: undefined, now: NOW }),
+    ).toBeUndefined();
+  });
+
+  it('moves only the selected row, leaving a second open review for the SAME item untouched', () => {
+    // The regression the review caught: two open rows on one item — a
+    // real, if unusual, shape (e.g. a stale row left behind by a bug, or
+    // two review types in flight at once). Snoozing review A must not
+    // silently move review B.
+    const a = openReview(toISODate(addDays(NOW, -14)));
+    const b = openReview(toISODate(addDays(NOW, -1)));
+    const date = toISODate(addDays(NOW, 2));
+
+    const updated = applyReviewDateToRow({ reviews: [a, b], reviewId: a.id, instruction: date, now: NOW })!;
+
+    expect(updated.find((r) => r.id === a.id)!.dueDate).toBe(date);
+    expect(updated.find((r) => r.id === b.id)!.dueDate).toBe(b.dueDate);
+  });
+
+  it('removes only the selected row when its instruction clears the schedule', () => {
+    const a = openReview(toISODate(addDays(NOW, -14)));
+    const b = openReview(toISODate(addDays(NOW, -1)));
+
+    const updated = applyReviewDateToRow({ reviews: [a, b], reviewId: a.id, instruction: null, now: NOW })!;
+
+    expect(updated.find((r) => r.id === a.id)).toBeUndefined();
+    expect(updated.find((r) => r.id === b.id)!.dueDate).toBe(b.dueDate);
+  });
+
+  it('leaves other items alone', () => {
+    const mine = openReview(toISODate(addDays(NOW, -1)));
+    const other = createReview({ practiceItemId: 'item-2', dueDate: toISODate(addDays(NOW, 1)), reviewType: 'retention' }, NOW);
+    const date = toISODate(addDays(NOW, 5));
+
+    const updated = applyReviewDateToRow({ reviews: [mine, other], reviewId: mine.id, instruction: date, now: NOW })!;
+
+    expect(updated.find((r) => r.id === mine.id)!.dueDate).toBe(date);
+    expect(updated.find((r) => r.id === other.id)!.dueDate).toBe(other.dueDate);
+  });
+});
+
 describe('computeReviewOutcome — the decision behind closing a block', () => {
+  it('requires an explicit now at the type level — this must never read the wall clock', () => {
+    // @ts-expect-error — `now` is required; omitting it must fail to compile
+    // rather than silently fall back to `new Date()`.
+    computeReviewOutcome({ item: item(), scheduleReview: true });
+  });
+
   it("clears the item's next review date when no review is scheduled", () => {
     const stale = item({ nextReviewDate: toISODate(addDays(NOW, -14)) });
     const outcome = computeReviewOutcome({ item: stale, result: 'stable_alone', scheduleReview: false, now: NOW });

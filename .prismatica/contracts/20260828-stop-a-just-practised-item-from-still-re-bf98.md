@@ -4,7 +4,7 @@ title: Stop a just-practised item from still reporting as overdue
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/1
 intent: 20260828-stop-a-just-practised-item-from-still-re-bf98
 tier: heavy
-stage: build
+stage: review
 baseline:
   commit: b157aec48b78e0a8ebe94b530241bf9a7fa392cd
   branch: main

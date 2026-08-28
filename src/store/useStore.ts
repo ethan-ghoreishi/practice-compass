@@ -9,6 +9,7 @@ import {
   computeReviewOutcome,
   resolveReviewDate,
   applyReviewDateToRows,
+  applyReviewDateToRow,
   clampSchedulingParams,
   createBlock,
   createInstrument,
@@ -989,8 +990,11 @@ export const useStore = create<StoreState>()(
       snoozeReview: (id, days = SNOOZE_DAYS_DEFAULT) => {
         const now = new Date();
         const { dueDate } = snoozePlan(days, now);
-        // The existing correct model: one date, resolved once and written to
-        // both sides via the shared coupling, SM-2 state untouched.
+        // The existing correct model: one date, resolved once. The write is
+        // scoped to the SELECTED row only (applyReviewDateToRow) — snoozing
+        // one due review must not silently move a sibling open review for
+        // the same item, unlike closeSession/updateItem where the item's
+        // whole schedule is what's being decided.
         const write = resolveReviewDate(dueDate)!;
         set((s) => {
           const review = s.db.reviews.find((r) => r.id === id);
@@ -999,12 +1003,8 @@ export const useStore = create<StoreState>()(
             db: {
               ...s.db,
               reviews:
-                applyReviewDateToRows({
-                  reviews: s.db.reviews,
-                  practiceItemId: review.practiceItemId,
-                  instruction: dueDate,
-                  now,
-                }) ?? s.db.reviews,
+                applyReviewDateToRow({ reviews: s.db.reviews, reviewId: id, instruction: dueDate, now }) ??
+                s.db.reviews,
               // Keep the item's own schedule in step so nothing shows overdue.
               items: s.db.items.map((i) =>
                 i.id === review.practiceItemId ? touch({ ...i, nextReviewDate: write.nextReviewDate }, now) : i,

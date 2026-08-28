@@ -308,6 +308,30 @@ export function applyReviewDateToRows(args: {
   return args.reviews.map((r) => (isOpenRowForItem(r) ? { ...r, dueDate, updatedAt: nowISO(args.now) } : r));
 }
 
+/**
+ * Apply a tri-state review-date instruction to ONE Review row, selected by
+ * its own id — the model `snoozeReview` needs. Unlike `applyReviewDateToRows`
+ * (item-scoped: every open row moves, for when the ITEM's date is what's
+ * being decided — closeSession, updateItem), this never touches a sibling
+ * open row for the same item: snoozing review X must move X, not everything
+ * else the item happens to have open.
+ */
+export function applyReviewDateToRow(args: {
+  reviews: Review[];
+  reviewId: ID;
+  instruction: ReviewDateInstruction;
+  now: Date;
+}): Review[] | undefined {
+  const write = resolveReviewDate(args.instruction);
+  if (!write) return undefined;
+
+  if (write.nextReviewDate === undefined) {
+    return args.reviews.filter((r) => r.id !== args.reviewId);
+  }
+  const dueDate = write.nextReviewDate;
+  return args.reviews.map((r) => (r.id === args.reviewId ? { ...r, dueDate, updatedAt: nowISO(args.now) } : r));
+}
+
 export interface ReviewOutcome {
   /**
    * Ready to hand straight to `applyBlockStats`: `undefined` keeps the
@@ -335,7 +359,8 @@ export function computeReviewOutcome(args: {
   /** Explicit override (e.g. a user-edited date on the close screen). */
   nextReviewDate?: ISODate;
   reviewType?: ReviewType;
-  now?: Date;
+  /** Required — this decision must never fall back to the wall clock. */
+  now: Date;
   params?: SchedulingParams;
 }): ReviewOutcome {
   const { item, result, scheduleReview, now, params } = args;
