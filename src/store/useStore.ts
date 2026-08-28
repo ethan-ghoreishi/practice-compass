@@ -1209,6 +1209,13 @@ export const useStore = create<StoreState>()(
       },
 
       deleteRoutine: (id) => {
+        // Deleting the routine currently running must not strand
+        // `activeRoutine` pointing at a now-dead id (every other routine's
+        // Start would then redirect to a "Routine not found" dead end with
+        // no way back). Finish it first — honestly saving whatever bound-item
+        // time has genuinely elapsed, same as any other early finish — rather
+        // than silently discarding it.
+        if (get().activeRoutine?.routineId === id) get().finishRoutine();
         set((s) => ({ db: { ...s.db, pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.id !== id) } }));
       },
 

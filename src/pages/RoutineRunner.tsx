@@ -29,7 +29,6 @@ export default function RoutineRunner() {
 
   const routine = db.pathwayRoutines.find((r) => r.id === routineId);
   const stage = routine?.stageId ? db.pathwayStages.find((s) => s.id === routine.stageId) : undefined;
-  const authoredSegments = routine ? segmentsForRun(routine.segments, shortOnTime) : [];
 
   // Snapshot of what was actually recorded, frozen at the moment of finishing
   // — the finished screen must show exactly what was saved, never a value
@@ -39,6 +38,15 @@ export default function RoutineRunner() {
 
   const isMine = !!routineId && activeRoutine?.routineId === routineId;
   const otherActive = activeRoutine && activeRoutine.routineId !== routineId ? activeRoutine : undefined;
+
+  // An existing run's segment list (short-on-time or not) is decided once, at
+  // start — never re-derived from whatever the URL happens to say now. A
+  // stale link (e.g. tapping "Short on time" on a routine already running in
+  // full) must not desync `authoredSegments` from `activeRoutine.segs`, which
+  // would misindex every segment lookup below. The URL param only seeds a
+  // fresh run.
+  const effectiveShortOnTime = isMine ? activeRoutine.shortOnTime : shortOnTime;
+  const authoredSegments = routine ? segmentsForRun(routine.segments, effectiveShortOnTime) : [];
 
   // A different routine is already running: resume it rather than letting a
   // fresh start here silently overwrite its unsaved elapsed time.
@@ -149,7 +157,7 @@ export default function RoutineRunner() {
         <div className="eyebrow">
           {stage ? `${stage.code} · ` : ''}
           {routine.name}
-          {shortOnTime ? ' · short on time' : ''}
+          {effectiveShortOnTime ? ' · short on time' : ''}
         </div>
         <div className="faint tiny">
           Segment {clock.segIndex + 1} of {authoredSegments.length}
