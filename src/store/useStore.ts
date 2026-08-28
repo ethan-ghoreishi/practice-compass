@@ -4,6 +4,7 @@ import { clearBlobs, deleteBlobsForOwner, idbStorage, storageWasEmpty } from './
 import { withRevision } from './revision';
 import {
   applyBlockStats,
+  applyRoutineRun,
   catalogForStage,
   isLosslesslyRemovable,
   computeReviewOutcome,
@@ -18,10 +19,19 @@ import {
   createMaterial,
   createReview,
   createSeedDB,
+  detachIncompatibleRoutinesForPathway,
+  detachRoutinesFromPathway,
+  detachRoutinesFromStage,
+  duplicateRoutineData,
+  focusForItem,
+  groupBlocksByItem,
   itemFromCatalogEntry,
+  retargetRoutineInstrument,
   snoozePlan,
   SNOOZE_DAYS_DEFAULT,
   todayISODate,
+  unbindItemFromRoutines,
+  unbindItemWhereInstrumentMismatch,
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
@@ -33,7 +43,6 @@ import {
   buildSetarClassLessons,
   missingSessionReferences,
   SETAR_CLASS_SESSIONS,
-  STRAND_TO_FOCUS,
   validateDB,
   type BlockMode,
   type BlockResult,
@@ -50,6 +59,7 @@ import {
   type MaterialSourceType,
   type MaterialStatus,
   type Pathway,
+  type PathwayRoutine,
   type PathwayStage,
   type PersianFields,
   type PracticeDB,
@@ -57,6 +67,8 @@ import {
   type Rating,
   type ReviewMode,
   type ReviewType,
+  type RoutineSegment,
+  type RunSegment,
   type SchedulingParams,
   type PlanSegment,
   type SessionPlan,
@@ -294,6 +306,25 @@ interface StoreState {
   moveStage: (id: ID, dir: -1 | 1) => void;
   /** Rename a section heading across all of a pathway's stages. */
   renameSection: (pathwayId: ID, oldGroup: string | undefined, newGroup: string) => void;
+
+  // Routines (ordinary editable data, placement optional, instrument required)
+  addRoutine: (input: {
+    name: string;
+    instrumentId: ID;
+    pathwayId?: ID;
+    stageId?: ID;
+    segments?: RoutineSegment[];
+  }) => ID;
+  /** Full-form save: a complete replace, not a partial patch. Changing the
+   *  instrument re-enforces the binding + placement invariants. */
+  updateRoutine: (
+    id: ID,
+    patch: { name: string; segments: RoutineSegment[]; instrumentId: ID; pathwayId?: ID; stageId?: ID },
+  ) => void;
+  deleteRoutine: (id: ID) => void;
+  duplicateRoutine: (id: ID) => ID;
+  /** Turn a finished run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time. */
+  finishRoutine: (runSegments: RunSegment[], elapsedSeconds: number) => void;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -601,6 +632,11 @@ export const useStore = create<StoreState>()(
         // it; null clears both sides honestly.
         const { nextReviewDate, ...rest } = patch;
         const write = resolveReviewDate(nextReviewDate);
+        const current = get().db.items.find((i) => i.id === id);
+        const newInstrumentId =
+          rest.instrumentId !== undefined && current && rest.instrumentId !== current.instrumentId
+            ? rest.instrumentId
+            : undefined;
         set((s) => ({
           db: {
             ...s.db,
@@ -613,6 +649,11 @@ export const useStore = create<StoreState>()(
             reviews:
               applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
               s.db.reviews,
+            // An item that changes instrument no longer belongs in a routine
+            // scoped to the old one — unbind it there; matching routines keep it.
+            pathwayRoutines: newInstrumentId
+              ? unbindItemWhereInstrumentMismatch(s.db.pathwayRoutines, id, newInstrumentId, now)
+              : s.db.pathwayRoutines,
           },
         }));
       },
@@ -645,6 +686,8 @@ export const useStore = create<StoreState>()(
                 ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== id) }, now)
                 : l,
             ),
+            // The segment survives as an unbound countdown — never removed.
+            pathwayRoutines: unbindItemFromRoutines(s.db.pathwayRoutines, id, now),
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -715,7 +758,7 @@ export const useStore = create<StoreState>()(
           instrumentId: item.instrumentId,
           materialId: item.materialId,
           mode: defaultModeForStatus(item.status),
-          focus: item.primaryFocus ?? (item.strand ? STRAND_TO_FOCUS[item.strand] : 'other'),
+          focus: focusForItem(item),
           targetMinutes: DEFAULT_DURATION_MINUTES,
         });
       },
@@ -939,8 +982,18 @@ export const useStore = create<StoreState>()(
 
       updatePathway: (id, patch) => {
         const now = new Date();
+        const current = get().db.pathways.find((p) => p.id === id);
+        const instrumentChanged = 'instrumentId' in patch && current && patch.instrumentId !== current.instrumentId;
         set((s) => ({
-          db: { ...s.db, pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)) },
+          db: {
+            ...s.db,
+            pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)),
+            // Neither side is silently rewritten to agree — an incompatible
+            // placed routine is detached instead.
+            pathwayRoutines: instrumentChanged
+              ? detachIncompatibleRoutinesForPathway(s.db.pathwayRoutines, id, patch.instrumentId, now)
+              : s.db.pathwayRoutines,
+          },
         }));
       },
 
@@ -953,7 +1006,8 @@ export const useStore = create<StoreState>()(
               ...s.db,
               pathways: s.db.pathways.filter((p) => p.id !== id),
               pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
-              pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.pathwayId !== id),
+              // A user's routine is detached, never deleted — same rule as items.
+              pathwayRoutines: detachRoutinesFromPathway(s.db.pathwayRoutines, id, now),
               // Items are kept — they simply leave their stages.
               items: s.db.items.map((i) =>
                 i.stageId && stageIds.has(i.stageId) ? touch({ ...i, stageId: undefined }, now) : i,
@@ -981,7 +1035,7 @@ export const useStore = create<StoreState>()(
             ...s.db,
             pathways: [...s.db.pathways, ...newP],
             pathwayStages: [...s.db.pathwayStages, ...seeded.pathwayStages.filter((x) => newIds.has(x.pathwayId))],
-            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => newIds.has(x.pathwayId))],
+            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => !!x.pathwayId && newIds.has(x.pathwayId))],
           },
         }));
       },
@@ -1018,7 +1072,9 @@ export const useStore = create<StoreState>()(
           db: {
             ...s.db,
             pathwayStages: s.db.pathwayStages.filter((st) => st.id !== id),
-            pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.stageId !== id),
+            // Stage deletion is not pathway deletion — the routine keeps its
+            // pathwayId and only stageId is cleared.
+            pathwayRoutines: detachRoutinesFromStage(s.db.pathwayRoutines, id, now),
             // Items stay — they just leave the stage.
             items: s.db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
             // Un-pin any pathway pointing at the removed stage.
@@ -1064,6 +1120,88 @@ export const useStore = create<StoreState>()(
             },
           };
         });
+      },
+
+      // --- Routines ----------------------------------------------------------
+
+      addRoutine: (input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const routine: PathwayRoutine = {
+          id: newId(),
+          instrumentId: input.instrumentId,
+          pathwayId: input.pathwayId,
+          stageId: input.stageId,
+          name: input.name.trim() || 'New routine',
+          segments: input.segments ?? [],
+          order: get().db.pathwayRoutines.length,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
+        return routine.id;
+      },
+
+      updateRoutine: (id, patch) => {
+        const now = new Date();
+        const { db } = get();
+        const current = db.pathwayRoutines.find((r) => r.id === id);
+        if (!current) return;
+        const instrumentChanged = patch.instrumentId !== current.instrumentId;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayRoutines: s.db.pathwayRoutines.map((r) => {
+              if (r.id !== id) return r;
+              const merged = touch(
+                {
+                  ...r,
+                  name: patch.name.trim() || r.name,
+                  segments: patch.segments,
+                  instrumentId: patch.instrumentId,
+                  pathwayId: patch.pathwayId,
+                  stageId: patch.stageId,
+                },
+                now,
+              );
+              if (!instrumentChanged) return merged;
+              // Changing the instrument re-enforces the invariants rather
+              // than trusting whatever the form happened to submit for
+              // bindings/placement under the old instrument.
+              const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
+              return retargetRoutineInstrument(merged, patch.instrumentId, s.db.items, pathway, now);
+            }),
+          },
+        }));
+      },
+
+      deleteRoutine: (id) => {
+        set((s) => ({ db: { ...s.db, pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.id !== id) } }));
+      },
+
+      duplicateRoutine: (id) => {
+        const now = new Date();
+        const { db } = get();
+        const routine = db.pathwayRoutines.find((r) => r.id === id);
+        if (!routine) return '';
+        const copy = duplicateRoutineData(routine, db.pathwayRoutines.length, now);
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, copy] } }));
+        return copy.id;
+      },
+
+      finishRoutine: (runSegments, elapsedSeconds) => {
+        const now = new Date();
+        const { db } = get();
+        const outcome = applyRoutineRun(runSegments, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
+        if (outcome.blocks.length === 0) return;
+        const updatedById = new Map(outcome.items.map((i) => [i.id, i]));
+        set((s) => ({
+          db: {
+            ...s.db,
+            blocks: [...s.db.blocks, ...outcome.blocks],
+            items: s.db.items.map((i) => updatedById.get(i.id) ?? i),
+          },
+        }));
       },
 
       exportDB: () => get().db,

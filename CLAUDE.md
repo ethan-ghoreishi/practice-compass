@@ -40,7 +40,11 @@ instrument, everything below it (recommendation, class work, reviews, pathway po
 quick add, Start) is scoped to that instrument, and the primary recommendation must stay
 above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
 secondary choice — never the default. Never hard‑code a morning/evening schedule and
-never surface another instrument's work inside a session.
+never surface another instrument's work inside a session. The collapsed Session Plan
+card (`PlanCard` in `Today.tsx`) gains a routines branch in its expanded panel —
+routines scoped to the session instrument (`routinesForInstrument`), listed with an
+obvious "New routine", or "Create a routine" when there are none yet — rather than
+Today growing a whole new section; the collapsed pill itself stays unchanged.
 
 ## Review actions have honest, distinct semantics
 
@@ -110,6 +114,38 @@ own pace, on a route they trust. Protect that:
   with full CRUD. Sections are the stages' `group` string (rename via `renameSection`;
   new stages pick their section explicitly). Deleting a stage/pathway must never delete
   items — only detach them, and clear any stale `currentStageId` pin.
+- **Routines are ordinary editable data belonging to an instrument** (`src/domain/routines.ts`,
+  tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
+  `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
+  (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
+  every routine created from now on. `pathwayId`/`stageId` are optional PLACEMENT, not
+  identity, so a routine can exist unplaced ("my Setar warm-up"); deleting a pathway or
+  stage DETACHES its routines (clears the placement) rather than deleting them — pathway
+  deletion clears both `pathwayId` and `stageId`, stage deletion clears only `stageId`.
+  `RoutineSegment.itemId` optionally binds a segment to a real `PracticeItem`; a bound
+  itemId must always match the routine's instrument, enforced at every edge (item deleted →
+  unbind everywhere; item's instrument changes → unbind from now-mismatched routines;
+  routine's instrument changes → clear mismatched bindings and detach an incompatible
+  placement; pathway's instrument changes → detach an incompatible placed routine) — never
+  by silently rewriting either side's instrument. Finishing a run writes **at most one
+  block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
+  ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
+  Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
+  the factory default `not_logged`: a routine records time, never a judgement, and never
+  completes a review or advances SM-2. `focusForItem` (`src/domain/defaults.ts`) is the
+  shared strong focus default — the same one `startItemSession` uses — so a routine block
+  is indistinguishable from starting that item directly; do not reintroduce a third copy of
+  that fallback expression. The runner (`RoutineRunner.tsx`) derives remaining time from a
+  wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock` in `routines.ts`),
+  the same accumulated-plus-live-since-a-timestamp shape as `sessionElapsedSeconds` — so
+  pausing genuinely freezes it and a backgrounded/locked phone catches up across MULTIPLE
+  segment boundaries at once rather than losing time or advancing one tick at a time. Skip
+  clamps the current segment's effective duration to whatever actually elapsed (never the
+  full authored minutes); a segment played to completion keeps its full duration. Choosing
+  "short on time" (`segmentsForRun`) drops every non-essential segment, honouring the
+  syllabus's asterisk rule. Today's plan card gains a routines branch (list + "New
+  routine"; "Create a routine" when the session instrument has none) rather than a new
+  section — see Today's own bullet below.
 - **The current stage is the user's choice.** Teacher-led work jumps around:
   `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
   fallback. Never treat linear order as truth for Setar/Tar.
@@ -332,7 +368,11 @@ duplicate the item.
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`.
+  `SCHEMA_VERSION`. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  it belonged to — but only when that pathway names an instrument that actually resolves
+  in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
+  reference all leave the routine honestly unscoped rather than inventing one), and never
+  overwrites a routine that already has one.
 - **One file per route** under `src/pages/`. Shared UI primitives live in
   `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
   React Fast Refresh and the `react-refresh` lint rule happy).

@@ -116,6 +116,30 @@ function migrateToV10(db: PracticeDB): PracticeDB {
 }
 
 /**
+ * v10 → v11: routines gained an optional `instrumentId`, and `pathwayId` /
+ * `stageId` became placement rather than identity. Backfill a routine's
+ * instrument from the pathway it belonged to — but ONLY when that pathway
+ * names an instrument that actually resolves in `db.instruments`. A General
+ * (no-instrument) pathway, a legacy empty-string id (migrateToV3's `?? ''`),
+ * or a dangling reference all leave the routine unscoped rather than
+ * fabricating an instrument for it. A routine that already has an
+ * instrumentId (already-current data) is never overwritten, which is also
+ * what keeps this idempotent.
+ */
+function migrateToV11(db: PracticeDB): PracticeDB {
+  const instrumentIds = new Set((db.instruments ?? []).map((i) => i.id));
+  return {
+    ...db,
+    pathwayRoutines: (db.pathwayRoutines ?? []).map((r) => {
+      if (r.instrumentId !== undefined) return r;
+      const pathway = r.pathwayId ? (db.pathways ?? []).find((p) => p.id === r.pathwayId) : undefined;
+      const resolved = pathway?.instrumentId && instrumentIds.has(pathway.instrumentId) ? pathway.instrumentId : undefined;
+      return resolved ? { ...r, instrumentId: resolved } : r;
+    }),
+  };
+}
+
+/**
  * Bring a database of any known version fully to the current schema. Must
  * run BEFORE normalisation to the current shape — legacy fields the chain
  * reads (`pathwaySteps`, an attachment's `itemId`) would otherwise already be
@@ -132,5 +156,6 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   if (fromVersion < 8) next = migrateToV8(next);
   if (fromVersion < 9) next = migrateToV9(next);
   if (fromVersion < 10) next = migrateToV10(next);
+  if (fromVersion < 11) next = migrateToV11(next);
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

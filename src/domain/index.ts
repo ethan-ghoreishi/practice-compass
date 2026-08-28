@@ -8,6 +8,7 @@ export * from './scheduling';
 export * from './blocks';
 export * from './pathways';
 export * from './pathwaySeed';
+export * from './routines';
 export * from './farsi';
 export * from './persian';
 export * from './repertoire';

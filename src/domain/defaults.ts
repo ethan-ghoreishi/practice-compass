@@ -1,3 +1,4 @@
+import { STRAND_TO_FOCUS } from './labels';
 import type { BlockMode, FocusArea, ItemStatus, PracticeItem } from './types';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,19 @@ export function defaultModeForStatus(status: ItemStatus): BlockMode {
   return MODE_BY_STATUS[status];
 }
 
+/**
+ * The one focus default: the item's own primaryFocus, else its strand's
+ * focus, else 'other'. `defaultFocusForItem` (the StartBlock/sessionHelpers
+ * name) and `focusForItem` (the startItemSession/routines name) are the same
+ * rule — kept as two exports only so existing call sites don't need renaming.
+ * plan.ts keeps its own untouched copy of this expression independently (a
+ * hard non-goal for this lane); this pair is the one shared implementation
+ * everything else calls, so the expression is never tripled.
+ */
+export function focusForItem(item: Pick<PracticeItem, 'primaryFocus' | 'strand'>): FocusArea {
+  return item.primaryFocus ?? (item.strand ? STRAND_TO_FOCUS[item.strand] : 'other');
+}
+
 export function defaultFocusForItem(item: PracticeItem): FocusArea {
-  return item.primaryFocus ?? 'other';
+  return focusForItem(item);
 }

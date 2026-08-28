@@ -155,14 +155,27 @@ export default function StageDetail() {
         </header>
       )}
 
-      {routines.length > 0 && (
-        <section className="stack-sm">
+      <section className="stack-sm">
+        <div className="row between">
           <div className="section-label">Guided routines</div>
-          {routines.map((r) => (
-            <RoutineCard key={r.id} routine={r} onStart={() => navigate(`/routine/${r.id}`)} />
-          ))}
-        </section>
-      )}
+          {pathway && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => navigate(`/routine/new?instrument=${pathway.instrumentId ?? ''}&pathway=${pathway.id}&stage=${stage.id}`)}
+            >
+              <PlusIcon /> New routine
+            </button>
+          )}
+        </div>
+        {routines.map((r) => (
+          <RoutineCard
+            key={r.id}
+            routine={r}
+            onStart={(short) => navigate(`/routine/${r.id}${short ? '?short=1' : ''}`)}
+            onEdit={() => navigate(`/routine/${r.id}/edit`)}
+          />
+        ))}
+      </section>
 
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
@@ -316,21 +329,43 @@ function UnitRow({
   );
 }
 
-function RoutineCard({ routine, onStart }: { routine: PathwayRoutine; onStart: () => void }) {
+function RoutineCard({
+  routine,
+  onStart,
+  onEdit,
+}: {
+  routine: PathwayRoutine;
+  onStart: (shortOnTime: boolean) => void;
+  onEdit: () => void;
+}) {
   const total = routine.segments.reduce((s, x) => s + x.minutes, 0);
+  const bound = routine.segments.some((s) => s.itemId);
+  const hasEssential = routine.segments.some((s) => s.essential);
   return (
-    <article className="card row between">
-      <div>
-        <div className="title-md" style={{ fontSize: '1.02rem' }}>
-          {routine.name}
+    <article className="card stack-sm">
+      <div className="row between">
+        <div>
+          <div className="title-md" style={{ fontSize: '1.02rem' }}>
+            {routine.name}
+          </div>
+          <div className="tiny faint">
+            {routine.segments.length} segments · {total} min{bound ? '' : ' · guided warm-up, not logged as practice'}
+          </div>
         </div>
-        <div className="tiny faint">
-          {routine.segments.length} segments · {total} min · guided warm-up, not logged as practice
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onEdit}>
+            Edit
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => onStart(false)}>
+            <PlayIcon /> Start
+          </button>
         </div>
       </div>
-      <button className="btn btn-primary btn-sm" onClick={onStart}>
-        <PlayIcon /> Start
-      </button>
+      {hasEssential && (
+        <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => onStart(true)}>
+          Short on time — essentials only
+        </button>
+      )}
     </article>
   );
 }

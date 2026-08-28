@@ -11,6 +11,7 @@ import {
   nextLessonDates,
   recommend,
   recommendForInstrument,
+  routinesForInstrument,
   stageProgress,
   stageUnits,
   todayISODate,
@@ -22,7 +23,7 @@ import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
 import { EmptyState, StatusBadge } from '../components/ui';
-import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, SparkIcon } from '../components/icons';
+import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, PlusIcon, SparkIcon } from '../components/icons';
 import { relativeDay } from '../components/format';
 import InstallHint from '../components/InstallHint';
 import QuickAdd from '../components/QuickAdd';
@@ -106,8 +107,10 @@ const PLAN_DURATIONS = [15, 20, 30, 45, 60] as const;
 function PlanCard({ instrumentId }: { instrumentId: string }) {
   const activePlan = useStore((s) => s.activePlan);
   const planMinutes = useStore((s) => s.planMinutesByInstrument);
+  const routines = useStore((s) => s.db.pathwayRoutines);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const myRoutines = routinesForInstrument(routines, instrumentId);
 
   // Resume takes priority: if a plan is running (for any instrument), offer it.
   if (activePlan) {
@@ -152,6 +155,36 @@ function PlanCard({ instrumentId }: { instrumentId: string }) {
             {m} min
           </button>
         ))}
+      </div>
+
+      <div className="stack-sm" style={{ borderTop: '1px solid var(--border)', paddingTop: 'var(--space-3)' }}>
+        <div className="row between">
+          <span style={{ fontWeight: 600 }}>Routines</span>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
+            <PlusIcon /> New routine
+          </button>
+        </div>
+        {myRoutines.length === 0 ? (
+          <button className="btn" style={{ width: '100%' }} onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
+            Create a routine
+          </button>
+        ) : (
+          <div className="stack-sm">
+            {myRoutines.map((r) => (
+              <button
+                key={r.id}
+                className="card row between"
+                style={{ width: '100%', cursor: 'pointer' }}
+                onClick={() => navigate(`/routine/${r.id}`)}
+              >
+                <span className="truncate" dir="auto">
+                  {r.name}
+                </span>
+                <PlayIcon width={16} height={16} />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
