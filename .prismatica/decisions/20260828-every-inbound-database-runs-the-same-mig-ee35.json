@@ -1,0 +1,11 @@
+{
+  "id": "20260828-every-inbound-database-runs-the-same-mig-ee35",
+  "contractId": "20260828-every-inbound-database-runs-the-same-mig-ee35",
+  "patchId": "bfac7e080c048aedb2628e5dc622d004f33e58c3",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-08-28T18:43:28.071Z",
+  "algorithm": "ed25519",
+  "signature": "yOntfSfplmf3jSJlfS7ab+ocP3KhISpZkJnZ8rnHJp9itSSy5BgHz38wuudKF4fA9cCKy0Y0q8vDSdLVFVycCw==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

@@ -23,4 +23,5 @@ export * from './insights';
 export * from './report';
 export * from './factories';
 export * from './seed';
+export * from './migrations';
 export * from './io';
