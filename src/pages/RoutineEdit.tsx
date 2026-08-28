@@ -15,6 +15,7 @@ export default function RoutineEdit() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const db = useStore((s) => s.db);
+  const activeRoutine = useStore((s) => s.activeRoutine);
   const addRoutine = useStore((s) => s.addRoutine);
   const updateRoutine = useStore((s) => s.updateRoutine);
   const deleteRoutine = useStore((s) => s.deleteRoutine);
@@ -249,7 +250,11 @@ export default function RoutineEdit() {
           <button
             className="btn btn-danger"
             onClick={() => {
-              if (confirm(`Delete the routine "${existing.name}"?`)) {
+              const isRunning = activeRoutine?.routineId === existing.id;
+              const question = isRunning
+                ? `Delete the routine "${existing.name}"? It's currently running — this saves what you've practised so far, then deletes the routine.`
+                : `Delete the routine "${existing.name}"?`;
+              if (confirm(question)) {
                 deleteRoutine(existing.id);
                 navigate(backTo, { replace: true });
               }

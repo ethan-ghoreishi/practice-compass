@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { aggregateItemMinutes, locateClock, runElapsedSeconds, segmentsForRun, toRunSegments, type RunSegment } from '../domain';
+import { aggregateItemMinutes, locateClock, runElapsedSeconds, segmentsForRun, type RunSegment } from '../domain';
 import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
@@ -39,14 +39,21 @@ export default function RoutineRunner() {
   const isMine = !!routineId && activeRoutine?.routineId === routineId;
   const otherActive = activeRoutine && activeRoutine.routineId !== routineId ? activeRoutine : undefined;
 
-  // An existing run's segment list (short-on-time or not) is decided once, at
-  // start — never re-derived from whatever the URL happens to say now. A
-  // stale link (e.g. tapping "Short on time" on a routine already running in
-  // full) must not desync `authoredSegments` from `activeRoutine.segs`, which
-  // would misindex every segment lookup below. The URL param only seeds a
-  // fresh run.
+  // An existing run's segment list — content AND short-on-time filtering — is
+  // decided once, at start, and frozen into activeRoutine. It is never
+  // re-derived from the routine's CURRENT data: the routine can be edited
+  // (segments added/removed) from its Stage/Pathway page with no "is this
+  // active" guard while a run is in progress, and re-deriving live would
+  // desync this list's length from activeRoutine.segs — indexing past the
+  // end of one of them, a blank runner screen. A stale `?short=1` link on an
+  // already-running full routine is the same family of bug. The URL param
+  // and the routine's live data only seed a FRESH run.
   const effectiveShortOnTime = isMine ? activeRoutine.shortOnTime : shortOnTime;
-  const authoredSegments = routine ? segmentsForRun(routine.segments, effectiveShortOnTime) : [];
+  const authoredSegments = isMine
+    ? activeRoutine.authoredSegments
+    : routine
+      ? segmentsForRun(routine.segments, effectiveShortOnTime)
+      : [];
 
   // A different routine is already running: resume it rather than letting a
   // fresh start here silently overwrite its unsaved elapsed time.
@@ -59,7 +66,7 @@ export default function RoutineRunner() {
   // Nothing running yet for this routine: begin one.
   useEffect(() => {
     if (routine && routineId && !activeRoutine && !result) {
-      startRoutineRun(routineId, shortOnTime, toRunSegments(authoredSegments));
+      startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routine, routineId, shortOnTime]);

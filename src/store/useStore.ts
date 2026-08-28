@@ -26,10 +26,10 @@ import {
   focusForItem,
   groupBlocksByItem,
   itemFromCatalogEntry,
-  locateClock,
   retargetRoutineInstrument,
   runElapsedSeconds,
   skipCurrentSegment,
+  toRunSegments,
   snoozePlan,
   SNOOZE_DAYS_DEFAULT,
   todayISODate,
@@ -137,6 +137,17 @@ export interface ActivePlan {
 export interface ActiveRoutine {
   routineId: ID;
   shortOnTime: boolean;
+  /**
+   * The segment list as it was AT START — label, essential, itemId — frozen
+   * here rather than re-derived live from the routine's current data. The
+   * routine can be edited (segments added/removed) while a run is in
+   * progress (Edit is reachable from StageDetail/PathwayDetail with no
+   * "is this active" guard); re-deriving from live data would desync this
+   * list's length from `segs` below and index past the end of one of them —
+   * a blank runner screen. A run's segments are what was actually started.
+   */
+  authoredSegments: RoutineSegment[];
+  /** Same length/order as authoredSegments; .seconds mutates (Skip clamps it). */
   segs: RunSegment[];
   accumulatedSeconds: number;
   running: boolean;
@@ -350,7 +361,7 @@ interface StoreState {
    * DIFFERENT routine is already active — callers must resume that one
    * first, so its in-flight elapsed time is never silently overwritten.
    */
-  startRoutineRun: (routineId: ID, shortOnTime: boolean, segs: RunSegment[]) => void;
+  startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
   pauseRoutineRun: () => void;
   resumeRoutineRun: () => void;
   /** Mark the current segment skipped; finishes the run if that was the last one. */
@@ -1229,11 +1240,19 @@ export const useStore = create<StoreState>()(
         return copy.id;
       },
 
-      startRoutineRun: (routineId, shortOnTime, segs) => {
+      startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
         const { activeRoutine } = get();
         if (activeRoutine && activeRoutine.routineId !== routineId) return;
         set({
-          activeRoutine: { routineId, shortOnTime, segs, accumulatedSeconds: 0, running: true, runningSince: nowISO() },
+          activeRoutine: {
+            routineId,
+            shortOnTime,
+            authoredSegments,
+            segs: toRunSegments(authoredSegments),
+            accumulatedSeconds: 0,
+            running: true,
+            runningSince: nowISO(),
+          },
         });
       },
 
@@ -1256,13 +1275,20 @@ export const useStore = create<StoreState>()(
         set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
       },
 
+      // Mutates segs only — never decides the run is over. Whether a skip
+      // lands on the final segment (locateClock's `finished` flips true) is
+      // detected uniformly by RoutineRunner's one completion effect, the same
+      // place natural (tick/background-catch-up) completion is detected. A
+      // second "did this finish it" branch here previously called
+      // finishRoutine() directly, bypassing the component's result snapshot
+      // and leaving the screen blank once activeRoutine was cleared out from
+      // under it.
       skipRoutineRun: () => {
         const { activeRoutine } = get();
         if (!activeRoutine) return;
         const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
         const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
         set({ activeRoutine: { ...activeRoutine, segs } });
-        if (locateClock(segs, elapsedSeconds).finished) get().finishRoutine();
       },
 
       finishRoutine: () => {

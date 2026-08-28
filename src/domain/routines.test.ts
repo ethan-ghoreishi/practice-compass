@@ -197,6 +197,43 @@ describe('the wall clock: reads real elapsed time, not a tick count', () => {
     expect(minutes.get('short')).toBe(1); // 60s -> 1 min, not the authored 3
     expect(minutes.get('full')).toBe(2); // full 120s authored duration
   });
+
+  // The property RoutineRunner's single completion effect relies on to catch
+  // EVERY way a run can end (natural tick, background catch-up, or Skip) in
+  // one place: skipping the run's last remaining segment must make the very
+  // next locateClock call report `finished`, with no separate "did skip end
+  // it" signal needed. A store-level fix once called finishRoutine() directly
+  // from inside the skip action instead of trusting this property — bypassing
+  // the component's result snapshot and leaving the screen blank.
+  it('skipping the last segment finishes the run immediately', () => {
+    const segs: RunSegment[] = [
+      { itemId: 'a', seconds: 60 },
+      { itemId: 'b', seconds: 60 },
+    ];
+    // 70s in: segment b (the last one) is 10s underway when Skip is tapped.
+    const afterSkip = skipCurrentSegment(segs, 70);
+    expect(locateClock(afterSkip, 70).finished).toBe(true);
+  });
+
+  it('skipping a middle segment does not finish the run, and lands cleanly at the start of the next one', () => {
+    const segs: RunSegment[] = [
+      { itemId: 'a', seconds: 60 },
+      { itemId: 'b', seconds: 60 },
+      { itemId: 'c', seconds: 60 },
+    ];
+    // 20s into segment a (the first, not last) when Skip is tapped.
+    const afterSkip = skipCurrentSegment(segs, 20);
+    const clock = locateClock(afterSkip, 20);
+    expect(clock.finished).toBe(false);
+    expect(clock.segIndex).toBe(1); // landed on b
+    expect(clock.segElapsedSeconds).toBe(0); // b starts fresh, no carryover
+  });
+
+  it('skipping the single segment of a one-segment run finishes it (the boundary both routines and short-on-time single-essential-segment runs can hit)', () => {
+    const segs: RunSegment[] = [{ itemId: 'only', seconds: 60 }];
+    const afterSkip = skipCurrentSegment(segs, 5);
+    expect(locateClock(afterSkip, 5).finished).toBe(true);
+  });
 });
 
 describe('aggregateItemMinutes: the whole-minute convention, at its edges', () => {
