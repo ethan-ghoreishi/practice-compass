@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { validateDB, parseImport } from './io';
+import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-import { SCHEMA_VERSION } from './types';
+import { SCHEMA_VERSION, type PracticeDB } from './types';
 import { addDays, nowISO, toISODate } from './util';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
@@ -75,10 +76,13 @@ describe('validateDB — backward-compatible import', () => {
       items: [item],
       pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
     };
-    const out = validateDB(legacy);
     // migrateToV5's overwrite behaviour wins over the old "fill only when
-    // empty" precedence — the same result whichever path the data arrived by.
-    expect(out.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
+    // empty" precedence — the same result whichever path the data arrived by:
+    // the chain directly, and the real import entry point.
+    const viaChain = migrateToCurrent(legacy as unknown as PracticeDB, 4);
+    expect(viaChain.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
+    const viaImport = validateDB(legacy);
+    expect(viaImport.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
   });
 
   it('returns a legacy backup with no schemaVersion fully migrated', () => {

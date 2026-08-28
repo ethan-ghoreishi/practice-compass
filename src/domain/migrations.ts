@@ -25,11 +25,15 @@ export const OLDEST_SCHEMA_VERSION = 2;
  */
 function migrateToV3(db: PracticeDB): PracticeDB {
   if ('pathways' in (db as unknown as Record<string, unknown>)) return db;
+  // db.instruments is a fixed part of the PracticeDB type, but this function
+  // now also runs directly on raw, untrusted import data (not just already-
+  // valid persisted state) — guard the one field it reads before validation.
+  const instruments = db.instruments ?? [];
   const ids = {
-    guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-    setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
+    guitar: instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
+    setar: instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
     tar:
-      db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
+      instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
   };
   const seeded = seedPathways(ids);
   const next: PracticeDB & { curriculum?: unknown } = { ...db, ...seeded };

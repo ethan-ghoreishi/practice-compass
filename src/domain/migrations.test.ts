@@ -18,6 +18,13 @@ function legacyV2Fixture(): PracticeDB {
   } as unknown as PracticeDB;
 }
 
+// A database that has already been through the full chain once — every
+// optional field the chain normalises (recordings, kind, ...) is filled in,
+// so re-running the whole chain over it (fromVersion held at the oldest)
+// exercises v4-v10's actual idempotency, not just their version gates being
+// skipped.
+const NORMALIZED = migrateToCurrent(createSeedDB(NOW), OLDEST_SCHEMA_VERSION);
+
 describe('migrateToCurrent', () => {
   it('migrates an older database through to the current version instead of stamping it', () => {
     const out = migrateToCurrent(legacyV2Fixture(), 2);
@@ -28,9 +35,7 @@ describe('migrateToCurrent', () => {
   });
 
   it('leaves an already-current database unchanged through the chain', () => {
-    const db = createSeedDB(NOW);
-    const out = migrateToCurrent(db, SCHEMA_VERSION);
-    expect(out).toEqual(db);
+    expect(migrateToCurrent(NORMALIZED, OLDEST_SCHEMA_VERSION)).toEqual(NORMALIZED);
   });
 
   it('applying the chain twice produces the same result as applying it once', () => {
@@ -40,16 +45,12 @@ describe('migrateToCurrent', () => {
   });
 
   it('does not seed pathways into an unversioned current-shaped database', () => {
-    const db = createSeedDB(NOW);
-    const currentShaped: PracticeDB = { ...db, pathways: [] as Pathway[] };
+    const currentShaped: PracticeDB = { ...NORMALIZED, pathways: [] as Pathway[] };
     const out = migrateToCurrent(currentShaped, OLDEST_SCHEMA_VERSION);
     // The whole chain ran (fromVersion held at the oldest), yet the `pathways`
-    // key's mere presence — empty — stopped v3 from reseeding it.
-    expect(out.pathways).toEqual([]);
-    expect(out.pathwayStages).toEqual(db.pathwayStages);
-    expect(out.pathwayRoutines).toEqual(db.pathwayRoutines);
-    expect(out.items).toEqual(currentShaped.items);
-    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    // key's mere presence — empty — stopped v3 from reseeding it, and v4-v10
+    // found nothing left to normalise: unchanged apart from schemaVersion.
+    expect(out).toEqual({ ...currentShaped, schemaVersion: SCHEMA_VERSION });
   });
 
   it('still seeds pathways for a genuine pre-v3 database with no pathways key', () => {
