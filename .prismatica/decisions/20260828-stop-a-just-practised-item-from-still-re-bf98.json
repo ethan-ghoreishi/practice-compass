@@ -1,0 +1,11 @@
+{
+  "id": "20260828-stop-a-just-practised-item-from-still-re-bf98",
+  "contractId": "20260828-stop-a-just-practised-item-from-still-re-bf98",
+  "patchId": "15e1edde1886d71fd1b664ad8c70a1833b96f9e5",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-08-28T15:46:35.043Z",
+  "algorithm": "ed25519",
+  "signature": "yRB01SoNqLajbchHERpcqfp7uhIdVpBxcZB7Q9OFupyCVmrYN/Wue398AvnMoyZH1tLM3Npi1JJkCO35XgmtAA==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}
