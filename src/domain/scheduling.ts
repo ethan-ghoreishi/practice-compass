@@ -1,12 +1,14 @@
 import type {
   BlockResult,
+  ID,
   ISODate,
   ItemStatus,
   PracticeItem,
+  Review,
   ReviewType,
   SchedulingParams,
 } from './types';
-import { addDaysISODate, todayISODate } from './util';
+import { addDaysISODate, nowISO, todayISODate } from './util';
 import { daysSinceTouched } from './scoring';
 
 // ---------------------------------------------------------------------------
@@ -148,7 +150,9 @@ export function computeReview(
       rationale: `Fixed cadence: every ${interval} day${interval === 1 ? '' : 's'}.`,
       srReps: reps0,
       srEase: ease0,
-      srIntervalDays: interval,
+      // Keep the underlying SM-2 base untouched — a fixed cadence must not
+      // overwrite it, or switching back to Auto silently inherits it (§1.4).
+      srIntervalDays: base0,
     };
   }
 
@@ -249,6 +253,110 @@ export function suggestStatusAfterBlock(args: {
 export function shouldSuggestDormant(item: PracticeItem, now: Date): boolean {
   if (item.status === 'maintenance' || item.status === 'dormant') return false;
   return daysSinceTouched(item, now) >= 30;
+}
+
+// --- The one place a review-date write is decided ---------------------------
+//
+// An item's nextReviewDate and its Review row's dueDate must always move
+// together — that's the whole fix. `resolveReviewDate` is the single,
+// tri-state primitive every call site (closeSession, updateItem,
+// snoozeReview) routes through: absent/undefined leaves the schedule exactly
+// as it is, `null` deliberately clears it, an ISODate sets both sides to that
+// one value.
+
+export type ReviewDateInstruction = ISODate | null | undefined;
+
+export interface ReviewDateWrite {
+  /** What PracticeItem.nextReviewDate becomes. `undefined` clears it. */
+  nextReviewDate: ISODate | undefined;
+}
+
+/**
+ * Resolve a tri-state review-date instruction into the write to apply.
+ * Returns `undefined` when nothing should change (the caller leaves both the
+ * item and any review row exactly as they are).
+ */
+export function resolveReviewDate(instruction: ReviewDateInstruction): ReviewDateWrite | undefined {
+  if (instruction === undefined) return undefined;
+  return { nextReviewDate: instruction ?? undefined };
+}
+
+/**
+ * Apply a tri-state review-date instruction to an item's Review rows.
+ * Every OPEN row belonging to `practiceItemId` moves with the item: absent
+ * leaves the array exactly as it is (returns `undefined`), null removes those
+ * rows (there's nothing honest to point them at once the item has no next
+ * review), an ISODate moves them to that date. This is the coupling that
+ * `resolveReviewDate` alone cannot prove — the item and its review rows are
+ * always the same array operation.
+ */
+export function applyReviewDateToRows(args: {
+  reviews: Review[];
+  practiceItemId: ID;
+  instruction: ReviewDateInstruction;
+  now: Date;
+}): Review[] | undefined {
+  const write = resolveReviewDate(args.instruction);
+  if (!write) return undefined;
+
+  const isOpenRowForItem = (r: Review) => r.practiceItemId === args.practiceItemId && !r.completedAt;
+
+  if (write.nextReviewDate === undefined) {
+    return args.reviews.filter((r) => !isOpenRowForItem(r));
+  }
+  const dueDate = write.nextReviewDate;
+  return args.reviews.map((r) => (isOpenRowForItem(r) ? { ...r, dueDate, updatedAt: nowISO(args.now) } : r));
+}
+
+export interface ReviewOutcome {
+  /**
+   * Ready to hand straight to `applyBlockStats`: `undefined` keeps the
+   * item's existing date, `null` clears it, an ISODate sets it.
+   */
+  nextReviewDate: ISODate | null | undefined;
+  /** The new Review row to create, when a review was genuinely scheduled. */
+  review?: { dueDate: ISODate; reviewType: ReviewType };
+  /** SM-2 state to persist — omitted entirely when no review was scheduled,
+   *  so declining one never fabricates review history (§1.3). */
+  sr?: { srReps: number; srEase: number; srIntervalDays: number };
+}
+
+/**
+ * The decision behind closing a block: whether the item gets a next review
+ * at all, and — when it does — the ONE date written to both the item and its
+ * new Review row (§1.2). Declining clears the item's schedule outright and
+ * leaves SM-2 state untouched (§1.1, §1.3); accepting always uses the same
+ * computed date for both sides.
+ */
+export function computeReviewOutcome(args: {
+  item: PracticeItem;
+  result?: BlockResult;
+  scheduleReview: boolean;
+  /** Explicit override (e.g. a user-edited date on the close screen). */
+  nextReviewDate?: ISODate;
+  reviewType?: ReviewType;
+  now?: Date;
+  params?: SchedulingParams;
+}): ReviewOutcome {
+  const { item, result, scheduleReview, now, params } = args;
+
+  if (!scheduleReview) {
+    return { nextReviewDate: null };
+  }
+
+  const comp = computeReview(item, result, now, params);
+  const write = resolveReviewDate(args.nextReviewDate ?? comp?.dueDate);
+  if (!write) {
+    // Nothing resolved (e.g. manual mode with no explicit override) — leave
+    // the schedule exactly as it is rather than inventing one.
+    return { nextReviewDate: undefined };
+  }
+
+  return {
+    nextReviewDate: write.nextReviewDate,
+    review: { dueDate: write.nextReviewDate!, reviewType: args.reviewType ?? comp?.reviewType ?? 'retention' },
+    sr: comp ? { srReps: comp.srReps, srEase: comp.srEase, srIntervalDays: comp.srIntervalDays } : undefined,
+  };
 }
 
 // --- Review actions that are NOT practice ------------------------------------

@@ -15,8 +15,11 @@ export interface ApplyBlockOptions {
   now: Date;
   /** Accepted status change, if the user took the suggestion. */
   newStatus?: ItemStatus;
-  /** Next review date (from the scheduling suggestion or a manual override). */
-  nextReviewDate?: ISODate;
+  /**
+   * Next review date. `undefined` keeps the item's existing date, `null`
+   * clears it (the item has no next review), an ISODate sets it (§1.1).
+   */
+  nextReviewDate?: ISODate | null;
 }
 
 export function applyBlockStats(
@@ -37,7 +40,7 @@ export function applyBlockStats(
     lastObservation: block.observation?.trim() ? block.observation.trim() : item.lastObservation,
     saturationWarning: isSaturated(itemBlocksIncludingNew, now),
     status: newStatus ?? item.status,
-    nextReviewDate: nextReviewDate ?? item.nextReviewDate,
+    nextReviewDate: nextReviewDate === undefined ? item.nextReviewDate : (nextReviewDate ?? undefined),
     updatedAt: nowISO(now),
   };
 }

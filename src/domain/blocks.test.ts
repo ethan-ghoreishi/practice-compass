@@ -54,6 +54,18 @@ describe('applyBlockStats', () => {
     expect(updated.updatedAt).not.toBe(item.updatedAt);
   });
 
+  it('clears nextReviewDate when passed null and keeps it when passed undefined', () => {
+    const item = freshItem();
+    item.nextReviewDate = toISODate(addDays(NOW, -14));
+    const b = block('worse');
+
+    const cleared = applyBlockStats(item, b, { itemBlocksIncludingNew: [b], now: NOW, nextReviewDate: null });
+    expect(cleared.nextReviewDate).toBeUndefined();
+
+    const kept = applyBlockStats(item, b, { itemBlocksIncludingNew: [b], now: NOW, nextReviewDate: undefined });
+    expect(kept.nextReviewDate).toBe(item.nextReviewDate);
+  });
+
   it('keeps the previous result when a block is left unlogged', () => {
     const item = freshItem();
     item.lastResult = 'stable_alone';

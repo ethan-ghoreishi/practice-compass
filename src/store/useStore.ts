@@ -6,7 +6,9 @@ import {
   applyBlockStats,
   catalogForStage,
   isLosslesslyRemovable,
-  computeReview,
+  computeReviewOutcome,
+  resolveReviewDate,
+  applyReviewDateToRows,
   clampSchedulingParams,
   createBlock,
   createInstrument,
@@ -159,7 +161,8 @@ export interface ItemPatch {
   teacherQuestion?: string;
   notes?: string;
   tags?: string[];
-  nextReviewDate?: ISODate;
+  /** `undefined` (key absent) keeps the schedule; `null` clears it; an ISODate moves it — and its open review row with it (§1.5). */
+  nextReviewDate?: ISODate | null;
   reviewMode?: ReviewMode;
   reviewIntervalDays?: number;
   persian?: PersianFields;
@@ -688,10 +691,24 @@ export const useStore = create<StoreState>()(
 
       updateItem: (id, patch) => {
         const now = new Date();
+        // Route the review date through the shared resolver (§1.5): absent
+        // leaves the schedule untouched, so a blind spread of `patch` can
+        // never silently wipe it; an ISODate moves the open review row with
+        // it; null clears both sides honestly.
+        const { nextReviewDate, ...rest } = patch;
+        const write = resolveReviewDate(nextReviewDate);
         set((s) => ({
           db: {
             ...s.db,
-            items: s.db.items.map((i) => (i.id === id ? touch({ ...i, ...patch }, now) : i)),
+            items: s.db.items.map((i) => {
+              if (i.id !== id) return i;
+              const next = { ...i, ...rest };
+              if (write) next.nextReviewDate = write.nextReviewDate;
+              return touch(next, now);
+            }),
+            reviews:
+              applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
+              s.db.reviews,
           },
         }));
       },
@@ -869,44 +886,52 @@ export const useStore = create<StoreState>()(
           now,
         );
 
-        // Spaced-repetition update (deterministic from the result + item state).
-        const comp = computeReview(item, input.result, now, clampSchedulingParams(db.settings));
-        const nextReviewDate = input.scheduleReview
-          ? (input.nextReviewDate ?? comp?.dueDate ?? item.nextReviewDate)
-          : item.nextReviewDate;
+        // The one decision behind closing a block: does the item get a next
+        // review at all, and — if so — the single date written to both the
+        // item and its new Review row (§1.1–§1.3).
+        const outcome = computeReviewOutcome({
+          item,
+          result: input.result,
+          scheduleReview: input.scheduleReview,
+          nextReviewDate: input.nextReviewDate,
+          reviewType: input.reviewType,
+          now,
+          params: clampSchedulingParams(db.settings),
+        });
 
         const existing = db.blocks.filter((b) => b.practiceItemId === item.id);
         let updatedItem = applyBlockStats(item, block, {
           itemBlocksIncludingNew: [...existing, block],
           now,
           newStatus: input.newStatus,
-          nextReviewDate,
+          nextReviewDate: outcome.nextReviewDate,
         });
-        if (comp) {
+        if (outcome.sr) {
           updatedItem = {
             ...updatedItem,
-            srReps: comp.srReps,
-            srEase: comp.srEase,
-            srIntervalDays: comp.srIntervalDays,
+            srReps: outcome.sr.srReps,
+            srEase: outcome.sr.srEase,
+            srIntervalDays: outcome.sr.srIntervalDays,
           };
         }
         if (input.teacherQuestion !== undefined) {
           updatedItem = { ...updatedItem, teacherQuestion: input.teacherQuestion.trim() || undefined };
         }
 
-        // Close any open reviews for this item; optionally schedule the next.
+        // Close any open reviews for this item; optionally schedule the next
+        // from the SAME date just written onto the item (§1.2).
         const reviews = db.reviews.map((r) =>
           r.practiceItemId === item.id && !r.completedAt
             ? { ...r, completedAt: nowISO(now), result: input.result, updatedAt: nowISO(now) }
             : r,
         );
-        if (input.scheduleReview && input.nextReviewDate) {
+        if (outcome.review) {
           reviews.push(
             createReview(
               {
                 practiceItemId: item.id,
-                dueDate: input.nextReviewDate,
-                reviewType: input.reviewType ?? 'retention',
+                dueDate: outcome.review.dueDate,
+                reviewType: outcome.review.reviewType,
               },
               now,
             ),
@@ -964,18 +989,25 @@ export const useStore = create<StoreState>()(
       snoozeReview: (id, days = SNOOZE_DAYS_DEFAULT) => {
         const now = new Date();
         const { dueDate } = snoozePlan(days, now);
+        // The existing correct model: one date, resolved once and written to
+        // both sides via the shared coupling, SM-2 state untouched.
+        const write = resolveReviewDate(dueDate)!;
         set((s) => {
           const review = s.db.reviews.find((r) => r.id === id);
           if (!review) return s;
           return {
             db: {
               ...s.db,
-              reviews: s.db.reviews.map((r) =>
-                r.id === id ? { ...r, dueDate, updatedAt: nowISO(now) } : r,
-              ),
+              reviews:
+                applyReviewDateToRows({
+                  reviews: s.db.reviews,
+                  practiceItemId: review.practiceItemId,
+                  instruction: dueDate,
+                  now,
+                }) ?? s.db.reviews,
               // Keep the item's own schedule in step so nothing shows overdue.
               items: s.db.items.map((i) =>
-                i.id === review.practiceItemId ? touch({ ...i, nextReviewDate: dueDate }, now) : i,
+                i.id === review.practiceItemId ? touch({ ...i, nextReviewDate: write.nextReviewDate }, now) : i,
               ),
             },
           };
