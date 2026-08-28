@@ -1,104 +1,90 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import {
-  aggregateItemMinutes,
-  locateClock,
-  runElapsedSeconds,
-  segmentsForRun,
-  skipCurrentSegment,
-  toRunSegments,
-  type ID,
-  type RunSegment,
-} from '../domain';
+import { aggregateItemMinutes, locateClock, runElapsedSeconds, segmentsForRun, toRunSegments, type RunSegment } from '../domain';
 import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
 import { CheckIcon, PauseIcon, PlayIcon, XIcon } from '../components/icons';
 
 /**
- * Thin route wrapper: `key={routineId+shortOnTime}` forces a full remount of
- * the actual runner whenever either changes. React Router reuses the same
- * component instance across a `:routineId` param change (same Route element),
- * so without this a still-running or already-finished run's local state
- * (segs/accumulatedSeconds/finished/result…) would carry over into the next
- * routine for at least one render — a fresh mount via `key` is simpler and
- * more robust than resetting a dozen pieces of state by hand in an effect.
+ * The live run (segs/elapsed/running) lives in the store as `activeRoutine`,
+ * not component state — so a nav-bar tap or browser back never silently
+ * loses genuinely-elapsed bound-item practice, the same reason `active`
+ * (an ordinary block session) survives navigation. Only one routine can run
+ * at a time: if a DIFFERENT routine is already active, this redirects to it
+ * rather than letting a fresh start quietly discard its in-flight time.
  */
 export default function RoutineRunner() {
   const { routineId } = useParams();
   const [searchParams] = useSearchParams();
   const shortOnTime = searchParams.get('short') === '1';
-  return <RoutineSession key={`${routineId}:${shortOnTime}`} routineId={routineId} shortOnTime={shortOnTime} />;
-}
-
-function RoutineSession({ routineId, shortOnTime }: { routineId: ID | undefined; shortOnTime: boolean }) {
   const navigate = useNavigate();
   const db = useStore((s) => s.db);
+  const activeRoutine = useStore((s) => s.activeRoutine);
+  const startRoutineRun = useStore((s) => s.startRoutineRun);
+  const pauseRoutineRun = useStore((s) => s.pauseRoutineRun);
+  const resumeRoutineRun = useStore((s) => s.resumeRoutineRun);
+  const skipRoutineRun = useStore((s) => s.skipRoutineRun);
   const finishRoutine = useStore((s) => s.finishRoutine);
+
   const routine = db.pathwayRoutines.find((r) => r.id === routineId);
   const stage = routine?.stageId ? db.pathwayStages.find((s) => s.id === routine.stageId) : undefined;
+  const authoredSegments = routine ? segmentsForRun(routine.segments, shortOnTime) : [];
 
-  const authoredSegments = useMemo(
-    () => segmentsForRun(routine?.segments ?? [], shortOnTime),
-    [routine, shortOnTime],
-  );
-
-  const [segs, setSegs] = useState<RunSegment[]>(() => toRunSegments(authoredSegments));
-  const [accumulatedSeconds, setAccumulatedSeconds] = useState(0);
-  const [runningSince, setRunningSince] = useState<string | undefined>(() => new Date().toISOString());
-  const [running, setRunning] = useState(true);
-  const [finished, setFinished] = useState(false);
   // Snapshot of what was actually recorded, frozen at the moment of finishing
   // — the finished screen must show exactly what was saved, never a value
   // recomputed later against a clock that has since stopped advancing.
   const [result, setResult] = useState<{ segs: RunSegment[]; elapsedSeconds: number } | null>(null);
   const [, setTick] = useState(0);
 
+  const isMine = !!routineId && activeRoutine?.routineId === routineId;
+  const otherActive = activeRoutine && activeRoutine.routineId !== routineId ? activeRoutine : undefined;
+
+  // A different routine is already running: resume it rather than letting a
+  // fresh start here silently overwrite its unsaved elapsed time.
+  useEffect(() => {
+    if (otherActive) {
+      navigate(`/routine/${otherActive.routineId}${otherActive.shortOnTime ? '?short=1' : ''}`, { replace: true });
+    }
+  }, [otherActive, navigate]);
+
+  // Nothing running yet for this routine: begin one.
+  useEffect(() => {
+    if (routine && routineId && !activeRoutine && !result) {
+      startRoutineRun(routineId, shortOnTime, toRunSegments(authoredSegments));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routine, routineId, shortOnTime]);
+
   // Force a re-render every second so the countdown visibly ticks. The actual
   // time is always read fresh from the wall clock below, so a background/lock
   // interval catches up correctly the moment this tab wakes up again — it is
   // never a count of the ticks that fired.
   useEffect(() => {
-    if (!running || finished) return;
+    if (!isMine || !activeRoutine?.running) return;
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
-  }, [running, finished]);
+  }, [isMine, activeRoutine?.running]);
 
-  const elapsedSeconds = runElapsedSeconds(accumulatedSeconds, runningSince, running, new Date());
-  const clock = locateClock(segs, elapsedSeconds);
+  const elapsedSeconds = isMine
+    ? runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date())
+    : 0;
+  const segs = isMine ? activeRoutine.segs : [];
+  const clock = isMine ? locateClock(segs, elapsedSeconds) : null;
 
-  function finish(finalSegs: RunSegment[] = segs) {
-    if (finished) return;
-    finishRoutine(finalSegs, elapsedSeconds);
-    setResult({ segs: finalSegs, elapsedSeconds });
-    setFinished(true);
-    setRunning(false);
+  function finish() {
+    if (!isMine || result) return;
+    setResult({ segs, elapsedSeconds });
+    finishRoutine();
   }
 
   // Natural completion: the wall clock alone decides once E reaches the run's
   // total — no per-tick counting, so a background/lock interval that runs
   // past the end is caught here the moment this tab wakes up again.
   useEffect(() => {
-    if (clock.finished && !finished) finish();
+    if (isMine && clock?.finished && !result) finish();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clock.finished]);
-
-  function pause() {
-    setAccumulatedSeconds(elapsedSeconds);
-    setRunning(false);
-    setRunningSince(undefined);
-  }
-
-  function resume() {
-    setRunning(true);
-    setRunningSince(new Date().toISOString());
-  }
-
-  function skip() {
-    const next = skipCurrentSegment(segs, elapsedSeconds);
-    setSegs(next);
-    if (locateClock(next, elapsedSeconds).finished) finish(next);
-  }
+  }, [isMine, clock?.finished]);
 
   if (!routine) {
     return (
@@ -117,8 +103,8 @@ function RoutineSession({ routineId, shortOnTime }: { routineId: ID | undefined;
       ? `/pathway/${routine.pathwayId}`
       : '/';
 
-  if (finished) {
-    const recorded = result ? aggregateItemMinutes(result.segs, result.elapsedSeconds) : new Map<string, number>();
+  if (result) {
+    const recorded = aggregateItemMinutes(result.segs, result.elapsedSeconds);
     return (
       <div className="stack-lg" style={{ textAlign: 'center', paddingTop: 'var(--space-7)' }}>
         <div className="timer-ring" style={{ background: 'var(--tone-good-soft)' }}>
@@ -148,6 +134,8 @@ function RoutineSession({ routineId, shortOnTime }: { routineId: ID | undefined;
       </div>
     );
   }
+
+  if (!isMine || !clock) return null; // brief window while redirecting to / starting the run
 
   const seg = authoredSegments[clock.segIndex];
   if (!seg) return null;
@@ -205,23 +193,26 @@ function RoutineSession({ routineId, shortOnTime }: { routineId: ID | undefined;
       </div>
 
       <div className="row" style={{ justifyContent: 'center' }}>
-        {running ? (
-          <button className="btn btn-lg" onClick={pause}>
+        {activeRoutine.running ? (
+          <button className="btn btn-lg" onClick={pauseRoutineRun}>
             <PauseIcon /> Pause
           </button>
         ) : (
-          <button className="btn btn-lg" onClick={resume}>
+          <button className="btn btn-lg" onClick={resumeRoutineRun}>
             <PlayIcon /> Resume
           </button>
         )}
-        <button className="btn" onClick={skip}>
+        <button className="btn" onClick={skipRoutineRun}>
           Skip
         </button>
       </div>
 
-      <button className="btn btn-ghost btn-sm" onClick={() => finish()}>
-        <XIcon width={16} height={16} /> End routine
-      </button>
+      <div className="stack-sm" style={{ alignItems: 'center' }}>
+        <button className="btn btn-ghost btn-sm" onClick={finish}>
+          <XIcon width={16} height={16} /> Finish routine
+        </button>
+        <span className="tiny faint">Saves what you've practised so far</span>
+      </div>
     </div>
   );
 }

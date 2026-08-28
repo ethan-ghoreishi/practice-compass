@@ -40,11 +40,20 @@ instrument, everything below it (recommendation, class work, reviews, pathway po
 quick add, Start) is scoped to that instrument, and the primary recommendation must stay
 above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
 secondary choice — never the default. Never hard‑code a morning/evening schedule and
-never surface another instrument's work inside a session. The collapsed Session Plan
-card (`PlanCard` in `Today.tsx`) gains a routines branch in its expanded panel —
-routines scoped to the session instrument (`routinesForInstrument`), listed with an
-obvious "New routine", or "Create a routine" when there are none yet — rather than
-Today growing a whole new section; the collapsed pill itself stays unchanged.
+never surface another instrument's work inside a session. The Session Plan and
+Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
+`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
+and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
+Plan's expanded panel read as routines being subordinate to picking a duration, so
+they were pulled out into their own doorway. Both start collapsed (~50px) so the
+primary recommendation stays above the fold; each has its own open/close state and
+its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+session instrument (`routinesForInstrument`), each row showing Edit and — when a
+segment is essential — a visible "Short on time — essentials only" button, plus "New
+routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
+unplaced routine is reachable from at all, so its rows carry the same Edit/Start/
+short-on-time affordances StageDetail's `RoutineCard`/PathwayDetail's `RoutineRow`
+give a placed one.
 
 ## Review actions have honest, distinct semantics
 
@@ -135,17 +144,24 @@ own pace, on a route they trust. Protect that:
   completes a review or advances SM-2. `focusForItem` (`src/domain/defaults.ts`) is the
   shared strong focus default — the same one `startItemSession` uses — so a routine block
   is indistinguishable from starting that item directly; do not reintroduce a third copy of
-  that fallback expression. The runner (`RoutineRunner.tsx`) derives remaining time from a
-  wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock` in `routines.ts`),
-  the same accumulated-plus-live-since-a-timestamp shape as `sessionElapsedSeconds` — so
-  pausing genuinely freezes it and a backgrounded/locked phone catches up across MULTIPLE
-  segment boundaries at once rather than losing time or advancing one tick at a time. Skip
-  clamps the current segment's effective duration to whatever actually elapsed (never the
-  full authored minutes); a segment played to completion keeps its full duration. Choosing
-  "short on time" (`segmentsForRun`) drops every non-essential segment, honouring the
-  syllabus's asterisk rule. Today's plan card gains a routines branch (list + "New
-  routine"; "Create a routine" when the session instrument has none) rather than a new
-  section — see Today's own bullet below.
+  that fallback expression. The run in progress lives in the store as `activeRoutine`
+  (ephemeral — never in `PracticeDB`, same shape as `active`/`activePlan`), not component
+  state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
+  bound-item practice, matching how an active block already survives navigation, and only
+  one routine can run at a time — starting a different one while another is active redirects
+  to resume it instead of overwriting its in-flight time. `RoutineRunner.tsx` derives
+  remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
+  in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
+  `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+  catches up across MULTIPLE segment boundaries at once rather than losing time or advancing
+  one tick at a time. Skip clamps the current segment's effective duration to whatever
+  actually elapsed (never the full authored minutes); a segment played to completion keeps
+  its full duration. Choosing "short on time" (`segmentsForRun`) drops every non-essential
+  segment, honouring the syllabus's asterisk rule. "Finish routine" (mid-run) always saves
+  whatever bound-item time has genuinely elapsed via the same `finishRoutine` path as natural
+  completion — never a separate discard — with a caption stating that plainly, since ending
+  early must never silently fabricate or silently lose practice. Today's Routines card is
+  documented in its own bullet above.
 - **The current stage is the user's choice.** Teacher-led work jumps around:
   `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
   fallback. Never treat linear order as truth for Setar/Tar.

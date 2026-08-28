@@ -26,7 +26,10 @@ import {
   focusForItem,
   groupBlocksByItem,
   itemFromCatalogEntry,
+  locateClock,
   retargetRoutineInstrument,
+  runElapsedSeconds,
+  skipCurrentSegment,
   snoozePlan,
   SNOOZE_DAYS_DEFAULT,
   todayISODate,
@@ -123,6 +126,23 @@ export interface ActivePlan {
   segments: PlanSegmentState[];
 }
 
+/**
+ * A routine run in progress (ephemeral — never in PracticeDB). Same
+ * accumulated-seconds-plus-live-since-timestamp shape as `ActiveSession`, for
+ * the same reason: living in the store — not component state — means
+ * navigating away (a nav-bar tap, browser back) never silently loses
+ * genuinely-elapsed bound-item practice, exactly like an active block. Only
+ * one routine can run at a time, matching `active`/`activePlan`.
+ */
+export interface ActiveRoutine {
+  routineId: ID;
+  shortOnTime: boolean;
+  segs: RunSegment[];
+  accumulatedSeconds: number;
+  running: boolean;
+  runningSince?: string;
+}
+
 /** Advance the pointer to the next still-pending segment (or one past the end). */
 function advancePointer(segments: PlanSegmentState[], from: number): number {
   for (let i = from + 1; i < segments.length; i++) {
@@ -200,6 +220,8 @@ interface StoreState {
   activePlan: ActivePlan | null;
   /** Last chosen plan duration per instrument, so the picker remembers. */
   planMinutesByInstrument: Record<ID, number>;
+  /** The routine run in progress right now (ephemeral; not in PracticeDB). */
+  activeRoutine: ActiveRoutine | null;
 
   setTheme: (t: ThemePref) => void;
   setSessionInstrument: (id: ID | null) => void;
@@ -323,8 +345,18 @@ interface StoreState {
   ) => void;
   deleteRoutine: (id: ID) => void;
   duplicateRoutine: (id: ID) => ID;
-  /** Turn a finished run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time. */
-  finishRoutine: (runSegments: RunSegment[], elapsedSeconds: number) => void;
+  /**
+   * Begin running a routine (segments become the live run). A no-op if a
+   * DIFFERENT routine is already active — callers must resume that one
+   * first, so its in-flight elapsed time is never silently overwritten.
+   */
+  startRoutineRun: (routineId: ID, shortOnTime: boolean, segs: RunSegment[]) => void;
+  pauseRoutineRun: () => void;
+  resumeRoutineRun: () => void;
+  /** Mark the current segment skipped; finishes the run if that was the last one. */
+  skipRoutineRun: () => void;
+  /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
+  finishRoutine: () => void;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -349,6 +381,7 @@ export const useStore = create<StoreState>()(
       notNow: { date: '', ids: [] },
       activePlan: null,
       planMinutesByInstrument: {},
+      activeRoutine: null,
 
       setTheme: (theme) => set({ theme }),
 
@@ -1189,16 +1222,54 @@ export const useStore = create<StoreState>()(
         return copy.id;
       },
 
-      finishRoutine: (runSegments, elapsedSeconds) => {
+      startRoutineRun: (routineId, shortOnTime, segs) => {
+        const { activeRoutine } = get();
+        if (activeRoutine && activeRoutine.routineId !== routineId) return;
+        set({
+          activeRoutine: { routineId, shortOnTime, segs, accumulatedSeconds: 0, running: true, runningSince: nowISO() },
+        });
+      },
+
+      pauseRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine?.running) return;
+        set({
+          activeRoutine: {
+            ...activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, true, new Date()),
+            running: false,
+            runningSince: undefined,
+          },
+        });
+      },
+
+      resumeRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine || activeRoutine.running) return;
+        set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
+      },
+
+      skipRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
+        const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
+        set({ activeRoutine: { ...activeRoutine, segs } });
+        if (locateClock(segs, elapsedSeconds).finished) get().finishRoutine();
+      },
+
+      finishRoutine: () => {
+        const { activeRoutine, db } = get();
+        if (!activeRoutine) return;
         const now = new Date();
-        const { db } = get();
-        const outcome = applyRoutineRun(runSegments, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
-        if (outcome.blocks.length === 0) return;
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, now);
+        const outcome = applyRoutineRun(activeRoutine.segs, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
         const updatedById = new Map(outcome.items.map((i) => [i.id, i]));
         set((s) => ({
+          activeRoutine: null,
           db: {
             ...s.db,
-            blocks: [...s.db.blocks, ...outcome.blocks],
+            blocks: outcome.blocks.length > 0 ? [...s.db.blocks, ...outcome.blocks] : s.db.blocks,
             items: s.db.items.map((i) => updatedById.get(i.id) ?? i),
           },
         }));
@@ -1208,17 +1279,17 @@ export const useStore = create<StoreState>()(
 
       importDB: (raw) => {
         const db = validateDB(raw);
-        set({ db, active: null });
+        set({ db, active: null, activeRoutine: null });
       },
 
       resetDemo: () => {
         void clearBlobs();
-        set({ db: createSeedDB(), active: null });
+        set({ db: createSeedDB(), active: null, activeRoutine: null });
       },
 
       clearAll: () => {
         void clearBlobs();
-        set({ db: emptyDB(), active: null });
+        set({ db: emptyDB(), active: null, activeRoutine: null });
       },
     })),
     {
@@ -1234,6 +1305,7 @@ export const useStore = create<StoreState>()(
         notNow: s.notNow,
         activePlan: s.activePlan,
         planMinutesByInstrument: s.planMinutesByInstrument,
+        activeRoutine: s.activeRoutine,
       }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;

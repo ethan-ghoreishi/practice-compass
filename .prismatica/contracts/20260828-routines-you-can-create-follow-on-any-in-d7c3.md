@@ -87,6 +87,16 @@ nonGoals:
     never a judgement: it writes at most one block per item per run, aggregating
     repeated segments, and never completes a review or advances spaced
     repetition."
+  - >-
+    Supersedes the earlier 'Routines add a branch to PlanCard, not a new
+    section' constraint. Session Plan and Routines may instead be two compact
+    peer doorway controls with independent state, provided they remain separate
+    systems and the primary recommendation remains above the fold at 390×844.
+
+    3.
+  - At 390×844, collapsed Session Plan and Routines peer doorways are both
+    visible without pushing the primary 'Practise now' recommendation below the
+    fold.
 acceptanceChecks:
   - id: ac-1
     description: "The collision this lane exists to avoid, tested against the real
@@ -225,7 +235,27 @@ docsDelta:
   - CLAUDE.md
   - AGENTS.md
 createdAt: 2026-08-28T19:37:54.903Z
-amendments: []
+amendments:
+  - at: 2026-08-28T22:26:37.006Z
+    reason: "OWNER manual ac-22 showed that nesting routines inside the Session Plan
+      doorway made routines read as subordinate to choosing a plan duration,
+      caused them to be hidden again on return to Today, and made key routine
+      actions hard to discover. Replace the single nested doorway with two
+      compact peer doorway pills for Session Plan and Routines, each with
+      independent state. This changes the recorded UI shape but preserves the
+      underlying constraints: the systems remain separate, Today stays compact,
+      and the primary recommendation remains above the fold at 390x844, verified
+      live."
+    description: >-
+      non-goals += Supersedes the earlier 'Routines add a branch to PlanCard,
+      not a new section' constraint. Session Plan and Routines may instead be
+      two compact peer doorway controls with independent state, provided they
+      remain separate systems and the primary recommendation remains above the
+      fold at 390×844.
+
+      3., At 390×844, collapsed Session Plan and Routines peer doorways are both
+      visible without pushing the primary 'Practise now' recommendation below
+      the fold.
 ---
 
 # Routines you can create, follow on any instrument, and actually log
@@ -280,6 +310,9 @@ _nothing explicitly forbidden_
 - No retuning of isSaturated, scoreItems or any scheduling constant. If a routine's blocks interact badly with saturation, report it rather than adjusting the shared function inside this lane.
 - Nothing is hard-forbidden: the frame is the files in `allow`, and anything genuinely needed beyond them should be added by `prismatica amend` rather than worked around.
 - Desired rule (not yet truth): A routine records real practice time but never a judgement: it writes at most one block per item per run, aggregating repeated segments, and never completes a review or advances spaced repetition.
+- Supersedes the earlier 'Routines add a branch to PlanCard, not a new section' constraint. Session Plan and Routines may instead be two compact peer doorway controls with independent state, provided they remain separate systems and the primary recommendation remains above the fold at 390×844.
+3.
+- At 390×844, collapsed Session Plan and Routines peer doorways are both visible without pushing the primary 'Practise now' recommendation below the fold.
 
 ## Acceptance checks (definition of done)
 
@@ -313,5 +346,6 @@ _nothing explicitly forbidden_
 
 ## Amendments
 
-_none_
+- 2026-08-28T22:26:37.006Z — OWNER manual ac-22 showed that nesting routines inside the Session Plan doorway made routines read as subordinate to choosing a plan duration, caused them to be hidden again on return to Today, and made key routine actions hard to discover. Replace the single nested doorway with two compact peer doorway pills for Session Plan and Routines, each with independent state. This changes the recorded UI shape but preserves the underlying constraints: the systems remain separate, Today stays compact, and the primary recommendation remains above the fold at 390x844, verified live.: non-goals += Supersedes the earlier 'Routines add a branch to PlanCard, not a new section' constraint. Session Plan and Routines may instead be two compact peer doorway controls with independent state, provided they remain separate systems and the primary recommendation remains above the fold at 390×844.
+3., At 390×844, collapsed Session Plan and Routines peer doorways are both visible without pushing the primary 'Practise now' recommendation below the fold.
 

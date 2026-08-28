@@ -1,8 +1,8 @@
 ---
 id: 20260828-routines-you-can-create-follow-on-any-in-d7c3
 contractId: 20260828-routines-you-can-create-follow-on-any-in-d7c3
-contractHash: 15a6c505e77a39674f93c8502860082f84d87e9fcd9ee1474e3dd9df4a39dea2
-createdAt: 2026-08-28T19:38:55.857Z
+contractHash: 8ea960285249ec96f95344e9d9b3f2eb0fb4291c30d994defb5e58c370534af5
+createdAt: 2026-08-28T22:26:52.609Z
 skills:
   - ui-work
   - build
@@ -1026,6 +1026,9 @@ Never touch:
 - No retuning of isSaturated, scoreItems or any scheduling constant. If a routine's blocks interact badly with saturation, report it rather than adjusting the shared function inside this lane.
 - Nothing is hard-forbidden: the frame is the files in `allow`, and anything genuinely needed beyond them should be added by `prismatica amend` rather than worked around.
 - Desired rule (not yet truth): A routine records real practice time but never a judgement: it writes at most one block per item per run, aggregating repeated segments, and never completes a review or advances spaced repetition.
+- Supersedes the earlier 'Routines add a branch to PlanCard, not a new section' constraint. Session Plan and Routines may instead be two compact peer doorway controls with independent state, provided they remain separate systems and the primary recommendation remains above the fold at 390×844.
+3.
+- At 390×844, collapsed Session Plan and Routines peer doorways are both visible without pushing the primary 'Practise now' recommendation below the fold.
 
 ## Definition of done
 
@@ -1065,7 +1068,7 @@ Never touch:
 
 ## Current progress
 
-Not started — no checks have run yet. Default state is "not ready".
+Last checks passed (2026-08-28T20:39:39.377Z). Rework loops so far: 0.
 
 ## Before you finish
 
