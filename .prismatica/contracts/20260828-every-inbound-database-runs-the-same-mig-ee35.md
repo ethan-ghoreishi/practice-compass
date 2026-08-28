@@ -4,7 +4,7 @@ title: Every inbound database runs the same migration chain
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/3
 intent: 20260828-every-inbound-database-runs-the-same-mig-ee35
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: 7b8e2d8fe3b192626a971d756f5fc016f37f62ba
   branch: main
