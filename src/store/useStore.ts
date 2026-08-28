@@ -25,6 +25,7 @@ import {
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
+  migrateToCurrent,
   newId,
   nowISO,
   SCHEMA_VERSION,
@@ -43,14 +44,12 @@ import {
   type AttachmentMeta,
   type ISODate,
   type ItemStatus,
-  type Lesson,
   type LessonFileKind,
   type LessonRecording,
   type Material,
   type MaterialSourceType,
   type MaterialStatus,
   type Pathway,
-  type PathwayRoutine,
   type PathwayStage,
   type PersianFields,
   type PracticeDB,
@@ -305,102 +304,6 @@ interface StoreState {
 
 function touch<T extends { updatedAt: string }>(entity: T, now: Date): T {
   return { ...entity, updatedAt: nowISO(now) };
-}
-
-const EMPTY_DB_FIELDS = {
-  pathways: [] as Pathway[],
-  pathwayStages: [] as PathwayStage[],
-  pathwayRoutines: [] as PathwayRoutine[],
-  lessons: [] as Lesson[],
-  attachments: [] as AttachmentMeta[],
-};
-
-/** v1/v2 → v3: seed editable pathways from the db's instruments; drop old `curriculum`. */
-function migrateToV3(db: PracticeDB): PracticeDB {
-  if (db.pathways && db.pathways.length > 0) return db;
-  const ids = {
-    guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-    setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
-    tar:
-      db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
-  };
-  const seeded = seedPathways(ids);
-  const next: PracticeDB & { curriculum?: unknown } = { ...db, ...seeded };
-  delete next.curriculum;
-  return next;
-}
-
-/** v3 → v4: introduce the attachments array. */
-function migrateToV4(db: PracticeDB): PracticeDB {
-  return { ...db, attachments: db.attachments ?? [] };
-}
-
-/**
- * v4 → v5: steps are gone — items live directly in stages. Place any item that
- * a step had linked into that step's stage, then drop the pathwaySteps field.
- */
-function migrateToV5(db: PracticeDB): PracticeDB {
-  const legacy = (db as unknown as { pathwaySteps?: { itemId?: string; stageId?: string }[] }).pathwaySteps;
-  let items = db.items;
-  if (Array.isArray(legacy)) {
-    const stageByItem = new Map<string, string>();
-    for (const s of legacy) if (s.itemId && s.stageId) stageByItem.set(s.itemId, s.stageId);
-    if (stageByItem.size) {
-      items = db.items.map((i) => (stageByItem.has(i.id) ? { ...i, stageId: stageByItem.get(i.id) } : i));
-    }
-  }
-  const next = { ...db, items, lessons: db.lessons ?? [], attachments: db.attachments ?? [] } as PracticeDB & {
-    pathwaySteps?: unknown;
-  };
-  delete next.pathwaySteps;
-  return next;
-}
-
-/**
- * v5 → v6: attachments can belong to an item OR a lesson. Old metadata carried
- * `itemId`; fold it into `ownerType: 'item'` + `ownerId` (lossless).
- */
-function migrateToV6(db: PracticeDB): PracticeDB {
-  const attachments = (db.attachments ?? []).map((a) => {
-    const legacy = a as AttachmentMeta & { itemId?: string };
-    if (!legacy.ownerId && legacy.itemId) {
-      const { itemId, ...rest } = legacy;
-      return { ...rest, ownerType: 'item' as const, ownerId: itemId };
-    }
-    return a;
-  });
-  return { ...db, attachments, lessons: db.lessons ?? [] };
-}
-
-// v7: lessons gained optional `recordings` (NAS references). Nothing to
-// rewrite — the field is optional — but normalise it to an array so callers
-// never guard against undefined.
-function migrateToV7(db: PracticeDB): PracticeDB {
-  return { ...db, lessons: (db.lessons ?? []).map((l) => ({ ...l, recordings: l.recordings ?? [] })) };
-}
-
-// v8: lessons gained an optional `number`. Existing lessons stay unnumbered
-// (undefined) — nothing to backfill.
-function migrateToV8(db: PracticeDB): PracticeDB {
-  return db;
-}
-
-// v9: lesson recordings gained a `kind`. Every existing reference was a class
-// video, so stamp the missing kind explicitly.
-function migrateToV9(db: PracticeDB): PracticeDB {
-  return {
-    ...db,
-    lessons: (db.lessons ?? []).map((l) => ({
-      ...l,
-      recordings: (l.recordings ?? []).map((r) => ({ ...r, kind: r.kind ?? ('video' as const) })),
-    })),
-  };
-}
-
-// v10: the DB gained optional scheduling `settings`. Existing DBs leave it
-// undefined (⇒ DEFAULT_SCHEDULING_PARAMS); nothing to backfill.
-function migrateToV10(db: PracticeDB): PracticeDB {
-  return db;
 }
 
 export const useStore = create<StoreState>()(
@@ -1167,7 +1070,7 @@ export const useStore = create<StoreState>()(
 
       importDB: (raw) => {
         const db = validateDB(raw);
-        set({ db: { ...db, schemaVersion: SCHEMA_VERSION }, active: null });
+        set({ db, active: null });
       },
 
       resetDemo: () => {
@@ -1196,27 +1099,12 @@ export const useStore = create<StoreState>()(
       }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;
-        if (version < 3 && state?.db) state.db = migrateToV3(state.db);
-        if (version < 4 && state?.db) state.db = migrateToV4(state.db);
-        if (version < 5 && state?.db) state.db = migrateToV5(state.db);
-        if (version < 6 && state?.db) state.db = migrateToV6(state.db);
-        if (version < 7 && state?.db) state.db = migrateToV7(state.db);
-        if (version < 8 && state?.db) state.db = migrateToV8(state.db);
-        if (version < 9 && state?.db) state.db = migrateToV9(state.db);
-        if (version < 10 && state?.db) state.db = migrateToV10(state.db);
-        if (state?.db) state.db.schemaVersion = SCHEMA_VERSION;
+        if (state?.db) state.db = migrateToCurrent(state.db, version);
         return state as unknown;
       },
-      // Guarantee newer DB arrays exist (and legacy fields are gone) after
-      // rehydration, whatever the source.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const db = p.db
-          ? migrateToV10(migrateToV9(migrateToV8(migrateToV7(migrateToV6({ ...EMPTY_DB_FIELDS, ...p.db })))))
-          : current.db;
-        delete (db as unknown as Record<string, unknown>).pathwaySteps;
-        delete (db as unknown as Record<string, unknown>).curriculum;
-        return { ...current, ...p, db };
+        return { ...current, ...p, db: p.db ?? current.db };
       },
     },
   ),

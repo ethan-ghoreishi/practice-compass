@@ -3,7 +3,8 @@ import { validateDB, parseImport } from './io';
 import { createSeedDB } from './seed';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-import { addDays, toISODate } from './util';
+import { SCHEMA_VERSION } from './types';
+import { addDays, nowISO, toISODate } from './util';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -15,10 +16,11 @@ describe('validateDB — backward-compatible import', () => {
     expect(out.lessons.length).toBe(db.lessons.length);
   });
 
-  it('normalises legacy (≤v5) attachment metadata with itemId to owner shape', () => {
+  it('folds a legacy attachment itemId into ownerType and ownerId', () => {
     const db = createSeedDB(NOW);
     const legacy = {
       ...db,
+      schemaVersion: 5,
       attachments: [
         { id: 'att1', itemId: db.items[0].id, name: 'afshari.pdf', mime: 'application/pdf', size: 100, kind: 'pdf', createdAt: '2026-01-01T00:00:00.000Z' },
       ],
@@ -48,6 +50,87 @@ describe('validateDB — backward-compatible import', () => {
   it('rejects unusable shapes with a readable error', () => {
     expect(parseImport('not json').ok).toBe(false);
     expect(parseImport(JSON.stringify({ items: 'nope' })).ok).toBe(false);
+  });
+
+  it('treats a missing schemaVersion as the oldest and runs the whole chain', () => {
+    // Pre-v3 shaped: no `pathways` key at all, and no schemaVersion field.
+    const legacy = {
+      instruments: [{ id: 'i-setar', name: 'Setar', family: 'Persian', active: true, createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z' }],
+      materials: [],
+      items: [],
+      blocks: [],
+      reviews: [],
+    };
+    const out = validateDB(legacy);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.pathways.length).toBeGreaterThan(0);
+  });
+
+  it('places a legacy pathwaySteps item into its stage on every path', () => {
+    const db = createSeedDB(NOW);
+    const item = { ...db.items[0], stageId: 'stale-stage' };
+    const legacy = {
+      ...db,
+      schemaVersion: 4,
+      items: [item],
+      pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
+    };
+    const out = validateDB(legacy);
+    // migrateToV5's overwrite behaviour wins over the old "fill only when
+    // empty" precedence — the same result whichever path the data arrived by.
+    expect(out.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
+  });
+
+  it('returns a legacy backup with no schemaVersion fully migrated', () => {
+    const db = createSeedDB(NOW);
+    const item = db.items[0];
+    const legacy: Record<string, unknown> = {
+      instruments: db.instruments,
+      materials: db.materials,
+      items: [{ ...item, stageId: undefined }],
+      blocks: db.blocks,
+      reviews: db.reviews,
+      pathwaySteps: [{ itemId: item.id, stageId: 'legacy-stage' }],
+      attachments: [
+        { id: 'att-legacy', itemId: item.id, name: 'notes.pdf', mime: 'application/pdf', size: 10, kind: 'pdf', createdAt: '2025-01-01T00:00:00.000Z' },
+      ],
+    };
+    const out = validateDB(legacy);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.pathways.length).toBeGreaterThan(0);
+    expect(out.items.find((i) => i.id === item.id)?.stageId).toBe('legacy-stage');
+    expect(out.attachments[0].ownerType).toBe('item');
+    expect(out.attachments[0].ownerId).toBe(item.id);
+    expect(out.lessons).toEqual([]);
+  });
+
+  it('rejects a database from a newer schema version instead of downgrading it', () => {
+    const db = createSeedDB(NOW);
+    const fromTheFuture = {
+      app: 'practice-compass' as const,
+      schemaVersion: SCHEMA_VERSION + 1,
+      exportedAt: nowISO(NOW),
+      data: { ...db, schemaVersion: SCHEMA_VERSION + 1 },
+    };
+    const result = parseImport(JSON.stringify(fromTheFuture));
+    expect(result.ok).toBe(false);
+    expect(() => validateDB(fromTheFuture)).toThrow(/newer version/i);
+  });
+
+  it('keeps legacy pathwaySteps placements when imported through the real entry point', () => {
+    const db = createSeedDB(NOW);
+    const item = { ...db.items[0], stageId: undefined };
+    const legacyText = JSON.stringify({
+      ...db,
+      schemaVersion: undefined,
+      items: [item],
+      pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
+    });
+    const result = parseImport(legacyText);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.db.items.find((i) => i.id === item.id)?.stageId).toBe('from-pathway-steps');
+    }
   });
 });
 

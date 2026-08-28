@@ -329,7 +329,9 @@ duplicate the item.
   one exception: they live in IndexedDB via `src/store/idb.ts` and the `attachments.ts`
   service (too big for the reactive JSON); only their lightweight metadata sits in the store.
 - **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
-  `hydrated`. Persistence changes must keep the `migrate` + `merge` paths working and bump
+  `hydrated`. Every inbound database — rehydration, manual import, sync pull,
+  conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
+  chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
   `SCHEMA_VERSION`.
 - **One file per route** under `src/pages/`. Shared UI primitives live in
   `src/components/`. Pure helpers go in their own non‑component modules (this also keeps

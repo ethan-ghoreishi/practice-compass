@@ -1,6 +1,7 @@
 import type { ExportFile, PracticeDB } from './types';
 import { SCHEMA_VERSION } from './types';
 import { nowISO } from './util';
+import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -41,6 +42,13 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /**
  * Validate and normalise an unknown object into a PracticeDB. Throws with a
  * human-readable message when the shape is unusable.
+ *
+ * Migration runs BEFORE normalisation, on the source shape: a fixed-allowlist
+ * rebuild would drop legacy fields (`pathwaySteps`, an attachment's `itemId`)
+ * before the migration chain ever got to read them. A missing schemaVersion
+ * is assumed to be the oldest this app ever shipped, so the whole chain runs;
+ * a schemaVersion newer than this build supports is rejected rather than
+ * silently downgraded and stripped of whatever fields it added.
  */
 export function validateDB(input: unknown): PracticeDB {
   if (!isRecord(input)) throw new Error('File is not a valid object.');
@@ -54,47 +62,30 @@ export function validateDB(input: unknown): PracticeDB {
     }
   }
 
-  // Legacy (schema ≤ 4) backups had a pathwaySteps array carrying item↔stage
-  // links; fold those into the items so old backups keep their placements.
-  let items = (raw.items as PracticeDB['items']) ?? [];
-  const legacySteps = raw.pathwaySteps;
-  if (Array.isArray(legacySteps)) {
-    const stageByItem = new Map<string, string>();
-    for (const s of legacySteps as { itemId?: string; stageId?: string }[]) {
-      if (s?.itemId && s?.stageId) stageByItem.set(s.itemId, s.stageId);
-    }
-    if (stageByItem.size) {
-      items = items.map((i) => (i.stageId || !stageByItem.has(i.id) ? i : { ...i, stageId: stageByItem.get(i.id) }));
-    }
+  const fromVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : OLDEST_SCHEMA_VERSION;
+  if (fromVersion > SCHEMA_VERSION) {
+    throw new Error(
+      `This file is from a newer version of Practice Compass (schema ${fromVersion}) than this device supports (schema ${SCHEMA_VERSION}). Update the app before importing it.`,
+    );
   }
 
-  // Legacy (schema ≤ 5) attachment metadata carried `itemId`; normalise to the
-  // owner shape so old backups import losslessly.
-  const attachments = (((raw.attachments as unknown[]) ?? []) as (PracticeDB['attachments'][number] & {
-    itemId?: string;
-  })[]).map((a) => {
-    if (a && typeof a === 'object' && !a.ownerId && a.itemId) {
-      const { itemId, ...rest } = a;
-      return { ...rest, ownerType: 'item' as const, ownerId: itemId };
-    }
-    return a;
-  });
+  const migrated = migrateToCurrent(raw as unknown as PracticeDB, fromVersion);
 
   const db: PracticeDB = {
-    schemaVersion: typeof raw.schemaVersion === 'number' ? (raw.schemaVersion as number) : SCHEMA_VERSION,
-    instruments: (raw.instruments as PracticeDB['instruments']) ?? [],
-    materials: (raw.materials as PracticeDB['materials']) ?? [],
-    items,
-    blocks: (raw.blocks as PracticeDB['blocks']) ?? [],
-    reviews: (raw.reviews as PracticeDB['reviews']) ?? [],
-    pathways: (raw.pathways as PracticeDB['pathways']) ?? [],
-    pathwayStages: (raw.pathwayStages as PracticeDB['pathwayStages']) ?? [],
-    pathwayRoutines: (raw.pathwayRoutines as PracticeDB['pathwayRoutines']) ?? [],
-    attachments,
-    lessons: (raw.lessons as PracticeDB['lessons']) ?? [],
+    schemaVersion: migrated.schemaVersion,
+    instruments: migrated.instruments ?? [],
+    materials: migrated.materials ?? [],
+    items: migrated.items ?? [],
+    blocks: migrated.blocks ?? [],
+    reviews: migrated.reviews ?? [],
+    pathways: migrated.pathways ?? [],
+    pathwayStages: migrated.pathwayStages ?? [],
+    pathwayRoutines: migrated.pathwayRoutines ?? [],
+    attachments: migrated.attachments ?? [],
+    lessons: migrated.lessons ?? [],
     // Optional scheduling knobs — a top-level object, not an array. Carry it
     // through so a user's adjusted params survive export/import round-trips.
-    ...(isRecord(raw.settings) ? { settings: raw.settings as unknown as PracticeDB['settings'] } : {}),
+    ...(isRecord(migrated.settings) ? { settings: migrated.settings as unknown as PracticeDB['settings'] } : {}),
   };
 
   // Minimal per-entity sanity: every record needs an id.
