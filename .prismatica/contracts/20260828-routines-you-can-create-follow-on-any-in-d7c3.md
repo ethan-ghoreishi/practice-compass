@@ -29,6 +29,7 @@ allowedPaths:
   - src/App.tsx
   - CLAUDE.md
   - AGENTS.md
+  - src/pages/ActiveBlock.tsx
 forbiddenPaths: []
 nonGoals:
   - No third session system, and no merging with the Session Plan.
@@ -256,6 +257,13 @@ amendments:
       3., At 390×844, collapsed Session Plan and Routines peer doorways are both
       visible without pushing the primary 'Practise now' recommendation below
       the fold.
+  - at: 2026-08-29T22:37:00.830Z
+    reason: OWNER manual testing found that ActiveBlock's Discard action uniquely
+      returns to Today even when a Session Plan is active, while CloseBlock
+      already returns Save/Discard to /plan. Allow ActiveBlock.tsx so this
+      navigation can follow the existing Plan-aware convention without changing
+      plan.ts or Session Plan semantics.
+    description: allow += src/pages/ActiveBlock.tsx
 ---
 
 # Routines you can create, follow on any instrument, and actually log
@@ -283,6 +291,7 @@ amendments:
 - src/App.tsx
 - CLAUDE.md
 - AGENTS.md
+- src/pages/ActiveBlock.tsx
 
 ## Never touch
 
@@ -348,4 +357,5 @@ _nothing explicitly forbidden_
 
 - 2026-08-28T22:26:37.006Z — OWNER manual ac-22 showed that nesting routines inside the Session Plan doorway made routines read as subordinate to choosing a plan duration, caused them to be hidden again on return to Today, and made key routine actions hard to discover. Replace the single nested doorway with two compact peer doorway pills for Session Plan and Routines, each with independent state. This changes the recorded UI shape but preserves the underlying constraints: the systems remain separate, Today stays compact, and the primary recommendation remains above the fold at 390x844, verified live.: non-goals += Supersedes the earlier 'Routines add a branch to PlanCard, not a new section' constraint. Session Plan and Routines may instead be two compact peer doorway controls with independent state, provided they remain separate systems and the primary recommendation remains above the fold at 390×844.
 3., At 390×844, collapsed Session Plan and Routines peer doorways are both visible without pushing the primary 'Practise now' recommendation below the fold.
+- 2026-08-29T22:37:00.830Z — OWNER manual testing found that ActiveBlock's Discard action uniquely returns to Today even when a Session Plan is active, while CloseBlock already returns Save/Discard to /plan. Allow ActiveBlock.tsx so this navigation can follow the existing Plan-aware convention without changing plan.ts or Session Plan semantics.: allow += src/pages/ActiveBlock.tsx
 

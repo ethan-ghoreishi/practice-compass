@@ -119,7 +119,9 @@ export default function ActiveBlock() {
         className="btn btn-ghost btn-sm"
         onClick={() => {
           cancelSession();
-          navigate('/');
+          // Mirrors CloseBlock's Save/Discard: a running plan is still the
+          // active context to return to, not generic Today.
+          navigate(useStore.getState().activePlan ? '/plan' : '/');
         }}
       >
         Discard block
