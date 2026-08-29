@@ -808,6 +808,11 @@ export const useStore = create<StoreState>()(
       },
 
       startSession: (input) => {
+        const { active } = get();
+        // Never silently overwrite an existing session's elapsed time — the
+        // caller must resolve it first (finish/discard it), the same rule
+        // startRoutineRun already applies to a different routine.
+        if (active) return;
         const now = new Date();
         set({
           active: {

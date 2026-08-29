@@ -4,7 +4,7 @@ import { aggregateItemMinutes, locateClock, runElapsedSeconds, segmentsForRun, t
 import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
-import { CheckIcon, PauseIcon, PlayIcon, XIcon } from '../components/icons';
+import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
 
 /**
  * The live run (segs/elapsed/running) lives in the store as `activeRoutine`,
@@ -224,9 +224,9 @@ export default function RoutineRunner() {
 
       <div className="stack-sm" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost btn-sm" onClick={finish}>
-          <XIcon width={16} height={16} /> Finish routine
+          <CheckIcon width={16} height={16} /> Finish &amp; save
         </button>
-        <span className="tiny faint">Saves what you've practised so far</span>
+        <span className="tiny faint">Records what you've practised so far — never a discard</span>
       </div>
     </div>
   );
