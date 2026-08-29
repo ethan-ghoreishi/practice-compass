@@ -1,8 +1,8 @@
 ---
 id: 20260828-routines-you-can-create-follow-on-any-in-d7c3
 contractId: 20260828-routines-you-can-create-follow-on-any-in-d7c3
-contractHash: 8ea960285249ec96f95344e9d9b3f2eb0fb4291c30d994defb5e58c370534af5
-createdAt: 2026-08-28T22:26:52.609Z
+contractHash: c1367619b90df0005d95fb035f2303031c39f35371afd521a6205919b676b371
+createdAt: 2026-08-29T22:57:03.803Z
 skills:
   - ui-work
   - build
@@ -1003,6 +1003,7 @@ Routines you can create, follow on any instrument, and actually log
 - src/App.tsx
 - CLAUDE.md
 - AGENTS.md
+- src/pages/ActiveBlock.tsx
 
 Never touch:
 
@@ -1068,7 +1069,7 @@ Never touch:
 
 ## Current progress
 
-Last checks passed (2026-08-28T20:39:39.377Z). Rework loops so far: 0.
+Last checks passed (2026-08-29T22:38:43.630Z). Rework loops so far: 0.
 
 ## Before you finish
 
