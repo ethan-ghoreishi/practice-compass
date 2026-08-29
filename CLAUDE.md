@@ -127,16 +127,23 @@ own pace, on a route they trust. Protect that:
   tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
   `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
   (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
-  every routine created from now on. `pathwayId`/`stageId` are optional PLACEMENT, not
-  identity, so a routine can exist unplaced ("my Setar warm-up"); deleting a pathway or
-  stage DETACHES its routines (clears the placement) rather than deleting them — pathway
-  deletion clears both `pathwayId` and `stageId`, stage deletion clears only `stageId`.
-  `RoutineSegment.itemId` optionally binds a segment to a real `PracticeItem`; a bound
-  itemId must always match the routine's instrument, enforced at every edge (item deleted →
-  unbind everywhere; item's instrument changes → unbind from now-mismatched routines;
-  routine's instrument changes → clear mismatched bindings and detach an incompatible
-  placement; pathway's instrument changes → detach an incompatible placed routine) — never
-  by silently rewriting either side's instrument. Finishing a run writes **at most one
+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
+  actually re-derive. Finishing a run writes **at most one
   block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
   ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
   Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
@@ -149,7 +156,15 @@ own pace, on a route they trust. Protect that:
   state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
   bound-item practice, matching how an active block already survives navigation, and only
   one routine can run at a time — starting a different one while another is active redirects
-  to resume it instead of overwriting its in-flight time. `RoutineRunner.tsx` derives
+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
+  clock of any kind runs at a time: `startSession` (so `startItemSession` and Session Plan's
+  `beginPlanSegment`, which both route through it) refuses to start while `activeRoutine` is
+  set, and `startRoutineRun` refuses to start while `active` is set — the same single guard
+  in each shared function covers every caller, rather than trusting each page to check both.
+  Without it, an ordinary block and a routine could run concurrently and log the same
+  wall-clock interval twice. The pages that start a clock (`Today.tsx`, `StageDetail.tsx`,
+  `RoutineRunner.tsx`) resolve the conflict by redirecting to whichever is actually running
+  instead of leaving the user on a dead screen. `RoutineRunner.tsx` derives
   remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
   in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
   `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone

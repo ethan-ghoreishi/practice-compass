@@ -24,6 +24,7 @@ export default function StageDetail() {
   const addFromCatalog = useStore((s) => s.addFromCatalog);
   const removeCatalogItem = useStore((s) => s.removeCatalogItem);
   const startItemSession = useStore((s) => s.startItemSession);
+  const activeRoutine = useStore((s) => s.activeRoutine);
   const navigate = useNavigate();
 
   const stage = db.pathwayStages.find((s) => s.id === stageId);
@@ -78,6 +79,13 @@ export default function StageDetail() {
   }
 
   function practise(unit: StageUnit) {
+    // A routine is running: resolve it there rather than trying to start a
+    // block alongside it — startItemSession would just no-op and leave the
+    // user on a dead "no block in progress" screen.
+    if (activeRoutine) {
+      navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
+      return;
+    }
     const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key);
     startItemSession(itemId);
     navigate('/active');

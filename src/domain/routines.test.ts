@@ -346,4 +346,50 @@ describe('the binding invariant: a bound itemId never dangles', () => {
     // The pathway itself is never rewritten.
     expect(pathway.instrumentId).toBe('setar');
   });
+
+  it('clears every binding and detaches from a specific-instrument pathway when the target instrument is undefined', () => {
+    // The store calls retargetRoutineInstrument on EVERY save, not only when
+    // the instrument changed — this is what stops a form from persisting a
+    // mismatched itemId or placement on an unchanged instrument, and what
+    // lets a routine go (or stay) honestly unscoped without inventing one.
+    const guitarItem = item({ id: 'item-guitar', instrumentId: 'guitar' });
+    const r = routine({
+      instrumentId: 'guitar',
+      pathwayId: 'p1',
+      stageId: 's1',
+      segments: [{ label: 'A', minutes: 1, itemId: 'item-guitar' }],
+    });
+    const pathway: Pathway = {
+      id: 'p1',
+      instrumentId: 'guitar',
+      name: 'Guitar path',
+      order: 0,
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+    };
+
+    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, NOW);
+
+    expect(out.instrumentId).toBeUndefined();
+    expect(out.segments[0].itemId).toBeUndefined(); // no instrument can match a bound item
+    expect(out.pathwayId).toBeUndefined(); // the guitar pathway no longer matches
+    expect(out.stageId).toBeUndefined();
+  });
+
+  it('stays placed on a General (no-instrument) pathway when the target instrument is undefined', () => {
+    const r = routine({ instrumentId: undefined, pathwayId: 'p-general', stageId: 's1', segments: [] });
+    const generalPathway: Pathway = {
+      id: 'p-general',
+      name: 'General',
+      order: 0,
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+    };
+
+    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, NOW);
+
+    expect(out.instrumentId).toBeUndefined();
+    expect(out.pathwayId).toBe('p-general');
+    expect(out.stageId).toBe('s1');
+  });
 });

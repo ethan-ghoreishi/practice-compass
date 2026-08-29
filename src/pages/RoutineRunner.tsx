@@ -12,7 +12,10 @@ import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
  * loses genuinely-elapsed bound-item practice, the same reason `active`
  * (an ordinary block session) survives navigation. Only one routine can run
  * at a time: if a DIFFERENT routine is already active, this redirects to it
- * rather than letting a fresh start quietly discard its in-flight time.
+ * rather than letting a fresh start quietly discard its in-flight time. And
+ * only one practice clock of ANY kind runs at a time: if an ordinary block
+ * is active, this redirects to it too, rather than starting a routine
+ * alongside it and logging the same interval twice.
  */
 export default function RoutineRunner() {
   const { routineId } = useParams();
@@ -20,6 +23,7 @@ export default function RoutineRunner() {
   const shortOnTime = searchParams.get('short') === '1';
   const navigate = useNavigate();
   const db = useStore((s) => s.db);
+  const active = useStore((s) => s.active);
   const activeRoutine = useStore((s) => s.activeRoutine);
   const startRoutineRun = useStore((s) => s.startRoutineRun);
   const pauseRoutineRun = useStore((s) => s.pauseRoutineRun);
@@ -63,13 +67,22 @@ export default function RoutineRunner() {
     }
   }, [otherActive, navigate]);
 
+  // An ordinary block is already running: resolve it there. The store's
+  // startRoutineRun already refuses to start a routine while one is active
+  // (so the same interval can never be logged twice), but without this
+  // redirect the "begin one" effect below would just no-op forever, leaving
+  // the user stranded on a blank screen instead of back at their block.
+  useEffect(() => {
+    if (active && !isMine) navigate('/active', { replace: true });
+  }, [active, isMine, navigate]);
+
   // Nothing running yet for this routine: begin one.
   useEffect(() => {
-    if (routine && routineId && !activeRoutine && !result) {
+    if (routine && routineId && !active && !activeRoutine && !result) {
       startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routine, routineId, shortOnTime]);
+  }, [routine, routineId, shortOnTime, active]);
 
   // Force a re-render every second so the countdown visibly ticks. The actual
   // time is always read fresh from the wall clock below, so a background/lock

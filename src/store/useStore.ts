@@ -348,18 +348,25 @@ interface StoreState {
     stageId?: ID;
     segments?: RoutineSegment[];
   }) => ID;
-  /** Full-form save: a complete replace, not a partial patch. Changing the
-   *  instrument re-enforces the binding + placement invariants. */
+  /**
+   * Full-form save: a complete replace, not a partial patch. Every save
+   * re-enforces the binding + placement invariants against the instrument
+   * being saved, whether or not it changed — never trusts the form on
+   * faith. `instrumentId` is optional here (unlike addRoutine): editing an
+   * already-unscoped legacy routine must be able to save without inventing
+   * one.
+   */
   updateRoutine: (
     id: ID,
-    patch: { name: string; segments: RoutineSegment[]; instrumentId: ID; pathwayId?: ID; stageId?: ID },
+    patch: { name: string; segments: RoutineSegment[]; instrumentId?: ID; pathwayId?: ID; stageId?: ID },
   ) => void;
   deleteRoutine: (id: ID) => void;
   duplicateRoutine: (id: ID) => ID;
   /**
-   * Begin running a routine (segments become the live run). A no-op if a
-   * DIFFERENT routine is already active — callers must resume that one
-   * first, so its in-flight elapsed time is never silently overwritten.
+   * Begin running a routine (segments become the live run). A no-op if an
+   * ordinary block is running, or if a DIFFERENT routine is already active —
+   * callers must resolve (resume/finish/discard) that one first, so its
+   * in-flight elapsed time is never silently overwritten or double-counted.
    */
   startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
   pauseRoutineRun: () => void;
@@ -808,11 +815,15 @@ export const useStore = create<StoreState>()(
       },
 
       startSession: (input) => {
-        const { active } = get();
-        // Never silently overwrite an existing session's elapsed time — the
-        // caller must resolve it first (finish/discard it), the same rule
-        // startRoutineRun already applies to a different routine.
-        if (active) return;
+        const { active, activeRoutine } = get();
+        // Never silently overwrite an existing session's elapsed time, and
+        // never let an ordinary block run alongside a routine — every start
+        // path (direct item starts, Session Plan segments) routes through
+        // here, so this one guard is what keeps only one practice clock
+        // ticking at a time. The caller must resolve the existing one first
+        // (finish/discard/resume it) — same rule startRoutineRun applies in
+        // the other direction.
+        if (active || activeRoutine) return;
         const now = new Date();
         set({
           active: {
@@ -1176,7 +1187,7 @@ export const useStore = create<StoreState>()(
       addRoutine: (input) => {
         const now = new Date();
         const ts = nowISO(now);
-        const routine: PathwayRoutine = {
+        const draft: PathwayRoutine = {
           id: newId(),
           instrumentId: input.instrumentId,
           pathwayId: input.pathwayId,
@@ -1187,6 +1198,11 @@ export const useStore = create<StoreState>()(
           createdAt: ts,
           updatedAt: ts,
         };
+        // Never trust the caller's bindings/placement on faith — the same
+        // invariant enforcement updateRoutine applies on every save.
+        const { db } = get();
+        const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
+        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, now);
         set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
         return routine.id;
       },
@@ -1196,29 +1212,25 @@ export const useStore = create<StoreState>()(
         const { db } = get();
         const current = db.pathwayRoutines.find((r) => r.id === id);
         if (!current) return;
-        const instrumentChanged = patch.instrumentId !== current.instrumentId;
         set((s) => ({
           db: {
             ...s.db,
             pathwayRoutines: s.db.pathwayRoutines.map((r) => {
               if (r.id !== id) return r;
-              const merged = touch(
-                {
-                  ...r,
-                  name: patch.name.trim() || r.name,
-                  segments: patch.segments,
-                  instrumentId: patch.instrumentId,
-                  pathwayId: patch.pathwayId,
-                  stageId: patch.stageId,
-                },
-                now,
-              );
-              if (!instrumentChanged) return merged;
-              // Changing the instrument re-enforces the invariants rather
-              // than trusting whatever the form happened to submit for
-              // bindings/placement under the old instrument.
+              const merged: PathwayRoutine = {
+                ...r,
+                name: patch.name.trim() || r.name,
+                segments: patch.segments,
+                instrumentId: patch.instrumentId,
+                pathwayId: patch.pathwayId,
+                stageId: patch.stageId,
+              };
+              // Always re-enforce the binding + placement invariants against
+              // the instrument actually being saved — whether or not it
+              // changed — rather than trusting whatever the form happened to
+              // submit.
               const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
-              return retargetRoutineInstrument(merged, patch.instrumentId, s.db.items, pathway, now);
+              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, now);
             }),
           },
         }));
@@ -1246,7 +1258,10 @@ export const useStore = create<StoreState>()(
       },
 
       startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
-        const { activeRoutine } = get();
+        const { activeRoutine, active } = get();
+        // Same guard as startSession, in the other direction: an ordinary
+        // block already running must be resolved before a routine can start.
+        if (active) return;
         if (activeRoutine && activeRoutine.routineId !== routineId) return;
         set({
           activeRoutine: {

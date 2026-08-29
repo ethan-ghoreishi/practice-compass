@@ -257,14 +257,22 @@ export function detachIncompatibleRoutinesForPathway(
 }
 
 /**
- * Routine instrument change: clear item bindings that no longer match the new
- * instrument, and detach the routine from its pathway/stage placement if that
- * placement is no longer compatible either. The pathway's own instrument is
- * never touched.
+ * Enforce the binding + placement invariants against a target instrument:
+ * clear item bindings that don't belong to it, and detach the routine from
+ * its pathway/stage placement if that placement is no longer compatible.
+ * The pathway's own instrument is never touched.
+ *
+ * This is the one place those invariants are checked, so the store calls it
+ * unconditionally on every create and every save — not only when the
+ * instrument actually changes — rather than trusting a form's bindings and
+ * placement on faith. `newInstrumentId` may be undefined: a routine can be
+ * legitimately unscoped (a General-pathway routine, or one a v11 migration
+ * correctly declined to invent an instrument for), and no item can match
+ * "no instrument", so every binding is cleared in that case.
  */
 export function retargetRoutineInstrument(
   routine: PathwayRoutine,
-  newInstrumentId: ID,
+  newInstrumentId: ID | undefined,
   items: PracticeItem[],
   pathway: Pathway | undefined,
   now: Date,

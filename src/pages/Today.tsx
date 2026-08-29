@@ -371,6 +371,7 @@ function SessionView({
 }) {
   const db = useStore((s) => s.db);
   const active = useStore((s) => s.active);
+  const activeRoutine = useStore((s) => s.activeRoutine);
   const notNow = useStore((s) => s.notNow);
   const startSession = useStore((s) => s.startSession);
   const startItemSession = useStore((s) => s.startItemSession);
@@ -418,8 +419,10 @@ function SessionView({
   const start = (item: PracticeItem) => {
     // A different item is already active: don't silently swap it out from
     // under the user (startSession would just no-op) — the in-progress
-    // banner above is the resolve path.
+    // banner above is the resolve path. Same for a running routine — the
+    // Routines doorway's "Resume your routine" is that resolve path.
     if (active && active.itemId !== item.id) return;
+    if (activeRoutine) return;
     startSession(defaultStartInput(item));
     navigate('/active');
   };
@@ -562,6 +565,7 @@ function SessionView({
                     className="btn btn-sm btn-primary"
                     onClick={() => {
                       if (active && active.itemId !== item.id) return;
+                      if (activeRoutine) return;
                       startItemSession(item.id);
                       navigate('/active');
                     }}

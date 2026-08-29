@@ -24,8 +24,13 @@ export default function RoutineEdit() {
   const existing = routineId ? db.pathwayRoutines.find((r) => r.id === routineId) : undefined;
   const instruments = db.instruments.filter((i) => i.active);
   const preselect = params.get('instrument');
-  const defaultInstrument =
-    existing?.instrumentId || (preselect && instruments.some((i) => i.id === preselect) ? preselect : instruments[0]?.id) || '';
+  // A brand-new routine defaults to an instrument (required at creation).
+  // Editing an EXISTING routine preserves whatever it already has, including
+  // no instrument at all — an honestly unscoped legacy routine must not have
+  // one invented for it just by being opened and saved.
+  const defaultInstrument = existing
+    ? (existing.instrumentId ?? '')
+    : (preselect && instruments.some((i) => i.id === preselect) ? preselect : instruments[0]?.id) || '';
 
   const [name, setName] = useState(existing?.name ?? '');
   const [instrumentId, setInstrumentId] = useState(defaultInstrument);
@@ -88,23 +93,23 @@ export default function RoutineEdit() {
       .filter((s) => s.label.trim())
       .map((s) => ({ ...s, label: s.label.trim(), minutes: Math.max(1, Math.round(s.minutes) || 1) }));
 
-  const canSave = name.trim() !== '' && instrumentId !== '';
+  // A brand-new routine requires an instrument; editing an already-unscoped
+  // routine must stay saveable without forcing one to be picked first.
+  const canSave = name.trim() !== '' && (instrumentId !== '' || !!existing);
 
   function save() {
     if (!canSave) return;
-    const patch = {
-      name: name.trim(),
-      instrumentId,
-      pathwayId: pathwayId || undefined,
-      stageId: stageId || undefined,
-      segments: cleanSegments(),
-    };
+    const name_ = name.trim();
+    const pathwayId_ = pathwayId || undefined;
+    const stageId_ = stageId || undefined;
+    const segments_ = cleanSegments();
     if (existing) {
-      updateRoutine(existing.id, patch);
+      updateRoutine(existing.id, { name: name_, instrumentId: instrumentId || undefined, pathwayId: pathwayId_, stageId: stageId_, segments: segments_ });
       navigate(backTo, { replace: true });
     } else {
-      const id = addRoutine(patch);
-      navigate(patch.stageId ? `/pathway/${patch.pathwayId}/${patch.stageId}` : patch.pathwayId ? `/pathway/${patch.pathwayId}` : '/', {
+      // canSave guarantees instrumentId is set for a new routine.
+      const id = addRoutine({ name: name_, instrumentId, pathwayId: pathwayId_, stageId: stageId_, segments: segments_ });
+      navigate(stageId_ ? `/pathway/${pathwayId_}/${stageId_}` : pathwayId_ ? `/pathway/${pathwayId_}` : '/', {
         replace: true,
         state: { newRoutineId: id },
       });
@@ -126,9 +131,13 @@ export default function RoutineEdit() {
           <input className="input" dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. My Setar warm-up" />
         </Field>
 
-        <Field label="Instrument">
+        <Field
+          label="Instrument"
+          hint={instrumentId === '' && existing ? 'No instrument set — it stays that way until you choose one.' : undefined}
+        >
           <select className="select" value={instrumentId} onChange={(e) => onInstrumentChange(e.target.value)}>
             {instruments.length === 0 && <option value="">No instruments yet</option>}
+            {instruments.length > 0 && instrumentId === '' && <option value="">Choose an instrument…</option>}
             {instruments.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.name}

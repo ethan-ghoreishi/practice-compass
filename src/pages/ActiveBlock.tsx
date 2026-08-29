@@ -9,6 +9,7 @@ import { PauseIcon, PlayIcon } from '../components/icons';
 export default function ActiveBlock() {
   const db = useStore((s) => s.db);
   const active = useStore((s) => s.active);
+  const activeRoutine = useStore((s) => s.activeRoutine);
   const pauseSession = useStore((s) => s.pauseSession);
   const resumeSession = useStore((s) => s.resumeSession);
   const cancelSession = useStore((s) => s.cancelSession);
@@ -25,6 +26,21 @@ export default function ActiveBlock() {
   }, [active?.running]);
 
   if (!active) {
+    // A routine is running instead — its own clock, not this one. Point back
+    // at it rather than offering a fresh start that would just no-op.
+    if (activeRoutine) {
+      return (
+        <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
+          <h1 className="page-title">A routine is running</h1>
+          <Link
+            to={`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`}
+            className="btn btn-primary btn-lg"
+          >
+            <PlayIcon /> Resume your routine
+          </Link>
+        </div>
+      );
+    }
     return (
       <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
         <h1 className="page-title">No block in progress</h1>
