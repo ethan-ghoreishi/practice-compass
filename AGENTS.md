@@ -143,7 +143,14 @@ own pace, on a route they trust. Protect that:
   (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
   `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
   instrument changed — a form is never trusted on faith for bindings or placement it didn't
-  actually re-derive. Finishing a run writes **at most one
+  actually re-derive. This is deliberately a save-time check, not a live one: editing a
+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+  from the routine's current data — so a mid-run edit can never shorten or desync the
+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
+  whatever item was actually practised. Discarding that instead would silently lose real
+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
   block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
   ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
   Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
@@ -157,14 +164,20 @@ own pace, on a route they trust. Protect that:
   bound-item practice, matching how an active block already survives navigation, and only
   one routine can run at a time — starting a different one while another is active redirects
   to resume it instead of overwriting its in-flight time. More generally, only ONE practice
-  clock of any kind runs at a time: `startSession` (so `startItemSession` and Session Plan's
-  `beginPlanSegment`, which both route through it) refuses to start while `activeRoutine` is
-  set, and `startRoutineRun` refuses to start while `active` is set — the same single guard
-  in each shared function covers every caller, rather than trusting each page to check both.
-  Without it, an ordinary block and a routine could run concurrently and log the same
-  wall-clock interval twice. The pages that start a clock (`Today.tsx`, `StageDetail.tsx`,
-  `RoutineRunner.tsx`) resolve the conflict by redirecting to whichever is actually running
-  instead of leaving the user on a dead screen. `RoutineRunner.tsx` derives
+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
+  guard pair in each shared function covers every caller, rather than trusting each page to
+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
+  persisted (`partialize`), so a dual state can reach a device from before this guard
+  existed, and resuming either clock without checking the other would tick both at once, the
+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+  could run concurrently and log the same wall-clock interval twice. The pages that start a
+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
   remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
   in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
   `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone

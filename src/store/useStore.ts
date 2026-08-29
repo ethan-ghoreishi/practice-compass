@@ -850,8 +850,12 @@ export const useStore = create<StoreState>()(
       },
 
       resumeSession: () => {
-        const { active } = get();
+        const { active, activeRoutine } = get();
         if (!active || active.running) return;
+        // A routine clock is also live (only reachable from persisted state
+        // predating this guard) — resuming would tick two clocks at once,
+        // same as a fresh start. Resolve it first (finish/discard it).
+        if (activeRoutine) return;
         set({ active: { ...active, running: true, segmentStartedAt: nowISO() } });
       },
 
@@ -1290,8 +1294,10 @@ export const useStore = create<StoreState>()(
       },
 
       resumeRoutineRun: () => {
-        const { activeRoutine } = get();
+        const { activeRoutine, active } = get();
         if (!activeRoutine || activeRoutine.running) return;
+        // Same guard as resumeSession, in the other direction.
+        if (active) return;
         set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
       },
 
