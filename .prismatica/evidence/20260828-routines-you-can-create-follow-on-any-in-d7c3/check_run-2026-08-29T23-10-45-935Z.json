@@ -1,0 +1,88 @@
+{
+  "contractId": "20260828-routines-you-can-create-follow-on-any-in-d7c3",
+  "event": "check_run",
+  "at": "2026-08-29T23:10:45.935Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "not configured at init — reported, never silently skipped"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "17 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "21 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "src/App.tsx",
+    "src/domain/defaults.ts",
+    "src/domain/index.ts",
+    "src/domain/migrations.test.ts",
+    "src/domain/migrations.ts",
+    "src/domain/routines.test.ts",
+    "src/domain/routines.ts",
+    "src/domain/types.ts",
+    "src/pages/ActiveBlock.tsx",
+    "src/pages/PathwayDetail.tsx",
+    "src/pages/RoutineEdit.tsx",
+    "src/pages/RoutineRunner.tsx",
+    "src/pages/StageDetail.tsx",
+    "src/pages/Today.tsx",
+    "src/store/useStore.ts"
+  ],
+  "prismaticaVersion": "0.5.0"
+}
