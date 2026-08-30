@@ -1,29 +1,20 @@
 ---
 id: 20260828-routines-you-can-create-follow-on-any-in-d7c3
 contractId: 20260828-routines-you-can-create-follow-on-any-in-d7c3
-patchId: 3c76d7048a34886d88455d55a183e18ceae41dc2
+patchId: 0273873e5218b522c48fab2109353d914e77a54c
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Routine instrument, binding and placement integrity at every mutation edge
-    summary: Store-level placement validation still fails open for nonexistent
-      pathways and cross-pathway stages.
-    counterexample: Call addRoutine or updateRoutine with pathwayId 'missing' and
-      any stageId. retargetRoutineInstrument receives pathway undefined, treats
-      undefined as a compatible General pathway, and preserves both identifiers.
-      A stageId belonging to another pathway is likewise preserved because no
-      stage relationship is checked.
   - family: Single active practice clock and honest time accounting
-    summary: Hydration preserves a legacy dual-running state, so both clocks can
-      continue without passing through either new resume guard.
-    counterexample: Persist active.running=true and activeRoutine.running=true using
-      the previously permitted concurrent-start state, then reload. The merge
-      restores both objects unchanged; each elapsed-time function continues
-      counting from its timestamp, and finishing both records the same
-      wall-clock interval twice.
-createdAt: 2026-08-29T23:57:20.280Z
-sealedAt: 2026-08-30T00:22:09.359Z
+    summary: The new hydration repair has no runnable regression test, so the exact
+      rejected dual-clock failure is not protected by patch-bound evidence.
+    counterexample: Restore the previous fail-open merge that returns persisted
+      active and activeRoutine unchanged. All 21 named acceptance tests still
+      pass because none hydrates a persisted dual-running state or asserts that
+      both clocks are frozen with their elapsed time preserved.
+createdAt: 2026-08-30T00:46:08.839Z
+sealedAt: 2026-08-30T00:52:59.387Z
 ---
 
 # Review: Routines you can create, follow on any instrument, and actually log
@@ -37,7 +28,7 @@ sealedAt: 2026-08-30T00:22:09.359Z
 - **Contract:** 20260828-routines-you-can-create-follow-on-any-in-d7c3
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/5
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `3c76d7048a34886d88455d55a183e18ceae41dc2`
+- **Diff patch-id:** `0273873e5218b522c48fab2109353d914e77a54c`
 
 ## The Delta this change was framed from
 
@@ -83,171 +74,191 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Single active practice clock and honest time accounting** — The store permits an ordinary block and a routine to run concurrently because startSession guards only active while startRoutineRun guards only activeRoutine. This violates the single-focus loop and can record overlapping wall-clock time twice. Rework the whole start/resume family, including direct item starts and Session Plan segment starts, so every practice clock resolves an existing incompatible clock before starting.
-  _counterexample:_ Start an ordinary block, navigate to a routine through a pathway, and start it. Both active and activeRoutine remain running. Finish both and the same real interval is logged once by the block and again by the routine. The reverse order and beginPlanSegment have the same failure.
-- **Routine instrument, binding and placement integrity at every mutation edge** — Routine integrity is enforced mainly by the form and only partly by updateRoutine. addRoutine accepts mismatched bindings or placement unchanged, updateRoutine preserves them whenever instrumentId is unchanged, and RoutineEdit silently assigns the first active instrument when editing an honestly unscoped legacy routine. Rework creation, editing and active-run mutation as one family so the store validates all item bindings and placement compatibility without inventing scope.
-  _counterexample:_ Migrate a v10 routine on a General pathway. Migration correctly leaves instrumentId undefined, but opening Edit and saving only a name change assigns instruments[0].id. Separately, addRoutine or same-instrument updateRoutine can receive a Setar itemId on a guitar routine and persist it because no store-level validation runs.
+- **Routine instrument, binding and placement integrity at every mutation edge** — Store-level placement validation still fails open for nonexistent pathways and cross-pathway stages.
+  _counterexample:_ Call addRoutine or updateRoutine with pathwayId 'missing' and any stageId. retargetRoutineInstrument receives pathway undefined, treats undefined as a compatible General pathway, and preserves both identifiers. A stageId belonging to another pathway is likewise preserved because no stage relationship is checked.
+- **Single active practice clock and honest time accounting** — Hydration preserves a legacy dual-running state, so both clocks can continue without passing through either new resume guard.
+  _counterexample:_ Persist active.running=true and activeRoutine.running=true using the previously permitted concurrent-start state, then reload. The merge restores both objects unchanged; each elapsed-time function continues counting from its timestamp, and finishing both records the same wall-clock interval twice.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 1d68388..b41f777 100644
+index b41f777..7dfe0eb 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -127,16 +127,30 @@ own pace, on a route they trust. Protect that:
-   tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
-   `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
-   (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
--  every routine created from now on. `pathwayId`/`stageId` are optional PLACEMENT, not
--  identity, so a routine can exist unplaced ("my Setar warm-up"); deleting a pathway or
--  stage DETACHES its routines (clears the placement) rather than deleting them — pathway
--  deletion clears both `pathwayId` and `stageId`, stage deletion clears only `stageId`.
--  `RoutineSegment.itemId` optionally binds a segment to a real `PracticeItem`; a bound
--  itemId must always match the routine's instrument, enforced at every edge (item deleted →
--  unbind everywhere; item's instrument changes → unbind from now-mismatched routines;
--  routine's instrument changes → clear mismatched bindings and detach an incompatible
--  placement; pathway's instrument changes → detach an incompatible placed routine) — never
--  by silently rewriting either side's instrument. Finishing a run writes **at most one
-+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
-+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
-+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
-+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
-+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
-+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
-+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
-+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
-+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
-+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
-+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
-+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
-+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
-+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
-+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
-+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
-+  actually re-derive. This is deliberately a save-time check, not a live one: editing a
-+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
-+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
-+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
-+  from the routine's current data — so a mid-run edit can never shorten or desync the
-+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
-+  whatever item was actually practised. Discarding that instead would silently lose real
-+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
-   block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
-   ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
-   Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
-@@ -149,7 +163,21 @@ own pace, on a route they trust. Protect that:
-   state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
-   bound-item practice, matching how an active block already survives navigation, and only
-   one routine can run at a time — starting a different one while another is active redirects
--  to resume it instead of overwriting its in-flight time. `RoutineRunner.tsx` derives
-+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
-+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
-+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
-+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
-+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
-+  guard pair in each shared function covers every caller, rather than trusting each page to
-+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
-+  persisted (`partialize`), so a dual state can reach a device from before this guard
-+  existed, and resuming either clock without checking the other would tick both at once, the
-+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
-+  could run concurrently and log the same wall-clock interval twice. The pages that start a
-+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
-+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
-+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
-+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
-   remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
-   in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
-   `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+@@ -143,7 +143,14 @@ own pace, on a route they trust. Protect that:
+   (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+   `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+   instrument changed — a form is never trusted on faith for bindings or placement it didn't
+-  actually re-derive. This is deliberately a save-time check, not a live one: editing a
++  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
++  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
++  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
++  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
++  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
++  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
++  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
++  untouched. This is deliberately a save-time check, not a live one: editing a
+   routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+   allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+   segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+@@ -173,7 +180,28 @@ own pace, on a route they trust. Protect that:
+   persisted (`partialize`), so a dual state can reach a device from before this guard
+   existed, and resuming either clock without checking the other would tick both at once, the
+   same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+-  could run concurrently and log the same wall-clock interval twice. The pages that start a
++  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
++  is not enough on its own: those guards only run on an in-app action, but the persisted dual
++  state itself re-enters the store on every load through the persist middleware's `merge` —
++  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
++  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
++  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
++  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
++  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
++  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
++  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
++  again. The historical overlap up to the moment of the freeze is deliberately left on both
++  sides rather than guessed away — there is no way to know from the data alone which of the
++  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
++  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
++  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
++  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
++  redirect applies even to the routine the store considers "mine": once both can exist as a
++  frozen (not just running) pair, showing the routine screen just because it's the active one
++  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
++  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
++  screen to resolve first, instead of a dead button on whichever screen they happened to load.
++  The pages that start a
+   clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+   pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+   itself) resolve the conflict by redirecting to whichever clock is actually running instead
 diff --git a/CLAUDE.md b/CLAUDE.md
-index c78541f..b6e46f1 100644
+index b6e46f1..ff4a583 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -127,16 +127,30 @@ own pace, on a route they trust. Protect that:
-   tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
-   `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
-   (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
--  every routine created from now on. `pathwayId`/`stageId` are optional PLACEMENT, not
--  identity, so a routine can exist unplaced ("my Setar warm-up"); deleting a pathway or
--  stage DETACHES its routines (clears the placement) rather than deleting them — pathway
--  deletion clears both `pathwayId` and `stageId`, stage deletion clears only `stageId`.
--  `RoutineSegment.itemId` optionally binds a segment to a real `PracticeItem`; a bound
--  itemId must always match the routine's instrument, enforced at every edge (item deleted →
--  unbind everywhere; item's instrument changes → unbind from now-mismatched routines;
--  routine's instrument changes → clear mismatched bindings and detach an incompatible
--  placement; pathway's instrument changes → detach an incompatible placed routine) — never
--  by silently rewriting either side's instrument. Finishing a run writes **at most one
-+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
-+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
-+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
-+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
-+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
-+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
-+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
-+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
-+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
-+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
-+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
-+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
-+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
-+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
-+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
-+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
-+  actually re-derive. This is deliberately a save-time check, not a live one: editing a
-+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
-+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
-+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
-+  from the routine's current data — so a mid-run edit can never shorten or desync the
-+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
-+  whatever item was actually practised. Discarding that instead would silently lose real
-+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
-   block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
-   ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
-   Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
-@@ -149,7 +163,21 @@ own pace, on a route they trust. Protect that:
-   state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
-   bound-item practice, matching how an active block already survives navigation, and only
-   one routine can run at a time — starting a different one while another is active redirects
--  to resume it instead of overwriting its in-flight time. `RoutineRunner.tsx` derives
-+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
-+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
-+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
-+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
-+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
-+  guard pair in each shared function covers every caller, rather than trusting each page to
-+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
-+  persisted (`partialize`), so a dual state can reach a device from before this guard
-+  existed, and resuming either clock without checking the other would tick both at once, the
-+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
-+  could run concurrently and log the same wall-clock interval twice. The pages that start a
-+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
-+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
-+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
-+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
-   remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
-   in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
-   `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+@@ -143,7 +143,14 @@ own pace, on a route they trust. Protect that:
+   (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+   `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+   instrument changed — a form is never trusted on faith for bindings or placement it didn't
+-  actually re-derive. This is deliberately a save-time check, not a live one: editing a
++  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
++  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
++  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
++  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
++  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
++  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
++  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
++  untouched. This is deliberately a save-time check, not a live one: editing a
+   routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+   allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+   segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+@@ -173,7 +180,28 @@ own pace, on a route they trust. Protect that:
+   persisted (`partialize`), so a dual state can reach a device from before this guard
+   existed, and resuming either clock without checking the other would tick both at once, the
+   same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+-  could run concurrently and log the same wall-clock interval twice. The pages that start a
++  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
++  is not enough on its own: those guards only run on an in-app action, but the persisted dual
++  state itself re-enters the store on every load through the persist middleware's `merge` —
++  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
++  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
++  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
++  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
++  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
++  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
++  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
++  again. The historical overlap up to the moment of the freeze is deliberately left on both
++  sides rather than guessed away — there is no way to know from the data alone which of the
++  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
++  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
++  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
++  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
++  redirect applies even to the routine the store considers "mine": once both can exist as a
++  frozen (not just running) pair, showing the routine screen just because it's the active one
++  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
++  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
++  screen to resolve first, instead of a dead button on whichever screen they happened to load.
++  The pages that start a
+   clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+   pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+   itself) resolve the conflict by redirecting to whichever clock is actually running instead
 diff --git a/src/domain/routines.test.ts b/src/domain/routines.test.ts
-index f4fe280..fe046c2 100644
+index fe046c2..c0bdb43 100644
 --- a/src/domain/routines.test.ts
 +++ b/src/domain/routines.test.ts
-@@ -346,4 +346,50 @@ describe('the binding invariant: a bound itemId never dangles', () => {
-     // The pathway itself is never rewritten.
-     expect(pathway.instrumentId).toBe('setar');
+@@ -21,7 +21,7 @@ import { createItem } from './factories';
+ import { isSaturated } from './scoring';
+ import { seedPathways } from './pathwaySeed';
+ import { STRAND_TO_FOCUS } from './labels';
+-import type { Pathway, PathwayRoutine, PracticeItem, RoutineSegment } from './types';
++import type { Pathway, PathwayRoutine, PathwayStage, PracticeItem, RoutineSegment } from './types';
+ 
+ const NOW = new Date('2026-06-18T12:00:00.000Z');
+ 
+@@ -44,6 +44,19 @@ function routine(patch: Partial<PathwayRoutine> = {}): PathwayRoutine {
+   };
+ }
+ 
++function stage(patch: Partial<PathwayStage> = {}): PathwayStage {
++  return {
++    id: 's1',
++    pathwayId: 'p1',
++    code: '1',
++    title: 'Stage',
++    order: 0,
++    createdAt: NOW.toISOString(),
++    updatedAt: NOW.toISOString(),
++    ...patch,
++  };
++}
++
+ describe('segmentsForRun (short on time)', () => {
+   const segments: RoutineSegment[] = [
+     { label: 'A', minutes: 1, essential: true },
+@@ -336,7 +349,7 @@ describe('the binding invariant: a bound itemId never dangles', () => {
+       updatedAt: NOW.toISOString(),
+     };
+ 
+-    const out = retargetRoutineInstrument(r, 'guitar', [setarItem, guitarItem], pathway, NOW);
++    const out = retargetRoutineInstrument(r, 'guitar', [setarItem, guitarItem], pathway, stage(), NOW);
+ 
+     expect(out.instrumentId).toBe('guitar');
+     expect(out.segments[0].itemId).toBeUndefined(); // setar item no longer matches
+@@ -368,7 +381,7 @@ describe('the binding invariant: a bound itemId never dangles', () => {
+       updatedAt: NOW.toISOString(),
+     };
+ 
+-    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, NOW);
++    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, stage(), NOW);
+ 
+     expect(out.instrumentId).toBeUndefined();
+     expect(out.segments[0].itemId).toBeUndefined(); // no instrument can match a bound item
+@@ -386,10 +399,40 @@ describe('the binding invariant: a bound itemId never dangles', () => {
+       updatedAt: NOW.toISOString(),
+     };
+ 
+-    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, NOW);
++    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, stage({ pathwayId: 'p-general' }), NOW);
+ 
+     expect(out.instrumentId).toBeUndefined();
+     expect(out.pathwayId).toBe('p-general');
+     expect(out.stageId).toBe('s1');
    });
 +
-+  it('clears every binding and detaches from a specific-instrument pathway when the target instrument is undefined', () => {
-+    // The store calls retargetRoutineInstrument on EVERY save, not only when
-+    // the instrument changed — this is what stops a form from persisting a
-+    // mismatched itemId or placement on an unchanged instrument, and what
-+    // lets a routine go (or stay) honestly unscoped without inventing one.
-+    const guitarItem = item({ id: 'item-guitar', instrumentId: 'guitar' });
-+    const r = routine({
-+      instrumentId: 'guitar',
-+      pathwayId: 'p1',
-+      stageId: 's1',
-+      segments: [{ label: 'A', minutes: 1, itemId: 'item-guitar' }],
-+    });
++  it('clears a placement pointing at a pathway that no longer resolves, instead of treating it as an unscoped General pathway', () => {
++    // A pathwayId that no longer resolves to a real pathway must not be
++    // treated as an unscoped (therefore "compatible") General pathway just
++    // because the caller's lookup came back undefined.
++    const r = routine({ instrumentId: 'guitar', pathwayId: 'missing', stageId: 's1' });
++
++    const out = retargetRoutineInstrument(r, 'guitar', [], undefined, stage(), NOW);
++
++    expect(out.pathwayId).toBeUndefined();
++    expect(out.stageId).toBeUndefined();
++  });
++
++  it('clears a stageId that belongs to a different pathway while keeping a still-valid pathwayId', () => {
++    const r = routine({ instrumentId: 'guitar', pathwayId: 'p1', stageId: 's-other' });
 +    const pathway: Pathway = {
 +      id: 'p1',
 +      instrumentId: 'guitar',
@@ -256,434 +267,170 @@ index f4fe280..fe046c2 100644
 +      createdAt: NOW.toISOString(),
 +      updatedAt: NOW.toISOString(),
 +    };
++    const foreignStage = stage({ id: 's-other', pathwayId: 'p-other' });
 +
-+    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, NOW);
++    const out = retargetRoutineInstrument(r, 'guitar', [], pathway, foreignStage, NOW);
 +
-+    expect(out.instrumentId).toBeUndefined();
-+    expect(out.segments[0].itemId).toBeUndefined(); // no instrument can match a bound item
-+    expect(out.pathwayId).toBeUndefined(); // the guitar pathway no longer matches
-+    expect(out.stageId).toBeUndefined();
-+  });
-+
-+  it('stays placed on a General (no-instrument) pathway when the target instrument is undefined', () => {
-+    const r = routine({ instrumentId: undefined, pathwayId: 'p-general', stageId: 's1', segments: [] });
-+    const generalPathway: Pathway = {
-+      id: 'p-general',
-+      name: 'General',
-+      order: 0,
-+      createdAt: NOW.toISOString(),
-+      updatedAt: NOW.toISOString(),
-+    };
-+
-+    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, NOW);
-+
-+    expect(out.instrumentId).toBeUndefined();
-+    expect(out.pathwayId).toBe('p-general');
-+    expect(out.stageId).toBe('s1');
++    expect(out.pathwayId).toBe('p1'); // the pathway itself is still real and compatible
++    expect(out.stageId).toBeUndefined(); // but the stage never belonged to it
 +  });
  });
 diff --git a/src/domain/routines.ts b/src/domain/routines.ts
-index aa7e24a..9dae6c0 100644
+index 9dae6c0..b4782f5 100644
 --- a/src/domain/routines.ts
 +++ b/src/domain/routines.ts
-@@ -257,14 +257,22 @@ export function detachIncompatibleRoutinesForPathway(
- }
- 
+@@ -6,6 +6,7 @@ import type {
+   ISODateTime,
+   Pathway,
+   PathwayRoutine,
++  PathwayStage,
+   PracticeBlock,
+   PracticeItem,
+   RoutineSegment,
+@@ -259,8 +260,8 @@ export function detachIncompatibleRoutinesForPathway(
  /**
-- * Routine instrument change: clear item bindings that no longer match the new
-- * instrument, and detach the routine from its pathway/stage placement if that
-- * placement is no longer compatible either. The pathway's own instrument is
-- * never touched.
-+ * Enforce the binding + placement invariants against a target instrument:
-+ * clear item bindings that don't belong to it, and detach the routine from
-+ * its pathway/stage placement if that placement is no longer compatible.
-+ * The pathway's own instrument is never touched.
+  * Enforce the binding + placement invariants against a target instrument:
+  * clear item bindings that don't belong to it, and detach the routine from
+- * its pathway/stage placement if that placement is no longer compatible.
+- * The pathway's own instrument is never touched.
++ * its pathway/stage placement if that placement is no longer compatible or
++ * no longer real. The pathway's own instrument is never touched.
+  *
+  * This is the one place those invariants are checked, so the store calls it
+  * unconditionally on every create and every save — not only when the
+@@ -269,26 +270,38 @@ export function detachIncompatibleRoutinesForPathway(
+  * legitimately unscoped (a General-pathway routine, or one a v11 migration
+  * correctly declined to invent an instrument for), and no item can match
+  * "no instrument", so every binding is cleared in that case.
 + *
-+ * This is the one place those invariants are checked, so the store calls it
-+ * unconditionally on every create and every save — not only when the
-+ * instrument actually changes — rather than trusting a form's bindings and
-+ * placement on faith. `newInstrumentId` may be undefined: a routine can be
-+ * legitimately unscoped (a General-pathway routine, or one a v11 migration
-+ * correctly declined to invent an instrument for), and no item can match
-+ * "no instrument", so every binding is cleared in that case.
++ * `pathway`/`stage` are the caller's live lookups by the routine's own
++ * `pathwayId`/`stageId` — never trusted just because those ids are set. A
++ * `pathwayId` that no longer resolves (deleted, or never real) can never be
++ * a valid placement, so it clears the whole placement rather than being
++ * preserved as an undetectable dangling reference. A `stageId` is only kept
++ * when it resolves AND actually belongs to that same pathway — a stage
++ * lookup that resolves to a different pathway's stage is cleared on its own,
++ * leaving an otherwise-valid pathwayId placement intact.
   */
  export function retargetRoutineInstrument(
    routine: PathwayRoutine,
--  newInstrumentId: ID,
-+  newInstrumentId: ID | undefined,
+   newInstrumentId: ID | undefined,
    items: PracticeItem[],
    pathway: Pathway | undefined,
++  stage: PathwayStage | undefined,
    now: Date,
-diff --git a/src/pages/ActiveBlock.tsx b/src/pages/ActiveBlock.tsx
-index 8170519..4300b2f 100644
---- a/src/pages/ActiveBlock.tsx
-+++ b/src/pages/ActiveBlock.tsx
-@@ -9,6 +9,7 @@ import { PauseIcon, PlayIcon } from '../components/icons';
- export default function ActiveBlock() {
-   const db = useStore((s) => s.db);
-   const active = useStore((s) => s.active);
-+  const activeRoutine = useStore((s) => s.activeRoutine);
-   const pauseSession = useStore((s) => s.pauseSession);
-   const resumeSession = useStore((s) => s.resumeSession);
-   const cancelSession = useStore((s) => s.cancelSession);
-@@ -25,6 +26,21 @@ export default function ActiveBlock() {
-   }, [active?.running]);
- 
-   if (!active) {
-+    // A routine is running instead — its own clock, not this one. Point back
-+    // at it rather than offering a fresh start that would just no-op.
-+    if (activeRoutine) {
-+      return (
-+        <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
-+          <h1 className="page-title">A routine is running</h1>
-+          <Link
-+            to={`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`}
-+            className="btn btn-primary btn-lg"
-+          >
-+            <PlayIcon /> Resume your routine
-+          </Link>
-+        </div>
-+      );
-+    }
-     return (
-       <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
-         <h1 className="page-title">No block in progress</h1>
-diff --git a/src/pages/RoutineEdit.tsx b/src/pages/RoutineEdit.tsx
-index 2dd5cae..a20a4c4 100644
---- a/src/pages/RoutineEdit.tsx
-+++ b/src/pages/RoutineEdit.tsx
-@@ -24,8 +24,13 @@ export default function RoutineEdit() {
-   const existing = routineId ? db.pathwayRoutines.find((r) => r.id === routineId) : undefined;
-   const instruments = db.instruments.filter((i) => i.active);
-   const preselect = params.get('instrument');
--  const defaultInstrument =
--    existing?.instrumentId || (preselect && instruments.some((i) => i.id === preselect) ? preselect : instruments[0]?.id) || '';
-+  // A brand-new routine defaults to an instrument (required at creation).
-+  // Editing an EXISTING routine preserves whatever it already has, including
-+  // no instrument at all — an honestly unscoped legacy routine must not have
-+  // one invented for it just by being opened and saved.
-+  const defaultInstrument = existing
-+    ? (existing.instrumentId ?? '')
-+    : (preselect && instruments.some((i) => i.id === preselect) ? preselect : instruments[0]?.id) || '';
- 
-   const [name, setName] = useState(existing?.name ?? '');
-   const [instrumentId, setInstrumentId] = useState(defaultInstrument);
-@@ -88,23 +93,23 @@ export default function RoutineEdit() {
-       .filter((s) => s.label.trim())
-       .map((s) => ({ ...s, label: s.label.trim(), minutes: Math.max(1, Math.round(s.minutes) || 1) }));
- 
--  const canSave = name.trim() !== '' && instrumentId !== '';
-+  // A brand-new routine requires an instrument; editing an already-unscoped
-+  // routine must stay saveable without forcing one to be picked first.
-+  const canSave = name.trim() !== '' && (instrumentId !== '' || !!existing);
- 
-   function save() {
-     if (!canSave) return;
--    const patch = {
--      name: name.trim(),
--      instrumentId,
--      pathwayId: pathwayId || undefined,
--      stageId: stageId || undefined,
--      segments: cleanSegments(),
--    };
-+    const name_ = name.trim();
-+    const pathwayId_ = pathwayId || undefined;
-+    const stageId_ = stageId || undefined;
-+    const segments_ = cleanSegments();
-     if (existing) {
--      updateRoutine(existing.id, patch);
-+      updateRoutine(existing.id, { name: name_, instrumentId: instrumentId || undefined, pathwayId: pathwayId_, stageId: stageId_, segments: segments_ });
-       navigate(backTo, { replace: true });
-     } else {
--      const id = addRoutine(patch);
--      navigate(patch.stageId ? `/pathway/${patch.pathwayId}/${patch.stageId}` : patch.pathwayId ? `/pathway/${patch.pathwayId}` : '/', {
-+      // canSave guarantees instrumentId is set for a new routine.
-+      const id = addRoutine({ name: name_, instrumentId, pathwayId: pathwayId_, stageId: stageId_, segments: segments_ });
-+      navigate(stageId_ ? `/pathway/${pathwayId_}/${stageId_}` : pathwayId_ ? `/pathway/${pathwayId_}` : '/', {
-         replace: true,
-         state: { newRoutineId: id },
-       });
-@@ -126,9 +131,13 @@ export default function RoutineEdit() {
-           <input className="input" dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. My Setar warm-up" />
-         </Field>
- 
--        <Field label="Instrument">
-+        <Field
-+          label="Instrument"
-+          hint={instrumentId === '' && existing ? 'No instrument set — it stays that way until you choose one.' : undefined}
-+        >
-           <select className="select" value={instrumentId} onChange={(e) => onInstrumentChange(e.target.value)}>
-             {instruments.length === 0 && <option value="">No instruments yet</option>}
-+            {instruments.length > 0 && instrumentId === '' && <option value="">Choose an instrument…</option>}
-             {instruments.map((i) => (
-               <option key={i.id} value={i.id}>
-                 {i.name}
+ ): PathwayRoutine {
+   const byId = new Map(items.map((i) => [i.id, i]));
+   const segments = routine.segments.map((s) =>
+     s.itemId && byId.get(s.itemId)?.instrumentId !== newInstrumentId ? { ...s, itemId: undefined } : s,
+   );
+-  const stillPlaced = placementCompatible(newInstrumentId, pathway?.instrumentId);
++  const pathwayReal = routine.pathwayId === undefined || pathway !== undefined;
++  const stillPlaced = pathwayReal && placementCompatible(newInstrumentId, pathway?.instrumentId);
++  const stageBelongs = routine.stageId === undefined || (stage !== undefined && stage.pathwayId === routine.pathwayId);
+   return touchRoutine(
+     {
+       ...routine,
+       instrumentId: newInstrumentId,
+       segments,
+       pathwayId: stillPlaced ? routine.pathwayId : undefined,
+-      stageId: stillPlaced ? routine.stageId : undefined,
++      stageId: stillPlaced && stageBelongs ? routine.stageId : undefined,
+     },
+     now,
+   );
 diff --git a/src/pages/RoutineRunner.tsx b/src/pages/RoutineRunner.tsx
-index 38ecf42..c8b378a 100644
+index c8b378a..21d9722 100644
 --- a/src/pages/RoutineRunner.tsx
 +++ b/src/pages/RoutineRunner.tsx
-@@ -12,7 +12,10 @@ import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
-  * loses genuinely-elapsed bound-item practice, the same reason `active`
-  * (an ordinary block session) survives navigation. Only one routine can run
-  * at a time: if a DIFFERENT routine is already active, this redirects to it
-- * rather than letting a fresh start quietly discard its in-flight time.
-+ * rather than letting a fresh start quietly discard its in-flight time. And
-+ * only one practice clock of ANY kind runs at a time: if an ordinary block
-+ * is active, this redirects to it too, rather than starting a routine
-+ * alongside it and logging the same interval twice.
-  */
- export default function RoutineRunner() {
-   const { routineId } = useParams();
-@@ -20,6 +23,7 @@ export default function RoutineRunner() {
-   const shortOnTime = searchParams.get('short') === '1';
-   const navigate = useNavigate();
-   const db = useStore((s) => s.db);
-+  const active = useStore((s) => s.active);
-   const activeRoutine = useStore((s) => s.activeRoutine);
-   const startRoutineRun = useStore((s) => s.startRoutineRun);
-   const pauseRoutineRun = useStore((s) => s.pauseRoutineRun);
-@@ -63,13 +67,22 @@ export default function RoutineRunner() {
-     }
-   }, [otherActive, navigate]);
+@@ -72,9 +72,18 @@ export default function RoutineRunner() {
+   // (so the same interval can never be logged twice), but without this
+   // redirect the "begin one" effect below would just no-op forever, leaving
+   // the user stranded on a blank screen instead of back at their block.
++  // Unconditional on isMine: the guards above make "this routine is mine AND
++  // an ordinary block also exists" unreachable from any in-app action, so the
++  // only way here is a persisted dual-clock state from before those guards —
++  // which the store's hydration `merge` freezes rather than deletes. Without
++  // this redirect, `isMine` would keep showing this frozen routine with a
++  // Resume button that silently no-ops (resumeRoutineRun refuses while
++  // `active` exists). Sending the user to resolve the block first, same as
++  // any genuinely concurrent case, gives a single deterministic way out
++  // instead of a dead button.
+   useEffect(() => {
+-    if (active && !isMine) navigate('/active', { replace: true });
+-  }, [active, isMine, navigate]);
++    if (active) navigate('/active', { replace: true });
++  }, [active, navigate]);
  
-+  // An ordinary block is already running: resolve it there. The store's
-+  // startRoutineRun already refuses to start a routine while one is active
-+  // (so the same interval can never be logged twice), but without this
-+  // redirect the "begin one" effect below would just no-op forever, leaving
-+  // the user stranded on a blank screen instead of back at their block.
-+  useEffect(() => {
-+    if (active && !isMine) navigate('/active', { replace: true });
-+  }, [active, isMine, navigate]);
-+
    // Nothing running yet for this routine: begin one.
    useEffect(() => {
--    if (routine && routineId && !activeRoutine && !result) {
-+    if (routine && routineId && !active && !activeRoutine && !result) {
-       startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));
-     }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
--  }, [routine, routineId, shortOnTime]);
-+  }, [routine, routineId, shortOnTime, active]);
- 
-   // Force a re-render every second so the countdown visibly ticks. The actual
-   // time is always read fresh from the wall clock below, so a background/lock
-diff --git a/src/pages/StageDetail.tsx b/src/pages/StageDetail.tsx
-index 468c7da..c217774 100644
---- a/src/pages/StageDetail.tsx
-+++ b/src/pages/StageDetail.tsx
-@@ -24,6 +24,7 @@ export default function StageDetail() {
-   const addFromCatalog = useStore((s) => s.addFromCatalog);
-   const removeCatalogItem = useStore((s) => s.removeCatalogItem);
-   const startItemSession = useStore((s) => s.startItemSession);
-+  const activeRoutine = useStore((s) => s.activeRoutine);
-   const navigate = useNavigate();
- 
-   const stage = db.pathwayStages.find((s) => s.id === stageId);
-@@ -78,6 +79,13 @@ export default function StageDetail() {
-   }
- 
-   function practise(unit: StageUnit) {
-+    // A routine is running: resolve it there rather than trying to start a
-+    // block alongside it — startItemSession would just no-op and leave the
-+    // user on a dead "no block in progress" screen.
-+    if (activeRoutine) {
-+      navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
-+      return;
-+    }
-     const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key);
-     startItemSession(itemId);
-     navigate('/active');
-diff --git a/src/pages/Today.tsx b/src/pages/Today.tsx
-index 4047a7b..5efd3b0 100644
---- a/src/pages/Today.tsx
-+++ b/src/pages/Today.tsx
-@@ -371,6 +371,7 @@ function SessionView({
- }) {
-   const db = useStore((s) => s.db);
-   const active = useStore((s) => s.active);
-+  const activeRoutine = useStore((s) => s.activeRoutine);
-   const notNow = useStore((s) => s.notNow);
-   const startSession = useStore((s) => s.startSession);
-   const startItemSession = useStore((s) => s.startItemSession);
-@@ -418,8 +419,10 @@ function SessionView({
-   const start = (item: PracticeItem) => {
-     // A different item is already active: don't silently swap it out from
-     // under the user (startSession would just no-op) — the in-progress
--    // banner above is the resolve path.
-+    // banner above is the resolve path. Same for a running routine — the
-+    // Routines doorway's "Resume your routine" is that resolve path.
-     if (active && active.itemId !== item.id) return;
-+    if (activeRoutine) return;
-     startSession(defaultStartInput(item));
-     navigate('/active');
-   };
-@@ -562,6 +565,7 @@ function SessionView({
-                     className="btn btn-sm btn-primary"
-                     onClick={() => {
-                       if (active && active.itemId !== item.id) return;
-+                      if (activeRoutine) return;
-                       startItemSession(item.id);
-                       navigate('/active');
-                     }}
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index dab3028..65d20ef 100644
+index 65d20ef..18b9be6 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
-@@ -348,18 +348,25 @@ interface StoreState {
-     stageId?: ID;
-     segments?: RoutineSegment[];
-   }) => ID;
--  /** Full-form save: a complete replace, not a partial patch. Changing the
--   *  instrument re-enforces the binding + placement invariants. */
-+  /**
-+   * Full-form save: a complete replace, not a partial patch. Every save
-+   * re-enforces the binding + placement invariants against the instrument
-+   * being saved, whether or not it changed — never trusts the form on
-+   * faith. `instrumentId` is optional here (unlike addRoutine): editing an
-+   * already-unscoped legacy routine must be able to save without inventing
-+   * one.
-+   */
-   updateRoutine: (
-     id: ID,
--    patch: { name: string; segments: RoutineSegment[]; instrumentId: ID; pathwayId?: ID; stageId?: ID },
-+    patch: { name: string; segments: RoutineSegment[]; instrumentId?: ID; pathwayId?: ID; stageId?: ID },
-   ) => void;
-   deleteRoutine: (id: ID) => void;
-   duplicateRoutine: (id: ID) => ID;
-   /**
--   * Begin running a routine (segments become the live run). A no-op if a
--   * DIFFERENT routine is already active — callers must resume that one
--   * first, so its in-flight elapsed time is never silently overwritten.
-+   * Begin running a routine (segments become the live run). A no-op if an
-+   * ordinary block is running, or if a DIFFERENT routine is already active —
-+   * callers must resolve (resume/finish/discard) that one first, so its
-+   * in-flight elapsed time is never silently overwritten or double-counted.
-    */
-   startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
-   pauseRoutineRun: () => void;
-@@ -808,11 +815,15 @@ export const useStore = create<StoreState>()(
-       },
- 
-       startSession: (input) => {
--        const { active } = get();
--        // Never silently overwrite an existing session's elapsed time — the
--        // caller must resolve it first (finish/discard it), the same rule
--        // startRoutineRun already applies to a different routine.
--        if (active) return;
-+        const { active, activeRoutine } = get();
-+        // Never silently overwrite an existing session's elapsed time, and
-+        // never let an ordinary block run alongside a routine — every start
-+        // path (direct item starts, Session Plan segments) routes through
-+        // here, so this one guard is what keeps only one practice clock
-+        // ticking at a time. The caller must resolve the existing one first
-+        // (finish/discard/resume it) — same rule startRoutineRun applies in
-+        // the other direction.
-+        if (active || activeRoutine) return;
-         const now = new Date();
-         set({
-           active: {
-@@ -839,8 +850,12 @@ export const useStore = create<StoreState>()(
-       },
- 
-       resumeSession: () => {
--        const { active } = get();
-+        const { active, activeRoutine } = get();
-         if (!active || active.running) return;
-+        // A routine clock is also live (only reachable from persisted state
-+        // predating this guard) — resuming would tick two clocks at once,
-+        // same as a fresh start. Resolve it first (finish/discard it).
-+        if (activeRoutine) return;
-         set({ active: { ...active, running: true, segmentStartedAt: nowISO() } });
-       },
- 
-@@ -1176,7 +1191,7 @@ export const useStore = create<StoreState>()(
-       addRoutine: (input) => {
-         const now = new Date();
-         const ts = nowISO(now);
--        const routine: PathwayRoutine = {
-+        const draft: PathwayRoutine = {
-           id: newId(),
-           instrumentId: input.instrumentId,
-           pathwayId: input.pathwayId,
-@@ -1187,6 +1202,11 @@ export const useStore = create<StoreState>()(
-           createdAt: ts,
-           updatedAt: ts,
-         };
-+        // Never trust the caller's bindings/placement on faith — the same
-+        // invariant enforcement updateRoutine applies on every save.
-+        const { db } = get();
-+        const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
-+        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, now);
+@@ -1206,7 +1206,8 @@ export const useStore = create<StoreState>()(
+         // invariant enforcement updateRoutine applies on every save.
+         const { db } = get();
+         const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
+-        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, now);
++        const stage = draft.stageId ? db.pathwayStages.find((st) => st.id === draft.stageId) : undefined;
++        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, stage, now);
          set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
          return routine.id;
        },
-@@ -1196,29 +1216,25 @@ export const useStore = create<StoreState>()(
-         const { db } = get();
-         const current = db.pathwayRoutines.find((r) => r.id === id);
-         if (!current) return;
--        const instrumentChanged = patch.instrumentId !== current.instrumentId;
-         set((s) => ({
-           db: {
-             ...s.db,
-             pathwayRoutines: s.db.pathwayRoutines.map((r) => {
-               if (r.id !== id) return r;
--              const merged = touch(
--                {
--                  ...r,
--                  name: patch.name.trim() || r.name,
--                  segments: patch.segments,
--                  instrumentId: patch.instrumentId,
--                  pathwayId: patch.pathwayId,
--                  stageId: patch.stageId,
--                },
--                now,
--              );
--              if (!instrumentChanged) return merged;
--              // Changing the instrument re-enforces the invariants rather
--              // than trusting whatever the form happened to submit for
--              // bindings/placement under the old instrument.
-+              const merged: PathwayRoutine = {
-+                ...r,
-+                name: patch.name.trim() || r.name,
-+                segments: patch.segments,
-+                instrumentId: patch.instrumentId,
-+                pathwayId: patch.pathwayId,
-+                stageId: patch.stageId,
-+              };
-+              // Always re-enforce the binding + placement invariants against
-+              // the instrument actually being saved — whether or not it
-+              // changed — rather than trusting whatever the form happened to
-+              // submit.
+@@ -1234,7 +1235,8 @@ export const useStore = create<StoreState>()(
+               // changed — rather than trusting whatever the form happened to
+               // submit.
                const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
--              return retargetRoutineInstrument(merged, patch.instrumentId, s.db.items, pathway, now);
-+              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, now);
+-              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, now);
++              const stage = merged.stageId ? s.db.pathwayStages.find((st) => st.id === merged.stageId) : undefined;
++              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, stage, now);
              }),
            },
          }));
-@@ -1246,7 +1262,10 @@ export const useStore = create<StoreState>()(
+@@ -1373,7 +1375,41 @@ export const useStore = create<StoreState>()(
        },
- 
-       startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
--        const { activeRoutine } = get();
-+        const { activeRoutine, active } = get();
-+        // Same guard as startSession, in the other direction: an ordinary
-+        // block already running must be resolved before a routine can start.
-+        if (active) return;
-         if (activeRoutine && activeRoutine.routineId !== routineId) return;
-         set({
-           activeRoutine: {
-@@ -1275,8 +1294,10 @@ export const useStore = create<StoreState>()(
+       merge: (persisted, current) => {
+         const p = (persisted ?? {}) as Partial<StoreState>;
+-        return { ...current, ...p, db: p.db ?? current.db };
++        const merged = { ...current, ...p, db: p.db ?? current.db };
++        // The start/resume guards keep active/activeRoutine from BOTH being
++        // set going forward, but a device that persisted a dual-running
++        // state before those guards existed reaches this merge unchecked —
++        // hydration is the one place ALL persisted state re-enters the
++        // store, so it's the one place left to close. Passing both straight
++        // through would let each keep ticking live from its own timestamp
++        // and double-log the same wall-clock interval, exactly the bug the
++        // guards exist to prevent. Freeze both (the same transform
++        // pauseSession/pauseRoutineRun already do) rather than discarding
++        // either: nothing already elapsed is lost, neither clock advances
++        // further on its own, and the ordinary finish/discard flow is what
++        // the user resolves one with before the guards allow resuming or
++        // starting the other.
++        if (merged.active && merged.activeRoutine) {
++          const now = new Date();
++          merged.active = {
++            ...merged.active,
++            accumulatedSeconds: sessionElapsedSeconds(merged.active, now),
++            running: false,
++            segmentStartedAt: undefined,
++          };
++          merged.activeRoutine = {
++            ...merged.activeRoutine,
++            accumulatedSeconds: runElapsedSeconds(
++              merged.activeRoutine.accumulatedSeconds,
++              merged.activeRoutine.runningSince,
++              merged.activeRoutine.running,
++              now,
++            ),
++            running: false,
++            runningSince: undefined,
++          };
++        }
++        return merged;
        },
- 
-       resumeRoutineRun: () => {
--        const { activeRoutine } = get();
-+        const { activeRoutine, active } = get();
-         if (!activeRoutine || activeRoutine.running) return;
-+        // Same guard as resumeSession, in the other direction.
-+        if (active) return;
-         set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
-       },
- 
+     },
+   ),
 ```
 
 **Full current text of every file the rework touched:**
@@ -836,7 +583,14 @@ own pace, on a route they trust. Protect that:
   (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
   `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
   instrument changed — a form is never trusted on faith for bindings or placement it didn't
-  actually re-derive. This is deliberately a save-time check, not a live one: editing a
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
   routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
   allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
   segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
@@ -866,7 +620,28 @@ own pace, on a route they trust. Protect that:
   persisted (`partialize`), so a dual state can reach a device from before this guard
   existed, and resuming either clock without checking the other would tick both at once, the
   same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
-  could run concurrently and log the same wall-clock interval twice. The pages that start a
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
   clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
   pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
   itself) resolve the conflict by redirecting to whichever clock is actually running instead
@@ -1286,7 +1061,14 @@ own pace, on a route they trust. Protect that:
   (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
   `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
   instrument changed — a form is never trusted on faith for bindings or placement it didn't
-  actually re-derive. This is deliberately a save-time check, not a live one: editing a
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
   routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
   allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
   segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
@@ -1316,7 +1098,28 @@ own pace, on a route they trust. Protect that:
   persisted (`partialize`), so a dual state can reach a device from before this guard
   existed, and resuming either clock without checking the other would tick both at once, the
   same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
-  could run concurrently and log the same wall-clock interval twice. The pages that start a
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
   clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
   pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
   itself) resolve the conflict by redirecting to whichever clock is actually running instead
@@ -1614,7 +1417,7 @@ import { createItem } from './factories';
 import { isSaturated } from './scoring';
 import { seedPathways } from './pathwaySeed';
 import { STRAND_TO_FOCUS } from './labels';
-import type { Pathway, PathwayRoutine, PracticeItem, RoutineSegment } from './types';
+import type { Pathway, PathwayRoutine, PathwayStage, PracticeItem, RoutineSegment } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -1630,6 +1433,19 @@ function routine(patch: Partial<PathwayRoutine> = {}): PathwayRoutine {
     stageId: 's1',
     name: 'Routine',
     segments: [],
+    order: 0,
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+    ...patch,
+  };
+}
+
+function stage(patch: Partial<PathwayStage> = {}): PathwayStage {
+  return {
+    id: 's1',
+    pathwayId: 'p1',
+    code: '1',
+    title: 'Stage',
     order: 0,
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
@@ -1929,7 +1745,7 @@ describe('the binding invariant: a bound itemId never dangles', () => {
       updatedAt: NOW.toISOString(),
     };
 
-    const out = retargetRoutineInstrument(r, 'guitar', [setarItem, guitarItem], pathway, NOW);
+    const out = retargetRoutineInstrument(r, 'guitar', [setarItem, guitarItem], pathway, stage(), NOW);
 
     expect(out.instrumentId).toBe('guitar');
     expect(out.segments[0].itemId).toBeUndefined(); // setar item no longer matches
@@ -1961,7 +1777,7 @@ describe('the binding invariant: a bound itemId never dangles', () => {
       updatedAt: NOW.toISOString(),
     };
 
-    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, NOW);
+    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, stage(), NOW);
 
     expect(out.instrumentId).toBeUndefined();
     expect(out.segments[0].itemId).toBeUndefined(); // no instrument can match a bound item
@@ -1979,11 +1795,41 @@ describe('the binding invariant: a bound itemId never dangles', () => {
       updatedAt: NOW.toISOString(),
     };
 
-    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, NOW);
+    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, stage({ pathwayId: 'p-general' }), NOW);
 
     expect(out.instrumentId).toBeUndefined();
     expect(out.pathwayId).toBe('p-general');
     expect(out.stageId).toBe('s1');
+  });
+
+  it('clears a placement pointing at a pathway that no longer resolves, instead of treating it as an unscoped General pathway', () => {
+    // A pathwayId that no longer resolves to a real pathway must not be
+    // treated as an unscoped (therefore "compatible") General pathway just
+    // because the caller's lookup came back undefined.
+    const r = routine({ instrumentId: 'guitar', pathwayId: 'missing', stageId: 's1' });
+
+    const out = retargetRoutineInstrument(r, 'guitar', [], undefined, stage(), NOW);
+
+    expect(out.pathwayId).toBeUndefined();
+    expect(out.stageId).toBeUndefined();
+  });
+
+  it('clears a stageId that belongs to a different pathway while keeping a still-valid pathwayId', () => {
+    const r = routine({ instrumentId: 'guitar', pathwayId: 'p1', stageId: 's-other' });
+    const pathway: Pathway = {
+      id: 'p1',
+      instrumentId: 'guitar',
+      name: 'Guitar path',
+      order: 0,
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+    };
+    const foreignStage = stage({ id: 's-other', pathwayId: 'p-other' });
+
+    const out = retargetRoutineInstrument(r, 'guitar', [], pathway, foreignStage, NOW);
+
+    expect(out.pathwayId).toBe('p1'); // the pathway itself is still real and compatible
+    expect(out.stageId).toBeUndefined(); // but the stage never belonged to it
   });
 });
 ```
@@ -1999,6 +1845,7 @@ import type {
   ISODateTime,
   Pathway,
   PathwayRoutine,
+  PathwayStage,
   PracticeBlock,
   PracticeItem,
   RoutineSegment,
@@ -2252,8 +2099,8 @@ export function detachIncompatibleRoutinesForPathway(
 /**
  * Enforce the binding + placement invariants against a target instrument:
  * clear item bindings that don't belong to it, and detach the routine from
- * its pathway/stage placement if that placement is no longer compatible.
- * The pathway's own instrument is never touched.
+ * its pathway/stage placement if that placement is no longer compatible or
+ * no longer real. The pathway's own instrument is never touched.
  *
  * This is the one place those invariants are checked, so the store calls it
  * unconditionally on every create and every save — not only when the
@@ -2262,26 +2109,38 @@ export function detachIncompatibleRoutinesForPathway(
  * legitimately unscoped (a General-pathway routine, or one a v11 migration
  * correctly declined to invent an instrument for), and no item can match
  * "no instrument", so every binding is cleared in that case.
+ *
+ * `pathway`/`stage` are the caller's live lookups by the routine's own
+ * `pathwayId`/`stageId` — never trusted just because those ids are set. A
+ * `pathwayId` that no longer resolves (deleted, or never real) can never be
+ * a valid placement, so it clears the whole placement rather than being
+ * preserved as an undetectable dangling reference. A `stageId` is only kept
+ * when it resolves AND actually belongs to that same pathway — a stage
+ * lookup that resolves to a different pathway's stage is cleared on its own,
+ * leaving an otherwise-valid pathwayId placement intact.
  */
 export function retargetRoutineInstrument(
   routine: PathwayRoutine,
   newInstrumentId: ID | undefined,
   items: PracticeItem[],
   pathway: Pathway | undefined,
+  stage: PathwayStage | undefined,
   now: Date,
 ): PathwayRoutine {
   const byId = new Map(items.map((i) => [i.id, i]));
   const segments = routine.segments.map((s) =>
     s.itemId && byId.get(s.itemId)?.instrumentId !== newInstrumentId ? { ...s, itemId: undefined } : s,
   );
-  const stillPlaced = placementCompatible(newInstrumentId, pathway?.instrumentId);
+  const pathwayReal = routine.pathwayId === undefined || pathway !== undefined;
+  const stillPlaced = pathwayReal && placementCompatible(newInstrumentId, pathway?.instrumentId);
+  const stageBelongs = routine.stageId === undefined || (stage !== undefined && stage.pathwayId === routine.pathwayId);
   return touchRoutine(
     {
       ...routine,
       instrumentId: newInstrumentId,
       segments,
       pathwayId: stillPlaced ? routine.pathwayId : undefined,
-      stageId: stillPlaced ? routine.stageId : undefined,
+      stageId: stillPlaced && stageBelongs ? routine.stageId : undefined,
     },
     now,
   );
@@ -2299,484 +2158,6 @@ export function duplicateRoutineData(routine: PathwayRoutine, order: number, now
     createdAt: ts,
     updatedAt: ts,
   };
-}
-```
-
-### src/pages/ActiveBlock.tsx
-
-```
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { BLOCK_MODE_LABELS, FOCUS_LABELS } from '../domain';
-import { sessionElapsedSeconds, useStore } from '../store/useStore';
-import { getItem, instrumentName } from '../store/lookups';
-import { formatClock } from '../components/format';
-import { PauseIcon, PlayIcon } from '../components/icons';
-
-export default function ActiveBlock() {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const pauseSession = useStore((s) => s.pauseSession);
-  const resumeSession = useStore((s) => s.resumeSession);
-  const cancelSession = useStore((s) => s.cancelSession);
-  const setSessionNote = useStore((s) => s.setSessionNote);
-  const navigate = useNavigate();
-
-  const [, setTick] = useState(0);
-  const [showNote, setShowNote] = useState(false);
-
-  useEffect(() => {
-    if (!active?.running) return;
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [active?.running]);
-
-  if (!active) {
-    // A routine is running instead — its own clock, not this one. Point back
-    // at it rather than offering a fresh start that would just no-op.
-    if (activeRoutine) {
-      return (
-        <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
-          <h1 className="page-title">A routine is running</h1>
-          <Link
-            to={`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`}
-            className="btn btn-primary btn-lg"
-          >
-            <PlayIcon /> Resume your routine
-          </Link>
-        </div>
-      );
-    }
-    return (
-      <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
-        <h1 className="page-title">No block in progress</h1>
-        <Link to="/start" className="btn btn-primary btn-lg">
-          <PlayIcon /> Start a block
-        </Link>
-      </div>
-    );
-  }
-
-  const item = getItem(db, active.itemId);
-  const elapsed = sessionElapsedSeconds(active);
-  const targetSeconds = active.targetMinutes * 60;
-  const deg = Math.min(elapsed / targetSeconds, 1) * 360;
-
-  return (
-    <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
-      <header className="stack-sm">
-        <div className="eyebrow">{instrumentName(db, active.instrumentId)}</div>
-        <h1 className="page-title" dir="auto" style={{ fontSize: '1.5rem' }}>
-          {item?.title ?? 'Practice'}
-        </h1>
-        <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-          <span className="chip">{BLOCK_MODE_LABELS[active.mode]}</span>
-          <span className="chip">{FOCUS_LABELS[active.focus]}</span>
-        </div>
-        {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
-      </header>
-
-      {item && (item.notes || item.currentProblem) && (
-        <AboutThisPiece notes={item.notes} problem={item.currentProblem} />
-      )}
-
-      <div
-        className="timer-ring"
-        style={{ background: `conic-gradient(var(--accent-dim) ${deg}deg, var(--surface-3) ${deg}deg)` }}
-      >
-        <div
-          style={{
-            width: 194,
-            height: 194,
-            borderRadius: '50%',
-            background: 'var(--surface)',
-            display: 'grid',
-            placeItems: 'center',
-            gap: 2,
-          }}
-        >
-          <div className="timer">{formatClock(elapsed)}</div>
-          <div className="tiny faint">of {active.targetMinutes}:00</div>
-        </div>
-      </div>
-
-      <div className="row" style={{ justifyContent: 'center' }}>
-        {active.running ? (
-          <button className="btn btn-lg" onClick={pauseSession}>
-            <PauseIcon /> Pause
-          </button>
-        ) : (
-          <button className="btn btn-lg" onClick={resumeSession}>
-            <PlayIcon /> Resume
-          </button>
-        )}
-        <button
-          className="btn btn-primary btn-lg"
-          onClick={() => {
-            // Freeze the clock the moment you finish — reflection time is
-            // yours, not silently added to the block.
-            pauseSession();
-            navigate('/close');
-          }}
-        >
-          Finish
-        </button>
-      </div>
-
-      {showNote ? (
-        <textarea
-          className="textarea"
-          placeholder="A passing thought to remember…"
-          value={active.note ?? ''}
-          onChange={(e) => setSessionNote(e.target.value)}
-          autoFocus
-        />
-      ) : (
-        <button className="link small" onClick={() => setShowNote(true)} style={{ background: 'none', border: 'none' }}>
-          + Add a quick note
-        </button>
-      )}
-
-      <button
-        className="btn btn-ghost btn-sm"
-        onClick={() => {
-          cancelSession();
-          // Mirrors CloseBlock's Save/Discard: a running plan is still the
-          // active context to return to, not generic Today.
-          navigate(useStore.getState().activePlan ? '/plan' : '/');
-        }}
-      >
-        Discard block
-      </button>
-    </div>
-  );
-}
-
-/**
- * Conscious practice: keep "what this piece is and what to notice" one tap
- * away during the block, with the standing question that turns repetition
- * into awareness.
- */
-function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="card card-quiet stack-sm" style={{ textAlign: 'left' }}>
-      <button
-        className="row between"
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="section-label">About this piece</span>
-        <span className="tiny faint">{open ? 'hide' : 'show'}</span>
-      </button>
-      {open && (
-        <>
-          {notes && (
-            <div className="small dim" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>
-              {notes}
-            </div>
-          )}
-          {problem && (
-            <div className="small" dir="auto">
-              <span className="faint">Working on: </span>
-              {problem}
-            </div>
-          )}
-          <div className="tiny" style={{ color: 'var(--gold)' }}>
-            Keep asking: what is going on here — where does it rest, and where is it headed?
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-```
-
-### src/pages/RoutineEdit.tsx
-
-```
-import { useState } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { type RoutineSegment } from '../domain';
-import { useStore } from '../store/useStore';
-import { Field } from '../components/ui';
-import { ArrowLeftIcon, MinusIcon, PlusIcon } from '../components/icons';
-
-/**
- * Create or edit a routine. One full-form editor for both: creating starts
- * from an empty (or preselected) shape, editing loads the existing one —
- * "copy Stage 1 and adjust" reaches this same screen via Duplicate.
- */
-export default function RoutineEdit() {
-  const { routineId } = useParams();
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const db = useStore((s) => s.db);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const addRoutine = useStore((s) => s.addRoutine);
-  const updateRoutine = useStore((s) => s.updateRoutine);
-  const deleteRoutine = useStore((s) => s.deleteRoutine);
-  const duplicateRoutine = useStore((s) => s.duplicateRoutine);
-
-  const existing = routineId ? db.pathwayRoutines.find((r) => r.id === routineId) : undefined;
-  const instruments = db.instruments.filter((i) => i.active);
-  const preselect = params.get('instrument');
-  // A brand-new routine defaults to an instrument (required at creation).
-  // Editing an EXISTING routine preserves whatever it already has, including
-  // no instrument at all — an honestly unscoped legacy routine must not have
-  // one invented for it just by being opened and saved.
-  const defaultInstrument = existing
-    ? (existing.instrumentId ?? '')
-    : (preselect && instruments.some((i) => i.id === preselect) ? preselect : instruments[0]?.id) || '';
-
-  const [name, setName] = useState(existing?.name ?? '');
-  const [instrumentId, setInstrumentId] = useState(defaultInstrument);
-  const [pathwayId, setPathwayId] = useState(existing?.pathwayId ?? params.get('pathway') ?? '');
-  const [stageId, setStageId] = useState(existing?.stageId ?? params.get('stage') ?? '');
-  const [segments, setSegments] = useState<RoutineSegment[]>(existing?.segments ?? []);
-
-  const backTo = existing?.stageId
-    ? `/pathway/${existing.pathwayId}/${existing.stageId}`
-    : existing?.pathwayId
-      ? `/pathway/${existing.pathwayId}`
-      : '/';
-
-  // A General (no-instrument) pathway accepts any routine; otherwise the
-  // instruments must match — the same rule the store enforces on save.
-  const availablePathways = db.pathways.filter((p) => !p.instrumentId || p.instrumentId === instrumentId);
-  const availableStages = pathwayId ? db.pathwayStages.filter((s) => s.pathwayId === pathwayId).sort((a, b) => a.order - b.order) : [];
-  const bindableItems = db.items.filter((i) => i.instrumentId === instrumentId);
-
-  function onInstrumentChange(next: string) {
-    setInstrumentId(next);
-    // Bindings and placement that no longer match are dropped locally too, so
-    // the form never shows a state the store wouldn't actually save.
-    setSegments((segs) => segs.map((s) => (s.itemId && bindableItemIds(db, next).has(s.itemId) ? s : { ...s, itemId: undefined })));
-    if (pathwayId) {
-      const p = db.pathways.find((x) => x.id === pathwayId);
-      if (p?.instrumentId && p.instrumentId !== next) {
-        setPathwayId('');
-        setStageId('');
-      }
-    }
-  }
-
-  function onPathwayChange(next: string) {
-    setPathwayId(next);
-    setStageId('');
-  }
-
-  function addSegment() {
-    setSegments((s) => [...s, { label: '', minutes: 5 }]);
-  }
-  function updateSegment(i: number, patch: Partial<RoutineSegment>) {
-    setSegments((s) => s.map((seg, idx) => (idx === i ? { ...seg, ...patch } : seg)));
-  }
-  function removeSegment(i: number) {
-    setSegments((s) => s.filter((_, idx) => idx !== i));
-  }
-  function moveSegment(i: number, dir: -1 | 1) {
-    setSegments((s) => {
-      const j = i + dir;
-      if (j < 0 || j >= s.length) return s;
-      const next = [...s];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
-  }
-
-  const cleanSegments = () =>
-    segments
-      .filter((s) => s.label.trim())
-      .map((s) => ({ ...s, label: s.label.trim(), minutes: Math.max(1, Math.round(s.minutes) || 1) }));
-
-  // A brand-new routine requires an instrument; editing an already-unscoped
-  // routine must stay saveable without forcing one to be picked first.
-  const canSave = name.trim() !== '' && (instrumentId !== '' || !!existing);
-
-  function save() {
-    if (!canSave) return;
-    const name_ = name.trim();
-    const pathwayId_ = pathwayId || undefined;
-    const stageId_ = stageId || undefined;
-    const segments_ = cleanSegments();
-    if (existing) {
-      updateRoutine(existing.id, { name: name_, instrumentId: instrumentId || undefined, pathwayId: pathwayId_, stageId: stageId_, segments: segments_ });
-      navigate(backTo, { replace: true });
-    } else {
-      // canSave guarantees instrumentId is set for a new routine.
-      const id = addRoutine({ name: name_, instrumentId, pathwayId: pathwayId_, stageId: stageId_, segments: segments_ });
-      navigate(stageId_ ? `/pathway/${pathwayId_}/${stageId_}` : pathwayId_ ? `/pathway/${pathwayId_}` : '/', {
-        replace: true,
-        state: { newRoutineId: id },
-      });
-    }
-  }
-
-  return (
-    <div className="stack-lg">
-      <Link to={backTo} className="link row" style={{ gap: 4, width: 'fit-content' }}>
-        <ArrowLeftIcon width={16} height={16} /> Back
-      </Link>
-
-      <header className="stack-sm">
-        <h1 className="page-title">{existing ? 'Edit routine' : 'New routine'}</h1>
-      </header>
-
-      <div className="card stack">
-        <Field label="Name">
-          <input className="input" dir="auto" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. My Setar warm-up" />
-        </Field>
-
-        <Field
-          label="Instrument"
-          hint={instrumentId === '' && existing ? 'No instrument set — it stays that way until you choose one.' : undefined}
-        >
-          <select className="select" value={instrumentId} onChange={(e) => onInstrumentChange(e.target.value)}>
-            {instruments.length === 0 && <option value="">No instruments yet</option>}
-            {instruments.length > 0 && instrumentId === '' && <option value="">Choose an instrument…</option>}
-            {instruments.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <div className="grid-2">
-          <Field label="Pathway (optional)">
-            <select className="select" value={pathwayId} onChange={(e) => onPathwayChange(e.target.value)}>
-              <option value="">Unplaced — just this routine</option>
-              {availablePathways.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Stage (optional)">
-            <select className="select" value={stageId} onChange={(e) => setStageId(e.target.value)} disabled={!pathwayId}>
-              <option value="">Whole pathway</option>
-              {availableStages.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.code}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-      </div>
-
-      <section className="stack-sm">
-        <div className="row between">
-          <div className="section-label">Segments</div>
-          <button className="btn btn-ghost btn-sm" onClick={addSegment}>
-            <PlusIcon /> Add segment
-          </button>
-        </div>
-
-        {segments.length === 0 && <div className="card card-quiet small dim">No segments yet — add the first one.</div>}
-
-        <div className="stack-sm">
-          {segments.map((seg, i) => (
-            <div key={i} className="card stack-sm">
-              <div className="row" style={{ gap: 8 }}>
-                <input
-                  className="input grow"
-                  dir="auto"
-                  placeholder="Segment label"
-                  value={seg.label}
-                  onChange={(e) => updateSegment(i, { label: e.target.value })}
-                />
-                <input
-                  className="input"
-                  type="number"
-                  min={1}
-                  style={{ width: 72 }}
-                  value={seg.minutes}
-                  onChange={(e) => updateSegment(i, { minutes: Number(e.target.value) })}
-                  aria-label="Minutes"
-                />
-                <span className="tiny faint">min</span>
-              </div>
-              <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                <select
-                  className="select grow"
-                  value={seg.itemId ?? ''}
-                  onChange={(e) => updateSegment(i, { itemId: e.target.value || undefined })}
-                  aria-label="Bind to a practice item (optional)"
-                >
-                  <option value="">Unbound — countdown only, not logged</option>
-                  {bindableItems.map((it) => (
-                    <option key={it.id} value={it.id}>
-                      {it.title}
-                    </option>
-                  ))}
-                </select>
-                <label className="row" style={{ gap: 4, alignItems: 'center' }}>
-                  <input type="checkbox" checked={!!seg.essential} onChange={(e) => updateSegment(i, { essential: e.target.checked })} />
-                  <span className="tiny">essential</span>
-                </label>
-              </div>
-              <div className="row between">
-                <div className="row" style={{ gap: 4 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={() => moveSegment(i, -1)} disabled={i === 0} aria-label="Move up">
-                    ↑
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => moveSegment(i, 1)} disabled={i === segments.length - 1} aria-label="Move down">
-                    ↓
-                  </button>
-                </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => removeSegment(i)} aria-label="Remove segment">
-                  <MinusIcon /> Remove
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className="row">
-        <button className="btn btn-primary grow" disabled={!canSave} onClick={save}>
-          Save
-        </button>
-      </div>
-
-      {existing && (
-        <div className="row" style={{ gap: 8 }}>
-          <button
-            className="btn"
-            onClick={() => {
-              const id = duplicateRoutine(existing.id);
-              if (id) navigate(`/routine/${id}/edit`, { replace: true });
-            }}
-          >
-            Duplicate
-          </button>
-          <button
-            className="btn btn-danger"
-            onClick={() => {
-              const isRunning = activeRoutine?.routineId === existing.id;
-              const question = isRunning
-                ? `Delete the routine "${existing.name}"? It's currently running — this saves what you've practised so far, then deletes the routine.`
-                : `Delete the routine "${existing.name}"?`;
-              if (confirm(question)) {
-                deleteRoutine(existing.id);
-                navigate(backTo, { replace: true });
-              }
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function bindableItemIds(db: ReturnType<typeof useStore.getState>['db'], instrumentId: string): Set<string> {
-  return new Set(db.items.filter((i) => i.instrumentId === instrumentId).map((i) => i.id));
 }
 ```
 
@@ -2857,9 +2238,18 @@ export default function RoutineRunner() {
   // (so the same interval can never be logged twice), but without this
   // redirect the "begin one" effect below would just no-op forever, leaving
   // the user stranded on a blank screen instead of back at their block.
+  // Unconditional on isMine: the guards above make "this routine is mine AND
+  // an ordinary block also exists" unreachable from any in-app action, so the
+  // only way here is a persisted dual-clock state from before those guards —
+  // which the store's hydration `merge` freezes rather than deletes. Without
+  // this redirect, `isMine` would keep showing this frozen routine with a
+  // Resume button that silently no-ops (resumeRoutineRun refuses while
+  // `active` exists). Sending the user to resolve the block first, same as
+  // any genuinely concurrent case, gives a single deterministic way out
+  // instead of a dead button.
   useEffect(() => {
-    if (active && !isMine) navigate('/active', { replace: true });
-  }, [active, isMine, navigate]);
+    if (active) navigate('/active', { replace: true });
+  }, [active, navigate]);
 
   // Nothing running yet for this routine: begin one.
   useEffect(() => {
@@ -3026,1131 +2416,6 @@ export default function RoutineRunner() {
         </button>
         <span className="tiny faint">Records what you've practised so far — never a discard</span>
       </div>
-    </div>
-  );
-}
-```
-
-### src/pages/StageDetail.tsx
-
-```
-import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  isLosslesslyRemovable,
-  routinesOfStage,
-  stageProgress,
-  stageUnits,
-  ITEM_STATUS_LABELS,
-  STRAND_LABELS,
-  type PathwayRoutine,
-  type StageUnit,
-} from '../domain';
-import { useStore } from '../store/useStore';
-import QuickAdd from '../components/QuickAdd';
-import { Field } from '../components/ui';
-import { ArrowLeftIcon, CheckIcon, MinusIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
-
-export default function StageDetail() {
-  const { pathwayId, stageId } = useParams();
-  const db = useStore((s) => s.db);
-  const updateStage = useStore((s) => s.updateStage);
-  const deleteStage = useStore((s) => s.deleteStage);
-  const updatePathway = useStore((s) => s.updatePathway);
-  const addFromCatalog = useStore((s) => s.addFromCatalog);
-  const removeCatalogItem = useStore((s) => s.removeCatalogItem);
-  const startItemSession = useStore((s) => s.startItemSession);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const navigate = useNavigate();
-
-  const stage = db.pathwayStages.find((s) => s.id === stageId);
-  const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
-  const units = useMemo(() => (stage ? stageUnits(stage, db.items) : []), [stage, db.items]);
-  const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
-  const blocksOf = (itemId: string) => db.blocks.filter((b) => b.practiceItemId === itemId);
-
-  const [editing, setEditing] = useState(false);
-  const [editCode, setEditCode] = useState('');
-  const [editTitle, setEditTitle] = useState('');
-  const [editIntro, setEditIntro] = useState('');
-  const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
-
-  if (!stage) {
-    return (
-      <div className="stack">
-        <Link to="/repertoire" className="link">
-          ← Back to repertoire
-        </Link>
-        <div className="card">That stage doesn't exist.</div>
-      </div>
-    );
-  }
-
-  const sp = stageProgress(units);
-  const backTo = `/pathway/${pathwayId}`;
-  const here = `/pathway/${pathwayId}/${stageId}`;
-  const isPinned = pathway?.currentStageId === stage.id;
-  const hasSuggestions = units.some((u) => !u.item);
-
-  function startEdit() {
-    setEditCode(stage!.code);
-    setEditTitle(stage!.title);
-    setEditIntro(stage!.intro ?? '');
-    setEditing(true);
-  }
-  function saveEdit() {
-    updateStage(stage!.id, {
-      code: editCode.trim() || stage!.code,
-      title: editTitle.trim() || editCode,
-      intro: editIntro.trim() || undefined,
-    });
-    setEditing(false);
-  }
-
-  function addSuggestion(unit: StageUnit) {
-    const id = addFromCatalog(stage!.id, unit.key);
-    // Adding is organisation, not commitment — the undo card lingers calmly
-    // until dismissed or you leave, rather than vanishing on a timer.
-    setUndo({ id, title: unit.title });
-  }
-
-  function practise(unit: StageUnit) {
-    // A routine is running: resolve it there rather than trying to start a
-    // block alongside it — startItemSession would just no-op and leave the
-    // user on a dead "no block in progress" screen.
-    if (activeRoutine) {
-      navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
-      return;
-    }
-    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key);
-    startItemSession(itemId);
-    navigate('/active');
-  }
-
-  return (
-    <div className="stack-lg">
-      <Link to={backTo} className="link row" style={{ gap: 4, width: 'fit-content' }}>
-        <ArrowLeftIcon width={16} height={16} /> Pathway
-      </Link>
-
-      {editing ? (
-        <div className="card stack-sm">
-          <div className="grid-2">
-            <Field label="Code">
-              <input className="input" dir="auto" value={editCode} onChange={(e) => setEditCode(e.target.value)} />
-            </Field>
-            <Field label="Title">
-              <input className="input" dir="auto" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-            </Field>
-          </div>
-          <Field label="Intro">
-            <textarea className="textarea" dir="auto" value={editIntro} onChange={(e) => setEditIntro(e.target.value)} />
-          </Field>
-          <div className="row">
-            <button className="btn btn-primary grow" onClick={saveEdit}>
-              Save
-            </button>
-            <button className="btn" onClick={() => setEditing(false)}>
-              Cancel
-            </button>
-            <button
-              className="btn btn-danger"
-              onClick={() => {
-                if (confirm(`Delete the stage "${stage.code}"? Your items are kept — they just leave the stage.`)) {
-                  deleteStage(stage.id);
-                  navigate(backTo);
-                }
-              }}
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      ) : (
-        <header className="stack-sm">
-          <h1 className="page-title">
-            {stage.code}
-            {stage.title !== stage.code ? ` · ${stage.title}` : ''}
-          </h1>
-          {stage.intro && <p className="page-sub">{stage.intro}</p>}
-          <div className="row" style={{ gap: 8 }}>
-            <span className="balance-track grow" style={{ maxWidth: 220 }}>
-              <span className="balance-fill" style={{ width: `${sp.percent}%` }} />
-            </span>
-            <span className="tiny faint mono-num">
-              {sp.done}/{sp.total} solid
-            </span>
-          </div>
-          <div className="row" style={{ gap: 8 }}>
-            {pathway && (
-              <button
-                className={`btn btn-sm${isPinned ? ' btn-primary' : ''}`}
-                aria-pressed={isPinned}
-                title="Make this the stage Today points to for this instrument"
-                onClick={() => updatePathway(pathway.id, { currentStageId: isPinned ? undefined : stage.id })}
-              >
-                {isPinned ? 'Current stage ✓' : 'Set as current stage'}
-              </button>
-            )}
-            <button className="btn btn-ghost btn-sm" onClick={startEdit}>
-              Edit
-            </button>
-          </div>
-        </header>
-      )}
-
-      <section className="stack-sm">
-        <div className="row between">
-          <div className="section-label">Guided routines</div>
-          {pathway && (
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => navigate(`/routine/new?instrument=${pathway.instrumentId ?? ''}&pathway=${pathway.id}&stage=${stage.id}`)}
-            >
-              <PlusIcon /> New routine
-            </button>
-          )}
-        </div>
-        {routines.map((r) => (
-          <RoutineCard
-            key={r.id}
-            routine={r}
-            onStart={(short) => navigate(`/routine/${r.id}${short ? '?short=1' : ''}`)}
-            onEdit={() => navigate(`/routine/${r.id}/edit`)}
-          />
-        ))}
-      </section>
-
-      <section className="stack-sm">
-        <div className="section-label">In this stage</div>
-        {undo && (
-          <div className="card card-quiet row between small" style={{ gap: 8 }}>
-            <span className="truncate" dir="auto">
-              Added “{undo.title}” — not practised yet.
-            </span>
-            <div className="row" style={{ gap: 6, flex: 'none' }}>
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  // Re-checks live state (a block may have been logged since the
-                  // banner appeared) — never silently deletes practised work.
-                  removeCatalogItem(undo.id);
-                  setUndo(null);
-                }}
-              >
-                Undo
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                aria-label="Dismiss"
-                style={{ minHeight: 30, padding: '0 6px' }}
-                onClick={() => setUndo(null)}
-              >
-                <XIcon width={14} height={14} />
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="stack-sm">
-          {units.map((u) => (
-            <UnitRow
-              key={u.key}
-              unit={u}
-              returnTo={here}
-              removable={!!u.item && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
-              onPractise={() => practise(u)}
-              onAdd={() => addSuggestion(u)}
-              onRemove={() => {
-                if (u.item) removeCatalogItem(u.item.id);
-              }}
-            />
-          ))}
-          {units.length === 0 && (
-            <div className="card card-quiet small dim">Nothing here yet — add your first piece below.</div>
-          )}
-        </div>
-        <QuickAdd stageId={stage.id} />
-        <div className="tiny faint">
-          Anything you add here is a normal practice item — it also appears under “All items” and in recommendations.
-          {hasSuggestions && (
-            <>
-              {' '}
-              Greyed entries are <strong>reference suggestions</strong>
-              {pathway?.source ? ` (from ${pathway.source})` : ''} — a starting aid, not a fixed syllabus; everything is
-              editable once added.
-            </>
-          )}
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function UnitRow({
-  unit,
-  returnTo,
-  removable,
-  onPractise,
-  onAdd,
-  onRemove,
-}: {
-  unit: StageUnit;
-  returnTo: string;
-  removable: boolean;
-  onPractise: () => void;
-  onAdd: () => void;
-  onRemove: () => void;
-}) {
-  const navigate = useNavigate();
-  const item = unit.item;
-
-  // One line of metadata, never duplicated: strand, then the item's status
-  // (which is exactly "Not practised yet" for a freshly-added suggestion), or
-  // the reference hint before it is added. The status lives here alone — there
-  // is no separate status badge on the row.
-  const meta = [
-    unit.strand ? STRAND_LABELS[unit.strand] : null,
-    item ? ITEM_STATUS_LABELS[item.status] : 'reference suggestion — tap to add',
-    item?.assignedForLesson ? 'for class' : null,
-  ].filter(Boolean);
-
-  return (
-    <div className={`card stage-unit${removable ? ' stage-unit--removable' : ''}${unit.state === 'done' ? ' card-quiet' : ''}`}>
-      <span
-        className="stage-badge"
-        style={{
-          width: 34,
-          height: 34,
-          background:
-            unit.state === 'done' ? 'var(--tone-good-soft)' : unit.state === 'in_progress' ? 'var(--accent-soft)' : 'var(--surface-2)',
-          color: unit.state === 'done' ? 'var(--tone-good)' : unit.state === 'in_progress' ? 'var(--accent)' : 'var(--text-faint)',
-        }}
-      >
-        {unit.state === 'done' ? <CheckIcon width={16} height={16} /> : unit.state === 'in_progress' ? '·' : ''}
-      </span>
-
-      <button
-        className="stage-unit-text"
-        onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : onAdd())}
-        title={item ? 'Open item' : 'Add to your items'}
-      >
-        <div className="stage-unit-title" dir="auto">
-          {unit.title}
-        </div>
-        <div className="tiny faint">{meta.join(' · ')}</div>
-        {unit.entry?.about && !item && (
-          <div className="tiny dim" style={{ marginTop: 3 }}>
-            {unit.entry.about}
-          </div>
-        )}
-      </button>
-
-      {/* A freshly-added catalog item (no practice logged) keeps a lossless
-          Remove so undo stays reachable after the banner is gone — it reverts
-          the row to a suggestion. It disappears the moment practice begins. */}
-      {removable && (
-        <button
-          className="btn btn-ghost stage-unit-action"
-          onClick={onRemove}
-          aria-label={`Remove ${unit.title} — no practice logged`}
-          title="Remove (no practice logged)"
-        >
-          <MinusIcon />
-        </button>
-      )}
-
-      {/* Fixed-size trailing action: Play once added, Add before. */}
-      {item ? (
-        <button className="btn btn-primary stage-unit-action" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
-          <PlayIcon />
-        </button>
-      ) : (
-        <button className="btn stage-unit-action" onClick={onAdd} aria-label={`Add ${unit.title} to your items`}>
-          <PlusIcon />
-        </button>
-      )}
-    </div>
-  );
-}
-
-function RoutineCard({
-  routine,
-  onStart,
-  onEdit,
-}: {
-  routine: PathwayRoutine;
-  onStart: (shortOnTime: boolean) => void;
-  onEdit: () => void;
-}) {
-  const total = routine.segments.reduce((s, x) => s + x.minutes, 0);
-  const bound = routine.segments.some((s) => s.itemId);
-  const hasEssential = routine.segments.some((s) => s.essential);
-  return (
-    <article className="card stack-sm">
-      <div className="row between">
-        <div>
-          <div className="title-md" style={{ fontSize: '1.02rem' }}>
-            {routine.name}
-          </div>
-          <div className="tiny faint">
-            {routine.segments.length} segments · {total} min{bound ? '' : ' · guided warm-up, not logged as practice'}
-          </div>
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          <button className="btn btn-ghost btn-sm" onClick={onEdit}>
-            Edit
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => onStart(false)}>
-            <PlayIcon /> Start
-          </button>
-        </div>
-      </div>
-      {hasEssential && (
-        <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => onStart(true)}>
-          Short on time — essentials only
-        </button>
-      )}
-    </article>
-  );
-}
-```
-
-### src/pages/Today.tsx
-
-```
-import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import {
-  currentStage,
-  daysUntil,
-  dueReviews,
-  fragileItems,
-  generateInsights,
-  instrumentBalance,
-  insightOfTheDay,
-  nextLessonDates,
-  recommend,
-  recommendForInstrument,
-  routinesForInstrument,
-  stageProgress,
-  stageUnits,
-  todayISODate,
-  ITEM_STATUS_LABELS,
-  type PathwayRoutine,
-  type PracticeItem,
-  type Recommendation,
-} from '../domain';
-import { useStore } from '../store/useStore';
-import { getItem, instrumentName } from '../store/lookups';
-import { defaultStartInput } from '../store/sessionHelpers';
-import { EmptyState, StatusBadge } from '../components/ui';
-import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, PlusIcon, SparkIcon } from '../components/icons';
-import { relativeDay } from '../components/format';
-import InstallHint from '../components/InstallHint';
-import QuickAdd from '../components/QuickAdd';
-
-// ---------------------------------------------------------------------------
-// Today is a session workspace: "I am practising X now." Everything on screen
-// belongs to X — its next recommendation first, then its class work, reviews
-// and pathway position. The cross-instrument overview is a deliberate,
-// secondary choice, never the default.
-// ---------------------------------------------------------------------------
-
-export default function Today() {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const setSessionInstrument = useStore((s) => s.setSessionInstrument);
-
-  const instruments = useMemo(() => db.instruments.filter((i) => i.active), [db.instruments]);
-  // Last chosen instrument, else the first active one — never "all" by default.
-  const selected =
-    sessionInstrumentId === 'all'
-      ? null
-      : (instruments.find((i) => i.id === sessionInstrumentId) ?? instruments[0] ?? null);
-  const overview = sessionInstrumentId === 'all';
-
-  const now = useMemo(() => new Date(), []);
-
-  return (
-    <div className="stack-lg">
-      <nav className="options" aria-label="Which instrument are you practising?">
-        {instruments.map((i) => (
-          <button
-            key={i.id}
-            className={`option${!overview && selected?.id === i.id ? ' selected' : ''}`}
-            aria-pressed={!overview && selected?.id === i.id}
-            onClick={() => setSessionInstrument(i.id)}
-          >
-            {i.name}
-          </button>
-        ))}
-        <button
-          className={`option${overview ? ' selected' : ''}`}
-          aria-pressed={overview}
-          onClick={() => setSessionInstrument('all')}
-          title="Cross-instrument overview"
-        >
-          Overview
-        </button>
-      </nav>
-
-      {active && !overview && selected && active.instrumentId === selected.id && (
-        <Link to="/active" className="card card-accent card-link row between">
-          <div>
-            <div className="eyebrow">In progress</div>
-            <div className="title-md" dir="auto">
-              {getItem(db, active.itemId)?.title ?? 'Practice block'}
-            </div>
-          </div>
-          <span className="btn btn-primary btn-sm">
-            <PlayIcon /> Resume
-          </span>
-        </Link>
-      )}
-
-      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} />
-
-      {overview || !selected ? (
-        <OverviewView now={now} />
-      ) : (
-        <SessionView instrumentId={selected.id} instrumentName={selected.name} now={now} />
-      )}
-
-      {/* One-time, dismissible, hidden once installed — after the session, never in its place. */}
-      <InstallHint />
-    </div>
-  );
-}
-
-// --- A session belongs to whichever instrument it was started for ------------
-// `active`/`activePlan`/`activeRoutine` never masquerade as the selected
-// instrument's own work. When one belongs to a DIFFERENT instrument than the
-// one Today is scoped to, it shows here as an explicit "still running
-// elsewhere" row (never silently hidden — that would invite overwriting it)
-// rather than taking over that instrument's own Plan/Routines doorway.
-
-function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: string | null }) {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const activePlan = useStore((s) => s.activePlan);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-
-  const rows: { key: string; label: string; detail: string; to: string }[] = [];
-
-  if (active && active.instrumentId !== selectedInstrumentId) {
-    rows.push({
-      key: 'active',
-      label: getItem(db, active.itemId)?.title ?? 'Practice block',
-      detail: `${instrumentName(db, active.instrumentId)} · in progress`,
-      to: '/active',
-    });
-  }
-  if (activePlan && activePlan.instrumentId !== selectedInstrumentId) {
-    const done = activePlan.segments.filter((s) => s.status === 'done').length;
-    rows.push({
-      key: 'plan',
-      label: `${instrumentName(db, activePlan.instrumentId)} plan`,
-      detail: `${done} of ${activePlan.segments.length} done`,
-      to: '/plan',
-    });
-  }
-  if (activeRoutine) {
-    const routine = db.pathwayRoutines.find((r) => r.id === activeRoutine.routineId);
-    // A legacy routine with no instrumentId isn't foreign to anything —
-    // never invent the instrument it's masquerading as.
-    if (routine?.instrumentId && routine.instrumentId !== selectedInstrumentId) {
-      rows.push({
-        key: 'routine',
-        label: routine.name,
-        detail: `${instrumentName(db, routine.instrumentId)} routine`,
-        to: `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`,
-      });
-    }
-  }
-
-  if (rows.length === 0) return null;
-
-  return (
-    <div className="stack-sm">
-      {rows.map((r) => (
-        <Link key={r.key} to={r.to} className="card card-quiet card-link row between">
-          <div className="grow" style={{ minWidth: 0 }}>
-            <div className="tiny faint">{r.detail}</div>
-            <div className="small truncate" dir="auto">
-              {r.label}
-            </div>
-          </div>
-          <span className="tiny faint" style={{ flex: 'none' }}>
-            Resume ▸
-          </span>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-// --- Session Plan and Routines: two independent, peer doorways ---------------
-// Deliberately separate cards, not a shared panel — a time-budgeted Session
-// Plan and following a routine are peer choices, not one subordinate to the
-// other. Each starts collapsed so "Practise now" stays above the fold at
-// 390×844, and each carries its own open/close state and its own "resume"
-// takeover, matching the existing `active`/`activePlan` pattern.
-
-const PLAN_DURATIONS = [15, 20, 30, 45, 60] as const;
-
-function PlanCard({ instrumentId }: { instrumentId: string }) {
-  const db = useStore((s) => s.db);
-  const activePlan = useStore((s) => s.activePlan);
-  const planMinutes = useStore((s) => s.planMinutesByInstrument);
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-
-  if (activePlan && activePlan.instrumentId === instrumentId) {
-    const done = activePlan.segments.filter((s) => s.status === 'done').length;
-    return (
-      <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
-        <span style={{ fontWeight: 600 }}>Resume your plan</span>
-        <span className="small">{done} of {activePlan.segments.length} · {activePlan.budgetMinutes} min ▸</span>
-      </button>
-    );
-  }
-  if (activePlan) {
-    // A different instrument's plan is running. Starting a new plan here
-    // would dead-end at that plan anyway (`/plan` always shows whichever one
-    // is active) — so this doorway stays visibly blocked rather than
-    // offering a duration picker that can't actually start anything.
-    return (
-      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
-        <span style={{ fontWeight: 600, opacity: 0.7 }}>Plan this session</span>
-        <span className="faint small">{instrumentName(db, activePlan.instrumentId)} plan running ▸</span>
-      </button>
-    );
-  }
-
-  const defaultMinutes = planMinutes[instrumentId] ?? 20;
-
-  if (!open) {
-    return (
-      <button
-        className="card card-quiet row between"
-        style={{ width: '100%', cursor: 'pointer' }}
-        onClick={() => setOpen(true)}
-        aria-expanded={false}
-      >
-        <span style={{ fontWeight: 600 }}>Plan this session</span>
-        <span className="faint small">choose a length ▸</span>
-      </button>
-    );
-  }
-
-  return (
-    <section className="card card-quiet stack-sm">
-      <div className="row between">
-        <span style={{ fontWeight: 600 }}>How long today?</span>
-        <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
-      </div>
-      <div className="options">
-        {PLAN_DURATIONS.map((m) => (
-          <button
-            key={m}
-            className={`option${m === defaultMinutes ? ' selected' : ''}`}
-            onClick={() => navigate(`/plan?minutes=${m}`)}
-          >
-            {m} min
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function RoutinesCard({ instrumentId }: { instrumentId: string }) {
-  const db = useStore((s) => s.db);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const routines = useStore((s) => s.db.pathwayRoutines);
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const myRoutines = routinesForInstrument(routines, instrumentId);
-
-  if (activeRoutine) {
-    const running = routines.find((r) => r.id === activeRoutine.routineId);
-    // A legacy routine with no instrumentId isn't foreign to anything.
-    const matches = !running?.instrumentId || running.instrumentId === instrumentId;
-    const to = `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`;
-    if (matches) {
-      return (
-        <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
-          <span style={{ fontWeight: 600 }}>Resume your routine</span>
-          <span className="small truncate" dir="auto" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
-        </button>
-      );
-    }
-    // A different instrument's routine is running. Starting another one here
-    // would just bounce back to it (RoutineRunner's own otherActive redirect)
-    // — so this doorway stays visibly blocked rather than offering a Start
-    // that can't actually start anything.
-    return (
-      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
-        <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
-        <span className="faint small truncate" dir="auto">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
-      </button>
-    );
-  }
-
-  if (!open) {
-    return (
-      <button
-        className="card card-quiet row between"
-        style={{ width: '100%', cursor: 'pointer' }}
-        onClick={() => setOpen(true)}
-        aria-expanded={false}
-      >
-        <span style={{ fontWeight: 600 }}>Routines</span>
-        <span className="faint small">
-          {myRoutines.length > 0 ? `${myRoutines.length} saved ▸` : 'follow a set warm-up ▸'}
-        </span>
-      </button>
-    );
-  }
-
-  return (
-    <section className="card card-quiet stack-sm">
-      <div className="row between">
-        <span style={{ fontWeight: 600 }}>Routines</span>
-        <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
-      </div>
-      {myRoutines.length === 0 ? (
-        <button className="btn" style={{ width: '100%' }} onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
-          <PlusIcon /> Create a routine
-        </button>
-      ) : (
-        <div className="stack-sm">
-          {myRoutines.map((r) => (
-            <TodayRoutineRow key={r.id} routine={r} />
-          ))}
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
-            <PlusIcon /> New routine
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
-/**
- * Same shape as StageDetail's RoutineCard / PathwayDetail's RoutineRow (name +
- * segment summary, Edit, Start, and — when the routine has an essential
- * segment — a visible "short on time" entry point). This is the ONLY place an
- * unplaced routine (no pathway/stage) is reachable at all, so it needs the
- * same Edit/Start/short-on-time affordances those pages give a placed one.
- */
-function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
-  const navigate = useNavigate();
-  const total = routine.segments.reduce((sum, seg) => sum + seg.minutes, 0);
-  const hasEssential = routine.segments.some((seg) => seg.essential);
-  return (
-    <article className="card stack-sm">
-      <div className="row between">
-        <div style={{ minWidth: 0 }}>
-          <div className="truncate" dir="auto">{routine.name}</div>
-          <div className="tiny faint">{routine.segments.length} segments · {total} min</div>
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
-            Edit
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate(`/routine/${routine.id}`)} aria-label={`Start ${routine.name}`}>
-            <PlayIcon width={16} height={16} />
-          </button>
-        </div>
-      </div>
-      {hasEssential && (
-        <button
-          className="btn btn-ghost btn-sm"
-          style={{ alignSelf: 'flex-end' }}
-          onClick={() => navigate(`/routine/${routine.id}?short=1`)}
-        >
-          Short on time — essentials only
-        </button>
-      )}
-    </article>
-  );
-}
-
-// --- The per-instrument session ----------------------------------------------
-
-function SessionView({
-  instrumentId,
-  instrumentName: name,
-  now,
-}: {
-  instrumentId: string;
-  instrumentName: string;
-  now: Date;
-}) {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const notNow = useStore((s) => s.notNow);
-  const startSession = useStore((s) => s.startSession);
-  const startItemSession = useStore((s) => s.startItemSession);
-  const notNowReview = useStore((s) => s.notNowReview);
-  const snoozeReview = useStore((s) => s.snoozeReview);
-  const navigate = useNavigate();
-
-  const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
-  const recs = useMemo(
-    () => recommendForInstrument(instrumentId, db.items, db.blocks, now, lessonDates),
-    [instrumentId, db.items, db.blocks, now, lessonDates],
-  );
-
-  const items = useMemo(() => db.items.filter((i) => i.instrumentId === instrumentId), [db.items, instrumentId]);
-  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
-
-  const lessonDate = lessonDates.get(instrumentId);
-  const classWork = useMemo(
-    () => (lessonDate ? items.filter((i) => i.assignedForLesson) : []),
-    [items, lessonDate],
-  );
-
-  const hiddenToday = notNow.date === todayISODate(now) ? new Set(notNow.ids) : new Set<string>();
-  const reviews = useMemo(
-    () =>
-      dueReviews(db.reviews, now).filter((r) => {
-        const item = itemById.get(r.practiceItemId);
-        return item && !hiddenToday.has(r.id);
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [db.reviews, now, itemById, notNow],
-  );
-
-  const pathway = useMemo(
-    () => db.pathways.find((p) => p.instrumentId === instrumentId),
-    [db.pathways, instrumentId],
-  );
-  const stage = pathway
-    ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId)
-    : null;
-  const stageSp = stage ? stageProgress(stageUnits(stage, db.items)) : null;
-
-  const fragile = useMemo(() => fragileItems(items), [items]);
-
-  const start = (item: PracticeItem) => {
-    // A different item is already active: don't silently swap it out from
-    // under the user (startSession would just no-op) — the in-progress
-    // banner above is the resolve path. Same for a running routine — the
-    // Routines doorway's "Resume your routine" is that resolve path.
-    if (active && active.itemId !== item.id) return;
-    if (activeRoutine) return;
-    startSession(defaultStartInput(item));
-    navigate('/active');
-  };
-
-  if (items.length === 0) {
-    return (
-      <div className="stack">
-        <div className="card">
-          <EmptyState icon={<MusicIcon />} title={`Nothing for ${name} yet`}>
-            Add your first piece or exercise below — a title is enough.
-          </EmptyState>
-        </div>
-        <QuickAdd />
-      </div>
-    );
-  }
-
-  const secondary = [recs.quickWin, recs.maintenance].filter(Boolean) as Recommendation[];
-
-  return (
-    <div className="stack-lg">
-      {/* 0 · Two collapsed, peer doorways — a time-budgeted plan and a
-             routine are separate systems, neither subordinate to the other.
-             Both start collapsed so the primary recommendation stays above
-             the fold at 390×844. */}
-      <PlanCard instrumentId={instrumentId} />
-      <RoutinesCard instrumentId={instrumentId} />
-
-      {/* 1 · The one thing to practise now — above the fold. */}
-      {recs.best && (
-        <article className="card card-accent">
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <span className="eyebrow">Practise now</span>
-            <StatusBadge status={recs.best.score.item.status} />
-          </div>
-          <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
-            <h2 className="title-md" dir="auto" style={{ fontSize: '1.3rem' }}>
-              {recs.best.score.item.title}
-            </h2>
-          </Link>
-          <p className="reason" style={{ marginTop: 6 }}>
-            {recs.best.reason}
-          </p>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn btn-primary btn-lg grow" onClick={() => start(recs.best!.score.item)}>
-              <PlayIcon /> Start · 10 min
-            </button>
-            <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} className="btn btn-lg">
-              Details
-            </Link>
-          </div>
-        </article>
-      )}
-
-      {/* 2 · A calm sketch of the session. */}
-      {secondary.length > 0 && (
-        <section className="card card-quiet stack-sm">
-          <div className="section-label">Then, if you have time</div>
-          {secondary.map((rec) => (
-            <div key={rec.kind} className="row" style={{ gap: 10 }}>
-              <button
-                className="grow"
-                style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
-                onClick={() => start(rec.score.item)}
-              >
-                <span className="truncate" dir="auto">
-                  {rec.score.item.title}
-                </span>
-                <div className="tiny faint truncate">{rec.reason}</div>
-              </button>
-              <button className="btn btn-sm" onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
-                <PlayIcon />
-              </button>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* 3 · Class commitments for THIS instrument only. */}
-      {lessonDate && classWork.length > 0 && (
-        <section className="stack-sm">
-          <h2 className="title-md">
-            Before your {name} class
-            <span className="dim" style={{ fontWeight: 400 }}>
-              {' '}
-              · {daysUntil(lessonDate, now) <= 0 ? 'today' : `in ${daysUntil(lessonDate, now)} day${daysUntil(lessonDate, now) === 1 ? '' : 's'}`}
-            </span>
-          </h2>
-          <div className="card card-flush list">
-            {classWork.map((item) => (
-              <div key={item.id} className="list-row">
-                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" style={{ minWidth: 0 }}>
-                  <div className="truncate" dir="auto">
-                    {item.title}
-                  </div>
-                  <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
-                </Link>
-                <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
-                  <PlayIcon />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 4 · Due reviews, with honest actions. */}
-      {reviews.length > 0 && (
-        <section className="stack-sm">
-          <div className="row between">
-            <h2 className="title-md">Due reviews</h2>
-            <span className="faint small">{reviews.length}</span>
-          </div>
-          <div className="card card-flush list">
-            {reviews.map((r) => {
-              const item = itemById.get(r.practiceItemId)!;
-              return (
-                <div key={r.id} className="list-row">
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div className="truncate" dir="auto">
-                      {item.title}
-                    </div>
-                    <div className="tiny faint">due {relativeDay(r.dueDate, now)}</div>
-                  </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Hide for the rest of today (no schedule change)"
-                    onClick={() => notNowReview(r.id)}
-                  >
-                    Not now
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Move the review 2 days from today"
-                    onClick={() => snoozeReview(r.id)}
-                  >
-                    +2d
-                  </button>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      if (active && active.itemId !== item.id) return;
-                      if (activeRoutine) return;
-                      startItemSession(item.id);
-                      navigate('/active');
-                    }}
-                    aria-label={`Review ${item.title}`}
-                  >
-                    <PlayIcon />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div className="tiny faint">Practising completes a review; “Not now” hides it until tomorrow; “+2d” moves its date.</div>
-        </section>
-      )}
-
-      {/* 5 · Where you are on this instrument's path. */}
-      {pathway && stage && (
-        <Link
-          to={`/pathway/${pathway.id}/${stage.id}`}
-          className="card card-link row"
-          style={{ gap: 10 }}
-        >
-          <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
-          <div className="grow" style={{ minWidth: 0 }}>
-            <div className="truncate">
-              <span className="dim">Now in:</span> {stage.code}
-              {stage.title !== stage.code ? ` · ${stage.title}` : ''}
-            </div>
-            {stageSp && (
-              <div className="row" style={{ gap: 8, marginTop: 6 }}>
-                <span className="balance-track grow" style={{ maxWidth: 180 }}>
-                  <span className="balance-fill" style={{ width: `${stageSp.percent}%` }} />
-                </span>
-                <span className="tiny faint mono-num">
-                  {stageSp.done}/{stageSp.total}
-                </span>
-              </div>
-            )}
-          </div>
-          <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
-        </Link>
-      )}
-
-      {/* 6 · Shaky material, quick capture, and the open-ended start. */}
-      {fragile.length > 0 && (
-        <section className="stack-sm">
-          <h2 className="title-md">Shaky right now</h2>
-          <div className="card card-flush list">
-            {fragile.slice(0, 4).map((item) => (
-              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" style={{ borderRadius: 0 }}>
-                <div className="grow truncate" dir="auto">
-                  {item.title}
-                </div>
-                <StatusBadge status={item.status} />
-                <ChevronRightIcon width={16} height={16} className="faint" />
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <QuickAdd />
-
-      <Link to="/start" className="btn btn-block">
-        Choose something else to practise…
-      </Link>
-    </div>
-  );
-}
-
-// --- The deliberate cross-instrument overview ---------------------------------
-
-function OverviewView({ now }: { now: Date }) {
-  const db = useStore((s) => s.db);
-  const setSessionInstrument = useStore((s) => s.setSessionInstrument);
-  const navigate = useNavigate();
-
-  const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
-  const balance = useMemo(
-    () => instrumentBalance(db.instruments.filter((i) => i.active), db.blocks, now, 7),
-    [db.instruments, db.blocks, now],
-  );
-  const insight = useMemo(() => insightOfTheDay(generateInsights(db, now), now), [db, now]);
-
-  return (
-    <div className="stack-lg">
-      <p className="page-sub" style={{ marginTop: -8 }}>
-        A calm look across all instruments. Pick one above when you sit down to practise.
-      </p>
-
-      <section className="stack-sm">
-        <h2 className="title-md">Each instrument, at a glance</h2>
-        <div className="card card-flush list">
-          {db.instruments
-            .filter((i) => i.active)
-            .map((inst) => {
-              const recs = recommend(
-                db.items.filter((x) => x.instrumentId === inst.id),
-                db.blocks.filter((b) => b.instrumentId === inst.id),
-                now,
-                lessonDates,
-              );
-              const lessonDate = lessonDates.get(inst.id);
-              return (
-                <button
-                  key={inst.id}
-                  className="list-row card-link"
-                  style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }}
-                  onClick={() => {
-                    setSessionInstrument(inst.id);
-                    navigate('/');
-                  }}
-                >
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div>{inst.name}</div>
-                    <div className="tiny faint truncate" dir="auto">
-                      {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
-                      {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
-                    </div>
-                  </div>
-                  <ChevronRightIcon width={16} height={16} className="faint" />
-                </button>
-              );
-            })}
-        </div>
-      </section>
-
-      {insight && (
-        <section className="card">
-          <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
-            <SparkIcon width={20} height={20} style={{ color: 'var(--gold)', flex: 'none', marginTop: 2 }} />
-            <div>
-              <div className="section-label" style={{ marginBottom: 4 }}>
-                Insight
-              </div>
-              <div>{insight.body}</div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="stack-sm">
-        <h2 className="title-md">Balance · last 7 days</h2>
-        <div className="card stack-sm">
-          {balance.every((b) => b.minutes === 0) ? (
-            <div className="small dim">No practice logged in the last 7 days yet.</div>
-          ) : (
-            balance.map((b) => (
-              <div key={b.instrumentId} className="balance-row">
-                <span className="small truncate">{b.instrumentName}</span>
-                <span className="balance-track">
-                  <span className="balance-fill" style={{ width: `${b.percent}%` }} />
-                </span>
-                <span className="tiny faint mono-num" style={{ textAlign: 'right' }}>
-                  {b.percent}%
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <Link to="/insights" className="btn btn-block">
-        More insights →
-      </Link>
     </div>
   );
 }
@@ -5367,7 +3632,8 @@ export const useStore = create<StoreState>()(
         // invariant enforcement updateRoutine applies on every save.
         const { db } = get();
         const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
-        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, now);
+        const stage = draft.stageId ? db.pathwayStages.find((st) => st.id === draft.stageId) : undefined;
+        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, stage, now);
         set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
         return routine.id;
       },
@@ -5395,7 +3661,8 @@ export const useStore = create<StoreState>()(
               // changed — rather than trusting whatever the form happened to
               // submit.
               const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
-              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, now);
+              const stage = merged.stageId ? s.db.pathwayStages.find((st) => st.id === merged.stageId) : undefined;
+              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, stage, now);
             }),
           },
         }));
@@ -5534,7 +3801,41 @@ export const useStore = create<StoreState>()(
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        return { ...current, ...p, db: p.db ?? current.db };
+        const merged = { ...current, ...p, db: p.db ?? current.db };
+        // The start/resume guards keep active/activeRoutine from BOTH being
+        // set going forward, but a device that persisted a dual-running
+        // state before those guards existed reaches this merge unchecked —
+        // hydration is the one place ALL persisted state re-enters the
+        // store, so it's the one place left to close. Passing both straight
+        // through would let each keep ticking live from its own timestamp
+        // and double-log the same wall-clock interval, exactly the bug the
+        // guards exist to prevent. Freeze both (the same transform
+        // pauseSession/pauseRoutineRun already do) rather than discarding
+        // either: nothing already elapsed is lost, neither clock advances
+        // further on its own, and the ordinary finish/discard flow is what
+        // the user resolves one with before the guards allow resuming or
+        // starting the other.
+        if (merged.active && merged.activeRoutine) {
+          const now = new Date();
+          merged.active = {
+            ...merged.active,
+            accumulatedSeconds: sessionElapsedSeconds(merged.active, now),
+            running: false,
+            segmentStartedAt: undefined,
+          };
+          merged.activeRoutine = {
+            ...merged.activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(
+              merged.activeRoutine.accumulatedSeconds,
+              merged.activeRoutine.runningSince,
+              merged.activeRoutine.running,
+              now,
+            ),
+            running: false,
+            runningSince: undefined,
+          };
+        }
+        return merged;
       },
     },
   ),
