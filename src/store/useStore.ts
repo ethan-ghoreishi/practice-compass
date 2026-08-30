@@ -1206,7 +1206,8 @@ export const useStore = create<StoreState>()(
         // invariant enforcement updateRoutine applies on every save.
         const { db } = get();
         const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
-        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, now);
+        const stage = draft.stageId ? db.pathwayStages.find((st) => st.id === draft.stageId) : undefined;
+        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, stage, now);
         set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
         return routine.id;
       },
@@ -1234,7 +1235,8 @@ export const useStore = create<StoreState>()(
               // changed — rather than trusting whatever the form happened to
               // submit.
               const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
-              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, now);
+              const stage = merged.stageId ? s.db.pathwayStages.find((st) => st.id === merged.stageId) : undefined;
+              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, stage, now);
             }),
           },
         }));
@@ -1373,7 +1375,41 @@ export const useStore = create<StoreState>()(
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        return { ...current, ...p, db: p.db ?? current.db };
+        const merged = { ...current, ...p, db: p.db ?? current.db };
+        // The start/resume guards keep active/activeRoutine from BOTH being
+        // set going forward, but a device that persisted a dual-running
+        // state before those guards existed reaches this merge unchecked —
+        // hydration is the one place ALL persisted state re-enters the
+        // store, so it's the one place left to close. Passing both straight
+        // through would let each keep ticking live from its own timestamp
+        // and double-log the same wall-clock interval, exactly the bug the
+        // guards exist to prevent. Freeze both (the same transform
+        // pauseSession/pauseRoutineRun already do) rather than discarding
+        // either: nothing already elapsed is lost, neither clock advances
+        // further on its own, and the ordinary finish/discard flow is what
+        // the user resolves one with before the guards allow resuming or
+        // starting the other.
+        if (merged.active && merged.activeRoutine) {
+          const now = new Date();
+          merged.active = {
+            ...merged.active,
+            accumulatedSeconds: sessionElapsedSeconds(merged.active, now),
+            running: false,
+            segmentStartedAt: undefined,
+          };
+          merged.activeRoutine = {
+            ...merged.activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(
+              merged.activeRoutine.accumulatedSeconds,
+              merged.activeRoutine.runningSince,
+              merged.activeRoutine.running,
+              now,
+            ),
+            running: false,
+            runningSince: undefined,
+          };
+        }
+        return merged;
       },
     },
   ),

@@ -21,7 +21,7 @@ import { createItem } from './factories';
 import { isSaturated } from './scoring';
 import { seedPathways } from './pathwaySeed';
 import { STRAND_TO_FOCUS } from './labels';
-import type { Pathway, PathwayRoutine, PracticeItem, RoutineSegment } from './types';
+import type { Pathway, PathwayRoutine, PathwayStage, PracticeItem, RoutineSegment } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -37,6 +37,19 @@ function routine(patch: Partial<PathwayRoutine> = {}): PathwayRoutine {
     stageId: 's1',
     name: 'Routine',
     segments: [],
+    order: 0,
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+    ...patch,
+  };
+}
+
+function stage(patch: Partial<PathwayStage> = {}): PathwayStage {
+  return {
+    id: 's1',
+    pathwayId: 'p1',
+    code: '1',
+    title: 'Stage',
     order: 0,
     createdAt: NOW.toISOString(),
     updatedAt: NOW.toISOString(),
@@ -336,7 +349,7 @@ describe('the binding invariant: a bound itemId never dangles', () => {
       updatedAt: NOW.toISOString(),
     };
 
-    const out = retargetRoutineInstrument(r, 'guitar', [setarItem, guitarItem], pathway, NOW);
+    const out = retargetRoutineInstrument(r, 'guitar', [setarItem, guitarItem], pathway, stage(), NOW);
 
     expect(out.instrumentId).toBe('guitar');
     expect(out.segments[0].itemId).toBeUndefined(); // setar item no longer matches
@@ -368,7 +381,7 @@ describe('the binding invariant: a bound itemId never dangles', () => {
       updatedAt: NOW.toISOString(),
     };
 
-    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, NOW);
+    const out = retargetRoutineInstrument(r, undefined, [guitarItem], pathway, stage(), NOW);
 
     expect(out.instrumentId).toBeUndefined();
     expect(out.segments[0].itemId).toBeUndefined(); // no instrument can match a bound item
@@ -386,10 +399,40 @@ describe('the binding invariant: a bound itemId never dangles', () => {
       updatedAt: NOW.toISOString(),
     };
 
-    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, NOW);
+    const out = retargetRoutineInstrument(r, undefined, [], generalPathway, stage({ pathwayId: 'p-general' }), NOW);
 
     expect(out.instrumentId).toBeUndefined();
     expect(out.pathwayId).toBe('p-general');
     expect(out.stageId).toBe('s1');
+  });
+
+  it('clears a placement pointing at a pathway that no longer resolves, instead of treating it as an unscoped General pathway', () => {
+    // A pathwayId that no longer resolves to a real pathway must not be
+    // treated as an unscoped (therefore "compatible") General pathway just
+    // because the caller's lookup came back undefined.
+    const r = routine({ instrumentId: 'guitar', pathwayId: 'missing', stageId: 's1' });
+
+    const out = retargetRoutineInstrument(r, 'guitar', [], undefined, stage(), NOW);
+
+    expect(out.pathwayId).toBeUndefined();
+    expect(out.stageId).toBeUndefined();
+  });
+
+  it('clears a stageId that belongs to a different pathway while keeping a still-valid pathwayId', () => {
+    const r = routine({ instrumentId: 'guitar', pathwayId: 'p1', stageId: 's-other' });
+    const pathway: Pathway = {
+      id: 'p1',
+      instrumentId: 'guitar',
+      name: 'Guitar path',
+      order: 0,
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString(),
+    };
+    const foreignStage = stage({ id: 's-other', pathwayId: 'p-other' });
+
+    const out = retargetRoutineInstrument(r, 'guitar', [], pathway, foreignStage, NOW);
+
+    expect(out.pathwayId).toBe('p1'); // the pathway itself is still real and compatible
+    expect(out.stageId).toBeUndefined(); // but the stage never belonged to it
   });
 });

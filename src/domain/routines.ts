@@ -6,6 +6,7 @@ import type {
   ISODateTime,
   Pathway,
   PathwayRoutine,
+  PathwayStage,
   PracticeBlock,
   PracticeItem,
   RoutineSegment,
@@ -259,8 +260,8 @@ export function detachIncompatibleRoutinesForPathway(
 /**
  * Enforce the binding + placement invariants against a target instrument:
  * clear item bindings that don't belong to it, and detach the routine from
- * its pathway/stage placement if that placement is no longer compatible.
- * The pathway's own instrument is never touched.
+ * its pathway/stage placement if that placement is no longer compatible or
+ * no longer real. The pathway's own instrument is never touched.
  *
  * This is the one place those invariants are checked, so the store calls it
  * unconditionally on every create and every save — not only when the
@@ -269,26 +270,38 @@ export function detachIncompatibleRoutinesForPathway(
  * legitimately unscoped (a General-pathway routine, or one a v11 migration
  * correctly declined to invent an instrument for), and no item can match
  * "no instrument", so every binding is cleared in that case.
+ *
+ * `pathway`/`stage` are the caller's live lookups by the routine's own
+ * `pathwayId`/`stageId` — never trusted just because those ids are set. A
+ * `pathwayId` that no longer resolves (deleted, or never real) can never be
+ * a valid placement, so it clears the whole placement rather than being
+ * preserved as an undetectable dangling reference. A `stageId` is only kept
+ * when it resolves AND actually belongs to that same pathway — a stage
+ * lookup that resolves to a different pathway's stage is cleared on its own,
+ * leaving an otherwise-valid pathwayId placement intact.
  */
 export function retargetRoutineInstrument(
   routine: PathwayRoutine,
   newInstrumentId: ID | undefined,
   items: PracticeItem[],
   pathway: Pathway | undefined,
+  stage: PathwayStage | undefined,
   now: Date,
 ): PathwayRoutine {
   const byId = new Map(items.map((i) => [i.id, i]));
   const segments = routine.segments.map((s) =>
     s.itemId && byId.get(s.itemId)?.instrumentId !== newInstrumentId ? { ...s, itemId: undefined } : s,
   );
-  const stillPlaced = placementCompatible(newInstrumentId, pathway?.instrumentId);
+  const pathwayReal = routine.pathwayId === undefined || pathway !== undefined;
+  const stillPlaced = pathwayReal && placementCompatible(newInstrumentId, pathway?.instrumentId);
+  const stageBelongs = routine.stageId === undefined || (stage !== undefined && stage.pathwayId === routine.pathwayId);
   return touchRoutine(
     {
       ...routine,
       instrumentId: newInstrumentId,
       segments,
       pathwayId: stillPlaced ? routine.pathwayId : undefined,
-      stageId: stillPlaced ? routine.stageId : undefined,
+      stageId: stillPlaced && stageBelongs ? routine.stageId : undefined,
     },
     now,
   );

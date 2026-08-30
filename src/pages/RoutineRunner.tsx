@@ -72,9 +72,18 @@ export default function RoutineRunner() {
   // (so the same interval can never be logged twice), but without this
   // redirect the "begin one" effect below would just no-op forever, leaving
   // the user stranded on a blank screen instead of back at their block.
+  // Unconditional on isMine: the guards above make "this routine is mine AND
+  // an ordinary block also exists" unreachable from any in-app action, so the
+  // only way here is a persisted dual-clock state from before those guards —
+  // which the store's hydration `merge` freezes rather than deletes. Without
+  // this redirect, `isMine` would keep showing this frozen routine with a
+  // Resume button that silently no-ops (resumeRoutineRun refuses while
+  // `active` exists). Sending the user to resolve the block first, same as
+  // any genuinely concurrent case, gives a single deterministic way out
+  // instead of a dead button.
   useEffect(() => {
-    if (active && !isMine) navigate('/active', { replace: true });
-  }, [active, isMine, navigate]);
+    if (active) navigate('/active', { replace: true });
+  }, [active, navigate]);
 
   // Nothing running yet for this routine: begin one.
   useEffect(() => {

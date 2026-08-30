@@ -143,7 +143,14 @@ own pace, on a route they trust. Protect that:
   (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
   `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
   instrument changed — a form is never trusted on faith for bindings or placement it didn't
-  actually re-derive. This is deliberately a save-time check, not a live one: editing a
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
   routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
   allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
   segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
@@ -173,7 +180,28 @@ own pace, on a route they trust. Protect that:
   persisted (`partialize`), so a dual state can reach a device from before this guard
   existed, and resuming either clock without checking the other would tick both at once, the
   same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
-  could run concurrently and log the same wall-clock interval twice. The pages that start a
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
   clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
   pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
   itself) resolve the conflict by redirecting to whichever clock is actually running instead
