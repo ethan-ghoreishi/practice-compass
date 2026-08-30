@@ -9,6 +9,7 @@ export * from './blocks';
 export * from './pathways';
 export * from './pathwaySeed';
 export * from './routines';
+export * from './practiceSignal';
 export * from './farsi';
 export * from './persian';
 export * from './repertoire';

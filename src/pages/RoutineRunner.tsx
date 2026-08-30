@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { aggregateItemMinutes, locateClock, runElapsedSeconds, segmentsForRun, type RunSegment } from '../domain';
+import { aggregateItemMinutes, locateClock, nextSignal, runElapsedSeconds, segmentBoundaries, segmentsForRun, type RunSegment } from '../domain';
 import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
 import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
+import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
+
+/** How long the "just arrived" cue stays visible after a segment boundary — long enough that glancing up a few seconds later still shows it, never a single-render flash. */
+const SEGMENT_ARRIVAL_WINDOW_SECONDS = 8;
 
 /**
  * The live run (segs/elapsed/running) lives in the store as `activeRoutine`,
@@ -30,6 +34,7 @@ export default function RoutineRunner() {
   const resumeRoutineRun = useStore((s) => s.resumeRoutineRun);
   const skipRoutineRun = useStore((s) => s.skipRoutineRun);
   const finishRoutine = useStore((s) => s.finishRoutine);
+  const setRoutineSignal = useStore((s) => s.setRoutineSignal);
 
   const routine = db.pathwayRoutines.find((r) => r.id === routineId);
   const stage = routine?.stageId ? db.pathwayStages.find((s) => s.id === routine.stageId) : undefined;
@@ -109,6 +114,22 @@ export default function RoutineRunner() {
   const segs = isMine ? activeRoutine.segs : [];
   const clock = isMine ? locateClock(segs, elapsedSeconds) : null;
 
+  useScreenAwake(isMine, isMine && !!activeRoutine?.running);
+
+  // Announce a boundary at most once, whether crossed by natural ticking or
+  // by waking up after a background/lock interval that jumped several
+  // segments at once. Skip never reaches this path — it acknowledges
+  // silently via the store's skipRoutineRun instead.
+  useEffect(() => {
+    if (!isMine) return;
+    const signalResult = nextSignal(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
+    if (signalResult.announce) {
+      setRoutineSignal(signalResult.marker);
+      playSignalCue();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMine, activeRoutine?.signalledThrough, elapsedSeconds, segs]);
+
   function finish() {
     if (!isMine || result) return;
     setResult({ segs, elapsedSeconds });
@@ -179,6 +200,13 @@ export default function RoutineRunner() {
   const segTotalSeconds = segs[clock.segIndex]?.seconds ?? seg.minutes * 60;
   const deg = segTotalSeconds > 0 ? (clock.segElapsedSeconds / segTotalSeconds) * 360 : 0;
   const next = authoredSegments[clock.segIndex + 1];
+  // A segment reached via a boundary crossing (never the run's opening segment) stays
+  // perceptibly marked for a defined window — never a one-render flash — so a musician
+  // glancing up a few seconds after arriving still sees that the segment changed. This is
+  // elapsed-derived, not marker-derived, so it also shows after a deliberate Skip (which
+  // suppresses only the announcement, via acknowledgeThrough) — deliberately: it describes
+  // the segment you are now on, not a re-announcement of the one you just chose to end.
+  const justArrived = clock.segIndex > 0 && clock.segElapsedSeconds < SEGMENT_ARRIVAL_WINDOW_SECONDS;
 
   return (
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
@@ -188,14 +216,15 @@ export default function RoutineRunner() {
           {routine.name}
           {effectiveShortOnTime ? ' · short on time' : ''}
         </div>
-        <div className="faint tiny">
+        <div className={`tiny${justArrived ? ' segment-arrived' : ' faint'}`}>
+          {justArrived ? 'New segment · ' : ''}
           Segment {clock.segIndex + 1} of {authoredSegments.length}
           {seg.itemId ? '' : ' · warm-up — not logged as practice'}
         </div>
       </header>
 
       <div
-        className="timer-ring"
+        className={`timer-ring${justArrived ? ' timer-ring--arrived' : ''}`}
         style={{ background: `conic-gradient(var(--accent-dim) ${deg}deg, var(--surface-3) ${deg}deg)` }}
       >
         <div

@@ -63,6 +63,81 @@ SM‑2. "Not now" hides a due review for the rest of today (no schedule change).
 result, and never leave a stale overdue item after an action. The Finish button freezes
 the clock (`pauseSession`) before the close screen; reflection time is not counted.
 
+## Hands-free practice: the screen stays awake, and the app announces the end
+
+The practice loop assumes you put the device down and play. While a practice clock —
+an ordinary block (`ActiveBlock`) or a routine run (`RoutineRunner`) — is genuinely
+RUNNING and its screen is VISIBLE, the app holds a Screen Wake Lock so the clock stays
+readable without touching anything; pausing, finishing, discarding, unmounting
+(navigating away) and the document going hidden all release it. WHETHER to hold the
+lock is a pure, tested predicate — `shouldKeepAwake({ hasClock, running, visible })`
+(`src/domain/practiceSignal.ts`) — true only when all three hold. There is exactly ONE
+owner of the lock (`useScreenAwake`, wired once per practice screen), so two can never
+be held at once. Reacquiring on `visibilitychange` back to visible is required by the
+Screen Wake Lock specification (the platform releases a held lock the moment the
+document becomes hidden) — not a browser-specific workaround. No wake-lock outcome,
+success, rejection, or unsupported, may ever influence a recorded minute: the whole
+elapsed-time family (`sessionElapsedSeconds`, `runElapsedSeconds`, `locateClock`,
+`skipCurrentSegment`, `aggregateItemMinutes`) stays exactly as it was before this
+existed.
+
+**The decision of WHEN to announce is pure and tested** (`src/domain/practiceSignal.ts`):
+`nextSignal(marker, elapsedSeconds, boundarySeconds)` announces AT MOST ONCE per call —
+if elapsed has passed more boundaries than the marker records, it announces once and
+advances the marker to the number ACTUALLY passed, never by one. This is what makes a
+background/lock catch-up correct: a phone that wakes up several boundaries later
+announces once and lands on the right one. The marker is a COUNT OF BOUNDARIES ALREADY
+ANNOUNCED, living as an optional `signalledThrough?: number` on the store's EPHEMERAL
+`active`/`activeRoutine` (useStore.ts) — never in `PracticeDB`, so no `SCHEMA_VERSION`
+bump, no migration, and it never syncs or lands in a backup. An ABSENT marker reads as
+zero (nothing announced yet) — the honest reading for a session persisted before this
+feature existed. Boundaries are the run's ordered cumulative END boundaries: an ordinary
+block passes `[targetMinutes * 60]`; a routine passes `segmentBoundaries(segs)`
+(`src/domain/routines.ts`) — the SAME numbers `locateClock` advances on, by construction,
+not a second cumulative sum recomputed in the runner. A deliberate Skip calls
+`acknowledgeThrough` instead, which advances the marker to match elapsed WITHOUT
+announcing — the user ended the segment themselves, so telling them it ended is noise —
+and clears every boundary at or before elapsed (not just one), since Skip can produce a
+zero-length or repeated boundary that is legitimate input, never malformed.
+
+**The visual state change is the guaranteed signal**, always delivered regardless of the
+wake lock or any device capability: an ordinary block reaching its target shows a
+durable "target reached" ring state and a growing overtime figure
+(`formatClock(elapsed - targetSeconds)`) for as long as the block runs — it does NOT
+auto-finish; practising past the target is ordinary, and only Finish or Discard ends a
+block. A routine segment boundary is perceptible for a defined window after arrival
+(never a single-render flash), and routine completion is already durably shown by the
+existing "Routine complete" screen. Audio and vibration (`playSignalCue`,
+`useScreenAwake.ts`) are FEATURE-DETECTED BEST-EFFORT ONLY, wrapped so any failure is
+silent, and are never part of any automated check: `navigator.vibrate` is unimplemented
+in Safari on iOS, and a WebAudio context needs a user-gesture unlock that happens on the
+page that starts the clock (Today/StageDetail/SessionPlan) — never on the practice
+screen itself, which hands-free practice, by definition, never taps. It may therefore be
+silent on the owner's own iPhone; the OWNER device checks record what was actually heard
+rather than asserting it. Widening the frame to unlock audio at the start gesture is a
+separate lane. Neutral and non-gamified throughout: a state change and a number, never a
+streak, score, or
+celebration.
+
+**The wake lock itself is one shared, port-injected coordinator**
+(`src/components/screenAwake.ts`) — no `navigator`/`window`/`document`, so its whole
+ownership state machine (at most one outstanding request and one held sentinel; a
+rejected or unsupported acquisition swallowed silently; a pending acquisition that
+resolves after being disabled released immediately rather than stranded held) is
+reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the thin
+React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
+real port, and wires `visibilitychange`.
+
+**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
+Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
+deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
+plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
+(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
+environment gap). Before drawing any conclusion about this feature (or any future
+secure-context-dependent work) from an unmerged branch, first confirm
+`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
+establish a genuine HTTPS route for it first.
+
 ## Hard "do nots" (require explicit user instruction to change)
 
 - ❌ **No gamification** — no streaks, points, badges, XP, leaderboards, confetti,
