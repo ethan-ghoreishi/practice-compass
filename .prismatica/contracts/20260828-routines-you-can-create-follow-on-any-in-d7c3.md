@@ -4,7 +4,7 @@ title: Routines you can create, follow on any instrument, and actually log
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/5
 intent: 20260828-routines-you-can-create-follow-on-any-in-d7c3
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: a8ad01a8c187b768773a3f95ab497a232c30e8a1
   branch: main
