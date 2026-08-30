@@ -40,7 +40,20 @@ instrument, everything below it (recommendation, class work, reviews, pathway po
 quick add, Start) is scoped to that instrument, and the primary recommendation must stay
 above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
 secondary choice — never the default. Never hard‑code a morning/evening schedule and
-never surface another instrument's work inside a session.
+never surface another instrument's work inside a session. The Session Plan and
+Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
+`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
+and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
+Plan's expanded panel read as routines being subordinate to picking a duration, so
+they were pulled out into their own doorway. Both start collapsed (~50px) so the
+primary recommendation stays above the fold; each has its own open/close state and
+its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+session instrument (`routinesForInstrument`), each row showing Edit and — when a
+segment is essential — a visible "Short on time — essentials only" button, plus "New
+routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
+unplaced routine is reachable from at all, so its rows carry the same Edit/Start/
+short-on-time affordances StageDetail's `RoutineCard`/PathwayDetail's `RoutineRow`
+give a placed one.
 
 ## Review actions have honest, distinct semantics
 
@@ -110,6 +123,101 @@ own pace, on a route they trust. Protect that:
   with full CRUD. Sections are the stages' `group` string (rename via `renameSection`;
   new stages pick their section explicitly). Deleting a stage/pathway must never delete
   items — only detach them, and clear any stale `currentStageId` pin.
+- **Routines are ordinary editable data belonging to an instrument** (`src/domain/routines.ts`,
+  tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
+  `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
+  (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+  from the routine's current data — so a mid-run edit can never shorten or desync the
+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
+  whatever item was actually practised. Discarding that instead would silently lose real
+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
+  block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
+  ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
+  Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
+  the factory default `not_logged`: a routine records time, never a judgement, and never
+  completes a review or advances SM-2. `focusForItem` (`src/domain/defaults.ts`) is the
+  shared strong focus default — the same one `startItemSession` uses — so a routine block
+  is indistinguishable from starting that item directly; do not reintroduce a third copy of
+  that fallback expression. The run in progress lives in the store as `activeRoutine`
+  (ephemeral — never in `PracticeDB`, same shape as `active`/`activePlan`), not component
+  state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
+  bound-item practice, matching how an active block already survives navigation, and only
+  one routine can run at a time — starting a different one while another is active redirects
+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
+  guard pair in each shared function covers every caller, rather than trusting each page to
+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
+  persisted (`partialize`), so a dual state can reach a device from before this guard
+  existed, and resuming either clock without checking the other would tick both at once, the
+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
+  remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
+  in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
+  `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+  catches up across MULTIPLE segment boundaries at once rather than losing time or advancing
+  one tick at a time. Skip clamps the current segment's effective duration to whatever
+  actually elapsed (never the full authored minutes); a segment played to completion keeps
+  its full duration. Choosing "short on time" (`segmentsForRun`) drops every non-essential
+  segment, honouring the syllabus's asterisk rule. "Finish routine" (mid-run) always saves
+  whatever bound-item time has genuinely elapsed via the same `finishRoutine` path as natural
+  completion — never a separate discard — with a caption stating that plainly, since ending
+  early must never silently fabricate or silently lose practice. Today's Routines card is
+  documented in its own bullet above.
 - **The current stage is the user's choice.** Teacher-led work jumps around:
   `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
   fallback. Never treat linear order as truth for Setar/Tar.
@@ -332,7 +440,11 @@ duplicate the item.
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`.
+  `SCHEMA_VERSION`. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  it belonged to — but only when that pathway names an instrument that actually resolves
+  in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
+  reference all leave the routine honestly unscoped rather than inventing one), and never
+  overwrites a routine that already has one.
 - **One file per route** under `src/pages/`. Shared UI primitives live in
   `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
   React Fast Refresh and the `react-refresh` lint rule happy).

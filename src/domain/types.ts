@@ -410,12 +410,26 @@ export interface RoutineSegment {
   minutes: number;
   note?: string;
   essential?: boolean;
+  /**
+   * Optional binding to a real practice item — so this segment's actual
+   * elapsed running time is recorded as practice when the routine finishes.
+   * Unbound (the default) stays exactly what it was: a pure countdown that
+   * logs nothing.
+   */
+  itemId?: ID;
 }
 
 export interface PathwayRoutine {
   id: ID;
-  pathwayId: ID;
-  /** Optional stage the routine belongs to (undefined = whole pathway). */
+  /**
+   * Optional at rest — a pre-v11 routine on a General (no-instrument) pathway
+   * has none, and the migration must never invent one. REQUIRED for every
+   * newly created routine (enforced by the store, not this type).
+   */
+  instrumentId?: ID;
+  /** Optional placement, not identity — a routine may exist unplaced ("my Setar warm-up"). */
+  pathwayId?: ID;
+  /** Optional stage the routine belongs to (undefined = whole pathway, or unplaced). */
   stageId?: ID;
   name: string;
   segments: RoutineSegment[];
@@ -473,7 +487,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export interface PracticeDB {
   schemaVersion: number;

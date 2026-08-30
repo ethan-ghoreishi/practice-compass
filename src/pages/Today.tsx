@@ -11,18 +11,20 @@ import {
   nextLessonDates,
   recommend,
   recommendForInstrument,
+  routinesForInstrument,
   stageProgress,
   stageUnits,
   todayISODate,
   ITEM_STATUS_LABELS,
+  type PathwayRoutine,
   type PracticeItem,
   type Recommendation,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { getItem } from '../store/lookups';
+import { getItem, instrumentName } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
 import { EmptyState, StatusBadge } from '../components/ui';
-import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, SparkIcon } from '../components/icons';
+import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, PlusIcon, SparkIcon } from '../components/icons';
 import { relativeDay } from '../components/format';
 import InstallHint from '../components/InstallHint';
 import QuickAdd from '../components/QuickAdd';
@@ -73,7 +75,7 @@ export default function Today() {
         </button>
       </nav>
 
-      {active && (
+      {active && !overview && selected && active.instrumentId === selected.id && (
         <Link to="/active" className="card card-accent card-link row between">
           <div>
             <div className="eyebrow">In progress</div>
@@ -87,6 +89,8 @@ export default function Today() {
         </Link>
       )}
 
+      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} />
+
       {overview || !selected ? (
         <OverviewView now={now} />
       ) : (
@@ -99,23 +103,107 @@ export default function Today() {
   );
 }
 
-// --- Session Plan doorway ----------------------------------------------------
+// --- A session belongs to whichever instrument it was started for ------------
+// `active`/`activePlan`/`activeRoutine` never masquerade as the selected
+// instrument's own work. When one belongs to a DIFFERENT instrument than the
+// one Today is scoped to, it shows here as an explicit "still running
+// elsewhere" row (never silently hidden — that would invite overwriting it)
+// rather than taking over that instrument's own Plan/Routines doorway.
+
+function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: string | null }) {
+  const db = useStore((s) => s.db);
+  const active = useStore((s) => s.active);
+  const activePlan = useStore((s) => s.activePlan);
+  const activeRoutine = useStore((s) => s.activeRoutine);
+
+  const rows: { key: string; label: string; detail: string; to: string }[] = [];
+
+  if (active && active.instrumentId !== selectedInstrumentId) {
+    rows.push({
+      key: 'active',
+      label: getItem(db, active.itemId)?.title ?? 'Practice block',
+      detail: `${instrumentName(db, active.instrumentId)} · in progress`,
+      to: '/active',
+    });
+  }
+  if (activePlan && activePlan.instrumentId !== selectedInstrumentId) {
+    const done = activePlan.segments.filter((s) => s.status === 'done').length;
+    rows.push({
+      key: 'plan',
+      label: `${instrumentName(db, activePlan.instrumentId)} plan`,
+      detail: `${done} of ${activePlan.segments.length} done`,
+      to: '/plan',
+    });
+  }
+  if (activeRoutine) {
+    const routine = db.pathwayRoutines.find((r) => r.id === activeRoutine.routineId);
+    // A legacy routine with no instrumentId isn't foreign to anything —
+    // never invent the instrument it's masquerading as.
+    if (routine?.instrumentId && routine.instrumentId !== selectedInstrumentId) {
+      rows.push({
+        key: 'routine',
+        label: routine.name,
+        detail: `${instrumentName(db, routine.instrumentId)} routine`,
+        to: `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`,
+      });
+    }
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="stack-sm">
+      {rows.map((r) => (
+        <Link key={r.key} to={r.to} className="card card-quiet card-link row between">
+          <div className="grow" style={{ minWidth: 0 }}>
+            <div className="tiny faint">{r.detail}</div>
+            <div className="small truncate" dir="auto">
+              {r.label}
+            </div>
+          </div>
+          <span className="tiny faint" style={{ flex: 'none' }}>
+            Resume ▸
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+// --- Session Plan and Routines: two independent, peer doorways ---------------
+// Deliberately separate cards, not a shared panel — a time-budgeted Session
+// Plan and following a routine are peer choices, not one subordinate to the
+// other. Each starts collapsed so "Practise now" stays above the fold at
+// 390×844, and each carries its own open/close state and its own "resume"
+// takeover, matching the existing `active`/`activePlan` pattern.
 
 const PLAN_DURATIONS = [15, 20, 30, 45, 60] as const;
 
 function PlanCard({ instrumentId }: { instrumentId: string }) {
+  const db = useStore((s) => s.db);
   const activePlan = useStore((s) => s.activePlan);
   const planMinutes = useStore((s) => s.planMinutesByInstrument);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
-  // Resume takes priority: if a plan is running (for any instrument), offer it.
-  if (activePlan) {
+  if (activePlan && activePlan.instrumentId === instrumentId) {
     const done = activePlan.segments.filter((s) => s.status === 'done').length;
     return (
       <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
         <span style={{ fontWeight: 600 }}>Resume your plan</span>
         <span className="small">{done} of {activePlan.segments.length} · {activePlan.budgetMinutes} min ▸</span>
+      </button>
+    );
+  }
+  if (activePlan) {
+    // A different instrument's plan is running. Starting a new plan here
+    // would dead-end at that plan anyway (`/plan` always shows whichever one
+    // is active) — so this doorway stays visibly blocked rather than
+    // offering a duration picker that can't actually start anything.
+    return (
+      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
+        <span style={{ fontWeight: 600, opacity: 0.7 }}>Plan this session</span>
+        <span className="faint small">{instrumentName(db, activePlan.instrumentId)} plan running ▸</span>
       </button>
     );
   }
@@ -157,6 +245,119 @@ function PlanCard({ instrumentId }: { instrumentId: string }) {
   );
 }
 
+function RoutinesCard({ instrumentId }: { instrumentId: string }) {
+  const db = useStore((s) => s.db);
+  const activeRoutine = useStore((s) => s.activeRoutine);
+  const routines = useStore((s) => s.db.pathwayRoutines);
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const myRoutines = routinesForInstrument(routines, instrumentId);
+
+  if (activeRoutine) {
+    const running = routines.find((r) => r.id === activeRoutine.routineId);
+    // A legacy routine with no instrumentId isn't foreign to anything.
+    const matches = !running?.instrumentId || running.instrumentId === instrumentId;
+    const to = `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`;
+    if (matches) {
+      return (
+        <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
+          <span style={{ fontWeight: 600 }}>Resume your routine</span>
+          <span className="small truncate" dir="auto" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
+        </button>
+      );
+    }
+    // A different instrument's routine is running. Starting another one here
+    // would just bounce back to it (RoutineRunner's own otherActive redirect)
+    // — so this doorway stays visibly blocked rather than offering a Start
+    // that can't actually start anything.
+    return (
+      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
+        <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
+        <span className="faint small truncate" dir="auto">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
+      </button>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        className="card card-quiet row between"
+        style={{ width: '100%', cursor: 'pointer' }}
+        onClick={() => setOpen(true)}
+        aria-expanded={false}
+      >
+        <span style={{ fontWeight: 600 }}>Routines</span>
+        <span className="faint small">
+          {myRoutines.length > 0 ? `${myRoutines.length} saved ▸` : 'follow a set warm-up ▸'}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <section className="card card-quiet stack-sm">
+      <div className="row between">
+        <span style={{ fontWeight: 600 }}>Routines</span>
+        <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
+      </div>
+      {myRoutines.length === 0 ? (
+        <button className="btn" style={{ width: '100%' }} onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
+          <PlusIcon /> Create a routine
+        </button>
+      ) : (
+        <div className="stack-sm">
+          {myRoutines.map((r) => (
+            <TodayRoutineRow key={r.id} routine={r} />
+          ))}
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
+            <PlusIcon /> New routine
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Same shape as StageDetail's RoutineCard / PathwayDetail's RoutineRow (name +
+ * segment summary, Edit, Start, and — when the routine has an essential
+ * segment — a visible "short on time" entry point). This is the ONLY place an
+ * unplaced routine (no pathway/stage) is reachable at all, so it needs the
+ * same Edit/Start/short-on-time affordances those pages give a placed one.
+ */
+function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
+  const navigate = useNavigate();
+  const total = routine.segments.reduce((sum, seg) => sum + seg.minutes, 0);
+  const hasEssential = routine.segments.some((seg) => seg.essential);
+  return (
+    <article className="card stack-sm">
+      <div className="row between">
+        <div style={{ minWidth: 0 }}>
+          <div className="truncate" dir="auto">{routine.name}</div>
+          <div className="tiny faint">{routine.segments.length} segments · {total} min</div>
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
+            Edit
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => navigate(`/routine/${routine.id}`)} aria-label={`Start ${routine.name}`}>
+            <PlayIcon width={16} height={16} />
+          </button>
+        </div>
+      </div>
+      {hasEssential && (
+        <button
+          className="btn btn-ghost btn-sm"
+          style={{ alignSelf: 'flex-end' }}
+          onClick={() => navigate(`/routine/${routine.id}?short=1`)}
+        >
+          Short on time — essentials only
+        </button>
+      )}
+    </article>
+  );
+}
+
 // --- The per-instrument session ----------------------------------------------
 
 function SessionView({
@@ -169,6 +370,8 @@ function SessionView({
   now: Date;
 }) {
   const db = useStore((s) => s.db);
+  const active = useStore((s) => s.active);
+  const activeRoutine = useStore((s) => s.activeRoutine);
   const notNow = useStore((s) => s.notNow);
   const startSession = useStore((s) => s.startSession);
   const startItemSession = useStore((s) => s.startItemSession);
@@ -214,6 +417,12 @@ function SessionView({
   const fragile = useMemo(() => fragileItems(items), [items]);
 
   const start = (item: PracticeItem) => {
+    // A different item is already active: don't silently swap it out from
+    // under the user (startSession would just no-op) — the in-progress
+    // banner above is the resolve path. Same for a running routine — the
+    // Routines doorway's "Resume your routine" is that resolve path.
+    if (active && active.itemId !== item.id) return;
+    if (activeRoutine) return;
     startSession(defaultStartInput(item));
     navigate('/active');
   };
@@ -235,9 +444,12 @@ function SessionView({
 
   return (
     <div className="stack-lg">
-      {/* 0 · A collapsed doorway to the time-budgeted plan (kept compact so the
-             primary recommendation stays above the fold at 390×844). */}
+      {/* 0 · Two collapsed, peer doorways — a time-budgeted plan and a
+             routine are separate systems, neither subordinate to the other.
+             Both start collapsed so the primary recommendation stays above
+             the fold at 390×844. */}
       <PlanCard instrumentId={instrumentId} />
+      <RoutinesCard instrumentId={instrumentId} />
 
       {/* 1 · The one thing to practise now — above the fold. */}
       {recs.best && (
@@ -349,7 +561,16 @@ function SessionView({
                   >
                     +2d
                   </button>
-                  <button className="btn btn-sm btn-primary" onClick={() => { startItemSession(item.id); navigate('/active'); }} aria-label={`Review ${item.title}`}>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      if (active && active.itemId !== item.id) return;
+                      if (activeRoutine) return;
+                      startItemSession(item.id);
+                      navigate('/active');
+                    }}
+                    aria-label={`Review ${item.title}`}
+                  >
                     <PlayIcon />
                   </button>
                 </div>

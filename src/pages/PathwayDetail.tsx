@@ -4,15 +4,17 @@ import {
   currentStage,
   groupStages,
   pathwayProgress,
+  routinesOfPathway,
   stageProgress,
   stagesOfPathway,
   stageUnits,
+  type PathwayRoutine,
   type PathwayStage,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
 import { Field } from '../components/ui';
-import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, PlusIcon } from '../components/icons';
+import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, PlayIcon, PlusIcon } from '../components/icons';
 
 export default function PathwayDetail() {
   const { pathwayId } = useParams();
@@ -26,6 +28,11 @@ export default function PathwayDetail() {
 
   const pathway = db.pathways.find((p) => p.id === pathwayId);
   const stages = useMemo(() => (pathway ? stagesOfPathway(db.pathwayStages, pathway.id) : []), [db.pathwayStages, pathway]);
+  // Routines placed on the pathway itself (no stage) — stage-scoped ones show on their stage instead.
+  const pathwayRoutines = useMemo(
+    () => (pathway ? routinesOfPathway(db.pathwayRoutines, pathway.id).filter((r) => !r.stageId) : []),
+    [db.pathwayRoutines, pathway],
+  );
 
   const [editing, setEditing] = useState(false);
   const [addingStage, setAddingStage] = useState(false);
@@ -132,6 +139,27 @@ export default function PathwayDetail() {
           </Link>
         </article>
       )}
+
+      <section className="stack-sm">
+        <div className="row between">
+          <div className="section-label">Guided routines</div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate(`/routine/new?instrument=${pathway.instrumentId ?? ''}&pathway=${pathway.id}`)}
+          >
+            <PlusIcon /> New routine
+          </button>
+        </div>
+        {pathwayRoutines.map((r) => (
+          <RoutineRow
+            key={r.id}
+            routine={r}
+            onStart={(short) => navigate(`/routine/${r.id}${short ? '?short=1' : ''}`)}
+            onEdit={() => navigate(`/routine/${r.id}/edit`)}
+          />
+        ))}
+        {pathwayRoutines.length === 0 && <div className="card card-quiet small dim">No pathway-level routines — stage routines show on their stage.</div>}
+      </section>
 
       <section className="stack-sm">
         <div className="row between">
@@ -303,6 +331,46 @@ function StageRow({
       </div>
       <ChevronRightIcon width={16} height={16} className="faint" onClick={onOpen} style={{ cursor: 'pointer' }} />
     </div>
+  );
+}
+
+function RoutineRow({
+  routine,
+  onStart,
+  onEdit,
+}: {
+  routine: PathwayRoutine;
+  onStart: (shortOnTime: boolean) => void;
+  onEdit: () => void;
+}) {
+  const total = routine.segments.reduce((s, x) => s + x.minutes, 0);
+  const hasEssential = routine.segments.some((s) => s.essential);
+  return (
+    <article className="card stack-sm">
+      <div className="row between">
+        <div>
+          <div className="title-md" style={{ fontSize: '1.02rem' }}>
+            {routine.name}
+          </div>
+          <div className="tiny faint">
+            {routine.segments.length} segments · {total} min
+          </div>
+        </div>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onEdit}>
+            Edit
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={() => onStart(false)}>
+            <PlayIcon /> Start
+          </button>
+        </div>
+      </div>
+      {hasEssential && (
+        <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-end' }} onClick={() => onStart(true)}>
+          Short on time — essentials only
+        </button>
+      )}
+    </article>
   );
 }
 

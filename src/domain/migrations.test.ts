@@ -59,3 +59,73 @@ describe('migrateToCurrent', () => {
     expect(out.pathwayStages.length).toBeGreaterThan(0);
   });
 });
+
+// --- v11: routine instrumentId backfill --------------------------------------
+
+const TS = '2025-01-01T00:00:00.000Z';
+const guitarInstrument = { id: 'i-guitar', name: 'Guitar', family: 'Western', active: true, createdAt: TS, updatedAt: TS };
+const setarInstrument = { id: 'i-setar', name: 'Setar', family: 'Persian', active: true, createdAt: TS, updatedAt: TS };
+
+function fixturePathway(id: string, instrumentId?: string) {
+  return { id, instrumentId, name: id, order: 0, createdAt: TS, updatedAt: TS };
+}
+function fixtureRoutine(id: string, pathwayId: string) {
+  return { id, pathwayId, name: id, segments: [], order: 0, createdAt: TS, updatedAt: TS };
+}
+function v10DBWith(instruments: unknown[], pathways: unknown[], pathwayRoutines: unknown[]): PracticeDB {
+  return {
+    schemaVersion: 10,
+    instruments,
+    materials: [],
+    items: [],
+    blocks: [],
+    reviews: [],
+    pathways,
+    pathwayStages: [],
+    pathwayRoutines,
+    attachments: [],
+    lessons: [],
+  } as unknown as PracticeDB;
+}
+
+describe('v11 routine instrumentId backfill', () => {
+  it('backfills a routine instrument from its pathway on the shared chain', () => {
+    const v10 = v10DBWith(
+      [guitarInstrument],
+      [fixturePathway('p-cgs', 'i-guitar')],
+      [fixtureRoutine('r-stage1', 'p-cgs')],
+    );
+
+    const out = migrateToCurrent(v10, 10);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.pathwayRoutines[0].instrumentId).toBe('i-guitar');
+
+    // A database already at the current version passes through unchanged.
+    expect(migrateToCurrent(out, SCHEMA_VERSION)).toEqual(out);
+  });
+
+  it('backfills only from a resolvable instrument and never invents one', () => {
+    const v10 = v10DBWith(
+      [setarInstrument],
+      [
+        fixturePathway('p-general', undefined), // General — no instrument at all
+        fixturePathway('p-legacy-empty', ''), // legacy migrateToV3's `?? ''`
+        fixturePathway('p-dangling', 'i-missing'), // resolves to nothing
+        fixturePathway('p-real', 'i-setar'), // control: the resolvable case
+      ],
+      [
+        fixtureRoutine('r-general', 'p-general'),
+        fixtureRoutine('r-legacy-empty', 'p-legacy-empty'),
+        fixtureRoutine('r-dangling', 'p-dangling'),
+        fixtureRoutine('r-real', 'p-real'),
+      ],
+    );
+
+    const out = migrateToCurrent(v10, 10);
+    const byId = new Map(out.pathwayRoutines.map((r) => [r.id, r]));
+    expect(byId.get('r-general')!.instrumentId).toBeUndefined();
+    expect(byId.get('r-legacy-empty')!.instrumentId).toBeUndefined();
+    expect(byId.get('r-dangling')!.instrumentId).toBeUndefined();
+    expect(byId.get('r-real')!.instrumentId).toBe('i-setar');
+  });
+});

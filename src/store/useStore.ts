@@ -4,6 +4,7 @@ import { clearBlobs, deleteBlobsForOwner, idbStorage, storageWasEmpty } from './
 import { withRevision } from './revision';
 import {
   applyBlockStats,
+  applyRoutineRun,
   catalogForStage,
   isLosslesslyRemovable,
   computeReviewOutcome,
@@ -18,10 +19,22 @@ import {
   createMaterial,
   createReview,
   createSeedDB,
+  detachIncompatibleRoutinesForPathway,
+  detachRoutinesFromPathway,
+  detachRoutinesFromStage,
+  duplicateRoutineData,
+  focusForItem,
+  groupBlocksByItem,
   itemFromCatalogEntry,
+  retargetRoutineInstrument,
+  runElapsedSeconds,
+  skipCurrentSegment,
+  toRunSegments,
   snoozePlan,
   SNOOZE_DAYS_DEFAULT,
   todayISODate,
+  unbindItemFromRoutines,
+  unbindItemWhereInstrumentMismatch,
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
@@ -33,7 +46,6 @@ import {
   buildSetarClassLessons,
   missingSessionReferences,
   SETAR_CLASS_SESSIONS,
-  STRAND_TO_FOCUS,
   validateDB,
   type BlockMode,
   type BlockResult,
@@ -50,6 +62,7 @@ import {
   type MaterialSourceType,
   type MaterialStatus,
   type Pathway,
+  type PathwayRoutine,
   type PathwayStage,
   type PersianFields,
   type PracticeDB,
@@ -57,6 +70,8 @@ import {
   type Rating,
   type ReviewMode,
   type ReviewType,
+  type RoutineSegment,
+  type RunSegment,
   type SchedulingParams,
   type PlanSegment,
   type SessionPlan,
@@ -109,6 +124,34 @@ export interface ActivePlan {
   /** Index of the next segment to practise. */
   pointer: number;
   segments: PlanSegmentState[];
+}
+
+/**
+ * A routine run in progress (ephemeral — never in PracticeDB). Same
+ * accumulated-seconds-plus-live-since-timestamp shape as `ActiveSession`, for
+ * the same reason: living in the store — not component state — means
+ * navigating away (a nav-bar tap, browser back) never silently loses
+ * genuinely-elapsed bound-item practice, exactly like an active block. Only
+ * one routine can run at a time, matching `active`/`activePlan`.
+ */
+export interface ActiveRoutine {
+  routineId: ID;
+  shortOnTime: boolean;
+  /**
+   * The segment list as it was AT START — label, essential, itemId — frozen
+   * here rather than re-derived live from the routine's current data. The
+   * routine can be edited (segments added/removed) while a run is in
+   * progress (Edit is reachable from StageDetail/PathwayDetail with no
+   * "is this active" guard); re-deriving from live data would desync this
+   * list's length from `segs` below and index past the end of one of them —
+   * a blank runner screen. A run's segments are what was actually started.
+   */
+  authoredSegments: RoutineSegment[];
+  /** Same length/order as authoredSegments; .seconds mutates (Skip clamps it). */
+  segs: RunSegment[];
+  accumulatedSeconds: number;
+  running: boolean;
+  runningSince?: string;
 }
 
 /** Advance the pointer to the next still-pending segment (or one past the end). */
@@ -188,6 +231,8 @@ interface StoreState {
   activePlan: ActivePlan | null;
   /** Last chosen plan duration per instrument, so the picker remembers. */
   planMinutesByInstrument: Record<ID, number>;
+  /** The routine run in progress right now (ephemeral; not in PracticeDB). */
+  activeRoutine: ActiveRoutine | null;
 
   setTheme: (t: ThemePref) => void;
   setSessionInstrument: (id: ID | null) => void;
@@ -295,6 +340,42 @@ interface StoreState {
   /** Rename a section heading across all of a pathway's stages. */
   renameSection: (pathwayId: ID, oldGroup: string | undefined, newGroup: string) => void;
 
+  // Routines (ordinary editable data, placement optional, instrument required)
+  addRoutine: (input: {
+    name: string;
+    instrumentId: ID;
+    pathwayId?: ID;
+    stageId?: ID;
+    segments?: RoutineSegment[];
+  }) => ID;
+  /**
+   * Full-form save: a complete replace, not a partial patch. Every save
+   * re-enforces the binding + placement invariants against the instrument
+   * being saved, whether or not it changed — never trusts the form on
+   * faith. `instrumentId` is optional here (unlike addRoutine): editing an
+   * already-unscoped legacy routine must be able to save without inventing
+   * one.
+   */
+  updateRoutine: (
+    id: ID,
+    patch: { name: string; segments: RoutineSegment[]; instrumentId?: ID; pathwayId?: ID; stageId?: ID },
+  ) => void;
+  deleteRoutine: (id: ID) => void;
+  duplicateRoutine: (id: ID) => ID;
+  /**
+   * Begin running a routine (segments become the live run). A no-op if an
+   * ordinary block is running, or if a DIFFERENT routine is already active —
+   * callers must resolve (resume/finish/discard) that one first, so its
+   * in-flight elapsed time is never silently overwritten or double-counted.
+   */
+  startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
+  pauseRoutineRun: () => void;
+  resumeRoutineRun: () => void;
+  /** Mark the current segment skipped; finishes the run if that was the last one. */
+  skipRoutineRun: () => void;
+  /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
+  finishRoutine: () => void;
+
   // Data management
   exportDB: () => PracticeDB;
   importDB: (raw: unknown) => void;
@@ -318,6 +399,7 @@ export const useStore = create<StoreState>()(
       notNow: { date: '', ids: [] },
       activePlan: null,
       planMinutesByInstrument: {},
+      activeRoutine: null,
 
       setTheme: (theme) => set({ theme }),
 
@@ -601,6 +683,11 @@ export const useStore = create<StoreState>()(
         // it; null clears both sides honestly.
         const { nextReviewDate, ...rest } = patch;
         const write = resolveReviewDate(nextReviewDate);
+        const current = get().db.items.find((i) => i.id === id);
+        const newInstrumentId =
+          rest.instrumentId !== undefined && current && rest.instrumentId !== current.instrumentId
+            ? rest.instrumentId
+            : undefined;
         set((s) => ({
           db: {
             ...s.db,
@@ -613,6 +700,11 @@ export const useStore = create<StoreState>()(
             reviews:
               applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
               s.db.reviews,
+            // An item that changes instrument no longer belongs in a routine
+            // scoped to the old one — unbind it there; matching routines keep it.
+            pathwayRoutines: newInstrumentId
+              ? unbindItemWhereInstrumentMismatch(s.db.pathwayRoutines, id, newInstrumentId, now)
+              : s.db.pathwayRoutines,
           },
         }));
       },
@@ -645,6 +737,8 @@ export const useStore = create<StoreState>()(
                 ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== id) }, now)
                 : l,
             ),
+            // The segment survives as an unbound countdown — never removed.
+            pathwayRoutines: unbindItemFromRoutines(s.db.pathwayRoutines, id, now),
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -715,12 +809,21 @@ export const useStore = create<StoreState>()(
           instrumentId: item.instrumentId,
           materialId: item.materialId,
           mode: defaultModeForStatus(item.status),
-          focus: item.primaryFocus ?? (item.strand ? STRAND_TO_FOCUS[item.strand] : 'other'),
+          focus: focusForItem(item),
           targetMinutes: DEFAULT_DURATION_MINUTES,
         });
       },
 
       startSession: (input) => {
+        const { active, activeRoutine } = get();
+        // Never silently overwrite an existing session's elapsed time, and
+        // never let an ordinary block run alongside a routine — every start
+        // path (direct item starts, Session Plan segments) routes through
+        // here, so this one guard is what keeps only one practice clock
+        // ticking at a time. The caller must resolve the existing one first
+        // (finish/discard/resume it) — same rule startRoutineRun applies in
+        // the other direction.
+        if (active || activeRoutine) return;
         const now = new Date();
         set({
           active: {
@@ -747,8 +850,12 @@ export const useStore = create<StoreState>()(
       },
 
       resumeSession: () => {
-        const { active } = get();
+        const { active, activeRoutine } = get();
         if (!active || active.running) return;
+        // A routine clock is also live (only reachable from persisted state
+        // predating this guard) — resuming would tick two clocks at once,
+        // same as a fresh start. Resolve it first (finish/discard it).
+        if (activeRoutine) return;
         set({ active: { ...active, running: true, segmentStartedAt: nowISO() } });
       },
 
@@ -939,8 +1046,18 @@ export const useStore = create<StoreState>()(
 
       updatePathway: (id, patch) => {
         const now = new Date();
+        const current = get().db.pathways.find((p) => p.id === id);
+        const instrumentChanged = 'instrumentId' in patch && current && patch.instrumentId !== current.instrumentId;
         set((s) => ({
-          db: { ...s.db, pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)) },
+          db: {
+            ...s.db,
+            pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)),
+            // Neither side is silently rewritten to agree — an incompatible
+            // placed routine is detached instead.
+            pathwayRoutines: instrumentChanged
+              ? detachIncompatibleRoutinesForPathway(s.db.pathwayRoutines, id, patch.instrumentId, now)
+              : s.db.pathwayRoutines,
+          },
         }));
       },
 
@@ -953,7 +1070,8 @@ export const useStore = create<StoreState>()(
               ...s.db,
               pathways: s.db.pathways.filter((p) => p.id !== id),
               pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
-              pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.pathwayId !== id),
+              // A user's routine is detached, never deleted — same rule as items.
+              pathwayRoutines: detachRoutinesFromPathway(s.db.pathwayRoutines, id, now),
               // Items are kept — they simply leave their stages.
               items: s.db.items.map((i) =>
                 i.stageId && stageIds.has(i.stageId) ? touch({ ...i, stageId: undefined }, now) : i,
@@ -981,7 +1099,7 @@ export const useStore = create<StoreState>()(
             ...s.db,
             pathways: [...s.db.pathways, ...newP],
             pathwayStages: [...s.db.pathwayStages, ...seeded.pathwayStages.filter((x) => newIds.has(x.pathwayId))],
-            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => newIds.has(x.pathwayId))],
+            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => !!x.pathwayId && newIds.has(x.pathwayId))],
           },
         }));
       },
@@ -1018,7 +1136,9 @@ export const useStore = create<StoreState>()(
           db: {
             ...s.db,
             pathwayStages: s.db.pathwayStages.filter((st) => st.id !== id),
-            pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.stageId !== id),
+            // Stage deletion is not pathway deletion — the routine keeps its
+            // pathwayId and only stageId is cleared.
+            pathwayRoutines: detachRoutinesFromStage(s.db.pathwayRoutines, id, now),
             // Items stay — they just leave the stage.
             items: s.db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
             // Un-pin any pathway pointing at the removed stage.
@@ -1066,21 +1186,171 @@ export const useStore = create<StoreState>()(
         });
       },
 
+      // --- Routines ----------------------------------------------------------
+
+      addRoutine: (input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const draft: PathwayRoutine = {
+          id: newId(),
+          instrumentId: input.instrumentId,
+          pathwayId: input.pathwayId,
+          stageId: input.stageId,
+          name: input.name.trim() || 'New routine',
+          segments: input.segments ?? [],
+          order: get().db.pathwayRoutines.length,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        // Never trust the caller's bindings/placement on faith — the same
+        // invariant enforcement updateRoutine applies on every save.
+        const { db } = get();
+        const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
+        const stage = draft.stageId ? db.pathwayStages.find((st) => st.id === draft.stageId) : undefined;
+        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, stage, now);
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
+        return routine.id;
+      },
+
+      updateRoutine: (id, patch) => {
+        const now = new Date();
+        const { db } = get();
+        const current = db.pathwayRoutines.find((r) => r.id === id);
+        if (!current) return;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayRoutines: s.db.pathwayRoutines.map((r) => {
+              if (r.id !== id) return r;
+              const merged: PathwayRoutine = {
+                ...r,
+                name: patch.name.trim() || r.name,
+                segments: patch.segments,
+                instrumentId: patch.instrumentId,
+                pathwayId: patch.pathwayId,
+                stageId: patch.stageId,
+              };
+              // Always re-enforce the binding + placement invariants against
+              // the instrument actually being saved — whether or not it
+              // changed — rather than trusting whatever the form happened to
+              // submit.
+              const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
+              const stage = merged.stageId ? s.db.pathwayStages.find((st) => st.id === merged.stageId) : undefined;
+              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, stage, now);
+            }),
+          },
+        }));
+      },
+
+      deleteRoutine: (id) => {
+        // Deleting the routine currently running must not strand
+        // `activeRoutine` pointing at a now-dead id (every other routine's
+        // Start would then redirect to a "Routine not found" dead end with
+        // no way back). Finish it first — honestly saving whatever bound-item
+        // time has genuinely elapsed, same as any other early finish — rather
+        // than silently discarding it.
+        if (get().activeRoutine?.routineId === id) get().finishRoutine();
+        set((s) => ({ db: { ...s.db, pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.id !== id) } }));
+      },
+
+      duplicateRoutine: (id) => {
+        const now = new Date();
+        const { db } = get();
+        const routine = db.pathwayRoutines.find((r) => r.id === id);
+        if (!routine) return '';
+        const copy = duplicateRoutineData(routine, db.pathwayRoutines.length, now);
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, copy] } }));
+        return copy.id;
+      },
+
+      startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
+        const { activeRoutine, active } = get();
+        // Same guard as startSession, in the other direction: an ordinary
+        // block already running must be resolved before a routine can start.
+        if (active) return;
+        if (activeRoutine && activeRoutine.routineId !== routineId) return;
+        set({
+          activeRoutine: {
+            routineId,
+            shortOnTime,
+            authoredSegments,
+            segs: toRunSegments(authoredSegments),
+            accumulatedSeconds: 0,
+            running: true,
+            runningSince: nowISO(),
+          },
+        });
+      },
+
+      pauseRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine?.running) return;
+        set({
+          activeRoutine: {
+            ...activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, true, new Date()),
+            running: false,
+            runningSince: undefined,
+          },
+        });
+      },
+
+      resumeRoutineRun: () => {
+        const { activeRoutine, active } = get();
+        if (!activeRoutine || activeRoutine.running) return;
+        // Same guard as resumeSession, in the other direction.
+        if (active) return;
+        set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
+      },
+
+      // Mutates segs only — never decides the run is over. Whether a skip
+      // lands on the final segment (locateClock's `finished` flips true) is
+      // detected uniformly by RoutineRunner's one completion effect, the same
+      // place natural (tick/background-catch-up) completion is detected. A
+      // second "did this finish it" branch here previously called
+      // finishRoutine() directly, bypassing the component's result snapshot
+      // and leaving the screen blank once activeRoutine was cleared out from
+      // under it.
+      skipRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
+        const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
+        set({ activeRoutine: { ...activeRoutine, segs } });
+      },
+
+      finishRoutine: () => {
+        const { activeRoutine, db } = get();
+        if (!activeRoutine) return;
+        const now = new Date();
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, now);
+        const outcome = applyRoutineRun(activeRoutine.segs, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
+        const updatedById = new Map(outcome.items.map((i) => [i.id, i]));
+        set((s) => ({
+          activeRoutine: null,
+          db: {
+            ...s.db,
+            blocks: outcome.blocks.length > 0 ? [...s.db.blocks, ...outcome.blocks] : s.db.blocks,
+            items: s.db.items.map((i) => updatedById.get(i.id) ?? i),
+          },
+        }));
+      },
+
       exportDB: () => get().db,
 
       importDB: (raw) => {
         const db = validateDB(raw);
-        set({ db, active: null });
+        set({ db, active: null, activeRoutine: null });
       },
 
       resetDemo: () => {
         void clearBlobs();
-        set({ db: createSeedDB(), active: null });
+        set({ db: createSeedDB(), active: null, activeRoutine: null });
       },
 
       clearAll: () => {
         void clearBlobs();
-        set({ db: emptyDB(), active: null });
+        set({ db: emptyDB(), active: null, activeRoutine: null });
       },
     })),
     {
@@ -1096,6 +1366,7 @@ export const useStore = create<StoreState>()(
         notNow: s.notNow,
         activePlan: s.activePlan,
         planMinutesByInstrument: s.planMinutesByInstrument,
+        activeRoutine: s.activeRoutine,
       }),
       migrate: (persisted, version) => {
         const state = persisted as { db?: PracticeDB } | undefined;
@@ -1104,7 +1375,41 @@ export const useStore = create<StoreState>()(
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        return { ...current, ...p, db: p.db ?? current.db };
+        const merged = { ...current, ...p, db: p.db ?? current.db };
+        // The start/resume guards keep active/activeRoutine from BOTH being
+        // set going forward, but a device that persisted a dual-running
+        // state before those guards existed reaches this merge unchecked —
+        // hydration is the one place ALL persisted state re-enters the
+        // store, so it's the one place left to close. Passing both straight
+        // through would let each keep ticking live from its own timestamp
+        // and double-log the same wall-clock interval, exactly the bug the
+        // guards exist to prevent. Freeze both (the same transform
+        // pauseSession/pauseRoutineRun already do) rather than discarding
+        // either: nothing already elapsed is lost, neither clock advances
+        // further on its own, and the ordinary finish/discard flow is what
+        // the user resolves one with before the guards allow resuming or
+        // starting the other.
+        if (merged.active && merged.activeRoutine) {
+          const now = new Date();
+          merged.active = {
+            ...merged.active,
+            accumulatedSeconds: sessionElapsedSeconds(merged.active, now),
+            running: false,
+            segmentStartedAt: undefined,
+          };
+          merged.activeRoutine = {
+            ...merged.activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(
+              merged.activeRoutine.accumulatedSeconds,
+              merged.activeRoutine.runningSince,
+              merged.activeRoutine.running,
+              now,
+            ),
+            running: false,
+            runningSince: undefined,
+          };
+        }
+        return merged;
       },
     },
   ),
