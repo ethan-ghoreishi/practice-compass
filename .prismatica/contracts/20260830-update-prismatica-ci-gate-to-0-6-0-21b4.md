@@ -3,7 +3,7 @@ id: 20260830-update-prismatica-ci-gate-to-0-6-0-21b4
 title: Update Prismatica CI gate to 0.6.0
 issue: update/0.6.0
 tier: light
-stage: prove
+stage: ship
 baseline:
   commit: cad4d3bc8b45110733f189d9b280b8c8a39587b2
   branch: main
