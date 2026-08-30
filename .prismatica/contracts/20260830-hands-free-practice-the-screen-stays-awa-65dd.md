@@ -323,41 +323,44 @@ acceptanceChecks:
       cue that has already vanished by the time you look up fails this check.
     test: manual:OWNER
 docsDelta:
-  - "Add a section to CLAUDE.md (and the identical AGENTS.md) stating the
-    hands-free invariant: while a practice clock is running AND its screen is
-    visible, the app holds a screen wake lock; pause, finish, discard, unmount
-    and hidden all release it; there is exactly one owner of the lock
-    (`useScreenAwake`) so two can never be held at once; reacquisition on
-    `visibilitychange` is required by the Screen Wake Lock specification, not a
-    browser workaround; and no wake-lock outcome may ever influence elapsed
-    time."
-  - "Document the announcement policy in both files:
-    `nextSignal`/`acknowledgeThrough`/`shouldKeepAwake` in
-    `src/domain/practiceSignal.ts` are pure and tested; the marker is a COUNT OF
-    BOUNDARIES ALREADY ANNOUNCED living on the store's ephemeral
-    `active`/`activeRoutine` (never in `PracticeDB`, so no schema bump, no
-    migration, and never synced or backed up); an absent marker reads as nothing
-    announced yet; a multi-boundary catch-up announces ONCE and advances the
-    marker to the boundary actually reached; and a deliberate Skip acknowledges
-    without announcing."
-  - "Record that the visual state change is the guaranteed signal and that
-    audio/vibration are feature-detected best-effort only — with the reasons:
-    `navigator.vibrate` is unimplemented in Safari on iOS, and the WebAudio
-    unlock gesture lives on the pages that START a block rather than on the
-    practice screen, which hands-free practice by definition never taps."
-  - "Record that an ordinary block never auto-finishes at its target: reaching
-    the target announces and begins counting overtime, and only the user's
-    Finish or Discard ends a block."
-  - "Record the secure-context constraint in both files: Screen Wake Lock needs
-    a secure context, so plain-HTTP LAN serving cannot exercise it and a device
-    check must confirm `window.isSecureContext` and `'wakeLock' in navigator`
-    before concluding anything about the implementation."
-  - Note in both files that there is no branch-preview deployment (deploy.yml
-    publishes on main only), so any future wake-lock or other
-    secure-context-dependent work must establish an HTTPS route for device
-    testing before device acceptance can be claimed.
+  - CLAUDE.md
+  - AGENTS.md
 createdAt: 2026-08-30T12:14:22.169Z
-amendments: []
+amendments:
+  - at: 2026-08-30T23:34:31.431Z
+    reason: Repair the malformed legacy docsDelta accepted before Prismatica
+      validated documentation requirements as exact repository-relative paths.
+    description: "docs: +CLAUDE.md, AGENTS.md -Add a section to CLAUDE.md (and the
+      identical AGENTS.md) stating the hands-free invariant: while a practice
+      clock is running AND its screen is visible, the app holds a screen wake
+      lock; pause, finish, discard, unmount and hidden all release it; there is
+      exactly one owner of the lock (`useScreenAwake`) so two can never be held
+      at once; reacquisition on `visibilitychange` is required by the Screen
+      Wake Lock specification, not a browser workaround; and no wake-lock
+      outcome may ever influence elapsed time., Document the announcement policy
+      in both files: `nextSignal`/`acknowledgeThrough`/`shouldKeepAwake` in
+      `src/domain/practiceSignal.ts` are pure and tested; the marker is a COUNT
+      OF BOUNDARIES ALREADY ANNOUNCED living on the store's ephemeral
+      `active`/`activeRoutine` (never in `PracticeDB`, so no schema bump, no
+      migration, and never synced or backed up); an absent marker reads as
+      nothing announced yet; a multi-boundary catch-up announces ONCE and
+      advances the marker to the boundary actually reached; and a deliberate
+      Skip acknowledges without announcing., Record that the visual state change
+      is the guaranteed signal and that audio/vibration are feature-detected
+      best-effort only — with the reasons: `navigator.vibrate` is unimplemented
+      in Safari on iOS, and the WebAudio unlock gesture lives on the pages that
+      START a block rather than on the practice screen, which hands-free
+      practice by definition never taps., Record that an ordinary block never
+      auto-finishes at its target: reaching the target announces and begins
+      counting overtime, and only the user's Finish or Discard ends a block.,
+      Record the secure-context constraint in both files: Screen Wake Lock needs
+      a secure context, so plain-HTTP LAN serving cannot exercise it and a
+      device check must confirm `window.isSecureContext` and `'wakeLock' in
+      navigator` before concluding anything about the implementation., Note in
+      both files that there is no branch-preview deployment (deploy.yml
+      publishes on main only), so any future wake-lock or other
+      secure-context-dependent work must establish an HTTPS route for device
+      testing before device acceptance can be claimed."
 ---
 
 # Hands-free practice: the screen stays awake while a clock runs, and the app announces the intended end
@@ -455,14 +458,10 @@ amendments: []
 
 ## Docs to update
 
-- Add a section to CLAUDE.md (and the identical AGENTS.md) stating the hands-free invariant: while a practice clock is running AND its screen is visible, the app holds a screen wake lock; pause, finish, discard, unmount and hidden all release it; there is exactly one owner of the lock (`useScreenAwake`) so two can never be held at once; reacquisition on `visibilitychange` is required by the Screen Wake Lock specification, not a browser workaround; and no wake-lock outcome may ever influence elapsed time.
-- Document the announcement policy in both files: `nextSignal`/`acknowledgeThrough`/`shouldKeepAwake` in `src/domain/practiceSignal.ts` are pure and tested; the marker is a COUNT OF BOUNDARIES ALREADY ANNOUNCED living on the store's ephemeral `active`/`activeRoutine` (never in `PracticeDB`, so no schema bump, no migration, and never synced or backed up); an absent marker reads as nothing announced yet; a multi-boundary catch-up announces ONCE and advances the marker to the boundary actually reached; and a deliberate Skip acknowledges without announcing.
-- Record that the visual state change is the guaranteed signal and that audio/vibration are feature-detected best-effort only — with the reasons: `navigator.vibrate` is unimplemented in Safari on iOS, and the WebAudio unlock gesture lives on the pages that START a block rather than on the practice screen, which hands-free practice by definition never taps.
-- Record that an ordinary block never auto-finishes at its target: reaching the target announces and begins counting overtime, and only the user's Finish or Discard ends a block.
-- Record the secure-context constraint in both files: Screen Wake Lock needs a secure context, so plain-HTTP LAN serving cannot exercise it and a device check must confirm `window.isSecureContext` and `'wakeLock' in navigator` before concluding anything about the implementation.
-- Note in both files that there is no branch-preview deployment (deploy.yml publishes on main only), so any future wake-lock or other secure-context-dependent work must establish an HTTPS route for device testing before device acceptance can be claimed.
+- CLAUDE.md
+- AGENTS.md
 
 ## Amendments
 
-_none_
+- 2026-08-30T23:34:31.431Z — Repair the malformed legacy docsDelta accepted before Prismatica validated documentation requirements as exact repository-relative paths.: docs: +CLAUDE.md, AGENTS.md -Add a section to CLAUDE.md (and the identical AGENTS.md) stating the hands-free invariant: while a practice clock is running AND its screen is visible, the app holds a screen wake lock; pause, finish, discard, unmount and hidden all release it; there is exactly one owner of the lock (`useScreenAwake`) so two can never be held at once; reacquisition on `visibilitychange` is required by the Screen Wake Lock specification, not a browser workaround; and no wake-lock outcome may ever influence elapsed time., Document the announcement policy in both files: `nextSignal`/`acknowledgeThrough`/`shouldKeepAwake` in `src/domain/practiceSignal.ts` are pure and tested; the marker is a COUNT OF BOUNDARIES ALREADY ANNOUNCED living on the store's ephemeral `active`/`activeRoutine` (never in `PracticeDB`, so no schema bump, no migration, and never synced or backed up); an absent marker reads as nothing announced yet; a multi-boundary catch-up announces ONCE and advances the marker to the boundary actually reached; and a deliberate Skip acknowledges without announcing., Record that the visual state change is the guaranteed signal and that audio/vibration are feature-detected best-effort only — with the reasons: `navigator.vibrate` is unimplemented in Safari on iOS, and the WebAudio unlock gesture lives on the pages that START a block rather than on the practice screen, which hands-free practice by definition never taps., Record that an ordinary block never auto-finishes at its target: reaching the target announces and begins counting overtime, and only the user's Finish or Discard ends a block., Record the secure-context constraint in both files: Screen Wake Lock needs a secure context, so plain-HTTP LAN serving cannot exercise it and a device check must confirm `window.isSecureContext` and `'wakeLock' in navigator` before concluding anything about the implementation., Note in both files that there is no branch-preview deployment (deploy.yml publishes on main only), so any future wake-lock or other secure-context-dependent work must establish an HTTPS route for device testing before device acceptance can be claimed.
 
