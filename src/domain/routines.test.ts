@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   aggregateItemMinutes,
   applyRoutineRun,
@@ -22,6 +22,30 @@ import { isSaturated } from './scoring';
 import { seedPathways } from './pathwaySeed';
 import { STRAND_TO_FOCUS } from './labels';
 import type { Pathway, PathwayRoutine, PathwayStage, PracticeItem, RoutineSegment } from './types';
+// The single-active-clock guard is store-level (start/resume actions, and the
+// persisted-hydration merge) rather than a pure domain function — there is no
+// allowed store test file for this contract, and this invariant is the
+// routine feature's own defining constraint (CLAUDE.md's "single practice
+// clock" section), so its regression coverage lives here rather than being
+// left unproven or requiring a scope amendment for one test file.
+import { useStore, type ActiveRoutine, type ActiveSession } from '../store/useStore';
+
+// The IndexedDB-backed persist storage doesn't exist in this test environment
+// (no real indexedDB global) — importing the real adapter is fine, but any
+// actual read/write throws a Dexie MissingAPIError as an unhandled rejection
+// the moment the store below calls setState. Stub only the storage I/O; leave
+// every other export (idb, blob helpers) real since nothing here calls them.
+vi.mock('../store/idb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../store/idb')>();
+  return {
+    ...actual,
+    idbStorage: {
+      getItem: async () => null,
+      setItem: async () => {},
+      removeItem: async () => {},
+    },
+  };
+});
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -434,5 +458,112 @@ describe('the binding invariant: a bound itemId never dangles', () => {
 
     expect(out.pathwayId).toBe('p1'); // the pathway itself is still real and compatible
     expect(out.stageId).toBeUndefined(); // but the stage never belonged to it
+  });
+});
+
+describe('the single active clock guard, enforced at every entry point', () => {
+  // Persisted or in-memory state from before these guards existed could carry
+  // BOTH an ordinary session and a routine run at once; each entry point below
+  // is a distinct door that state could otherwise slip through and double-log
+  // the same wall-clock interval. Reset between tests since the store is a
+  // singleton.
+  beforeEach(() => {
+    useStore.setState({ active: null, activeRoutine: null });
+  });
+
+  function session(patch: Partial<ActiveSession> = {}): ActiveSession {
+    return {
+      itemId: 'item-1',
+      instrumentId: 'guitar',
+      mode: 'maintain',
+      focus: 'tone',
+      targetMinutes: 10,
+      startedAt: NOW.toISOString(),
+      accumulatedSeconds: 0,
+      running: true,
+      segmentStartedAt: NOW.toISOString(),
+      ...patch,
+    };
+  }
+
+  function runningRoutine(patch: Partial<ActiveRoutine> = {}): ActiveRoutine {
+    return {
+      routineId: 'r1',
+      shortOnTime: false,
+      authoredSegments: [],
+      segs: [],
+      accumulatedSeconds: 0,
+      running: true,
+      runningSince: NOW.toISOString(),
+      ...patch,
+    };
+  }
+
+  it('refuses to start an ordinary session while a routine is running', () => {
+    useStore.setState({ activeRoutine: runningRoutine() });
+
+    useStore.getState().startSession({
+      itemId: 'item-2',
+      instrumentId: 'guitar',
+      mode: 'maintain',
+      focus: 'tone',
+      targetMinutes: 10,
+    });
+
+    expect(useStore.getState().active).toBeNull();
+  });
+
+  it('refuses to resume an ordinary session while a routine is running', () => {
+    useStore.setState({
+      active: session({ running: false, segmentStartedAt: undefined }),
+      activeRoutine: runningRoutine(),
+    });
+
+    useStore.getState().resumeSession();
+
+    expect(useStore.getState().active?.running).toBe(false);
+  });
+
+  it('refuses to start a routine run while an ordinary session is running', () => {
+    useStore.setState({ active: session() });
+
+    useStore.getState().startRoutineRun('r1', false, []);
+
+    expect(useStore.getState().activeRoutine).toBeNull();
+  });
+
+  it('refuses to resume a routine run while an ordinary session is running', () => {
+    useStore.setState({
+      active: session(),
+      activeRoutine: runningRoutine({ running: false, runningSince: undefined }),
+    });
+
+    useStore.getState().resumeRoutineRun();
+
+    expect(useStore.getState().activeRoutine?.running).toBe(false);
+  });
+
+  it('freezes both clocks on hydration instead of resuming a persisted dual-running state', () => {
+    // The exact rejected failure: a device that persisted BOTH an active
+    // session and an active routine as running (only reachable from before
+    // the guards above existed) must not have hydration hand them back
+    // unchanged — each would keep ticking live from its own timestamp and
+    // double-log the same wall-clock interval on the very next read.
+    const TEN_MINUTES_AGO = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+    const persisted = {
+      active: session({ accumulatedSeconds: 30, running: true, segmentStartedAt: TEN_MINUTES_AGO }),
+      activeRoutine: runningRoutine({ accumulatedSeconds: 45, running: true, runningSince: TEN_MINUTES_AGO }),
+    };
+    const merge = useStore.persist.getOptions().merge;
+    if (!merge) throw new Error('expected the persist config to define a merge function');
+
+    const merged = merge(persisted, useStore.getState());
+
+    expect(merged.active?.running).toBe(false);
+    expect(merged.active?.segmentStartedAt).toBeUndefined();
+    expect(merged.active?.accumulatedSeconds).toBeGreaterThanOrEqual(30 + 600);
+    expect(merged.activeRoutine?.running).toBe(false);
+    expect(merged.activeRoutine?.runningSince).toBeUndefined();
+    expect(merged.activeRoutine?.accumulatedSeconds).toBeGreaterThanOrEqual(45 + 600);
   });
 });
