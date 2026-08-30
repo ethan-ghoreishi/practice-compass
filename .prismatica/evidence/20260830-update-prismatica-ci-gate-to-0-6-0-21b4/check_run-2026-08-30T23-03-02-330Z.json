@@ -1,0 +1,77 @@
+{
+  "contractId": "20260830-update-prismatica-ci-gate-to-0-6-0-21b4",
+  "event": "check_run",
+  "at": "2026-08-30T23:03:02.330Z",
+  "pass": false,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "fail",
+      "detail": "`npx tsc --noEmit` exited 1"
+    },
+    {
+      "name": "lint",
+      "status": "fail",
+      "detail": "`npm run lint` exited 127"
+    },
+    {
+      "name": "unit",
+      "status": "fail",
+      "detail": "`npx vitest run --reporter=json` exited 1"
+    },
+    {
+      "name": "build",
+      "status": "fail",
+      "detail": "`npm run build` exited 127"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "not configured at init — reported, never silently skipped"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "1 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "1 manual check(s) — owner attests at accept"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "no docs delta required"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "no mapped flow overlaps this change"
+    }
+  ],
+  "changedFiles": [
+    ".github/workflows/prismatica-gate.yml"
+  ],
+  "prismaticaVersion": "0.6.0"
+}
