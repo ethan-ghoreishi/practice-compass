@@ -121,14 +121,14 @@ export default function RoutineRunner() {
   // segments at once. Skip never reaches this path — it acknowledges
   // silently via the store's skipRoutineRun instead.
   useEffect(() => {
-    if (!isMine) return;
+    if (!isMine || !activeRoutine.running) return; // paused or frozen (legacy dual-clock hydration): announce nothing
     const signalResult = nextSignal(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
     if (signalResult.announce) {
       setRoutineSignal(signalResult.marker);
       playSignalCue();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMine, activeRoutine?.signalledThrough, elapsedSeconds, segs]);
+  }, [isMine, activeRoutine?.running, activeRoutine?.signalledThrough, elapsedSeconds, segs]);
 
   function finish() {
     if (!isMine || result) return;

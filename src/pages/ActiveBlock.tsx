@@ -31,14 +31,14 @@ export default function ActiveBlock() {
 
   const elapsedForSignal = active ? sessionElapsedSeconds(active) : 0;
   useEffect(() => {
-    if (!active) return;
+    if (!active?.running) return; // paused or frozen (legacy dual-clock hydration): announce nothing
     const result = nextSignal(active.signalledThrough, elapsedForSignal, [active.targetMinutes * 60]);
     if (result.announce) {
       setSessionSignal(result.marker);
       playSignalCue();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.signalledThrough, elapsedForSignal, active?.targetMinutes]);
+  }, [active?.running, active?.signalledThrough, elapsedForSignal, active?.targetMinutes]);
 
   if (!active) {
     // A routine is running instead — its own clock, not this one. Point back
