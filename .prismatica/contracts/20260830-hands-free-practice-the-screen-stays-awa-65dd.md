@@ -5,7 +5,7 @@ title: "Hands-free practice: the screen stays awake while a clock runs, and the
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/7
 intent: 20260830-hands-free-practice-the-screen-stays-awa-65dd
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: cad4d3bc8b45110733f189d9b280b8c8a39587b2
   branch: main
