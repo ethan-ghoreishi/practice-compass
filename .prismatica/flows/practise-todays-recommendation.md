@@ -19,12 +19,20 @@ truth:
         work, due reviews, pathway position."
       changes: The chosen instrument is remembered as the session instrument.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: Practice Compass
       action: Scores every item of that instrument and shows the best one with a
         one-sentence reason.
       shows: One 'Practise now' card above the fold, plus up to two quieter 'then, if
         you have time' suggestions.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -32,6 +40,10 @@ truth:
       changes: A practice block is opened in memory with mode, focus and a 10-minute
         target derived from the item.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -43,11 +55,19 @@ truth:
         navigating away releases it, and the phone sleeps normally again.
       changes: Elapsed seconds accumulate only while the timer runs.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
       changes: The clock is frozen first, so reflection time is not counted as practice.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Picks one of the six results, optionally adds an observation, a next
         action, a body note or a teacher question, and accepts or declines the
@@ -55,6 +75,10 @@ truth:
       shows: A preview of the next review date with the plain reason behind it, and a
         'Why this date?' link.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -63,6 +87,10 @@ truth:
         and spaced-repetition state advance; any open review for the item is
         completed and the next one is scheduled on the date that was shown.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:34.800Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
@@ -230,4 +258,3 @@ The session is recorded honestly: one block, one result, one next action — and
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
-

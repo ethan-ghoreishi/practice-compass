@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T19:26:47.830Z
-        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
+        at: 2026-08-31T22:07:45.127Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Changes a value — a review gap, the warm-up or deep-work share of a
         plan, the shortest or longest review slot.
@@ -32,8 +32,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T19:26:47.830Z
-        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
+        at: 2026-08-31T22:07:45.127Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Closes a block or builds a plan afterwards.
       shows: Review dates and plan shapes computed with the adjusted values.
@@ -41,8 +41,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T19:26:47.830Z
-        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
+        at: 2026-08-31T22:07:45.127Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps 'Reset to recommended' whenever they want the original behaviour
         back.
@@ -51,8 +51,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T19:26:47.830Z
-        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
+        at: 2026-08-31T22:07:45.127Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
   endsWith: The engine is understood and, if wanted, tuned — and it still produces
     the same date it showed.
   variations:

@@ -19,18 +19,30 @@ truth:
       shows: "The plan preview: each segment with its minutes, bucket, item and a
         one-sentence reason, and a total that always equals the chosen budget."
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:48.053Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Swaps, removes or regenerates segments until the shape looks right.
       shows: The remaining minutes are redistributed immediately so the total still
         equals the budget.
       changes: Only a local copy of the plan — nothing is saved yet.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:48.053Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps 'Start plan'.
       shows: "The runner: the whole list with the current segment highlighted."
       changes: The running plan is held in app state (never in the database, never
         synced), and the chosen length is remembered for this instrument.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:48.053Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps 'Start' on the current segment.
       shows: The ordinary active-block screen, with the segment's minutes as the
@@ -40,6 +52,10 @@ truth:
         its minutes without the musician tapping Finish.
       changes: A real practice block opens for that segment's item.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:48.053Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Finishes and saves the block as usual.
       shows: Back on the plan, that segment reads 'done' and the pointer moves to the
@@ -47,12 +63,20 @@ truth:
       changes: The block, item stats and review schedule update exactly as in an
         unplanned block.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:48.053Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Skips anything they do not want, or ends the plan at any time.
       shows: "'Session complete' once the last segment is passed."
       changes: A skipped segment logs nothing at all; ending the plan discards it and
         leaves every logged block untouched.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:06:48.053Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
   endsWith: The available time was spent on real, logged practice in a sensible
     order — and the plan itself leaves no trace in the data.
   variations:
@@ -184,4 +208,3 @@ The available time was spent on real, logged practice in a sensible order — an
 - The musician
 - The plan builder
 - The recommendation engine
-

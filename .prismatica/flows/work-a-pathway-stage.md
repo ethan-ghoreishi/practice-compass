@@ -19,6 +19,10 @@ truth:
       shows: A progress bar reading 'n/m solid', guided routines if any, and one line
         of metadata per row — greyed rows are labelled reference suggestions.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:07:20.450Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps + on a suggestion.
       shows: The row becomes a real item, honestly marked 'Not practised yet', with a
@@ -26,6 +30,10 @@ truth:
       changes: A practice item is created from the catalogue entry, carrying its
         stable catalogue key — adding is organisation, not progress.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:07:20.450Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Undoes it, or removes it later from the row's − button, if it was added
         by mistake.
@@ -34,11 +42,19 @@ truth:
         item, still 'not practised', zero blocks); the check is re-run against
         live data, so anything practised is kept.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:07:20.450Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
       changes: A suggestion not yet added is added first, then the block opens.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:07:20.450Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
     - actor: The musician
       action: Optionally pins the stage as the current one, or edits its code, title
         and intro.
@@ -46,6 +62,10 @@ truth:
       changes: The pathway records the pinned stage; deleting a stage detaches items
         instead of deleting them.
       assumes: []
+      evidence:
+        method: manual
+        at: 2026-08-31T22:07:20.450Z
+        commit: 8764d89b70b146a109d76e63fe4c4fc51fff374b
   endsWith: The next piece of the route is now a real practice item with real
     practice behind it, and the stage's progress reflects it honestly.
   variations:
@@ -192,4 +212,3 @@ The next piece of the route is now a real practice item with real practice behin
 
 - The musician
 - The pathway catalogue
-
