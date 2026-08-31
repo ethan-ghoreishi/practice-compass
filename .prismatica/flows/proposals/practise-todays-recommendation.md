@@ -92,14 +92,14 @@ truth:
         the block away — nothing is logged and no schedule moves."
       status: works
     - name: Target reached
-      differs: When elapsed reaches the block's target, the ring's silent
+      differs: "When elapsed reaches the block's target, the ring's silent
         saturation is replaced by a durable 'Target reached' state plus a
         growing overtime figure (elapsed minus target) — announced once,
-        never once per render. The block does NOT auto-finish: practising
+        never once per render. The block does NOT auto-finish — practising
         past the target stays ordinary, and only Finish or Discard ends it.
         Whether the screen-wake-lock or the accompanying sound/vibration cue
         succeeds, fails or is unsupported never changes the elapsed time or
-        the minutes eventually saved.
+        the minutes eventually saved."
       status: works
   rules:
     - Starting a block must stay under 30 seconds and closing one under 60
