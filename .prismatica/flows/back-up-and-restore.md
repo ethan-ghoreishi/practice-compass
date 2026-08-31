@@ -21,24 +21,27 @@ truth:
         remembered locally.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:36.906Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Saves it wherever they keep backups — NAS, iCloud, anywhere.
       shows: Settings shows the last export from this device and the latest change
         made here.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:36.906Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Import backup' on any device and picks a file.
       shows: A confirmation naming the device the backup came from — and an explicit
         warning if the backup is older than what is on this device.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:36.906Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Decodes every attachment before touching anything.
       shows: A corrupt file aborts the whole import with a clear message and nothing
@@ -48,8 +51,9 @@ truth:
         up pointing at missing files.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:36.906Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Leaves existing files alone when the file has no attachments section at
         all.
@@ -57,8 +61,9 @@ truth:
         wipes the device's files.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:36.906Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: There is an independent full copy of everything, and restoring it is a
     single, clearly-confirmed step.
   variations:
@@ -166,4 +171,3 @@ There is an independent full copy of everything, and restoring it is a single, c
 
 - The musician
 - The NAS or other storage
-

@@ -23,8 +23,9 @@ truth:
       changes: The configuration is written to this device's local storage.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:30.734Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Builds a whole snapshot of the device's data and files, hashes it, and
         compares it three ways against the repo and the last synced hash.
@@ -32,8 +33,9 @@ truth:
         name, last sync time and short content hash."
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:30.734Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Publishes the snapshot atomically when this device is ahead — blobs,
         then tree, then commit, then a fast-forward-only reference update.
@@ -44,8 +46,9 @@ truth:
       assumes:
         - The device is online and the token is valid for that repo
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:30.734Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Archives the current copy on this device before applying an incoming
         snapshot.
@@ -53,8 +56,9 @@ truth:
         validated.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:30.734Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Chooses a side when both copies changed.
       shows: A two-button choice; which side is newer is shown only as a hint, never
@@ -64,16 +68,18 @@ truth:
         copy both in the app and on an archive branch first.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:30.734Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Syncs again on its own when the app opens, 30 quiet seconds after
         changes, and when the device comes back online.
       shows: Unconfigured or offline, every trigger is simply a no-op.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:30.734Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: Both devices hold the same practice data, every replacement was
     explicit, and no copy was ever destroyed.
   variations:
@@ -205,4 +211,3 @@ Both devices hold the same practice data, every replacement was explicit, and no
 - The musician
 - The user's own GitHub repo
 - Two devices
-

@@ -20,16 +20,18 @@ truth:
         explaining what each does.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:20.006Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps ▶ to practise it.
       shows: The active block, seeded from the item's status and focus.
       changes: Nothing yet — the review only completes when the block is closed.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:20.006Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Or taps 'Not now'.
       shows: The row disappears for the rest of the day and returns tomorrow.
@@ -37,16 +39,18 @@ truth:
         item date is touched.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:20.006Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Or taps '+2d' to genuinely move it.
       changes: The review's due date and the item's next review date both move to two
         days from today, so nothing is left showing overdue.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:20.006Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: Either the item was actually practised (and spaced repetition
     advanced), or the schedule was moved honestly — never both, never neither.
   variations:
@@ -139,4 +143,3 @@ Either the item was actually practised (and spaced repetition advanced), or the 
 
 - The musician
 - The spaced-repetition scheduler
-

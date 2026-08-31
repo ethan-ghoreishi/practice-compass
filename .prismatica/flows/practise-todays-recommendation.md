@@ -20,8 +20,9 @@ truth:
       changes: The chosen instrument is remembered as the session instrument.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Scores every item of that instrument and shows the best one with a
         one-sentence reason.
@@ -29,8 +30,9 @@ truth:
         you have time' suggestions.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -39,8 +41,9 @@ truth:
         target derived from the item.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -48,16 +51,18 @@ truth:
       changes: Elapsed seconds accumulate only while the timer runs.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
       changes: The clock is frozen first, so reflection time is not counted as practice.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Picks one of the six results, optionally adds an observation, a next
         action, a body note or a teacher question, and accepts or declines the
@@ -66,8 +71,9 @@ truth:
         'Why this date?' link.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -77,8 +83,9 @@ truth:
         completed and the next one is scheduled on the date that was shown.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:13.465Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
@@ -223,4 +230,3 @@ The session is recorded honestly: one block, one result, one next action — and
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
-

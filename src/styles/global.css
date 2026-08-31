@@ -845,6 +845,24 @@ body,
   border: 1px solid var(--border);
   background: radial-gradient(circle at 50% 40%, var(--surface-2), var(--surface));
 }
+/* An ordinary block's target reached: a durable state change (not a flash) that lasts for the rest of the block, while it keeps counting overtime. */
+.timer-ring--reached {
+  border-color: var(--tone-good);
+  background: radial-gradient(circle at 50% 40%, var(--tone-good-soft), var(--surface));
+}
+.timer-target-reached {
+  color: var(--tone-good);
+}
+/* A routine segment boundary just crossed: perceptible for a defined window after arrival, never a single-render flash. */
+.segment-arrived {
+  color: var(--tone-progress);
+}
+/* The ring itself carries an inline conic-gradient background (the countdown), so the
+   arrival cue is a border/glow rather than a background override. */
+.timer-ring--arrived {
+  border-color: var(--tone-progress);
+  box-shadow: 0 0 0 4px var(--tone-progress-soft);
+}
 
 /* ---- Misc ---- */
 .divider {

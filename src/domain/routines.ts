@@ -57,10 +57,21 @@ export function toRunSegments(segments: RoutineSegment[]): RunSegment[] {
 }
 
 /** Cumulative seconds at the START of each segment — length segments.length + 1. */
-function boundaries(segments: RunSegment[]): number[] {
+function cumulativeStarts(segments: RunSegment[]): number[] {
   const out = [0];
   for (const s of segments) out.push(out[out.length - 1] + s.seconds);
   return out;
+}
+
+/**
+ * The run's ordered cumulative END boundaries — one per segment, the same
+ * numbers `locateClock` advances on, by construction rather than by a second
+ * cumulative sum recomputed elsewhere. This is what `practiceSignal.ts`'s
+ * `nextSignal`/`acknowledgeThrough` consume: an ordinary block passes
+ * `[targetMinutes * 60]` directly instead.
+ */
+export function segmentBoundaries(segments: RunSegment[]): number[] {
+  return cumulativeStarts(segments).slice(1);
 }
 
 export interface RoutineClock {
@@ -86,7 +97,7 @@ export function runElapsedSeconds(
 
 /** Where the wall clock has landed for total elapsed E — jumps across as many boundaries as E demands, in one pass. */
 export function locateClock(segments: RunSegment[], elapsedSeconds: number): RoutineClock {
-  const bounds = boundaries(segments);
+  const bounds = cumulativeStarts(segments);
   const total = bounds[bounds.length - 1];
   const e = Math.max(0, elapsedSeconds);
   if (segments.length === 0 || e >= total) {
@@ -102,7 +113,7 @@ export function locateClock(segments: RunSegment[], elapsedSeconds: number): Rou
 
 /** Cut the CURRENT segment short: clamp its effective duration to what has actually elapsed, so the unused remainder is never credited and the next segment starts fresh. A no-op once the run has already finished. */
 export function skipCurrentSegment(segments: RunSegment[], elapsedSeconds: number): RunSegment[] {
-  const bounds = boundaries(segments);
+  const bounds = cumulativeStarts(segments);
   const clock = locateClock(segments, elapsedSeconds);
   if (clock.finished) return segments;
   return segments.map((s, i) => (i === clock.segIndex ? { ...s, seconds: elapsedSeconds - bounds[i] } : s));
@@ -124,7 +135,7 @@ function segmentElapsed(seg: RunSegment, boundaryBefore: number, elapsedSeconds:
  * practised is never silently dropped for having too little time.
  */
 export function aggregateItemMinutes(segments: RunSegment[], elapsedSeconds: number): Map<ID, number> {
-  const bounds = boundaries(segments);
+  const bounds = cumulativeStarts(segments);
   const secondsByItem = new Map<ID, number>();
   segments.forEach((seg, i) => {
     if (!seg.itemId) return;

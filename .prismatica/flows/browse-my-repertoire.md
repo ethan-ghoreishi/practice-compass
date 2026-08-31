@@ -21,8 +21,9 @@ truth:
       changes: Nothing; this is a lens over ordinary items, not a separate store.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:22:06.902Z
+        commit: 33eec40d3b6a7b1c8a7fa53682a58561740c0507
     - actor: Practice Compass
       action: Folds dastgāh spelling variants together, labels each group with the
         user's own majority spelling, and keeps parts nested under their parent
@@ -31,15 +32,17 @@ truth:
         it is linked to.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:22:06.902Z
+        commit: 33eec40d3b6a7b1c8a7fa53682a58561740c0507
     - actor: The musician
       action: Optionally filters by form, or narrows to one instrument.
       shows: Form chips built from what is actually present.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:22:06.902Z
+        commit: 33eec40d3b6a7b1c8a7fa53682a58561740c0507
     - actor: The musician
       action: Or chooses 'Practice list' and filters by search, instrument, status,
         type, or a quick chip (due today, for class, fragile, neglected,
@@ -47,8 +50,9 @@ truth:
       shows: Items in priority order, each with its status and stats.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:22:06.902Z
+        commit: 33eec40d3b6a7b1c8a7fa53682a58561740c0507
     - actor: The musician
       action: Opens an item.
       shows: "Its page: status, connections, stats, result trend, recent blocks,
@@ -56,8 +60,9 @@ truth:
       changes: Nothing until an action is taken there.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:22:06.902Z
+        commit: 33eec40d3b6a7b1c8a7fa53682a58561740c0507
   endsWith: The right piece is found and opened in a couple of taps, from
     whichever way of thinking about it came first.
   variations:
@@ -169,4 +174,3 @@ The right piece is found and opened in a couple of taps, from whichever way of t
 ## Involves
 
 - The musician
-

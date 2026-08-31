@@ -22,8 +22,9 @@ truth:
         at the same time.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:36.157Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Or chooses 'Add practice item' for the full one-step form.
       shows: "A kind-first form: what you are adding (gusheh / composed piece / piece
@@ -31,8 +32,9 @@ truth:
         then 'Connect it (optional)', then the first practice setup."
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:36.157Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Fills in identity, and optionally connects a study source (creatable
         inline), a pathway stage, a lesson and a parent work — all at creation.
@@ -41,8 +43,9 @@ truth:
         wins.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:36.157Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Saves.
       shows: The item's own page, with a 'Connected to' summary near the top.
@@ -50,8 +53,9 @@ truth:
         item.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:19:36.157Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: The thing to practise exists and can be started immediately; details
     can be filled in later, or never.
   variations:
@@ -162,4 +166,3 @@ The thing to practise exists and can be started immediately; details can be fill
 ## Involves
 
 - The musician
-

@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlobsForOwner, idbStorage, storageWasEmpty } from './idb';
 import { withRevision } from './revision';
 import {
+  acknowledgeThrough,
   applyBlockStats,
   applyRoutineRun,
   catalogForStage,
@@ -28,6 +29,7 @@ import {
   itemFromCatalogEntry,
   retargetRoutineInstrument,
   runElapsedSeconds,
+  segmentBoundaries,
   skipCurrentSegment,
   toRunSegments,
   snoozePlan,
@@ -102,6 +104,8 @@ export interface ActiveSession {
   segmentStartedAt?: string;
   /** A quick note jotted during practice; pre-fills the close screen. */
   note?: string;
+  /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
+  signalledThrough?: number;
 }
 
 export function sessionElapsedSeconds(s: ActiveSession, now: Date = new Date()): number {
@@ -152,6 +156,8 @@ export interface ActiveRoutine {
   accumulatedSeconds: number;
   running: boolean;
   runningSince?: string;
+  /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
+  signalledThrough?: number;
 }
 
 /** Advance the pointer to the next still-pending segment (or one past the end). */
@@ -317,6 +323,8 @@ interface StoreState {
   pauseSession: () => void;
   resumeSession: () => void;
   setSessionNote: (note: string) => void;
+  /** Persist how many target boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
+  setSessionSignal: (marker: number) => void;
   cancelSession: () => void;
   closeSession: (input: CloseSessionInput) => void;
 
@@ -375,6 +383,8 @@ interface StoreState {
   skipRoutineRun: () => void;
   /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
   finishRoutine: () => void;
+  /** Persist how many segment boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
+  setRoutineSignal: (marker: number) => void;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -865,6 +875,12 @@ export const useStore = create<StoreState>()(
         set({ active: { ...active, note } });
       },
 
+      setSessionSignal: (marker) => {
+        const { active } = get();
+        if (!active) return;
+        set({ active: { ...active, signalledThrough: marker } });
+      },
+
       cancelSession: () => set({ active: null }),
 
       closeSession: (input) => {
@@ -1316,7 +1332,18 @@ export const useStore = create<StoreState>()(
         if (!activeRoutine) return;
         const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
         const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
-        set({ activeRoutine: { ...activeRoutine, segs } });
+        // Skip clamps the boundary onto elapsed itself — acknowledge it silently
+        // (never nextSignal's announcing path), or the very next render would
+        // see a freshly-passed boundary and announce a segment the user just
+        // chose to end themselves.
+        const signalledThrough = acknowledgeThrough(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
+        set({ activeRoutine: { ...activeRoutine, segs, signalledThrough } });
+      },
+
+      setRoutineSignal: (marker) => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        set({ activeRoutine: { ...activeRoutine, signalledThrough: marker } });
       },
 
       finishRoutine: () => {
