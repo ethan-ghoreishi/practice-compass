@@ -1,0 +1,11 @@
+{
+  "id": "20260830-hands-free-practice-the-screen-stays-awa-65dd",
+  "contractId": "20260830-hands-free-practice-the-screen-stays-awa-65dd",
+  "patchId": "2f48e0c32a3ffbea8667aafb0bb2e3466dca05ab",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-08-31T00:02:15.481Z",
+  "algorithm": "ed25519",
+  "signature": "mHknj4WzuttdIXghh3ehS9O5PgP5wLTHQPNt+AXee/HsP1NBhz4uJckzNKWijftMJk60Az2OB3k3LJe+F9BuCg==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}
