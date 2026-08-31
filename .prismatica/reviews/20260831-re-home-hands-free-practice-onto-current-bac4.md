@@ -4,52 +4,9 @@ contractId: 20260831-re-home-hands-free-practice-onto-current-bac4
 patchId: 2f48e0c32a3ffbea8667aafb0bb2e3466dca05ab
 reviewer: claude
 state: sealed
-verdict: request_changes
-findings:
-  - family: flow-truth-reapproval
-    summary: The three Flows the approved plan itself named as needing truth
-      reapproval for this lane's new observable behaviour —
-      practise-todays-recommendation, work-a-pathway-stage, run-a-session-plan —
-      were not actually updated to describe it. No touchpoint in any of them
-      mentions the Screen Wake Lock, the durable target-reached/overtime state,
-      or the segment-arrival cue.
-    counterexample: grep -n "wake\|overtime\|target reached\|announc"
-      .prismatica/flows/practise-todays-recommendation.md
-      .prismatica/flows/work-a-pathway-stage.md
-      .prismatica/flows/run-a-session-plan.md returns zero matches, even though
-      src/pages/ActiveBlock.tsx now renders a durable 'Target reached ·
-      +overtime' state and src/pages/RoutineRunner.tsx now renders a 'New
-      segment · ...' arrival cue — both new, user-visible states this lane
-      added.
-  - family: stale-flow-wording-not-corrected
-    summary: The plan's own possibleConflicts explicitly required correcting
-      work-a-pathway-stage.md's stale sentence that a guided routine is
-      'explicitly not logged as practice' during this lane's reapproval, since
-      bound routine segments already create honest PracticeBlocks. That exact
-      stale sentence is still present, uncorrected, in the shipped diff, and now
-      directly contradicts CLAUDE.md/AGENTS.md's own new Hands-free section in
-      this same commit.
-    counterexample: ".prismatica/flows/work-a-pathway-stage.md lines 77-78 and 179
-      still read 'A stage routine runs as a segmented warm-up countdown that is
-      explicitly not logged as practice', while CLAUDE.md (this diff) and the
-      pre-existing Routines section both state bound segments create real,
-      honest PracticeBlocks (result: 'not_logged' is a review/SM-2 flag, not an
-      absence of a logged block)."
-  - family: unverified-flow-evidence
-    summary: "Every 'method: manual' evidence stamp added across all 14 touched Flow
-      files cites a commit hash that is not an ancestor of this lane's own
-      branch, and the entire .prismatica/flows/ directory in this commit is
-      byte-identical to current main's tip — indicating this 'reapproval'
-      evidence was carried over unchanged from an unrelated main-branch
-      maintenance process ('approve pending Atlas records') rather than produced
-      by genuinely re-verifying this change's own new behaviour."
-    counterexample: git diff HEAD main -- .prismatica/flows/ is empty; git
-      merge-base --is-ancestor 017d8c3385210b8e4ec217183390ce22c487eb19 HEAD
-      fails (not an ancestor), yet practise-todays-recommendation.md,
-      run-a-session-plan.md and work-a-pathway-stage.md all cite that commit as
-      the 'manual' verification evidence for steps this lane changed.
-createdAt: 2026-08-31T19:56:11.632Z
-sealedAt: 2026-08-31T20:22:50.984Z
+verdict: approve
+createdAt: 2026-08-31T21:19:32.511Z
+sealedAt: 2026-08-31T21:43:00.249Z
 ---
 
 # Review: Re-home hands-free practice onto current main
@@ -537,17 +494,17 @@ Mapped implementation touched: touchpoint(s) src/store/useStore.ts matched chang
 
 Mapped implementation touched: touchpoint(s) src/store/useStore.ts matched changed file(s) src/store/useStore.ts. Derived from the diff alone — this says nothing about whether any test ran or whether behaviour changed.
 
-## practise-todays-recommendation — mechanics-updated
+## practise-todays-recommendation — truth-proposed
 
-Mapped implementation touched: touchpoint(s) src/pages/ActiveBlock.tsx, src/store/useStore.ts matched changed file(s) src/pages/ActiveBlock.tsx, src/store/useStore.ts. Derived from the diff alone — this says nothing about whether any test ran or whether behaviour changed.
+Proposed new truth in .prismatica/flows/proposals/practise-todays-recommendation.md: step 4 now describes the Screen Wake Lock and the durable target-reached/overtime state this lane added to ActiveBlock, plus a new 'Target reached' variation. This is a proposal only — no manual reverification of the flow's other steps was performed in this lane; the owner reviews and runs flow approve.
 
-## run-a-session-plan — mechanics-updated
+## work-a-pathway-stage — truth-proposed
 
-Mapped implementation touched: touchpoint(s) src/store/useStore.ts matched changed file(s) src/store/useStore.ts. Derived from the diff alone — this says nothing about whether any test ran or whether behaviour changed.
+Proposed new truth in .prismatica/flows/proposals/work-a-pathway-stage.md: the 'Guided routine' variation now describes the Screen Wake Lock and segment-arrival cue this lane added to RoutineRunner, and corrects the stale 'explicitly not logged as practice' sentence (a bound segment already creates an honest PracticeBlock; result:'not_logged' is a review/SM-2 flag, not an absence of a logged block) per the sealed review's stale-flow-wording-not-corrected finding. This is a proposal only — no manual reverification of the flow's other steps was performed in this lane; the owner reviews and runs flow approve.
 
-## work-a-pathway-stage — mechanics-updated
+## run-a-session-plan — truth-proposed
 
-Mapped implementation touched: touchpoint(s) src/pages/RoutineRunner.tsx, src/store/useStore.ts matched changed file(s) src/pages/RoutineRunner.tsx, src/store/useStore.ts. Derived from the diff alone — this says nothing about whether any test ran or whether behaviour changed.
+Proposed new truth in .prismatica/flows/proposals/run-a-session-plan.md: step 4 now notes that a Session Plan segment opens the same ActiveBlock screen this lane changed, so the Screen Wake Lock and durable target-reached/overtime state apply identically there. This is a proposal only — no manual reverification of the flow's other steps was performed in this lane; the owner reviews and runs flow approve.
 
 
 **Gaps between detected and reported:**
@@ -586,19 +543,68 @@ Touchpoints: src/pages/Lessons.tsx, src/components/Attachments.tsx, src/domain/r
 
 Evidence: 6 steps: 6 manually verified
 
-### practise-todays-recommendation — Works now
+### practise-todays-recommendation — Works now (update proposed)
+
+Proposed step changes:
+  The musician Taps their instrument in the switcher at the top of Today.
+    Shows: Everything below is scoped to that instrument: recommendation, class work, due reviews, pathway position.
+    Changes: The chosen instrument is remembered as the session instrument.
+  Practice Compass Scores every item of that instrument and shows the best one with a one-sentence reason.
+    Shows: One 'Practise now' card above the fold, plus up to two quieter 'then, if you have time' suggestions.
+  The musician Taps 'Start · 10 min'.
+    Shows: The active block screen: item title, mode and focus chips, a running ring timer.
+    Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item.
+− The musician Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
+−   Shows: The elapsed clock, and the item's notes and current problem on request.
+−   Changes: Elapsed seconds accumulate only while the timer runs.
++ The musician Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
++   Shows: The elapsed clock, and the item's notes and current problem on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time) so the clock stays readable without touching anything; pausing, finishing, discarding or navigating away releases it, and the phone sleeps normally again.
++   Changes: Elapsed seconds accumulate only while the timer runs.
+  The musician Taps 'Finish'.
+    Shows: The close screen, with the minutes already filled in.
+    Changes: The clock is frozen first, so reflection time is not counted as practice.
+  The musician Picks one of the six results, optionally adds an observation, a next action, a body note or a teacher question, and accepts or declines the suggested status and review date.
+    Shows: A preview of the next review date with the plain reason behind it, and a 'Why this date?' link.
+  The musician Taps 'Save block'.
+    Shows: Back to Today (or to the running plan), with the item's stats and status updated.
+    Changes: A PracticeBlock is stored; the item's counters, status, saturation flag and spaced-repetition state advance; any open review for the item is completed and the next one is scheduled on the date that was shown.
 
 Touchpoints: src/pages/Today.tsx, src/pages/StartBlock.tsx, src/pages/ActiveBlock.tsx, src/pages/CloseBlock.tsx, src/store/useStore.ts, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/scheduling.ts, src/domain/blocks.ts
 
 Evidence: 7 steps: 7 manually verified
 
-### run-a-session-plan — Works now
+### run-a-session-plan — Works now (update proposed)
+
+Proposed step changes:
+  Practice Compass Builds a plan from the same priority numbers the recommendation uses, laid out as warm-up, class work, review, focus and cool-down segments.
+    Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason, and a total that always equals the chosen budget.
+  The musician Swaps, removes or regenerates segments until the shape looks right.
+    Shows: The remaining minutes are redistributed immediately so the total still equals the budget.
+    Changes: Only a local copy of the plan — nothing is saved yet.
+  The musician Taps 'Start plan'.
+    Shows: The runner: the whole list with the current segment highlighted.
+    Changes: The running plan is held in app state (never in the database, never synced), and the chosen length is remembered for this instrument.
+− The musician Taps 'Start' on the current segment.
+−   Shows: The ordinary active-block screen, with the segment's minutes as the target.
+−   Changes: A real practice block opens for that segment's item.
++ The musician Taps 'Start' on the current segment.
++   Shows: The ordinary active-block screen, with the segment's minutes as the target — identical behaviour to an unplanned block, including the screen staying awake while it runs and is visible, and a durable 'Target reached' state with a growing overtime figure if the segment runs past its minutes without the musician tapping Finish.
++   Changes: A real practice block opens for that segment's item.
+  The musician Finishes and saves the block as usual.
+    Shows: Back on the plan, that segment reads 'done' and the pointer moves to the next one.
+    Changes: The block, item stats and review schedule update exactly as in an unplanned block.
+  The musician Skips anything they do not want, or ends the plan at any time.
+    Shows: 'Session complete' once the last segment is passed.
+    Changes: A skipped segment logs nothing at all; ending the plan discards it and leaves every logged block untouched.
 
 Touchpoints: src/pages/SessionPlan.tsx, src/pages/Today.tsx, src/domain/plan.ts, src/store/useStore.ts
 
 Evidence: 6 steps: 6 manually verified
 
-### work-a-pathway-stage — Works now
+### work-a-pathway-stage — Works now (update proposed)
+
+Proposed step changes:
+(no step changes)
 
 Touchpoints: src/pages/PathwayDetail.tsx, src/pages/StageDetail.tsx, src/pages/RoutineRunner.tsx, src/domain/pathways.ts, src/domain/pathwaySeed.ts, src/store/useStore.ts
 
