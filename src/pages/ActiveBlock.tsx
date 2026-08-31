@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BLOCK_MODE_LABELS, FOCUS_LABELS } from '../domain';
+import { BLOCK_MODE_LABELS, FOCUS_LABELS, nextSignal } from '../domain';
 import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName } from '../store/lookups';
 import { formatClock } from '../components/format';
 import { PauseIcon, PlayIcon } from '../components/icons';
+import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
 
 export default function ActiveBlock() {
   const db = useStore((s) => s.db);
@@ -14,6 +15,7 @@ export default function ActiveBlock() {
   const resumeSession = useStore((s) => s.resumeSession);
   const cancelSession = useStore((s) => s.cancelSession);
   const setSessionNote = useStore((s) => s.setSessionNote);
+  const setSessionSignal = useStore((s) => s.setSessionSignal);
   const navigate = useNavigate();
 
   const [, setTick] = useState(0);
@@ -24,6 +26,19 @@ export default function ActiveBlock() {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [active?.running]);
+
+  useScreenAwake(!!active, !!active?.running);
+
+  const elapsedForSignal = active ? sessionElapsedSeconds(active) : 0;
+  useEffect(() => {
+    if (!active?.running) return; // paused or frozen (legacy dual-clock hydration): announce nothing
+    const result = nextSignal(active.signalledThrough, elapsedForSignal, [active.targetMinutes * 60]);
+    if (result.announce) {
+      setSessionSignal(result.marker);
+      playSignalCue();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.running, active?.signalledThrough, elapsedForSignal, active?.targetMinutes]);
 
   if (!active) {
     // A routine is running instead — its own clock, not this one. Point back
@@ -54,6 +69,7 @@ export default function ActiveBlock() {
   const item = getItem(db, active.itemId);
   const elapsed = sessionElapsedSeconds(active);
   const targetSeconds = active.targetMinutes * 60;
+  const reached = elapsed >= targetSeconds; // durable for the rest of the block — practising past target is ordinary, never un-happens
   const deg = Math.min(elapsed / targetSeconds, 1) * 360;
 
   return (
@@ -75,8 +91,8 @@ export default function ActiveBlock() {
       )}
 
       <div
-        className="timer-ring"
-        style={{ background: `conic-gradient(var(--accent-dim) ${deg}deg, var(--surface-3) ${deg}deg)` }}
+        className={`timer-ring${reached ? ' timer-ring--reached' : ''}`}
+        style={reached ? undefined : { background: `conic-gradient(var(--accent-dim) ${deg}deg, var(--surface-3) ${deg}deg)` }}
       >
         <div
           style={{
@@ -90,7 +106,11 @@ export default function ActiveBlock() {
           }}
         >
           <div className="timer">{formatClock(elapsed)}</div>
-          <div className="tiny faint">of {active.targetMinutes}:00</div>
+          {reached ? (
+            <div className="tiny timer-target-reached">Target reached · +{formatClock(elapsed - targetSeconds)}</div>
+          ) : (
+            <div className="tiny faint">of {active.targetMinutes}:00</div>
+          )}
         </div>
       </div>
 

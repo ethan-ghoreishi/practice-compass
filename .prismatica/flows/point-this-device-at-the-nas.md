@@ -26,8 +26,9 @@ truth:
         enters the database, a backup or a sync snapshot."
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:44.139Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Test link' to open a known recording and confirm the address works.
       shows: The file opens in a new tab, or the app says the base URL isn’t valid and
@@ -36,8 +37,9 @@ truth:
         someone explicitly opens it.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:44.139Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Resolves every relative recording and score path in every lesson against
         this address from then on.
@@ -47,8 +49,9 @@ truth:
       changes: Nothing in the data; resolving is pure and happens on demand.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:44.139Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: This device can open class videos and scores on demand, while the app
     itself still holds nothing but links.
   variations:
@@ -162,4 +165,3 @@ This device can open class videos and scores on demand, while the app itself sti
 
 - The musician
 - The NAS
-

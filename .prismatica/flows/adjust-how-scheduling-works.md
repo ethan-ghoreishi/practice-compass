@@ -20,8 +20,9 @@ truth:
         importance and difficulty pull material sooner.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T19:26:47.830Z
+        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
     - actor: The musician
       action: Changes a value — a review gap, the warm-up or deep-work share of a
         plan, the shortest or longest review slot.
@@ -30,16 +31,18 @@ truth:
         out-of-range input is never trusted.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T19:26:47.830Z
+        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
     - actor: The musician
       action: Closes a block or builds a plan afterwards.
       shows: Review dates and plan shapes computed with the adjusted values.
       changes: The same settings are used for the date previewed and the date saved.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T19:26:47.830Z
+        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
     - actor: The musician
       action: Taps 'Reset to recommended' whenever they want the original behaviour
         back.
@@ -47,8 +50,9 @@ truth:
       changes: The settings field is dropped, so the historical constants apply exactly.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T19:26:47.830Z
+        commit: 0e9b176af0981d8a3f13b3987419a4c013a08ae4
   endsWith: The engine is understood and, if wanted, tuned — and it still produces
     the same date it showed.
   variations:
@@ -158,4 +162,3 @@ The engine is understood and, if wanted, tuned — and it still produces the sam
 - The musician
 - The spaced-repetition scheduler
 - The plan builder
-

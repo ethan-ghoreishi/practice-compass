@@ -1,0 +1,11 @@
+{
+  "id": "20260831-re-home-hands-free-practice-onto-current-bac4",
+  "contractId": "20260831-re-home-hands-free-practice-onto-current-bac4",
+  "patchId": "2f48e0c32a3ffbea8667aafb0bb2e3466dca05ab",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-08-31T21:43:34.423Z",
+  "algorithm": "ed25519",
+  "signature": "62hKbjN5Td/Ylyeo6VNd3I0gqZjw1QCegn6cLESh9yNpYsMqWKLLm61Blufk8Tmtz1VrGdw+X7Am5UA2CXvaDQ==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

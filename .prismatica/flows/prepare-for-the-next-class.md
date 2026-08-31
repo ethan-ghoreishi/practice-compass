@@ -20,32 +20,36 @@ truth:
         Teacher report.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:06.304Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Copies, downloads or prints the questions.
       shows: A numbered plain-text export that preserves mixed Farsi and English, or a
         friendly empty state when there are none.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:06.304Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Opens the Teacher report and picks the instrument and a date range (last
         two weeks by default).
       shows: A copyable summary of what was practised, how it went and what is open.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:06.304Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Copy report'.
       shows: "'Copied ✓'."
       changes: Nothing in the data — the report is generated on the spot.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:06.304Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: The musician walks into the lesson with their real questions and a
     truthful summary, without having kept a separate notebook.
   variations:
@@ -142,4 +146,3 @@ The musician walks into the lesson with their real questions and a truthful summ
 
 - The musician
 - The teacher
-

@@ -21,8 +21,9 @@ truth:
         device's own database.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:55.769Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Practises with no network at all.
       shows: Everything works — recommendations, blocks, reviews, notes.
@@ -30,8 +31,9 @@ truth:
         NAS files need a network.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:55.769Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: Practice Compass
       action: Checks for a new build every hour and whenever the app is brought back
         to the foreground.
@@ -40,8 +42,9 @@ truth:
       changes: Nothing until the musician chooses to reload.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:55.769Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps Reload when it suits them.
       shows: The app restarts on the new version; Settings shows the build it is
@@ -49,8 +52,9 @@ truth:
       changes: Nothing in the practice data — an update replaces code, never data.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-28T12:21:58.723Z
+        method: manual
+        at: 2026-08-31T16:20:55.769Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: Both devices run the current version, neither needed reinstalling, and
     neither needs a network to practise.
   variations:
@@ -144,4 +148,3 @@ Both devices run the current version, neither needed reinstalling, and neither n
 ## Involves
 
 - The musician
-

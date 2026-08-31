@@ -10,6 +10,7 @@ import {
   retargetRoutineInstrument,
   routinesForInstrument,
   runElapsedSeconds,
+  segmentBoundaries,
   segmentsForRun,
   skipCurrentSegment,
   toRunSegments,
@@ -270,6 +271,28 @@ describe('the wall clock: reads real elapsed time, not a tick count', () => {
     const segs: RunSegment[] = [{ itemId: 'only', seconds: 60 }];
     const afterSkip = skipCurrentSegment(segs, 5);
     expect(locateClock(afterSkip, 5).finished).toBe(true);
+  });
+});
+
+describe('segmentBoundaries: the same numbers locateClock advances on', () => {
+  it('exposes the same segment boundaries the clock advances on', () => {
+    const segs: RunSegment[] = [
+      { itemId: 'a', seconds: 60 },
+      { itemId: 'b', seconds: 60 },
+      { itemId: 'c', seconds: 60 },
+    ];
+    const bounds = segmentBoundaries(segs);
+    expect(bounds).toEqual([60, 120, 180]);
+    // Each end boundary is exactly where locateClock rolls into the next segment.
+    bounds.slice(0, -1).forEach((b, i) => expect(locateClock(segs, b).segIndex).toBe(i + 1));
+    expect(locateClock(segs, bounds[bounds.length - 1]).finished).toBe(true);
+
+    // After a skip, the exported boundaries move WITH the clock, not independently of it.
+    const afterSkip = skipCurrentSegment(segs, 20); // cuts segment a short at 20s
+    const skippedBounds = segmentBoundaries(afterSkip);
+    expect(skippedBounds).toEqual([20, 80, 140]);
+    expect(locateClock(afterSkip, 20).segIndex).toBe(1); // lands exactly on b, with none carried over
+    expect(locateClock(afterSkip, 20).segElapsedSeconds).toBe(0);
   });
 });
 
@@ -565,5 +588,23 @@ describe('the single active clock guard, enforced at every entry point', () => {
     expect(merged.activeRoutine?.running).toBe(false);
     expect(merged.activeRoutine?.runningSince).toBeUndefined();
     expect(merged.activeRoutine?.accumulatedSeconds).toBeGreaterThanOrEqual(45 + 600);
+  });
+
+  // possibleConflicts: skipRoutineRun clamps the current segment's boundary
+  // onto elapsed itself — unless the store action ALSO acknowledges it
+  // (never announces it), the very next render would see a freshly-passed
+  // boundary and announce a segment the user just chose to end themselves.
+  // This proves the real wiring, not just the pure acknowledgeThrough call
+  // in isolation (practiceSignal.test.ts).
+  it('skipRoutineRun acknowledges the boundary it just clamped, so the marker never lags behind', () => {
+    const segments: RoutineSegment[] = [
+      { label: 'A', minutes: 1 },
+      { label: 'B', minutes: 1 },
+    ];
+    useStore.getState().startRoutineRun('r1', false, segments);
+    useStore.getState().skipRoutineRun(); // skipped essentially immediately
+
+    const after = useStore.getState().activeRoutine;
+    expect(after?.signalledThrough).toBeGreaterThanOrEqual(1);
   });
 });

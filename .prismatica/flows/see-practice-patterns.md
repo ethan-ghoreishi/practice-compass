@@ -20,24 +20,27 @@ truth:
         choice, never the default.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:14.788Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps an instrument to drop back into a real session for it.
       shows: Today, scoped to that instrument again.
       changes: The session instrument is set.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:14.788Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Opens Insights and switches the window between 7 and 30 days.
       shows: Neutral observations generated from the logged blocks — patterns, not a
         scoreboard, and an honest empty state when there is not enough history.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-08-26T22:39:18.645Z
+        method: manual
+        at: 2026-08-31T16:20:14.788Z
+        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: The musician knows where their time actually went, with no streaks,
     scores or judgement attached.
   variations: []
@@ -127,4 +130,3 @@ _none_
 ## Involves
 
 - The musician
-
