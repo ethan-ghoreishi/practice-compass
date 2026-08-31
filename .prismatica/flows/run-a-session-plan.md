@@ -19,40 +19,27 @@ truth:
       shows: "The plan preview: each segment with its minutes, bucket, item and a
         one-sentence reason, and a total that always equals the chosen budget."
       assumes: []
-      evidence:
-        method: manual
-        at: 2026-08-31T16:19:28.010Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Swaps, removes or regenerates segments until the shape looks right.
       shows: The remaining minutes are redistributed immediately so the total still
         equals the budget.
       changes: Only a local copy of the plan — nothing is saved yet.
       assumes: []
-      evidence:
-        method: manual
-        at: 2026-08-31T16:19:28.010Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Start plan'.
       shows: "The runner: the whole list with the current segment highlighted."
       changes: The running plan is held in app state (never in the database, never
         synced), and the chosen length is remembered for this instrument.
       assumes: []
-      evidence:
-        method: manual
-        at: 2026-08-31T16:19:28.010Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Taps 'Start' on the current segment.
       shows: The ordinary active-block screen, with the segment's minutes as the
-        target.
+        target — identical behaviour to an unplanned block, including the screen
+        staying awake while it runs and is visible, and a durable 'Target
+        reached' state with a growing overtime figure if the segment runs past
+        its minutes without the musician tapping Finish.
       changes: A real practice block opens for that segment's item.
       assumes: []
-      evidence:
-        method: manual
-        at: 2026-08-31T16:19:28.010Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Finishes and saves the block as usual.
       shows: Back on the plan, that segment reads 'done' and the pointer moves to the
@@ -60,20 +47,12 @@ truth:
       changes: The block, item stats and review schedule update exactly as in an
         unplanned block.
       assumes: []
-      evidence:
-        method: manual
-        at: 2026-08-31T16:19:28.010Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
     - actor: The musician
       action: Skips anything they do not want, or ends the plan at any time.
       shows: "'Session complete' once the last segment is passed."
       changes: A skipped segment logs nothing at all; ending the plan discards it and
         leaves every logged block untouched.
       assumes: []
-      evidence:
-        method: manual
-        at: 2026-08-31T16:19:28.010Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
   endsWith: The available time was spent on real, logged practice in a sensible
     order — and the plan itself leaves no trace in the data.
   variations:
@@ -102,7 +81,11 @@ mechanics:
   touchpoints:
     - src/pages/SessionPlan.tsx
     - src/pages/Today.tsx
+    - src/pages/ActiveBlock.tsx
     - src/domain/plan.ts
+    - src/domain/practiceSignal.ts
+    - src/components/useScreenAwake.ts
+    - src/components/screenAwake.ts
     - src/store/useStore.ts
   routes:
     - /plan
@@ -122,11 +105,17 @@ mechanics:
       steps:
         - 1
         - 2
+    - file: src/domain/practiceSignal.test.ts
+      steps:
+        - 4
+    - file: src/components/screenAwake.test.ts
+      steps:
+        - 4
 approval:
-  hash: f3a55d9ff414cf4874eefe20d0e800e939b5e398c193dd07244e625c8b52d826
-  at: 2026-08-28T13:30:18.043Z
-  by: Ethan
-  signature: 2g4HUAXDMwpAuGxehP0a4mCelnf2UxmhU/y68u88PNCnHNzteLMFyevV+xgcj8Dtl8wd3PLk53Tam84TbiWFCg==
+  hash: 320d7c620942ce36a5864d5164593de288a9db7489abc20fda3e2e29fa34cec3
+  at: 2026-08-31T22:05:33.129Z
+  by: owner
+  signature: fmZRiSSm6WxSdD0a3a5jEuFR5MJIP6qnIoLwuOCtT6UBmPXY00+xxd/oPUDXwgmRpL6sWbSNWg/FQ3I//W+sCw==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -135,7 +124,7 @@ approval:
 
 # Run a time-budgeted session
 
-_Works now · approved 2026-08-28T13:30:18.043Z by Ethan (signed)_
+_Works now · approved 2026-08-31T22:05:33.129Z by owner (signed)_
 
 ## Goal
 
@@ -163,7 +152,7 @@ _nothing extra required_
    - Changes: The running plan is held in app state (never in the database, never synced), and the chosen length is remembered for this instrument.
 
 4. **The musician** Taps 'Start' on the current segment.
-   - Shows: The ordinary active-block screen, with the segment's minutes as the target.
+   - Shows: The ordinary active-block screen, with the segment's minutes as the target — identical behaviour to an unplanned block, including the screen staying awake while it runs and is visible, and a durable 'Target reached' state with a growing overtime figure if the segment runs past its minutes without the musician tapping Finish.
    - Changes: A real practice block opens for that segment's item.
 
 5. **The musician** Finishes and saves the block as usual.
@@ -195,3 +184,4 @@ The available time was spent on real, logged practice in a sensible order — an
 - The musician
 - The plan builder
 - The recommendation engine
+
