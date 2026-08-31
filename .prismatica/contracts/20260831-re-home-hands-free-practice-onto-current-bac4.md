@@ -4,7 +4,7 @@ title: Re-home hands-free practice onto current main
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/10
 intent: 20260831-re-home-hands-free-practice-onto-current-bac4
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: f5149fa2ab017af69357d02cb4fd5c839eb5f22a
   branch: main
