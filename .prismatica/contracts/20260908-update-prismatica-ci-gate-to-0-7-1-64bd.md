@@ -3,7 +3,7 @@ id: 20260908-update-prismatica-ci-gate-to-0-7-1-64bd
 title: Update Prismatica CI gate to 0.7.1
 issue: update/0.7.1
 tier: light
-stage: frame
+stage: prove
 baseline:
   commit: 75e81dbca233d30212fbcc42a9db00a110b61387
   branch: main
