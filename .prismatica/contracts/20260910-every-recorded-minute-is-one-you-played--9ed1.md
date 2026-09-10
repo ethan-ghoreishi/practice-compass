@@ -5,7 +5,7 @@ title: "Every recorded minute is one you played: honest close, sync-safe clocks,
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/16
 intent: 20260910-every-recorded-minute-is-one-you-played--9ed1
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: 0c6058e26f6c983ef137fb10ed28f03db70c5083
   branch: main
