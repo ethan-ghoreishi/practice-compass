@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   currentStage,
+  defaultInstrumentFilter,
   formsPresent,
   groupBlocksByItem,
   groupByDastgah,
   isDue,
+  itemMatchesSearch,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
@@ -93,7 +95,13 @@ function MyRepertoireView() {
   const now = useMemo(() => new Date(), []);
 
   const activeInstruments = db.instruments.filter((i) => i.active);
-  const [instrumentId, setInstrumentId] = useState('');
+  // Open on the instrument you are actually practising; the dropdown still
+  // widens to all. This never writes sessionInstrumentId back — browsing
+  // another instrument must not change what Today recommends.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, activeInstruments),
+  );
   const [formFilter, setFormFilter] = useState('');
 
   const scope = useMemo(
@@ -425,7 +433,12 @@ function AllItemsView() {
 
   const now = useMemo(() => new Date(), []);
   const [search, setSearch] = useState('');
-  const [instrumentId, setInstrumentId] = useState('');
+  // Seeded from the session instrument (never written back) against the same
+  // list the dropdown below renders.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, db.instruments),
+  );
   const [status, setStatus] = useState<ItemStatus | ''>('');
   const [type, setType] = useState<ItemType | ''>('');
   const [quick, setQuick] = useState<Set<Quick>>(new Set());
@@ -451,7 +464,7 @@ function AllItemsView() {
   const visible = scored
     .map((s) => s.item)
     .filter((item) => {
-      if (search && !item.title.toLowerCase().includes(search.trim().toLowerCase())) return false;
+      if (!itemMatchesSearch(item, search)) return false;
       if (instrumentId && item.instrumentId !== instrumentId) return false;
       if (status && item.status !== status) return false;
       if (type && item.itemType !== type) return false;

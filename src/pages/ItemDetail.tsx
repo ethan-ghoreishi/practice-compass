@@ -24,6 +24,7 @@ import ItemForm from '../components/ItemForm';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
 import Attachments from '../components/Attachments';
+import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
 import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
 import { ArrowLeftIcon, FlagIcon, PlayIcon } from '../components/icons';
@@ -228,6 +229,8 @@ export default function ItemDetail() {
 
       <ItemNotes itemId={item.id} />
 
+      <MaterialSection item={item} />
+
       <Attachments ownerType="item" ownerId={item.id} />
 
       {trend.length > 0 && (
@@ -406,6 +409,27 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
           Add part
         </button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * The class video and score that already belong to this piece, composed from
+ * the lessons it is linked to — nothing new is stored to show them. The item's
+ * own attachments keep their existing Files section below (add/remove lives
+ * there), so this section is the material that was previously unreachable
+ * without remembering which class it came from.
+ */
+function MaterialSection({ item }: { item: PracticeItem }) {
+  const db = useStore((s) => s.db);
+  const hasReferences = db.lessons.some(
+    (l) => (l.itemIds ?? []).includes(item.id) && (l.recordings ?? []).length > 0,
+  );
+  if (!hasReferences) return null;
+  return (
+    <section className="stack-sm">
+      <div className="section-label">From your classes</div>
+      <ItemMaterial itemId={item.id} omitAttachments />
     </section>
   );
 }

@@ -557,6 +557,96 @@ the Farsi conversion needs no migration. `src/domain/farsi.ts` (tested) provides
 Latin dastgāh names. All Farsi surfaces use `dir="auto"` + the global
 `unicode-bidi: plaintext`.
 
+**SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
+authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
+a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard
+produces the ARABIC kaf (U+0643) and the seeded titles hold the PERSIAN kaf (U+06A9),
+and no amount of case folding bridges those. Both search boxes — Repertoire's practice
+list and Start's item picker — filter through `itemMatchesSearch` (`selectors.ts`,
+tested), the one wrapper over the existing `persianSearchMatch`. It is a WRAPPER, not
+a second matcher: `farsi.ts` keeps its behaviour exactly, and the wrapper exists so
+the WIRING is reachable from a Node test in a repo whose vitest environment is
+`'node'` and can therefore never render a screen. A new search surface calls it too.
+
+## Everything the app already knows reaches you where you are
+
+Which instrument you are practising, which piece you mean when you type it in Farsi,
+and which class files are already linked to a piece — none of that may sit one screen
+away from where you need it, and NONE of it is new stored data.
+
+**A BROWSE SCREEN OPENS ON THE INSTRUMENT YOU ARE PRACTISING, AND STILL WIDENS.**
+Repertoire (both the works lens and the practice list) and Lessons seed their
+instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
+Add, New Item and the Session Plan already read, via `defaultInstrumentFilter`
+(`selectors.ts`, tested): a resolvable session instrument seeds the filter, the `'all'`
+sentinel seeds the every-instrument view, and a session instrument that no longer
+resolves IN THE LIST THAT SCREEN'S OWN DROPDOWN RENDERS falls back to every-instrument
+rather than seeding a value with no matching option and showing an empty screen. These
+screens SEED from that value and never WRITE it: browsing another instrument's
+repertoire must not change what Today recommends. The cross-instrument view is never
+removed — only stopped from being the default you undo on every visit.
+
+**AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
+(`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
+the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
+a file referenced from two of those lessons appears once, followed by the item's own
+attachments — lessons newest first, kind order within a lesson, attachments oldest
+first. Nothing is persisted to make this view work and no new field exists; these links
+were always in the data and were simply never composed. An item with no lesson link and
+no attachments yields an EMPTY LIST, and the surfaces render nothing rather than an
+empty frame. An item with no lesson link cannot reference NAS material at all — that is
+the honest gap, and closing it needs a persisted item-level reference, therefore a
+schema change and its own lane.
+
+**THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
+reference resolves through the configured NAS base URL; an attachment resolves to a
+blob on this device. `ItemFile` is a discriminated union on `source`
+(`'reference' | 'attachment'`) so the compiler — not a component's care — is what stops
+a reference being opened as a blob or an attachment being pushed through the base URL
+and 404ing. They share no identity field (a reference has a `path`, an attachment a
+`name`), so they are never merged and deduplication is WITHIN a kind, never across.
+
+**WHAT MAY RENDER INLINE IS A PURE PROPERTY OF THE ENTRY, decided in `itemFiles.ts`.**
+`inline` is true only for a LOCAL IMAGE attachment; every PDF, audio file and every NAS
+reference is open-only. Written inline in a component that rule would be unreachable
+from a Node test, and it is exactly the rule that keeps the practice screen a practice
+screen and the whole feature inside the existing production CSP: `blob:` images are
+already permitted, while a NAS origin is not knowable at build time and so could never
+render under a static policy in any case. Large media stays on the NAS — files are
+OPENED, never fetched into attachments, IndexedDB, sync or a backup.
+
+**MATERIAL DURING PRACTICE IS ONE CLOSED DISCLOSURE, BELOW THE TIMER.** `ActiveBlock`
+offers it only when `itemFiles` is non-empty, renders nothing until it is opened (a
+closed disclosure does zero async work), and sits in the same shape as "About this
+piece" — not a panel, not a viewer, not a dashboard. No material or viewer concern may
+influence a recorded minute, the wake lock, or a boundary announcement: the
+elapsed-time family, `shouldKeepAwake` and `nextSignal` are untouched by any of this.
+
+**A NAS REFERENCE IS STORED RELATIVE TO THE CONFIGURED BASE, so it stays portable.**
+An absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS: it dies on a phone
+away from home, and everywhere at once if the base URL ever changes.
+`relativizeReference(base, pasted)` (`recordings.ts`, tested) rewrites a pasted URL that
+sits UNDER the configured base into the path beneath it — requiring the path BOUNDARY
+(`base + '/'`, so `…/media` never swallows `…/mediaXYZ/`) and comparing normalised URLs,
+not raw strings. It DECODES per segment because `resolveRecording` re-encodes on the way
+out; a Farsi filename copied percent-encoded from a directory listing would otherwise be
+double-escaped into a dead link. Everything else is stored EXACTLY as given, because
+guessing is worse than mangling nothing: a different origin is a deliberate external
+link, a URL carrying a query or fragment is not a plain file path, and a blank or
+unparseable base is not something to reason from. This is what makes the transport
+(LAN address today, something else later) a decision that can be CHANGED WITHOUT
+REWRITING A SINGLE STORED REFERENCE — and it is the only thing this lane writes
+differently: the TEXT of an existing `LessonRecording.path`, its type and meaning
+unchanged.
+
+**BROWSE IS OFFERED ONLY WHERE IT CAN WORK.** Settings and the lesson add-reference form
+open the NAS listing at `normalizeBaseUrl(base)`; a blank or unparseable base yields no
+target and the action is disabled with a plain explanation, never a dead link or a
+same-origin request. A missing or unreachable NAS degrades to a disabled or absent
+action — never an error state, and never anything that blocks practising. Everything
+still works fully offline; the base URL stays per-device in localStorage, out of
+exports, backups and synced data.
+
 ## Review scheduling stays explainable
 
 `computeReview` (in `scheduling.ts`) is an **SM-2 spaced-repetition engine** adapted to
@@ -703,16 +793,6 @@ duplicate the item.
 - **One file per route** under `src/pages/`. Shared UI primitives live in
   `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
   React Fast Refresh and the `react-refresh` lint rule happy).
-
-## When you add a feature
-
-1. Add/extend the **types** in `src/domain/types.ts` and bump `SCHEMA_VERSION` if the
-   persisted shape changes (add a migration in the store's `persist` config).
-2. Put the logic in a **pure domain module** with **tests** (`*.test.ts`). The required
-   coverage — priority scoring, recommendation selection, review scheduling, stat
-   updates, saturation — must stay green.
-3. Only then wire up the UI.
-4. Run `npm run build`, `npm run lint`, `npm test` and fix everything before finishing.
 
 ## Tests are not optional
 

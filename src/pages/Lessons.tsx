@@ -4,14 +4,19 @@ import {
   assignedForLesson,
   cleanFileTitle,
   daysUntil,
+  defaultInstrumentFilter,
   formatFileSize,
   ITEM_STATUS_LABELS,
+  LESSON_FILE_KIND_ORDER,
   lessonsForInstrument,
   nextLessonFor,
   nextLessonNumber,
+  normalizeBaseUrl,
   questionsForNextClass,
+  relativizeReference,
   resolveRecording,
   todayISODate,
+  type Instrument,
   type Lesson,
   type LessonFileKind,
 } from '../domain';
@@ -40,6 +45,16 @@ export default function Lessons() {
   const instruments = db.instruments.filter((i) => i.active);
   const wide = useIsWide();
 
+  // Open on the instrument you are actually practising — 40-plus Setar classes
+  // stacked above Tar and Guitar is not a phone screen. Seeded from the same
+  // persisted session instrument every other screen reads, never written back,
+  // and always widenable to all.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, instruments),
+  );
+  const shown = instruments.filter((i) => !instrumentId || i.id === instrumentId);
+
   return (
     <div className="stack-lg">
       <header className="stack-sm">
@@ -47,12 +62,28 @@ export default function Lessons() {
         <p className="page-sub">
           Your classes, per instrument — dates and the notes you take when rewatching the recording.
         </p>
+        {instruments.length > 1 && (
+          <select
+            className="select"
+            aria-label="Instrument"
+            style={{ width: 'fit-content' }}
+            value={instrumentId}
+            onChange={(e) => setInstrumentId(e.target.value)}
+          >
+            <option value="">All instruments</option>
+            {instruments.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        )}
       </header>
 
       {wide ? (
-        <WideLessons now={now} />
+        <WideLessons now={now} instruments={shown} />
       ) : (
-        instruments.map((inst) => (
+        shown.map((inst) => (
           <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
         ))
       )}
@@ -76,16 +107,15 @@ function useIsWide(): boolean {
  * linked items, files) with real room on the right. Phones keep the simple
  * drill-down cards.
  */
-function WideLessons({ now }: { now: Date }) {
+function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[] }) {
   const db = useStore((s) => s.db);
   const addLesson = useStore((s) => s.addLesson);
   const deleteLesson = useStore((s) => s.deleteLesson);
-  const instruments = db.instruments.filter((i) => i.active);
 
-  const allLessons = useMemo(
-    () => [...db.lessons].sort((a, b) => b.date.localeCompare(a.date)),
-    [db.lessons],
-  );
+  const allLessons = useMemo(() => {
+    const ids = new Set(instruments.map((i) => i.id));
+    return db.lessons.filter((l) => ids.has(l.instrumentId)).sort((a, b) => b.date.localeCompare(a.date));
+  }, [db.lessons, instruments]);
   const defaultSelection = useMemo(() => {
     const upcoming = [...allLessons].reverse().find((l) => l.date >= todayISODate(now));
     return upcoming?.id ?? allLessons[0]?.id ?? null;
@@ -397,8 +427,6 @@ function inferKind(path: string): LessonFileKind {
   return 'video';
 }
 
-const KIND_ORDER: Record<LessonFileKind, number> = { video: 0, pdf: 1, doc: 2, audio: 3 };
-
 function KindIcon({ kind }: { kind: LessonFileKind }) {
   if (kind === 'video') return <PlayIcon width={16} height={16} />;
   if (kind === 'audio') return <MusicIcon width={16} height={16} />;
@@ -418,10 +446,12 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
   const recordings = useMemo(
     () =>
       [...(lesson.recordings ?? [])].sort(
-        (a, b) => KIND_ORDER[a.kind ?? 'video'] - KIND_ORDER[b.kind ?? 'video'],
+        (a, b) => LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'],
       ),
     [lesson.recordings],
   );
+
+  const browseUrl = normalizeBaseUrl(baseUrl);
 
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
@@ -430,10 +460,13 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
 
   function add() {
     if (!path.trim()) return;
+    // A URL pasted from the NAS listing is stored RELATIVE to the configured
+    // base, so the reference is not pinned to this device's route to the NAS.
+    const stored = relativizeReference(baseUrl, path);
     addLessonRecording(lesson.id, {
-      title: title.trim() || cleanFileTitle(path.trim()) || 'Class file',
-      path: path.trim(),
-      kind: inferKind(path.trim()),
+      title: title.trim() || cleanFileTitle(stored) || 'Class file',
+      path: stored,
+      kind: inferKind(stored),
       date: lesson.date,
       notes: notes.trim() || undefined,
     });
@@ -538,9 +571,23 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
             onChange={(e) => setPath(e.target.value)}
           />
           <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="row between" style={{ gap: 8 }}>
+            <div className="tiny faint">
+              Stop typing paths: browse your NAS, copy the file’s URL, paste it above.
+            </div>
+            <button
+              className="btn btn-sm"
+              style={{ flex: 'none' }}
+              disabled={!browseUrl}
+              onClick={() => browseUrl && window.open(`${browseUrl}/`, '_blank', 'noopener,noreferrer')}
+            >
+              Browse NAS
+            </button>
+          </div>
           <div className="tiny faint">
             Video, PDF or audio — the kind is detected from the file. A relative path resolves against your NAS base
-            URL (Settings); full https:// links are used as-is. The file opens only when you tap “Open”.
+            URL (Settings); a URL you paste from that base is stored as a relative path so it keeps working on every
+            device. The file opens only when you tap “Open”.
           </div>
           <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
             Add link

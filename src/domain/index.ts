@@ -21,6 +21,7 @@ export * from './sync';
 export * from './canonical';
 export * from './files';
 export * from './selectors';
+export * from './itemFiles';
 export * from './plan';
 export * from './insights';
 export * from './report';

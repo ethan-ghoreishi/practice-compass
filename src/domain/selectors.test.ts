@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  defaultInstrumentFilter,
   instrumentBalance,
+  itemMatchesSearch,
   nextLessonNumber,
   practiceTotals,
   practiceTotalsByInstrument,
@@ -215,5 +217,46 @@ describe('instrumentBalance · the denominator covers exactly the rows shown', (
   it('reports zero percent for every instrument when nothing was practised', () => {
     const rows = instrumentBalance([instrument('setar')], [], THURSDAY, 7);
     expect(rows[0]).toMatchObject({ minutes: 0, blocks: 0, percent: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two search boxes (Repertoire's practice list, Start's item picker) and
+// the instrument a browse screen opens on. Both are pure choices, so the
+// wiring is provable in Node even though the screens themselves are not.
+// ---------------------------------------------------------------------------
+
+describe('itemMatchesSearch', () => {
+  it('matches a Persian title when the query uses the Arabic kaf and still rejects an unrelated query', () => {
+    const item = { title: 'کرشمه' }; // stored with the PERSIAN kaf U+06A9
+    const arabicKaf = 'كرشمه'; // what an iOS Arabic keyboard emits (U+0643)
+
+    // The predicate both screens used before this change could never match it.
+    expect(item.title.toLowerCase().includes(arabicKaf.toLowerCase())).toBe(false);
+
+    expect(itemMatchesSearch(item, arabicKaf)).toBe(true);
+    expect(itemMatchesSearch(item, 'ماهور')).toBe(false);
+  });
+
+  it('finds a Persian title from its Latin transliteration and rejects an unrelated Latin query', () => {
+    const item = { title: 'درآمد' };
+
+    expect(item.title.toLowerCase().includes('daramad')).toBe(false);
+
+    expect(itemMatchesSearch(item, 'daramad')).toBe(true);
+    expect(itemMatchesSearch(item, 'qqqq')).toBe(false);
+    expect(itemMatchesSearch(item, 'guitar')).toBe(false);
+  });
+});
+
+describe('defaultInstrumentFilter', () => {
+  it('seeds the filter from a resolvable session instrument, widens for all, and falls back when it no longer exists', () => {
+    const instruments = [{ id: 'setar' }, { id: 'tar' }];
+
+    expect(defaultInstrumentFilter('setar', instruments)).toBe('setar');
+    expect(defaultInstrumentFilter('all', instruments)).toBe('');
+    expect(defaultInstrumentFilter('deleted-instrument', instruments)).toBe('');
+    expect(defaultInstrumentFilter(null, instruments)).toBe('');
+    expect(defaultInstrumentFilter(undefined, instruments)).toBe('');
   });
 });

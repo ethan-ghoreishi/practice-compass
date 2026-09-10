@@ -91,3 +91,57 @@ export function resolveRecordingUrl(baseUrl: string | undefined, ref: Pick<Lesso
 export function needsBaseUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): boolean {
   return resolveRecording(baseUrl, ref).status === 'no-base';
 }
+
+/** Decode a stored-relative path segment-wise; `resolveRecording` re-encodes. */
+function decodeSegments(rel: string): string {
+  return rel
+    .split('/')
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg; // malformed %-escape: leave it exactly as given
+      }
+    })
+    .join('/');
+}
+
+/**
+ * Store a pasted reference TRANSPORT-INDEPENDENTLY.
+ *
+ * Browsing the NAS and pasting a file's URL is the whole point of the Browse
+ * link — but an absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS:
+ * it dies on a phone away from home, and everywhere at once if the base URL
+ * ever changes. So a URL that sits UNDER the configured base is stored as the
+ * path beneath it, which every device then resolves through its own base.
+ *
+ * Everything else is left EXACTLY as given, because guessing is worse than
+ * leaving it alone: a different origin is a deliberate external link, a URL
+ * carrying a query or fragment is not a plain file path, and a blank or
+ * unparseable base is not something to reason from at all.
+ *
+ * A stored path is decoded (`resolveRecording` encodes each segment on the way
+ * out), so a Farsi filename copied from a directory listing survives the round
+ * trip instead of being double-escaped into a dead link.
+ */
+export function relativizeReference(baseUrl: string | undefined, pasted: string): string {
+  const raw = pasted.trim();
+  if (!raw || !HTTP_RE.test(raw)) return raw; // already a relative path
+  const base = normalizeBaseUrl(baseUrl);
+  if (!base) return raw;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (url.search || url.hash) return raw;
+
+  // Compare normalised forms (host case, default ports) and require the path
+  // BOUNDARY, so `…/media` never swallows `…/mediaXYZ/`.
+  const prefix = `${base}/`;
+  const abs = url.toString();
+  if (!abs.startsWith(prefix)) return raw;
+  return decodeSegments(abs.slice(prefix.length)) || raw;
+}
