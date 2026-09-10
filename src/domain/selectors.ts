@@ -8,7 +8,7 @@ import type {
   Review,
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
-import { dayDiff, hoursSince, parseISODate, todayISODate } from './util';
+import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Derived lists used across the Today, Items and Insights screens. All pure.
@@ -131,24 +131,135 @@ export function instrumentBalance(
   now: Date,
   days = 7,
 ): InstrumentBalanceRow[] {
-  const windowBlocks = blocksInWindow(blocks, now, days);
+  // The denominator must cover exactly the instruments that get a row.
+  // Callers legitimately pass only the ACTIVE instruments alongside ALL
+  // blocks (Today does), and taking the total from every block then meant a
+  // retired instrument's practice sat in the denominator with no row of its
+  // own — so the percentages summed to less than 100.
+  const shown = new Set(instruments.map((i) => i.id));
+  const windowBlocks = blocksInWindow(blocks, now, days).filter((b) => shown.has(b.instrumentId));
   const totalMinutes = windowBlocks.reduce((s, b) => s + b.durationMinutes, 0);
 
-  const rows = instruments.map((inst) => {
+  const counted = instruments.map((inst) => {
     const own = windowBlocks.filter((b) => b.instrumentId === inst.id);
-    const minutes = own.reduce((s, b) => s + b.durationMinutes, 0);
     return {
       instrumentId: inst.id,
       instrumentName: inst.name,
-      minutes,
+      minutes: own.reduce((s, b) => s + b.durationMinutes, 0),
       blocks: own.length,
-      percent: totalMinutes > 0 ? Math.round((minutes / totalMinutes) * 100) : 0,
     };
   });
 
-  return rows.sort((a, b) => b.minutes - a.minutes);
+  // Rounding each row on its own does NOT keep the sum at 100 even once the
+  // denominator is right: three rows of one minute each round to 33% and total
+  // 99. Largest remainder floors every share and hands the leftover points to
+  // the largest fractions, so the emitted percentages always sum to exactly
+  // 100. A row with no minutes has no fraction, so it can never be handed one.
+  const percents = largestRemainder(counted.map((r) => r.minutes), totalMinutes);
+
+  return counted.map((r, i) => ({ ...r, percent: percents[i] })).sort((a, b) => b.minutes - a.minutes);
+}
+
+/** Split 100 across `values` so the parts are whole numbers summing to 100. */
+function largestRemainder(values: number[], total: number): number[] {
+  if (total <= 0) return values.map(() => 0);
+  const exact = values.map((v) => (v / total) * 100);
+  const out = exact.map((e) => Math.floor(e));
+  let left = 100 - out.reduce((a, b) => a + b, 0);
+  const byFraction = exact
+    .map((e, i) => ({ i, fraction: e - Math.floor(e) }))
+    .filter((x) => x.fraction > 0)
+    .sort((a, b) => b.fraction - a.fraction || a.i - b.i);
+  for (const { i } of byFraction) {
+    if (left <= 0) break;
+    out[i] += 1;
+    left -= 1;
+  }
+  return out;
 }
 
 export function totalMinutesInWindow(blocks: PracticeBlock[], now: Date, days: number): number {
   return blocksInWindow(blocks, now, days).reduce((s, b) => s + b.durationMinutes, 0);
+}
+
+// --- Honest practice totals --------------------------------------------------
+//
+// CALENDAR figures, not rolling windows. `blocksInWindow` above filters on
+// HOURS, so days:1 means "the last 24 hours" and days:7 means "the last 168" —
+// which is exactly the wrong answer to "how much have I practised today?": a
+// block from late last night is not today's practice. These helpers are
+// therefore separate rather than a reuse of that one.
+//
+// A block belongs WHOLE to the local calendar day it BEGAN, with none of its
+// minutes apportioned into the following day. Two facts in the model settle
+// that rather than convenience: `durationMinutes` is the figure the owner
+// attested to at close and deliberately diverges from wall clock (an abandoned
+// block proposes its target), so `endedAt - startedAt` is not the authored
+// duration; and `endedAt` is optional and absent on routine blocks, so
+// apportioning would quietly apply to some blocks and not others. The same
+// rule decides the week boundary: a session begun Sunday 23:30 belongs to the
+// week that is ending.
+
+export interface PracticeTotal {
+  minutes: number;
+  blocks: number;
+}
+
+/** Monday 00:00 local — ISO-8601 and UK convention — as a calendar date. */
+export function startOfWeekISODate(now: Date): ISODate {
+  const mondayFirst = (now.getDay() + 6) % 7; // Sunday (0) → 6, Monday (1) → 0
+  return addDaysISODate(todayISODate(now), -mondayFirst);
+}
+
+/** The local calendar day a block belongs to. */
+function blockDay(b: PracticeBlock): ISODate {
+  return toISODate(new Date(b.startedAt));
+}
+
+function total(blocks: PracticeBlock[]): PracticeTotal {
+  return {
+    minutes: blocks.reduce((s, b) => s + Math.max(0, Math.round(b.durationMinutes)), 0),
+    blocks: blocks.length,
+  };
+}
+
+export interface PracticeTotals {
+  today: PracticeTotal;
+  week: PracticeTotal;
+  allTime: PracticeTotal;
+}
+
+/** Minutes and block counts for today, this week (from Monday) and all time. */
+export function practiceTotals(blocks: PracticeBlock[], now: Date): PracticeTotals {
+  const today = todayISODate(now);
+  const weekStart = startOfWeekISODate(now);
+  const days = blocks.map((b) => ({ b, day: blockDay(b) }));
+  return {
+    today: total(days.filter((d) => d.day === today).map((d) => d.b)),
+    week: total(days.filter((d) => d.day >= weekStart && d.day <= today).map((d) => d.b)),
+    allTime: total(blocks),
+  };
+}
+
+export interface InstrumentTotalsRow extends PracticeTotals {
+  instrumentId: ID;
+  instrumentName: string;
+}
+
+/** The same calendar figures per instrument, for the full Insights view. */
+export function practiceTotalsByInstrument(
+  instruments: Instrument[],
+  blocks: PracticeBlock[],
+  now: Date,
+): InstrumentTotalsRow[] {
+  return instruments
+    .map((inst) => ({
+      instrumentId: inst.id,
+      instrumentName: inst.name,
+      ...practiceTotals(
+        blocks.filter((b) => b.instrumentId === inst.id),
+        now,
+      ),
+    }))
+    .sort((a, b) => b.allTime.minutes - a.allTime.minutes);
 }

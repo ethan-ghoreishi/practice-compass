@@ -44,3 +44,20 @@ export function applyBlockStats(
     updatedAt: nowISO(now),
   };
 }
+
+/**
+ * The next action chosen the LAST time this item was practised — the last step
+ * of the practice loop, which used to be written on every close and read
+ * nowhere. Closing the loop means showing it before you start playing.
+ *
+ * The most recent NON-EMPTY one wins: a later block that recorded none should
+ * not blank out a decision that still stands. Order is derived here rather
+ * than trusted from the caller, so a differently-sorted list still answers
+ * correctly.
+ */
+export function lastNextAction(blocks: PracticeBlock[]): string | undefined {
+  return [...blocks]
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .map((b) => b.nextAction?.trim())
+    .find((a): a is string => !!a);
+}

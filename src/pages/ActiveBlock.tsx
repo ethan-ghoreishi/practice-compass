@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BLOCK_MODE_LABELS, FOCUS_LABELS, nextSignal } from '../domain';
+import { BLOCK_MODE_LABELS, FOCUS_LABELS, lastNextAction, nextSignal } from '../domain';
 import { sessionElapsedSeconds, useStore } from '../store/useStore';
-import { getItem, instrumentName } from '../store/lookups';
+import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { formatClock } from '../components/format';
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
@@ -67,6 +67,10 @@ export default function ActiveBlock() {
   }
 
   const item = getItem(db, active.itemId);
+  // The last step of the loop, closed: the one thing you decided to try next
+  // time reaches you BEFORE you start playing, rather than being written on
+  // every close and read nowhere.
+  const previousNextAction = lastNextAction(itemBlocks(db, active.itemId));
   const elapsed = sessionElapsedSeconds(active);
   const targetSeconds = active.targetMinutes * 60;
   const reached = elapsed >= targetSeconds; // durable for the rest of the block — practising past target is ordinary, never un-happens
@@ -85,6 +89,13 @@ export default function ActiveBlock() {
         </div>
         {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
       </header>
+
+      {previousNextAction && (
+        <div className="card card-quiet small" style={{ textAlign: 'left' }} dir="auto">
+          <span className="faint">Last time you decided to try: </span>
+          {previousNextAction}
+        </div>
+      )}
 
       {item && (item.notes || item.currentProblem) && (
         <AboutThisPiece notes={item.notes} problem={item.currentProblem} />

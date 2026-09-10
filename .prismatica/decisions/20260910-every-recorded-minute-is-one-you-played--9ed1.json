@@ -1,0 +1,11 @@
+{
+  "id": "20260910-every-recorded-minute-is-one-you-played--9ed1",
+  "contractId": "20260910-every-recorded-minute-is-one-you-played--9ed1",
+  "patchId": "ad8c784e2b5c531051c8e17b77b6a138c1ecc93b",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-09-10T17:35:39.476Z",
+  "algorithm": "ed25519",
+  "signature": "g8fOvksbIRYUL+4xlko1s1fxffKn/FMr/wDUdcwEX9MP6GWhk/8B3gzze5pDJG8r9+PRQxMfINoaNvukvproCQ==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

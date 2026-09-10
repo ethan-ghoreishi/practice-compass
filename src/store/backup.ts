@@ -1,4 +1,4 @@
-import { nowISO, parseImport, SCHEMA_VERSION } from '../domain';
+import { decideReplacement, nowISO, parseImport, SCHEMA_VERSION } from '../domain';
 import { allBlobs, replaceAllBlobs, type AttachmentBlob } from './idb';
 import { useStore } from './useStore';
 
@@ -103,8 +103,20 @@ export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']): 
   return max;
 }
 
-export async function buildFullBackup(now: Date = new Date()): Promise<string> {
-  const db = useStore.getState().db;
+/**
+ * A backup TOGETHER WITH the local revision it was taken at, captured in ONE
+ * statement before any await. `allBlobs()` below yields, and a block finished
+ * during that yield bumps `rev` without entering this snapshot — pairing an
+ * old copy of the data with a newer revision number. That pair is exactly what
+ * the replacement guard compares, so the mismatch would make `decideReplacement`
+ * (which is itself correct) answer "nothing was written since" about a database
+ * that had been written to, and install the incoming copy over recorded
+ * practice. The pure decision is already tested; the WIRING is protected
+ * structurally, the same way `installDatabase` protects its own — the revision
+ * cannot be read from anywhere but the statement that reads the database.
+ */
+export async function buildFullBackupWithRev(now: Date = new Date()): Promise<{ text: string; rev: number }> {
+  const { db, rev } = useStore.getState();
   const blobs = await allBlobs();
   const files: BackupFile[] = await Promise.all(
     blobs.map(async (b) => {
@@ -118,15 +130,23 @@ export async function buildFullBackup(now: Date = new Date()): Promise<string> {
       };
     }),
   );
-  return JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: SCHEMA_VERSION,
-    exportedAt: nowISO(now),
-    deviceName: getDeviceName() || undefined,
-    lastModified: lastModifiedOf(db) || undefined,
-    data: db,
-    files,
-  });
+  return {
+    text: JSON.stringify({
+      app: 'practice-compass',
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: nowISO(now),
+      deviceName: getDeviceName() || undefined,
+      lastModified: lastModifiedOf(db) || undefined,
+      data: db,
+      files,
+    }),
+    rev,
+  };
+}
+
+/** The backup text alone, for the callers that never install it back. */
+export async function buildFullBackup(now: Date = new Date()): Promise<string> {
+  return (await buildFullBackupWithRev(now)).text;
 }
 
 /** Peek at a backup's provenance without importing it. */
@@ -139,7 +159,56 @@ export function readBackupMeta(text: string): (BackupMeta & { exportedAt?: strin
   }
 }
 
-export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
+/**
+ * Names for whatever practice is unfinished right now, for a visible message.
+ * Lives here because this module already reads the store; used by both the
+ * import refusal below and the sync deferral notice. Never fabricates a title:
+ * `decideReplacement` falls back to a neutral phrase when one is missing.
+ */
+export function unfinishedPracticeLabels(): { itemTitle?: string; routineName?: string } {
+  const { active, activeRoutine, db } = useStore.getState();
+  return {
+    itemTitle: active ? db.items.find((i) => i.id === active.itemId)?.title : undefined,
+    routineName: activeRoutine ? db.pathwayRoutines.find((r) => r.id === activeRoutine.routineId)?.name : undefined,
+  };
+}
+
+export type ImportOutcome =
+  | { ok: true; fileCount: number }
+  | {
+      ok: false;
+      error: string;
+      /**
+       * True when the refusal was a DEFERRAL, not a failure — an automatic sync
+       * that will resume by itself. The caller must not dress this as an error:
+       * `error` phase is not what App.tsx's retry watches, so reporting one
+       * would turn a session that resolves in a minute into a silent outage.
+       */
+      deferred?: boolean;
+    };
+
+type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
+
+/**
+ * Is a whole-database replacement refused right now? Read fresh each time it is
+ * asked, because the answer can change mid-import — BOTH reasons can arise
+ * after the replacement was decided. The intent is the caller's: a sync pull is
+ * AUTOMATIC and defers quietly, everything else is DELIBERATE and refuses out
+ * loud. `decidedFromRev` is the local revision the replacement was decided
+ * against; a different one now means practice was committed in between and
+ * installing the snapshot would destroy it.
+ */
+function replacementRefusal(intent: 'automatic' | 'deliberate', decidedFromRev: number): ImportRefusal | null {
+  const { active, activeRoutine, rev } = useStore.getState();
+  const decision = decideReplacement({
+    intent,
+    session: { active, activeRoutine },
+    labels: unfinishedPracticeLabels(),
+    revision: { decidedFrom: decidedFromRev, current: rev },
+  });
+  if (decision.outcome === 'proceed') return null;
+  return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
+}
 
 /**
  * Import a full backup. Decodes every file BEFORE touching any existing data —
@@ -156,8 +225,38 @@ export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error
  * blob to match; existing blobs are left untouched. A present `files: []` IS
  * treated as a real full backup with no attachments, and does replace (that's
  * the whole point of restoring to a snapshot).
+ *
+ * This is the chokepoint for every INBOUND replacement — manual import, a sync
+ * pull, conflict-keep-remote, and archive restore all arrive here — so it is
+ * where local practice is protected. The refusal is the FIRST thing this
+ * function does, before the JSON is even parsed: `replaceAllBlobs` below
+ * destroys every attachment blob, so a check placed after it would return
+ * "nothing was changed" having already wiped them. It is ALSO the last thing
+ * before `importDB`, because that first check does not span the whole call —
+ * see the comment at the install itself.
+ *
+ * `decidedFromRev` is the local revision this replacement was decided against.
+ * A sync pull passes the revision of the snapshot it actually compared, so the
+ * guarded window covers the network fetch and the pre-sync archive too — a
+ * block finished in there is in neither the archive nor the incoming snapshot.
+ * A deliberate caller has no earlier decision point than this call, so it
+ * defaults to the revision on entry.
  */
-export async function importFullBackup(text: string): Promise<ImportOutcome> {
+export async function importFullBackup(
+  text: string,
+  intent: 'automatic' | 'deliberate' = 'deliberate',
+  decidedFromRev: number = useStore.getState().rev,
+): Promise<ImportOutcome> {
+  // A replacement reaching this function is one the owner chose (Import,
+  // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
+  // own deferral because practice started mid-sync. Either way an unfinished
+  // session — running or paused, fresh or stale, ordinary or routine — is
+  // never destroyed by it, nor is a block that was started AND FINISHED since
+  // the pull was decided, and never silently: every caller already surfaces
+  // this error.
+  const refusal = replacementRefusal(intent, decidedFromRev);
+  if (refusal) return refusal;
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -192,6 +291,28 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
     if (isFullBackup) await replaceAllBlobs(rows);
   } catch (e) {
     return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
+  }
+
+  // Checked AGAIN, in the same synchronous tick as the install — ONE call
+  // answering BOTH reasons, so no await can ever be slipped between them. The
+  // check at the top of this function cannot cover the whole call:
+  // `replaceAllBlobs` above yields to the event loop, so during that
+  // transaction a tap can start a block or a routine (which `importDB` would
+  // null) — or start one AND FINISH it, which leaves no session for presence
+  // to see while the recorded block sits in a `db` the incoming snapshot is
+  // about to overwrite, held by no archive. The revision comparison is what
+  // catches that second case. Nothing awaits between here and the install, so
+  // this one is genuinely the last word. The blobs are already written by this
+  // point, so the refusal says that plainly rather than claiming nothing
+  // changed; the message still names the blocking session when there is one
+  // (ac-8), the practice is intact, and re-running the same import afterwards
+  // finishes the job.
+  const late = replacementRefusal(intent, decidedFromRev);
+  if (late) {
+    if (!isFullBackup) return late;
+    // Say what actually happened; do NOT instruct a manual re-run, because a
+    // deferral reaching here is an automatic sync that re-runs itself.
+    return { ...late, error: `${late.error} (Your attachment files had already been replaced from the backup — the data itself was not. The next attempt finishes the job.)` };
   }
 
   useStore.getState().importDB(parsed);

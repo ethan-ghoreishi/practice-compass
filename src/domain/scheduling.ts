@@ -332,12 +332,36 @@ export function applyReviewDateToRow(args: {
   return args.reviews.map((r) => (r.id === args.reviewId ? { ...r, dueDate, updatedAt: nowISO(args.now) } : r));
 }
 
+/**
+ * What the close screen actually answered about the item's next review. The
+ * whole of §A6 is that the first two used to be indistinguishable:
+ *
+ *   'scheduled'  — a date to write. Sets both sides and completes the open row.
+ *   'declined'   — the owner said no. Clears the item's date and completes the
+ *                  open row, exactly as it has always done.
+ *   'unanswered' — no result was chosen, so NOTHING about the schedule was
+ *                  decided. Keeps the item's date and leaves the open row
+ *                  OPEN. Answering nothing is not declining: reading it as one
+ *                  silently erased the next date, closed the open review and
+ *                  left SM-2 state stale, so the item never appeared under Due
+ *                  reviews again — while the screen read "Should this come
+ *                  back? Yes" above an empty date field.
+ */
+export type ReviewAnswer = 'scheduled' | 'declined' | 'unanswered';
+
 export interface ReviewOutcome {
   /**
    * Ready to hand straight to `applyBlockStats`: `undefined` keeps the
    * item's existing date, `null` clears it, an ISODate sets it.
    */
   nextReviewDate: ISODate | null | undefined;
+  /**
+   * Whether the item's OPEN review rows should be completed by this close.
+   * Part of the SAME return value as the date on purpose: closeSession used to
+   * decide this separately and unconditionally, which is precisely how the row
+   * and the date came apart.
+   */
+  completeOpenReviews: boolean;
   /** The new Review row to create, when a review was genuinely scheduled. */
   review?: { dueDate: ISODate; reviewType: ReviewType };
   /** SM-2 state to persist — omitted entirely when no review was scheduled,
@@ -347,15 +371,16 @@ export interface ReviewOutcome {
 
 /**
  * The decision behind closing a block: whether the item gets a next review
- * at all, and — when it does — the ONE date written to both the item and its
- * new Review row (§1.2). Declining clears the item's schedule outright and
- * leaves SM-2 state untouched (§1.1, §1.3); accepting always uses the same
- * computed date for both sides.
+ * at all, whether its open review row is completed, and — when a review is
+ * scheduled — the ONE date written to both the item and its new Review row
+ * (§1.2). Declining clears the item's schedule outright and leaves SM-2 state
+ * untouched (§1.1, §1.3); accepting always uses the same computed date for
+ * both sides; answering nothing changes neither.
  */
 export function computeReviewOutcome(args: {
   item: PracticeItem;
   result?: BlockResult;
-  scheduleReview: boolean;
+  answer: ReviewAnswer;
   /** Explicit override (e.g. a user-edited date on the close screen). */
   nextReviewDate?: ISODate;
   reviewType?: ReviewType;
@@ -363,25 +388,58 @@ export function computeReviewOutcome(args: {
   now: Date;
   params?: SchedulingParams;
 }): ReviewOutcome {
-  const { item, result, scheduleReview, now, params } = args;
+  const { item, result, answer, now, params } = args;
 
-  if (!scheduleReview) {
-    return { nextReviewDate: null };
+  // Nothing was decided about the schedule, so nothing about the schedule
+  // moves — neither the item's date nor its open row. This is the one branch
+  // that produces keep-the-date AND leave-the-row-open together.
+  if (answer === 'unanswered') {
+    return { nextReviewDate: undefined, completeOpenReviews: false };
+  }
+
+  if (answer === 'declined') {
+    return { nextReviewDate: null, completeOpenReviews: true };
   }
 
   const comp = computeReview(item, result, now, params);
   const write = resolveReviewDate(args.nextReviewDate ?? comp?.dueDate);
   if (!write) {
     // Nothing resolved (e.g. manual mode with no explicit override) — leave
-    // the schedule exactly as it is rather than inventing one.
-    return { nextReviewDate: undefined };
+    // the schedule exactly as it is rather than inventing one. The block was
+    // still practised, so the open row is still completed.
+    return { nextReviewDate: undefined, completeOpenReviews: true };
   }
 
   return {
     nextReviewDate: write.nextReviewDate,
+    completeOpenReviews: true,
     review: { dueDate: write.nextReviewDate!, reviewType: args.reviewType ?? comp?.reviewType ?? 'retention' },
     sr: comp ? { srReps: comp.srReps, srEase: comp.srEase, srIntervalDays: comp.srIntervalDays } : undefined,
   };
+}
+
+/**
+ * Apply a close's completion decision to an item's OPEN review rows — the
+ * array transform behind `ReviewOutcome.completeOpenReviews`, living next to
+ * `applyReviewDateToRows` for the same reason: the row change has to be
+ * reachable from a Node test, and `closeSession` (which cannot be) is a thin
+ * caller. `complete: false` returns the array untouched, so a close that
+ * answered nothing genuinely leaves the due review open.
+ */
+export function completeOpenReviewsFor(args: {
+  reviews: Review[];
+  practiceItemId: ID;
+  complete: boolean;
+  result?: BlockResult;
+  now: Date;
+}): Review[] {
+  if (!args.complete) return args.reviews;
+  const at = nowISO(args.now);
+  return args.reviews.map((r) =>
+    r.practiceItemId === args.practiceItemId && !r.completedAt
+      ? { ...r, completedAt: at, result: args.result, updatedAt: at }
+      : r,
+  );
 }
 
 // --- Review actions that are NOT practice ------------------------------------

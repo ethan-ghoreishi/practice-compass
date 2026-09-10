@@ -9,6 +9,13 @@ Preserve the core loop: **one item · one mode · one focus · one result · one
 If a change blurs that loop or adds a second thing to think about per step, it's wrong —
 even if it's "useful".
 
+**The loop CLOSES: the next action is read, not just written.** `PracticeBlock.nextAction`
+was captured on every close and read nowhere, so the one thing deliberately decided last
+time never reached the moment it was written for. `ActiveBlock` now shows it at the top,
+before you start playing, via `lastNextAction` (`blocks.ts`, tested) — the most recent
+NON-EMPTY one, so a later block that recorded none does not blank out a decision that
+still stands. Anything the app asks you to record, it must eventually USE.
+
 ## Keep admin overhead low
 
 - Starting a block must stay **under 30 seconds**; closing one **under 60 seconds**.
@@ -62,6 +69,179 @@ SM‑2. "Not now" hides a due review for the rest of today (no schedule change).
 (+2d) genuinely moves the due date on both the review and the item — never fabricate a
 result, and never leave a stale overdue item after an action. The Finish button freezes
 the clock (`pauseSession`) before the close screen; reflection time is not counted.
+
+**ANSWERING NOTHING IS NOT DECLINING.** A result is REQUIRED to save a block — the six
+options are already the first thing on the close screen, so this adds no field (r-quick-start
+holds: it makes a choice already present a required one), and "Save without a result" keeps
+`not_logged` reachable and DELIBERATE. `computeReviewOutcome` takes a tri-state
+`ReviewAnswer` (`'scheduled' | 'declined' | 'unanswered'`) and returns
+`completeOpenReviews` ALONGSIDE `nextReviewDate`, because they are ONE decision: a close
+carrying no result keeps the item's date AND leaves its open Review row OPEN, while a
+genuine decline still clears the date and completes the row. `closeSession` must never
+decide the row separately — completing every open row unconditionally, next to a
+`!scheduleReview` branch that cleared the date, is exactly how one skipped tap used to
+erase the next date, close the open review, leave SM‑2 state stale and drop the item out
+of Due reviews for good, all while the panel read "Should this come back? Yes" above an
+empty date field. The row transform is `completeOpenReviewsFor` (`scheduling.ts`, tested)
+so the array change is reachable from a Node test; `CloseBlock` states the mapping in one
+place and the escape hatch forces `'unanswered'` even when a result had already filled in
+a date. r-explainable-scheduling's "the date shown is the date saved" now includes when
+that date is deliberately left UNCHANGED.
+
+## Nothing replaces an unfinished practice session
+
+`src/domain/practiceSession.ts` (pure, tested) is the sibling of `practiceSignal.ts`: that
+module owns pure decisions about a running clock's SIGNALS, this one owns pure decisions
+about the unfinished SESSION. Two INDEPENDENT questions live there and must never be
+conflated:
+
+- **PRESENCE** (`hasUnfinishedPractice`, `decideReplacement`) — does an unfinished session
+  exist? That, and ONLY that, decides whether a whole-database replacement may proceed.
+  Never `running`, so PAUSING PROTECTS A SESSION RATHER THAN EXPOSING IT; the frozen
+  `active`+`activeRoutine` pair the persist `merge` produces is unfinished practice like
+  any other.
+- **PLAUSIBILITY** (`isStaleClock`, `proposedCloseMinutes`) — does this session's elapsed
+  figure still look like time someone played? That decides the minutes `CloseBlock`
+  proposes and the ATTENTION state, and NOTHING else.
+
+**A HEURISTIC ABOUT A DURATION NEVER BECOMES AN AUTHORITY TO DESTROY PRACTICE.** A stale
+verdict must never be wired to a destructive path, and `decideReplacement` must keep
+reaching the SAME decision for a stale session as for a live one (a session paused at
+three genuine hours crosses any sensible threshold — discarding it would lose real
+practice). Staleness may never be fed into `shouldKeepAwake` or `nextSignal` either.
+
+`active` lives outside `db`, so `withRevision` never bumps `rev` while you practise: a
+mid-block device looks UNCHANGED to `decideSync`, a remote change resolves to `pull`, and
+the in-flight block is destroyed with no archive and no prompt. So: AUTOMATIC sync
+(`syncNow`) checks the predicate BEFORE attempting and reports a distinct `deferred`
+SyncPhase — a background merge waiting its turn is not an error and must not be dressed as
+one — while DELIBERATE replacement (Import, Restore archive, Keep remote) gets an explicit
+refusal naming the session. The guard for the inbound paths is the FIRST statement of
+`importFullBackup` (`backup.ts`), before the JSON is even parsed: `replaceAllBlobs` below
+it destroys every attachment blob, so a check placed after it would wipe them while
+returning "nothing was changed". Every deliberate caller already surfaces
+`{ok:false,error}`, so no `Settings.tsx` change is needed.
+
+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
+yields to the event loop, so a tap that starts a block while that transaction is in flight
+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
+second check sits in the same synchronous tick as the install, with nothing awaited in
+between, so it is genuinely the last word. It refuses honestly: the blobs are already
+written by then, so the message says so and invites re-running the import rather than
+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
+watches `deferred`, so an `error` here would stop sync until something else happened to
+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
+this — `replaceAllBlobs` is one
+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+untouched, which installing the `db` first would give up.
+
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
+
+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+labelling only the first left the same block silent after switching instrument or choosing
+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
+against, and `segmentElapsed` already clamps each segment to its authored duration.
+
+The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
+Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
+in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
+counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
+rev-watching retry resumes after a finish and waits forever after a discard. Seed the
+previous-presence ref with the CURRENT presence, or an ordinary load reads as a
+present→absent transition and fires a spurious sync.
+
+**Installing a database clears the ephemeral state that pointed at the old one.**
+`installDatabase` returns the new `db` TOGETHER WITH `active`/`activeRoutine`/`activePlan`
+nulled, `notNow` reset and a `sessionInstrumentId` that survives only if it still resolves
+(`'all'` always survives). Its SIGNATURE is the guarantee: `importDB`, `resetDemo` and
+`clearAll` are each a single `set()` of its result, so installing a database WITHOUT the
+reset is something the code cannot express — which matters because the Node environment
+cannot import `useStore.ts` (it pulls in Dexie via `./idb`), so the unit test proves the
+DECISION and the shape protects the WIRING. There are SIX whole-database replacements, not
+four: `resetDemo` and `clearAll` are called directly on the store and never touch
+`importFullBackup`, so a fix living only there would silently miss two of the three install
+points. Deliberate erasure keeps NO guard — those actions are aimed at destroying the data
+and already confirm first, so refusing them would be obstruction, not safety.
+
+## Practice totals are calendar figures, not rolling windows
+
+`practiceTotals` / `practiceTotalsByInstrument` / `startOfWeekISODate` (`selectors.ts`,
+tested) answer "how much have I practised?" — a compact minutes-and-blocks line low on
+Today (BELOW the recommendation, never above: "Practise now" stays above the fold at
+390×844) and the full today / this week / all time per-instrument view on Insights. Do NOT
+reuse `blocksInWindow`/`totalMinutesInWindow` for these: they filter on HOURS, so `days:1`
+means the last 24 hours and `days:7` the last 168 — a block from late last night is not
+today's practice. The week starts **Monday 00:00 local**.
+
+**A block belongs WHOLE to the local calendar day it BEGAN**, with none of its minutes
+apportioned across midnight or the Monday boundary. This was challenged and the code
+settles it: `durationMinutes` is the figure the owner ATTESTED to and this lane makes it
+diverge from wall clock on purpose (an abandoned block proposes its target), so
+`endedAt - startedAt` is not the authored duration; and `endedAt` is optional and ABSENT on
+routine blocks (`applyRoutineRun` passes none), so apportioning would apply to some blocks
+and not others. Splitting would overrule the owner's own correction with a number they
+never attested to. Totals stay NEUTRAL COUNTS — no goal, streak, score, bar that fills or
+colour that judges. Relatedly, `instrumentBalance` takes its denominator from only the
+blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
+a caller passes active instruments with all blocks (Today does).
+
+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
+not just the active ones, because its "All instruments" row counts every block: filtering
+to active instruments left a retired instrument's history with no row while its minutes
+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
+"one row per supplied instrument" contract is unchanged.
 
 ## Hands-free practice: the screen stays awake, and the app announces the end
 
