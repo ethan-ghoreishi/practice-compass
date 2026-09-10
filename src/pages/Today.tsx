@@ -666,7 +666,10 @@ function PractisedLine({ instrumentId, now }: { instrumentId: string; now: Date 
     () => practiceTotals(db.blocks.filter((b) => b.instrumentId === instrumentId), now),
     [db.blocks, instrumentId, now],
   );
-  if (totals.week.blocks === 0) return null;
+  // Gated on ALL TIME, not this week: once there is any practice to report, a
+  // quiet "0 min today" on a fresh Monday is the honest answer, where hiding
+  // the line entirely would read as a missing feature.
+  if (totals.allTime.blocks === 0) return null;
   return (
     <p className="tiny faint">
       Practised today: {totals.today.minutes} min · {blockCount(totals.today.blocks)}. This week:{' '}

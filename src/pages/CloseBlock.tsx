@@ -177,7 +177,7 @@ export default function CloseBlock() {
         label="Minutes practised"
         hint={
           proposed.stale
-            ? `This block's clock ran far longer than its ${active.targetMinutes}-minute target, so we've proposed the target rather than the whole gap. Change it to whatever you actually played.`
+            ? `The clock ran far past its ${active.targetMinutes}-minute target, so that target is proposed rather than the whole gap — change it to what you actually played.`
             : undefined
         }
       >
