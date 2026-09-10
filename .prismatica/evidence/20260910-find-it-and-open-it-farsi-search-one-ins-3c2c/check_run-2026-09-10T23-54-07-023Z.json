@@ -1,0 +1,95 @@
+{
+  "contractId": "20260910-find-it-and-open-it-farsi-search-one-ins-3c2c",
+  "event": "check_run",
+  "at": "2026-09-10T23:54:07.023Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "not configured at init — reported, never silently skipped"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "19 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "11 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "DECISIONS.md",
+    "FUTURE.md",
+    "README.md",
+    "src/components/ItemMaterial.tsx",
+    "src/domain/index.ts",
+    "src/domain/itemFiles.test.ts",
+    "src/domain/itemFiles.ts",
+    "src/domain/recordings.test.ts",
+    "src/domain/recordings.ts",
+    "src/domain/selectors.test.ts",
+    "src/domain/selectors.ts",
+    "src/pages/ActiveBlock.tsx",
+    "src/pages/ItemDetail.tsx",
+    "src/pages/Lessons.tsx",
+    "src/pages/Repertoire.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/StartBlock.tsx"
+  ],
+  "prismaticaVersion": "0.7.2"
+}
