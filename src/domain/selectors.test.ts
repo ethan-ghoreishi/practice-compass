@@ -187,6 +187,29 @@ describe('instrumentBalance · the denominator covers exactly the rows shown', (
     expect(rows.find((r) => r.instrumentId === 'tar')!.percent).toBe(40);
     // The retired instrument's minutes are in neither a row nor the denominator.
     expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'tar']);
+
+    // A right denominator is only half of it: rounded independently, three
+    // equal shares each become 33% and total 99. The split that cannot divide
+    // evenly is the one that has to sum to 100.
+    const three = [instrument('setar'), instrument('tar'), instrument('guitar')];
+    const thirds = instrumentBalance(
+      three,
+      [
+        pBlock(THURSDAY, 1, 'setar'),
+        pBlock(THURSDAY, 1, 'tar'),
+        pBlock(THURSDAY, 1, 'guitar'),
+        pBlock(THURSDAY, 40, 'santur'), // still omitted, still out of the denominator
+      ],
+      THURSDAY,
+      7,
+    );
+    expect(thirds.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(thirds.map((r) => r.percent).sort()).toEqual([33, 33, 34]);
+
+    // And a row with no practice is never handed a leftover point.
+    const lopsided = instrumentBalance(three, [pBlock(THURSDAY, 3, 'setar'), pBlock(THURSDAY, 3, 'tar')], THURSDAY, 7);
+    expect(lopsided.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(lopsided.find((r) => r.instrumentId === 'guitar')!.percent).toBe(0);
   });
 
   it('reports zero percent for every instrument when nothing was practised', () => {

@@ -103,8 +103,20 @@ export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']): 
   return max;
 }
 
-export async function buildFullBackup(now: Date = new Date()): Promise<string> {
-  const db = useStore.getState().db;
+/**
+ * A backup TOGETHER WITH the local revision it was taken at, captured in ONE
+ * statement before any await. `allBlobs()` below yields, and a block finished
+ * during that yield bumps `rev` without entering this snapshot — pairing an
+ * old copy of the data with a newer revision number. That pair is exactly what
+ * the replacement guard compares, so the mismatch would make `decideReplacement`
+ * (which is itself correct) answer "nothing was written since" about a database
+ * that had been written to, and install the incoming copy over recorded
+ * practice. The pure decision is already tested; the WIRING is protected
+ * structurally, the same way `installDatabase` protects its own — the revision
+ * cannot be read from anywhere but the statement that reads the database.
+ */
+export async function buildFullBackupWithRev(now: Date = new Date()): Promise<{ text: string; rev: number }> {
+  const { db, rev } = useStore.getState();
   const blobs = await allBlobs();
   const files: BackupFile[] = await Promise.all(
     blobs.map(async (b) => {
@@ -118,15 +130,23 @@ export async function buildFullBackup(now: Date = new Date()): Promise<string> {
       };
     }),
   );
-  return JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: SCHEMA_VERSION,
-    exportedAt: nowISO(now),
-    deviceName: getDeviceName() || undefined,
-    lastModified: lastModifiedOf(db) || undefined,
-    data: db,
-    files,
-  });
+  return {
+    text: JSON.stringify({
+      app: 'practice-compass',
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: nowISO(now),
+      deviceName: getDeviceName() || undefined,
+      lastModified: lastModifiedOf(db) || undefined,
+      data: db,
+      files,
+    }),
+    rev,
+  };
+}
+
+/** The backup text alone, for the callers that never install it back. */
+export async function buildFullBackup(now: Date = new Date()): Promise<string> {
+  return (await buildFullBackupWithRev(now)).text;
 }
 
 /** Peek at a backup's provenance without importing it. */

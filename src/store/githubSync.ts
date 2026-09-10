@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { decideReplacement, hashState, shortHash } from '../domain';
-import { buildFullBackup, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
+import { buildFullBackup, buildFullBackupWithRev, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
 import { loadPreSyncArchive, loadPreSyncArchiveMeta, savePreSyncArchive, type PreSyncArchiveMeta } from './idb';
 import { makeGitHubRemote } from './gitRemote';
 import {
@@ -158,14 +158,19 @@ interface BackupShape {
  * for the presence guard to see. Module scope is safe for the same reason
  * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
  * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
+ *
+ * It comes back FROM the snapshot rather than being read here: reading the
+ * store after awaiting the backup would pair the captured database with a
+ * revision bumped while its attachment blobs were still being read, and that
+ * pair is the whole guard.
  */
 let syncBaselineRev: number | null = null;
 
 async function buildLocalSnapshot(): Promise<LocalSnapshot> {
-  const backup = JSON.parse(await buildFullBackup()) as BackupShape;
+  const { text, rev } = await buildFullBackupWithRev();
+  const backup = JSON.parse(text) as BackupShape;
   const files = backup.files;
   backup.files = [];
-  const rev = useStore.getState().rev;
   syncBaselineRev = rev;
   return {
     stateText: JSON.stringify(backup),
@@ -226,6 +231,20 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
 
 let running = false;
 
+/**
+ * A sync request that arrives while one is already running is REMEMBERED, not
+ * dropped. `running` used to make such a request a silent no-op, which turned
+ * the ONE quiet-period retry a mid-sync revision bump schedules into nothing at
+ * all: a run lasting past those 30 seconds swallowed the retry and then deferred
+ * for that very revision, leaving sync waiting for a condition nothing was
+ * watching. Remembering the request closes it at the root, for every trigger
+ * (open, quiet period, back online, deferral cleared) rather than for the one
+ * counterexample. It cannot spin: the flag is cleared at the top of each
+ * iteration, so another lap needs a genuinely new request that arrived during
+ * the previous one.
+ */
+let rerunWanted = false;
+
 function conflictSideOfLocal(local: LocalSnapshot): ConflictSide {
   return { deviceName: local.deviceName || 'this device', rev: local.rev, hash: local.hash };
 }
@@ -282,29 +301,39 @@ export async function syncNow(): Promise<void> {
   }
   // Checked before the deferral so a sync already in flight is never relabelled
   // as "waiting" — it is genuinely running, and importFullBackup's own guard is
-  // what protects a block started mid-sync.
-  if (running) return;
-  // Defer QUIETLY while practice is unfinished — running or paused, fresh or
-  // stale, ordinary or routine. A pull would replace this device's database and
-  // silently destroy the in-flight block, which lives outside `db` and is
-  // therefore invisible to the hash comparison. The deferral is visible (the
-  // notice in Layout says what it is waiting on) and App.tsx retries it the
-  // moment the blocking session clears — whether it was finished or discarded.
-  const { active, activeRoutine } = useStore.getState();
-  const decision = decideReplacement({
-    intent: 'automatic',
-    session: { active, activeRoutine },
-    labels: unfinishedPracticeLabels(),
-  });
-  if (decision.outcome !== 'proceed') {
-    setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
+  // what protects a block started mid-sync. The request is kept, not discarded.
+  if (running) {
+    rerunWanted = true;
     return;
   }
   running = true;
-  pendingDeferral = null;
-  setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
   try {
-    await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
+    do {
+      // Cleared BEFORE the run, so only a request that arrives during this lap
+      // earns another one.
+      rerunWanted = false;
+      // Defer QUIETLY while practice is unfinished — running or paused, fresh or
+      // stale, ordinary or routine. A pull would replace this device's database
+      // and silently destroy the in-flight block, which lives outside `db` and is
+      // therefore invisible to the hash comparison. The deferral is visible (the
+      // notice in Layout says what it is waiting on) and App.tsx retries it the
+      // moment the blocking session clears — whether it was finished or
+      // discarded. Nothing is awaited between this check and the return, so no
+      // request can be lost on this path.
+      const { active, activeRoutine } = useStore.getState();
+      const decision = decideReplacement({
+        intent: 'automatic',
+        session: { active, activeRoutine },
+        labels: unfinishedPracticeLabels(),
+      });
+      if (decision.outcome !== 'proceed') {
+        setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
+        return;
+      }
+      pendingDeferral = null;
+      setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
+      await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
+    } while (rerunWanted);
   } finally {
     running = false;
   }
@@ -321,6 +350,12 @@ export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
     await applyOutcome(await resolveSyncConflict(makePorts(cfg, 'deliberate'), keep));
   } finally {
     running = false;
+  }
+  // A request that arrived while the owner was resolving the conflict is owed a
+  // run just as much as one that arrived during an automatic sync.
+  if (rerunWanted) {
+    rerunWanted = false;
+    await syncNow();
   }
 }
 

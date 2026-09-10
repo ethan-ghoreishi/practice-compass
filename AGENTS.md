@@ -144,9 +144,9 @@ PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, a
 are about practice that would be DESTROYED — neither is a heuristic about a duration. The
 second is the local REVISION: an inbound snapshot may only be installed over the database
 it was compared with. A block started AND FINISHED while a pull is in flight leaves no
-unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
-archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
-that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
 decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
 in the same call as the presence check (ONE call answering both, so no await can ever be
 slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
@@ -155,13 +155,32 @@ is a separate store and no effect or timer writes `db`, so a quiet sync run neve
 The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
 `githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
 is) so the guarded window covers the remote fetch and the archive too, not just
-`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
 a manual Import or an archive restore has no earlier decision point than its own call and
 defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
 PRESENCE is answered first so a message that can name the blocking session still does
-(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
-which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
-changed and offers the owner an explicit conflict with both copies preserved.
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
 
 A stale clock is labelled wherever the block appears on Today — the In-progress card AND
 the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and

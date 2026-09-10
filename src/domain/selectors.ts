@@ -140,19 +140,42 @@ export function instrumentBalance(
   const windowBlocks = blocksInWindow(blocks, now, days).filter((b) => shown.has(b.instrumentId));
   const totalMinutes = windowBlocks.reduce((s, b) => s + b.durationMinutes, 0);
 
-  const rows = instruments.map((inst) => {
+  const counted = instruments.map((inst) => {
     const own = windowBlocks.filter((b) => b.instrumentId === inst.id);
-    const minutes = own.reduce((s, b) => s + b.durationMinutes, 0);
     return {
       instrumentId: inst.id,
       instrumentName: inst.name,
-      minutes,
+      minutes: own.reduce((s, b) => s + b.durationMinutes, 0),
       blocks: own.length,
-      percent: totalMinutes > 0 ? Math.round((minutes / totalMinutes) * 100) : 0,
     };
   });
 
-  return rows.sort((a, b) => b.minutes - a.minutes);
+  // Rounding each row on its own does NOT keep the sum at 100 even once the
+  // denominator is right: three rows of one minute each round to 33% and total
+  // 99. Largest remainder floors every share and hands the leftover points to
+  // the largest fractions, so the emitted percentages always sum to exactly
+  // 100. A row with no minutes has no fraction, so it can never be handed one.
+  const percents = largestRemainder(counted.map((r) => r.minutes), totalMinutes);
+
+  return counted.map((r, i) => ({ ...r, percent: percents[i] })).sort((a, b) => b.minutes - a.minutes);
+}
+
+/** Split 100 across `values` so the parts are whole numbers summing to 100. */
+function largestRemainder(values: number[], total: number): number[] {
+  if (total <= 0) return values.map(() => 0);
+  const exact = values.map((v) => (v / total) * 100);
+  const out = exact.map((e) => Math.floor(e));
+  let left = 100 - out.reduce((a, b) => a + b, 0);
+  const byFraction = exact
+    .map((e, i) => ({ i, fraction: e - Math.floor(e) }))
+    .filter((x) => x.fraction > 0)
+    .sort((a, b) => b.fraction - a.fraction || a.i - b.i);
+  for (const { i } of byFraction) {
+    if (left <= 0) break;
+    out[i] += 1;
+    left -= 1;
+  }
+  return out;
 }
 
 export function totalMinutesInWindow(blocks: PracticeBlock[], now: Date, days: number): number {

@@ -151,11 +151,17 @@ export function decideReplacement(args: {
   }
 
   if (args.revision && args.revision.current !== args.revision.decidedFrom) {
-    // Nothing to finish or discard here — the practice is already recorded.
-    // The automatic case heals itself without any deferral retry: the very
-    // write that raised this bumped `rev`, which the quiet-period auto-sync
-    // watches, and the next run sees both sides changed and offers the owner
-    // an explicit choice with both copies preserved.
+    // Nothing to finish or discard here — the practice is already recorded, so
+    // there is no blocking session for the presence retry to watch clear. The
+    // automatic case needs no watcher of its own for a different reason: the
+    // very write that raised this bumped `rev`, which the quiet-period
+    // auto-sync watches. That trigger is only reliable because a sync request
+    // arriving mid-run is now REMEMBERED rather than dropped (`rerunWanted` in
+    // githubSync.ts) — a run outlasting the quiet period used to swallow the
+    // one retry it scheduled and then defer for that same revision, leaving
+    // sync waiting on a condition nothing was watching. The next run sees both
+    // sides changed and offers the owner an explicit choice with both copies
+    // preserved.
     if (args.intent === 'automatic') {
       return {
         outcome: 'defer',
