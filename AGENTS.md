@@ -122,9 +122,27 @@ it destroys every attachment blob, so a check placed after it would wipe them wh
 returning "nothing was changed". Every deliberate caller already surfaces
 `{ok:false,error}`, so no `Settings.tsx` change is needed.
 
+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
+yields to the event loop, so a tap that starts a block while that transaction is in flight
+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
+second check sits in the same synchronous tick as the install, with nothing awaited in
+between, so it is genuinely the last word. It refuses honestly: the blobs are already
+written by then, so the message says so and invites re-running the import rather than
+claiming nothing changed. Ordering is NOT reversed to fix this — `replaceAllBlobs` is one
+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+untouched, which installing the `db` first would give up.
+
+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+labelling only the first left the same block silent after switching instrument or choosing
+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
+against, and `segmentElapsed` already clamps each segment to its authored duration.
+
 The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
-(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today's In-progress card
-labels a stale clock, and the resolution is the owner's — Finish, correct the minutes, or
+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
 Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
 in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
 counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
@@ -166,6 +184,15 @@ never attested to. Totals stay NEUTRAL COUNTS — no goal, streak, score, bar th
 colour that judges. Relatedly, `instrumentBalance` takes its denominator from only the
 blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
 a caller passes active instruments with all blocks (Today does).
+
+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
+not just the active ones, because its "All instruments" row counts every block: filtering
+to active instruments left a retired instrument's history with no row while its minutes
+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
+"one row per supplied instrument" contract is unchanged.
 
 ## Hands-free practice: the screen stays awake, and the app announces the end
 

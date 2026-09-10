@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   currentStage,
@@ -22,7 +22,7 @@ import {
   type PracticeItem,
   type Recommendation,
 } from '../domain';
-import { sessionElapsedSeconds, useStore } from '../store/useStore';
+import { sessionElapsedSeconds, useStore, type ActiveSession } from '../store/useStore';
 import { getItem, instrumentName } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
 import { EmptyState, StatusBadge } from '../components/ui';
@@ -52,7 +52,18 @@ export default function Today() {
       : (instruments.find((i) => i.id === sessionInstrumentId) ?? instruments[0] ?? null);
   const overview = sessionInstrumentId === 'all';
 
-  const now = useMemo(() => new Date(), []);
+  // A LIVE clock, not one frozen at mount. Today is a screen that stays open:
+  // with a fixed `now`, Sunday's blocks kept counting as "today" and "this
+  // week" after midnight, and a running block that crossed the stale threshold
+  // never gained its label. A minute is fine granularity for both a calendar
+  // rollover and a three-hour floor, and re-deriving the recommendations that
+  // often costs nothing at this data size (it also correctly un-hides "Not
+  // now" items once the date rolls over).
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="stack-lg">
@@ -84,15 +95,7 @@ export default function Today() {
             <div className="title-md" dir="auto">
               {getItem(db, active.itemId)?.title ?? 'Practice block'}
             </div>
-            {/* Staleness earns its keep here WITHOUT being given authority: a
-                clock forgotten overnight is what holds sync, so it is labelled
-                so it can be resolved. It is never a reason to discard it — the
-                owner finishes it, corrects the minutes, or discards it. */}
-            {isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes) && (
-              <div className="tiny faint">
-                Running far past its target — finish it, correct the minutes, or discard it.
-              </div>
-            )}
+            <StaleNote active={active} now={now} />
           </div>
           <span className="btn btn-primary btn-sm">
             <PlayIcon /> Resume
@@ -100,7 +103,7 @@ export default function Today() {
         </Link>
       )}
 
-      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} />
+      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} now={now} />
 
       {overview || !selected ? (
         <OverviewView now={now} />
@@ -121,13 +124,42 @@ export default function Today() {
 // elsewhere" row (never silently hidden — that would invite overwriting it)
 // rather than taking over that instrument's own Plan/Routines doorway.
 
-function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: string | null }) {
+/**
+ * Staleness earns its keep WITHOUT being given authority: a clock forgotten
+ * overnight is what holds sync, so it is labelled wherever that block is shown
+ * so it can be resolved. It is never a reason to discard it — the owner
+ * finishes it, corrects the minutes, or discards it.
+ *
+ * It renders in BOTH places the ordinary block can appear, and those two are
+ * exhaustive: the In-progress card when the block belongs to the instrument
+ * Today is scoped to, and the "still running elsewhere" row when it does not
+ * (which includes Overview, where nothing is selected). Labelling only the
+ * first left the same stale block silent after switching instrument — and with
+ * no GitHub sync configured there is no deferral notice to say it either.
+ *
+ * A stale ROUTINE deliberately carries no such note: a run has no single
+ * target to judge an elapsed figure against, `segmentElapsed` already clamps
+ * each segment to its authored duration so a routine cannot fabricate minutes,
+ * and routines.ts is not this lane's to change.
+ */
+function StaleNote({ active, now }: { active: ActiveSession; now: Date }) {
+  if (!isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes)) return null;
+  return <div className="tiny faint">Running far past its target — finish it, correct the minutes, or discard it.</div>;
+}
+
+function ElsewhereSessions({
+  selectedInstrumentId,
+  now,
+}: {
+  selectedInstrumentId: string | null;
+  now: Date;
+}) {
   const db = useStore((s) => s.db);
   const active = useStore((s) => s.active);
   const activePlan = useStore((s) => s.activePlan);
   const activeRoutine = useStore((s) => s.activeRoutine);
 
-  const rows: { key: string; label: string; detail: string; to: string }[] = [];
+  const rows: { key: string; label: string; detail: string; to: string; note?: ReactNode }[] = [];
 
   if (active && active.instrumentId !== selectedInstrumentId) {
     rows.push({
@@ -135,6 +167,7 @@ function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: str
       label: getItem(db, active.itemId)?.title ?? 'Practice block',
       detail: `${instrumentName(db, active.instrumentId)} · in progress`,
       to: '/active',
+      note: <StaleNote active={active} now={now} />,
     });
   }
   if (activePlan && activePlan.instrumentId !== selectedInstrumentId) {
@@ -171,6 +204,7 @@ function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: str
             <div className="small truncate" dir="auto">
               {r.label}
             </div>
+            {r.note}
           </div>
           <span className="tiny faint" style={{ flex: 'none' }}>
             Resume ▸

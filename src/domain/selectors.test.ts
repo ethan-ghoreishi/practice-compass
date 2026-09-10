@@ -147,6 +147,25 @@ describe('practiceTotals · calendar days, not rolling windows', () => {
       allTime: { minutes: 45, blocks: 1 },
     });
   });
+
+  // Insights shows an overall "All instruments" row over EVERY block, so the
+  // per-instrument rows below it have to account for every one of those
+  // minutes. Passing only the ACTIVE instruments left a retired instrument's
+  // history with no row at all while its minutes still sat in the total — the
+  // rows silently summed to less than the figure printed above them.
+  it("gives a retired instrument its own row, so the rows account for every minute in the overall total", () => {
+    const retired = { ...instrument('guitar'), active: false };
+    const blocks = [
+      pBlock(THURSDAY, 20, 'setar'),
+      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // practised before it was retired
+    ];
+    const rows = practiceTotalsByInstrument([instrument('setar'), retired], blocks, THURSDAY);
+
+    expect(rows.map((r) => r.instrumentId)).toContain('guitar');
+    expect(rows.find((r) => r.instrumentId === 'guitar')?.allTime).toEqual({ minutes: 45, blocks: 1 });
+    const summed = rows.reduce((n, r) => n + r.allTime.minutes, 0);
+    expect(summed).toBe(practiceTotals(blocks, THURSDAY).allTime.minutes);
+  });
 });
 
 // --- A10: the one shipped derived figure that was arithmetically wrong --------

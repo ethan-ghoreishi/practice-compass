@@ -156,6 +156,20 @@ export function unfinishedPracticeLabels(): { itemTitle?: string; routineName?: 
 export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
 
 /**
+ * Is a whole-database replacement refused right now? Read fresh each time it is
+ * asked, because the answer can change mid-import.
+ */
+function replacementRefusal(): string | null {
+  const { active, activeRoutine } = useStore.getState();
+  const decision = decideReplacement({
+    intent: 'deliberate',
+    session: { active, activeRoutine },
+    labels: unfinishedPracticeLabels(),
+  });
+  return decision.outcome === 'proceed' ? null : decision.message;
+}
+
+/**
  * Import a full backup. Decodes every file BEFORE touching any existing data —
  * a single corrupt file aborts the whole import with nothing changed, rather
  * than clearing existing blobs and silently losing the ones that fail to
@@ -176,7 +190,9 @@ export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error
  * where an unfinished practice session is protected. The refusal is the FIRST
  * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
  * below destroys every attachment blob, so a check placed after it would
- * return "nothing was changed" having already wiped them.
+ * return "nothing was changed" having already wiped them. It is ALSO the last
+ * thing before `importDB`, because that first check does not span the whole
+ * call — see the comment at the install itself.
  */
 export async function importFullBackup(text: string): Promise<ImportOutcome> {
   // A replacement reaching this function is one the owner chose (Import,
@@ -185,13 +201,8 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
   // session — running or paused, fresh or stale, ordinary or routine — is
   // never destroyed by it, and never silently: every caller already surfaces
   // this error.
-  const { active, activeRoutine } = useStore.getState();
-  const refusal = decideReplacement({
-    intent: 'deliberate',
-    session: { active, activeRoutine },
-    labels: unfinishedPracticeLabels(),
-  });
-  if (refusal.outcome !== 'proceed') return { ok: false, error: refusal.message };
+  const refusal = replacementRefusal();
+  if (refusal) return { ok: false, error: refusal };
 
   let parsed: unknown;
   try {
@@ -227,6 +238,24 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
     if (isFullBackup) await replaceAllBlobs(rows);
   } catch (e) {
     return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
+  }
+
+  // Checked AGAIN, in the same synchronous tick as the install. The check at
+  // the top of this function cannot cover the whole call: `replaceAllBlobs`
+  // above yields to the event loop, so a tap that starts a block or a routine
+  // while that transaction is in flight would otherwise reach `importDB` —
+  // which nulls `active`/`activeRoutine` — with no guard between them. Nothing
+  // awaits between here and the install, so this one is genuinely the last
+  // word. The blobs are already written by this point, so the refusal says
+  // that plainly rather than claiming nothing changed; the message still names
+  // the session (ac-8), the practice is intact, and re-running the same import
+  // afterwards finishes the job.
+  const late = replacementRefusal();
+  if (late) {
+    return {
+      ok: false,
+      error: `${late}${isFullBackup ? ' (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)' : ''}`,
+    };
   }
 
   useStore.getState().importDB(parsed);

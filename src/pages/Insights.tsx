@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import {
   generateInsights,
@@ -20,7 +20,15 @@ const TONE_COLOR: Record<InsightTone, string> = {
 export default function Insights() {
   const db = useStore((s) => s.db);
   const [windowDays, setWindowDays] = useState(7);
-  const now = useMemo(() => new Date(), []);
+  // A LIVE clock: this page can sit open across midnight, and a `now` frozen at
+  // mount would keep reporting yesterday's blocks as today's — and, on a Monday
+  // rollover, last week's as this week's. One clock for the whole page, passed
+  // down, so the totals below can never drift from the insights above.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const insights = useMemo(() => generateInsights(db, now, windowDays), [db, now, windowDays]);
 
   return (
@@ -30,7 +38,7 @@ export default function Insights() {
         <p className="page-sub">Calm, neutral patterns from your practice — not a scoreboard.</p>
       </header>
 
-      <PractiseTotals />
+      <PractiseTotals now={now} />
 
       <div className="options">
         {[7, 30].map((d) => (
@@ -73,12 +81,17 @@ export default function Insights() {
  * blocks: no goal, no streak, no score, no bar that fills, no colour that
  * judges.
  */
-function PractiseTotals() {
+function PractiseTotals({ now }: { now: Date }) {
   const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
   const overall = useMemo(() => practiceTotals(db.blocks, now), [db.blocks, now]);
+  // EVERY instrument, not just the active ones. The "All instruments" row
+  // counts every block, so filtering the per-instrument rows down to the active
+  // ones left a retired instrument's history with no row of its own and the
+  // rows silently short of the total. Instruments are never deleted (only made
+  // inactive), so this covers every block; rows with nothing to report are
+  // dropped so the table stays a list of practice rather than of instruments.
   const rows = useMemo(
-    () => practiceTotalsByInstrument(db.instruments.filter((i) => i.active), db.blocks, now),
+    () => practiceTotalsByInstrument(db.instruments, db.blocks, now).filter((r) => r.allTime.blocks > 0),
     [db.instruments, db.blocks, now],
   );
   if (overall.allTime.blocks === 0) return null;

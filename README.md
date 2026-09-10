@@ -61,6 +61,8 @@ daily home is the **MacBook**, with the **iPhone** as companion.
 - **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
   Today, and today / this week / all time per instrument on Insights. Calendar figures,
   not rolling windows — late last night belongs to yesterday and the week starts Monday.
+  Every instrument you have ever practised gets a row, retired ones included, and both
+  screens keep their clock live so leaving a tab open across midnight rolls the day over.
   Neutral counts: no goal, no streak, no bar that fills.
 - **Closes the loop.** The next action you chose last time is shown when you practise
   that item again, before you start playing.
