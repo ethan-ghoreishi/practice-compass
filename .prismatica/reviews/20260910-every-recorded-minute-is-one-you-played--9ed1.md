@@ -1,24 +1,49 @@
 ---
 id: 20260910-every-recorded-minute-is-one-you-played--9ed1
 contractId: 20260910-every-recorded-minute-is-one-you-played--9ed1
-patchId: c9b539b3608ea666530dabee8f7f8a2a6c9dee83
+patchId: 527e64074c85a0a65e9380fa101353bf1f5786db
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: unfinished-session replacement atomicity
-    summary: The late guard checks only whether practice is unfinished at the
-      instant before importDB. A block started and finished during the
-      asynchronous blob replacement leaves no active session, so the incoming
-      database overwrites the newly recorded block.
-    counterexample: Begin an automatic pull with no active session. After the local
-      pre-sync archive is complete and while replaceAllBlobs is awaiting
-      IndexedDB, start and finish an ordinary block. The late replacementRefusal
-      sees active and activeRoutine both null, importDB installs the remote
-      database, and the completed block exists in neither the earlier archive
-      nor the incoming snapshot.
-createdAt: 2026-09-10T14:59:28.653Z
-sealedAt: 2026-09-10T15:05:57.641Z
+    summary: The sync baseline revision is captured after buildFullBackup returns,
+      although buildFullBackup captures the database before awaiting attachment
+      reads. A database mutation during that await can therefore be absent from
+      the snapshot yet included in the recorded baseline revision, allowing the
+      late guard to proceed and overwrite newly recorded practice.
+    counterexample: Begin a pull with no active session. buildFullBackup captures
+      the old db at backup.ts:107, then awaits allBlobs or blob encoding. Start
+      and finish a practice block during that await, bumping rev.
+      buildLocalSnapshot then records the new rev at githubSync.ts:168-169
+      beside the old db snapshot. If the pull path is selected and no later
+      mutation occurs, replacementRefusal sees current rev equal to
+      decidedFromRev and importDB installs the incoming database, destroying the
+      completed block.
+  - family: revision-deferral retry
+    summary: A revision raised during an automatic sync schedules one quiet-period
+      retry, but syncNow discards that retry when the original sync is still
+      running. If the original run later becomes deferred for that revision,
+      neither the revision nor unfinished-session effects schedule another
+      attempt, leaving sync permanently deferred.
+    counterexample: Start a pull, then start and finish a block so rev changes and
+      App.tsx schedules its single 30-second retry. Keep the original network or
+      blob operation running beyond 30 seconds. The timer calls syncNow, which
+      returns immediately because running is true at githubSync.ts:286. The
+      original run then reaches the late revision guard and sets phase to
+      deferred, but no unfinished session ever transitions from present to
+      absent and rev does not change again. No further sync is scheduled.
+  - family: instrument-balance percentage integrity
+    summary: instrumentBalance fixes the denominator but independently rounds every
+      row percentage. AC-13 and the documented invariant require emitted
+      percentages to sum to 100, which independent rounding does not guarantee;
+      the named test covers only a conveniently exact 60/40 split.
+    counterexample: Supply three displayed instruments with one minute each plus any
+      blocks for an omitted retired instrument. The filtered denominator is
+      three minutes, so each displayed row becomes Math.round(100/3), or 33
+      percent. The emitted percentages total 99 rather than 100.
+createdAt: 2026-09-10T15:39:21.092Z
+sealedAt: 2026-09-10T15:53:52.281Z
 ---
 
 # Review: Every recorded minute is one you played: honest close, sync-safe clocks, real practice totals
@@ -32,7 +57,7 @@ sealedAt: 2026-09-10T15:05:57.641Z
 - **Contract:** 20260910-every-recorded-minute-is-one-you-played--9ed1
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/16
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `c9b539b3608ea666530dabee8f7f8a2a6c9dee83`
+- **Diff patch-id:** `527e64074c85a0a65e9380fa101353bf1f5786db`
 
 ## The Delta this change was framed from
 
@@ -114,533 +139,508 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **unfinished-session replacement atomicity** — The inbound replacement guard is only checked before asynchronous attachment replacement, so a session started while that operation is in flight can still be cleared by importDB.
-  _counterexample:_ Begin an inbound full-backup replacement with files and no active session. While replaceAllBlobs is awaiting its IndexedDB transaction, start an ordinary block or routine. When the transaction resolves, useStore.getState().importDB(parsed) installs the database and nulls that newly-started session without another guard.
-- **stale-session visibility across Today scopes** — Today labels staleness only when the ordinary block belongs to the currently selected instrument; the same stale block is unlabelled after switching instrument or choosing Overview.
-  _counterexample:_ Leave a Setar block running until stale, switch Today to Tar or Overview, and use the app without GitHub sync configured. ElsewhereSessions shows only 'Setar · in progress', no stale attention text appears, and no deferred SyncNotice can exist.
-- **live calendar and staleness boundaries** — Today and Insights capture the current time once at mount, so calendar totals and stale-clock attention do not advance while either page remains mounted.
-  _counterexample:_ Open Today before midnight and leave it open into Monday. Its totals continue treating Sunday's blocks as today and this week because the memoised now never changes. Likewise, a running block that crosses the stale threshold while Today remains mounted does not gain the promised stale label. Insights independently freezes its totals clock at mount.
-- **full per-instrument practice totals** — Insights excludes inactive instruments even though its overall total includes their blocks, so it does not provide the documented full per-instrument history.
-  _counterexample:_ Record 40 minutes on Guitar, mark Guitar inactive, and keep 20 minutes on active Setar. Insights reports 60 minutes under All instruments but emits only the 20-minute Setar row; the Guitar history has no per-instrument row.
+- **unfinished-session replacement atomicity** — The late guard checks only whether practice is unfinished at the instant before importDB. A block started and finished during the asynchronous blob replacement leaves no active session, so the incoming database overwrites the newly recorded block.
+  _counterexample:_ Begin an automatic pull with no active session. After the local pre-sync archive is complete and while replaceAllBlobs is awaiting IndexedDB, start and finish an ordinary block. The late replacementRefusal sees active and activeRoutine both null, importDB installs the remote database, and the completed block exists in neither the earlier archive nor the incoming snapshot.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index d5272b8..48081f8 100644
+index 48081f8..c28f372 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -122,9 +122,34 @@ it destroys every attachment blob, so a check placed after it would wipe them wh
- returning "nothing was changed". Every deliberate caller already surfaces
- `{ok:false,error}`, so no `Settings.tsx` change is needed.
+@@ -140,6 +140,29 @@ this — `replaceAllBlobs` is one
+ IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+ untouched, which installing the `db` first would give up.
  
-+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
-+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
-+yields to the event loop, so a tap that starts a block while that transaction is in flight
-+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
-+second check sits in the same synchronous tick as the install, with nothing awaited in
-+between, so it is genuinely the last word. It refuses honestly: the blobs are already
-+written by then, so the message says so and invites re-running the import rather than
-+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
-+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
-+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
-+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
-+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
-+watches `deferred`, so an `error` here would stop sync until something else happened to
-+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
-+this — `replaceAllBlobs` is one
-+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
-+untouched, which installing the `db` first would give up.
++PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
++are about practice that would be DESTROYED — neither is a heuristic about a duration. The
++second is the local REVISION: an inbound snapshot may only be installed over the database
++it was compared with. A block started AND FINISHED while a pull is in flight leaves no
++unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
++archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
++that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
++decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
++in the same call as the presence check (ONE call answering both, so no await can ever be
++slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
++clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
++is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
++The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
++`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
++is) so the guarded window covers the remote fetch and the archive too, not just
++`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
++a manual Import or an archive restore has no earlier decision point than its own call and
++defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
++PRESENCE is answered first so a message that can name the blocking session still does
++(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
++which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
++changed and offers the owner an explicit conflict with both copies preserved.
 +
-+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
-+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
-+labelling only the first left the same block silent after switching instrument or choosing
-+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
-+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
-+against, and `segmentElapsed` already clamps each segment to its authored duration.
-+
- The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
--(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today's In-progress card
--labels a stale clock, and the resolution is the owner's — Finish, correct the minutes, or
-+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
-+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
- Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
- in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
- counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
-@@ -167,6 +192,15 @@ colour that judges. Relatedly, `instrumentBalance` takes its denominator from on
- blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
- a caller passes active instruments with all blocks (Today does).
- 
-+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
-+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
-+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
-+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
-+not just the active ones, because its "All instruments" row counts every block: filtering
-+to active instruments left a retired instrument's history with no row while its minutes
-+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
-+"one row per supplied instrument" contract is unchanged.
-+
- ## Hands-free practice: the screen stays awake, and the app announces the end
- 
- The practice loop assumes you put the device down and play. While a practice clock —
+ A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+ the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+ labelling only the first left the same block silent after switching instrument or choosing
 diff --git a/CLAUDE.md b/CLAUDE.md
-index a56809e..348ba10 100644
+index 348ba10..90b67ef 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -122,9 +122,34 @@ it destroys every attachment blob, so a check placed after it would wipe them wh
- returning "nothing was changed". Every deliberate caller already surfaces
- `{ok:false,error}`, so no `Settings.tsx` change is needed.
+@@ -140,6 +140,29 @@ this — `replaceAllBlobs` is one
+ IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+ untouched, which installing the `db` first would give up.
  
-+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
-+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
-+yields to the event loop, so a tap that starts a block while that transaction is in flight
-+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
-+second check sits in the same synchronous tick as the install, with nothing awaited in
-+between, so it is genuinely the last word. It refuses honestly: the blobs are already
-+written by then, so the message says so and invites re-running the import rather than
-+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
-+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
-+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
-+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
-+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
-+watches `deferred`, so an `error` here would stop sync until something else happened to
-+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
-+this — `replaceAllBlobs` is one
-+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
-+untouched, which installing the `db` first would give up.
++PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
++are about practice that would be DESTROYED — neither is a heuristic about a duration. The
++second is the local REVISION: an inbound snapshot may only be installed over the database
++it was compared with. A block started AND FINISHED while a pull is in flight leaves no
++unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
++archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
++that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
++decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
++in the same call as the presence check (ONE call answering both, so no await can ever be
++slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
++clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
++is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
++The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
++`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
++is) so the guarded window covers the remote fetch and the archive too, not just
++`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
++a manual Import or an archive restore has no earlier decision point than its own call and
++defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
++PRESENCE is answered first so a message that can name the blocking session still does
++(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
++which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
++changed and offers the owner an explicit conflict with both copies preserved.
 +
-+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
-+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
-+labelling only the first left the same block silent after switching instrument or choosing
-+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
-+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
-+against, and `segmentElapsed` already clamps each segment to its authored duration.
-+
- The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
--(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today's In-progress card
--labels a stale clock, and the resolution is the owner's — Finish, correct the minutes, or
-+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
-+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
- Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
- in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
- counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
-@@ -167,6 +192,15 @@ colour that judges. Relatedly, `instrumentBalance` takes its denominator from on
- blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
- a caller passes active instruments with all blocks (Today does).
- 
-+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
-+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
-+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
-+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
-+not just the active ones, because its "All instruments" row counts every block: filtering
-+to active instruments left a retired instrument's history with no row while its minutes
-+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
-+"one row per supplied instrument" contract is unchanged.
-+
- ## Hands-free practice: the screen stays awake, and the app announces the end
- 
- The practice loop assumes you put the device down and play. While a practice clock —
+ A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+ the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+ labelling only the first left the same block silent after switching instrument or choosing
 diff --git a/README.md b/README.md
-index 2ed2a5a..ef5dd0b 100644
+index ef5dd0b..e163178 100644
 --- a/README.md
 +++ b/README.md
-@@ -61,6 +61,8 @@ daily home is the **MacBook**, with the **iPhone** as companion.
+@@ -53,11 +53,14 @@ daily home is the **MacBook**, with the **iPhone** as companion.
+   through a GitHub repo you own: snapshots publish atomically (one git commit each),
+   changes are compared by content hash (not clocks), both copies are archived before
+   any conflict resolution, and everything is recoverable from the repo's history.
+-  **Unfinished practice is never destroyed by a replacement you did not aim at it** —
+-  running or paused, fresh or stale, ordinary or routine. Background sync defers quietly
+-  while a session is open (saying so on screen) and resumes on its own the moment you
+-  finish or discard it; a deliberate Import, Restore archive or Keep remote refuses out
+-  loud instead, naming the block that is in the way.
++  **Practice is never destroyed by a replacement you did not aim at it** — an open
++  session, running or paused, fresh or stale, ordinary or routine, and equally a block
++  you started and finished while the sync was still running. Background sync defers
++  quietly (saying so on screen) and resumes on its own — the moment you finish or discard
++  an open session, or on its next run if the practice is already recorded, where a
++  changed copy on both sides becomes an explicit choice rather than a silent overwrite. A
++  deliberate Import, Restore archive or Keep remote refuses out loud instead, naming the
++  block that is in the way.
  - **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
    Today, and today / this week / all time per instrument on Insights. Calendar figures,
    not rolling windows — late last night belongs to yesterday and the week starts Monday.
-+  Every instrument you have ever practised gets a row, retired ones included, and both
-+  screens keep their clock live so leaving a tab open across midnight rolls the day over.
-   Neutral counts: no goal, no streak, no bar that fills.
- - **Closes the loop.** The next action you chose last time is shown when you practise
-   that item again, before you start playing.
-diff --git a/src/domain/selectors.test.ts b/src/domain/selectors.test.ts
-index 731a153..593e96e 100644
---- a/src/domain/selectors.test.ts
-+++ b/src/domain/selectors.test.ts
-@@ -147,6 +147,25 @@ describe('practiceTotals · calendar days, not rolling windows', () => {
-       allTime: { minutes: 45, blocks: 1 },
-     });
-   });
-+
-+  // Insights shows an overall "All instruments" row over EVERY block, so the
-+  // per-instrument rows below it have to account for every one of those
-+  // minutes. Passing only the ACTIVE instruments left a retired instrument's
-+  // history with no row at all while its minutes still sat in the total — the
-+  // rows silently summed to less than the figure printed above them.
-+  it("gives a retired instrument its own row, so the rows account for every minute in the overall total", () => {
-+    const retired = { ...instrument('guitar'), active: false };
-+    const blocks = [
-+      pBlock(THURSDAY, 20, 'setar'),
-+      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // practised before it was retired
-+    ];
-+    const rows = practiceTotalsByInstrument([instrument('setar'), retired], blocks, THURSDAY);
-+
-+    expect(rows.map((r) => r.instrumentId)).toContain('guitar');
-+    expect(rows.find((r) => r.instrumentId === 'guitar')?.allTime).toEqual({ minutes: 45, blocks: 1 });
-+    const summed = rows.reduce((n, r) => n + r.allTime.minutes, 0);
-+    expect(summed).toBe(practiceTotals(blocks, THURSDAY).allTime.minutes);
-+  });
- });
- 
- // --- A10: the one shipped derived figure that was arithmetically wrong --------
-diff --git a/src/pages/Insights.tsx b/src/pages/Insights.tsx
-index d2a4272..5486c13 100644
---- a/src/pages/Insights.tsx
-+++ b/src/pages/Insights.tsx
-@@ -1,4 +1,4 @@
--import { useMemo, useState, type CSSProperties } from 'react';
-+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
- import { Link } from 'react-router-dom';
- import {
-   generateInsights,
-@@ -20,7 +20,15 @@ const TONE_COLOR: Record<InsightTone, string> = {
- export default function Insights() {
-   const db = useStore((s) => s.db);
-   const [windowDays, setWindowDays] = useState(7);
--  const now = useMemo(() => new Date(), []);
-+  // A LIVE clock: this page can sit open across midnight, and a `now` frozen at
-+  // mount would keep reporting yesterday's blocks as today's — and, on a Monday
-+  // rollover, last week's as this week's. One clock for the whole page, passed
-+  // down, so the totals below can never drift from the insights above.
-+  const [now, setNow] = useState(() => new Date());
-+  useEffect(() => {
-+    const id = setInterval(() => setNow(new Date()), 60_000);
-+    return () => clearInterval(id);
-+  }, []);
-   const insights = useMemo(() => generateInsights(db, now, windowDays), [db, now, windowDays]);
- 
-   return (
-@@ -30,7 +38,7 @@ export default function Insights() {
-         <p className="page-sub">Calm, neutral patterns from your practice — not a scoreboard.</p>
-       </header>
- 
--      <PractiseTotals />
-+      <PractiseTotals now={now} />
- 
-       <div className="options">
-         {[7, 30].map((d) => (
-@@ -73,12 +81,17 @@ export default function Insights() {
-  * blocks: no goal, no streak, no score, no bar that fills, no colour that
-  * judges.
-  */
--function PractiseTotals() {
-+function PractiseTotals({ now }: { now: Date }) {
-   const db = useStore((s) => s.db);
--  const now = useMemo(() => new Date(), []);
-   const overall = useMemo(() => practiceTotals(db.blocks, now), [db.blocks, now]);
-+  // EVERY instrument, not just the active ones. The "All instruments" row
-+  // counts every block, so filtering the per-instrument rows down to the active
-+  // ones left a retired instrument's history with no row of its own and the
-+  // rows silently short of the total. Instruments are never deleted (only made
-+  // inactive), so this covers every block; rows with nothing to report are
-+  // dropped so the table stays a list of practice rather than of instruments.
-   const rows = useMemo(
--    () => practiceTotalsByInstrument(db.instruments.filter((i) => i.active), db.blocks, now),
-+    () => practiceTotalsByInstrument(db.instruments, db.blocks, now).filter((r) => r.allTime.blocks > 0),
-     [db.instruments, db.blocks, now],
-   );
-   if (overall.allTime.blocks === 0) return null;
-diff --git a/src/pages/Today.tsx b/src/pages/Today.tsx
-index 54573f2..58045d0 100644
---- a/src/pages/Today.tsx
-+++ b/src/pages/Today.tsx
-@@ -1,4 +1,4 @@
--import { useMemo, useState } from 'react';
-+import { useEffect, useMemo, useState, type ReactNode } from 'react';
- import { Link, useNavigate } from 'react-router-dom';
- import {
-   currentStage,
-@@ -22,7 +22,7 @@ import {
-   type PracticeItem,
-   type Recommendation,
- } from '../domain';
--import { sessionElapsedSeconds, useStore } from '../store/useStore';
-+import { sessionElapsedSeconds, useStore, type ActiveSession } from '../store/useStore';
- import { getItem, instrumentName } from '../store/lookups';
- import { defaultStartInput } from '../store/sessionHelpers';
- import { EmptyState, StatusBadge } from '../components/ui';
-@@ -52,7 +52,18 @@ export default function Today() {
-       : (instruments.find((i) => i.id === sessionInstrumentId) ?? instruments[0] ?? null);
-   const overview = sessionInstrumentId === 'all';
- 
--  const now = useMemo(() => new Date(), []);
-+  // A LIVE clock, not one frozen at mount. Today is a screen that stays open:
-+  // with a fixed `now`, Sunday's blocks kept counting as "today" and "this
-+  // week" after midnight, and a running block that crossed the stale threshold
-+  // never gained its label. A minute is fine granularity for both a calendar
-+  // rollover and a three-hour floor, and re-deriving the recommendations that
-+  // often costs nothing at this data size (it also correctly un-hides "Not
-+  // now" items once the date rolls over).
-+  const [now, setNow] = useState(() => new Date());
-+  useEffect(() => {
-+    const id = setInterval(() => setNow(new Date()), 60_000);
-+    return () => clearInterval(id);
-+  }, []);
- 
-   return (
-     <div className="stack-lg">
-@@ -84,15 +95,7 @@ export default function Today() {
-             <div className="title-md" dir="auto">
-               {getItem(db, active.itemId)?.title ?? 'Practice block'}
-             </div>
--            {/* Staleness earns its keep here WITHOUT being given authority: a
--                clock forgotten overnight is what holds sync, so it is labelled
--                so it can be resolved. It is never a reason to discard it — the
--                owner finishes it, corrects the minutes, or discards it. */}
--            {isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes) && (
--              <div className="tiny faint">
--                Running far past its target — finish it, correct the minutes, or discard it.
--              </div>
--            )}
-+            <StaleNote active={active} now={now} />
-           </div>
-           <span className="btn btn-primary btn-sm">
-             <PlayIcon /> Resume
-@@ -100,7 +103,7 @@ export default function Today() {
-         </Link>
-       )}
- 
--      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} />
-+      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} now={now} />
- 
-       {overview || !selected ? (
-         <OverviewView now={now} />
-@@ -121,13 +124,42 @@ export default function Today() {
- // elsewhere" row (never silently hidden — that would invite overwriting it)
- // rather than taking over that instrument's own Plan/Routines doorway.
- 
--function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: string | null }) {
-+/**
-+ * Staleness earns its keep WITHOUT being given authority: a clock forgotten
-+ * overnight is what holds sync, so it is labelled wherever that block is shown
-+ * so it can be resolved. It is never a reason to discard it — the owner
-+ * finishes it, corrects the minutes, or discards it.
-+ *
-+ * It renders in BOTH places the ordinary block can appear, and those two are
-+ * exhaustive: the In-progress card when the block belongs to the instrument
-+ * Today is scoped to, and the "still running elsewhere" row when it does not
-+ * (which includes Overview, where nothing is selected). Labelling only the
-+ * first left the same stale block silent after switching instrument — and with
-+ * no GitHub sync configured there is no deferral notice to say it either.
-+ *
-+ * A stale ROUTINE deliberately carries no such note: a run has no single
-+ * target to judge an elapsed figure against, `segmentElapsed` already clamps
-+ * each segment to its authored duration so a routine cannot fabricate minutes,
-+ * and routines.ts is not this lane's to change.
-+ */
-+function StaleNote({ active, now }: { active: ActiveSession; now: Date }) {
-+  if (!isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes)) return null;
-+  return <div className="tiny faint">Running far past its target — finish it, correct the minutes, or discard it.</div>;
-+}
-+
-+function ElsewhereSessions({
-+  selectedInstrumentId,
-+  now,
-+}: {
-+  selectedInstrumentId: string | null;
-+  now: Date;
-+}) {
-   const db = useStore((s) => s.db);
-   const active = useStore((s) => s.active);
-   const activePlan = useStore((s) => s.activePlan);
-   const activeRoutine = useStore((s) => s.activeRoutine);
- 
--  const rows: { key: string; label: string; detail: string; to: string }[] = [];
-+  const rows: { key: string; label: string; detail: string; to: string; note?: ReactNode }[] = [];
- 
-   if (active && active.instrumentId !== selectedInstrumentId) {
-     rows.push({
-@@ -135,6 +167,7 @@ function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: str
-       label: getItem(db, active.itemId)?.title ?? 'Practice block',
-       detail: `${instrumentName(db, active.instrumentId)} · in progress`,
-       to: '/active',
-+      note: <StaleNote active={active} now={now} />,
-     });
-   }
-   if (activePlan && activePlan.instrumentId !== selectedInstrumentId) {
-@@ -171,6 +204,7 @@ function ElsewhereSessions({ selectedInstrumentId }: { selectedInstrumentId: str
-             <div className="small truncate" dir="auto">
-               {r.label}
-             </div>
-+            {r.note}
-           </div>
-           <span className="tiny faint" style={{ flex: 'none' }}>
-             Resume ▸
-diff --git a/src/store/backup.ts b/src/store/backup.ts
-index baafab0..3a77ba2 100644
---- a/src/store/backup.ts
-+++ b/src/store/backup.ts
-@@ -153,7 +153,38 @@ export function unfinishedPracticeLabels(): { itemTitle?: string; routineName?:
-   };
- }
- 
--export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
-+export type ImportOutcome =
-+  | { ok: true; fileCount: number }
-+  | {
-+      ok: false;
-+      error: string;
-+      /**
-+       * True when the refusal was a DEFERRAL, not a failure — an automatic sync
-+       * that will resume by itself. The caller must not dress this as an error:
-+       * `error` phase is not what App.tsx's retry watches, so reporting one
-+       * would turn a session that resolves in a minute into a silent outage.
-+       */
-+      deferred?: boolean;
-+    };
-+
-+type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
-+
-+/**
-+ * Is a whole-database replacement refused right now? Read fresh each time it is
-+ * asked, because the answer can change mid-import. The intent is the caller's:
-+ * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
-+ * and refuses out loud.
-+ */
-+function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal | null {
-+  const { active, activeRoutine } = useStore.getState();
-+  const decision = decideReplacement({
-+    intent,
-+    session: { active, activeRoutine },
-+    labels: unfinishedPracticeLabels(),
-+  });
-+  if (decision.outcome === 'proceed') return null;
-+  return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
-+}
+diff --git a/src/components/Layout.tsx b/src/components/Layout.tsx
+index a9ddbeb..4e5dcf9 100644
+--- a/src/components/Layout.tsx
++++ b/src/components/Layout.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useRef } from 'react';
+ import { NavLink, Outlet, useLocation } from 'react-router-dom';
++import { hasUnfinishedPractice } from '../domain';
+ import { useStore } from '../store/useStore';
+ import { useSyncStatus } from '../store/githubSync';
+ import { useViewportGuard } from './useViewportGuard';
+@@ -150,24 +151,32 @@ function UpdateBanner() {
  
  /**
-  * Import a full backup. Decodes every file BEFORE touching any existing data —
-@@ -176,22 +207,22 @@ export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error
-  * where an unfinished practice session is protected. The refusal is the FIRST
-  * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
-  * below destroys every attachment blob, so a check placed after it would
-- * return "nothing was changed" having already wiped them.
-+ * return "nothing was changed" having already wiped them. It is ALSO the last
-+ * thing before `importDB`, because that first check does not span the whole
-+ * call — see the comment at the install itself.
+  * Calm, non-blocking notice when sync needs a decision, hit an error, or is
+- * WAITING on unfinished practice. The deferral must be visible here and not
+- * only in Settings: an unbounded, invisible sync outage is exactly what a
+- * forgotten block used to cause. It says what it is waiting for and points at
+- * the practice screen, where Finish, correcting the minutes, and Discard are
+- * all one tap away — the app never resolves it by discarding the practice.
++ * WAITING. The deferral must be visible here and not only in Settings: an
++ * unbounded, invisible sync outage is exactly what a forgotten block used to
++ * cause. It says what it is waiting for, and Resume points at the practice
++ * screen where Finish, correcting the minutes, and Discard are all one tap
++ * away — the app never resolves it by discarding the practice.
++ *
++ * Resume is keyed on the SESSION EXISTING, not on the phase. A deferral raised
++ * because practice was RECORDED mid-sync has no session to resume — offering a
++ * link to /active there would be a dead control that bounces straight back,
++ * and that deferral needs no tap at all: it clears itself on the next sync.
   */
--export async function importFullBackup(text: string): Promise<ImportOutcome> {
-+export async function importFullBackup(
-+  text: string,
-+  intent: 'automatic' | 'deliberate' = 'deliberate',
-+): Promise<ImportOutcome> {
+ function SyncNotice({ pathname }: { pathname: string }) {
+   const phase = useSyncStatus((s) => s.phase);
+   const message = useSyncStatus((s) => s.message);
++  const unfinished = useStore((s) => hasUnfinishedPractice(s));
+   if (pathname === '/settings') return null; // Settings shows the full panel.
+   if (phase !== 'conflict' && phase !== 'error' && phase !== 'deferred') return null;
+   if (phase === 'deferred') {
+     return (
+       <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
+         <span className="dim">Sync is waiting: {message}</span>
+-        <NavLink to="/active" className="link" style={{ flex: 'none' }}>
+-          Resume
+-        </NavLink>
++        {unfinished && (
++          <NavLink to="/active" className="link" style={{ flex: 'none' }}>
++            Resume
++          </NavLink>
++        )}
+       </div>
+     );
+   }
+diff --git a/src/domain/practiceSession.test.ts b/src/domain/practiceSession.test.ts
+index 8b73604..bdfbb9e 100644
+--- a/src/domain/practiceSession.test.ts
++++ b/src/domain/practiceSession.test.ts
+@@ -47,11 +47,17 @@ const NOTHING = { active: null, activeRoutine: null };
+ // comparison, a remote change resolves to a straight pull, and importDB nulls
+ // `active`. Committed data is archived first — the in-flight block is not.
+ //
+-// The invariant is UNCONDITIONAL. Only PRESENCE decides: running or paused,
+-// fresh or stale, ordinary or routine. An earlier draft let a stale clock stop
+-// deferring, which would have promoted a heuristic about a DURATION into an
+-// authority to destroy practice — a session paused at three genuine hours
+-// crosses any sensible threshold.
++// The invariant is UNCONDITIONAL. PRESENCE decides regardless of running or
++// paused, fresh or stale, ordinary or routine. An earlier draft let a stale
++// clock stop deferring, which would have promoted a heuristic about a DURATION
++// into an authority to destroy practice — a session paused at three genuine
++// hours crosses any sensible threshold.
++//
++// Presence is not the whole guard, because it cannot see practice that was
++// started AND FINISHED while the replacement was in flight: that leaves no
++// session behind, only a recorded block the incoming snapshot would overwrite.
++// The second blocking reason is the local REVISION moving — a counter, not a
++// clock and not a heuristic.
+ 
+ describe('A1 · a replacement never destroys an unfinished practice session', () => {
+   it('refuses a replacement for a running, a paused, and a stale unfinished session alike', () => {
+@@ -111,6 +117,41 @@ describe('A1 · a replacement never destroys an unfinished practice session', ()
+     expect(deliberate.outcome).not.toBe(auto.outcome);
+   });
+ 
++  it('refuses a replacement when practice was recorded on this device after the replacement was decided', () => {
++    // The window presence CANNOT see. A pull is decided against local revision
++    // 7; while the remote copy downloads, the pre-sync archive is written and
++    // `replaceAllBlobs` runs, a block is started AND FINISHED. There is no
++    // unfinished session left to find, and the recorded block is in neither
++    // the archive nor the incoming snapshot — installing it would destroy a
++    // minute that was genuinely played, with nothing holding a copy.
++    const moved = { intent: 'automatic' as const, session: NOTHING, revision: { decidedFrom: 7, current: 8 } };
++    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
++    expect(decideReplacement(moved).outcome).toBe('defer');
++    // Waiting, not broken — and NOT on something to finish or discard, because
++    // the practice is already recorded. The `rev` bump that raised this is
++    // what the quiet-period auto-sync watches, so the next run offers both
++    // copies as an explicit conflict.
++    expect(decideReplacement(moved).message).not.toContain('discard');
++    expect(decideReplacement({ ...moved, intent: 'deliberate' }).outcome).toBe('refuse');
++
++    // Discriminating: an UNMOVED revision is not a blocker. Without this the
++    // guard could be satisfied by refusing every replacement forever, which
++    // would be a permanent silent sync outage — worse than the bug.
++    expect(decideReplacement({ ...moved, revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
++    expect(decideReplacement({ ...moved, intent: 'deliberate', revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
++
++    // Both reasons at once: PRESENCE answers first, so the message can still
++    // name the session that is in the way (ac-8).
++    const both = decideReplacement({
++      intent: 'deliberate',
++      session: { active: liveBlock(), activeRoutine: null },
++      labels: { itemTitle: 'درآمد ماهور' },
++      revision: { decidedFrom: 7, current: 8 },
++    });
++    expect(both.outcome).toBe('refuse');
++    expect(both.message).toContain('درآمد ماهور');
++  });
++
+   it('names the blocking session neutrally rather than fabricating a title', () => {
+     const noTitle = decideReplacement({ intent: 'deliberate', session: { active: liveBlock(), activeRoutine: null } });
+     expect(noTitle.message).toContain('a practice block');
+diff --git a/src/domain/practiceSession.ts b/src/domain/practiceSession.ts
+index 9df6ceb..67e9a0e 100644
+--- a/src/domain/practiceSession.ts
++++ b/src/domain/practiceSession.ts
+@@ -11,10 +11,13 @@ import type { ID, PracticeDB } from './types';
+ // TWO INDEPENDENT QUESTIONS live here, and conflating them is the bug this
+ // module exists to prevent:
+ //
+-//   PRESENCE     — does an unfinished session exist? That, and ONLY that,
+-//                  decides whether a whole-database replacement may proceed.
+-//                  Running or paused, fresh or stale, ordinary or routine: a
+-//                  session that exists is protected.
++//   PRESENCE     — does an unfinished session exist? Running or paused, fresh
++//                  or stale, ordinary or routine: a session that exists is
++//                  protected. This, together with whether the local database
++//                  has been WRITTEN TO since a replacement was decided (a
++//                  revision counter, never a clock and never a heuristic), and
++//                  NOTHING else, decides whether a whole-database replacement
++//                  may proceed.
+ //   PLAUSIBILITY — does this session's elapsed figure still look like time
+ //                  someone actually played? That, and ONLY that, decides what
+ //                  minutes are proposed at close and whether the session is
+@@ -97,36 +100,75 @@ export interface ReplacementDecision {
+ }
+ 
+ /**
+- * THE CORE SAFETY DECISION. An unfinished practice session — ordinary or
+- * routine, RUNNING OR PAUSED, FRESH OR STALE — is never destroyed by a
+- * replacement the owner did not explicitly aim at it.
++ * THE CORE SAFETY DECISION. A replacement never destroys practice the owner
++ * did not aim it at. TWO INDEPENDENT REASONS block one, and both are about
++ * practice that would be DESTROYED — neither is a heuristic about a duration:
++ *
++ *   PRESENCE — an unfinished session exists (ordinary or routine, RUNNING OR
++ *              PAUSED, FRESH OR STALE). The elapsed figures on the inputs are
++ *              ignored by construction: staleness is not, and can never
++ *              become, permission to destroy practice.
++ *   REVISION — the local database has been WRITTEN TO since this replacement
++ *              was decided against it. An inbound snapshot is only safe to
++ *              install over the database it was compared with; a block
++ *              started AND FINISHED while the pull was in flight leaves no
++ *              unfinished session behind, so presence cannot see it, and it
++ *              exists in neither the pre-sync archive nor the incoming
++ *              snapshot. `rev` is a monotonic COUNTER bumped on every db
++ *              mutation, never a clock — no timestamp enters this decision.
++ *
++ * PRESENCE is answered first, so a message that can name the blocking session
++ * always does.
+  *
+  * Automatic (background sync) and deliberate (Import, Restore archive, Keep
+  * remote) are answered differently because silence would be wrong in opposite
+  * directions: a background merge waiting its turn is not a failure and an
+  * alert would be noise, while a deliberate choice that quietly did nothing
+  * looks like a broken button.
+- *
+- * Only PRESENCE is read. The elapsed figures on the inputs are ignored by
+- * construction — staleness is not, and can never become, permission to
+- * destroy practice.
+  */
+ export function decideReplacement(args: {
+   intent: 'automatic' | 'deliberate';
+   session: EphemeralPractice;
+   labels?: { itemTitle?: string; routineName?: string };
++  /**
++   * The local revision counter as it stood when this replacement was decided,
++   * and as it stands now. Unequal means practice (or any other edit) was
++   * committed on this device in between. Optional: a caller that cannot move
++   * between the decision and the install has nothing to compare.
++   */
++  revision?: { decidedFrom: number; current: number };
+ }): ReplacementDecision {
+   const blocking = unfinishedPractice(args.session, args.labels);
+-  if (!blocking) return { outcome: 'proceed', message: '' };
++  if (blocking) {
++    const what = blocking.kind === 'block' ? `an unfinished practice block (${blocking.label})` : `an unfinished routine (${blocking.label})`;
++    if (args.intent === 'automatic') {
++      return { outcome: 'defer', message: `Waiting on ${what} — sync will finish on its own once you finish or discard it.` };
++    }
++    return {
++      outcome: 'refuse',
++      message: `Not replaced: ${what} is still open, and replacing your data would destroy it. Finish or discard it first — Today's In-progress card leads straight there.`,
++    };
++  }
+ 
+-  const what = blocking.kind === 'block' ? `an unfinished practice block (${blocking.label})` : `an unfinished routine (${blocking.label})`;
+-  if (args.intent === 'automatic') {
+-    return { outcome: 'defer', message: `Waiting on ${what} — sync will finish on its own once you finish or discard it.` };
++  if (args.revision && args.revision.current !== args.revision.decidedFrom) {
++    // Nothing to finish or discard here — the practice is already recorded.
++    // The automatic case heals itself without any deferral retry: the very
++    // write that raised this bumped `rev`, which the quiet-period auto-sync
++    // watches, and the next run sees both sides changed and offers the owner
++    // an explicit choice with both copies preserved.
++    if (args.intent === 'automatic') {
++      return {
++        outcome: 'defer',
++        message: 'Waiting: practice was recorded on this device while the sync was running. Sync will run again shortly and offer you both copies.',
++      };
++    }
++    return {
++      outcome: 'refuse',
++      message: 'Not replaced: practice was recorded on this device after this replacement started, and replacing your data now would destroy it. Nothing is lost — try again.',
++    };
+   }
+-  return {
+-    outcome: 'refuse',
+-    message: `Not replaced: ${what} is still open, and replacing your data would destroy it. Finish or discard it first — Today's In-progress card leads straight there.`,
+-  };
++
++  return { outcome: 'proceed', message: '' };
+ }
+ 
+ /**
+diff --git a/src/store/backup.ts b/src/store/backup.ts
+index 3a77ba2..e445a2a 100644
+--- a/src/store/backup.ts
++++ b/src/store/backup.ts
+@@ -171,16 +171,20 @@ type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
+ 
+ /**
+  * Is a whole-database replacement refused right now? Read fresh each time it is
+- * asked, because the answer can change mid-import. The intent is the caller's:
+- * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
+- * and refuses out loud.
++ * asked, because the answer can change mid-import — BOTH reasons can arise
++ * after the replacement was decided. The intent is the caller's: a sync pull is
++ * AUTOMATIC and defers quietly, everything else is DELIBERATE and refuses out
++ * loud. `decidedFromRev` is the local revision the replacement was decided
++ * against; a different one now means practice was committed in between and
++ * installing the snapshot would destroy it.
+  */
+-function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal | null {
+-  const { active, activeRoutine } = useStore.getState();
++function replacementRefusal(intent: 'automatic' | 'deliberate', decidedFromRev: number): ImportRefusal | null {
++  const { active, activeRoutine, rev } = useStore.getState();
+   const decision = decideReplacement({
+     intent,
+     session: { active, activeRoutine },
+     labels: unfinishedPracticeLabels(),
++    revision: { decidedFrom: decidedFromRev, current: rev },
+   });
+   if (decision.outcome === 'proceed') return null;
+   return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
+@@ -204,24 +208,33 @@ function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal |
+  *
+  * This is the chokepoint for every INBOUND replacement — manual import, a sync
+  * pull, conflict-keep-remote, and archive restore all arrive here — so it is
+- * where an unfinished practice session is protected. The refusal is the FIRST
+- * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
+- * below destroys every attachment blob, so a check placed after it would
+- * return "nothing was changed" having already wiped them. It is ALSO the last
+- * thing before `importDB`, because that first check does not span the whole
+- * call — see the comment at the install itself.
++ * where local practice is protected. The refusal is the FIRST thing this
++ * function does, before the JSON is even parsed: `replaceAllBlobs` below
++ * destroys every attachment blob, so a check placed after it would return
++ * "nothing was changed" having already wiped them. It is ALSO the last thing
++ * before `importDB`, because that first check does not span the whole call —
++ * see the comment at the install itself.
++ *
++ * `decidedFromRev` is the local revision this replacement was decided against.
++ * A sync pull passes the revision of the snapshot it actually compared, so the
++ * guarded window covers the network fetch and the pre-sync archive too — a
++ * block finished in there is in neither the archive nor the incoming snapshot.
++ * A deliberate caller has no earlier decision point than this call, so it
++ * defaults to the revision on entry.
+  */
+ export async function importFullBackup(
+   text: string,
+   intent: 'automatic' | 'deliberate' = 'deliberate',
++  decidedFromRev: number = useStore.getState().rev,
+ ): Promise<ImportOutcome> {
    // A replacement reaching this function is one the owner chose (Import,
    // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
    // own deferral because practice started mid-sync. Either way an unfinished
    // session — running or paused, fresh or stale, ordinary or routine — is
-   // never destroyed by it, and never silently: every caller already surfaces
+-  // never destroyed by it, and never silently: every caller already surfaces
++  // never destroyed by it, nor is a block that was started AND FINISHED since
++  // the pull was decided, and never silently: every caller already surfaces
    // this error.
--  const { active, activeRoutine } = useStore.getState();
--  const refusal = decideReplacement({
--    intent: 'deliberate',
--    session: { active, activeRoutine },
--    labels: unfinishedPracticeLabels(),
--  });
--  if (refusal.outcome !== 'proceed') return { ok: false, error: refusal.message };
-+  const refusal = replacementRefusal(intent);
-+  if (refusal) return refusal;
+-  const refusal = replacementRefusal(intent);
++  const refusal = replacementRefusal(intent, decidedFromRev);
+   if (refusal) return refusal;
  
    let parsed: unknown;
-   try {
-@@ -229,6 +260,22 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
+@@ -260,20 +273,26 @@ export async function importFullBackup(
      return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
    }
  
-+  // Checked AGAIN, in the same synchronous tick as the install. The check at
-+  // the top of this function cannot cover the whole call: `replaceAllBlobs`
-+  // above yields to the event loop, so a tap that starts a block or a routine
-+  // while that transaction is in flight would otherwise reach `importDB` —
-+  // which nulls `active`/`activeRoutine` — with no guard between them. Nothing
-+  // awaits between here and the install, so this one is genuinely the last
-+  // word. The blobs are already written by this point, so the refusal says
-+  // that plainly rather than claiming nothing changed; the message still names
-+  // the session (ac-8), the practice is intact, and re-running the same import
-+  // afterwards finishes the job.
-+  const late = replacementRefusal(intent);
-+  if (late) {
-+    if (!isFullBackup) return late;
-+    return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };
-+  }
-+
+-  // Checked AGAIN, in the same synchronous tick as the install. The check at
+-  // the top of this function cannot cover the whole call: `replaceAllBlobs`
+-  // above yields to the event loop, so a tap that starts a block or a routine
+-  // while that transaction is in flight would otherwise reach `importDB` —
+-  // which nulls `active`/`activeRoutine` — with no guard between them. Nothing
+-  // awaits between here and the install, so this one is genuinely the last
+-  // word. The blobs are already written by this point, so the refusal says
+-  // that plainly rather than claiming nothing changed; the message still names
+-  // the session (ac-8), the practice is intact, and re-running the same import
+-  // afterwards finishes the job.
+-  const late = replacementRefusal(intent);
++  // Checked AGAIN, in the same synchronous tick as the install — ONE call
++  // answering BOTH reasons, so no await can ever be slipped between them. The
++  // check at the top of this function cannot cover the whole call:
++  // `replaceAllBlobs` above yields to the event loop, so during that
++  // transaction a tap can start a block or a routine (which `importDB` would
++  // null) — or start one AND FINISH it, which leaves no session for presence
++  // to see while the recorded block sits in a `db` the incoming snapshot is
++  // about to overwrite, held by no archive. The revision comparison is what
++  // catches that second case. Nothing awaits between here and the install, so
++  // this one is genuinely the last word. The blobs are already written by this
++  // point, so the refusal says that plainly rather than claiming nothing
++  // changed; the message still names the blocking session when there is one
++  // (ac-8), the practice is intact, and re-running the same import afterwards
++  // finishes the job.
++  const late = replacementRefusal(intent, decidedFromRev);
+   if (late) {
+     if (!isFullBackup) return late;
+-    return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };
++    // Say what actually happened; do NOT instruct a manual re-run, because a
++    // deferral reaching here is an automatic sync that re-runs itself.
++    return { ...late, error: `${late.error} (Your attachment files had already been replaced from the backup — the data itself was not. The next attempt finishes the job.)` };
+   }
+ 
    useStore.getState().importDB(parsed);
-   return { ok: true, fileCount: rows.length };
- }
 diff --git a/src/store/githubSync.ts b/src/store/githubSync.ts
-index f5c634f..726e382 100644
+index 726e382..cab2c87 100644
 --- a/src/store/githubSync.ts
 +++ b/src/store/githubSync.ts
-@@ -162,7 +162,20 @@ async function buildLocalSnapshot(): Promise<LocalSnapshot> {
+@@ -149,23 +149,38 @@ interface BackupShape {
+   [k: string]: unknown;
+ }
+ 
++/**
++ * The local revision the running sync's comparison was made against. An
++ * inbound snapshot is only safe to install over the database it was compared
++ * with: between this snapshot and the install sit the remote fetch and the
++ * pre-sync archive, and a block started AND FINISHED in that window is in
++ * NEITHER the archive nor the incoming copy, with no unfinished session left
++ * for the presence guard to see. Module scope is safe for the same reason
++ * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
++ * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
++ */
++let syncBaselineRev: number | null = null;
++
+ async function buildLocalSnapshot(): Promise<LocalSnapshot> {
+   const backup = JSON.parse(await buildFullBackup()) as BackupShape;
+   const files = backup.files;
+   backup.files = [];
++  const rev = useStore.getState().rev;
++  syncBaselineRev = rev;
+   return {
+     stateText: JSON.stringify(backup),
+     files,
+     hash: await hashState(backup.data ?? {}),
+-    rev: useStore.getState().rev,
++    rev,
+     deviceName: getDeviceName(),
    };
  }
  
--function makePorts(cfg: SyncConfig): SyncPorts {
-+/**
-+ * A deferral raised INSIDE a sync run, carried back out to `applyOutcome`.
-+ * `importFullBackup` defers when practice began after `syncNow`'s own check —
-+ * during the network fetch, or during `replaceAllBlobs` — and the only channel
-+ * out of `runSync` is a thrown error, which would land in `error` phase. That
-+ * is the wrong answer twice over: a background merge waiting its turn is not a
-+ * failure, and App.tsx's retry watches `deferred`, so an `error` would leave
-+ * the sync stopped until something else happened to trigger one. Module scope
-+ * is safe for the same reason `running` below is: exactly one sync runs at a
-+ * time, and each entry point clears this first.
-+ */
-+let pendingDeferral: string | null = null;
-+
-+function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPorts {
-   return {
-     remote: makeGitHubRemote(cfg),
-     local: {
-@@ -170,8 +183,11 @@ function makePorts(cfg: SyncConfig): SyncPorts {
+ /**
+  * A deferral raised INSIDE a sync run, carried back out to `applyOutcome`.
+- * `importFullBackup` defers when practice began after `syncNow`'s own check —
+- * during the network fetch, or during `replaceAllBlobs` — and the only channel
++ * `importFullBackup` defers when practice happened after `syncNow`'s own check
++ * — during the network fetch, the pre-sync archive, or `replaceAllBlobs` —
++ * whether it is still unfinished or was already recorded, and the only channel
+  * out of `runSync` is a thrown error, which would land in `error` phase. That
+  * is the wrong answer twice over: a background merge waiting its turn is not a
+  * failure, and App.tsx's retry watches `deferred`, so an `error` would leave
+@@ -183,7 +198,11 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
        applySnapshot: async (stateText, files) => {
          const backup = JSON.parse(stateText) as BackupShape;
          backup.files = files;
--        const result = await importFullBackup(JSON.stringify(backup));
--        if (!result.ok) throw new Error(result.error);
-+        const result = await importFullBackup(JSON.stringify(backup), intent);
-+        if (!result.ok) {
-+          if (result.deferred) pendingDeferral = result.error;
-+          throw new Error(result.error);
-+        }
-       },
-       archivePreSync: async (reason) => {
-         const backupText = await buildFullBackup();
-@@ -229,7 +245,9 @@ async function applyOutcome(outcome: Awaited<ReturnType<typeof runSync>>): Promi
-       });
-       break;
-     case 'error':
--      setStatus({ phase: 'error', message: outcome.message });
-+      // A run stopped by unfinished practice is WAITING, not broken.
-+      if (pendingDeferral) setStatus({ phase: 'deferred', message: pendingDeferral, conflict: undefined });
-+      else setStatus({ phase: 'error', message: outcome.message });
-       break;
-   }
-   const local = useStore.getState();
-@@ -264,9 +282,10 @@ export async function syncNow(): Promise<void> {
-     return;
-   }
-   running = true;
-+  pendingDeferral = null;
-   setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
-   try {
--    await applyOutcome(await runSync(makePorts(cfg)));
-+    await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
-   } finally {
-     running = false;
-   }
-@@ -276,9 +295,11 @@ export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
-   const cfg = getSyncConfig();
-   if (!cfg || running) return;
-   running = true;
-+  // Keep-remote is DELIBERATE: it never defers, it refuses out loud.
-+  pendingDeferral = null;
-   setStatus({ phase: 'syncing', message: keep === 'local' ? 'Keeping this device’s copy…' : 'Archiving this copy, then taking GitHub’s…' });
-   try {
--    await applyOutcome(await resolveSyncConflict(makePorts(cfg), keep));
-+    await applyOutcome(await resolveSyncConflict(makePorts(cfg, 'deliberate'), keep));
-   } finally {
-     running = false;
-   }
+-        const result = await importFullBackup(JSON.stringify(backup), intent);
++        // Deliberately NOT read inside `importFullBackup`: a manual Import or
++        // an archive restore has no earlier decision point than its own call,
++        // and a stale baseline left over from a sync run would make it refuse
++        // for no reason.
++        const result = await importFullBackup(JSON.stringify(backup), intent, syncBaselineRev ?? undefined);
+         if (!result.ok) {
+           if (result.deferred) pendingDeferral = result.error;
+           throw new Error(result.error);
 ```
 
 **Full current text of every file the rework touched:**
@@ -789,6 +789,29 @@ trigger one — the silent outage this lane exists to prevent. Ordering is NOT r
 this — `replaceAllBlobs` is one
 IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
 untouched, which installing the `db` first would give up.
+
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
+archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
+that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
+which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
+changed and offers the owner an explicit conflict with both copies preserved.
 
 A stale clock is labelled wherever the block appears on Today — the In-progress card AND
 the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
@@ -1481,6 +1504,29 @@ this — `replaceAllBlobs` is one
 IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
 untouched, which installing the `db` first would give up.
 
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
+archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
+that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
+which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
+changed and offers the owner an explicit conflict with both copies preserved.
+
 A stale clock is labelled wherever the block appears on Today — the In-progress card AND
 the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
 labelling only the first left the same block silent after switching instrument or choosing
@@ -2085,11 +2131,14 @@ daily home is the **MacBook**, with the **iPhone** as companion.
   through a GitHub repo you own: snapshots publish atomically (one git commit each),
   changes are compared by content hash (not clocks), both copies are archived before
   any conflict resolution, and everything is recoverable from the repo's history.
-  **Unfinished practice is never destroyed by a replacement you did not aim at it** —
-  running or paused, fresh or stale, ordinary or routine. Background sync defers quietly
-  while a session is open (saying so on screen) and resumes on its own the moment you
-  finish or discard it; a deliberate Import, Restore archive or Keep remote refuses out
-  loud instead, naming the block that is in the way.
+  **Practice is never destroyed by a replacement you did not aim at it** — an open
+  session, running or paused, fresh or stale, ordinary or routine, and equally a block
+  you started and finished while the sync was still running. Background sync defers
+  quietly (saying so on screen) and resumes on its own — the moment you finish or discard
+  an open session, or on its next run if the practice is already recorded, where a
+  changed copy on both sides becomes an explicit choice rather than a silent overwrite. A
+  deliberate Import, Restore archive or Keep remote refuses out loud instead, naming the
+  block that is in the way.
 - **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
   Today, and today / this week / all time per instrument on Insights. Calendar figures,
   not rolling windows — late last night belongs to yesterday and the week starts Monday.
@@ -2415,1192 +2464,762 @@ See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
 MIT.
 ````
 
-### src/domain/selectors.test.ts
+### src/components/Layout.tsx
+
+```
+import { useEffect, useRef } from 'react';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { hasUnfinishedPractice } from '../domain';
+import { useStore } from '../store/useStore';
+import { useSyncStatus } from '../store/githubSync';
+import { useViewportGuard } from './useViewportGuard';
+import { useRegisterSW } from 'virtual:pwa-register/react';
+import {
+  CompassIcon,
+  ItemsIcon,
+  MoonIcon,
+  MoreIcon,
+  PathIcon,
+  PlayIcon,
+  SunIcon,
+  TodayIcon,
+} from './icons';
+
+export default function Layout() {
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
+  const location = useLocation();
+  const mainRef = useRef<HTMLElement>(null);
+
+  // Undo iOS's layout-viewport displacement when the keyboard opens/closes.
+  useViewportGuard();
+
+  // Only <main> scrolls (the shell is fixed-height) — reset it so every
+  // route opens at the top.
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  // Hide chrome during focused practice to keep attention on the timer.
+  const focused =
+    location.pathname === '/active' ||
+    location.pathname === '/close' ||
+    location.pathname.startsWith('/routine');
+
+  const isDark = theme === 'dark';
+  const ThemeIcon = isDark ? SunIcon : MoonIcon;
+
+  return (
+    <div className="app">
+      <header className="app-header">
+        <NavLink to="/" className="wordmark">
+          <CompassIcon className="mark" />
+          <span>Practice Compass</span>
+        </NavLink>
+        <button
+          className="btn btn-ghost btn-sm"
+          aria-label="Toggle light or dark theme"
+          onClick={() => setTheme(isDark ? 'light' : 'dark')}
+        >
+          <ThemeIcon width={18} height={18} />
+        </button>
+      </header>
+
+      {/* Navigation sits BEFORE the page content in the DOM (screen readers
+          and keyboard users reach it first); CSS places it at the visual
+          bottom on phones and under the header on wide screens. Five equal,
+          stable targets — Today carries the primary Start action, so the bar
+          needs no raised centre button. */}
+      {!focused && (
+        <nav className="tabbar" aria-label="Primary">
+          <div className="tabbar-inner">
+            <NavLink to="/" end className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+              <TodayIcon />
+              <span>Today</span>
+            </NavLink>
+            <NavLink to="/repertoire" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+              <PathIcon />
+              <span>Repertoire</span>
+            </NavLink>
+            <NavLink to="/start" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+              <PlayIcon />
+              <span>Start</span>
+            </NavLink>
+            <NavLink to="/lessons" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+              <ItemsIcon />
+              <span>Lessons</span>
+            </NavLink>
+            <NavLink to="/more" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
+              <MoreIcon />
+              <span>More</span>
+            </NavLink>
+          </div>
+        </nav>
+      )}
+
+      <main className="main" ref={mainRef}>
+        <div className={`main-inner${pageWidthClass(location.pathname)}`}>
+          <UpdateBanner />
+          <SyncNotice pathname={location.pathname} />
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/**
+ * Per-route page widths: focused practice stays narrow, Today comfortable,
+ * browsing/notes screens use real desktop room (CSS caps them on phones).
+ */
+function pageWidthClass(pathname: string): string {
+  if (pathname === '/active' || pathname === '/close' || pathname.startsWith('/routine')) return ' main-inner--narrow';
+  if (
+    pathname.startsWith('/repertoire') ||
+    pathname.startsWith('/items') ||
+    pathname.startsWith('/pathway') ||
+    pathname.startsWith('/lessons') ||
+    pathname.startsWith('/materials') ||
+    pathname.startsWith('/settings') ||
+    pathname.startsWith('/insights') ||
+    pathname.startsWith('/report')
+  )
+    return ' main-inner--wide';
+  return '';
+}
+
+/**
+ * Honest PWA updates: the service worker is registered in prompt mode, a new
+ * build shows this banner, and one tap reloads into it — no reinstalling.
+ * Updates are also checked hourly and whenever the app becomes visible
+ * (installed iOS apps otherwise only check on cold launch).
+ */
+function UpdateBanner() {
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegisteredSW(_url, registration) {
+      if (!registration) return;
+      setInterval(() => void registration.update(), 60 * 60 * 1000);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') void registration.update();
+      });
+    },
+  });
+  if (!needRefresh) return null;
+  return (
+    <div className="card card-accent row between small" style={{ marginBottom: 'var(--space-4)' }}>
+      <span>A new version is ready.</span>
+      <button className="btn btn-primary btn-sm" style={{ flex: 'none' }} onClick={() => void updateServiceWorker(true)}>
+        Reload
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Calm, non-blocking notice when sync needs a decision, hit an error, or is
+ * WAITING. The deferral must be visible here and not only in Settings: an
+ * unbounded, invisible sync outage is exactly what a forgotten block used to
+ * cause. It says what it is waiting for, and Resume points at the practice
+ * screen where Finish, correcting the minutes, and Discard are all one tap
+ * away — the app never resolves it by discarding the practice.
+ *
+ * Resume is keyed on the SESSION EXISTING, not on the phase. A deferral raised
+ * because practice was RECORDED mid-sync has no session to resume — offering a
+ * link to /active there would be a dead control that bounces straight back,
+ * and that deferral needs no tap at all: it clears itself on the next sync.
+ */
+function SyncNotice({ pathname }: { pathname: string }) {
+  const phase = useSyncStatus((s) => s.phase);
+  const message = useSyncStatus((s) => s.message);
+  const unfinished = useStore((s) => hasUnfinishedPractice(s));
+  if (pathname === '/settings') return null; // Settings shows the full panel.
+  if (phase !== 'conflict' && phase !== 'error' && phase !== 'deferred') return null;
+  if (phase === 'deferred') {
+    return (
+      <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
+        <span className="dim">Sync is waiting: {message}</span>
+        {unfinished && (
+          <NavLink to="/active" className="link" style={{ flex: 'none' }}>
+            Resume
+          </NavLink>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
+      <span className="dim">
+        {phase === 'conflict' ? 'Sync needs a decision.' : `Sync problem: ${message}`}
+      </span>
+      <NavLink to="/settings" className="link" style={{ flex: 'none' }}>
+        Open Settings
+      </NavLink>
+    </div>
+  );
+}
+```
+
+### src/domain/practiceSession.test.ts
 
 ```
 import { describe, expect, it } from 'vitest';
 import {
-  instrumentBalance,
-  nextLessonNumber,
-  practiceTotals,
-  practiceTotalsByInstrument,
-  startOfWeekISODate,
-  totalMinutesInWindow,
-} from './selectors';
-import { createBlock, createInstrument } from './factories';
-import type { Instrument, Lesson, PracticeBlock } from './types';
-
-function instrument(id: string): Instrument {
-  return { ...createInstrument({ name: id }, new Date(2026, 0, 1)), id };
-}
-
-function lesson(partial: Partial<Lesson> & { id: string; instrumentId: string; date: string }): Lesson {
-  return { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...partial };
-}
-
-describe('nextLessonNumber', () => {
-  it('is 1 when the instrument has no numbered lessons', () => {
-    expect(nextLessonNumber([], 'setar')).toBe(1);
-    expect(nextLessonNumber([lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01' })], 'setar')).toBe(1);
-  });
-
-  it('is max existing number + 1, scoped per instrument', () => {
-    const lessons = [
-      lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01', number: 3 }),
-      lesson({ id: 'b', instrumentId: 'setar', date: '2026-02-01', number: 7 }),
-      lesson({ id: 'c', instrumentId: 'tar', date: '2026-02-01', number: 40 }),
-    ];
-    expect(nextLessonNumber(lessons, 'setar')).toBe(8);
-    expect(nextLessonNumber(lessons, 'tar')).toBe(41);
-  });
-
-  it('ignores unnumbered lessons when computing the max', () => {
-    const lessons = [
-      lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01', number: 5 }),
-      lesson({ id: 'b', instrumentId: 'setar', date: '2026-03-01' }), // no number
-    ];
-    expect(nextLessonNumber(lessons, 'setar')).toBe(6);
-  });
-});
-
-// --- B1: honest calendar totals ----------------------------------------------
-//
-// The trap `blocksInWindow` sets is that it filters on HOURS, so days:1 means
-// "the last 24 hours" and days:7 means "the last 168" — the wrong answer to
-// "how much have I practised today?". These are CALENDAR figures, and the
-// choice is pinned here rather than left as a comment.
-//
-// Local time throughout: the tests construct dates with the local `Date(y, m,
-// d, h)` constructor, exactly as the helpers read them, so they hold in any
-// timezone the owner's devices run in.
-
-function pBlock(startedAt: Date, durationMinutes: number, instrumentId = 'setar'): PracticeBlock {
-  return createBlock(
-    {
-      practiceItemId: 'item-1',
-      instrumentId,
-      durationMinutes,
-      mode: 'repair',
-      focus: 'tone',
-      result: 'slightly_better',
-      startedAt: startedAt.toISOString(),
-    },
-    startedAt,
-  );
-}
-
-// Thursday 18 June 2026, 12:00 local.
-const THURSDAY = new Date(2026, 5, 18, 12, 0);
-
-describe('practiceTotals · calendar days, not rolling windows', () => {
-  it("counts by calendar day, so a block from late yesterday is not part of today's total", () => {
-    // Deliberately INSIDE the last 24 hours — 22:30 the previous evening is
-    // only 13½ hours before "now" — and just as deliberately NOT today.
-    const lateYesterday = pBlock(new Date(2026, 5, 17, 22, 30), 40);
-    const justAfterMidnight = pBlock(new Date(2026, 5, 18, 0, 20), 15);
-
-    const totals = practiceTotals([lateYesterday, justAfterMidnight], THURSDAY);
-    expect(totals.today).toEqual({ minutes: 15, blocks: 1 });
-    // The rolling-window helper would have swept both in — that is the bug.
-    expect(totalMinutesInWindow([lateYesterday, justAfterMidnight], THURSDAY, 1)).toBe(55);
-    // Both are still this week, and both are still all time.
-    expect(totals.week).toEqual({ minutes: 55, blocks: 2 });
-    expect(totals.allTime).toEqual({ minutes: 55, blocks: 2 });
-  });
-
-  it('counts a midnight-crossing block whole against the day it began, including across the Monday boundary', () => {
-    // A block begun 23:40 on Wednesday, 40 minutes long: its minutes run past
-    // midnight, and ALL of them belong to Wednesday. `durationMinutes` is the
-    // figure the owner attested to and deliberately diverges from wall clock,
-    // and routine blocks carry no endedAt to split by — so a block is one
-    // indivisible unit of attested practice.
-    const crossesMidnight = pBlock(new Date(2026, 5, 17, 23, 40), 40);
-    expect(practiceTotals([crossesMidnight], THURSDAY).today).toEqual({ minutes: 0, blocks: 0 });
-    expect(practiceTotals([crossesMidnight], new Date(2026, 5, 17, 23, 59)).today).toEqual({ minutes: 40, blocks: 1 });
-
-    // The SAME rule decides the Monday boundary: begun Sunday 23:30, it
-    // belongs whole to the week that is ending, with nothing carried into the
-    // week that begins forty minutes later.
-    const sundayNight = pBlock(new Date(2026, 5, 14, 23, 30), 40); // Sunday 14 June 2026
-    const monday = new Date(2026, 5, 15, 9, 0);
-    expect(practiceTotals([sundayNight], monday).week).toEqual({ minutes: 0, blocks: 0 });
-    expect(practiceTotals([sundayNight], new Date(2026, 5, 14, 23, 59)).week).toEqual({ minutes: 40, blocks: 1 });
-  });
-
-  it("starts the week on Monday so Sunday's practice belongs to the week that is ending", () => {
-    const sunday = new Date(2026, 5, 14, 20, 0); // Sunday 14 June 2026
-    const monday = new Date(2026, 5, 15, 8, 0);
-    expect(startOfWeekISODate(monday)).toBe('2026-06-15');
-    expect(startOfWeekISODate(sunday)).toBe('2026-06-08'); // the week that is ending
-    // Saturday is still that same week; Thursday's week began on the 15th.
-    expect(startOfWeekISODate(new Date(2026, 5, 20, 8, 0))).toBe('2026-06-15');
-    expect(startOfWeekISODate(THURSDAY)).toBe('2026-06-15');
-
-    const sundayBlock = pBlock(sunday, 25);
-    const mondayBlock = pBlock(monday, 30);
-    // Asked on Monday: only Monday's practice is in the new week.
-    expect(practiceTotals([sundayBlock, mondayBlock], monday).week).toEqual({ minutes: 30, blocks: 1 });
-    // Asked on Sunday evening: Sunday's practice is in the week that is ending.
-    expect(practiceTotals([sundayBlock], sunday).week).toEqual({ minutes: 25, blocks: 1 });
-  });
-
-  it('reports minutes and blocks per instrument, all time included', () => {
-    const blocks = [
-      pBlock(THURSDAY, 20, 'setar'),
-      pBlock(new Date(2026, 5, 16, 10, 0), 30, 'setar'),
-      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // months ago
-    ];
-    const rows = practiceTotalsByInstrument(
-      [instrument('setar'), instrument('guitar')],
-      blocks,
-      THURSDAY,
-    );
-    expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'guitar']); // most all-time minutes first
-    expect(rows[0]).toMatchObject({
-      today: { minutes: 20, blocks: 1 },
-      week: { minutes: 50, blocks: 2 },
-      allTime: { minutes: 50, blocks: 2 },
-    });
-    expect(rows[1]).toMatchObject({
-      today: { minutes: 0, blocks: 0 },
-      week: { minutes: 0, blocks: 0 },
-      allTime: { minutes: 45, blocks: 1 },
-    });
-  });
-
-  // Insights shows an overall "All instruments" row over EVERY block, so the
-  // per-instrument rows below it have to account for every one of those
-  // minutes. Passing only the ACTIVE instruments left a retired instrument's
-  // history with no row at all while its minutes still sat in the total — the
-  // rows silently summed to less than the figure printed above them.
-  it("gives a retired instrument its own row, so the rows account for every minute in the overall total", () => {
-    const retired = { ...instrument('guitar'), active: false };
-    const blocks = [
-      pBlock(THURSDAY, 20, 'setar'),
-      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // practised before it was retired
-    ];
-    const rows = practiceTotalsByInstrument([instrument('setar'), retired], blocks, THURSDAY);
-
-    expect(rows.map((r) => r.instrumentId)).toContain('guitar');
-    expect(rows.find((r) => r.instrumentId === 'guitar')?.allTime).toEqual({ minutes: 45, blocks: 1 });
-    const summed = rows.reduce((n, r) => n + r.allTime.minutes, 0);
-    expect(summed).toBe(practiceTotals(blocks, THURSDAY).allTime.minutes);
-  });
-});
-
-// --- A10: the one shipped derived figure that was arithmetically wrong --------
-
-describe('instrumentBalance · the denominator covers exactly the rows shown', () => {
-  it('percentages sum to 100 when blocks exist for an instrument not in the supplied list', () => {
-    // Exactly what Today produces: only the ACTIVE instruments, with ALL
-    // blocks — including a retired instrument's, which gets no row of its own.
-    const supplied = [instrument('setar'), instrument('tar')];
-    const blocks = [
-      pBlock(THURSDAY, 30, 'setar'),
-      pBlock(THURSDAY, 20, 'tar'),
-      pBlock(THURSDAY, 40, 'guitar'), // retired — no row emitted for it
-    ];
-
-    const rows = instrumentBalance(supplied, blocks, THURSDAY, 7);
-    expect(rows.reduce((s, r) => s + r.percent, 0)).toBe(100);
-    expect(rows.find((r) => r.instrumentId === 'setar')!.percent).toBe(60);
-    expect(rows.find((r) => r.instrumentId === 'tar')!.percent).toBe(40);
-    // The retired instrument's minutes are in neither a row nor the denominator.
-    expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'tar']);
-  });
-
-  it('reports zero percent for every instrument when nothing was practised', () => {
-    const rows = instrumentBalance([instrument('setar')], [], THURSDAY, 7);
-    expect(rows[0]).toMatchObject({ minutes: 0, blocks: 0, percent: 0 });
-  });
-});
-```
-
-### src/pages/Insights.tsx
-
-```
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  generateInsights,
-  practiceTotals,
-  practiceTotalsByInstrument,
-  type Insight,
-  type InsightTone,
-} from '../domain';
-import { useStore } from '../store/useStore';
-import { EmptyState } from '../components/ui';
-import { InsightsIcon } from '../components/icons';
-
-const TONE_COLOR: Record<InsightTone, string> = {
-  neutral: 'var(--border-strong)',
-  positive: 'var(--tone-good)',
-  attention: 'var(--tone-warn)',
-};
-
-export default function Insights() {
-  const db = useStore((s) => s.db);
-  const [windowDays, setWindowDays] = useState(7);
-  // A LIVE clock: this page can sit open across midnight, and a `now` frozen at
-  // mount would keep reporting yesterday's blocks as today's — and, on a Monday
-  // rollover, last week's as this week's. One clock for the whole page, passed
-  // down, so the totals below can never drift from the insights above.
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-  const insights = useMemo(() => generateInsights(db, now, windowDays), [db, now, windowDays]);
-
-  return (
-    <div className="stack-lg">
-      <header className="stack-sm">
-        <h1 className="page-title">Insights</h1>
-        <p className="page-sub">Calm, neutral patterns from your practice — not a scoreboard.</p>
-      </header>
-
-      <PractiseTotals now={now} />
-
-      <div className="options">
-        {[7, 30].map((d) => (
-          <button
-            key={d}
-            className={`option${windowDays === d ? ' selected' : ''}`}
-            onClick={() => setWindowDays(d)}
-          >
-            Last {d} days
-          </button>
-        ))}
-      </div>
-
-      {insights.length === 0 ? (
-        <div className="card">
-          <EmptyState icon={<InsightsIcon />} title="Not enough to say yet">
-            Log a few practice blocks and patterns will appear here.
-          </EmptyState>
-        </div>
-      ) : (
-        <div className="stack">
-          {insights.map((i) => (
-            <InsightCard key={i.id} insight={i} />
-          ))}
-        </div>
-      )}
-
-      <Link to="/report" className="btn btn-block">
-        Build a teacher report →
-      </Link>
-    </div>
-  );
-}
-
-/**
- * How much practice there has actually been: today, this week and all time,
- * overall and per instrument. CALENDAR figures — a block belongs whole to the
- * local day it began, and the week starts Monday, so a session begun Sunday
- * 23:30 belongs to the week that is ending. Neutral counts of minutes and
- * blocks: no goal, no streak, no score, no bar that fills, no colour that
- * judges.
- */
-function PractiseTotals({ now }: { now: Date }) {
-  const db = useStore((s) => s.db);
-  const overall = useMemo(() => practiceTotals(db.blocks, now), [db.blocks, now]);
-  // EVERY instrument, not just the active ones. The "All instruments" row
-  // counts every block, so filtering the per-instrument rows down to the active
-  // ones left a retired instrument's history with no row of its own and the
-  // rows silently short of the total. Instruments are never deleted (only made
-  // inactive), so this covers every block; rows with nothing to report are
-  // dropped so the table stays a list of practice rather than of instruments.
-  const rows = useMemo(
-    () => practiceTotalsByInstrument(db.instruments, db.blocks, now).filter((r) => r.allTime.blocks > 0),
-    [db.instruments, db.blocks, now],
-  );
-  if (overall.allTime.blocks === 0) return null;
-
-  return (
-    <section className="card stack-sm">
-      <div className="section-label">Time practised</div>
-      <div className="table-scroll" style={{ overflowX: 'auto' }}>
-        <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th style={CELL} scope="col"></th>
-              <th style={NUM} scope="col">Today</th>
-              <th style={NUM} scope="col">This week</th>
-              <th style={NUM} scope="col">All time</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th style={{ ...CELL, fontWeight: 600 }} scope="row">All instruments</th>
-              <td style={NUM}>{cell(overall.today)}</td>
-              <td style={NUM}>{cell(overall.week)}</td>
-              <td style={NUM}>{cell(overall.allTime)}</td>
-            </tr>
-            {rows.map((r) => (
-              <tr key={r.instrumentId}>
-                <th style={CELL} scope="row" className="dim">{r.instrumentName}</th>
-                <td style={NUM} className="dim">{cell(r.today)}</td>
-                <td style={NUM} className="dim">{cell(r.week)}</td>
-                <td style={NUM} className="dim">{cell(r.allTime)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="tiny faint">
-        Counted by calendar day, and the week starts Monday — a block belongs whole to the day it began.
-      </p>
-    </section>
-  );
-}
-
-const CELL: CSSProperties = { textAlign: 'left', padding: '4px 8px 4px 0', whiteSpace: 'nowrap' };
-const NUM: CSSProperties = { textAlign: 'right', padding: '4px 0 4px 8px', whiteSpace: 'nowrap' };
-
-function cell(t: { minutes: number; blocks: number }): string {
-  return `${t.minutes} min · ${t.blocks}`;
-}
-
-function InsightCard({ insight }: { insight: Insight }) {
-  return (
-    <article
-      className="card"
-      style={{ borderLeft: `3px solid ${TONE_COLOR[insight.tone]}` }}
-    >
-      <div className="section-label" style={{ marginBottom: 4 }}>
-        {insight.category}
-      </div>
-      <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
-        {insight.title}
-      </div>
-      <div className="small dim">{insight.body}</div>
-    </article>
-  );
-}
-```
-
-### src/pages/Today.tsx
-
-```
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import {
-  currentStage,
-  daysUntil,
-  dueReviews,
-  fragileItems,
-  generateInsights,
-  instrumentBalance,
+  decideReplacement,
+  deferredSyncRetry,
+  hasUnfinishedPractice,
+  installDatabase,
   isStaleClock,
-  practiceTotals,
-  insightOfTheDay,
-  nextLessonDates,
-  recommend,
-  recommendForInstrument,
-  routinesForInstrument,
-  stageProgress,
-  stageUnits,
-  todayISODate,
-  ITEM_STATUS_LABELS,
-  type PathwayRoutine,
-  type PracticeItem,
-  type Recommendation,
-} from '../domain';
-import { sessionElapsedSeconds, useStore, type ActiveSession } from '../store/useStore';
-import { getItem, instrumentName } from '../store/lookups';
-import { defaultStartInput } from '../store/sessionHelpers';
-import { EmptyState, StatusBadge } from '../components/ui';
-import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, PlusIcon, SparkIcon } from '../components/icons';
-import { relativeDay } from '../components/format';
-import InstallHint from '../components/InstallHint';
-import QuickAdd from '../components/QuickAdd';
+  proposedCloseMinutes,
+  type UnfinishedBlock,
+  type UnfinishedRoutine,
+} from './practiceSession';
+import { createBlock, createInstrument } from './factories';
+import { emptyDB } from './seed';
+import type { PracticeDB } from './types';
 
-// ---------------------------------------------------------------------------
-// Today is a session workspace: "I am practising X now." Everything on screen
-// belongs to X — its next recommendation first, then its class work, reviews
-// and pathway position. The cross-instrument overview is a deliberate,
-// secondary choice, never the default.
-// ---------------------------------------------------------------------------
-
-export default function Today() {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const setSessionInstrument = useStore((s) => s.setSessionInstrument);
-
-  const instruments = useMemo(() => db.instruments.filter((i) => i.active), [db.instruments]);
-  // Last chosen instrument, else the first active one — never "all" by default.
-  const selected =
-    sessionInstrumentId === 'all'
-      ? null
-      : (instruments.find((i) => i.id === sessionInstrumentId) ?? instruments[0] ?? null);
-  const overview = sessionInstrumentId === 'all';
-
-  // A LIVE clock, not one frozen at mount. Today is a screen that stays open:
-  // with a fixed `now`, Sunday's blocks kept counting as "today" and "this
-  // week" after midnight, and a running block that crossed the stale threshold
-  // never gained its label. A minute is fine granularity for both a calendar
-  // rollover and a three-hour floor, and re-deriving the recommendations that
-  // often costs nothing at this data size (it also correctly un-hides "Not
-  // now" items once the date rolls over).
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  return (
-    <div className="stack-lg">
-      <nav className="options" aria-label="Which instrument are you practising?">
-        {instruments.map((i) => (
-          <button
-            key={i.id}
-            className={`option${!overview && selected?.id === i.id ? ' selected' : ''}`}
-            aria-pressed={!overview && selected?.id === i.id}
-            onClick={() => setSessionInstrument(i.id)}
-          >
-            {i.name}
-          </button>
-        ))}
-        <button
-          className={`option${overview ? ' selected' : ''}`}
-          aria-pressed={overview}
-          onClick={() => setSessionInstrument('all')}
-          title="Cross-instrument overview"
-        >
-          Overview
-        </button>
-      </nav>
-
-      {active && !overview && selected && active.instrumentId === selected.id && (
-        <Link to="/active" className="card card-accent card-link row between">
-          <div>
-            <div className="eyebrow">In progress</div>
-            <div className="title-md" dir="auto">
-              {getItem(db, active.itemId)?.title ?? 'Practice block'}
-            </div>
-            <StaleNote active={active} now={now} />
-          </div>
-          <span className="btn btn-primary btn-sm">
-            <PlayIcon /> Resume
-          </span>
-        </Link>
-      )}
-
-      <ElsewhereSessions selectedInstrumentId={overview ? null : (selected?.id ?? null)} now={now} />
-
-      {overview || !selected ? (
-        <OverviewView now={now} />
-      ) : (
-        <SessionView instrumentId={selected.id} instrumentName={selected.name} now={now} />
-      )}
-
-      {/* One-time, dismissible, hidden once installed — after the session, never in its place. */}
-      <InstallHint />
-    </div>
-  );
-}
-
-// --- A session belongs to whichever instrument it was started for ------------
-// `active`/`activePlan`/`activeRoutine` never masquerade as the selected
-// instrument's own work. When one belongs to a DIFFERENT instrument than the
-// one Today is scoped to, it shows here as an explicit "still running
-// elsewhere" row (never silently hidden — that would invite overwriting it)
-// rather than taking over that instrument's own Plan/Routines doorway.
+const NOW = new Date('2026-06-18T12:00:00.000Z');
 
 /**
- * Staleness earns its keep WITHOUT being given authority: a clock forgotten
- * overnight is what holds sync, so it is labelled wherever that block is shown
- * so it can be resolved. It is never a reason to discard it — the owner
- * finishes it, corrects the minutes, or discards it.
- *
- * It renders in BOTH places the ordinary block can appear, and those two are
- * exhaustive: the In-progress card when the block belongs to the instrument
- * Today is scoped to, and the "still running elsewhere" row when it does not
- * (which includes Overview, where nothing is selected). Labelling only the
- * first left the same stale block silent after switching instrument — and with
- * no GitHub sync configured there is no deferral notice to say it either.
- *
- * A stale ROUTINE deliberately carries no such note: a run has no single
- * target to judge an elapsed figure against, `segmentElapsed` already clamps
- * each segment to its authored duration so a routine cannot fabricate minutes,
- * and routines.ts is not this lane's to change.
+ * A block being practised right now: 12 minutes into a 10-minute target. Past
+ * its target, which is completely ordinary — practising past the target is
+ * normal, so this is LIVE, not stale.
  */
-function StaleNote({ active, now }: { active: ActiveSession; now: Date }) {
-  if (!isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes)) return null;
-  return <div className="tiny faint">Running far past its target — finish it, correct the minutes, or discard it.</div>;
+function liveBlock(o: Partial<UnfinishedBlock> = {}): UnfinishedBlock {
+  return { itemId: 'item-1', targetMinutes: 10, accumulatedSeconds: 12 * 60, running: true, ...o };
 }
 
-function ElsewhereSessions({
-  selectedInstrumentId,
-  now,
-}: {
-  selectedInstrumentId: string | null;
-  now: Date;
-}) {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const activePlan = useStore((s) => s.activePlan);
-  const activeRoutine = useStore((s) => s.activeRoutine);
+/** The same block paused — genuinely elapsed minutes, no live timestamp. */
+function pausedBlock(): UnfinishedBlock {
+  return liveBlock({ running: false });
+}
 
-  const rows: { key: string; label: string; detail: string; to: string; note?: ReactNode }[] = [];
+/** A clock left running overnight: eight hours against a ten-minute target. */
+function staleBlock(): UnfinishedBlock {
+  return liveBlock({ accumulatedSeconds: 8 * 3600 });
+}
 
-  if (active && active.instrumentId !== selectedInstrumentId) {
-    rows.push({
-      key: 'active',
-      label: getItem(db, active.itemId)?.title ?? 'Practice block',
-      detail: `${instrumentName(db, active.instrumentId)} · in progress`,
-      to: '/active',
-      note: <StaleNote active={active} now={now} />,
-    });
-  }
-  if (activePlan && activePlan.instrumentId !== selectedInstrumentId) {
-    const done = activePlan.segments.filter((s) => s.status === 'done').length;
-    rows.push({
-      key: 'plan',
-      label: `${instrumentName(db, activePlan.instrumentId)} plan`,
-      detail: `${done} of ${activePlan.segments.length} done`,
-      to: '/plan',
-    });
-  }
-  if (activeRoutine) {
-    const routine = db.pathwayRoutines.find((r) => r.id === activeRoutine.routineId);
-    // A legacy routine with no instrumentId isn't foreign to anything —
-    // never invent the instrument it's masquerading as.
-    if (routine?.instrumentId && routine.instrumentId !== selectedInstrumentId) {
-      rows.push({
-        key: 'routine',
-        label: routine.name,
-        detail: `${instrumentName(db, routine.instrumentId)} routine`,
-        to: `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`,
-      });
+function routine(o: Partial<UnfinishedRoutine> = {}): UnfinishedRoutine {
+  return { routineId: 'routine-1', accumulatedSeconds: 5 * 60, running: true, ...o };
+}
+
+const NOTHING = { active: null, activeRoutine: null };
+
+// --- A1: nothing replaces an unfinished session -------------------------------
+//
+// `active` lives outside `db`, so the revision counter never bumps while you
+// practise; a mid-block device therefore looks UNCHANGED to the hash
+// comparison, a remote change resolves to a straight pull, and importDB nulls
+// `active`. Committed data is archived first — the in-flight block is not.
+//
+// The invariant is UNCONDITIONAL. PRESENCE decides regardless of running or
+// paused, fresh or stale, ordinary or routine. An earlier draft let a stale
+// clock stop deferring, which would have promoted a heuristic about a DURATION
+// into an authority to destroy practice — a session paused at three genuine
+// hours crosses any sensible threshold.
+//
+// Presence is not the whole guard, because it cannot see practice that was
+// started AND FINISHED while the replacement was in flight: that leaves no
+// session behind, only a recorded block the incoming snapshot would overwrite.
+// The second blocking reason is the local REVISION moving — a counter, not a
+// clock and not a heuristic.
+
+describe('A1 · a replacement never destroys an unfinished practice session', () => {
+  it('refuses a replacement for a running, a paused, and a stale unfinished session alike', () => {
+    const cases: { why: string; session: { active: UnfinishedBlock | null; activeRoutine: UnfinishedRoutine | null } }[] = [
+      { why: 'running ordinary block', session: { active: liveBlock(), activeRoutine: null } },
+      { why: 'PAUSED block — pausing protects, it does not expose', session: { active: pausedBlock(), activeRoutine: null } },
+      { why: 'STALE block — an implausible duration is never permission to discard', session: { active: staleBlock(), activeRoutine: null } },
+      { why: 'running routine', session: { active: null, activeRoutine: routine() } },
+      { why: 'paused routine', session: { active: null, activeRoutine: routine({ running: false }) } },
+      {
+        why: 'the frozen dual pair the persist merge produces — unfinished practice like any other',
+        session: { active: pausedBlock(), activeRoutine: routine({ running: false }) },
+      },
+    ];
+
+    for (const c of cases) {
+      expect(hasUnfinishedPractice(c.session), c.why).toBe(true);
+      expect(decideReplacement({ intent: 'deliberate', session: c.session }).outcome, c.why).toBe('refuse');
+      expect(decideReplacement({ intent: 'automatic', session: c.session }).outcome, c.why).toBe('defer');
     }
-  }
+  });
 
-  if (rows.length === 0) return null;
+  it('allows a replacement when no unfinished practice session exists', () => {
+    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
+    expect(decideReplacement({ intent: 'deliberate', session: NOTHING }).outcome).toBe('proceed');
+    expect(decideReplacement({ intent: 'automatic', session: NOTHING }).outcome).toBe('proceed');
+    // Nothing to say when nothing is in the way.
+    expect(decideReplacement({ intent: 'deliberate', session: NOTHING }).message).toBe('');
+  });
 
-  return (
-    <div className="stack-sm">
-      {rows.map((r) => (
-        <Link key={r.key} to={r.to} className="card card-quiet card-link row between">
-          <div className="grow" style={{ minWidth: 0 }}>
-            <div className="tiny faint">{r.detail}</div>
-            <div className="small truncate" dir="auto">
-              {r.label}
-            </div>
-            {r.note}
-          </div>
-          <span className="tiny faint" style={{ flex: 'none' }}>
-            Resume ▸
-          </span>
-        </Link>
-      ))}
-    </div>
-  );
-}
+  it('reaches the same replacement decision for a stale session as for a live one', () => {
+    // The two inputs genuinely differ — 12 minutes against 8 hours, one of
+    // which `isStaleClock` calls stale — and the decision must not.
+    const live = { active: liveBlock(), activeRoutine: null };
+    const stale = { active: staleBlock(), activeRoutine: null };
+    expect(isStaleClock(live.active.accumulatedSeconds, live.active.targetMinutes)).toBe(false);
+    expect(isStaleClock(stale.active.accumulatedSeconds, stale.active.targetMinutes)).toBe(true);
 
-// --- Session Plan and Routines: two independent, peer doorways ---------------
-// Deliberately separate cards, not a shared panel — a time-budgeted Session
-// Plan and following a routine are peer choices, not one subordinate to the
-// other. Each starts collapsed so "Practise now" stays above the fold at
-// 390×844, and each carries its own open/close state and its own "resume"
-// takeover, matching the existing `active`/`activePlan` pattern.
-
-const PLAN_DURATIONS = [15, 20, 30, 45, 60] as const;
-
-function PlanCard({ instrumentId }: { instrumentId: string }) {
-  const db = useStore((s) => s.db);
-  const activePlan = useStore((s) => s.activePlan);
-  const planMinutes = useStore((s) => s.planMinutesByInstrument);
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-
-  if (activePlan && activePlan.instrumentId === instrumentId) {
-    const done = activePlan.segments.filter((s) => s.status === 'done').length;
-    return (
-      <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
-        <span style={{ fontWeight: 600 }}>Resume your plan</span>
-        <span className="small">{done} of {activePlan.segments.length} · {activePlan.budgetMinutes} min ▸</span>
-      </button>
-    );
-  }
-  if (activePlan) {
-    // A different instrument's plan is running. Starting a new plan here
-    // would dead-end at that plan anyway (`/plan` always shows whichever one
-    // is active) — so this doorway stays visibly blocked rather than
-    // offering a duration picker that can't actually start anything.
-    return (
-      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
-        <span style={{ fontWeight: 600, opacity: 0.7 }}>Plan this session</span>
-        <span className="faint small">{instrumentName(db, activePlan.instrumentId)} plan running ▸</span>
-      </button>
-    );
-  }
-
-  const defaultMinutes = planMinutes[instrumentId] ?? 20;
-
-  if (!open) {
-    return (
-      <button
-        className="card card-quiet row between"
-        style={{ width: '100%', cursor: 'pointer' }}
-        onClick={() => setOpen(true)}
-        aria-expanded={false}
-      >
-        <span style={{ fontWeight: 600 }}>Plan this session</span>
-        <span className="faint small">choose a length ▸</span>
-      </button>
-    );
-  }
-
-  return (
-    <section className="card card-quiet stack-sm">
-      <div className="row between">
-        <span style={{ fontWeight: 600 }}>How long today?</span>
-        <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
-      </div>
-      <div className="options">
-        {PLAN_DURATIONS.map((m) => (
-          <button
-            key={m}
-            className={`option${m === defaultMinutes ? ' selected' : ''}`}
-            onClick={() => navigate(`/plan?minutes=${m}`)}
-          >
-            {m} min
-          </button>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function RoutinesCard({ instrumentId }: { instrumentId: string }) {
-  const db = useStore((s) => s.db);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const routines = useStore((s) => s.db.pathwayRoutines);
-  const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
-  const myRoutines = routinesForInstrument(routines, instrumentId);
-
-  if (activeRoutine) {
-    const running = routines.find((r) => r.id === activeRoutine.routineId);
-    // A legacy routine with no instrumentId isn't foreign to anything.
-    const matches = !running?.instrumentId || running.instrumentId === instrumentId;
-    const to = `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`;
-    if (matches) {
-      return (
-        <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
-          <span style={{ fontWeight: 600 }}>Resume your routine</span>
-          <span className="small truncate" dir="auto" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
-        </button>
-      );
+    for (const intent of ['automatic', 'deliberate'] as const) {
+      expect(decideReplacement({ intent, session: stale })).toEqual(decideReplacement({ intent, session: live }));
     }
-    // A different instrument's routine is running. Starting another one here
-    // would just bounce back to it (RoutineRunner's own otherActive redirect)
-    // — so this doorway stays visibly blocked rather than offering a Start
-    // that can't actually start anything.
-    return (
-      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
-        <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
-        <span className="faint small truncate" dir="auto">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
-      </button>
+  });
+
+  it('defers automatic sync but returns an explicit refusal for a deliberate replacement', () => {
+    const session = { active: liveBlock(), activeRoutine: null };
+    const auto = decideReplacement({ intent: 'automatic', session, labels: { itemTitle: 'درآمد ماهور' } });
+    const deliberate = decideReplacement({ intent: 'deliberate', session, labels: { itemTitle: 'درآمد ماهور' } });
+
+    // A background merge waiting its turn is not a failure, and not silent.
+    expect(auto.outcome).toBe('defer');
+    expect(auto.message).toContain('درآمد ماهور');
+    // A deliberate Import / Restore archive / Keep remote is told out loud —
+    // never a silent no-op that looks like a broken button, never a silent
+    // discard. Both name the session that is in the way.
+    expect(deliberate.outcome).toBe('refuse');
+    expect(deliberate.message).toContain('درآمد ماهور');
+    expect(deliberate.outcome).not.toBe(auto.outcome);
+  });
+
+  it('refuses a replacement when practice was recorded on this device after the replacement was decided', () => {
+    // The window presence CANNOT see. A pull is decided against local revision
+    // 7; while the remote copy downloads, the pre-sync archive is written and
+    // `replaceAllBlobs` runs, a block is started AND FINISHED. There is no
+    // unfinished session left to find, and the recorded block is in neither
+    // the archive nor the incoming snapshot — installing it would destroy a
+    // minute that was genuinely played, with nothing holding a copy.
+    const moved = { intent: 'automatic' as const, session: NOTHING, revision: { decidedFrom: 7, current: 8 } };
+    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
+    expect(decideReplacement(moved).outcome).toBe('defer');
+    // Waiting, not broken — and NOT on something to finish or discard, because
+    // the practice is already recorded. The `rev` bump that raised this is
+    // what the quiet-period auto-sync watches, so the next run offers both
+    // copies as an explicit conflict.
+    expect(decideReplacement(moved).message).not.toContain('discard');
+    expect(decideReplacement({ ...moved, intent: 'deliberate' }).outcome).toBe('refuse');
+
+    // Discriminating: an UNMOVED revision is not a blocker. Without this the
+    // guard could be satisfied by refusing every replacement forever, which
+    // would be a permanent silent sync outage — worse than the bug.
+    expect(decideReplacement({ ...moved, revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
+    expect(decideReplacement({ ...moved, intent: 'deliberate', revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
+
+    // Both reasons at once: PRESENCE answers first, so the message can still
+    // name the session that is in the way (ac-8).
+    const both = decideReplacement({
+      intent: 'deliberate',
+      session: { active: liveBlock(), activeRoutine: null },
+      labels: { itemTitle: 'درآمد ماهور' },
+      revision: { decidedFrom: 7, current: 8 },
+    });
+    expect(both.outcome).toBe('refuse');
+    expect(both.message).toContain('درآمد ماهور');
+  });
+
+  it('names the blocking session neutrally rather than fabricating a title', () => {
+    const noTitle = decideReplacement({ intent: 'deliberate', session: { active: liveBlock(), activeRoutine: null } });
+    expect(noTitle.message).toContain('a practice block');
+    const r = decideReplacement({ intent: 'deliberate', session: { active: null, activeRoutine: routine() } });
+    expect(r.message).toContain('a routine');
+  });
+});
+
+// --- The deferred sync really resumes ----------------------------------------
+//
+// The trigger is the blocking condition CLEARING, not an incidental database
+// write. closeSession writes a block and bumps `rev`; cancelSession is a bare
+// `set({ active: null })` that writes nothing at all. Watching `rev` would
+// resume after a finish and wait forever after a discard.
+
+describe('a deferred sync resumes when the blocking session clears', () => {
+  it('resumes a deferred sync when the session clears, whether it was finished or discarded', () => {
+    const item = 'item-1';
+    const block = createBlock(
+      { practiceItemId: item, instrumentId: 'setar', durationMinutes: 12, mode: 'repair', focus: 'tone', result: 'slightly_better', startedAt: NOW.toISOString() },
+      NOW,
     );
+
+    // Practising, sync deferred.
+    const practising = { active: liveBlock(), activeRoutine: null, blocks: [], rev: 4 };
+    // FINISHED: a block was written, so the revision counter moved.
+    const finished = { active: null, activeRoutine: null, blocks: [block], rev: 5 };
+    // DISCARDED: nothing was written at all, so the revision counter did NOT.
+    // This is the half the rev-watching design silently failed.
+    const discarded = { active: null, activeRoutine: null, blocks: [], rev: 4 };
+    expect(discarded.rev).toBe(practising.rev);
+    expect(discarded.blocks).toHaveLength(0);
+    expect(finished.rev).not.toBe(practising.rev);
+
+    for (const [why, after] of [['finished', finished], ['discarded', discarded]] as const) {
+      expect(
+        deferredSyncRetry({
+          pending: true,
+          wasUnfinished: hasUnfinishedPractice(practising),
+          isUnfinished: hasUnfinishedPractice(after),
+        }),
+        why,
+      ).toBe(true);
+    }
+  });
+
+  it('does not fire without a pending deferral, and not while practice is still unfinished', () => {
+    expect(deferredSyncRetry({ pending: false, wasUnfinished: true, isUnfinished: false })).toBe(false);
+    expect(deferredSyncRetry({ pending: true, wasUnfinished: true, isUnfinished: true })).toBe(false);
+    // An ordinary load with no session must not read as a transition.
+    expect(deferredSyncRetry({ pending: true, wasUnfinished: false, isUnfinished: false })).toBe(false);
+  });
+});
+
+// --- A2: honest minutes ------------------------------------------------------
+
+describe('A2 · an abandoned clock never writes practice that did not happen', () => {
+  it('proposes the target for an abandoned block and the real elapsed minutes for an overrun one', () => {
+    // Abandoned: eight hours against a ten-minute target. Propose the target,
+    // not the fabricated gap that would otherwise poison the item's totals,
+    // the instrument balance, the Teacher Report and every insight forever.
+    const abandoned = proposedCloseMinutes(8 * 3600, 10);
+    expect(abandoned.stale).toBe(true);
+    expect(abandoned.minutes).toBe(10);
+
+    // Genuinely overrun: twenty minutes past a ten-minute target. Practising
+    // past the target is completely ordinary and still proposes the real time.
+    const overrun = proposedCloseMinutes(30 * 60, 10);
+    expect(overrun.stale).toBe(false);
+    expect(overrun.minutes).toBe(30);
+  });
+
+  it('judges a short block against the floor and a long one against the multiple', () => {
+    // A 10-minute target is not abandoned at 40 minutes (4× target) — the
+    // absolute floor is what decides a short block.
+    expect(isStaleClock(40 * 60, 10)).toBe(false);
+    // A 90-minute target is not abandoned at 3 hours either — the multiple is
+    // what decides a long one, and 3h is only 2× its target.
+    expect(isStaleClock(3 * 3600, 90)).toBe(false);
+    // Both thresholds crossed.
+    expect(isStaleClock(9 * 3600, 90)).toBe(true);
+  });
+});
+
+// --- A8: installing a new database leaves nothing pointing at the old one -----
+
+describe('A8 · installing a replacement database clears the state that pointed at the old one', () => {
+  function dbWith(instrumentIds: string[]): PracticeDB {
+    return {
+      ...emptyDB(),
+      instruments: instrumentIds.map((id) => ({ ...createInstrument({ name: id }, NOW), id })),
+    };
   }
 
-  if (!open) {
-    return (
-      <button
-        className="card card-quiet row between"
-        style={{ width: '100%', cursor: 'pointer' }}
-        onClick={() => setOpen(true)}
-        aria-expanded={false}
-      >
-        <span style={{ fontWeight: 600 }}>Routines</span>
-        <span className="faint small">
-          {myRoutines.length > 0 ? `${myRoutines.length} saved ▸` : 'follow a set warm-up ▸'}
-        </span>
-      </button>
-    );
-  }
+  it('clears the running plan and drops a session instrument the new database lacks, keeping one it has', () => {
+    const incoming = dbWith(['setar']);
 
-  return (
-    <section className="card card-quiet stack-sm">
-      <div className="row between">
-        <span style={{ fontWeight: 600 }}>Routines</span>
-        <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => setOpen(false)} aria-label="Collapse">✕</button>
-      </div>
-      {myRoutines.length === 0 ? (
-        <button className="btn" style={{ width: '100%' }} onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
-          <PlusIcon /> Create a routine
-        </button>
-      ) : (
-        <div className="stack-sm">
-          {myRoutines.map((r) => (
-            <TodayRoutineRow key={r.id} routine={r} />
-          ))}
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/new?instrument=${instrumentId}`)}>
-            <PlusIcon /> New routine
-          </button>
-        </div>
-      )}
-    </section>
-  );
+    // Dropped: the new database has no such instrument, so keeping it would
+    // scope Today to something that no longer exists.
+    const dangling = installDatabase({ db: incoming, sessionInstrumentId: 'guitar' });
+    expect(dangling.sessionInstrumentId).toBeNull();
+
+    // Kept: it still resolves, so there is nothing dangling about it.
+    expect(installDatabase({ db: incoming, sessionInstrumentId: 'setar' }).sessionInstrumentId).toBe('setar');
+    // Kept: the cross-instrument overview is not an instrument reference.
+    expect(installDatabase({ db: incoming, sessionInstrumentId: 'all' }).sessionInstrumentId).toBe('all');
+
+    // Cleared in the SAME object as the new db — which is what makes it
+    // impossible for importDB, resetDemo or clearAll to install a database
+    // without the reset. (The Node environment cannot import useStore.ts, so
+    // the function's SHAPE is what protects the wiring; the manual:OWNER check
+    // exercises all three on device.)
+    expect(dangling.activePlan).toBeNull();
+    expect(dangling.active).toBeNull();
+    expect(dangling.activeRoutine).toBeNull();
+    expect(dangling.notNow).toEqual({ date: '', ids: [] });
+    expect(dangling.db).toBe(incoming);
+  });
+
+  it('cannot return a database without the ephemeral reset beside it', () => {
+    // The signature is the guarantee: every key the store must set arrives
+    // together, so `set(installDatabase(...))` is the whole operation.
+    const result = installDatabase({ db: dbWith(['setar']), sessionInstrumentId: null });
+    expect(Object.keys(result).sort()).toEqual(
+      ['active', 'activePlan', 'activeRoutine', 'db', 'notNow', 'sessionInstrumentId'].sort(),
+    );
+  });
+});
+```
+
+### src/domain/practiceSession.ts
+
+```
+import type { ID, PracticeDB } from './types';
+
+// ---------------------------------------------------------------------------
+// Pure decisions about the unfinished practice SESSION itself — the sibling of
+// practiceSignal.ts, which owns pure decisions about a running clock's
+// SIGNALS (wake lock, boundary announcements). Nothing here may ever be fed
+// into `shouldKeepAwake` or `nextSignal`: no wake-lock or audio outcome may
+// influence a recorded minute, and no staleness verdict may influence whether
+// the screen stays awake.
+//
+// TWO INDEPENDENT QUESTIONS live here, and conflating them is the bug this
+// module exists to prevent:
+//
+//   PRESENCE     — does an unfinished session exist? Running or paused, fresh
+//                  or stale, ordinary or routine: a session that exists is
+//                  protected. This, together with whether the local database
+//                  has been WRITTEN TO since a replacement was decided (a
+//                  revision counter, never a clock and never a heuristic), and
+//                  NOTHING else, decides whether a whole-database replacement
+//                  may proceed.
+//   PLAUSIBILITY — does this session's elapsed figure still look like time
+//                  someone actually played? That, and ONLY that, decides what
+//                  minutes are proposed at close and whether the session is
+//                  worth drawing attention to.
+//
+// A stale verdict never touches the first question, and no threshold in this
+// file is wired to a destructive path. An implausible DURATION says nothing
+// about whether the session holds practice worth keeping: a session paused at
+// three genuine hours would cross any sensible threshold, and discarding it
+// would be a heuristic promoted into an authority to destroy data.
+// ---------------------------------------------------------------------------
+
+/**
+ * The unfinished-clock shapes this module reads. Structurally compatible with
+ * the store's `ActiveSession` / `ActiveRoutine` (which live in useStore.ts
+ * because they are EPHEMERAL store state, never persisted domain types), and
+ * declared here so the domain stays free of any store import.
+ *
+ * The timing fields are deliberately part of the input to `decideReplacement`
+ * even though it must never read them — that is what makes "a stale session
+ * blocks a replacement exactly as hard as a live one" a genuine assertion
+ * over genuinely different inputs, rather than a tautology.
+ */
+export interface UnfinishedBlock {
+  itemId: ID;
+  targetMinutes: number;
+  accumulatedSeconds: number;
+  running: boolean;
+}
+
+export interface UnfinishedRoutine {
+  routineId: ID;
+  accumulatedSeconds: number;
+  running: boolean;
+}
+
+export interface UnfinishedPractice {
+  kind: 'block' | 'routine';
+  /** What to call it in a visible message — never a fabricated title. */
+  label: string;
+}
+
+export interface EphemeralPractice {
+  active: UnfinishedBlock | null;
+  activeRoutine: UnfinishedRoutine | null;
 }
 
 /**
- * Same shape as StageDetail's RoutineCard / PathwayDetail's RoutineRow (name +
- * segment summary, Edit, Start, and — when the routine has an essential
- * segment — a visible "short on time" entry point). This is the ONLY place an
- * unplaced routine (no pathway/stage) is reachable at all, so it needs the
- * same Edit/Start/short-on-time affordances those pages give a placed one.
+ * PRESENCE, and nothing else. Never reads `running` — pausing a session must
+ * protect it, not expose it — and never reads elapsed time. The frozen
+ * `active` + `activeRoutine` pair the persist middleware's `merge` produces on
+ * hydration is unfinished practice like any other: both are paused, both hold
+ * genuinely-elapsed minutes, and the owner resolves one of them.
  */
-function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
-  const navigate = useNavigate();
-  const total = routine.segments.reduce((sum, seg) => sum + seg.minutes, 0);
-  const hasEssential = routine.segments.some((seg) => seg.essential);
-  return (
-    <article className="card stack-sm">
-      <div className="row between">
-        <div style={{ minWidth: 0 }}>
-          <div className="truncate" dir="auto">{routine.name}</div>
-          <div className="tiny faint">{routine.segments.length} segments · {total} min</div>
-        </div>
-        <div className="row" style={{ gap: 6 }}>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
-            Edit
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate(`/routine/${routine.id}`)} aria-label={`Start ${routine.name}`}>
-            <PlayIcon width={16} height={16} />
-          </button>
-        </div>
-      </div>
-      {hasEssential && (
-        <button
-          className="btn btn-ghost btn-sm"
-          style={{ alignSelf: 'flex-end' }}
-          onClick={() => navigate(`/routine/${routine.id}?short=1`)}
-        >
-          Short on time — essentials only
-        </button>
-      )}
-    </article>
-  );
+export function hasUnfinishedPractice(s: EphemeralPractice): boolean {
+  return !!s.active || !!s.activeRoutine;
 }
 
-// --- The per-instrument session ----------------------------------------------
+/** Describe the unfinished session for a visible message, or null if none. */
+export function unfinishedPractice(
+  s: EphemeralPractice,
+  labels?: { itemTitle?: string; routineName?: string },
+): UnfinishedPractice | null {
+  if (s.active) return { kind: 'block', label: labels?.itemTitle?.trim() || 'a practice block' };
+  if (s.activeRoutine) return { kind: 'routine', label: labels?.routineName?.trim() || 'a routine' };
+  return null;
+}
 
-function SessionView({
-  instrumentId,
-  instrumentName: name,
-  now,
-}: {
-  instrumentId: string;
-  instrumentName: string;
-  now: Date;
-}) {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const activeRoutine = useStore((s) => s.activeRoutine);
-  const notNow = useStore((s) => s.notNow);
-  const startSession = useStore((s) => s.startSession);
-  const startItemSession = useStore((s) => s.startItemSession);
-  const notNowReview = useStore((s) => s.notNowReview);
-  const snoozeReview = useStore((s) => s.snoozeReview);
-  const navigate = useNavigate();
+/**
+ * How a whole-database replacement is answered while practice is unfinished.
+ * `defer` is quiet and retried; `refuse` is said out loud. Neither is ever a
+ * silent no-op, and neither ever discards the session.
+ */
+export type ReplacementOutcome = 'proceed' | 'defer' | 'refuse';
 
-  const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
-  const recs = useMemo(
-    () => recommendForInstrument(instrumentId, db.items, db.blocks, now, lessonDates),
-    [instrumentId, db.items, db.blocks, now, lessonDates],
-  );
+export interface ReplacementDecision {
+  outcome: ReplacementOutcome;
+  /** Empty when the replacement proceeds; otherwise what the owner is told. */
+  message: string;
+}
 
-  const items = useMemo(() => db.items.filter((i) => i.instrumentId === instrumentId), [db.items, instrumentId]);
-  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+/**
+ * THE CORE SAFETY DECISION. A replacement never destroys practice the owner
+ * did not aim it at. TWO INDEPENDENT REASONS block one, and both are about
+ * practice that would be DESTROYED — neither is a heuristic about a duration:
+ *
+ *   PRESENCE — an unfinished session exists (ordinary or routine, RUNNING OR
+ *              PAUSED, FRESH OR STALE). The elapsed figures on the inputs are
+ *              ignored by construction: staleness is not, and can never
+ *              become, permission to destroy practice.
+ *   REVISION — the local database has been WRITTEN TO since this replacement
+ *              was decided against it. An inbound snapshot is only safe to
+ *              install over the database it was compared with; a block
+ *              started AND FINISHED while the pull was in flight leaves no
+ *              unfinished session behind, so presence cannot see it, and it
+ *              exists in neither the pre-sync archive nor the incoming
+ *              snapshot. `rev` is a monotonic COUNTER bumped on every db
+ *              mutation, never a clock — no timestamp enters this decision.
+ *
+ * PRESENCE is answered first, so a message that can name the blocking session
+ * always does.
+ *
+ * Automatic (background sync) and deliberate (Import, Restore archive, Keep
+ * remote) are answered differently because silence would be wrong in opposite
+ * directions: a background merge waiting its turn is not a failure and an
+ * alert would be noise, while a deliberate choice that quietly did nothing
+ * looks like a broken button.
+ */
+export function decideReplacement(args: {
+  intent: 'automatic' | 'deliberate';
+  session: EphemeralPractice;
+  labels?: { itemTitle?: string; routineName?: string };
+  /**
+   * The local revision counter as it stood when this replacement was decided,
+   * and as it stands now. Unequal means practice (or any other edit) was
+   * committed on this device in between. Optional: a caller that cannot move
+   * between the decision and the install has nothing to compare.
+   */
+  revision?: { decidedFrom: number; current: number };
+}): ReplacementDecision {
+  const blocking = unfinishedPractice(args.session, args.labels);
+  if (blocking) {
+    const what = blocking.kind === 'block' ? `an unfinished practice block (${blocking.label})` : `an unfinished routine (${blocking.label})`;
+    if (args.intent === 'automatic') {
+      return { outcome: 'defer', message: `Waiting on ${what} — sync will finish on its own once you finish or discard it.` };
+    }
+    return {
+      outcome: 'refuse',
+      message: `Not replaced: ${what} is still open, and replacing your data would destroy it. Finish or discard it first — Today's In-progress card leads straight there.`,
+    };
+  }
 
-  const lessonDate = lessonDates.get(instrumentId);
-  const classWork = useMemo(
-    () => (lessonDate ? items.filter((i) => i.assignedForLesson) : []),
-    [items, lessonDate],
-  );
+  if (args.revision && args.revision.current !== args.revision.decidedFrom) {
+    // Nothing to finish or discard here — the practice is already recorded.
+    // The automatic case heals itself without any deferral retry: the very
+    // write that raised this bumped `rev`, which the quiet-period auto-sync
+    // watches, and the next run sees both sides changed and offers the owner
+    // an explicit choice with both copies preserved.
+    if (args.intent === 'automatic') {
+      return {
+        outcome: 'defer',
+        message: 'Waiting: practice was recorded on this device while the sync was running. Sync will run again shortly and offer you both copies.',
+      };
+    }
+    return {
+      outcome: 'refuse',
+      message: 'Not replaced: practice was recorded on this device after this replacement started, and replacing your data now would destroy it. Nothing is lost — try again.',
+    };
+  }
 
-  const hiddenToday = notNow.date === todayISODate(now) ? new Set(notNow.ids) : new Set<string>();
-  const reviews = useMemo(
-    () =>
-      dueReviews(db.reviews, now).filter((r) => {
-        const item = itemById.get(r.practiceItemId);
-        return item && !hiddenToday.has(r.id);
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [db.reviews, now, itemById, notNow],
-  );
+  return { outcome: 'proceed', message: '' };
+}
 
-  const pathway = useMemo(
-    () => db.pathways.find((p) => p.instrumentId === instrumentId),
-    [db.pathways, instrumentId],
-  );
-  const stage = pathway
-    ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId)
-    : null;
-  const stageSp = stage ? stageProgress(stageUnits(stage, db.items)) : null;
+/**
+ * Whether a DEFERRED sync should fire now. The trigger is the blocking
+ * condition CLEARING, not an incidental database write: `closeSession` writes
+ * a block (bumping the revision counter), but `cancelSession` is a bare
+ * `set({ active: null })` that writes nothing at all. Watching the revision
+ * would resume after a finish and wait forever after a discard.
+ */
+export function deferredSyncRetry(args: { pending: boolean; wasUnfinished: boolean; isUnfinished: boolean }): boolean {
+  return args.pending && args.wasUnfinished && !args.isUnfinished;
+}
 
-  const fragile = useMemo(() => fragileItems(items), [items]);
+// --- PLAUSIBILITY: what minutes to propose, and what to draw attention to ----
 
-  const start = (item: PracticeItem) => {
-    // A different item is already active: don't silently swap it out from
-    // under the user (startSession would just no-op) — the in-progress
-    // banner above is the resolve path. Same for a running routine — the
-    // Routines doorway's "Resume your routine" is that resolve path.
-    if (active && active.itemId !== item.id) return;
-    if (activeRoutine) return;
-    startSession(defaultStartInput(item));
-    navigate('/active');
+/**
+ * A clock is stale when elapsed exceeds BOTH a generous multiple of its own
+ * target AND an absolute floor — so a short block is judged against the floor
+ * (a 10-minute target is not abandoned at 40 minutes) and a long one against
+ * the multiple (a 90-minute target is not abandoned at 3 hours).
+ *
+ * These are heuristics wired to exactly two non-destructive outcomes: the
+ * minutes CloseBlock proposes, and the attention state that makes a session
+ * holding sync visible. Never to a destructive path.
+ */
+export const STALE_TARGET_MULTIPLE = 4;
+export const STALE_FLOOR_SECONDS = 3 * 3600;
+
+export function isStaleClock(elapsedSeconds: number, targetMinutes: number): boolean {
+  const targetSeconds = Math.max(1, targetMinutes) * 60;
+  return elapsedSeconds > targetSeconds * STALE_TARGET_MULTIPLE && elapsedSeconds > STALE_FLOOR_SECONDS;
+}
+
+export interface ProposedMinutes {
+  minutes: number;
+  /** True when the wall-clock figure was rejected as implausible. */
+  stale: boolean;
+}
+
+/**
+ * The minutes to pre-fill on the close screen. Ordinary overtime is untouched
+ * — practising past the target is completely normal and still proposes the
+ * real elapsed time. An abandoned clock proposes the block's own TARGET
+ * instead, so a forgotten timer can never quietly write eight hours of
+ * practice that did not happen. The figure is a proposal either way: it is an
+ * editable field and the owner's correction always wins.
+ */
+export function proposedCloseMinutes(elapsedSeconds: number, targetMinutes: number): ProposedMinutes {
+  const stale = isStaleClock(elapsedSeconds, targetMinutes);
+  const minutes = stale ? Math.max(1, Math.round(targetMinutes)) : Math.max(1, Math.round(elapsedSeconds / 60));
+  return { minutes, stale };
+}
+
+// --- Installing a replacement database ---------------------------------------
+
+/**
+ * Everything the store must set when a new database is installed. The `db` and
+ * the ephemeral reset arrive in ONE object deliberately: `importDB`,
+ * `resetDemo` and `clearAll` each become a single `set()` of this result, so
+ * installing a database WITHOUT clearing the state that pointed at the old one
+ * stops being an omission a reviewer has to catch and becomes something the
+ * code cannot express. (The Node test environment cannot import useStore.ts —
+ * it pulls in Dexie via ./idb — so this shape is what protects the wiring.)
+ */
+export interface InstalledDatabase {
+  db: PracticeDB;
+  active: null;
+  activeRoutine: null;
+  activePlan: null;
+  notNow: { date: string; ids: ID[] };
+  sessionInstrumentId: ID | null;
+}
+
+/**
+ * Install a replacement database, clearing every piece of ephemeral state tied
+ * to the one it replaces: the running plan, today's dismissed reviews, and a
+ * session instrument the new database does not contain. A session instrument
+ * that still resolves is KEPT, as is the cross-instrument 'all' overview —
+ * there is nothing dangling about either.
+ *
+ * This is not a guard. Deliberate erasure (reset to demo, erase everything) is
+ * aimed at destroying the data and already confirms first; refusing it would
+ * be obstruction rather than safety. It must simply leave nothing pointing at
+ * a database that no longer exists.
+ */
+export function installDatabase(args: { db: PracticeDB; sessionInstrumentId: ID | null }): InstalledDatabase {
+  const { db, sessionInstrumentId } = args;
+  const keepInstrument =
+    sessionInstrumentId === 'all' || db.instruments.some((i) => i.id === sessionInstrumentId);
+  return {
+    db,
+    active: null,
+    activeRoutine: null,
+    activePlan: null,
+    notNow: { date: '', ids: [] },
+    sessionInstrumentId: keepInstrument ? sessionInstrumentId : null,
   };
-
-  if (items.length === 0) {
-    return (
-      <div className="stack">
-        <div className="card">
-          <EmptyState icon={<MusicIcon />} title={`Nothing for ${name} yet`}>
-            Add your first piece or exercise below — a title is enough.
-          </EmptyState>
-        </div>
-        <QuickAdd />
-      </div>
-    );
-  }
-
-  const secondary = [recs.quickWin, recs.maintenance].filter(Boolean) as Recommendation[];
-
-  return (
-    <div className="stack-lg">
-      {/* 0 · Two collapsed, peer doorways — a time-budgeted plan and a
-             routine are separate systems, neither subordinate to the other.
-             Both start collapsed so the primary recommendation stays above
-             the fold at 390×844. */}
-      <PlanCard instrumentId={instrumentId} />
-      <RoutinesCard instrumentId={instrumentId} />
-
-      {/* 1 · The one thing to practise now — above the fold. */}
-      {recs.best && (
-        <article className="card card-accent">
-          <div className="row between" style={{ marginBottom: 6 }}>
-            <span className="eyebrow">Practise now</span>
-            <StatusBadge status={recs.best.score.item.status} />
-          </div>
-          <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
-            <h2 className="title-md" dir="auto" style={{ fontSize: '1.3rem' }}>
-              {recs.best.score.item.title}
-            </h2>
-          </Link>
-          <p className="reason" style={{ marginTop: 6 }}>
-            {recs.best.reason}
-          </p>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn btn-primary btn-lg grow" onClick={() => start(recs.best!.score.item)}>
-              <PlayIcon /> Start · 10 min
-            </button>
-            <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} className="btn btn-lg">
-              Details
-            </Link>
-          </div>
-        </article>
-      )}
-
-      {/* 2 · Honest totals — BELOW the recommendation, never above it, so
-             "Practise now" stays above the fold at 390×844. Neutral counts of
-             minutes and blocks: no target, no streak, no bar that fills. */}
-      <PractisedLine instrumentId={instrumentId} now={now} />
-
-      {/* 3 · A calm sketch of the session. */}
-      {secondary.length > 0 && (
-        <section className="card card-quiet stack-sm">
-          <div className="section-label">Then, if you have time</div>
-          {secondary.map((rec) => (
-            <div key={rec.kind} className="row" style={{ gap: 10 }}>
-              <button
-                className="grow"
-                style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
-                onClick={() => start(rec.score.item)}
-              >
-                <span className="truncate" dir="auto">
-                  {rec.score.item.title}
-                </span>
-                <div className="tiny faint truncate">{rec.reason}</div>
-              </button>
-              <button className="btn btn-sm" onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
-                <PlayIcon />
-              </button>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {/* 3 · Class commitments for THIS instrument only. */}
-      {lessonDate && classWork.length > 0 && (
-        <section className="stack-sm">
-          <h2 className="title-md">
-            Before your {name} class
-            <span className="dim" style={{ fontWeight: 400 }}>
-              {' '}
-              · {daysUntil(lessonDate, now) <= 0 ? 'today' : `in ${daysUntil(lessonDate, now)} day${daysUntil(lessonDate, now) === 1 ? '' : 's'}`}
-            </span>
-          </h2>
-          <div className="card card-flush list">
-            {classWork.map((item) => (
-              <div key={item.id} className="list-row">
-                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" style={{ minWidth: 0 }}>
-                  <div className="truncate" dir="auto">
-                    {item.title}
-                  </div>
-                  <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
-                </Link>
-                <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
-                  <PlayIcon />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 4 · Due reviews, with honest actions. */}
-      {reviews.length > 0 && (
-        <section className="stack-sm">
-          <div className="row between">
-            <h2 className="title-md">Due reviews</h2>
-            <span className="faint small">{reviews.length}</span>
-          </div>
-          <div className="card card-flush list">
-            {reviews.map((r) => {
-              const item = itemById.get(r.practiceItemId)!;
-              return (
-                <div key={r.id} className="list-row">
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div className="truncate" dir="auto">
-                      {item.title}
-                    </div>
-                    <div className="tiny faint">due {relativeDay(r.dueDate, now)}</div>
-                  </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Hide for the rest of today (no schedule change)"
-                    onClick={() => notNowReview(r.id)}
-                  >
-                    Not now
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Move the review 2 days from today"
-                    onClick={() => snoozeReview(r.id)}
-                  >
-                    +2d
-                  </button>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      if (active && active.itemId !== item.id) return;
-                      if (activeRoutine) return;
-                      startItemSession(item.id);
-                      navigate('/active');
-                    }}
-                    aria-label={`Review ${item.title}`}
-                  >
-                    <PlayIcon />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div className="tiny faint">Practising completes a review; “Not now” hides it until tomorrow; “+2d” moves its date.</div>
-        </section>
-      )}
-
-      {/* 5 · Where you are on this instrument's path. */}
-      {pathway && stage && (
-        <Link
-          to={`/pathway/${pathway.id}/${stage.id}`}
-          className="card card-link row"
-          style={{ gap: 10 }}
-        >
-          <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
-          <div className="grow" style={{ minWidth: 0 }}>
-            <div className="truncate">
-              <span className="dim">Now in:</span> {stage.code}
-              {stage.title !== stage.code ? ` · ${stage.title}` : ''}
-            </div>
-            {stageSp && (
-              <div className="row" style={{ gap: 8, marginTop: 6 }}>
-                <span className="balance-track grow" style={{ maxWidth: 180 }}>
-                  <span className="balance-fill" style={{ width: `${stageSp.percent}%` }} />
-                </span>
-                <span className="tiny faint mono-num">
-                  {stageSp.done}/{stageSp.total}
-                </span>
-              </div>
-            )}
-          </div>
-          <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
-        </Link>
-      )}
-
-      {/* 6 · Shaky material, quick capture, and the open-ended start. */}
-      {fragile.length > 0 && (
-        <section className="stack-sm">
-          <h2 className="title-md">Shaky right now</h2>
-          <div className="card card-flush list">
-            {fragile.slice(0, 4).map((item) => (
-              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" style={{ borderRadius: 0 }}>
-                <div className="grow truncate" dir="auto">
-                  {item.title}
-                </div>
-                <StatusBadge status={item.status} />
-                <ChevronRightIcon width={16} height={16} className="faint" />
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <QuickAdd />
-
-      <Link to="/start" className="btn btn-block">
-        Choose something else to practise…
-      </Link>
-    </div>
-  );
-}
-
-/**
- * How much you have actually practised — one quiet line for today and this
- * week, scoped to the session instrument like everything else on this screen.
- * CALENDAR figures: a block from late last night belongs to yesterday, and the
- * week starts Monday. Neutral counts only — the moment this grows a goal, a
- * streak or a bar that fills, it stops being an observation and starts being a
- * judgement.
- */
-function PractisedLine({ instrumentId, now }: { instrumentId: string; now: Date }) {
-  const db = useStore((s) => s.db);
-  const totals = useMemo(
-    () => practiceTotals(db.blocks.filter((b) => b.instrumentId === instrumentId), now),
-    [db.blocks, instrumentId, now],
-  );
-  // Gated on ALL TIME, not this week: once there is any practice to report, a
-  // quiet "0 min today" on a fresh Monday is the honest answer, where hiding
-  // the line entirely would read as a missing feature.
-  if (totals.allTime.blocks === 0) return null;
-  return (
-    <p className="tiny faint">
-      Practised today: {totals.today.minutes} min · {blockCount(totals.today.blocks)}. This week:{' '}
-      {totals.week.minutes} min · {blockCount(totals.week.blocks)}.{' '}
-      <Link to="/insights" className="link">
-        All time
-      </Link>
-    </p>
-  );
-}
-
-function blockCount(n: number): string {
-  return `${n} block${n === 1 ? '' : 's'}`;
-}
-
-// --- The deliberate cross-instrument overview ---------------------------------
-
-function OverviewView({ now }: { now: Date }) {
-  const db = useStore((s) => s.db);
-  const setSessionInstrument = useStore((s) => s.setSessionInstrument);
-  const navigate = useNavigate();
-
-  const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
-  const balance = useMemo(
-    () => instrumentBalance(db.instruments.filter((i) => i.active), db.blocks, now, 7),
-    [db.instruments, db.blocks, now],
-  );
-  const insight = useMemo(() => insightOfTheDay(generateInsights(db, now), now), [db, now]);
-
-  return (
-    <div className="stack-lg">
-      <p className="page-sub" style={{ marginTop: -8 }}>
-        A calm look across all instruments. Pick one above when you sit down to practise.
-      </p>
-
-      <section className="stack-sm">
-        <h2 className="title-md">Each instrument, at a glance</h2>
-        <div className="card card-flush list">
-          {db.instruments
-            .filter((i) => i.active)
-            .map((inst) => {
-              const recs = recommend(
-                db.items.filter((x) => x.instrumentId === inst.id),
-                db.blocks.filter((b) => b.instrumentId === inst.id),
-                now,
-                lessonDates,
-              );
-              const lessonDate = lessonDates.get(inst.id);
-              return (
-                <button
-                  key={inst.id}
-                  className="list-row card-link"
-                  style={{ width: '100%', textAlign: 'left', border: 'none', background: 'none', cursor: 'pointer', color: 'inherit' }}
-                  onClick={() => {
-                    setSessionInstrument(inst.id);
-                    navigate('/');
-                  }}
-                >
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div>{inst.name}</div>
-                    <div className="tiny faint truncate" dir="auto">
-                      {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
-                      {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
-                    </div>
-                  </div>
-                  <ChevronRightIcon width={16} height={16} className="faint" />
-                </button>
-              );
-            })}
-        </div>
-      </section>
-
-      {insight && (
-        <section className="card">
-          <div className="row" style={{ gap: 10, alignItems: 'flex-start' }}>
-            <SparkIcon width={20} height={20} style={{ color: 'var(--gold)', flex: 'none', marginTop: 2 }} />
-            <div>
-              <div className="section-label" style={{ marginBottom: 4 }}>
-                Insight
-              </div>
-              <div>{insight.body}</div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <section className="stack-sm">
-        <h2 className="title-md">Balance · last 7 days</h2>
-        <div className="card stack-sm">
-          {balance.every((b) => b.minutes === 0) ? (
-            <div className="small dim">No practice logged in the last 7 days yet.</div>
-          ) : (
-            balance.map((b) => (
-              <div key={b.instrumentId} className="balance-row">
-                <span className="small truncate">{b.instrumentName}</span>
-                <span className="balance-track">
-                  <span className="balance-fill" style={{ width: `${b.percent}%` }} />
-                </span>
-                <span className="tiny faint mono-num" style={{ textAlign: 'right' }}>
-                  {b.percent}%
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <Link to="/insights" className="btn btn-block">
-        More insights →
-      </Link>
-    </div>
-  );
 }
 ```
 
@@ -3780,16 +3399,20 @@ type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
 
 /**
  * Is a whole-database replacement refused right now? Read fresh each time it is
- * asked, because the answer can change mid-import. The intent is the caller's:
- * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
- * and refuses out loud.
+ * asked, because the answer can change mid-import — BOTH reasons can arise
+ * after the replacement was decided. The intent is the caller's: a sync pull is
+ * AUTOMATIC and defers quietly, everything else is DELIBERATE and refuses out
+ * loud. `decidedFromRev` is the local revision the replacement was decided
+ * against; a different one now means practice was committed in between and
+ * installing the snapshot would destroy it.
  */
-function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal | null {
-  const { active, activeRoutine } = useStore.getState();
+function replacementRefusal(intent: 'automatic' | 'deliberate', decidedFromRev: number): ImportRefusal | null {
+  const { active, activeRoutine, rev } = useStore.getState();
   const decision = decideReplacement({
     intent,
     session: { active, activeRoutine },
     labels: unfinishedPracticeLabels(),
+    revision: { decidedFrom: decidedFromRev, current: rev },
   });
   if (decision.outcome === 'proceed') return null;
   return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
@@ -3813,24 +3436,33 @@ function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal |
  *
  * This is the chokepoint for every INBOUND replacement — manual import, a sync
  * pull, conflict-keep-remote, and archive restore all arrive here — so it is
- * where an unfinished practice session is protected. The refusal is the FIRST
- * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
- * below destroys every attachment blob, so a check placed after it would
- * return "nothing was changed" having already wiped them. It is ALSO the last
- * thing before `importDB`, because that first check does not span the whole
- * call — see the comment at the install itself.
+ * where local practice is protected. The refusal is the FIRST thing this
+ * function does, before the JSON is even parsed: `replaceAllBlobs` below
+ * destroys every attachment blob, so a check placed after it would return
+ * "nothing was changed" having already wiped them. It is ALSO the last thing
+ * before `importDB`, because that first check does not span the whole call —
+ * see the comment at the install itself.
+ *
+ * `decidedFromRev` is the local revision this replacement was decided against.
+ * A sync pull passes the revision of the snapshot it actually compared, so the
+ * guarded window covers the network fetch and the pre-sync archive too — a
+ * block finished in there is in neither the archive nor the incoming snapshot.
+ * A deliberate caller has no earlier decision point than this call, so it
+ * defaults to the revision on entry.
  */
 export async function importFullBackup(
   text: string,
   intent: 'automatic' | 'deliberate' = 'deliberate',
+  decidedFromRev: number = useStore.getState().rev,
 ): Promise<ImportOutcome> {
   // A replacement reaching this function is one the owner chose (Import,
   // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
   // own deferral because practice started mid-sync. Either way an unfinished
   // session — running or paused, fresh or stale, ordinary or routine — is
-  // never destroyed by it, and never silently: every caller already surfaces
+  // never destroyed by it, nor is a block that was started AND FINISHED since
+  // the pull was decided, and never silently: every caller already surfaces
   // this error.
-  const refusal = replacementRefusal(intent);
+  const refusal = replacementRefusal(intent, decidedFromRev);
   if (refusal) return refusal;
 
   let parsed: unknown;
@@ -3869,20 +3501,26 @@ export async function importFullBackup(
     return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
   }
 
-  // Checked AGAIN, in the same synchronous tick as the install. The check at
-  // the top of this function cannot cover the whole call: `replaceAllBlobs`
-  // above yields to the event loop, so a tap that starts a block or a routine
-  // while that transaction is in flight would otherwise reach `importDB` —
-  // which nulls `active`/`activeRoutine` — with no guard between them. Nothing
-  // awaits between here and the install, so this one is genuinely the last
-  // word. The blobs are already written by this point, so the refusal says
-  // that plainly rather than claiming nothing changed; the message still names
-  // the session (ac-8), the practice is intact, and re-running the same import
-  // afterwards finishes the job.
-  const late = replacementRefusal(intent);
+  // Checked AGAIN, in the same synchronous tick as the install — ONE call
+  // answering BOTH reasons, so no await can ever be slipped between them. The
+  // check at the top of this function cannot cover the whole call:
+  // `replaceAllBlobs` above yields to the event loop, so during that
+  // transaction a tap can start a block or a routine (which `importDB` would
+  // null) — or start one AND FINISH it, which leaves no session for presence
+  // to see while the recorded block sits in a `db` the incoming snapshot is
+  // about to overwrite, held by no archive. The revision comparison is what
+  // catches that second case. Nothing awaits between here and the install, so
+  // this one is genuinely the last word. The blobs are already written by this
+  // point, so the refusal says that plainly rather than claiming nothing
+  // changed; the message still names the blocking session when there is one
+  // (ac-8), the practice is intact, and re-running the same import afterwards
+  // finishes the job.
+  const late = replacementRefusal(intent, decidedFromRev);
   if (late) {
     if (!isFullBackup) return late;
-    return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };
+    // Say what actually happened; do NOT instruct a manual re-run, because a
+    // deferral reaching here is an automatic sync that re-runs itself.
+    return { ...late, error: `${late.error} (Your attachment files had already been replaced from the backup — the data itself was not. The next attempt finishes the job.)` };
   }
 
   useStore.getState().importDB(parsed);
@@ -4044,23 +3682,38 @@ interface BackupShape {
   [k: string]: unknown;
 }
 
+/**
+ * The local revision the running sync's comparison was made against. An
+ * inbound snapshot is only safe to install over the database it was compared
+ * with: between this snapshot and the install sit the remote fetch and the
+ * pre-sync archive, and a block started AND FINISHED in that window is in
+ * NEITHER the archive nor the incoming copy, with no unfinished session left
+ * for the presence guard to see. Module scope is safe for the same reason
+ * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
+ * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
+ */
+let syncBaselineRev: number | null = null;
+
 async function buildLocalSnapshot(): Promise<LocalSnapshot> {
   const backup = JSON.parse(await buildFullBackup()) as BackupShape;
   const files = backup.files;
   backup.files = [];
+  const rev = useStore.getState().rev;
+  syncBaselineRev = rev;
   return {
     stateText: JSON.stringify(backup),
     files,
     hash: await hashState(backup.data ?? {}),
-    rev: useStore.getState().rev,
+    rev,
     deviceName: getDeviceName(),
   };
 }
 
 /**
  * A deferral raised INSIDE a sync run, carried back out to `applyOutcome`.
- * `importFullBackup` defers when practice began after `syncNow`'s own check —
- * during the network fetch, or during `replaceAllBlobs` — and the only channel
+ * `importFullBackup` defers when practice happened after `syncNow`'s own check
+ * — during the network fetch, the pre-sync archive, or `replaceAllBlobs` —
+ * whether it is still unfinished or was already recorded, and the only channel
  * out of `runSync` is a thrown error, which would land in `error` phase. That
  * is the wrong answer twice over: a background merge waiting its turn is not a
  * failure, and App.tsx's retry watches `deferred`, so an `error` would leave
@@ -4078,7 +3731,11 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
       applySnapshot: async (stateText, files) => {
         const backup = JSON.parse(stateText) as BackupShape;
         backup.files = files;
-        const result = await importFullBackup(JSON.stringify(backup), intent);
+        // Deliberately NOT read inside `importFullBackup`: a manual Import or
+        // an archive restore has no earlier decision point than its own call,
+        // and a stale baseline left over from a sync run would make it refuse
+        // for no reason.
+        const result = await importFullBackup(JSON.stringify(backup), intent, syncBaselineRev ?? undefined);
         if (!result.ok) {
           if (result.deferred) pendingDeferral = result.error;
           throw new Error(result.error);
