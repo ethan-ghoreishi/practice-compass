@@ -50,7 +50,7 @@ function db(partial: Partial<PracticeDB>): PracticeDB {
 }
 
 describe('itemFiles', () => {
-  it('lists a linked lesson’s references with the item’s attachments, deduplicating references by path', () => {
+  it("lists a linked lesson's references with the item's attachments, deduplicating references by path", () => {
     const shared = 'setar-classes/session-37/score.pdf';
     const state = db({
       lessons: [
