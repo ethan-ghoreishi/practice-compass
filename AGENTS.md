@@ -575,8 +575,8 @@ and which class files are already linked to a piece — none of that may sit one
 away from where you need it, and NONE of it is new stored data.
 
 **A BROWSE SCREEN OPENS ON THE INSTRUMENT YOU ARE PRACTISING, AND STILL WIDENS.**
-Repertoire (both the works lens and the practice list) and Lessons seed their
-instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
+Repertoire (all three views — Pathways, My repertoire, Practice list) and Lessons seed
+their instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
 Add, New Item and the Session Plan already read, via `defaultInstrumentFilter`
 (`selectors.ts`, tested): a resolvable session instrument seeds the filter, the `'all'`
 sentinel seeds the every-instrument view, and a session instrument that no longer
@@ -596,10 +596,11 @@ were always in the data and were simply never composed. An item with no lesson l
 no attachments yields an EMPTY LIST, and the surfaces render nothing rather than an
 empty frame. An item with no lesson link cannot reference NAS material at all — that is
 the honest gap, and closing it needs a persisted item-level reference, therefore a
-schema change and its own lane. The PRACTICE screen renders the whole composition;
-ItemDetail renders only the reference half (`omitAttachments`), because that page
-already owns the Files section where attachments are added and removed — the split is
-about who owns add/remove, never about what `itemFiles` composes.
+schema change and its own lane. Both the PRACTICE screen and ItemDetail render the WHOLE
+composition — a reference and an attachment for the same piece are never split across two
+sections of the screen. ItemDetail's existing Files section stays below it, but only for
+add/remove: that is a CRUD concern, never a second, partial presentation of what
+`itemFiles` already composed.
 
 **THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
 reference resolves through the configured NAS base URL; an attachment resolves to a

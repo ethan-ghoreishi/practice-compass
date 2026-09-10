@@ -12,6 +12,7 @@ import {
   pickNextPart,
   RESULT_LABELS,
   stallHint,
+  itemFiles,
   type BlockResult,
   type GuitarFields,
   type PersianFields,
@@ -414,22 +415,20 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
 }
 
 /**
- * The class video and score that already belong to this piece, composed from
- * the lessons it is linked to — nothing new is stored to show them. The item's
- * own attachments keep their existing Files section below (add/remove lives
- * there), so this section is the material that was previously unreachable
- * without remembering which class it came from.
+ * Everything that already belongs to this piece, in ONE place: the class video
+ * and score from the lessons it is linked to, and its own attachments,
+ * composed and deduplicated by `itemFiles` — nothing new is stored to show
+ * them. Files stays below for add/remove; this section is what was previously
+ * unreachable (lesson references) or split across two sections (attachments).
  */
 function MaterialSection({ item }: { item: PracticeItem }) {
   const db = useStore((s) => s.db);
-  const hasReferences = db.lessons.some(
-    (l) => (l.itemIds ?? []).includes(item.id) && (l.recordings ?? []).length > 0,
-  );
-  if (!hasReferences) return null;
+  const files = useMemo(() => itemFiles(db, item.id), [db, item.id]);
+  if (files.length === 0) return null;
   return (
     <section className="stack-sm">
-      <div className="section-label">From your classes</div>
-      <ItemMaterial itemId={item.id} omitAttachments />
+      <div className="section-label">Material</div>
+      <ItemMaterial itemId={item.id} />
     </section>
   );
 }

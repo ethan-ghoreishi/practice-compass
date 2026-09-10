@@ -8,26 +8,18 @@ import { MusicIcon, PlayIcon, ReportIcon } from './icons';
 /**
  * The files that already belong to a piece — the class video and score from the
  * lessons it is linked to, plus its own attachments — composed by `itemFiles`
- * and nothing new stored to make it work.
+ * and nothing new stored to make it work. Always the FULL composed list, in one
+ * place: a reference and an attachment for the same piece are never split
+ * across two sections of the screen.
  *
  * The two kinds open by different mechanisms and this component never confuses
  * them: a reference goes through the NAS base URL, an attachment through a
  * blob. Only a local image renders inline; everything else is an explicit open,
  * never an embed, so large media stays on the NAS and this stays a list.
  */
-export default function ItemMaterial({
-  itemId,
-  omitAttachments = false,
-}: {
-  itemId: string;
-  /** ItemDetail already has its own Files section with add/remove. */
-  omitAttachments?: boolean;
-}) {
+export default function ItemMaterial({ itemId }: { itemId: string }) {
   const db = useStore((s) => s.db);
-  const files = useMemo(() => {
-    const all = itemFiles(db, itemId);
-    return omitAttachments ? all.filter((f) => f.source === 'reference') : all;
-  }, [db, itemId, omitAttachments]);
+  const files = useMemo(() => itemFiles(db, itemId), [db, itemId]);
 
   if (files.length === 0) return null;
 

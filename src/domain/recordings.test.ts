@@ -97,6 +97,24 @@ describe('resolveRecording (status-aware)', () => {
       url: 'https://x.ts.net/a%20b/c.mp4',
     });
   });
+
+  it('opens a retained absolute URL unchanged, without double-encoding its existing escapes', () => {
+    // A foreign origin or a query-bearing URL is retained verbatim by
+    // relativizeReference (never rewritten). It must still open correctly:
+    // encodeURI() would turn an existing %20 into %2520 — a dead link.
+    expect(resolveRecording(undefined, { path: 'https://example.com/a%20b.pdf' })).toEqual({
+      status: 'ok',
+      url: 'https://example.com/a%20b.pdf',
+    });
+    // Percent-encoded Farsi, as a NAS directory listing would hand it out.
+    const farsi = 'https://example.com/setar-classes/' + encodeURIComponent('چهارمضراب.pdf');
+    expect(resolveRecording(undefined, { path: farsi })).toEqual({ status: 'ok', url: farsi });
+    // A retained query-bearing URL keeps its query string intact.
+    expect(resolveRecording(undefined, { path: 'https://example.com/class.mp4?download=1' })).toEqual({
+      status: 'ok',
+      url: 'https://example.com/class.mp4?download=1',
+    });
+  });
 });
 
 describe('formatFileSize', () => {

@@ -55,8 +55,13 @@ export type RecordingResolution =
 /**
  * Resolve a recording reference to an openable URL, distinguishing WHY it
  * can't resolve so the UI can react (prompt for a base, warn about a bad one,
- * etc.). Full http(s) paths pass through; relative paths join under the
- * normalised base with each segment URL-encoded (spaces, Farsi filenames).
+ * etc.). Full http(s) paths pass through the `URL` parser rather than
+ * `encodeURI` — it escapes a raw unsafe character (a literal space) the same
+ * way, but leaves an already-valid `%XX` escape alone instead of re-encoding
+ * its `%` into `%25`, which is what a retained foreign or query-bearing URL
+ * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
+ * paths join under the normalised base with each segment URL-encoded (spaces,
+ * Farsi filenames).
  */
 export function resolveRecording(
   baseUrl: string | undefined,
@@ -64,7 +69,13 @@ export function resolveRecording(
 ): RecordingResolution {
   const p = ref.path.trim();
   if (!p) return { status: 'empty' };
-  if (HTTP_RE.test(p)) return { status: 'ok', url: encodeURI(p) };
+  if (HTTP_RE.test(p)) {
+    try {
+      return { status: 'ok', url: new URL(p).toString() };
+    } catch {
+      return { status: 'ok', url: encodeURI(p) };
+    }
+  }
 
   const raw = (baseUrl ?? '').trim();
   if (!raw) return { status: 'no-base' };
