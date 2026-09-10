@@ -140,6 +140,29 @@ this — `replaceAllBlobs` is one
 IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
 untouched, which installing the `db` first would give up.
 
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
+archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
+that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
+which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
+changed and offers the owner an explicit conflict with both copies preserved.
+
 A stale clock is labelled wherever the block appears on Today — the In-progress card AND
 the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
 labelling only the first left the same block silent after switching instrument or choosing

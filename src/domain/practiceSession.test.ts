@@ -47,11 +47,17 @@ const NOTHING = { active: null, activeRoutine: null };
 // comparison, a remote change resolves to a straight pull, and importDB nulls
 // `active`. Committed data is archived first — the in-flight block is not.
 //
-// The invariant is UNCONDITIONAL. Only PRESENCE decides: running or paused,
-// fresh or stale, ordinary or routine. An earlier draft let a stale clock stop
-// deferring, which would have promoted a heuristic about a DURATION into an
-// authority to destroy practice — a session paused at three genuine hours
-// crosses any sensible threshold.
+// The invariant is UNCONDITIONAL. PRESENCE decides regardless of running or
+// paused, fresh or stale, ordinary or routine. An earlier draft let a stale
+// clock stop deferring, which would have promoted a heuristic about a DURATION
+// into an authority to destroy practice — a session paused at three genuine
+// hours crosses any sensible threshold.
+//
+// Presence is not the whole guard, because it cannot see practice that was
+// started AND FINISHED while the replacement was in flight: that leaves no
+// session behind, only a recorded block the incoming snapshot would overwrite.
+// The second blocking reason is the local REVISION moving — a counter, not a
+// clock and not a heuristic.
 
 describe('A1 · a replacement never destroys an unfinished practice session', () => {
   it('refuses a replacement for a running, a paused, and a stale unfinished session alike', () => {
@@ -109,6 +115,41 @@ describe('A1 · a replacement never destroys an unfinished practice session', ()
     expect(deliberate.outcome).toBe('refuse');
     expect(deliberate.message).toContain('درآمد ماهور');
     expect(deliberate.outcome).not.toBe(auto.outcome);
+  });
+
+  it('refuses a replacement when practice was recorded on this device after the replacement was decided', () => {
+    // The window presence CANNOT see. A pull is decided against local revision
+    // 7; while the remote copy downloads, the pre-sync archive is written and
+    // `replaceAllBlobs` runs, a block is started AND FINISHED. There is no
+    // unfinished session left to find, and the recorded block is in neither
+    // the archive nor the incoming snapshot — installing it would destroy a
+    // minute that was genuinely played, with nothing holding a copy.
+    const moved = { intent: 'automatic' as const, session: NOTHING, revision: { decidedFrom: 7, current: 8 } };
+    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
+    expect(decideReplacement(moved).outcome).toBe('defer');
+    // Waiting, not broken — and NOT on something to finish or discard, because
+    // the practice is already recorded. The `rev` bump that raised this is
+    // what the quiet-period auto-sync watches, so the next run offers both
+    // copies as an explicit conflict.
+    expect(decideReplacement(moved).message).not.toContain('discard');
+    expect(decideReplacement({ ...moved, intent: 'deliberate' }).outcome).toBe('refuse');
+
+    // Discriminating: an UNMOVED revision is not a blocker. Without this the
+    // guard could be satisfied by refusing every replacement forever, which
+    // would be a permanent silent sync outage — worse than the bug.
+    expect(decideReplacement({ ...moved, revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
+    expect(decideReplacement({ ...moved, intent: 'deliberate', revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
+
+    // Both reasons at once: PRESENCE answers first, so the message can still
+    // name the session that is in the way (ac-8).
+    const both = decideReplacement({
+      intent: 'deliberate',
+      session: { active: liveBlock(), activeRoutine: null },
+      labels: { itemTitle: 'درآمد ماهور' },
+      revision: { decidedFrom: 7, current: 8 },
+    });
+    expect(both.outcome).toBe('refuse');
+    expect(both.message).toContain('درآمد ماهور');
   });
 
   it('names the blocking session neutrally rather than fabricating a title', () => {

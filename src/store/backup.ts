@@ -171,16 +171,20 @@ type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
 
 /**
  * Is a whole-database replacement refused right now? Read fresh each time it is
- * asked, because the answer can change mid-import. The intent is the caller's:
- * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
- * and refuses out loud.
+ * asked, because the answer can change mid-import — BOTH reasons can arise
+ * after the replacement was decided. The intent is the caller's: a sync pull is
+ * AUTOMATIC and defers quietly, everything else is DELIBERATE and refuses out
+ * loud. `decidedFromRev` is the local revision the replacement was decided
+ * against; a different one now means practice was committed in between and
+ * installing the snapshot would destroy it.
  */
-function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal | null {
-  const { active, activeRoutine } = useStore.getState();
+function replacementRefusal(intent: 'automatic' | 'deliberate', decidedFromRev: number): ImportRefusal | null {
+  const { active, activeRoutine, rev } = useStore.getState();
   const decision = decideReplacement({
     intent,
     session: { active, activeRoutine },
     labels: unfinishedPracticeLabels(),
+    revision: { decidedFrom: decidedFromRev, current: rev },
   });
   if (decision.outcome === 'proceed') return null;
   return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
@@ -204,24 +208,33 @@ function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal |
  *
  * This is the chokepoint for every INBOUND replacement — manual import, a sync
  * pull, conflict-keep-remote, and archive restore all arrive here — so it is
- * where an unfinished practice session is protected. The refusal is the FIRST
- * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
- * below destroys every attachment blob, so a check placed after it would
- * return "nothing was changed" having already wiped them. It is ALSO the last
- * thing before `importDB`, because that first check does not span the whole
- * call — see the comment at the install itself.
+ * where local practice is protected. The refusal is the FIRST thing this
+ * function does, before the JSON is even parsed: `replaceAllBlobs` below
+ * destroys every attachment blob, so a check placed after it would return
+ * "nothing was changed" having already wiped them. It is ALSO the last thing
+ * before `importDB`, because that first check does not span the whole call —
+ * see the comment at the install itself.
+ *
+ * `decidedFromRev` is the local revision this replacement was decided against.
+ * A sync pull passes the revision of the snapshot it actually compared, so the
+ * guarded window covers the network fetch and the pre-sync archive too — a
+ * block finished in there is in neither the archive nor the incoming snapshot.
+ * A deliberate caller has no earlier decision point than this call, so it
+ * defaults to the revision on entry.
  */
 export async function importFullBackup(
   text: string,
   intent: 'automatic' | 'deliberate' = 'deliberate',
+  decidedFromRev: number = useStore.getState().rev,
 ): Promise<ImportOutcome> {
   // A replacement reaching this function is one the owner chose (Import,
   // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
   // own deferral because practice started mid-sync. Either way an unfinished
   // session — running or paused, fresh or stale, ordinary or routine — is
-  // never destroyed by it, and never silently: every caller already surfaces
+  // never destroyed by it, nor is a block that was started AND FINISHED since
+  // the pull was decided, and never silently: every caller already surfaces
   // this error.
-  const refusal = replacementRefusal(intent);
+  const refusal = replacementRefusal(intent, decidedFromRev);
   if (refusal) return refusal;
 
   let parsed: unknown;
@@ -260,17 +273,21 @@ export async function importFullBackup(
     return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
   }
 
-  // Checked AGAIN, in the same synchronous tick as the install. The check at
-  // the top of this function cannot cover the whole call: `replaceAllBlobs`
-  // above yields to the event loop, so a tap that starts a block or a routine
-  // while that transaction is in flight would otherwise reach `importDB` —
-  // which nulls `active`/`activeRoutine` — with no guard between them. Nothing
-  // awaits between here and the install, so this one is genuinely the last
-  // word. The blobs are already written by this point, so the refusal says
-  // that plainly rather than claiming nothing changed; the message still names
-  // the session (ac-8), the practice is intact, and re-running the same import
-  // afterwards finishes the job.
-  const late = replacementRefusal(intent);
+  // Checked AGAIN, in the same synchronous tick as the install — ONE call
+  // answering BOTH reasons, so no await can ever be slipped between them. The
+  // check at the top of this function cannot cover the whole call:
+  // `replaceAllBlobs` above yields to the event loop, so during that
+  // transaction a tap can start a block or a routine (which `importDB` would
+  // null) — or start one AND FINISH it, which leaves no session for presence
+  // to see while the recorded block sits in a `db` the incoming snapshot is
+  // about to overwrite, held by no archive. The revision comparison is what
+  // catches that second case. Nothing awaits between here and the install, so
+  // this one is genuinely the last word. The blobs are already written by this
+  // point, so the refusal says that plainly rather than claiming nothing
+  // changed; the message still names the blocking session when there is one
+  // (ac-8), the practice is intact, and re-running the same import afterwards
+  // finishes the job.
+  const late = replacementRefusal(intent, decidedFromRev);
   if (late) {
     if (!isFullBackup) return late;
     return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };

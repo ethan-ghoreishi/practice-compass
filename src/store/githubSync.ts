@@ -149,23 +149,38 @@ interface BackupShape {
   [k: string]: unknown;
 }
 
+/**
+ * The local revision the running sync's comparison was made against. An
+ * inbound snapshot is only safe to install over the database it was compared
+ * with: between this snapshot and the install sit the remote fetch and the
+ * pre-sync archive, and a block started AND FINISHED in that window is in
+ * NEITHER the archive nor the incoming copy, with no unfinished session left
+ * for the presence guard to see. Module scope is safe for the same reason
+ * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
+ * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
+ */
+let syncBaselineRev: number | null = null;
+
 async function buildLocalSnapshot(): Promise<LocalSnapshot> {
   const backup = JSON.parse(await buildFullBackup()) as BackupShape;
   const files = backup.files;
   backup.files = [];
+  const rev = useStore.getState().rev;
+  syncBaselineRev = rev;
   return {
     stateText: JSON.stringify(backup),
     files,
     hash: await hashState(backup.data ?? {}),
-    rev: useStore.getState().rev,
+    rev,
     deviceName: getDeviceName(),
   };
 }
 
 /**
  * A deferral raised INSIDE a sync run, carried back out to `applyOutcome`.
- * `importFullBackup` defers when practice began after `syncNow`'s own check —
- * during the network fetch, or during `replaceAllBlobs` — and the only channel
+ * `importFullBackup` defers when practice happened after `syncNow`'s own check
+ * — during the network fetch, the pre-sync archive, or `replaceAllBlobs` —
+ * whether it is still unfinished or was already recorded, and the only channel
  * out of `runSync` is a thrown error, which would land in `error` phase. That
  * is the wrong answer twice over: a background merge waiting its turn is not a
  * failure, and App.tsx's retry watches `deferred`, so an `error` would leave
@@ -183,7 +198,11 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
       applySnapshot: async (stateText, files) => {
         const backup = JSON.parse(stateText) as BackupShape;
         backup.files = files;
-        const result = await importFullBackup(JSON.stringify(backup), intent);
+        // Deliberately NOT read inside `importFullBackup`: a manual Import or
+        // an archive restore has no earlier decision point than its own call,
+        // and a stale baseline left over from a sync run would make it refuse
+        // for no reason.
+        const result = await importFullBackup(JSON.stringify(backup), intent, syncBaselineRev ?? undefined);
         if (!result.ok) {
           if (result.deferred) pendingDeferral = result.error;
           throw new Error(result.error);
