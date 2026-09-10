@@ -27,8 +27,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T16:20:44.139Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
+        at: 2026-09-10T18:02:41.195Z
+        commit: 75b287020cfc48a8c7a4bebf3991acfb4177aaa0
     - actor: The musician
       action: Taps 'Test link' to open a known recording and confirm the address works.
       shows: The file opens in a new tab, or the app says the base URL isn’t valid and
@@ -38,8 +38,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T16:20:44.139Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
+        at: 2026-09-10T18:02:41.195Z
+        commit: 75b287020cfc48a8c7a4bebf3991acfb4177aaa0
     - actor: Practice Compass
       action: Resolves every relative recording and score path in every lesson against
         this address from then on.
@@ -50,8 +50,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-08-31T16:20:44.139Z
-        commit: 017d8c3385210b8e4ec217183390ce22c487eb19
+        at: 2026-09-10T18:02:41.195Z
+        commit: 75b287020cfc48a8c7a4bebf3991acfb4177aaa0
   endsWith: This device can open class videos and scores on demand, while the app
     itself still holds nothing but links.
   variations:
