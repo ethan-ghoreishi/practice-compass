@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   clampSchedulingParams,
   planNextReview,
+  proposedCloseMinutes,
+  type ReviewAnswer,
   RESULT_LABELS,
   REVIEW_TYPE_LABELS,
   suggestStatusAfterBlock,
@@ -36,12 +38,18 @@ export default function CloseBlock() {
   const now = useMemo(() => new Date(), []);
 
   const item = active ? getItem(db, active.itemId) : undefined;
-  // The clock was paused on Finish, so this figure is frozen — reflection
-  // time is not silently counted.
-  const defaultMinutes = active ? Math.max(1, Math.round(sessionElapsedSeconds(active) / 60)) : 10;
+  // The clock was paused on Finish, so the elapsed figure is frozen —
+  // reflection time is not silently counted. An ABANDONED clock proposes the
+  // block's own target instead of the wall-clock gap, so a timer left running
+  // overnight can never quietly write eight hours of practice that did not
+  // happen; ordinary overtime still proposes the real elapsed time. Either way
+  // it is a proposal in an editable field — the owner's correction always wins.
+  const proposed = active
+    ? proposedCloseMinutes(sessionElapsedSeconds(active), active.targetMinutes)
+    : { minutes: 10, stale: false };
 
   const [result, setResult] = useState<BlockResult | null>(null);
-  const [duration, setDuration] = useState(defaultMinutes);
+  const [duration, setDuration] = useState(proposed.minutes);
   const [observation, setObservation] = useState(active?.note ?? '');
   const [nextAction, setNextAction] = useState('');
   const [bodyNote, setBodyNote] = useState('');
@@ -103,10 +111,19 @@ export default function CloseBlock() {
     );
   }
 
-  function handleSave() {
-    const finalResult: BlockResult = result ?? 'not_logged';
+  /**
+   * Saving with a result answers the review question; saving WITHOUT one
+   * answers nothing about it, so the schedule must not move. Stated in one
+   * place rather than emerging from `comeBack && !!reviewDate`, and forced to
+   * 'unanswered' by the escape hatch even when a result had been picked (and
+   * so had already filled in a date) — otherwise that date would leak into a
+   * close that deliberately recorded no judgement.
+   */
+  function handleSave(withoutResult = false) {
+    const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
+    const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && reviewDate ? 'scheduled' : 'declined';
     const newStatus: ItemStatus | undefined =
-      acceptStatus && statusSuggestion.suggestedStatus ? statusSuggestion.suggestedStatus : undefined;
+      !withoutResult && acceptStatus && statusSuggestion.suggestedStatus ? statusSuggestion.suggestedStatus : undefined;
 
     closeSession({
       result: finalResult,
@@ -115,8 +132,8 @@ export default function CloseBlock() {
       nextAction: nextAction.trim() || undefined,
       bodyNote: bodyNote.trim() || undefined,
       newStatus,
-      scheduleReview: comeBack && !!reviewDate,
-      nextReviewDate: reviewDate || undefined,
+      answer,
+      nextReviewDate: answer === 'scheduled' ? reviewDate : undefined,
       reviewType,
       teacherQuestion: becomeTeacherQ ? teacherQText.trim() : undefined,
     });
@@ -156,7 +173,14 @@ export default function CloseBlock() {
         </div>
       )}
 
-      <Field label="Minutes practised">
+      <Field
+        label="Minutes practised"
+        hint={
+          proposed.stale
+            ? `This block's clock ran far longer than its ${active.targetMinutes}-minute target, so we've proposed the target rather than the whole gap. Change it to whatever you actually played.`
+            : undefined
+        }
+      >
         <input
           className="input"
           type="number"
@@ -265,7 +289,10 @@ export default function CloseBlock() {
       </div>
 
       <div className="row">
-        <button className="btn btn-primary btn-lg grow" onClick={handleSave}>
+        {/* One of the six results is required — they are already the first
+            thing on this screen, so this adds no field, it only makes a choice
+            already present a required one. */}
+        <button className="btn btn-primary btn-lg grow" onClick={() => handleSave()} disabled={!result}>
           <CheckIcon /> Save block
         </button>
         <button
@@ -278,6 +305,13 @@ export default function CloseBlock() {
           <PlayIcon /> Back
         </button>
       </div>
+      {!result && <p className="tiny faint">Pick how it went above to save, or save the minutes on their own.</p>}
+      {/* The escape hatch keeps "no result" reachable and DELIBERATE rather
+          than accidental. It records the time and leaves the schedule exactly
+          as it was — the review date and any open review row both stand. */}
+      <button className="btn btn-sm" onClick={() => handleSave(true)}>
+        Save without a result
+      </button>
       <button
         className="btn btn-ghost btn-sm"
         onClick={() => {

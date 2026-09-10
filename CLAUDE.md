@@ -9,6 +9,13 @@ Preserve the core loop: **one item · one mode · one focus · one result · one
 If a change blurs that loop or adds a second thing to think about per step, it's wrong —
 even if it's "useful".
 
+**The loop CLOSES: the next action is read, not just written.** `PracticeBlock.nextAction`
+was captured on every close and read nowhere, so the one thing deliberately decided last
+time never reached the moment it was written for. `ActiveBlock` now shows it at the top,
+before you start playing, via `lastNextAction` (`blocks.ts`, tested) — the most recent
+NON-EMPTY one, so a later block that recorded none does not blank out a decision that
+still stands. Anything the app asks you to record, it must eventually USE.
+
 ## Keep admin overhead low
 
 - Starting a block must stay **under 30 seconds**; closing one **under 60 seconds**.
@@ -62,6 +69,103 @@ SM‑2. "Not now" hides a due review for the rest of today (no schedule change).
 (+2d) genuinely moves the due date on both the review and the item — never fabricate a
 result, and never leave a stale overdue item after an action. The Finish button freezes
 the clock (`pauseSession`) before the close screen; reflection time is not counted.
+
+**ANSWERING NOTHING IS NOT DECLINING.** A result is REQUIRED to save a block — the six
+options are already the first thing on the close screen, so this adds no field (r-quick-start
+holds: it makes a choice already present a required one), and "Save without a result" keeps
+`not_logged` reachable and DELIBERATE. `computeReviewOutcome` takes a tri-state
+`ReviewAnswer` (`'scheduled' | 'declined' | 'unanswered'`) and returns
+`completeOpenReviews` ALONGSIDE `nextReviewDate`, because they are ONE decision: a close
+carrying no result keeps the item's date AND leaves its open Review row OPEN, while a
+genuine decline still clears the date and completes the row. `closeSession` must never
+decide the row separately — completing every open row unconditionally, next to a
+`!scheduleReview` branch that cleared the date, is exactly how one skipped tap used to
+erase the next date, close the open review, leave SM‑2 state stale and drop the item out
+of Due reviews for good, all while the panel read "Should this come back? Yes" above an
+empty date field. The row transform is `completeOpenReviewsFor` (`scheduling.ts`, tested)
+so the array change is reachable from a Node test; `CloseBlock` states the mapping in one
+place and the escape hatch forces `'unanswered'` even when a result had already filled in
+a date. r-explainable-scheduling's "the date shown is the date saved" now includes when
+that date is deliberately left UNCHANGED.
+
+## Nothing replaces an unfinished practice session
+
+`src/domain/practiceSession.ts` (pure, tested) is the sibling of `practiceSignal.ts`: that
+module owns pure decisions about a running clock's SIGNALS, this one owns pure decisions
+about the unfinished SESSION. Two INDEPENDENT questions live there and must never be
+conflated:
+
+- **PRESENCE** (`hasUnfinishedPractice`, `decideReplacement`) — does an unfinished session
+  exist? That, and ONLY that, decides whether a whole-database replacement may proceed.
+  Never `running`, so PAUSING PROTECTS A SESSION RATHER THAN EXPOSING IT; the frozen
+  `active`+`activeRoutine` pair the persist `merge` produces is unfinished practice like
+  any other.
+- **PLAUSIBILITY** (`isStaleClock`, `proposedCloseMinutes`) — does this session's elapsed
+  figure still look like time someone played? That decides the minutes `CloseBlock`
+  proposes and the ATTENTION state, and NOTHING else.
+
+**A HEURISTIC ABOUT A DURATION NEVER BECOMES AN AUTHORITY TO DESTROY PRACTICE.** A stale
+verdict must never be wired to a destructive path, and `decideReplacement` must keep
+reaching the SAME decision for a stale session as for a live one (a session paused at
+three genuine hours crosses any sensible threshold — discarding it would lose real
+practice). Staleness may never be fed into `shouldKeepAwake` or `nextSignal` either.
+
+`active` lives outside `db`, so `withRevision` never bumps `rev` while you practise: a
+mid-block device looks UNCHANGED to `decideSync`, a remote change resolves to `pull`, and
+the in-flight block is destroyed with no archive and no prompt. So: AUTOMATIC sync
+(`syncNow`) checks the predicate BEFORE attempting and reports a distinct `deferred`
+SyncPhase — a background merge waiting its turn is not an error and must not be dressed as
+one — while DELIBERATE replacement (Import, Restore archive, Keep remote) gets an explicit
+refusal naming the session. The guard for the inbound paths is the FIRST statement of
+`importFullBackup` (`backup.ts`), before the JSON is even parsed: `replaceAllBlobs` below
+it destroys every attachment blob, so a check placed after it would wipe them while
+returning "nothing was changed". Every deliberate caller already surfaces
+`{ok:false,error}`, so no `Settings.tsx` change is needed.
+
+The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today's In-progress card
+labels a stale clock, and the resolution is the owner's — Finish, correct the minutes, or
+Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
+in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
+counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
+rev-watching retry resumes after a finish and waits forever after a discard. Seed the
+previous-presence ref with the CURRENT presence, or an ordinary load reads as a
+present→absent transition and fires a spurious sync.
+
+**Installing a database clears the ephemeral state that pointed at the old one.**
+`installDatabase` returns the new `db` TOGETHER WITH `active`/`activeRoutine`/`activePlan`
+nulled, `notNow` reset and a `sessionInstrumentId` that survives only if it still resolves
+(`'all'` always survives). Its SIGNATURE is the guarantee: `importDB`, `resetDemo` and
+`clearAll` are each a single `set()` of its result, so installing a database WITHOUT the
+reset is something the code cannot express — which matters because the Node environment
+cannot import `useStore.ts` (it pulls in Dexie via `./idb`), so the unit test proves the
+DECISION and the shape protects the WIRING. There are SIX whole-database replacements, not
+four: `resetDemo` and `clearAll` are called directly on the store and never touch
+`importFullBackup`, so a fix living only there would silently miss two of the three install
+points. Deliberate erasure keeps NO guard — those actions are aimed at destroying the data
+and already confirm first, so refusing them would be obstruction, not safety.
+
+## Practice totals are calendar figures, not rolling windows
+
+`practiceTotals` / `practiceTotalsByInstrument` / `startOfWeekISODate` (`selectors.ts`,
+tested) answer "how much have I practised?" — a compact minutes-and-blocks line low on
+Today (BELOW the recommendation, never above: "Practise now" stays above the fold at
+390×844) and the full today / this week / all time per-instrument view on Insights. Do NOT
+reuse `blocksInWindow`/`totalMinutesInWindow` for these: they filter on HOURS, so `days:1`
+means the last 24 hours and `days:7` the last 168 — a block from late last night is not
+today's practice. The week starts **Monday 00:00 local**.
+
+**A block belongs WHOLE to the local calendar day it BEGAN**, with none of its minutes
+apportioned across midnight or the Monday boundary. This was challenged and the code
+settles it: `durationMinutes` is the figure the owner ATTESTED to and this lane makes it
+diverge from wall clock on purpose (an abandoned block proposes its target), so
+`endedAt - startedAt` is not the authored duration; and `endedAt` is optional and ABSENT on
+routine blocks (`applyRoutineRun` passes none), so apportioning would apply to some blocks
+and not others. Splitting would overrule the owner's own correction with a number they
+never attested to. Totals stay NEUTRAL COUNTS — no goal, streak, score, bar that fills or
+colour that judges. Relatedly, `instrumentBalance` takes its denominator from only the
+blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
+a caller passes active instruments with all blocks (Today does).
 
 ## Hands-free practice: the screen stays awake, and the app announces the end
 

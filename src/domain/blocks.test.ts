@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBlockStats } from './blocks';
+import { applyBlockStats, lastNextAction } from './blocks';
 import { createBlock, createItem } from './factories';
 import { addDays, toISODate } from './util';
 import type { BlockResult } from './types';
@@ -90,5 +90,52 @@ describe('applyBlockStats', () => {
     const b = block('same', -5);
     const updated = applyBlockStats(item, b, { itemBlocksIncludingNew: [b], now: NOW });
     expect(updated.totalMinutes).toBe(0);
+  });
+});
+
+// --- A7: the last step of the loop was write-only -----------------------------
+//
+// `nextAction` was captured on every close and read NOWHERE, ever — the
+// practice screen showed the item's general notes instead, so the one thing
+// deliberately decided last time never reached the moment it was written for.
+
+describe('lastNextAction · the decision from last time', () => {
+  function withNextAction(nextAction: string | undefined, daysAgo: number) {
+    return createBlock(
+      {
+        practiceItemId: 'item',
+        instrumentId: 'i',
+        durationMinutes: 10,
+        mode: 'repair',
+        focus: 'tone',
+        result: 'slightly_better',
+        nextAction,
+        startedAt: addDays(NOW, -daysAgo).toISOString(),
+      },
+      NOW,
+    );
+  }
+
+  it('returns the most recent non-empty next action and nothing when none was ever written', () => {
+    const older = withNextAction('Slow the forud right down', 3);
+    const recent = withNextAction('Play it against the drone', 1);
+    // A LATER block that recorded no next action must not blank out a decision
+    // that still stands — so the most recent NON-EMPTY one wins.
+    const latestWithNone = withNextAction(undefined, 0);
+    const latestWithBlank = withNextAction('   ', 0);
+
+    expect(lastNextAction([older, recent])).toBe('Play it against the drone');
+    expect(lastNextAction([older, recent, latestWithNone])).toBe('Play it against the drone');
+    expect(lastNextAction([older, recent, latestWithBlank])).toBe('Play it against the drone');
+    // Order is derived, not trusted from the caller.
+    expect(lastNextAction([latestWithNone, recent, older])).toBe('Play it against the drone');
+
+    // Nothing was ever written: nothing is shown, rather than an empty line.
+    expect(lastNextAction([])).toBeUndefined();
+    expect(lastNextAction([latestWithNone, withNextAction('', 2)])).toBeUndefined();
+  });
+
+  it('trims the stored text so stray whitespace never renders as content', () => {
+    expect(lastNextAction([withNextAction('  Keep the riz even  ', 1)])).toBe('Keep the riz even');
   });
 });

@@ -8,7 +8,9 @@ import {
   applyRoutineRun,
   catalogForStage,
   isLosslesslyRemovable,
+  completeOpenReviewsFor,
   computeReviewOutcome,
+  installDatabase,
   resolveReviewDate,
   applyReviewDateToRows,
   applyReviewDateToRow,
@@ -70,6 +72,7 @@ import {
   type PracticeDB,
   type PracticeItem,
   type Rating,
+  type ReviewAnswer,
   type ReviewMode,
   type ReviewType,
   type RoutineSegment,
@@ -189,7 +192,12 @@ export interface CloseSessionInput {
   nextAction?: string;
   bodyNote?: string;
   newStatus?: ItemStatus;
-  scheduleReview: boolean;
+  /**
+   * What the close screen answered about the next review. 'unanswered' (no
+   * result chosen) must leave the item's date AND its open review row exactly
+   * as they are — see ReviewAnswer in scheduling.ts.
+   */
+  answer: ReviewAnswer;
   nextReviewDate?: ISODate;
   reviewType?: ReviewType;
   /** When set, written onto the item as its teacher question. */
@@ -908,7 +916,7 @@ export const useStore = create<StoreState>()(
             observation: input.observation,
             nextAction: input.nextAction,
             bodyNote: input.bodyNote,
-            createdReview: input.scheduleReview,
+            createdReview: input.answer === 'scheduled',
           },
           now,
         );
@@ -919,7 +927,7 @@ export const useStore = create<StoreState>()(
         const outcome = computeReviewOutcome({
           item,
           result: input.result,
-          scheduleReview: input.scheduleReview,
+          answer: input.answer,
           nextReviewDate: input.nextReviewDate,
           reviewType: input.reviewType,
           now,
@@ -945,13 +953,17 @@ export const useStore = create<StoreState>()(
           updatedItem = { ...updatedItem, teacherQuestion: input.teacherQuestion.trim() || undefined };
         }
 
-        // Close any open reviews for this item; optionally schedule the next
-        // from the SAME date just written onto the item (§1.2).
-        const reviews = db.reviews.map((r) =>
-          r.practiceItemId === item.id && !r.completedAt
-            ? { ...r, completedAt: nowISO(now), result: input.result, updatedAt: nowISO(now) }
-            : r,
-        );
+        // Complete this item's open reviews only when the SAME decision that
+        // set the date says so, and schedule the next from that one date
+        // (§1.2). Deciding it separately and unconditionally here is exactly
+        // how the row and the date used to come apart.
+        const reviews = completeOpenReviewsFor({
+          reviews: db.reviews,
+          practiceItemId: item.id,
+          complete: outcome.completeOpenReviews,
+          result: input.result,
+          now,
+        });
         if (outcome.review) {
           reviews.push(
             createReview(
@@ -1365,19 +1377,25 @@ export const useStore = create<StoreState>()(
 
       exportDB: () => get().db,
 
+      // The three — and only three — places a new `db` object is installed.
+      // Each is a single `set()` of `installDatabase`, which returns the new
+      // database TOGETHER WITH the ephemeral reset: no path can install a
+      // database while leaving the running plan, today's dismissed reviews or
+      // a now-dangling session instrument pointing at the one it replaced.
+      // (resetDemo and clearAll never pass through importFullBackup, so a fix
+      // that lived only there would silently miss two of the three.)
       importDB: (raw) => {
-        const db = validateDB(raw);
-        set({ db, active: null, activeRoutine: null });
+        set((s) => installDatabase({ db: validateDB(raw), sessionInstrumentId: s.sessionInstrumentId }));
       },
 
       resetDemo: () => {
         void clearBlobs();
-        set({ db: createSeedDB(), active: null, activeRoutine: null });
+        set((s) => installDatabase({ db: createSeedDB(), sessionInstrumentId: s.sessionInstrumentId }));
       },
 
       clearAll: () => {
         void clearBlobs();
-        set({ db: emptyDB(), active: null, activeRoutine: null });
+        set((s) => installDatabase({ db: emptyDB(), sessionInstrumentId: s.sessionInstrumentId }));
       },
     })),
     {

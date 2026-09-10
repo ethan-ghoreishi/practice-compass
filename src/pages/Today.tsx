@@ -7,6 +7,8 @@ import {
   fragileItems,
   generateInsights,
   instrumentBalance,
+  isStaleClock,
+  practiceTotals,
   insightOfTheDay,
   nextLessonDates,
   recommend,
@@ -20,7 +22,7 @@ import {
   type PracticeItem,
   type Recommendation,
 } from '../domain';
-import { useStore } from '../store/useStore';
+import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
 import { EmptyState, StatusBadge } from '../components/ui';
@@ -82,6 +84,15 @@ export default function Today() {
             <div className="title-md" dir="auto">
               {getItem(db, active.itemId)?.title ?? 'Practice block'}
             </div>
+            {/* Staleness earns its keep here WITHOUT being given authority: a
+                clock forgotten overnight is what holds sync, so it is labelled
+                so it can be resolved. It is never a reason to discard it — the
+                owner finishes it, corrects the minutes, or discards it. */}
+            {isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes) && (
+              <div className="tiny faint">
+                Running far past its target — finish it, correct the minutes, or discard it.
+              </div>
+            )}
           </div>
           <span className="btn btn-primary btn-sm">
             <PlayIcon /> Resume
@@ -477,7 +488,12 @@ function SessionView({
         </article>
       )}
 
-      {/* 2 · A calm sketch of the session. */}
+      {/* 2 · Honest totals — BELOW the recommendation, never above it, so
+             "Practise now" stays above the fold at 390×844. Neutral counts of
+             minutes and blocks: no target, no streak, no bar that fills. */}
+      <PractisedLine instrumentId={instrumentId} now={now} />
+
+      {/* 3 · A calm sketch of the session. */}
       {secondary.length > 0 && (
         <section className="card card-quiet stack-sm">
           <div className="section-label">Then, if you have time</div>
@@ -634,6 +650,36 @@ function SessionView({
       </Link>
     </div>
   );
+}
+
+/**
+ * How much you have actually practised — one quiet line for today and this
+ * week, scoped to the session instrument like everything else on this screen.
+ * CALENDAR figures: a block from late last night belongs to yesterday, and the
+ * week starts Monday. Neutral counts only — the moment this grows a goal, a
+ * streak or a bar that fills, it stops being an observation and starts being a
+ * judgement.
+ */
+function PractisedLine({ instrumentId, now }: { instrumentId: string; now: Date }) {
+  const db = useStore((s) => s.db);
+  const totals = useMemo(
+    () => practiceTotals(db.blocks.filter((b) => b.instrumentId === instrumentId), now),
+    [db.blocks, instrumentId, now],
+  );
+  if (totals.week.blocks === 0) return null;
+  return (
+    <p className="tiny faint">
+      Practised today: {totals.today.minutes} min · {blockCount(totals.today.blocks)}. This week:{' '}
+      {totals.week.minutes} min · {blockCount(totals.week.blocks)}.{' '}
+      <Link to="/insights" className="link">
+        All time
+      </Link>
+    </p>
+  );
+}
+
+function blockCount(n: number): string {
+  return `${n} block${n === 1 ? '' : 's'}`;
 }
 
 // --- The deliberate cross-instrument overview ---------------------------------

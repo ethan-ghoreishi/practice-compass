@@ -1,4 +1,4 @@
-import { nowISO, parseImport, SCHEMA_VERSION } from '../domain';
+import { decideReplacement, nowISO, parseImport, SCHEMA_VERSION } from '../domain';
 import { allBlobs, replaceAllBlobs, type AttachmentBlob } from './idb';
 import { useStore } from './useStore';
 
@@ -139,6 +139,20 @@ export function readBackupMeta(text: string): (BackupMeta & { exportedAt?: strin
   }
 }
 
+/**
+ * Names for whatever practice is unfinished right now, for a visible message.
+ * Lives here because this module already reads the store; used by both the
+ * import refusal below and the sync deferral notice. Never fabricates a title:
+ * `decideReplacement` falls back to a neutral phrase when one is missing.
+ */
+export function unfinishedPracticeLabels(): { itemTitle?: string; routineName?: string } {
+  const { active, activeRoutine, db } = useStore.getState();
+  return {
+    itemTitle: active ? db.items.find((i) => i.id === active.itemId)?.title : undefined,
+    routineName: activeRoutine ? db.pathwayRoutines.find((r) => r.id === activeRoutine.routineId)?.name : undefined,
+  };
+}
+
 export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
 
 /**
@@ -156,8 +170,29 @@ export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error
  * blob to match; existing blobs are left untouched. A present `files: []` IS
  * treated as a real full backup with no attachments, and does replace (that's
  * the whole point of restoring to a snapshot).
+ *
+ * This is the chokepoint for every INBOUND replacement — manual import, a sync
+ * pull, conflict-keep-remote, and archive restore all arrive here — so it is
+ * where an unfinished practice session is protected. The refusal is the FIRST
+ * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
+ * below destroys every attachment blob, so a check placed after it would
+ * return "nothing was changed" having already wiped them.
  */
 export async function importFullBackup(text: string): Promise<ImportOutcome> {
+  // A replacement reaching this function is one the owner chose (Import,
+  // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
+  // own deferral because practice started mid-sync. Either way an unfinished
+  // session — running or paused, fresh or stale, ordinary or routine — is
+  // never destroyed by it, and never silently: every caller already surfaces
+  // this error.
+  const { active, activeRoutine } = useStore.getState();
+  const refusal = decideReplacement({
+    intent: 'deliberate',
+    session: { active, activeRoutine },
+    labels: unfinishedPracticeLabels(),
+  });
+  if (refusal.outcome !== 'proceed') return { ok: false, error: refusal.message };
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

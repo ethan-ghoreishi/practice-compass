@@ -148,12 +148,29 @@ function UpdateBanner() {
   );
 }
 
-/** Calm, non-blocking notice when sync needs a decision or hit an error. */
+/**
+ * Calm, non-blocking notice when sync needs a decision, hit an error, or is
+ * WAITING on unfinished practice. The deferral must be visible here and not
+ * only in Settings: an unbounded, invisible sync outage is exactly what a
+ * forgotten block used to cause. It says what it is waiting for and points at
+ * the practice screen, where Finish, correcting the minutes, and Discard are
+ * all one tap away — the app never resolves it by discarding the practice.
+ */
 function SyncNotice({ pathname }: { pathname: string }) {
   const phase = useSyncStatus((s) => s.phase);
   const message = useSyncStatus((s) => s.message);
   if (pathname === '/settings') return null; // Settings shows the full panel.
-  if (phase !== 'conflict' && phase !== 'error') return null;
+  if (phase !== 'conflict' && phase !== 'error' && phase !== 'deferred') return null;
+  if (phase === 'deferred') {
+    return (
+      <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
+        <span className="dim">Sync is waiting: {message}</span>
+        <NavLink to="/active" className="link" style={{ flex: 'none' }}>
+          Resume
+        </NavLink>
+      </div>
+    );
+  }
   return (
     <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
       <span className="dim">

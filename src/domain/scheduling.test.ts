@@ -4,6 +4,7 @@ import {
   applyReviewDateToRows,
   clampSchedulingParams,
   computeReview,
+  completeOpenReviewsFor,
   computeReviewOutcome,
   DEFAULT_SCHEDULING_PARAMS,
   planNextReview,
@@ -14,11 +15,20 @@ import {
   suggestStatusAfterBlock,
 } from './scheduling';
 import type { SchedulingParams } from './types';
-import { createItem, createReview } from './factories';
+import { applyBlockStats } from './blocks';
+import { createBlock, createItem, createReview } from './factories';
 import { addDays, toISODate } from './util';
 import type { ItemStatus, PracticeItem, Rating } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
+
+/** A closed block, for handing an outcome's date through applyBlockStats. */
+function closedBlock() {
+  return createBlock(
+    { practiceItemId: 'item-1', instrumentId: 'i', durationMinutes: 10, mode: 'repair', focus: 'tone', result: 'not_logged', startedAt: NOW.toISOString() },
+    NOW,
+  );
+}
 
 function item(o: Partial<PracticeItem> & { status?: ItemStatus; importance?: Rating; difficulty?: Rating } = {}): PracticeItem {
   const base = createItem(
@@ -238,12 +248,12 @@ describe('computeReviewOutcome — the decision behind closing a block', () => {
   it('requires an explicit now at the type level — this must never read the wall clock', () => {
     // @ts-expect-error — `now` is required; omitting it must fail to compile
     // rather than silently fall back to `new Date()`.
-    computeReviewOutcome({ item: item(), scheduleReview: true });
+    computeReviewOutcome({ item: item(), answer: 'scheduled' });
   });
 
   it("clears the item's next review date when no review is scheduled", () => {
     const stale = item({ nextReviewDate: toISODate(addDays(NOW, -14)) });
-    const outcome = computeReviewOutcome({ item: stale, result: 'stable_alone', scheduleReview: false, now: NOW });
+    const outcome = computeReviewOutcome({ item: stale, result: 'stable_alone', answer: 'declined', now: NOW });
     // Tri-state, ready for applyBlockStats: null clears (§1.1), not undefined-keeps.
     expect(outcome.nextReviewDate).toBeNull();
   });
@@ -253,7 +263,7 @@ describe('computeReviewOutcome — the decision behind closing a block', () => {
     const outcome = computeReviewOutcome({
       item: item(),
       result: 'stable_alone',
-      scheduleReview: true,
+      answer: 'scheduled',
       nextReviewDate: date,
       now: NOW,
     });
@@ -264,7 +274,7 @@ describe('computeReviewOutcome — the decision behind closing a block', () => {
     const outcome = computeReviewOutcome({
       item: item({ srReps: 2, srIntervalDays: 6, srEase: 2.5 }),
       result: 'stable_in_context',
-      scheduleReview: true, // no explicit nextReviewDate — falls back to the SM-2 suggestion
+      answer: 'scheduled', // no explicit nextReviewDate — falls back to the SM-2 suggestion
       now: NOW,
     });
     expect(outcome.nextReviewDate).toBeTruthy();
@@ -275,10 +285,89 @@ describe('computeReviewOutcome — the decision behind closing a block', () => {
     const outcome = computeReviewOutcome({
       item: item({ srReps: 3, srEase: 2.6, srIntervalDays: 15 }),
       result: 'worse',
-      scheduleReview: false,
+      answer: 'declined',
       now: NOW,
     });
     expect(outcome.sr).toBeUndefined();
+  });
+});
+
+// --- A6: answering nothing is not declining ----------------------------------
+//
+// The whole bug was that the code could not tell those two states apart.
+// `!scheduleReview` conflated "the owner declined a review" (clear the date,
+// close the row) with "the owner answered nothing" (change neither), so one
+// skipped tap erased the item's next date, completed its open review and left
+// SM-2 state stale — while the panel read "Should this come back? Yes" above an
+// empty date field. Both halves are ONE decision, so both are asserted against
+// the same discriminating pair.
+
+describe('A6 · a resultless close must not touch the schedule', () => {
+  const itemId = 'item-1';
+  const WAS = toISODate(addDays(NOW, 9));
+
+  it('keeps the item\'s review date when no result was chosen and still clears it when a review is declined', () => {
+    const scheduled = item({ nextReviewDate: WAS, srReps: 3, srEase: 2.6, srIntervalDays: 15 });
+
+    // No result chosen: `undefined` is "keep", which applyBlockStats reads as
+    // leaving item.nextReviewDate exactly as it was.
+    const unanswered = computeReviewOutcome({ item: scheduled, answer: 'unanswered', now: NOW });
+    expect(unanswered.nextReviewDate).toBeUndefined();
+    expect(applyBlockStats(scheduled, closedBlock(), {
+      itemBlocksIncludingNew: [closedBlock()],
+      now: NOW,
+      nextReviewDate: unanswered.nextReviewDate,
+    }).nextReviewDate).toBe(WAS);
+
+    // A genuine decline still clears it, exactly as it always has.
+    const declined = computeReviewOutcome({ item: scheduled, result: 'stable_alone', answer: 'declined', now: NOW });
+    expect(declined.nextReviewDate).toBeNull();
+    expect(applyBlockStats(scheduled, closedBlock(), {
+      itemBlocksIncludingNew: [closedBlock()],
+      now: NOW,
+      nextReviewDate: declined.nextReviewDate,
+    }).nextReviewDate).toBeUndefined();
+  });
+
+  it('leaves an open review row open when no result was chosen and still completes it on a genuine decline', () => {
+    const open = createReview({ practiceItemId: itemId, dueDate: WAS, reviewType: 'retention' }, NOW);
+
+    const unanswered = computeReviewOutcome({ item: item(), answer: 'unanswered', now: NOW });
+    expect(unanswered.completeOpenReviews).toBe(false);
+    const afterUnanswered = completeOpenReviewsFor({
+      reviews: [open],
+      practiceItemId: itemId,
+      complete: unanswered.completeOpenReviews,
+      now: NOW,
+    });
+    expect(afterUnanswered[0].completedAt).toBeUndefined();
+    expect(afterUnanswered[0].dueDate).toBe(WAS);
+
+    const declined = computeReviewOutcome({ item: item(), result: 'stable_alone', answer: 'declined', now: NOW });
+    expect(declined.completeOpenReviews).toBe(true);
+    const afterDecline = completeOpenReviewsFor({
+      reviews: [open],
+      practiceItemId: itemId,
+      complete: declined.completeOpenReviews,
+      result: 'stable_alone',
+      now: NOW,
+    });
+    expect(afterDecline[0].completedAt).toBeTruthy();
+  });
+
+  it('leaves SM-2 state untouched when nothing was answered', () => {
+    const outcome = computeReviewOutcome({
+      item: item({ srReps: 3, srEase: 2.6, srIntervalDays: 15 }),
+      answer: 'unanswered',
+      now: NOW,
+    });
+    expect(outcome.sr).toBeUndefined();
+  });
+
+  it('still completes the open row when a review IS scheduled — practising is what completes one', () => {
+    const outcome = computeReviewOutcome({ item: item(), result: 'stable_alone', answer: 'scheduled', now: NOW });
+    expect(outcome.completeOpenReviews).toBe(true);
+    expect(outcome.review?.dueDate).toBe(outcome.nextReviewDate);
   });
 });
 

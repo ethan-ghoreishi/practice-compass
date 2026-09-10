@@ -1,6 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
-import { generateInsights, type Insight, type InsightTone } from '../domain';
+import {
+  generateInsights,
+  practiceTotals,
+  practiceTotalsByInstrument,
+  type Insight,
+  type InsightTone,
+} from '../domain';
 import { useStore } from '../store/useStore';
 import { EmptyState } from '../components/ui';
 import { InsightsIcon } from '../components/icons';
@@ -23,6 +29,8 @@ export default function Insights() {
         <h1 className="page-title">Insights</h1>
         <p className="page-sub">Calm, neutral patterns from your practice — not a scoreboard.</p>
       </header>
+
+      <PractiseTotals />
 
       <div className="options">
         {[7, 30].map((d) => (
@@ -55,6 +63,69 @@ export default function Insights() {
       </Link>
     </div>
   );
+}
+
+/**
+ * How much practice there has actually been: today, this week and all time,
+ * overall and per instrument. CALENDAR figures — a block belongs whole to the
+ * local day it began, and the week starts Monday, so a session begun Sunday
+ * 23:30 belongs to the week that is ending. Neutral counts of minutes and
+ * blocks: no goal, no streak, no score, no bar that fills, no colour that
+ * judges.
+ */
+function PractiseTotals() {
+  const db = useStore((s) => s.db);
+  const now = useMemo(() => new Date(), []);
+  const overall = useMemo(() => practiceTotals(db.blocks, now), [db.blocks, now]);
+  const rows = useMemo(
+    () => practiceTotalsByInstrument(db.instruments.filter((i) => i.active), db.blocks, now),
+    [db.instruments, db.blocks, now],
+  );
+  if (overall.allTime.blocks === 0) return null;
+
+  return (
+    <section className="card stack-sm">
+      <div className="section-label">Time practised</div>
+      <div className="table-scroll" style={{ overflowX: 'auto' }}>
+        <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={CELL} scope="col"></th>
+              <th style={NUM} scope="col">Today</th>
+              <th style={NUM} scope="col">This week</th>
+              <th style={NUM} scope="col">All time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th style={{ ...CELL, fontWeight: 600 }} scope="row">All instruments</th>
+              <td style={NUM}>{cell(overall.today)}</td>
+              <td style={NUM}>{cell(overall.week)}</td>
+              <td style={NUM}>{cell(overall.allTime)}</td>
+            </tr>
+            {rows.map((r) => (
+              <tr key={r.instrumentId}>
+                <th style={CELL} scope="row" className="dim">{r.instrumentName}</th>
+                <td style={NUM} className="dim">{cell(r.today)}</td>
+                <td style={NUM} className="dim">{cell(r.week)}</td>
+                <td style={NUM} className="dim">{cell(r.allTime)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="tiny faint">
+        Counted by calendar day, and the week starts Monday — a block belongs whole to the day it began.
+      </p>
+    </section>
+  );
+}
+
+const CELL: CSSProperties = { textAlign: 'left', padding: '4px 8px 4px 0', whiteSpace: 'nowrap' };
+const NUM: CSSProperties = { textAlign: 'right', padding: '4px 0 4px 8px', whiteSpace: 'nowrap' };
+
+function cell(t: { minutes: number; blocks: number }): string {
+  return `${t.minutes} min · ${t.blocks}`;
 }
 
 function InsightCard({ insight }: { insight: Insight }) {

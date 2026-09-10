@@ -53,6 +53,17 @@ daily home is the **MacBook**, with the **iPhone** as companion.
   through a GitHub repo you own: snapshots publish atomically (one git commit each),
   changes are compared by content hash (not clocks), both copies are archived before
   any conflict resolution, and everything is recoverable from the repo's history.
+  **Unfinished practice is never destroyed by a replacement you did not aim at it** —
+  running or paused, fresh or stale, ordinary or routine. Background sync defers quietly
+  while a session is open (saying so on screen) and resumes on its own the moment you
+  finish or discard it; a deliberate Import, Restore archive or Keep remote refuses out
+  loud instead, naming the block that is in the way.
+- **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
+  Today, and today / this week / all time per instrument on Insights. Calendar figures,
+  not rolling windows — late last night belongs to yesterday and the week starts Monday.
+  Neutral counts: no goal, no streak, no bar that fills.
+- **Closes the loop.** The next action you chose last time is shown when you practise
+  that item again, before you start playing.
 - **Keeps études concrete.** Break a piece into parts (bars, phrases, one technical
   problem); the piece page always names *one* part to practise now, for 10 minutes, and
   suggests a smaller unit or new strategy when things stall — never quotas.
@@ -188,7 +199,7 @@ For each item a **priority score** is computed deterministically
 
 ```
 priority = importance*2 + difficulty + fragility + overdue
-         + teacherRelevance + neglected − saturationPenalty
+         + teacherRelevance + neglected + lessonUrgency − saturationPenalty
 ```
 
 | Component         | Meaning                                                        |
@@ -198,6 +209,7 @@ priority = importance*2 + difficulty + fragility + overdue
 | `teacherRelevance`| +3 if an open teacher question exists                          |
 | `neglected`       | days since last touched, banded 0–4                            |
 | `saturationPenalty`| −3 if drilled 3×/48h **or** last 3 results all "same"         |
+| `lessonUrgency`   | 3–8 if flagged *for next class*, climbing as that class nears   |
 
 **Three cards** are then chosen (see [`src/domain/recommend.ts`](src/domain/recommend.ts)):
 
@@ -208,16 +220,10 @@ priority = importance*2 + difficulty + fragility + overdue
 Each card explains itself in one neutral sentence, e.g.
 *"Top priority — important, fragile, and 2d overdue."*
 
-**Review scheduling** when a block closes (see [`src/domain/scheduling.ts`](src/domain/scheduling.ts)):
-
-| Result             | Next review        |
-| ------------------ | ------------------ |
-| worse / same       | tomorrow (same ⇒ "try a new strategy") |
-| slightly better    | +2 days            |
-| stable alone       | +4 days            |
-| stable in context  | +7 days            |
-| performable        | +21 days           |
-| maintenance work   | +30 days           |
+**Review scheduling** when a block closes is the SM-2 engine described under
+[Review scheduling](#review-scheduling) below (see
+[`src/domain/scheduling.ts`](src/domain/scheduling.ts)). There is no fixed
+result-to-interval table: the gap comes from the item's own reps, ease and interval.
 
 Status changes are **suggested, never forced** (e.g. *stable alone* on a fragile item
 suggests promotion to *usable*).
@@ -276,6 +282,19 @@ little sooner. It returns a one-line rationale. Per item you can override the mo
 - **Every N days** — a fixed cadence you choose.
 - **Manual** — you set each date yourself.
 
+**A result is required to save a block.** The six options are already the first thing on
+the close screen, so this adds no field — it makes a choice already there a required one.
+"Save without a result" stays one tap away and records the minutes WITHOUT touching the
+schedule: the item's next review date and its open review row both stand exactly as they
+were. Answering nothing is not declining, and the one place every caller routes through
+(`computeReviewOutcome`) returns the date and the row decision together, so the two can
+never disagree.
+
+**An abandoned clock never writes practice you did not do.** Closing a block whose timer
+ran far past its target proposes the *target* rather than the wall-clock gap, with one
+plain line saying why; ordinary overtime still proposes the real elapsed time, and the
+figure is editable either way.
+
 Due reviews offer three honest actions: **practise** (the only thing that completes a
 review), **not now** (hidden until tomorrow, no schedule change), and **+2d** (genuinely
 moves the date). Item statuses use plain language — *Not practised yet · Shaky · Fixing
@@ -294,6 +313,18 @@ and attachment changes all count; when both sides changed you choose explicitly,
 losing copy is archived first — in-app ("Restore it" in Settings) and as an `archive/…`
 branch in the repo. Attachments upload once each (immutable); only new or deleted files
 transfer. Without sync, moving data is a manual backup export → import.
+
+**No replacement runs over unfinished practice.** A running block lives outside the synced
+database, so a mid-block device looks unchanged to the hash comparison and a remote change
+would otherwise resolve to a straight pull that discarded it. Presence is what protects a
+session — never whether its clock is ticking, so pausing protects rather than exposes, and
+a long-abandoned clock is protected too: an implausible *duration* says nothing about
+whether the session holds practice worth keeping. Automatic sync therefore reports a
+distinct **waiting** state (not an error) and retries the instant the session clears,
+whether it was finished or discarded. Import, Restore archive and Keep remote refuse with
+a message naming the session — never a silent no-op, never a silent discard. Resolving it
+is yours: Finish, correct the minutes, or Discard, all one tap from Today's In-progress
+card, which labels a clock that has run far past its target.
 
 **Four storage roles, kept distinct** (Settings explains them): **local data** is the
 offline source of truth; **GitHub sync** is the small versioned multi-device transport

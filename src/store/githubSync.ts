@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { hashState, shortHash } from '../domain';
-import { buildFullBackup, getDeviceName, importFullBackup } from './backup';
+import { decideReplacement, hashState, shortHash } from '../domain';
+import { buildFullBackup, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
 import { loadPreSyncArchive, loadPreSyncArchiveMeta, savePreSyncArchive, type PreSyncArchiveMeta } from './idb';
 import { makeGitHubRemote } from './gitRemote';
 import {
@@ -34,7 +34,16 @@ export interface SyncConfig {
   token: string;
 }
 
-export type SyncPhase = 'off' | 'idle' | 'syncing' | 'synced' | 'conflict' | 'error';
+/**
+ * 'deferred' is a distinct WAITING state, never an error and never a silent
+ * no-op: automatic sync holds off while practice is unfinished rather than
+ * replacing this device's data and destroying an in-flight block. Nothing
+ * switches exhaustively on this type, and Settings compares it only for
+ * equality, so a deferral falls through to the generic message in normal
+ * colour — which is exactly right, because a background merge waiting its turn
+ * is not a failure.
+ */
+export type SyncPhase = 'off' | 'idle' | 'syncing' | 'synced' | 'deferred' | 'conflict' | 'error';
 
 export interface ConflictSide {
   deviceName?: string;
@@ -234,7 +243,26 @@ export async function syncNow(): Promise<void> {
     setStatus({ phase: 'idle', message: 'Offline — will sync when back online.' });
     return;
   }
+  // Checked before the deferral so a sync already in flight is never relabelled
+  // as "waiting" — it is genuinely running, and importFullBackup's own guard is
+  // what protects a block started mid-sync.
   if (running) return;
+  // Defer QUIETLY while practice is unfinished — running or paused, fresh or
+  // stale, ordinary or routine. A pull would replace this device's database and
+  // silently destroy the in-flight block, which lives outside `db` and is
+  // therefore invisible to the hash comparison. The deferral is visible (the
+  // notice in Layout says what it is waiting on) and App.tsx retries it the
+  // moment the blocking session clears — whether it was finished or discarded.
+  const { active, activeRoutine } = useStore.getState();
+  const decision = decideReplacement({
+    intent: 'automatic',
+    session: { active, activeRoutine },
+    labels: unfinishedPracticeLabels(),
+  });
+  if (decision.outcome !== 'proceed') {
+    setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
+    return;
+  }
   running = true;
   setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
   try {

@@ -2,8 +2,9 @@ import { lazy, Suspense, useEffect, useRef } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import { CompassIcon } from './components/icons';
+import { hasUnfinishedPractice, deferredSyncRetry } from './domain';
 import { useStore } from './store/useStore';
-import { getSyncConfig, syncNow } from './store/githubSync';
+import { getSyncConfig, syncNow, useSyncStatus } from './store/githubSync';
 // Today stays in the entry chunk (it is always the first screen); every other
 // route loads on demand — smaller initial JS, and the PWA precaches all
 // chunks anyway so offline still has everything.
@@ -69,6 +70,23 @@ function useAutoSync(hydrated: boolean) {
     window.addEventListener('online', onOnline);
     return () => window.removeEventListener('online', onOnline);
   }, []);
+
+  // A deferred sync retries on the BLOCKING CONDITION clearing, never on an
+  // incidental database write: closeSession writes a block (bumping `rev`, which
+  // the quiet-period effect above watches), but cancelSession is a bare
+  // `set({ active: null })` that writes nothing — so watching `rev` would resume
+  // after a finish and wait forever after a discard. Watching presence covers
+  // finishing, discarding and closeSession's missing-item bail-out alike.
+  const unfinished = useStore((s) => hasUnfinishedPractice(s));
+  const deferred = useSyncStatus((s) => s.phase === 'deferred');
+  // Seeded with the CURRENT presence, not false: an ordinary load with no
+  // session must not read as a present→absent transition and fire a sync.
+  const wasUnfinished = useRef(unfinished);
+  useEffect(() => {
+    const fire = deferredSyncRetry({ pending: deferred, wasUnfinished: wasUnfinished.current, isUnfinished: unfinished });
+    wasUnfinished.current = unfinished;
+    if (fire && getSyncConfig()) void syncNow();
+  }, [unfinished, deferred]);
 }
 
 export default function App() {
