@@ -129,7 +129,14 @@ would reach `importDB` — which nulls `active`/`activeRoutine` — with no guar
 second check sits in the same synchronous tick as the install, with nothing awaited in
 between, so it is genuinely the last word. It refuses honestly: the blobs are already
 written by then, so the message says so and invites re-running the import rather than
-claiming nothing changed. Ordering is NOT reversed to fix this — `replaceAllBlobs` is one
+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
+watches `deferred`, so an `error` here would stop sync until something else happened to
+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
+this — `replaceAllBlobs` is one
 IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
 untouched, which installing the `db` first would give up.
 

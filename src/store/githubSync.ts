@@ -162,7 +162,20 @@ async function buildLocalSnapshot(): Promise<LocalSnapshot> {
   };
 }
 
-function makePorts(cfg: SyncConfig): SyncPorts {
+/**
+ * A deferral raised INSIDE a sync run, carried back out to `applyOutcome`.
+ * `importFullBackup` defers when practice began after `syncNow`'s own check —
+ * during the network fetch, or during `replaceAllBlobs` — and the only channel
+ * out of `runSync` is a thrown error, which would land in `error` phase. That
+ * is the wrong answer twice over: a background merge waiting its turn is not a
+ * failure, and App.tsx's retry watches `deferred`, so an `error` would leave
+ * the sync stopped until something else happened to trigger one. Module scope
+ * is safe for the same reason `running` below is: exactly one sync runs at a
+ * time, and each entry point clears this first.
+ */
+let pendingDeferral: string | null = null;
+
+function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPorts {
   return {
     remote: makeGitHubRemote(cfg),
     local: {
@@ -170,8 +183,11 @@ function makePorts(cfg: SyncConfig): SyncPorts {
       applySnapshot: async (stateText, files) => {
         const backup = JSON.parse(stateText) as BackupShape;
         backup.files = files;
-        const result = await importFullBackup(JSON.stringify(backup));
-        if (!result.ok) throw new Error(result.error);
+        const result = await importFullBackup(JSON.stringify(backup), intent);
+        if (!result.ok) {
+          if (result.deferred) pendingDeferral = result.error;
+          throw new Error(result.error);
+        }
       },
       archivePreSync: async (reason) => {
         const backupText = await buildFullBackup();
@@ -229,7 +245,9 @@ async function applyOutcome(outcome: Awaited<ReturnType<typeof runSync>>): Promi
       });
       break;
     case 'error':
-      setStatus({ phase: 'error', message: outcome.message });
+      // A run stopped by unfinished practice is WAITING, not broken.
+      if (pendingDeferral) setStatus({ phase: 'deferred', message: pendingDeferral, conflict: undefined });
+      else setStatus({ phase: 'error', message: outcome.message });
       break;
   }
   const local = useStore.getState();
@@ -264,9 +282,10 @@ export async function syncNow(): Promise<void> {
     return;
   }
   running = true;
+  pendingDeferral = null;
   setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
   try {
-    await applyOutcome(await runSync(makePorts(cfg)));
+    await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
   } finally {
     running = false;
   }
@@ -276,9 +295,11 @@ export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
   const cfg = getSyncConfig();
   if (!cfg || running) return;
   running = true;
+  // Keep-remote is DELIBERATE: it never defers, it refuses out loud.
+  pendingDeferral = null;
   setStatus({ phase: 'syncing', message: keep === 'local' ? 'Keeping this device’s copy…' : 'Archiving this copy, then taking GitHub’s…' });
   try {
-    await applyOutcome(await resolveSyncConflict(makePorts(cfg), keep));
+    await applyOutcome(await resolveSyncConflict(makePorts(cfg, 'deliberate'), keep));
   } finally {
     running = false;
   }

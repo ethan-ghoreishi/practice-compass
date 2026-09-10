@@ -153,20 +153,35 @@ export function unfinishedPracticeLabels(): { itemTitle?: string; routineName?: 
   };
 }
 
-export type ImportOutcome = { ok: true; fileCount: number } | { ok: false; error: string };
+export type ImportOutcome =
+  | { ok: true; fileCount: number }
+  | {
+      ok: false;
+      error: string;
+      /**
+       * True when the refusal was a DEFERRAL, not a failure — an automatic sync
+       * that will resume by itself. The caller must not dress this as an error:
+       * `error` phase is not what App.tsx's retry watches, so reporting one
+       * would turn a session that resolves in a minute into a silent outage.
+       */
+      deferred?: boolean;
+    };
 
 /**
  * Is a whole-database replacement refused right now? Read fresh each time it is
- * asked, because the answer can change mid-import.
+ * asked, because the answer can change mid-import. The intent is the caller's:
+ * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
+ * and refuses out loud.
  */
-function replacementRefusal(): string | null {
+function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportOutcome | null {
   const { active, activeRoutine } = useStore.getState();
   const decision = decideReplacement({
-    intent: 'deliberate',
+    intent,
     session: { active, activeRoutine },
     labels: unfinishedPracticeLabels(),
   });
-  return decision.outcome === 'proceed' ? null : decision.message;
+  if (decision.outcome === 'proceed') return null;
+  return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
 }
 
 /**
@@ -194,15 +209,18 @@ function replacementRefusal(): string | null {
  * thing before `importDB`, because that first check does not span the whole
  * call — see the comment at the install itself.
  */
-export async function importFullBackup(text: string): Promise<ImportOutcome> {
+export async function importFullBackup(
+  text: string,
+  intent: 'automatic' | 'deliberate' = 'deliberate',
+): Promise<ImportOutcome> {
   // A replacement reaching this function is one the owner chose (Import,
   // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
   // own deferral because practice started mid-sync. Either way an unfinished
   // session — running or paused, fresh or stale, ordinary or routine — is
   // never destroyed by it, and never silently: every caller already surfaces
   // this error.
-  const refusal = replacementRefusal();
-  if (refusal) return { ok: false, error: refusal };
+  const refusal = replacementRefusal(intent);
+  if (refusal) return refusal;
 
   let parsed: unknown;
   try {
@@ -250,12 +268,10 @@ export async function importFullBackup(text: string): Promise<ImportOutcome> {
   // that plainly rather than claiming nothing changed; the message still names
   // the session (ac-8), the practice is intact, and re-running the same import
   // afterwards finishes the job.
-  const late = replacementRefusal();
+  const late = replacementRefusal(intent);
   if (late) {
-    return {
-      ok: false,
-      error: `${late}${isFullBackup ? ' (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)' : ''}`,
-    };
+    if (!isFullBackup) return late;
+    return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };
   }
 
   useStore.getState().importDB(parsed);
