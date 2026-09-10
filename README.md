@@ -53,11 +53,14 @@ daily home is the **MacBook**, with the **iPhone** as companion.
   through a GitHub repo you own: snapshots publish atomically (one git commit each),
   changes are compared by content hash (not clocks), both copies are archived before
   any conflict resolution, and everything is recoverable from the repo's history.
-  **Unfinished practice is never destroyed by a replacement you did not aim at it** —
-  running or paused, fresh or stale, ordinary or routine. Background sync defers quietly
-  while a session is open (saying so on screen) and resumes on its own the moment you
-  finish or discard it; a deliberate Import, Restore archive or Keep remote refuses out
-  loud instead, naming the block that is in the way.
+  **Practice is never destroyed by a replacement you did not aim at it** — an open
+  session, running or paused, fresh or stale, ordinary or routine, and equally a block
+  you started and finished while the sync was still running. Background sync defers
+  quietly (saying so on screen) and resumes on its own — the moment you finish or discard
+  an open session, or on its next run if the practice is already recorded, where a
+  changed copy on both sides becomes an explicit choice rather than a silent overwrite. A
+  deliberate Import, Restore archive or Keep remote refuses out loud instead, naming the
+  block that is in the way.
 - **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
   Today, and today / this week / all time per instrument on Insights. Calendar figures,
   not rolling windows — late last night belongs to yesterday and the week starts Monday.

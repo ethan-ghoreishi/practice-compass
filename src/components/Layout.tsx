@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { hasUnfinishedPractice } from '../domain';
 import { useStore } from '../store/useStore';
 import { useSyncStatus } from '../store/githubSync';
 import { useViewportGuard } from './useViewportGuard';
@@ -150,24 +151,32 @@ function UpdateBanner() {
 
 /**
  * Calm, non-blocking notice when sync needs a decision, hit an error, or is
- * WAITING on unfinished practice. The deferral must be visible here and not
- * only in Settings: an unbounded, invisible sync outage is exactly what a
- * forgotten block used to cause. It says what it is waiting for and points at
- * the practice screen, where Finish, correcting the minutes, and Discard are
- * all one tap away — the app never resolves it by discarding the practice.
+ * WAITING. The deferral must be visible here and not only in Settings: an
+ * unbounded, invisible sync outage is exactly what a forgotten block used to
+ * cause. It says what it is waiting for, and Resume points at the practice
+ * screen where Finish, correcting the minutes, and Discard are all one tap
+ * away — the app never resolves it by discarding the practice.
+ *
+ * Resume is keyed on the SESSION EXISTING, not on the phase. A deferral raised
+ * because practice was RECORDED mid-sync has no session to resume — offering a
+ * link to /active there would be a dead control that bounces straight back,
+ * and that deferral needs no tap at all: it clears itself on the next sync.
  */
 function SyncNotice({ pathname }: { pathname: string }) {
   const phase = useSyncStatus((s) => s.phase);
   const message = useSyncStatus((s) => s.message);
+  const unfinished = useStore((s) => hasUnfinishedPractice(s));
   if (pathname === '/settings') return null; // Settings shows the full panel.
   if (phase !== 'conflict' && phase !== 'error' && phase !== 'deferred') return null;
   if (phase === 'deferred') {
     return (
       <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
         <span className="dim">Sync is waiting: {message}</span>
-        <NavLink to="/active" className="link" style={{ flex: 'none' }}>
-          Resume
-        </NavLink>
+        {unfinished && (
+          <NavLink to="/active" className="link" style={{ flex: 'none' }}>
+            Resume
+          </NavLink>
+        )}
       </div>
     );
   }

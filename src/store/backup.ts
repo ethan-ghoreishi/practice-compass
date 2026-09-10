@@ -290,7 +290,9 @@ export async function importFullBackup(
   const late = replacementRefusal(intent, decidedFromRev);
   if (late) {
     if (!isFullBackup) return late;
-    return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };
+    // Say what actually happened; do NOT instruct a manual re-run, because a
+    // deferral reaching here is an automatic sync that re-runs itself.
+    return { ...late, error: `${late.error} (Your attachment files had already been replaced from the backup — the data itself was not. The next attempt finishes the job.)` };
   }
 
   useStore.getState().importDB(parsed);
