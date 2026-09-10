@@ -1,49 +1,12 @@
 ---
 id: 20260910-every-recorded-minute-is-one-you-played--9ed1
 contractId: 20260910-every-recorded-minute-is-one-you-played--9ed1
-patchId: 527e64074c85a0a65e9380fa101353bf1f5786db
+patchId: ad8c784e2b5c531051c8e17b77b6a138c1ecc93b
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: unfinished-session replacement atomicity
-    summary: The sync baseline revision is captured after buildFullBackup returns,
-      although buildFullBackup captures the database before awaiting attachment
-      reads. A database mutation during that await can therefore be absent from
-      the snapshot yet included in the recorded baseline revision, allowing the
-      late guard to proceed and overwrite newly recorded practice.
-    counterexample: Begin a pull with no active session. buildFullBackup captures
-      the old db at backup.ts:107, then awaits allBlobs or blob encoding. Start
-      and finish a practice block during that await, bumping rev.
-      buildLocalSnapshot then records the new rev at githubSync.ts:168-169
-      beside the old db snapshot. If the pull path is selected and no later
-      mutation occurs, replacementRefusal sees current rev equal to
-      decidedFromRev and importDB installs the incoming database, destroying the
-      completed block.
-  - family: revision-deferral retry
-    summary: A revision raised during an automatic sync schedules one quiet-period
-      retry, but syncNow discards that retry when the original sync is still
-      running. If the original run later becomes deferred for that revision,
-      neither the revision nor unfinished-session effects schedule another
-      attempt, leaving sync permanently deferred.
-    counterexample: Start a pull, then start and finish a block so rev changes and
-      App.tsx schedules its single 30-second retry. Keep the original network or
-      blob operation running beyond 30 seconds. The timer calls syncNow, which
-      returns immediately because running is true at githubSync.ts:286. The
-      original run then reaches the late revision guard and sets phase to
-      deferred, but no unfinished session ever transitions from present to
-      absent and rev does not change again. No further sync is scheduled.
-  - family: instrument-balance percentage integrity
-    summary: instrumentBalance fixes the denominator but independently rounds every
-      row percentage. AC-13 and the documented invariant require emitted
-      percentages to sum to 100, which independent rounding does not guarantee;
-      the named test covers only a conveniently exact 60/40 split.
-    counterexample: Supply three displayed instruments with one minute each plus any
-      blocks for an omitted retired instrument. The filtered denominator is
-      three minutes, so each displayed row becomes Math.round(100/3), or 33
-      percent. The emitted percentages total 99 rather than 100.
-createdAt: 2026-09-10T15:39:21.092Z
-sealedAt: 2026-09-10T15:53:52.281Z
+verdict: approve
+createdAt: 2026-09-10T16:53:47.530Z
+sealedAt: 2026-09-10T17:34:59.683Z
 ---
 
 # Review: Every recorded minute is one you played: honest close, sync-safe clocks, real practice totals
@@ -57,7 +20,7 @@ sealedAt: 2026-09-10T15:53:52.281Z
 - **Contract:** 20260910-every-recorded-minute-is-one-you-played--9ed1
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/16
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `527e64074c85a0a65e9380fa101353bf1f5786db`
+- **Diff patch-id:** `ad8c784e2b5c531051c8e17b77b6a138c1ecc93b`
 
 ## The Delta this change was framed from
 
@@ -139,508 +102,424 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **unfinished-session replacement atomicity** — The late guard checks only whether practice is unfinished at the instant before importDB. A block started and finished during the asynchronous blob replacement leaves no active session, so the incoming database overwrites the newly recorded block.
-  _counterexample:_ Begin an automatic pull with no active session. After the local pre-sync archive is complete and while replaceAllBlobs is awaiting IndexedDB, start and finish an ordinary block. The late replacementRefusal sees active and activeRoutine both null, importDB installs the remote database, and the completed block exists in neither the earlier archive nor the incoming snapshot.
+- **unfinished-session replacement atomicity** — The sync baseline revision is captured after buildFullBackup returns, although buildFullBackup captures the database before awaiting attachment reads. A database mutation during that await can therefore be absent from the snapshot yet included in the recorded baseline revision, allowing the late guard to proceed and overwrite newly recorded practice.
+  _counterexample:_ Begin a pull with no active session. buildFullBackup captures the old db at backup.ts:107, then awaits allBlobs or blob encoding. Start and finish a practice block during that await, bumping rev. buildLocalSnapshot then records the new rev at githubSync.ts:168-169 beside the old db snapshot. If the pull path is selected and no later mutation occurs, replacementRefusal sees current rev equal to decidedFromRev and importDB installs the incoming database, destroying the completed block.
+- **revision-deferral retry** — A revision raised during an automatic sync schedules one quiet-period retry, but syncNow discards that retry when the original sync is still running. If the original run later becomes deferred for that revision, neither the revision nor unfinished-session effects schedule another attempt, leaving sync permanently deferred.
+  _counterexample:_ Start a pull, then start and finish a block so rev changes and App.tsx schedules its single 30-second retry. Keep the original network or blob operation running beyond 30 seconds. The timer calls syncNow, which returns immediately because running is true at githubSync.ts:286. The original run then reaches the late revision guard and sets phase to deferred, but no unfinished session ever transitions from present to absent and rev does not change again. No further sync is scheduled.
+- **instrument-balance percentage integrity** — instrumentBalance fixes the denominator but independently rounds every row percentage. AC-13 and the documented invariant require emitted percentages to sum to 100, which independent rounding does not guarantee; the named test covers only a conveniently exact 60/40 split.
+  _counterexample:_ Supply three displayed instruments with one minute each plus any blocks for an omitted retired instrument. The filtered denominator is three minutes, so each displayed row becomes Math.round(100/3), or 33 percent. The emitted percentages total 99 rather than 100.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 48081f8..c28f372 100644
+index c28f372..441413d 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -140,6 +140,29 @@ this — `replaceAllBlobs` is one
- IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
- untouched, which installing the `db` first would give up.
+@@ -144,9 +144,9 @@ PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, a
+ are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+ second is the local REVISION: an inbound snapshot may only be installed over the database
+ it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+-unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
+-archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
+-that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
++unfinished session for presence to see. That block is not in the incoming snapshot, and —
++if it landed after the pre-sync archive was taken — not in the only other copy either, so
++installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
+ decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+ in the same call as the presence check (ONE call answering both, so no await can ever be
+ slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+@@ -155,13 +155,32 @@ is a separate store and no effect or timer writes `db`, so a quiet sync run neve
+ The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+ `githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+ is) so the guarded window covers the remote fetch and the archive too, not just
+-`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
++`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
++`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
++database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
++after that await, the baseline would pair an OLD copy of the data with a NEWER revision
++number, and a block finished while the attachment blobs were being read would make
++`decideReplacement` — which is itself correct — answer "nothing was written since" about a
++database that had been written to. The pure decision is tested; this WIRING is protected
++structurally, the same way `installDatabase`'s is: the revision is not reachable from
++anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
+ a manual Import or an archive restore has no earlier decision point than its own call and
+ defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+ PRESENCE is answered first so a message that can name the blocking session still does
+-(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
+-which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
+-changed and offers the owner an explicit conflict with both copies preserved.
++(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
++the presence retry to watch clear, but the very write that raised it bumped `rev`, which
++App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
++and offers the owner an explicit conflict with both copies preserved. That trigger is only
++reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
++(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
++the run loops once more when it is set). `running` used to make such a request a silent
++no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
++revision had scheduled and then deferred for that very revision — permanently waiting on a
++condition nothing was watching. Remembering the request fixes that at the root, for every
++trigger (open, quiet period, back online, deferral cleared) rather than for one
++counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
++needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
++it too — a request that arrived while the owner was deciding is owed a run just the same.
  
-+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
-+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
-+second is the local REVISION: an inbound snapshot may only be installed over the database
-+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
-+unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
-+archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
-+that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
-+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
-+in the same call as the presence check (ONE call answering both, so no await can ever be
-+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
-+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
-+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
-+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
-+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
-+is) so the guarded window covers the remote fetch and the archive too, not just
-+`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
-+a manual Import or an archive restore has no earlier decision point than its own call and
-+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
-+PRESENCE is answered first so a message that can name the blocking session still does
-+(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
-+which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
-+changed and offers the owner an explicit conflict with both copies preserved.
-+
  A stale clock is labelled wherever the block appears on Today — the In-progress card AND
  the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
- labelling only the first left the same block silent after switching instrument or choosing
 diff --git a/CLAUDE.md b/CLAUDE.md
-index 348ba10..90b67ef 100644
+index 90b67ef..eb1eace 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -140,6 +140,29 @@ this — `replaceAllBlobs` is one
- IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
- untouched, which installing the `db` first would give up.
+@@ -144,9 +144,9 @@ PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, a
+ are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+ second is the local REVISION: an inbound snapshot may only be installed over the database
+ it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+-unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
+-archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
+-that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
++unfinished session for presence to see. That block is not in the incoming snapshot, and —
++if it landed after the pre-sync archive was taken — not in the only other copy either, so
++installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
+ decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+ in the same call as the presence check (ONE call answering both, so no await can ever be
+ slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+@@ -155,13 +155,32 @@ is a separate store and no effect or timer writes `db`, so a quiet sync run neve
+ The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+ `githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+ is) so the guarded window covers the remote fetch and the archive too, not just
+-`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
++`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
++`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
++database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
++after that await, the baseline would pair an OLD copy of the data with a NEWER revision
++number, and a block finished while the attachment blobs were being read would make
++`decideReplacement` — which is itself correct — answer "nothing was written since" about a
++database that had been written to. The pure decision is tested; this WIRING is protected
++structurally, the same way `installDatabase`'s is: the revision is not reachable from
++anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
+ a manual Import or an archive restore has no earlier decision point than its own call and
+ defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+ PRESENCE is answered first so a message that can name the blocking session still does
+-(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
+-which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
+-changed and offers the owner an explicit conflict with both copies preserved.
++(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
++the presence retry to watch clear, but the very write that raised it bumped `rev`, which
++App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
++and offers the owner an explicit conflict with both copies preserved. That trigger is only
++reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
++(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
++the run loops once more when it is set). `running` used to make such a request a silent
++no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
++revision had scheduled and then deferred for that very revision — permanently waiting on a
++condition nothing was watching. Remembering the request fixes that at the root, for every
++trigger (open, quiet period, back online, deferral cleared) rather than for one
++counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
++needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
++it too — a request that arrived while the owner was deciding is owed a run just the same.
  
-+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
-+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
-+second is the local REVISION: an inbound snapshot may only be installed over the database
-+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
-+unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
-+archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
-+that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
-+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
-+in the same call as the presence check (ONE call answering both, so no await can ever be
-+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
-+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
-+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
-+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
-+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
-+is) so the guarded window covers the remote fetch and the archive too, not just
-+`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
-+a manual Import or an archive restore has no earlier decision point than its own call and
-+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
-+PRESENCE is answered first so a message that can name the blocking session still does
-+(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
-+which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
-+changed and offers the owner an explicit conflict with both copies preserved.
-+
  A stale clock is labelled wherever the block appears on Today — the In-progress card AND
  the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
- labelling only the first left the same block silent after switching instrument or choosing
-diff --git a/README.md b/README.md
-index ef5dd0b..e163178 100644
---- a/README.md
-+++ b/README.md
-@@ -53,11 +53,14 @@ daily home is the **MacBook**, with the **iPhone** as companion.
-   through a GitHub repo you own: snapshots publish atomically (one git commit each),
-   changes are compared by content hash (not clocks), both copies are archived before
-   any conflict resolution, and everything is recoverable from the repo's history.
--  **Unfinished practice is never destroyed by a replacement you did not aim at it** —
--  running or paused, fresh or stale, ordinary or routine. Background sync defers quietly
--  while a session is open (saying so on screen) and resumes on its own the moment you
--  finish or discard it; a deliberate Import, Restore archive or Keep remote refuses out
--  loud instead, naming the block that is in the way.
-+  **Practice is never destroyed by a replacement you did not aim at it** — an open
-+  session, running or paused, fresh or stale, ordinary or routine, and equally a block
-+  you started and finished while the sync was still running. Background sync defers
-+  quietly (saying so on screen) and resumes on its own — the moment you finish or discard
-+  an open session, or on its next run if the practice is already recorded, where a
-+  changed copy on both sides becomes an explicit choice rather than a silent overwrite. A
-+  deliberate Import, Restore archive or Keep remote refuses out loud instead, naming the
-+  block that is in the way.
- - **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
-   Today, and today / this week / all time per instrument on Insights. Calendar figures,
-   not rolling windows — late last night belongs to yesterday and the week starts Monday.
-diff --git a/src/components/Layout.tsx b/src/components/Layout.tsx
-index a9ddbeb..4e5dcf9 100644
---- a/src/components/Layout.tsx
-+++ b/src/components/Layout.tsx
-@@ -1,5 +1,6 @@
- import { useEffect, useRef } from 'react';
- import { NavLink, Outlet, useLocation } from 'react-router-dom';
-+import { hasUnfinishedPractice } from '../domain';
- import { useStore } from '../store/useStore';
- import { useSyncStatus } from '../store/githubSync';
- import { useViewportGuard } from './useViewportGuard';
-@@ -150,24 +151,32 @@ function UpdateBanner() {
- 
- /**
-  * Calm, non-blocking notice when sync needs a decision, hit an error, or is
-- * WAITING on unfinished practice. The deferral must be visible here and not
-- * only in Settings: an unbounded, invisible sync outage is exactly what a
-- * forgotten block used to cause. It says what it is waiting for and points at
-- * the practice screen, where Finish, correcting the minutes, and Discard are
-- * all one tap away — the app never resolves it by discarding the practice.
-+ * WAITING. The deferral must be visible here and not only in Settings: an
-+ * unbounded, invisible sync outage is exactly what a forgotten block used to
-+ * cause. It says what it is waiting for, and Resume points at the practice
-+ * screen where Finish, correcting the minutes, and Discard are all one tap
-+ * away — the app never resolves it by discarding the practice.
-+ *
-+ * Resume is keyed on the SESSION EXISTING, not on the phase. A deferral raised
-+ * because practice was RECORDED mid-sync has no session to resume — offering a
-+ * link to /active there would be a dead control that bounces straight back,
-+ * and that deferral needs no tap at all: it clears itself on the next sync.
-  */
- function SyncNotice({ pathname }: { pathname: string }) {
-   const phase = useSyncStatus((s) => s.phase);
-   const message = useSyncStatus((s) => s.message);
-+  const unfinished = useStore((s) => hasUnfinishedPractice(s));
-   if (pathname === '/settings') return null; // Settings shows the full panel.
-   if (phase !== 'conflict' && phase !== 'error' && phase !== 'deferred') return null;
-   if (phase === 'deferred') {
-     return (
-       <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
-         <span className="dim">Sync is waiting: {message}</span>
--        <NavLink to="/active" className="link" style={{ flex: 'none' }}>
--          Resume
--        </NavLink>
-+        {unfinished && (
-+          <NavLink to="/active" className="link" style={{ flex: 'none' }}>
-+            Resume
-+          </NavLink>
-+        )}
-       </div>
-     );
-   }
-diff --git a/src/domain/practiceSession.test.ts b/src/domain/practiceSession.test.ts
-index 8b73604..bdfbb9e 100644
---- a/src/domain/practiceSession.test.ts
-+++ b/src/domain/practiceSession.test.ts
-@@ -47,11 +47,17 @@ const NOTHING = { active: null, activeRoutine: null };
- // comparison, a remote change resolves to a straight pull, and importDB nulls
- // `active`. Committed data is archived first — the in-flight block is not.
- //
--// The invariant is UNCONDITIONAL. Only PRESENCE decides: running or paused,
--// fresh or stale, ordinary or routine. An earlier draft let a stale clock stop
--// deferring, which would have promoted a heuristic about a DURATION into an
--// authority to destroy practice — a session paused at three genuine hours
--// crosses any sensible threshold.
-+// The invariant is UNCONDITIONAL. PRESENCE decides regardless of running or
-+// paused, fresh or stale, ordinary or routine. An earlier draft let a stale
-+// clock stop deferring, which would have promoted a heuristic about a DURATION
-+// into an authority to destroy practice — a session paused at three genuine
-+// hours crosses any sensible threshold.
-+//
-+// Presence is not the whole guard, because it cannot see practice that was
-+// started AND FINISHED while the replacement was in flight: that leaves no
-+// session behind, only a recorded block the incoming snapshot would overwrite.
-+// The second blocking reason is the local REVISION moving — a counter, not a
-+// clock and not a heuristic.
- 
- describe('A1 · a replacement never destroys an unfinished practice session', () => {
-   it('refuses a replacement for a running, a paused, and a stale unfinished session alike', () => {
-@@ -111,6 +117,41 @@ describe('A1 · a replacement never destroys an unfinished practice session', ()
-     expect(deliberate.outcome).not.toBe(auto.outcome);
-   });
- 
-+  it('refuses a replacement when practice was recorded on this device after the replacement was decided', () => {
-+    // The window presence CANNOT see. A pull is decided against local revision
-+    // 7; while the remote copy downloads, the pre-sync archive is written and
-+    // `replaceAllBlobs` runs, a block is started AND FINISHED. There is no
-+    // unfinished session left to find, and the recorded block is in neither
-+    // the archive nor the incoming snapshot — installing it would destroy a
-+    // minute that was genuinely played, with nothing holding a copy.
-+    const moved = { intent: 'automatic' as const, session: NOTHING, revision: { decidedFrom: 7, current: 8 } };
-+    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
-+    expect(decideReplacement(moved).outcome).toBe('defer');
-+    // Waiting, not broken — and NOT on something to finish or discard, because
-+    // the practice is already recorded. The `rev` bump that raised this is
-+    // what the quiet-period auto-sync watches, so the next run offers both
-+    // copies as an explicit conflict.
-+    expect(decideReplacement(moved).message).not.toContain('discard');
-+    expect(decideReplacement({ ...moved, intent: 'deliberate' }).outcome).toBe('refuse');
-+
-+    // Discriminating: an UNMOVED revision is not a blocker. Without this the
-+    // guard could be satisfied by refusing every replacement forever, which
-+    // would be a permanent silent sync outage — worse than the bug.
-+    expect(decideReplacement({ ...moved, revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
-+    expect(decideReplacement({ ...moved, intent: 'deliberate', revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
-+
-+    // Both reasons at once: PRESENCE answers first, so the message can still
-+    // name the session that is in the way (ac-8).
-+    const both = decideReplacement({
-+      intent: 'deliberate',
-+      session: { active: liveBlock(), activeRoutine: null },
-+      labels: { itemTitle: 'درآمد ماهور' },
-+      revision: { decidedFrom: 7, current: 8 },
-+    });
-+    expect(both.outcome).toBe('refuse');
-+    expect(both.message).toContain('درآمد ماهور');
-+  });
-+
-   it('names the blocking session neutrally rather than fabricating a title', () => {
-     const noTitle = decideReplacement({ intent: 'deliberate', session: { active: liveBlock(), activeRoutine: null } });
-     expect(noTitle.message).toContain('a practice block');
 diff --git a/src/domain/practiceSession.ts b/src/domain/practiceSession.ts
-index 9df6ceb..67e9a0e 100644
+index 67e9a0e..5262e75 100644
 --- a/src/domain/practiceSession.ts
 +++ b/src/domain/practiceSession.ts
-@@ -11,10 +11,13 @@ import type { ID, PracticeDB } from './types';
- // TWO INDEPENDENT QUESTIONS live here, and conflating them is the bug this
- // module exists to prevent:
- //
--//   PRESENCE     — does an unfinished session exist? That, and ONLY that,
--//                  decides whether a whole-database replacement may proceed.
--//                  Running or paused, fresh or stale, ordinary or routine: a
--//                  session that exists is protected.
-+//   PRESENCE     — does an unfinished session exist? Running or paused, fresh
-+//                  or stale, ordinary or routine: a session that exists is
-+//                  protected. This, together with whether the local database
-+//                  has been WRITTEN TO since a replacement was decided (a
-+//                  revision counter, never a clock and never a heuristic), and
-+//                  NOTHING else, decides whether a whole-database replacement
-+//                  may proceed.
- //   PLAUSIBILITY — does this session's elapsed figure still look like time
- //                  someone actually played? That, and ONLY that, decides what
- //                  minutes are proposed at close and whether the session is
-@@ -97,36 +100,75 @@ export interface ReplacementDecision {
- }
- 
- /**
-- * THE CORE SAFETY DECISION. An unfinished practice session — ordinary or
-- * routine, RUNNING OR PAUSED, FRESH OR STALE — is never destroyed by a
-- * replacement the owner did not explicitly aim at it.
-+ * THE CORE SAFETY DECISION. A replacement never destroys practice the owner
-+ * did not aim it at. TWO INDEPENDENT REASONS block one, and both are about
-+ * practice that would be DESTROYED — neither is a heuristic about a duration:
-+ *
-+ *   PRESENCE — an unfinished session exists (ordinary or routine, RUNNING OR
-+ *              PAUSED, FRESH OR STALE). The elapsed figures on the inputs are
-+ *              ignored by construction: staleness is not, and can never
-+ *              become, permission to destroy practice.
-+ *   REVISION — the local database has been WRITTEN TO since this replacement
-+ *              was decided against it. An inbound snapshot is only safe to
-+ *              install over the database it was compared with; a block
-+ *              started AND FINISHED while the pull was in flight leaves no
-+ *              unfinished session behind, so presence cannot see it, and it
-+ *              exists in neither the pre-sync archive nor the incoming
-+ *              snapshot. `rev` is a monotonic COUNTER bumped on every db
-+ *              mutation, never a clock — no timestamp enters this decision.
-+ *
-+ * PRESENCE is answered first, so a message that can name the blocking session
-+ * always does.
-  *
-  * Automatic (background sync) and deliberate (Import, Restore archive, Keep
-  * remote) are answered differently because silence would be wrong in opposite
-  * directions: a background merge waiting its turn is not a failure and an
-  * alert would be noise, while a deliberate choice that quietly did nothing
-  * looks like a broken button.
-- *
-- * Only PRESENCE is read. The elapsed figures on the inputs are ignored by
-- * construction — staleness is not, and can never become, permission to
-- * destroy practice.
-  */
- export function decideReplacement(args: {
-   intent: 'automatic' | 'deliberate';
-   session: EphemeralPractice;
-   labels?: { itemTitle?: string; routineName?: string };
-+  /**
-+   * The local revision counter as it stood when this replacement was decided,
-+   * and as it stands now. Unequal means practice (or any other edit) was
-+   * committed on this device in between. Optional: a caller that cannot move
-+   * between the decision and the install has nothing to compare.
-+   */
-+  revision?: { decidedFrom: number; current: number };
- }): ReplacementDecision {
-   const blocking = unfinishedPractice(args.session, args.labels);
--  if (!blocking) return { outcome: 'proceed', message: '' };
-+  if (blocking) {
-+    const what = blocking.kind === 'block' ? `an unfinished practice block (${blocking.label})` : `an unfinished routine (${blocking.label})`;
-+    if (args.intent === 'automatic') {
-+      return { outcome: 'defer', message: `Waiting on ${what} — sync will finish on its own once you finish or discard it.` };
-+    }
-+    return {
-+      outcome: 'refuse',
-+      message: `Not replaced: ${what} is still open, and replacing your data would destroy it. Finish or discard it first — Today's In-progress card leads straight there.`,
-+    };
-+  }
- 
--  const what = blocking.kind === 'block' ? `an unfinished practice block (${blocking.label})` : `an unfinished routine (${blocking.label})`;
--  if (args.intent === 'automatic') {
--    return { outcome: 'defer', message: `Waiting on ${what} — sync will finish on its own once you finish or discard it.` };
-+  if (args.revision && args.revision.current !== args.revision.decidedFrom) {
-+    // Nothing to finish or discard here — the practice is already recorded.
-+    // The automatic case heals itself without any deferral retry: the very
-+    // write that raised this bumped `rev`, which the quiet-period auto-sync
-+    // watches, and the next run sees both sides changed and offers the owner
-+    // an explicit choice with both copies preserved.
-+    if (args.intent === 'automatic') {
-+      return {
-+        outcome: 'defer',
-+        message: 'Waiting: practice was recorded on this device while the sync was running. Sync will run again shortly and offer you both copies.',
-+      };
-+    }
-+    return {
-+      outcome: 'refuse',
-+      message: 'Not replaced: practice was recorded on this device after this replacement started, and replacing your data now would destroy it. Nothing is lost — try again.',
-+    };
+@@ -151,11 +151,17 @@ export function decideReplacement(args: {
    }
--  return {
--    outcome: 'refuse',
--    message: `Not replaced: ${what} is still open, and replacing your data would destroy it. Finish or discard it first — Today's In-progress card leads straight there.`,
--  };
+ 
+   if (args.revision && args.revision.current !== args.revision.decidedFrom) {
+-    // Nothing to finish or discard here — the practice is already recorded.
+-    // The automatic case heals itself without any deferral retry: the very
+-    // write that raised this bumped `rev`, which the quiet-period auto-sync
+-    // watches, and the next run sees both sides changed and offers the owner
+-    // an explicit choice with both copies preserved.
++    // Nothing to finish or discard here — the practice is already recorded, so
++    // there is no blocking session for the presence retry to watch clear. The
++    // automatic case needs no watcher of its own for a different reason: the
++    // very write that raised this bumped `rev`, which the quiet-period
++    // auto-sync watches. That trigger is only reliable because a sync request
++    // arriving mid-run is now REMEMBERED rather than dropped (`rerunWanted` in
++    // githubSync.ts) — a run outlasting the quiet period used to swallow the
++    // one retry it scheduled and then defer for that same revision, leaving
++    // sync waiting on a condition nothing was watching. The next run sees both
++    // sides changed and offers the owner an explicit choice with both copies
++    // preserved.
+     if (args.intent === 'automatic') {
+       return {
+         outcome: 'defer',
+diff --git a/src/domain/selectors.test.ts b/src/domain/selectors.test.ts
+index 593e96e..db7b5a1 100644
+--- a/src/domain/selectors.test.ts
++++ b/src/domain/selectors.test.ts
+@@ -187,6 +187,29 @@ describe('instrumentBalance · the denominator covers exactly the rows shown', (
+     expect(rows.find((r) => r.instrumentId === 'tar')!.percent).toBe(40);
+     // The retired instrument's minutes are in neither a row nor the denominator.
+     expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'tar']);
 +
-+  return { outcome: 'proceed', message: '' };
++    // A right denominator is only half of it: rounded independently, three
++    // equal shares each become 33% and total 99. The split that cannot divide
++    // evenly is the one that has to sum to 100.
++    const three = [instrument('setar'), instrument('tar'), instrument('guitar')];
++    const thirds = instrumentBalance(
++      three,
++      [
++        pBlock(THURSDAY, 1, 'setar'),
++        pBlock(THURSDAY, 1, 'tar'),
++        pBlock(THURSDAY, 1, 'guitar'),
++        pBlock(THURSDAY, 40, 'santur'), // still omitted, still out of the denominator
++      ],
++      THURSDAY,
++      7,
++    );
++    expect(thirds.reduce((s, r) => s + r.percent, 0)).toBe(100);
++    expect(thirds.map((r) => r.percent).sort()).toEqual([33, 33, 34]);
++
++    // And a row with no practice is never handed a leftover point.
++    const lopsided = instrumentBalance(three, [pBlock(THURSDAY, 3, 'setar'), pBlock(THURSDAY, 3, 'tar')], THURSDAY, 7);
++    expect(lopsided.reduce((s, r) => s + r.percent, 0)).toBe(100);
++    expect(lopsided.find((r) => r.instrumentId === 'guitar')!.percent).toBe(0);
+   });
+ 
+   it('reports zero percent for every instrument when nothing was practised', () => {
+diff --git a/src/domain/selectors.ts b/src/domain/selectors.ts
+index 81f0d68..b0231f3 100644
+--- a/src/domain/selectors.ts
++++ b/src/domain/selectors.ts
+@@ -140,19 +140,42 @@ export function instrumentBalance(
+   const windowBlocks = blocksInWindow(blocks, now, days).filter((b) => shown.has(b.instrumentId));
+   const totalMinutes = windowBlocks.reduce((s, b) => s + b.durationMinutes, 0);
+ 
+-  const rows = instruments.map((inst) => {
++  const counted = instruments.map((inst) => {
+     const own = windowBlocks.filter((b) => b.instrumentId === inst.id);
+-    const minutes = own.reduce((s, b) => s + b.durationMinutes, 0);
+     return {
+       instrumentId: inst.id,
+       instrumentName: inst.name,
+-      minutes,
++      minutes: own.reduce((s, b) => s + b.durationMinutes, 0),
+       blocks: own.length,
+-      percent: totalMinutes > 0 ? Math.round((minutes / totalMinutes) * 100) : 0,
+     };
+   });
+ 
+-  return rows.sort((a, b) => b.minutes - a.minutes);
++  // Rounding each row on its own does NOT keep the sum at 100 even once the
++  // denominator is right: three rows of one minute each round to 33% and total
++  // 99. Largest remainder floors every share and hands the leftover points to
++  // the largest fractions, so the emitted percentages always sum to exactly
++  // 100. A row with no minutes has no fraction, so it can never be handed one.
++  const percents = largestRemainder(counted.map((r) => r.minutes), totalMinutes);
++
++  return counted.map((r, i) => ({ ...r, percent: percents[i] })).sort((a, b) => b.minutes - a.minutes);
++}
++
++/** Split 100 across `values` so the parts are whole numbers summing to 100. */
++function largestRemainder(values: number[], total: number): number[] {
++  if (total <= 0) return values.map(() => 0);
++  const exact = values.map((v) => (v / total) * 100);
++  const out = exact.map((e) => Math.floor(e));
++  let left = 100 - out.reduce((a, b) => a + b, 0);
++  const byFraction = exact
++    .map((e, i) => ({ i, fraction: e - Math.floor(e) }))
++    .filter((x) => x.fraction > 0)
++    .sort((a, b) => b.fraction - a.fraction || a.i - b.i);
++  for (const { i } of byFraction) {
++    if (left <= 0) break;
++    out[i] += 1;
++    left -= 1;
++  }
++  return out;
  }
  
- /**
+ export function totalMinutesInWindow(blocks: PracticeBlock[], now: Date, days: number): number {
 diff --git a/src/store/backup.ts b/src/store/backup.ts
-index 3a77ba2..e445a2a 100644
+index e445a2a..e366192 100644
 --- a/src/store/backup.ts
 +++ b/src/store/backup.ts
-@@ -171,16 +171,20 @@ type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
+@@ -103,8 +103,20 @@ export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']):
+   return max;
+ }
  
- /**
-  * Is a whole-database replacement refused right now? Read fresh each time it is
-- * asked, because the answer can change mid-import. The intent is the caller's:
-- * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
-- * and refuses out loud.
-+ * asked, because the answer can change mid-import — BOTH reasons can arise
-+ * after the replacement was decided. The intent is the caller's: a sync pull is
-+ * AUTOMATIC and defers quietly, everything else is DELIBERATE and refuses out
-+ * loud. `decidedFromRev` is the local revision the replacement was decided
-+ * against; a different one now means practice was committed in between and
-+ * installing the snapshot would destroy it.
-  */
--function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal | null {
--  const { active, activeRoutine } = useStore.getState();
-+function replacementRefusal(intent: 'automatic' | 'deliberate', decidedFromRev: number): ImportRefusal | null {
-+  const { active, activeRoutine, rev } = useStore.getState();
-   const decision = decideReplacement({
-     intent,
-     session: { active, activeRoutine },
-     labels: unfinishedPracticeLabels(),
-+    revision: { decidedFrom: decidedFromRev, current: rev },
-   });
-   if (decision.outcome === 'proceed') return null;
-   return { ok: false, error: decision.message, deferred: decision.outcome === 'defer' };
-@@ -204,24 +208,33 @@ function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal |
-  *
-  * This is the chokepoint for every INBOUND replacement — manual import, a sync
-  * pull, conflict-keep-remote, and archive restore all arrive here — so it is
-- * where an unfinished practice session is protected. The refusal is the FIRST
-- * thing this function does, before the JSON is even parsed: `replaceAllBlobs`
-- * below destroys every attachment blob, so a check placed after it would
-- * return "nothing was changed" having already wiped them. It is ALSO the last
-- * thing before `importDB`, because that first check does not span the whole
-- * call — see the comment at the install itself.
-+ * where local practice is protected. The refusal is the FIRST thing this
-+ * function does, before the JSON is even parsed: `replaceAllBlobs` below
-+ * destroys every attachment blob, so a check placed after it would return
-+ * "nothing was changed" having already wiped them. It is ALSO the last thing
-+ * before `importDB`, because that first check does not span the whole call —
-+ * see the comment at the install itself.
-+ *
-+ * `decidedFromRev` is the local revision this replacement was decided against.
-+ * A sync pull passes the revision of the snapshot it actually compared, so the
-+ * guarded window covers the network fetch and the pre-sync archive too — a
-+ * block finished in there is in neither the archive nor the incoming snapshot.
-+ * A deliberate caller has no earlier decision point than this call, so it
-+ * defaults to the revision on entry.
-  */
- export async function importFullBackup(
-   text: string,
-   intent: 'automatic' | 'deliberate' = 'deliberate',
-+  decidedFromRev: number = useStore.getState().rev,
- ): Promise<ImportOutcome> {
-   // A replacement reaching this function is one the owner chose (Import,
-   // Restore archive, Keep remote) or a sync pull that slipped past syncNow's
-   // own deferral because practice started mid-sync. Either way an unfinished
-   // session — running or paused, fresh or stale, ordinary or routine — is
--  // never destroyed by it, and never silently: every caller already surfaces
-+  // never destroyed by it, nor is a block that was started AND FINISHED since
-+  // the pull was decided, and never silently: every caller already surfaces
-   // this error.
--  const refusal = replacementRefusal(intent);
-+  const refusal = replacementRefusal(intent, decidedFromRev);
-   if (refusal) return refusal;
+-export async function buildFullBackup(now: Date = new Date()): Promise<string> {
+-  const db = useStore.getState().db;
++/**
++ * A backup TOGETHER WITH the local revision it was taken at, captured in ONE
++ * statement before any await. `allBlobs()` below yields, and a block finished
++ * during that yield bumps `rev` without entering this snapshot — pairing an
++ * old copy of the data with a newer revision number. That pair is exactly what
++ * the replacement guard compares, so the mismatch would make `decideReplacement`
++ * (which is itself correct) answer "nothing was written since" about a database
++ * that had been written to, and install the incoming copy over recorded
++ * practice. The pure decision is already tested; the WIRING is protected
++ * structurally, the same way `installDatabase` protects its own — the revision
++ * cannot be read from anywhere but the statement that reads the database.
++ */
++export async function buildFullBackupWithRev(now: Date = new Date()): Promise<{ text: string; rev: number }> {
++  const { db, rev } = useStore.getState();
+   const blobs = await allBlobs();
+   const files: BackupFile[] = await Promise.all(
+     blobs.map(async (b) => {
+@@ -118,15 +130,23 @@ export async function buildFullBackup(now: Date = new Date()): Promise<string> {
+       };
+     }),
+   );
+-  return JSON.stringify({
+-    app: 'practice-compass',
+-    schemaVersion: SCHEMA_VERSION,
+-    exportedAt: nowISO(now),
+-    deviceName: getDeviceName() || undefined,
+-    lastModified: lastModifiedOf(db) || undefined,
+-    data: db,
+-    files,
+-  });
++  return {
++    text: JSON.stringify({
++      app: 'practice-compass',
++      schemaVersion: SCHEMA_VERSION,
++      exportedAt: nowISO(now),
++      deviceName: getDeviceName() || undefined,
++      lastModified: lastModifiedOf(db) || undefined,
++      data: db,
++      files,
++    }),
++    rev,
++  };
++}
++
++/** The backup text alone, for the callers that never install it back. */
++export async function buildFullBackup(now: Date = new Date()): Promise<string> {
++  return (await buildFullBackupWithRev(now)).text;
+ }
  
-   let parsed: unknown;
-@@ -260,20 +273,26 @@ export async function importFullBackup(
-     return { ok: false, error: `Could not write attachment files (${e instanceof Error ? e.message : 'unknown error'}) — nothing was changed.` };
-   }
- 
--  // Checked AGAIN, in the same synchronous tick as the install. The check at
--  // the top of this function cannot cover the whole call: `replaceAllBlobs`
--  // above yields to the event loop, so a tap that starts a block or a routine
--  // while that transaction is in flight would otherwise reach `importDB` —
--  // which nulls `active`/`activeRoutine` — with no guard between them. Nothing
--  // awaits between here and the install, so this one is genuinely the last
--  // word. The blobs are already written by this point, so the refusal says
--  // that plainly rather than claiming nothing changed; the message still names
--  // the session (ac-8), the practice is intact, and re-running the same import
--  // afterwards finishes the job.
--  const late = replacementRefusal(intent);
-+  // Checked AGAIN, in the same synchronous tick as the install — ONE call
-+  // answering BOTH reasons, so no await can ever be slipped between them. The
-+  // check at the top of this function cannot cover the whole call:
-+  // `replaceAllBlobs` above yields to the event loop, so during that
-+  // transaction a tap can start a block or a routine (which `importDB` would
-+  // null) — or start one AND FINISH it, which leaves no session for presence
-+  // to see while the recorded block sits in a `db` the incoming snapshot is
-+  // about to overwrite, held by no archive. The revision comparison is what
-+  // catches that second case. Nothing awaits between here and the install, so
-+  // this one is genuinely the last word. The blobs are already written by this
-+  // point, so the refusal says that plainly rather than claiming nothing
-+  // changed; the message still names the blocking session when there is one
-+  // (ac-8), the practice is intact, and re-running the same import afterwards
-+  // finishes the job.
-+  const late = replacementRefusal(intent, decidedFromRev);
-   if (late) {
-     if (!isFullBackup) return late;
--    return { ...late, error: `${late.error} (Your attachment files were already replaced from the backup — running this import again afterwards will finish the job.)` };
-+    // Say what actually happened; do NOT instruct a manual re-run, because a
-+    // deferral reaching here is an automatic sync that re-runs itself.
-+    return { ...late, error: `${late.error} (Your attachment files had already been replaced from the backup — the data itself was not. The next attempt finishes the job.)` };
-   }
- 
-   useStore.getState().importDB(parsed);
+ /** Peek at a backup's provenance without importing it. */
 diff --git a/src/store/githubSync.ts b/src/store/githubSync.ts
-index 726e382..cab2c87 100644
+index cab2c87..593923f 100644
 --- a/src/store/githubSync.ts
 +++ b/src/store/githubSync.ts
-@@ -149,23 +149,38 @@ interface BackupShape {
-   [k: string]: unknown;
- }
+@@ -1,6 +1,6 @@
+ import { create } from 'zustand';
+ import { decideReplacement, hashState, shortHash } from '../domain';
+-import { buildFullBackup, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
++import { buildFullBackup, buildFullBackupWithRev, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
+ import { loadPreSyncArchive, loadPreSyncArchiveMeta, savePreSyncArchive, type PreSyncArchiveMeta } from './idb';
+ import { makeGitHubRemote } from './gitRemote';
+ import {
+@@ -158,14 +158,19 @@ interface BackupShape {
+  * for the presence guard to see. Module scope is safe for the same reason
+  * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
+  * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
++ *
++ * It comes back FROM the snapshot rather than being read here: reading the
++ * store after awaiting the backup would pair the captured database with a
++ * revision bumped while its attachment blobs were still being read, and that
++ * pair is the whole guard.
+  */
+ let syncBaselineRev: number | null = null;
  
-+/**
-+ * The local revision the running sync's comparison was made against. An
-+ * inbound snapshot is only safe to install over the database it was compared
-+ * with: between this snapshot and the install sit the remote fetch and the
-+ * pre-sync archive, and a block started AND FINISHED in that window is in
-+ * NEITHER the archive nor the incoming copy, with no unfinished session left
-+ * for the presence guard to see. Module scope is safe for the same reason
-+ * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
-+ * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
-+ */
-+let syncBaselineRev: number | null = null;
-+
  async function buildLocalSnapshot(): Promise<LocalSnapshot> {
-   const backup = JSON.parse(await buildFullBackup()) as BackupShape;
+-  const backup = JSON.parse(await buildFullBackup()) as BackupShape;
++  const { text, rev } = await buildFullBackupWithRev();
++  const backup = JSON.parse(text) as BackupShape;
    const files = backup.files;
    backup.files = [];
-+  const rev = useStore.getState().rev;
-+  syncBaselineRev = rev;
+-  const rev = useStore.getState().rev;
+   syncBaselineRev = rev;
    return {
      stateText: JSON.stringify(backup),
-     files,
-     hash: await hashState(backup.data ?? {}),
--    rev: useStore.getState().rev,
-+    rev,
-     deviceName: getDeviceName(),
-   };
+@@ -226,6 +231,20 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
+ 
+ let running = false;
+ 
++/**
++ * A sync request that arrives while one is already running is REMEMBERED, not
++ * dropped. `running` used to make such a request a silent no-op, which turned
++ * the ONE quiet-period retry a mid-sync revision bump schedules into nothing at
++ * all: a run lasting past those 30 seconds swallowed the retry and then deferred
++ * for that very revision, leaving sync waiting for a condition nothing was
++ * watching. Remembering the request closes it at the root, for every trigger
++ * (open, quiet period, back online, deferral cleared) rather than for the one
++ * counterexample. It cannot spin: the flag is cleared at the top of each
++ * iteration, so another lap needs a genuinely new request that arrived during
++ * the previous one.
++ */
++let rerunWanted = false;
++
+ function conflictSideOfLocal(local: LocalSnapshot): ConflictSide {
+   return { deviceName: local.deviceName || 'this device', rev: local.rev, hash: local.hash };
+ }
+@@ -282,29 +301,39 @@ export async function syncNow(): Promise<void> {
+   }
+   // Checked before the deferral so a sync already in flight is never relabelled
+   // as "waiting" — it is genuinely running, and importFullBackup's own guard is
+-  // what protects a block started mid-sync.
+-  if (running) return;
+-  // Defer QUIETLY while practice is unfinished — running or paused, fresh or
+-  // stale, ordinary or routine. A pull would replace this device's database and
+-  // silently destroy the in-flight block, which lives outside `db` and is
+-  // therefore invisible to the hash comparison. The deferral is visible (the
+-  // notice in Layout says what it is waiting on) and App.tsx retries it the
+-  // moment the blocking session clears — whether it was finished or discarded.
+-  const { active, activeRoutine } = useStore.getState();
+-  const decision = decideReplacement({
+-    intent: 'automatic',
+-    session: { active, activeRoutine },
+-    labels: unfinishedPracticeLabels(),
+-  });
+-  if (decision.outcome !== 'proceed') {
+-    setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
++  // what protects a block started mid-sync. The request is kept, not discarded.
++  if (running) {
++    rerunWanted = true;
+     return;
+   }
+   running = true;
+-  pendingDeferral = null;
+-  setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
+   try {
+-    await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
++    do {
++      // Cleared BEFORE the run, so only a request that arrives during this lap
++      // earns another one.
++      rerunWanted = false;
++      // Defer QUIETLY while practice is unfinished — running or paused, fresh or
++      // stale, ordinary or routine. A pull would replace this device's database
++      // and silently destroy the in-flight block, which lives outside `db` and is
++      // therefore invisible to the hash comparison. The deferral is visible (the
++      // notice in Layout says what it is waiting on) and App.tsx retries it the
++      // moment the blocking session clears — whether it was finished or
++      // discarded. Nothing is awaited between this check and the return, so no
++      // request can be lost on this path.
++      const { active, activeRoutine } = useStore.getState();
++      const decision = decideReplacement({
++        intent: 'automatic',
++        session: { active, activeRoutine },
++        labels: unfinishedPracticeLabels(),
++      });
++      if (decision.outcome !== 'proceed') {
++        setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
++        return;
++      }
++      pendingDeferral = null;
++      setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
++      await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
++    } while (rerunWanted);
+   } finally {
+     running = false;
+   }
+@@ -322,6 +351,12 @@ export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
+   } finally {
+     running = false;
+   }
++  // A request that arrived while the owner was resolving the conflict is owed a
++  // run just as much as one that arrived during an automatic sync.
++  if (rerunWanted) {
++    rerunWanted = false;
++    await syncNow();
++  }
  }
  
- /**
-  * A deferral raised INSIDE a sync run, carried back out to `applyOutcome`.
-- * `importFullBackup` defers when practice began after `syncNow`'s own check —
-- * during the network fetch, or during `replaceAllBlobs` — and the only channel
-+ * `importFullBackup` defers when practice happened after `syncNow`'s own check
-+ * — during the network fetch, the pre-sync archive, or `replaceAllBlobs` —
-+ * whether it is still unfinished or was already recorded, and the only channel
-  * out of `runSync` is a thrown error, which would land in `error` phase. That
-  * is the wrong answer twice over: a background merge waiting its turn is not a
-  * failure, and App.tsx's retry watches `deferred`, so an `error` would leave
-@@ -183,7 +198,11 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
-       applySnapshot: async (stateText, files) => {
-         const backup = JSON.parse(stateText) as BackupShape;
-         backup.files = files;
--        const result = await importFullBackup(JSON.stringify(backup), intent);
-+        // Deliberately NOT read inside `importFullBackup`: a manual Import or
-+        // an archive restore has no earlier decision point than its own call,
-+        // and a stale baseline left over from a sync run would make it refuse
-+        // for no reason.
-+        const result = await importFullBackup(JSON.stringify(backup), intent, syncBaselineRev ?? undefined);
-         if (!result.ok) {
-           if (result.deferred) pendingDeferral = result.error;
-           throw new Error(result.error);
+ /** Restore the pre-sync archive (the copy preserved before the last replace). */
 ```
 
 **Full current text of every file the rework touched:**
@@ -794,9 +673,9 @@ PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, a
 are about practice that would be DESTROYED — neither is a heuristic about a duration. The
 second is the local REVISION: an inbound snapshot may only be installed over the database
 it was compared with. A block started AND FINISHED while a pull is in flight leaves no
-unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
-archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
-that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
 decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
 in the same call as the presence check (ONE call answering both, so no await can ever be
 slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
@@ -805,13 +684,32 @@ is a separate store and no effect or timer writes `db`, so a quiet sync run neve
 The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
 `githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
 is) so the guarded window covers the remote fetch and the archive too, not just
-`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
 a manual Import or an archive restore has no earlier decision point than its own call and
 defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
 PRESENCE is answered first so a message that can name the blocking session still does
-(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
-which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
-changed and offers the owner an explicit conflict with both copies preserved.
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
 
 A stale clock is labelled wherever the block appears on Today — the In-progress card AND
 the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
@@ -1508,9 +1406,9 @@ PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, a
 are about practice that would be DESTROYED — neither is a heuristic about a duration. The
 second is the local REVISION: an inbound snapshot may only be installed over the database
 it was compared with. A block started AND FINISHED while a pull is in flight leaves no
-unfinished session for presence to see, and the recorded block is in NEITHER the pre-sync
-archive (taken earlier) nor the incoming snapshot — installing it would destroy a minute
-that was genuinely played with nothing holding a copy. So `importFullBackup(text, intent,
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
 decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
 in the same call as the presence check (ONE call answering both, so no await can ever be
 slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
@@ -1519,13 +1417,32 @@ is a separate store and no effect or timer writes `db`, so a quiet sync run neve
 The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
 `githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
 is) so the guarded window covers the remote fetch and the archive too, not just
-`replaceAllBlobs`. It is passed IN, never read from module scope inside `importFullBackup`:
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
 a manual Import or an archive restore has no earlier decision point than its own call and
 defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
 PRESENCE is answered first so a message that can name the blocking session still does
-(ac-8). This deferral needs no retry watcher: the very write that raised it bumped `rev`,
-which App.tsx's quiet-period auto-sync already watches, and the next run sees both sides
-changed and offers the owner an explicit conflict with both copies preserved.
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
 
 A stale clock is labelled wherever the block appears on Today — the In-progress card AND
 the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
@@ -2073,882 +1990,6 @@ the philosophy. Anything that contradicts the "do nots" above needs an explicit 
 from the user, recorded here.
 ```
 
-### README.md
-
-````
-# Practice Compass
-
-A calm, **local‑first** music practice tracker for a serious adult learner.
-Built around self‑regulated learning — *plan → focus → monitor → evaluate → adapt* —
-rather than raw repetition time.
-
-> **One item. One mode. One focus. One result. One next action.**
-
-It works out of the box for **Persian Setar**, **Persian Tar** and **Classical Guitar**,
-and for any future instrument, piece, étude, technical drill, lesson, improvisation
-prompt or repertoire item.
-
-There is no backend, no account, no audio analysis and no AI judgement.
-**IndexedDB on the device is the source of truth** (app data + attached files); every
-install works fully offline. Devices stay in sync through a GitHub repo you own
-(atomic whole snapshots, compared by content hash, conflicts archived — see *Using
-it*), and a single backup file (JSON data + embedded files) exports/imports everything
-as a fallback. Hosted free on GitHub Pages;
-daily home is the **MacBook**, with the **iPhone** as companion.
-
----
-
-## What it does
-
-- **Opens on YOUR session.** Today starts with "which instrument am I practising now?" —
-  pick Setar and everything on screen is Setar's: one clear *Practise now* card (with a
-  plain-language reason), that instrument's class work, due reviews, and pathway position.
-  Other instruments never leak in; a cross-instrument Overview is one deliberate tap away.
-- **Gives you a path to trust — for every instrument.** Editable **Pathways** you follow
-  at your own pace, always seeing where you stand and what's ahead. No rush, no deadlines,
-  no competition. Three are seeded and fully editable: **Classical Guitar Shed** (1A from
-  the official syllabus with two guided routines; Levels 1–3 from the real course),
-  **Setar · Radif & Repertoire** (a dastgāh/āvāz/gusheh map, teacher-driven and reorderable),
-  and **Tar · Honarestān method** (the two-book conservatory curriculum, as taught on
-  Khonyagar.com). Create your own; rename/reorder sections and stages; pin the stage
-  you're actually in (teacher-led work doesn't move linearly).
-- **Walks you through a session.** Guided routines run as a hands-free, segment-by-segment
-  timer — clearly labelled as a warm-up, not logged practice.
-- **Tells you what to practise next.** A deterministic recommendation engine surfaces
-  three explained cards: *Best Next Focus*, *Quick Win*, and *Maintenance*.
-- **Maps the whole repertoire.** Repertoire → *My repertoire* shows the works you
-  actually play: radif gushehs and composed maestro pieces (a chahārmezrāb of Sabā in
-  Afshāri, a pish-darāmad of Darvish Khān in Māhur) side by side under their dastgāh,
-  with form and composer on each row — and guitar pieces through the same lens, grouped
-  by study source. Parent works appear once; parts stay nested. Spelling variants fold
-  into one group; your own text is never rewritten.
-- **Creates items in one step.** Quick add stays title-only; "Add practice item" asks
-  what you're adding first (gusheh, composed piece, passage, étude, technique…) and
-  shows only the fields that kind needs, with study source (creatable inline), pathway
-  stage, lesson and parent work connectable at creation — no create-then-edit round
-  trips.
-- **Stays in sync across devices — safely.** MacBook and iPhone share the same data
-  through a GitHub repo you own: snapshots publish atomically (one git commit each),
-  changes are compared by content hash (not clocks), both copies are archived before
-  any conflict resolution, and everything is recoverable from the repo's history.
-  **Practice is never destroyed by a replacement you did not aim at it** — an open
-  session, running or paused, fresh or stale, ordinary or routine, and equally a block
-  you started and finished while the sync was still running. Background sync defers
-  quietly (saying so on screen) and resumes on its own — the moment you finish or discard
-  an open session, or on its next run if the practice is already recorded, where a
-  changed copy on both sides becomes an explicit choice rather than a silent overwrite. A
-  deliberate Import, Restore archive or Keep remote refuses out loud instead, naming the
-  block that is in the way.
-- **Shows how much you have actually practised.** A quiet minutes-and-blocks line low on
-  Today, and today / this week / all time per instrument on Insights. Calendar figures,
-  not rolling windows — late last night belongs to yesterday and the week starts Monday.
-  Every instrument you have ever practised gets a row, retired ones included, and both
-  screens keep their clock live so leaving a tab open across midnight rolls the day over.
-  Neutral counts: no goal, no streak, no bar that fills.
-- **Closes the loop.** The next action you chose last time is shown when you practise
-  that item again, before you start playing.
-- **Keeps études concrete.** Break a piece into parts (bars, phrases, one technical
-  problem); the piece page always names *one* part to practise now, for 10 minutes, and
-  suggests a smaller unit or new strategy when things stall — never quotas.
-- **Makes starting trivial.** A quick‑start flow gets you practising in under 30 seconds
-  with smart defaults (status → mode, item → focus, 10‑minute default).
-- **Keeps the practice screen quiet.** Just the item, the mode, the focus and a timer.
-- **Closes a block in under a minute.** One result, one observation, one next action,
-  and gentle suggestions for the next review date and status change.
-- **Notices patterns.** The Insights screen offers calm, neutral observations
-  (balance, neglect, saturation, repeated "same" results, cross‑instrument bottlenecks…).
-- **Holds everything for a piece.** Attach your teacher's PDFs, photos of scores, or
-  recordings to any item, and keep free-form notes — so the app is the single source for
-  your practice, not a notebook full of glued printouts.
-- **Prepares your lessons.** A copyable Teacher Report summarises what you worked on,
-  what improved, what's still fragile and what to ask — plus a dedicated
-  **Questions for next class** list (Copy / Download / print).
-- **Speaks Persian.** The built-in Setar and Tar pathways, dastgāhs, gushehs, forms and
-  composers are all in Farsi (radif of Mirzā Abdollāh; the Honarestān method), rendered
-  right-to-left, searchable by Latin transliteration.
-- **Links your class recordings.** Full class videos stay on your NAS; each lesson holds
-  a small link that opens the recording on demand — nothing large ever enters the app.
-
----
-
-## Using it (MacBook + iPhone)
-
-The app lives at **https://ethan-ghoreishi.github.io/practice-compass/** — published
-automatically from `main` by GitHub Actions (`deploy.yml`). Install it once per device
-and it runs as its own offline app; no terminal, no dev server, no VPN:
-
-- **Mac (Safari):** open the URL → File → **Add to Dock**. (Chrome: install icon in the
-  address bar.) It opens as a dock app, full-screen, works with no internet.
-- **iPhone (Safari):** open the URL → Share → **Add to Home Screen**.
-
-Being a PWA, each install keeps working entirely offline; an internet connection is only
-used to fetch app updates and to sync data.
-
-### Sync between devices (free, via GitHub)
-
-Data syncs through a small private GitHub repo you own
-(`ethan-ghoreishi/practice-compass-data`) — no server, no cost:
-
-1. Create a **fine-grained personal access token**: GitHub → Settings → Developer
-   settings → Fine-grained tokens → Generate new. Repository access: **only**
-   `practice-compass-data`. Permissions → **Contents: Read and write**.
-2. In the app on each device: **Settings → Sync (GitHub)** → paste the repo and token →
-   **Connect & sync**.
-3. That's it. It syncs when the app opens, shortly after changes, and when you come
-   back online. If both devices changed since the last sync, the app asks which copy to
-   keep — and archives the other one (in-app restore slot + an `archive/…` branch in
-   the repo) before replacing anything. It never merges silently, and an interrupted
-   sync never leaves a half-written copy on either side.
-
-Manual **Export/Import backup** (one JSON file with data + attachments) remains in
-Settings as a belt-and-braces fallback.
-
-## Developing
-
-Requires Node 20+ (developed on Node 26).
-
-```bash
-npm install
-npm run dev        # start the dev server (http://localhost:5173)
-npm run build      # type-check + production build into dist/
-npm run preview    # preview the production build
-npm run lint       # eslint
-npm test           # run the Vitest suite once
-npm run test:watch # watch mode
-```
-
-Pushing to `main` deploys to GitHub Pages (CI runs lint + tests + build first). The prod
-base path is `/practice-compass/` (override with `PC_BASE=/`).
-`scripts/deploy-nas.sh` optionally mirrors the same build onto a locally mounted NAS
-share for a LAN-only copy — handy, never required.
-
----
-
-## Tech stack
-
-| Concern        | Choice                                             |
-| -------------- | -------------------------------------------------- |
-| UI             | React 19 + TypeScript + Vite                       |
-| State          | Zustand, persisted to **IndexedDB (Dexie)**        |
-| Files          | Attachment blobs in IndexedDB (Dexie table)        |
-| Routing        | React Router (hash router)                         |
-| PWA / offline  | `vite-plugin-pwa` (Workbox)                        |
-| Styling        | Hand‑written CSS design system (no framework)      |
-| Tests          | Vitest (pure domain logic)                         |
-| Host           | GitHub Pages (auto-deploy from `main`)             |
-| Sync           | User-owned GitHub repo via the Contents API        |
-
-The codebase is deliberately split into a **pure domain layer** (no React, fully
-unit‑tested) and a thin UI layer on top.
-
-```
-src/
-  domain/      pure logic: types, scoring, recommend, scheduling, insights, report, seed, io
-  store/       Zustand store, persistence, lookups, session helpers
-  components/   shared UI primitives, layout, icons
-  pages/        one file per route
-  styles/       global.css design system
-```
-
----
-
-## Data model
-
-Five core objects (see [`src/domain/types.ts`](src/domain/types.ts)):
-
-- **Instrument** — Setar, Tar, Classical Guitar, or anything you add.
-- **Material** — a source/collection an item belongs to (a radif, a course, a set of
-  études). `sourceType`, `parentTitle`, `section`, `status`, etc.
-- **PracticeItem** — the heart of the app. A phrase, bar, exercise, technique, full
-  piece, improvisation prompt or body/tension issue. Carries `status`, `importance`,
-  `difficulty`, `currentProblem`, `primaryFocus`, `teacherQuestion`, review/stat
-  fields, and optional nested **Persian** and **Classical‑guitar** metadata.
-- **PracticeBlock** — one focused unit of practice (5–20 min): `mode`, `focus`,
-  `constraint`, `result`, `observation`, `nextAction`.
-- **Review** — a scheduled spaced‑review for an item (`dueDate`, `reviewType`).
-
-Item status ladder: `new → fragile → repairing → usable → integrated → performable`,
-plus `maintenance` and `dormant` for resting material.
-
-Everything is plain JSON and round‑trips cleanly through export/import. The persisted
-shape carries a `schemaVersion` for future migrations.
-
----
-
-## Recommendation logic
-
-For each item a **priority score** is computed deterministically
-(see [`src/domain/scoring.ts`](src/domain/scoring.ts)):
-
-```
-priority = importance*2 + difficulty + fragility + overdue
-         + teacherRelevance + neglected + lessonUrgency − saturationPenalty
-```
-
-| Component         | Meaning                                                        |
-| ----------------- | -------------------------------------------------------------- |
-| `fragility`       | by status (fragile/repairing = 5 … performable = 0)            |
-| `overdue`         | how many days past `nextReviewDate` (0–5)                      |
-| `teacherRelevance`| +3 if an open teacher question exists                          |
-| `neglected`       | days since last touched, banded 0–4                            |
-| `saturationPenalty`| −3 if drilled 3×/48h **or** last 3 results all "same"         |
-| `lessonUrgency`   | 3–8 if flagged *for next class*, climbing as that class nears   |
-
-**Three cards** are then chosen (see [`src/domain/recommend.ts`](src/domain/recommend.ts)):
-
-1. **Best Next Focus** — highest score, avoiding saturated items unless none remain.
-2. **Quick Win** — difficulty ≤ 3, importance ≥ 3, status usable/fragile/repairing, not saturated.
-3. **Maintenance** — integrated/performable/maintenance/dormant item that is due or neglected.
-
-Each card explains itself in one neutral sentence, e.g.
-*"Top priority — important, fragile, and 2d overdue."*
-
-**Review scheduling** when a block closes is the SM-2 engine described under
-[Review scheduling](#review-scheduling) below (see
-[`src/domain/scheduling.ts`](src/domain/scheduling.ts)). There is no fixed
-result-to-interval table: the gap comes from the item's own reps, ease and interval.
-
-Status changes are **suggested, never forced** (e.g. *stable alone* on a fragile item
-suggests promotion to *usable*).
-
----
-
-## Repertoire: pathways and items are one thing
-
-The **item is the only unit of work**; a pathway is a *view over your items*, not a
-separate to-do list. The Repertoire tab shows the same items two ways — by pathway, or as
-a filterable list.
-
-- An item can be **placed in a pathway stage** (`stageId`); stage progress is derived
-  from the mastery status of the items in it. Nothing to tick off separately.
-- Each stage lays your items over a **reference catalog** of known gushes / lesson areas
-  ([`pathwaySeed.ts`](src/domain/pathwaySeed.ts)) — one tap turns a suggestion into a real
-  item, pre-filled with type, focus and conscious-practice guidance. Pure derivations +
-  tests in [`pathways.ts`](src/domain/pathways.ts).
-- **Conscious practice**: dastgāh stages carry character intros (what to listen for), each
-  gushe carries a standing prompt (find the shāhed, the ist, the forud), and the practice
-  screen keeps "About this piece" one tap away with the question *what is going on here?*
-- **Guided routines** ([`RoutineRunner`](src/pages/RoutineRunner.tsx)) walk you through a
-  session segment by segment, hands-free.
-- Pathways and stages are fully editable; deleting them never deletes your items.
-
-## Lessons (classes with a teacher)
-
-Per-instrument lesson log matching the real workflow: record the class → rewatch →
-type up notes (**Farsi welcome**: every text field is direction-aware) → create or link
-the concrete practice items right on the lesson card → they appear in that instrument's
-Today. Each lesson lists what was worked on (a link — unlinking never deletes the item),
-and any item can be flagged *for next class*, which gives it a priority boost that
-climbs as **that instrument's** class approaches.
-
-**Small hand-outs are app attachments** (PDFs, photos, short audio — size-capped).
-**Full class videos are NAS references, never bytes:** a lesson holds a small link
-(title + relative NAS path, or a full HTTPS URL) that resolves against the NAS base URL
-you set in Settings; the video opens only when you tap it, and never enters local
-storage, sync, or backups. Removing a link never deletes the NAS file. Your logged Setar
-class history (37 monthly classes) imports additively from Settings.
-
-**Questions for next class:** flag an item *for next class* and give it a teacher
-question, and it collects into a per-instrument list on the upcoming lesson and the
-Teacher Report — with Copy, Download and print-friendly export (Farsi-aware). Practising
-never erases a question; you remove it by editing the item.
-
-## Review scheduling
-
-Reviews use a **spaced-repetition engine** (SM-2 — the algorithm behind Anki), adapted to
-music in [`scheduling.ts`](src/domain/scheduling.ts). Each item tracks reps, an ease factor
-and its interval: every time a piece/gushe holds up, the gap before you revisit it grows;
-when it slips, the gap resets so you relearn it. Importance and difficulty pull material a
-little sooner. It returns a one-line rationale. Per item you can override the mode:
-
-- **Auto** — the engine decides (default).
-- **Every N days** — a fixed cadence you choose.
-- **Manual** — you set each date yourself.
-
-**A result is required to save a block.** The six options are already the first thing on
-the close screen, so this adds no field — it makes a choice already there a required one.
-"Save without a result" stays one tap away and records the minutes WITHOUT touching the
-schedule: the item's next review date and its open review row both stand exactly as they
-were. Answering nothing is not declining, and the one place every caller routes through
-(`computeReviewOutcome`) returns the date and the row decision together, so the two can
-never disagree.
-
-**An abandoned clock never writes practice you did not do.** Closing a block whose timer
-ran far past its target proposes the *target* rather than the wall-clock gap, with one
-plain line saying why; ordinary overtime still proposes the real elapsed time, and the
-figure is editable either way.
-
-Due reviews offer three honest actions: **practise** (the only thing that completes a
-review), **not now** (hidden until tomorrow, no schedule change), and **+2d** (genuinely
-moves the date). Item statuses use plain language — *Not practised yet · Shaky · Fixing
-problems · Coming together · Solid · Performance-ready · Keeping fresh · Resting* — with
-a one-line description in the picker.
-
-## Devices, sync & handoff
-
-Each device keeps its **own local copy** (IndexedDB) and works fully offline. With
-**Sync (GitHub)** connected in Settings, devices exchange whole snapshots through your
-data repo — one git commit per snapshot, published atomically (a failed or interrupted
-sync leaves the previous snapshot untouched). A brand-new empty data repo is bootstrapped
-automatically on the first sync (the older builds errored with *“Git Repository is
-empty”*). Sync compares content hashes three-way (like git), so pathway edits, deletions
-and attachment changes all count; when both sides changed you choose explicitly, and the
-losing copy is archived first — in-app ("Restore it" in Settings) and as an `archive/…`
-branch in the repo. Attachments upload once each (immutable); only new or deleted files
-transfer. Without sync, moving data is a manual backup export → import.
-
-**No replacement runs over unfinished practice.** A running block lives outside the synced
-database, so a mid-block device looks unchanged to the hash comparison and a remote change
-would otherwise resolve to a straight pull that discarded it. Presence is what protects a
-session — never whether its clock is ticking, so pausing protects rather than exposes, and
-a long-abandoned clock is protected too: an implausible *duration* says nothing about
-whether the session holds practice worth keeping. Automatic sync therefore reports a
-distinct **waiting** state (not an error) and retries the instant the session clears,
-whether it was finished or discarded. Import, Restore archive and Keep remote refuse with
-a message naming the session — never a silent no-op, never a silent discard. Resolving it
-is yours: Finish, correct the minutes, or Discard, all one tap from Today's In-progress
-card, which labels a clock that has run far past its target.
-
-**Four storage roles, kept distinct** (Settings explains them): **local data** is the
-offline source of truth; **GitHub sync** is the small versioned multi-device transport
-(one private repo per app that needs it — a phone-only app needs none); **NAS backup**
-is your own independent full export (don't treat the sync repo as your only backup); and
-**NAS recordings** hold the large class videos the other three never carry.
-
-## Updates
-
-The app updates itself: when a new build is published, an in-app banner offers
-**Reload** (updates are also checked hourly and when the app regains focus). The
-running build is shown at the bottom of Settings. Reinstalling is never required.
-
-## Install as an app (PWA)
-
-Practice Compass is an installable, offline-capable Progressive Web App (via
-`vite-plugin-pwa`) — see **Using it** above for the per-device steps. Icons are
-generated from [`public/icon.svg`](public/icon.svg) with `npm run gen:icons`.
-
-## Design principles
-
-Calm, focused, serious, elegant, fast, uncluttered — encouraging but never cheesy.
-
-- No gamification, streaks, fake mastery %, leaderboards or guilt.
-- One muted accent, soft hierarchy, generous spacing, serif headings.
-- Mobile‑first, with a bottom tab bar and a one‑tap **Start** button.
-- The practice screen hides all chrome to protect attention.
-- Insights are neutral and useful, never nagging.
-
----
-
-## Future roadmap
-
-- CSV export
-- Calendar reminders
-- Teacher‑sharing PDF
-- Seed Levels 1B–5 of CGS in full detail from each sub-level's syllabus
-
-Done: ✅ PWA offline install · ✅ Pathways unified with items (catalog + one-tap add +
-undo) · ✅ SM-2 spaced-repetition review with manual override, snooze & not-now ·
-✅ IndexedDB source of truth · ✅ Attachments on items *and* lessons · ✅ Full backup with
-files + device handoff warnings · ✅ Lesson↔item linking with per-instrument class
-deadlines (Farsi-aware) · ✅ Per-instrument session workspace · ✅ Sections, stage pinning
-& étude parts · ✅ Persian repertoire view (dastgāh × form × composer) · ✅ One-step item
-creation · ✅ GitHub Pages hosting + device sync via GitHub · ✅ CI.
-
-See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
-[`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.
-
----
-
-## License
-
-MIT.
-````
-
-### src/components/Layout.tsx
-
-```
-import { useEffect, useRef } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { hasUnfinishedPractice } from '../domain';
-import { useStore } from '../store/useStore';
-import { useSyncStatus } from '../store/githubSync';
-import { useViewportGuard } from './useViewportGuard';
-import { useRegisterSW } from 'virtual:pwa-register/react';
-import {
-  CompassIcon,
-  ItemsIcon,
-  MoonIcon,
-  MoreIcon,
-  PathIcon,
-  PlayIcon,
-  SunIcon,
-  TodayIcon,
-} from './icons';
-
-export default function Layout() {
-  const theme = useStore((s) => s.theme);
-  const setTheme = useStore((s) => s.setTheme);
-  const location = useLocation();
-  const mainRef = useRef<HTMLElement>(null);
-
-  // Undo iOS's layout-viewport displacement when the keyboard opens/closes.
-  useViewportGuard();
-
-  // Only <main> scrolls (the shell is fixed-height) — reset it so every
-  // route opens at the top.
-  useEffect(() => {
-    mainRef.current?.scrollTo(0, 0);
-  }, [location.pathname]);
-
-  // Hide chrome during focused practice to keep attention on the timer.
-  const focused =
-    location.pathname === '/active' ||
-    location.pathname === '/close' ||
-    location.pathname.startsWith('/routine');
-
-  const isDark = theme === 'dark';
-  const ThemeIcon = isDark ? SunIcon : MoonIcon;
-
-  return (
-    <div className="app">
-      <header className="app-header">
-        <NavLink to="/" className="wordmark">
-          <CompassIcon className="mark" />
-          <span>Practice Compass</span>
-        </NavLink>
-        <button
-          className="btn btn-ghost btn-sm"
-          aria-label="Toggle light or dark theme"
-          onClick={() => setTheme(isDark ? 'light' : 'dark')}
-        >
-          <ThemeIcon width={18} height={18} />
-        </button>
-      </header>
-
-      {/* Navigation sits BEFORE the page content in the DOM (screen readers
-          and keyboard users reach it first); CSS places it at the visual
-          bottom on phones and under the header on wide screens. Five equal,
-          stable targets — Today carries the primary Start action, so the bar
-          needs no raised centre button. */}
-      {!focused && (
-        <nav className="tabbar" aria-label="Primary">
-          <div className="tabbar-inner">
-            <NavLink to="/" end className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
-              <TodayIcon />
-              <span>Today</span>
-            </NavLink>
-            <NavLink to="/repertoire" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
-              <PathIcon />
-              <span>Repertoire</span>
-            </NavLink>
-            <NavLink to="/start" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
-              <PlayIcon />
-              <span>Start</span>
-            </NavLink>
-            <NavLink to="/lessons" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
-              <ItemsIcon />
-              <span>Lessons</span>
-            </NavLink>
-            <NavLink to="/more" className={({ isActive }) => `tab${isActive ? ' active' : ''}`}>
-              <MoreIcon />
-              <span>More</span>
-            </NavLink>
-          </div>
-        </nav>
-      )}
-
-      <main className="main" ref={mainRef}>
-        <div className={`main-inner${pageWidthClass(location.pathname)}`}>
-          <UpdateBanner />
-          <SyncNotice pathname={location.pathname} />
-          <Outlet />
-        </div>
-      </main>
-    </div>
-  );
-}
-
-/**
- * Per-route page widths: focused practice stays narrow, Today comfortable,
- * browsing/notes screens use real desktop room (CSS caps them on phones).
- */
-function pageWidthClass(pathname: string): string {
-  if (pathname === '/active' || pathname === '/close' || pathname.startsWith('/routine')) return ' main-inner--narrow';
-  if (
-    pathname.startsWith('/repertoire') ||
-    pathname.startsWith('/items') ||
-    pathname.startsWith('/pathway') ||
-    pathname.startsWith('/lessons') ||
-    pathname.startsWith('/materials') ||
-    pathname.startsWith('/settings') ||
-    pathname.startsWith('/insights') ||
-    pathname.startsWith('/report')
-  )
-    return ' main-inner--wide';
-  return '';
-}
-
-/**
- * Honest PWA updates: the service worker is registered in prompt mode, a new
- * build shows this banner, and one tap reloads into it — no reinstalling.
- * Updates are also checked hourly and whenever the app becomes visible
- * (installed iOS apps otherwise only check on cold launch).
- */
-function UpdateBanner() {
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegisteredSW(_url, registration) {
-      if (!registration) return;
-      setInterval(() => void registration.update(), 60 * 60 * 1000);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') void registration.update();
-      });
-    },
-  });
-  if (!needRefresh) return null;
-  return (
-    <div className="card card-accent row between small" style={{ marginBottom: 'var(--space-4)' }}>
-      <span>A new version is ready.</span>
-      <button className="btn btn-primary btn-sm" style={{ flex: 'none' }} onClick={() => void updateServiceWorker(true)}>
-        Reload
-      </button>
-    </div>
-  );
-}
-
-/**
- * Calm, non-blocking notice when sync needs a decision, hit an error, or is
- * WAITING. The deferral must be visible here and not only in Settings: an
- * unbounded, invisible sync outage is exactly what a forgotten block used to
- * cause. It says what it is waiting for, and Resume points at the practice
- * screen where Finish, correcting the minutes, and Discard are all one tap
- * away — the app never resolves it by discarding the practice.
- *
- * Resume is keyed on the SESSION EXISTING, not on the phase. A deferral raised
- * because practice was RECORDED mid-sync has no session to resume — offering a
- * link to /active there would be a dead control that bounces straight back,
- * and that deferral needs no tap at all: it clears itself on the next sync.
- */
-function SyncNotice({ pathname }: { pathname: string }) {
-  const phase = useSyncStatus((s) => s.phase);
-  const message = useSyncStatus((s) => s.message);
-  const unfinished = useStore((s) => hasUnfinishedPractice(s));
-  if (pathname === '/settings') return null; // Settings shows the full panel.
-  if (phase !== 'conflict' && phase !== 'error' && phase !== 'deferred') return null;
-  if (phase === 'deferred') {
-    return (
-      <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
-        <span className="dim">Sync is waiting: {message}</span>
-        {unfinished && (
-          <NavLink to="/active" className="link" style={{ flex: 'none' }}>
-            Resume
-          </NavLink>
-        )}
-      </div>
-    );
-  }
-  return (
-    <div className="card card-quiet row between small" style={{ marginBottom: 'var(--space-4)' }}>
-      <span className="dim">
-        {phase === 'conflict' ? 'Sync needs a decision.' : `Sync problem: ${message}`}
-      </span>
-      <NavLink to="/settings" className="link" style={{ flex: 'none' }}>
-        Open Settings
-      </NavLink>
-    </div>
-  );
-}
-```
-
-### src/domain/practiceSession.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import {
-  decideReplacement,
-  deferredSyncRetry,
-  hasUnfinishedPractice,
-  installDatabase,
-  isStaleClock,
-  proposedCloseMinutes,
-  type UnfinishedBlock,
-  type UnfinishedRoutine,
-} from './practiceSession';
-import { createBlock, createInstrument } from './factories';
-import { emptyDB } from './seed';
-import type { PracticeDB } from './types';
-
-const NOW = new Date('2026-06-18T12:00:00.000Z');
-
-/**
- * A block being practised right now: 12 minutes into a 10-minute target. Past
- * its target, which is completely ordinary — practising past the target is
- * normal, so this is LIVE, not stale.
- */
-function liveBlock(o: Partial<UnfinishedBlock> = {}): UnfinishedBlock {
-  return { itemId: 'item-1', targetMinutes: 10, accumulatedSeconds: 12 * 60, running: true, ...o };
-}
-
-/** The same block paused — genuinely elapsed minutes, no live timestamp. */
-function pausedBlock(): UnfinishedBlock {
-  return liveBlock({ running: false });
-}
-
-/** A clock left running overnight: eight hours against a ten-minute target. */
-function staleBlock(): UnfinishedBlock {
-  return liveBlock({ accumulatedSeconds: 8 * 3600 });
-}
-
-function routine(o: Partial<UnfinishedRoutine> = {}): UnfinishedRoutine {
-  return { routineId: 'routine-1', accumulatedSeconds: 5 * 60, running: true, ...o };
-}
-
-const NOTHING = { active: null, activeRoutine: null };
-
-// --- A1: nothing replaces an unfinished session -------------------------------
-//
-// `active` lives outside `db`, so the revision counter never bumps while you
-// practise; a mid-block device therefore looks UNCHANGED to the hash
-// comparison, a remote change resolves to a straight pull, and importDB nulls
-// `active`. Committed data is archived first — the in-flight block is not.
-//
-// The invariant is UNCONDITIONAL. PRESENCE decides regardless of running or
-// paused, fresh or stale, ordinary or routine. An earlier draft let a stale
-// clock stop deferring, which would have promoted a heuristic about a DURATION
-// into an authority to destroy practice — a session paused at three genuine
-// hours crosses any sensible threshold.
-//
-// Presence is not the whole guard, because it cannot see practice that was
-// started AND FINISHED while the replacement was in flight: that leaves no
-// session behind, only a recorded block the incoming snapshot would overwrite.
-// The second blocking reason is the local REVISION moving — a counter, not a
-// clock and not a heuristic.
-
-describe('A1 · a replacement never destroys an unfinished practice session', () => {
-  it('refuses a replacement for a running, a paused, and a stale unfinished session alike', () => {
-    const cases: { why: string; session: { active: UnfinishedBlock | null; activeRoutine: UnfinishedRoutine | null } }[] = [
-      { why: 'running ordinary block', session: { active: liveBlock(), activeRoutine: null } },
-      { why: 'PAUSED block — pausing protects, it does not expose', session: { active: pausedBlock(), activeRoutine: null } },
-      { why: 'STALE block — an implausible duration is never permission to discard', session: { active: staleBlock(), activeRoutine: null } },
-      { why: 'running routine', session: { active: null, activeRoutine: routine() } },
-      { why: 'paused routine', session: { active: null, activeRoutine: routine({ running: false }) } },
-      {
-        why: 'the frozen dual pair the persist merge produces — unfinished practice like any other',
-        session: { active: pausedBlock(), activeRoutine: routine({ running: false }) },
-      },
-    ];
-
-    for (const c of cases) {
-      expect(hasUnfinishedPractice(c.session), c.why).toBe(true);
-      expect(decideReplacement({ intent: 'deliberate', session: c.session }).outcome, c.why).toBe('refuse');
-      expect(decideReplacement({ intent: 'automatic', session: c.session }).outcome, c.why).toBe('defer');
-    }
-  });
-
-  it('allows a replacement when no unfinished practice session exists', () => {
-    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
-    expect(decideReplacement({ intent: 'deliberate', session: NOTHING }).outcome).toBe('proceed');
-    expect(decideReplacement({ intent: 'automatic', session: NOTHING }).outcome).toBe('proceed');
-    // Nothing to say when nothing is in the way.
-    expect(decideReplacement({ intent: 'deliberate', session: NOTHING }).message).toBe('');
-  });
-
-  it('reaches the same replacement decision for a stale session as for a live one', () => {
-    // The two inputs genuinely differ — 12 minutes against 8 hours, one of
-    // which `isStaleClock` calls stale — and the decision must not.
-    const live = { active: liveBlock(), activeRoutine: null };
-    const stale = { active: staleBlock(), activeRoutine: null };
-    expect(isStaleClock(live.active.accumulatedSeconds, live.active.targetMinutes)).toBe(false);
-    expect(isStaleClock(stale.active.accumulatedSeconds, stale.active.targetMinutes)).toBe(true);
-
-    for (const intent of ['automatic', 'deliberate'] as const) {
-      expect(decideReplacement({ intent, session: stale })).toEqual(decideReplacement({ intent, session: live }));
-    }
-  });
-
-  it('defers automatic sync but returns an explicit refusal for a deliberate replacement', () => {
-    const session = { active: liveBlock(), activeRoutine: null };
-    const auto = decideReplacement({ intent: 'automatic', session, labels: { itemTitle: 'درآمد ماهور' } });
-    const deliberate = decideReplacement({ intent: 'deliberate', session, labels: { itemTitle: 'درآمد ماهور' } });
-
-    // A background merge waiting its turn is not a failure, and not silent.
-    expect(auto.outcome).toBe('defer');
-    expect(auto.message).toContain('درآمد ماهور');
-    // A deliberate Import / Restore archive / Keep remote is told out loud —
-    // never a silent no-op that looks like a broken button, never a silent
-    // discard. Both name the session that is in the way.
-    expect(deliberate.outcome).toBe('refuse');
-    expect(deliberate.message).toContain('درآمد ماهور');
-    expect(deliberate.outcome).not.toBe(auto.outcome);
-  });
-
-  it('refuses a replacement when practice was recorded on this device after the replacement was decided', () => {
-    // The window presence CANNOT see. A pull is decided against local revision
-    // 7; while the remote copy downloads, the pre-sync archive is written and
-    // `replaceAllBlobs` runs, a block is started AND FINISHED. There is no
-    // unfinished session left to find, and the recorded block is in neither
-    // the archive nor the incoming snapshot — installing it would destroy a
-    // minute that was genuinely played, with nothing holding a copy.
-    const moved = { intent: 'automatic' as const, session: NOTHING, revision: { decidedFrom: 7, current: 8 } };
-    expect(hasUnfinishedPractice(NOTHING)).toBe(false);
-    expect(decideReplacement(moved).outcome).toBe('defer');
-    // Waiting, not broken — and NOT on something to finish or discard, because
-    // the practice is already recorded. The `rev` bump that raised this is
-    // what the quiet-period auto-sync watches, so the next run offers both
-    // copies as an explicit conflict.
-    expect(decideReplacement(moved).message).not.toContain('discard');
-    expect(decideReplacement({ ...moved, intent: 'deliberate' }).outcome).toBe('refuse');
-
-    // Discriminating: an UNMOVED revision is not a blocker. Without this the
-    // guard could be satisfied by refusing every replacement forever, which
-    // would be a permanent silent sync outage — worse than the bug.
-    expect(decideReplacement({ ...moved, revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
-    expect(decideReplacement({ ...moved, intent: 'deliberate', revision: { decidedFrom: 7, current: 7 } }).outcome).toBe('proceed');
-
-    // Both reasons at once: PRESENCE answers first, so the message can still
-    // name the session that is in the way (ac-8).
-    const both = decideReplacement({
-      intent: 'deliberate',
-      session: { active: liveBlock(), activeRoutine: null },
-      labels: { itemTitle: 'درآمد ماهور' },
-      revision: { decidedFrom: 7, current: 8 },
-    });
-    expect(both.outcome).toBe('refuse');
-    expect(both.message).toContain('درآمد ماهور');
-  });
-
-  it('names the blocking session neutrally rather than fabricating a title', () => {
-    const noTitle = decideReplacement({ intent: 'deliberate', session: { active: liveBlock(), activeRoutine: null } });
-    expect(noTitle.message).toContain('a practice block');
-    const r = decideReplacement({ intent: 'deliberate', session: { active: null, activeRoutine: routine() } });
-    expect(r.message).toContain('a routine');
-  });
-});
-
-// --- The deferred sync really resumes ----------------------------------------
-//
-// The trigger is the blocking condition CLEARING, not an incidental database
-// write. closeSession writes a block and bumps `rev`; cancelSession is a bare
-// `set({ active: null })` that writes nothing at all. Watching `rev` would
-// resume after a finish and wait forever after a discard.
-
-describe('a deferred sync resumes when the blocking session clears', () => {
-  it('resumes a deferred sync when the session clears, whether it was finished or discarded', () => {
-    const item = 'item-1';
-    const block = createBlock(
-      { practiceItemId: item, instrumentId: 'setar', durationMinutes: 12, mode: 'repair', focus: 'tone', result: 'slightly_better', startedAt: NOW.toISOString() },
-      NOW,
-    );
-
-    // Practising, sync deferred.
-    const practising = { active: liveBlock(), activeRoutine: null, blocks: [], rev: 4 };
-    // FINISHED: a block was written, so the revision counter moved.
-    const finished = { active: null, activeRoutine: null, blocks: [block], rev: 5 };
-    // DISCARDED: nothing was written at all, so the revision counter did NOT.
-    // This is the half the rev-watching design silently failed.
-    const discarded = { active: null, activeRoutine: null, blocks: [], rev: 4 };
-    expect(discarded.rev).toBe(practising.rev);
-    expect(discarded.blocks).toHaveLength(0);
-    expect(finished.rev).not.toBe(practising.rev);
-
-    for (const [why, after] of [['finished', finished], ['discarded', discarded]] as const) {
-      expect(
-        deferredSyncRetry({
-          pending: true,
-          wasUnfinished: hasUnfinishedPractice(practising),
-          isUnfinished: hasUnfinishedPractice(after),
-        }),
-        why,
-      ).toBe(true);
-    }
-  });
-
-  it('does not fire without a pending deferral, and not while practice is still unfinished', () => {
-    expect(deferredSyncRetry({ pending: false, wasUnfinished: true, isUnfinished: false })).toBe(false);
-    expect(deferredSyncRetry({ pending: true, wasUnfinished: true, isUnfinished: true })).toBe(false);
-    // An ordinary load with no session must not read as a transition.
-    expect(deferredSyncRetry({ pending: true, wasUnfinished: false, isUnfinished: false })).toBe(false);
-  });
-});
-
-// --- A2: honest minutes ------------------------------------------------------
-
-describe('A2 · an abandoned clock never writes practice that did not happen', () => {
-  it('proposes the target for an abandoned block and the real elapsed minutes for an overrun one', () => {
-    // Abandoned: eight hours against a ten-minute target. Propose the target,
-    // not the fabricated gap that would otherwise poison the item's totals,
-    // the instrument balance, the Teacher Report and every insight forever.
-    const abandoned = proposedCloseMinutes(8 * 3600, 10);
-    expect(abandoned.stale).toBe(true);
-    expect(abandoned.minutes).toBe(10);
-
-    // Genuinely overrun: twenty minutes past a ten-minute target. Practising
-    // past the target is completely ordinary and still proposes the real time.
-    const overrun = proposedCloseMinutes(30 * 60, 10);
-    expect(overrun.stale).toBe(false);
-    expect(overrun.minutes).toBe(30);
-  });
-
-  it('judges a short block against the floor and a long one against the multiple', () => {
-    // A 10-minute target is not abandoned at 40 minutes (4× target) — the
-    // absolute floor is what decides a short block.
-    expect(isStaleClock(40 * 60, 10)).toBe(false);
-    // A 90-minute target is not abandoned at 3 hours either — the multiple is
-    // what decides a long one, and 3h is only 2× its target.
-    expect(isStaleClock(3 * 3600, 90)).toBe(false);
-    // Both thresholds crossed.
-    expect(isStaleClock(9 * 3600, 90)).toBe(true);
-  });
-});
-
-// --- A8: installing a new database leaves nothing pointing at the old one -----
-
-describe('A8 · installing a replacement database clears the state that pointed at the old one', () => {
-  function dbWith(instrumentIds: string[]): PracticeDB {
-    return {
-      ...emptyDB(),
-      instruments: instrumentIds.map((id) => ({ ...createInstrument({ name: id }, NOW), id })),
-    };
-  }
-
-  it('clears the running plan and drops a session instrument the new database lacks, keeping one it has', () => {
-    const incoming = dbWith(['setar']);
-
-    // Dropped: the new database has no such instrument, so keeping it would
-    // scope Today to something that no longer exists.
-    const dangling = installDatabase({ db: incoming, sessionInstrumentId: 'guitar' });
-    expect(dangling.sessionInstrumentId).toBeNull();
-
-    // Kept: it still resolves, so there is nothing dangling about it.
-    expect(installDatabase({ db: incoming, sessionInstrumentId: 'setar' }).sessionInstrumentId).toBe('setar');
-    // Kept: the cross-instrument overview is not an instrument reference.
-    expect(installDatabase({ db: incoming, sessionInstrumentId: 'all' }).sessionInstrumentId).toBe('all');
-
-    // Cleared in the SAME object as the new db — which is what makes it
-    // impossible for importDB, resetDemo or clearAll to install a database
-    // without the reset. (The Node environment cannot import useStore.ts, so
-    // the function's SHAPE is what protects the wiring; the manual:OWNER check
-    // exercises all three on device.)
-    expect(dangling.activePlan).toBeNull();
-    expect(dangling.active).toBeNull();
-    expect(dangling.activeRoutine).toBeNull();
-    expect(dangling.notNow).toEqual({ date: '', ids: [] });
-    expect(dangling.db).toBe(incoming);
-  });
-
-  it('cannot return a database without the ephemeral reset beside it', () => {
-    // The signature is the guarantee: every key the store must set arrives
-    // together, so `set(installDatabase(...))` is the whole operation.
-    const result = installDatabase({ db: dbWith(['setar']), sessionInstrumentId: null });
-    expect(Object.keys(result).sort()).toEqual(
-      ['active', 'activePlan', 'activeRoutine', 'db', 'notNow', 'sessionInstrumentId'].sort(),
-    );
-  });
-});
-```
-
 ### src/domain/practiceSession.ts
 
 ```
@@ -3105,11 +2146,17 @@ export function decideReplacement(args: {
   }
 
   if (args.revision && args.revision.current !== args.revision.decidedFrom) {
-    // Nothing to finish or discard here — the practice is already recorded.
-    // The automatic case heals itself without any deferral retry: the very
-    // write that raised this bumped `rev`, which the quiet-period auto-sync
-    // watches, and the next run sees both sides changed and offers the owner
-    // an explicit choice with both copies preserved.
+    // Nothing to finish or discard here — the practice is already recorded, so
+    // there is no blocking session for the presence retry to watch clear. The
+    // automatic case needs no watcher of its own for a different reason: the
+    // very write that raised this bumped `rev`, which the quiet-period
+    // auto-sync watches. That trigger is only reliable because a sync request
+    // arriving mid-run is now REMEMBERED rather than dropped (`rerunWanted` in
+    // githubSync.ts) — a run outlasting the quiet period used to swallow the
+    // one retry it scheduled and then defer for that same revision, leaving
+    // sync waiting on a condition nothing was watching. The next run sees both
+    // sides changed and offers the owner an explicit choice with both copies
+    // preserved.
     if (args.intent === 'automatic') {
       return {
         outcome: 'defer',
@@ -3223,6 +2270,500 @@ export function installDatabase(args: { db: PracticeDB; sessionInstrumentId: ID 
 }
 ```
 
+### src/domain/selectors.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import {
+  instrumentBalance,
+  nextLessonNumber,
+  practiceTotals,
+  practiceTotalsByInstrument,
+  startOfWeekISODate,
+  totalMinutesInWindow,
+} from './selectors';
+import { createBlock, createInstrument } from './factories';
+import type { Instrument, Lesson, PracticeBlock } from './types';
+
+function instrument(id: string): Instrument {
+  return { ...createInstrument({ name: id }, new Date(2026, 0, 1)), id };
+}
+
+function lesson(partial: Partial<Lesson> & { id: string; instrumentId: string; date: string }): Lesson {
+  return { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...partial };
+}
+
+describe('nextLessonNumber', () => {
+  it('is 1 when the instrument has no numbered lessons', () => {
+    expect(nextLessonNumber([], 'setar')).toBe(1);
+    expect(nextLessonNumber([lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01' })], 'setar')).toBe(1);
+  });
+
+  it('is max existing number + 1, scoped per instrument', () => {
+    const lessons = [
+      lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01', number: 3 }),
+      lesson({ id: 'b', instrumentId: 'setar', date: '2026-02-01', number: 7 }),
+      lesson({ id: 'c', instrumentId: 'tar', date: '2026-02-01', number: 40 }),
+    ];
+    expect(nextLessonNumber(lessons, 'setar')).toBe(8);
+    expect(nextLessonNumber(lessons, 'tar')).toBe(41);
+  });
+
+  it('ignores unnumbered lessons when computing the max', () => {
+    const lessons = [
+      lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01', number: 5 }),
+      lesson({ id: 'b', instrumentId: 'setar', date: '2026-03-01' }), // no number
+    ];
+    expect(nextLessonNumber(lessons, 'setar')).toBe(6);
+  });
+});
+
+// --- B1: honest calendar totals ----------------------------------------------
+//
+// The trap `blocksInWindow` sets is that it filters on HOURS, so days:1 means
+// "the last 24 hours" and days:7 means "the last 168" — the wrong answer to
+// "how much have I practised today?". These are CALENDAR figures, and the
+// choice is pinned here rather than left as a comment.
+//
+// Local time throughout: the tests construct dates with the local `Date(y, m,
+// d, h)` constructor, exactly as the helpers read them, so they hold in any
+// timezone the owner's devices run in.
+
+function pBlock(startedAt: Date, durationMinutes: number, instrumentId = 'setar'): PracticeBlock {
+  return createBlock(
+    {
+      practiceItemId: 'item-1',
+      instrumentId,
+      durationMinutes,
+      mode: 'repair',
+      focus: 'tone',
+      result: 'slightly_better',
+      startedAt: startedAt.toISOString(),
+    },
+    startedAt,
+  );
+}
+
+// Thursday 18 June 2026, 12:00 local.
+const THURSDAY = new Date(2026, 5, 18, 12, 0);
+
+describe('practiceTotals · calendar days, not rolling windows', () => {
+  it("counts by calendar day, so a block from late yesterday is not part of today's total", () => {
+    // Deliberately INSIDE the last 24 hours — 22:30 the previous evening is
+    // only 13½ hours before "now" — and just as deliberately NOT today.
+    const lateYesterday = pBlock(new Date(2026, 5, 17, 22, 30), 40);
+    const justAfterMidnight = pBlock(new Date(2026, 5, 18, 0, 20), 15);
+
+    const totals = practiceTotals([lateYesterday, justAfterMidnight], THURSDAY);
+    expect(totals.today).toEqual({ minutes: 15, blocks: 1 });
+    // The rolling-window helper would have swept both in — that is the bug.
+    expect(totalMinutesInWindow([lateYesterday, justAfterMidnight], THURSDAY, 1)).toBe(55);
+    // Both are still this week, and both are still all time.
+    expect(totals.week).toEqual({ minutes: 55, blocks: 2 });
+    expect(totals.allTime).toEqual({ minutes: 55, blocks: 2 });
+  });
+
+  it('counts a midnight-crossing block whole against the day it began, including across the Monday boundary', () => {
+    // A block begun 23:40 on Wednesday, 40 minutes long: its minutes run past
+    // midnight, and ALL of them belong to Wednesday. `durationMinutes` is the
+    // figure the owner attested to and deliberately diverges from wall clock,
+    // and routine blocks carry no endedAt to split by — so a block is one
+    // indivisible unit of attested practice.
+    const crossesMidnight = pBlock(new Date(2026, 5, 17, 23, 40), 40);
+    expect(practiceTotals([crossesMidnight], THURSDAY).today).toEqual({ minutes: 0, blocks: 0 });
+    expect(practiceTotals([crossesMidnight], new Date(2026, 5, 17, 23, 59)).today).toEqual({ minutes: 40, blocks: 1 });
+
+    // The SAME rule decides the Monday boundary: begun Sunday 23:30, it
+    // belongs whole to the week that is ending, with nothing carried into the
+    // week that begins forty minutes later.
+    const sundayNight = pBlock(new Date(2026, 5, 14, 23, 30), 40); // Sunday 14 June 2026
+    const monday = new Date(2026, 5, 15, 9, 0);
+    expect(practiceTotals([sundayNight], monday).week).toEqual({ minutes: 0, blocks: 0 });
+    expect(practiceTotals([sundayNight], new Date(2026, 5, 14, 23, 59)).week).toEqual({ minutes: 40, blocks: 1 });
+  });
+
+  it("starts the week on Monday so Sunday's practice belongs to the week that is ending", () => {
+    const sunday = new Date(2026, 5, 14, 20, 0); // Sunday 14 June 2026
+    const monday = new Date(2026, 5, 15, 8, 0);
+    expect(startOfWeekISODate(monday)).toBe('2026-06-15');
+    expect(startOfWeekISODate(sunday)).toBe('2026-06-08'); // the week that is ending
+    // Saturday is still that same week; Thursday's week began on the 15th.
+    expect(startOfWeekISODate(new Date(2026, 5, 20, 8, 0))).toBe('2026-06-15');
+    expect(startOfWeekISODate(THURSDAY)).toBe('2026-06-15');
+
+    const sundayBlock = pBlock(sunday, 25);
+    const mondayBlock = pBlock(monday, 30);
+    // Asked on Monday: only Monday's practice is in the new week.
+    expect(practiceTotals([sundayBlock, mondayBlock], monday).week).toEqual({ minutes: 30, blocks: 1 });
+    // Asked on Sunday evening: Sunday's practice is in the week that is ending.
+    expect(practiceTotals([sundayBlock], sunday).week).toEqual({ minutes: 25, blocks: 1 });
+  });
+
+  it('reports minutes and blocks per instrument, all time included', () => {
+    const blocks = [
+      pBlock(THURSDAY, 20, 'setar'),
+      pBlock(new Date(2026, 5, 16, 10, 0), 30, 'setar'),
+      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // months ago
+    ];
+    const rows = practiceTotalsByInstrument(
+      [instrument('setar'), instrument('guitar')],
+      blocks,
+      THURSDAY,
+    );
+    expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'guitar']); // most all-time minutes first
+    expect(rows[0]).toMatchObject({
+      today: { minutes: 20, blocks: 1 },
+      week: { minutes: 50, blocks: 2 },
+      allTime: { minutes: 50, blocks: 2 },
+    });
+    expect(rows[1]).toMatchObject({
+      today: { minutes: 0, blocks: 0 },
+      week: { minutes: 0, blocks: 0 },
+      allTime: { minutes: 45, blocks: 1 },
+    });
+  });
+
+  // Insights shows an overall "All instruments" row over EVERY block, so the
+  // per-instrument rows below it have to account for every one of those
+  // minutes. Passing only the ACTIVE instruments left a retired instrument's
+  // history with no row at all while its minutes still sat in the total — the
+  // rows silently summed to less than the figure printed above them.
+  it("gives a retired instrument its own row, so the rows account for every minute in the overall total", () => {
+    const retired = { ...instrument('guitar'), active: false };
+    const blocks = [
+      pBlock(THURSDAY, 20, 'setar'),
+      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // practised before it was retired
+    ];
+    const rows = practiceTotalsByInstrument([instrument('setar'), retired], blocks, THURSDAY);
+
+    expect(rows.map((r) => r.instrumentId)).toContain('guitar');
+    expect(rows.find((r) => r.instrumentId === 'guitar')?.allTime).toEqual({ minutes: 45, blocks: 1 });
+    const summed = rows.reduce((n, r) => n + r.allTime.minutes, 0);
+    expect(summed).toBe(practiceTotals(blocks, THURSDAY).allTime.minutes);
+  });
+});
+
+// --- A10: the one shipped derived figure that was arithmetically wrong --------
+
+describe('instrumentBalance · the denominator covers exactly the rows shown', () => {
+  it('percentages sum to 100 when blocks exist for an instrument not in the supplied list', () => {
+    // Exactly what Today produces: only the ACTIVE instruments, with ALL
+    // blocks — including a retired instrument's, which gets no row of its own.
+    const supplied = [instrument('setar'), instrument('tar')];
+    const blocks = [
+      pBlock(THURSDAY, 30, 'setar'),
+      pBlock(THURSDAY, 20, 'tar'),
+      pBlock(THURSDAY, 40, 'guitar'), // retired — no row emitted for it
+    ];
+
+    const rows = instrumentBalance(supplied, blocks, THURSDAY, 7);
+    expect(rows.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(rows.find((r) => r.instrumentId === 'setar')!.percent).toBe(60);
+    expect(rows.find((r) => r.instrumentId === 'tar')!.percent).toBe(40);
+    // The retired instrument's minutes are in neither a row nor the denominator.
+    expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'tar']);
+
+    // A right denominator is only half of it: rounded independently, three
+    // equal shares each become 33% and total 99. The split that cannot divide
+    // evenly is the one that has to sum to 100.
+    const three = [instrument('setar'), instrument('tar'), instrument('guitar')];
+    const thirds = instrumentBalance(
+      three,
+      [
+        pBlock(THURSDAY, 1, 'setar'),
+        pBlock(THURSDAY, 1, 'tar'),
+        pBlock(THURSDAY, 1, 'guitar'),
+        pBlock(THURSDAY, 40, 'santur'), // still omitted, still out of the denominator
+      ],
+      THURSDAY,
+      7,
+    );
+    expect(thirds.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(thirds.map((r) => r.percent).sort()).toEqual([33, 33, 34]);
+
+    // And a row with no practice is never handed a leftover point.
+    const lopsided = instrumentBalance(three, [pBlock(THURSDAY, 3, 'setar'), pBlock(THURSDAY, 3, 'tar')], THURSDAY, 7);
+    expect(lopsided.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(lopsided.find((r) => r.instrumentId === 'guitar')!.percent).toBe(0);
+  });
+
+  it('reports zero percent for every instrument when nothing was practised', () => {
+    const rows = instrumentBalance([instrument('setar')], [], THURSDAY, 7);
+    expect(rows[0]).toMatchObject({ minutes: 0, blocks: 0, percent: 0 });
+  });
+});
+```
+
+### src/domain/selectors.ts
+
+```
+import type {
+  ID,
+  Instrument,
+  ISODate,
+  Lesson,
+  PracticeBlock,
+  PracticeItem,
+  Review,
+} from './types';
+import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
+import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
+
+// ---------------------------------------------------------------------------
+// Derived lists used across the Today, Items and Insights screens. All pure.
+// ---------------------------------------------------------------------------
+
+/** The nearest upcoming (today or later) lesson for an instrument, if any. */
+export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
+  const today = todayISODate(now);
+  return lessons
+    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+/** A map of instrumentId → nearest upcoming lesson date. */
+export function nextLessonDates(lessons: Lesson[], now: Date): Map<ID, ISODate> {
+  const map = new Map<ID, ISODate>();
+  const today = todayISODate(now);
+  for (const l of lessons) {
+    if (l.date < today) continue;
+    const cur = map.get(l.instrumentId);
+    if (!cur || l.date < cur) map.set(l.instrumentId, l.date);
+  }
+  return map;
+}
+
+/** Whole days from now until a calendar date (negative if past). */
+export function daysUntil(dateISO: ISODate, now: Date): number {
+  return dayDiff(now, parseISODate(dateISO));
+}
+
+export function lessonsForInstrument(lessons: Lesson[], instrumentId: ID): Lesson[] {
+  return lessons.filter((l) => l.instrumentId === instrumentId).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Suggested next class number for an instrument: max existing + 1, or 1. */
+export function nextLessonNumber(lessons: Lesson[], instrumentId: ID): number {
+  const max = lessons
+    .filter((l) => l.instrumentId === instrumentId && typeof l.number === 'number')
+    .reduce((m, l) => Math.max(m, l.number as number), 0);
+  return max + 1;
+}
+
+/** Items flagged to complete before their instrument's next lesson. */
+export function assignedForLesson(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.assignedForLesson);
+}
+
+export function isDue(item: PracticeItem, now: Date): boolean {
+  const d = overdueDays(item, now);
+  return d !== null && d >= 0;
+}
+
+export function dueItems(items: PracticeItem[], now: Date): PracticeItem[] {
+  return items
+    .filter((i) => isDue(i, now))
+    .sort((a, b) => (overdueDays(b, now) ?? 0) - (overdueDays(a, now) ?? 0));
+}
+
+export function fragileItems(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.status === 'fragile' || i.status === 'repairing');
+}
+
+export function neglectedImportantItems(
+  items: PracticeItem[],
+  now: Date,
+  minImportance = 4,
+  minDays = 8,
+): PracticeItem[] {
+  return items
+    .filter((i) => i.importance >= minImportance && daysSinceTouched(i, now) >= minDays)
+    .filter((i) => i.status !== 'dormant')
+    .sort((a, b) => daysSinceTouched(b, now) - daysSinceTouched(a, now));
+}
+
+export function overworkedItems(
+  items: PracticeItem[],
+  blocks: PracticeBlock[],
+  now: Date,
+): PracticeItem[] {
+  const byItem = groupBlocksByItem(blocks);
+  return items.filter((i) => isSaturated(byItem.get(i.id) ?? [], now));
+}
+
+export function itemsWithTeacherQuestion(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.teacherQuestion && i.teacherQuestion.trim().length > 0);
+}
+
+export function dueReviews(reviews: Review[], now: Date): Review[] {
+  return reviews
+    .filter((r) => !r.completedAt)
+    .filter((r) => dayDiff(parseISODate(r.dueDate), now) >= 0)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+export function blocksInWindow(
+  blocks: PracticeBlock[],
+  now: Date,
+  days: number,
+): PracticeBlock[] {
+  const hours = days * 24;
+  // Future-dated blocks (clock skew, edited data) must not shape history.
+  return blocks.filter((b) => {
+    const h = hoursSince(b.startedAt, now);
+    return h >= 0 && h <= hours;
+  });
+}
+
+export interface InstrumentBalanceRow {
+  instrumentId: ID;
+  instrumentName: string;
+  minutes: number;
+  blocks: number;
+  percent: number;
+}
+
+/** Minutes/blocks per instrument over the last `days`, including idle ones. */
+export function instrumentBalance(
+  instruments: Instrument[],
+  blocks: PracticeBlock[],
+  now: Date,
+  days = 7,
+): InstrumentBalanceRow[] {
+  // The denominator must cover exactly the instruments that get a row.
+  // Callers legitimately pass only the ACTIVE instruments alongside ALL
+  // blocks (Today does), and taking the total from every block then meant a
+  // retired instrument's practice sat in the denominator with no row of its
+  // own — so the percentages summed to less than 100.
+  const shown = new Set(instruments.map((i) => i.id));
+  const windowBlocks = blocksInWindow(blocks, now, days).filter((b) => shown.has(b.instrumentId));
+  const totalMinutes = windowBlocks.reduce((s, b) => s + b.durationMinutes, 0);
+
+  const counted = instruments.map((inst) => {
+    const own = windowBlocks.filter((b) => b.instrumentId === inst.id);
+    return {
+      instrumentId: inst.id,
+      instrumentName: inst.name,
+      minutes: own.reduce((s, b) => s + b.durationMinutes, 0),
+      blocks: own.length,
+    };
+  });
+
+  // Rounding each row on its own does NOT keep the sum at 100 even once the
+  // denominator is right: three rows of one minute each round to 33% and total
+  // 99. Largest remainder floors every share and hands the leftover points to
+  // the largest fractions, so the emitted percentages always sum to exactly
+  // 100. A row with no minutes has no fraction, so it can never be handed one.
+  const percents = largestRemainder(counted.map((r) => r.minutes), totalMinutes);
+
+  return counted.map((r, i) => ({ ...r, percent: percents[i] })).sort((a, b) => b.minutes - a.minutes);
+}
+
+/** Split 100 across `values` so the parts are whole numbers summing to 100. */
+function largestRemainder(values: number[], total: number): number[] {
+  if (total <= 0) return values.map(() => 0);
+  const exact = values.map((v) => (v / total) * 100);
+  const out = exact.map((e) => Math.floor(e));
+  let left = 100 - out.reduce((a, b) => a + b, 0);
+  const byFraction = exact
+    .map((e, i) => ({ i, fraction: e - Math.floor(e) }))
+    .filter((x) => x.fraction > 0)
+    .sort((a, b) => b.fraction - a.fraction || a.i - b.i);
+  for (const { i } of byFraction) {
+    if (left <= 0) break;
+    out[i] += 1;
+    left -= 1;
+  }
+  return out;
+}
+
+export function totalMinutesInWindow(blocks: PracticeBlock[], now: Date, days: number): number {
+  return blocksInWindow(blocks, now, days).reduce((s, b) => s + b.durationMinutes, 0);
+}
+
+// --- Honest practice totals --------------------------------------------------
+//
+// CALENDAR figures, not rolling windows. `blocksInWindow` above filters on
+// HOURS, so days:1 means "the last 24 hours" and days:7 means "the last 168" —
+// which is exactly the wrong answer to "how much have I practised today?": a
+// block from late last night is not today's practice. These helpers are
+// therefore separate rather than a reuse of that one.
+//
+// A block belongs WHOLE to the local calendar day it BEGAN, with none of its
+// minutes apportioned into the following day. Two facts in the model settle
+// that rather than convenience: `durationMinutes` is the figure the owner
+// attested to at close and deliberately diverges from wall clock (an abandoned
+// block proposes its target), so `endedAt - startedAt` is not the authored
+// duration; and `endedAt` is optional and absent on routine blocks, so
+// apportioning would quietly apply to some blocks and not others. The same
+// rule decides the week boundary: a session begun Sunday 23:30 belongs to the
+// week that is ending.
+
+export interface PracticeTotal {
+  minutes: number;
+  blocks: number;
+}
+
+/** Monday 00:00 local — ISO-8601 and UK convention — as a calendar date. */
+export function startOfWeekISODate(now: Date): ISODate {
+  const mondayFirst = (now.getDay() + 6) % 7; // Sunday (0) → 6, Monday (1) → 0
+  return addDaysISODate(todayISODate(now), -mondayFirst);
+}
+
+/** The local calendar day a block belongs to. */
+function blockDay(b: PracticeBlock): ISODate {
+  return toISODate(new Date(b.startedAt));
+}
+
+function total(blocks: PracticeBlock[]): PracticeTotal {
+  return {
+    minutes: blocks.reduce((s, b) => s + Math.max(0, Math.round(b.durationMinutes)), 0),
+    blocks: blocks.length,
+  };
+}
+
+export interface PracticeTotals {
+  today: PracticeTotal;
+  week: PracticeTotal;
+  allTime: PracticeTotal;
+}
+
+/** Minutes and block counts for today, this week (from Monday) and all time. */
+export function practiceTotals(blocks: PracticeBlock[], now: Date): PracticeTotals {
+  const today = todayISODate(now);
+  const weekStart = startOfWeekISODate(now);
+  const days = blocks.map((b) => ({ b, day: blockDay(b) }));
+  return {
+    today: total(days.filter((d) => d.day === today).map((d) => d.b)),
+    week: total(days.filter((d) => d.day >= weekStart && d.day <= today).map((d) => d.b)),
+    allTime: total(blocks),
+  };
+}
+
+export interface InstrumentTotalsRow extends PracticeTotals {
+  instrumentId: ID;
+  instrumentName: string;
+}
+
+/** The same calendar figures per instrument, for the full Insights view. */
+export function practiceTotalsByInstrument(
+  instruments: Instrument[],
+  blocks: PracticeBlock[],
+  now: Date,
+): InstrumentTotalsRow[] {
+  return instruments
+    .map((inst) => ({
+      instrumentId: inst.id,
+      instrumentName: inst.name,
+      ...practiceTotals(
+        blocks.filter((b) => b.instrumentId === inst.id),
+        now,
+      ),
+    }))
+    .sort((a, b) => b.allTime.minutes - a.allTime.minutes);
+}
+```
+
 ### src/store/backup.ts
 
 ```
@@ -3331,8 +2872,20 @@ export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']): 
   return max;
 }
 
-export async function buildFullBackup(now: Date = new Date()): Promise<string> {
-  const db = useStore.getState().db;
+/**
+ * A backup TOGETHER WITH the local revision it was taken at, captured in ONE
+ * statement before any await. `allBlobs()` below yields, and a block finished
+ * during that yield bumps `rev` without entering this snapshot — pairing an
+ * old copy of the data with a newer revision number. That pair is exactly what
+ * the replacement guard compares, so the mismatch would make `decideReplacement`
+ * (which is itself correct) answer "nothing was written since" about a database
+ * that had been written to, and install the incoming copy over recorded
+ * practice. The pure decision is already tested; the WIRING is protected
+ * structurally, the same way `installDatabase` protects its own — the revision
+ * cannot be read from anywhere but the statement that reads the database.
+ */
+export async function buildFullBackupWithRev(now: Date = new Date()): Promise<{ text: string; rev: number }> {
+  const { db, rev } = useStore.getState();
   const blobs = await allBlobs();
   const files: BackupFile[] = await Promise.all(
     blobs.map(async (b) => {
@@ -3346,15 +2899,23 @@ export async function buildFullBackup(now: Date = new Date()): Promise<string> {
       };
     }),
   );
-  return JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: SCHEMA_VERSION,
-    exportedAt: nowISO(now),
-    deviceName: getDeviceName() || undefined,
-    lastModified: lastModifiedOf(db) || undefined,
-    data: db,
-    files,
-  });
+  return {
+    text: JSON.stringify({
+      app: 'practice-compass',
+      schemaVersion: SCHEMA_VERSION,
+      exportedAt: nowISO(now),
+      deviceName: getDeviceName() || undefined,
+      lastModified: lastModifiedOf(db) || undefined,
+      data: db,
+      files,
+    }),
+    rev,
+  };
+}
+
+/** The backup text alone, for the callers that never install it back. */
+export async function buildFullBackup(now: Date = new Date()): Promise<string> {
+  return (await buildFullBackupWithRev(now)).text;
 }
 
 /** Peek at a backup's provenance without importing it. */
@@ -3533,7 +3094,7 @@ export async function importFullBackup(
 ```
 import { create } from 'zustand';
 import { decideReplacement, hashState, shortHash } from '../domain';
-import { buildFullBackup, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
+import { buildFullBackup, buildFullBackupWithRev, getDeviceName, importFullBackup, unfinishedPracticeLabels } from './backup';
 import { loadPreSyncArchive, loadPreSyncArchiveMeta, savePreSyncArchive, type PreSyncArchiveMeta } from './idb';
 import { makeGitHubRemote } from './gitRemote';
 import {
@@ -3691,14 +3252,19 @@ interface BackupShape {
  * for the presence guard to see. Module scope is safe for the same reason
  * `running` and `pendingDeferral` are — exactly one sync runs at a time, and
  * `buildLocalSnapshot` always precedes `applySnapshot` in both engine paths.
+ *
+ * It comes back FROM the snapshot rather than being read here: reading the
+ * store after awaiting the backup would pair the captured database with a
+ * revision bumped while its attachment blobs were still being read, and that
+ * pair is the whole guard.
  */
 let syncBaselineRev: number | null = null;
 
 async function buildLocalSnapshot(): Promise<LocalSnapshot> {
-  const backup = JSON.parse(await buildFullBackup()) as BackupShape;
+  const { text, rev } = await buildFullBackupWithRev();
+  const backup = JSON.parse(text) as BackupShape;
   const files = backup.files;
   backup.files = [];
-  const rev = useStore.getState().rev;
   syncBaselineRev = rev;
   return {
     stateText: JSON.stringify(backup),
@@ -3759,6 +3325,20 @@ function makePorts(cfg: SyncConfig, intent: 'automatic' | 'deliberate'): SyncPor
 
 let running = false;
 
+/**
+ * A sync request that arrives while one is already running is REMEMBERED, not
+ * dropped. `running` used to make such a request a silent no-op, which turned
+ * the ONE quiet-period retry a mid-sync revision bump schedules into nothing at
+ * all: a run lasting past those 30 seconds swallowed the retry and then deferred
+ * for that very revision, leaving sync waiting for a condition nothing was
+ * watching. Remembering the request closes it at the root, for every trigger
+ * (open, quiet period, back online, deferral cleared) rather than for the one
+ * counterexample. It cannot spin: the flag is cleared at the top of each
+ * iteration, so another lap needs a genuinely new request that arrived during
+ * the previous one.
+ */
+let rerunWanted = false;
+
 function conflictSideOfLocal(local: LocalSnapshot): ConflictSide {
   return { deviceName: local.deviceName || 'this device', rev: local.rev, hash: local.hash };
 }
@@ -3815,29 +3395,39 @@ export async function syncNow(): Promise<void> {
   }
   // Checked before the deferral so a sync already in flight is never relabelled
   // as "waiting" — it is genuinely running, and importFullBackup's own guard is
-  // what protects a block started mid-sync.
-  if (running) return;
-  // Defer QUIETLY while practice is unfinished — running or paused, fresh or
-  // stale, ordinary or routine. A pull would replace this device's database and
-  // silently destroy the in-flight block, which lives outside `db` and is
-  // therefore invisible to the hash comparison. The deferral is visible (the
-  // notice in Layout says what it is waiting on) and App.tsx retries it the
-  // moment the blocking session clears — whether it was finished or discarded.
-  const { active, activeRoutine } = useStore.getState();
-  const decision = decideReplacement({
-    intent: 'automatic',
-    session: { active, activeRoutine },
-    labels: unfinishedPracticeLabels(),
-  });
-  if (decision.outcome !== 'proceed') {
-    setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
+  // what protects a block started mid-sync. The request is kept, not discarded.
+  if (running) {
+    rerunWanted = true;
     return;
   }
   running = true;
-  pendingDeferral = null;
-  setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
   try {
-    await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
+    do {
+      // Cleared BEFORE the run, so only a request that arrives during this lap
+      // earns another one.
+      rerunWanted = false;
+      // Defer QUIETLY while practice is unfinished — running or paused, fresh or
+      // stale, ordinary or routine. A pull would replace this device's database
+      // and silently destroy the in-flight block, which lives outside `db` and is
+      // therefore invisible to the hash comparison. The deferral is visible (the
+      // notice in Layout says what it is waiting on) and App.tsx retries it the
+      // moment the blocking session clears — whether it was finished or
+      // discarded. Nothing is awaited between this check and the return, so no
+      // request can be lost on this path.
+      const { active, activeRoutine } = useStore.getState();
+      const decision = decideReplacement({
+        intent: 'automatic',
+        session: { active, activeRoutine },
+        labels: unfinishedPracticeLabels(),
+      });
+      if (decision.outcome !== 'proceed') {
+        setStatus({ phase: 'deferred', message: decision.message, conflict: undefined });
+        return;
+      }
+      pendingDeferral = null;
+      setStatus({ phase: 'syncing', message: 'Syncing…', conflict: undefined });
+      await applyOutcome(await runSync(makePorts(cfg, 'automatic')));
+    } while (rerunWanted);
   } finally {
     running = false;
   }
@@ -3854,6 +3444,12 @@ export async function resolveConflict(keep: 'local' | 'remote'): Promise<void> {
     await applyOutcome(await resolveSyncConflict(makePorts(cfg, 'deliberate'), keep));
   } finally {
     running = false;
+  }
+  // A request that arrived while the owner was resolving the conflict is owed a
+  // run just as much as one that arrived during an automatic sync.
+  if (rerunWanted) {
+    rerunWanted = false;
+    await syncNow();
   }
 }
 
