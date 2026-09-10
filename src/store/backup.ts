@@ -167,13 +167,15 @@ export type ImportOutcome =
       deferred?: boolean;
     };
 
+type ImportRefusal = Extract<ImportOutcome, { ok: false }>;
+
 /**
  * Is a whole-database replacement refused right now? Read fresh each time it is
  * asked, because the answer can change mid-import. The intent is the caller's:
  * a sync pull is AUTOMATIC and defers quietly, everything else is DELIBERATE
  * and refuses out loud.
  */
-function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportOutcome | null {
+function replacementRefusal(intent: 'automatic' | 'deliberate'): ImportRefusal | null {
   const { active, activeRoutine } = useStore.getState();
   const decision = decideReplacement({
     intent,
