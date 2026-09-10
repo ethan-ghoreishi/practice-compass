@@ -596,7 +596,10 @@ were always in the data and were simply never composed. An item with no lesson l
 no attachments yields an EMPTY LIST, and the surfaces render nothing rather than an
 empty frame. An item with no lesson link cannot reference NAS material at all — that is
 the honest gap, and closing it needs a persisted item-level reference, therefore a
-schema change and its own lane.
+schema change and its own lane. The PRACTICE screen renders the whole composition;
+ItemDetail renders only the reference half (`omitAttachments`), because that page
+already owns the Files section where attachments are added and removed — the split is
+about who owns add/remove, never about what `itemFiles` composes.
 
 **THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
 reference resolves through the configured NAS base URL; an attachment resolves to a

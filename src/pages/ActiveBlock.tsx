@@ -129,8 +129,6 @@ export default function ActiveBlock() {
         </div>
       </div>
 
-      {hasMaterial && <MaterialDuringPractice itemId={active.itemId} />}
-
       <div className="row" style={{ justifyContent: 'center' }}>
         {active.running ? (
           <button className="btn btn-lg" onClick={pauseSession}>
@@ -153,6 +151,8 @@ export default function ActiveBlock() {
           Finish
         </button>
       </div>
+
+      {hasMaterial && <MaterialDuringPractice itemId={active.itemId} />}
 
       {showNote ? (
         <textarea
@@ -224,7 +224,8 @@ function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }
 
 /**
  * The score, the class video, the photo of the page — one CLOSED disclosure,
- * below the timer, in the same shape as "About this piece". Nothing loads until
+ * below the timer AND below Pause/Finish (the buttons you reach for with the
+ * instrument in your hands), in the same shape as "About this piece". Nothing loads until
  * it is opened, and nothing here touches the clock, the wake lock or the
  * boundary signal: a photo renders inline, everything else opens in a tab.
  */
