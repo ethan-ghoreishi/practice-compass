@@ -1,29 +1,22 @@
 ---
 id: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
 contractId: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
-patchId: af5d29a3b824f4d7e18ea1dfc0cd2097ded5c7a6
+patchId: 47d8e4b1f2f840eebeb918e49ba618c1398baeec
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Item material presentation
-    summary: ItemDetail renders the full composed Material list and then renders the
-      same attachments again through the existing Files section. Files still
-      provides attachment previews and Open controls, so it is a second partial
-      presentation rather than an add/remove-only CRUD surface.
-    counterexample: Open an item with a linked lesson recording and a local photo.
-      Material shows the recording and photo together, then Files shows the
-      photo again with another preview and Open action.
-  - family: Session-instrument filtering across Repertoire
-    summary: PathwaysView includes every unscoped General pathway whenever a session
-      instrument is selected. General pathways can contain items from any
-      instrument, so the narrowed view can still expose another instrument's
-      work without selecting All.
-    counterexample: Place a Tar item in a General pathway, set the session
-      instrument to Setar, and open Repertoire. The initial Pathways view still
-      shows that General pathway and its Tar-derived progress.
-createdAt: 2026-09-11T01:18:10.759Z
-sealedAt: 2026-09-11T01:28:07.034Z
+  - family: Item attachment ownership and CRUD safety
+    summary: ItemFilesCrud selects attachments by ownerId alone, although
+      AttachmentMeta ownerId is shared across item and lesson owners. The item
+      CRUD surface can therefore present and remove a lesson-owned attachment
+      instead of remaining scoped to the item's own attachments.
+    counterexample: "Import a valid database containing an item and lesson with the
+      same id, with an attachment whose ownerType is lesson and ownerId is that
+      shared id. Open the item: Material correctly excludes the lesson
+      attachment, but Files lists it and Remove deletes its metadata and blob."
+createdAt: 2026-09-11T01:43:14.689Z
+sealedAt: 2026-09-11T02:52:16.744Z
 ---
 
 # Review: Find it and open it: Farsi search, one instrument in view, and every file already linked to a piece
@@ -37,7 +30,7 @@ sealedAt: 2026-09-11T01:28:07.034Z
 - **Contract:** 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/18
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `af5d29a3b824f4d7e18ea1dfc0cd2097ded5c7a6`
+- **Diff patch-id:** `47d8e4b1f2f840eebeb918e49ba618c1398baeec`
 
 ## The Delta this change was framed from
 
@@ -102,252 +95,279 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Item material presentation** — ItemDetail does not present lesson references and the item's own attachments together in one composed material list as the approved plan requires. It calls ItemMaterial with omitAttachments and renders attachments separately in the existing Files section.
-  _counterexample:_ Open an item that has both a linked lesson recording and a local attachment. The recording appears under From your classes while the attachment appears under Files, so the composed, deduplicated and ordered itemFiles result is not the presentation the user sees in one place.
-- **Absolute URL save-to-open round trip** — relativizeReference deliberately retains foreign absolute URLs and same-base URLs carrying a query or fragment, but resolveRecording applies encodeURI to the retained value and double-encodes existing percent escapes. The named tests prove storage decisions without proving that every retained URL still opens unchanged.
-  _counterexample:_ Save https://example.com/a%20b.pdf while another NAS base is configured. It is correctly retained, but resolveRecording produces https://example.com/a%2520b.pdf. Percent-encoded Farsi filenames fail similarly, as do deliberately retained query-bearing URLs containing encoded path characters.
-- **Session-instrument filtering across Repertoire** — Repertoire's default Pathways view is not scoped to sessionInstrumentId and has no visible instrument override. Only the later My repertoire and Practice list views implement the new default, so the Repertoire page itself still opens cross-instrument contrary to the approved contract.
-  _counterexample:_ Set the session instrument to Setar and open Repertoire. The initial view is Pathways, which renders every pathway from every instrument and provides no All or instrument filter; the user must switch to another view before the session instrument has any effect.
+- **Item material presentation** — ItemDetail renders the full composed Material list and then renders the same attachments again through the existing Files section. Files still provides attachment previews and Open controls, so it is a second partial presentation rather than an add/remove-only CRUD surface.
+  _counterexample:_ Open an item with a linked lesson recording and a local photo. Material shows the recording and photo together, then Files shows the photo again with another preview and Open action.
+- **Session-instrument filtering across Repertoire** — PathwaysView includes every unscoped General pathway whenever a session instrument is selected. General pathways can contain items from any instrument, so the narrowed view can still expose another instrument's work without selecting All.
+  _counterexample:_ Place a Tar item in a General pathway, set the session instrument to Setar, and open Repertoire. The initial Pathways view still shows that General pathway and its Tar-derived progress.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 539de2d..def75f8 100644
+index def75f8..49600fd 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -575,8 +575,8 @@ and which class files are already linked to a piece — none of that may sit one
- away from where you need it, and NONE of it is new stored data.
+@@ -586,6 +586,15 @@ screens SEED from that value and never WRITE it: browsing another instrument's
+ repertoire must not change what Today recommends. The cross-instrument view is never
+ removed — only stopped from being the default you undo on every visit.
  
- **A BROWSE SCREEN OPENS ON THE INSTRUMENT YOU ARE PRACTISING, AND STILL WIDENS.**
--Repertoire (both the works lens and the practice list) and Lessons seed their
--instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
-+Repertoire (all three views — Pathways, My repertoire, Practice list) and Lessons seed
-+their instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
- Add, New Item and the Session Plan already read, via `defaultInstrumentFilter`
- (`selectors.ts`, tested): a resolvable session instrument seeds the filter, the `'all'`
- sentinel seeds the every-instrument view, and a session instrument that no longer
-@@ -596,10 +596,11 @@ were always in the data and were simply never composed. An item with no lesson l
- no attachments yields an EMPTY LIST, and the surfaces render nothing rather than an
- empty frame. An item with no lesson link cannot reference NAS material at all — that is
- the honest gap, and closing it needs a persisted item-level reference, therefore a
--schema change and its own lane. The PRACTICE screen renders the whole composition;
--ItemDetail renders only the reference half (`omitAttachments`), because that page
--already owns the Files section where attachments are added and removed — the split is
--about who owns add/remove, never about what `itemFiles` composes.
-+schema change and its own lane. Both the PRACTICE screen and ItemDetail render the WHOLE
-+composition — a reference and an attachment for the same piece are never split across two
-+sections of the screen. ItemDetail's existing Files section stays below it, but only for
-+add/remove: that is a CRUD concern, never a second, partial presentation of what
-+`itemFiles` already composed.
++**A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
++OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
++can hold items from ANY instrument, so showing it while narrowed to Setar can still
++surface a Tar item's progress with no way to know it slipped through. `pathwaysForInstrumentFilter`
++(`selectors.ts`, tested) is the one place this is decided: a real filter keeps only
++pathways scoped to that exact instrument, and only the explicit `''` ("all") filter
++widens back to see General pathways too — the same opt-in-widen shape as everything else
++in this section, not a second rule.
++
+ **AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
+ (`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
+ the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
+@@ -600,7 +609,11 @@ schema change and its own lane. Both the PRACTICE screen and ItemDetail render t
+ composition — a reference and an attachment for the same piece are never split across two
+ sections of the screen. ItemDetail's existing Files section stays below it, but only for
+ add/remove: that is a CRUD concern, never a second, partial presentation of what
+-`itemFiles` already composed.
++`itemFiles` already composed. It is therefore its own small list local to `ItemDetail.tsx`
++(name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
++for a lesson's own attachments: that component's preview and Open are exactly the
++presentation Material already gives an item's files, and reusing it here would put the
++same file on screen twice.
  
  **THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
  reference resolves through the configured NAS base URL; an attachment resolves to a
-diff --git a/src/components/ItemMaterial.tsx b/src/components/ItemMaterial.tsx
-index 3057791..6808302 100644
---- a/src/components/ItemMaterial.tsx
-+++ b/src/components/ItemMaterial.tsx
-@@ -8,26 +8,18 @@ import { MusicIcon, PlayIcon, ReportIcon } from './icons';
- /**
-  * The files that already belong to a piece — the class video and score from the
-  * lessons it is linked to, plus its own attachments — composed by `itemFiles`
-- * and nothing new stored to make it work.
-+ * and nothing new stored to make it work. Always the FULL composed list, in one
-+ * place: a reference and an attachment for the same piece are never split
-+ * across two sections of the screen.
-  *
-  * The two kinds open by different mechanisms and this component never confuses
-  * them: a reference goes through the NAS base URL, an attachment through a
-  * blob. Only a local image renders inline; everything else is an explicit open,
-  * never an embed, so large media stays on the NAS and this stays a list.
-  */
--export default function ItemMaterial({
--  itemId,
--  omitAttachments = false,
--}: {
--  itemId: string;
--  /** ItemDetail already has its own Files section with add/remove. */
--  omitAttachments?: boolean;
--}) {
-+export default function ItemMaterial({ itemId }: { itemId: string }) {
-   const db = useStore((s) => s.db);
--  const files = useMemo(() => {
--    const all = itemFiles(db, itemId);
--    return omitAttachments ? all.filter((f) => f.source === 'reference') : all;
--  }, [db, itemId, omitAttachments]);
-+  const files = useMemo(() => itemFiles(db, itemId), [db, itemId]);
+diff --git a/src/domain/selectors.test.ts b/src/domain/selectors.test.ts
+index 4361e13..45c14db 100644
+--- a/src/domain/selectors.test.ts
++++ b/src/domain/selectors.test.ts
+@@ -4,13 +4,14 @@ import {
+   instrumentBalance,
+   itemMatchesSearch,
+   nextLessonNumber,
++  pathwaysForInstrumentFilter,
+   practiceTotals,
+   practiceTotalsByInstrument,
+   startOfWeekISODate,
+   totalMinutesInWindow,
+ } from './selectors';
+ import { createBlock, createInstrument } from './factories';
+-import type { Instrument, Lesson, PracticeBlock } from './types';
++import type { Instrument, Lesson, Pathway, PracticeBlock } from './types';
  
-   if (files.length === 0) return null;
- 
-diff --git a/src/domain/recordings.test.ts b/src/domain/recordings.test.ts
-index 9793d25..c5c1f53 100644
---- a/src/domain/recordings.test.ts
-+++ b/src/domain/recordings.test.ts
-@@ -97,6 +97,24 @@ describe('resolveRecording (status-aware)', () => {
-       url: 'https://x.ts.net/a%20b/c.mp4',
-     });
+ function instrument(id: string): Instrument {
+   return { ...createInstrument({ name: id }, new Date(2026, 0, 1)), id };
+@@ -260,3 +261,29 @@ describe('defaultInstrumentFilter', () => {
+     expect(defaultInstrumentFilter(undefined, instruments)).toBe('');
    });
-+
-+  it('opens a retained absolute URL unchanged, without double-encoding its existing escapes', () => {
-+    // A foreign origin or a query-bearing URL is retained verbatim by
-+    // relativizeReference (never rewritten). It must still open correctly:
-+    // encodeURI() would turn an existing %20 into %2520 — a dead link.
-+    expect(resolveRecording(undefined, { path: 'https://example.com/a%20b.pdf' })).toEqual({
-+      status: 'ok',
-+      url: 'https://example.com/a%20b.pdf',
-+    });
-+    // Percent-encoded Farsi, as a NAS directory listing would hand it out.
-+    const farsi = 'https://example.com/setar-classes/' + encodeURIComponent('چهارمضراب.pdf');
-+    expect(resolveRecording(undefined, { path: farsi })).toEqual({ status: 'ok', url: farsi });
-+    // A retained query-bearing URL keeps its query string intact.
-+    expect(resolveRecording(undefined, { path: 'https://example.com/class.mp4?download=1' })).toEqual({
-+      status: 'ok',
-+      url: 'https://example.com/class.mp4?download=1',
-+    });
-+  });
  });
- 
- describe('formatFileSize', () => {
-diff --git a/src/domain/recordings.ts b/src/domain/recordings.ts
-index 62f3feb..05cff31 100644
---- a/src/domain/recordings.ts
-+++ b/src/domain/recordings.ts
-@@ -55,8 +55,13 @@ export type RecordingResolution =
- /**
-  * Resolve a recording reference to an openable URL, distinguishing WHY it
-  * can't resolve so the UI can react (prompt for a base, warn about a bad one,
-- * etc.). Full http(s) paths pass through; relative paths join under the
-- * normalised base with each segment URL-encoded (spaces, Farsi filenames).
-+ * etc.). Full http(s) paths pass through the `URL` parser rather than
-+ * `encodeURI` — it escapes a raw unsafe character (a literal space) the same
-+ * way, but leaves an already-valid `%XX` escape alone instead of re-encoding
-+ * its `%` into `%25`, which is what a retained foreign or query-bearing URL
-+ * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
-+ * paths join under the normalised base with each segment URL-encoded (spaces,
-+ * Farsi filenames).
-  */
- export function resolveRecording(
-   baseUrl: string | undefined,
-@@ -64,7 +69,13 @@ export function resolveRecording(
- ): RecordingResolution {
-   const p = ref.path.trim();
-   if (!p) return { status: 'empty' };
--  if (HTTP_RE.test(p)) return { status: 'ok', url: encodeURI(p) };
-+  if (HTTP_RE.test(p)) {
-+    try {
-+      return { status: 'ok', url: new URL(p).toString() };
-+    } catch {
-+      return { status: 'ok', url: encodeURI(p) };
-+    }
++
++describe('pathwaysForInstrumentFilter', () => {
++  function pathway(id: string, instrumentId?: string): Pathway {
++    return {
++      id,
++      instrumentId,
++      name: id,
++      order: 0,
++      createdAt: '2026-01-01T00:00:00.000Z',
++      updatedAt: '2026-01-01T00:00:00.000Z',
++    };
 +  }
++
++  it('narrows to one instrument\'s own pathways, hides a General pathway that could hold another instrument\'s items, and widens back for all', () => {
++    const setarPathway = pathway('p-setar', 'setar');
++    const tarPathway = pathway('p-tar', 'tar');
++    // General: no instrumentId, so it can hold a Tar item even while the
++    // session instrument is Setar — the counterexample this guards against.
++    const generalPathway = pathway('p-general');
++    const all = [setarPathway, tarPathway, generalPathway];
++
++    expect(pathwaysForInstrumentFilter(all, 'setar')).toEqual([setarPathway]);
++    expect(pathwaysForInstrumentFilter(all, 'tar')).toEqual([tarPathway]);
++    expect(pathwaysForInstrumentFilter(all, '')).toEqual(all);
++  });
++});
+diff --git a/src/domain/selectors.ts b/src/domain/selectors.ts
+index f6de040..73a15b9 100644
+--- a/src/domain/selectors.ts
++++ b/src/domain/selectors.ts
+@@ -3,6 +3,7 @@ import type {
+   Instrument,
+   ISODate,
+   Lesson,
++  Pathway,
+   PracticeBlock,
+   PracticeItem,
+   Review,
+@@ -45,6 +46,19 @@ export function defaultInstrumentFilter(
+   return instruments.some((i) => i.id === sessionInstrumentId) ? sessionInstrumentId : '';
+ }
  
-   const raw = (baseUrl ?? '').trim();
-   if (!raw) return { status: 'no-base' };
++/**
++ * Which pathways a narrowed Pathways view shows. A General pathway
++ * (`instrumentId` unset) can hold items from ANY instrument, so it stays
++ * OUT of a one-instrument view too — narrowing to Setar must not surface a
++ * General pathway's Tar-derived progress. Only the explicit '' ("all")
++ * filter widens back to see it, matching how every other narrowed screen in
++ * this lane treats the cross-instrument view as an opt-in widen, not a
++ * default leak.
++ */
++export function pathwaysForInstrumentFilter(pathways: Pathway[], filterInstrumentId: ID | ''): Pathway[] {
++  return filterInstrumentId ? pathways.filter((p) => p.instrumentId === filterInstrumentId) : pathways;
++}
++
+ /** The nearest upcoming (today or later) lesson for an instrument, if any. */
+ export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
+   const today = todayISODate(now);
 diff --git a/src/pages/ItemDetail.tsx b/src/pages/ItemDetail.tsx
-index 21c78b3..1ae3a33 100644
+index 1ae3a33..807178d 100644
 --- a/src/pages/ItemDetail.tsx
 +++ b/src/pages/ItemDetail.tsx
-@@ -12,6 +12,7 @@ import {
-   pickNextPart,
-   RESULT_LABELS,
-   stallHint,
-+  itemFiles,
-   type BlockResult,
-   type GuitarFields,
-   type PersianFields,
-@@ -414,22 +415,20 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
- }
+@@ -1,6 +1,7 @@
+-import { useMemo, useState } from 'react';
++import { useMemo, useRef, useState } from 'react';
+ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+ import {
++  attachmentPolicy,
+   BLOCK_MODE_LABELS,
+   FOCUS_LABELS,
+   ITEM_STATUS_LABELS,
+@@ -21,14 +22,14 @@ import {
+ import { useStore } from '../store/useStore';
+ import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store/lookups';
+ import { defaultStartInput } from '../store/sessionHelpers';
++import { addAttachment, formatBytes, removeAttachment } from '../store/attachments';
+ import ItemForm from '../components/ItemForm';
+ import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
+ import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
+-import Attachments from '../components/Attachments';
+ import ItemMaterial from '../components/ItemMaterial';
+ import ItemNotes from '../components/ItemNotes';
+ import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
+-import { ArrowLeftIcon, FlagIcon, PlayIcon } from '../components/icons';
++import { ArrowLeftIcon, FlagIcon, PlayIcon, PlusIcon } from '../components/icons';
+ import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
  
- /**
-- * The class video and score that already belong to this piece, composed from
-- * the lessons it is linked to — nothing new is stored to show them. The item's
-- * own attachments keep their existing Files section below (add/remove lives
-- * there), so this section is the material that was previously unreachable
-- * without remembering which class it came from.
-+ * Everything that already belongs to this piece, in ONE place: the class video
-+ * and score from the lessons it is linked to, and its own attachments,
-+ * composed and deduplicated by `itemFiles` — nothing new is stored to show
-+ * them. Files stays below for add/remove; this section is what was previously
-+ * unreachable (lesson references) or split across two sections (attachments).
-  */
- function MaterialSection({ item }: { item: PracticeItem }) {
-   const db = useStore((s) => s.db);
--  const hasReferences = db.lessons.some(
--    (l) => (l.itemIds ?? []).includes(item.id) && (l.recordings ?? []).length > 0,
--  );
--  if (!hasReferences) return null;
-+  const files = useMemo(() => itemFiles(db, item.id), [db, item.id]);
-+  if (files.length === 0) return null;
-   return (
-     <section className="stack-sm">
--      <div className="section-label">From your classes</div>
--      <ItemMaterial itemId={item.id} omitAttachments />
-+      <div className="section-label">Material</div>
-+      <ItemMaterial itemId={item.id} />
-     </section>
+ const RESULT_TONE: Record<BlockResult, string> = {
+@@ -232,7 +233,7 @@ export default function ItemDetail() {
+ 
+       <MaterialSection item={item} />
+ 
+-      <Attachments ownerType="item" ownerId={item.id} />
++      <ItemFilesCrud itemId={item.id} />
+ 
+       {trend.length > 0 && (
+         <section className="stack-sm">
+@@ -433,6 +434,86 @@ function MaterialSection({ item }: { item: PracticeItem }) {
    );
  }
-diff --git a/src/pages/Repertoire.tsx b/src/pages/Repertoire.tsx
-index 2d2a872..f1adf98 100644
---- a/src/pages/Repertoire.tsx
-+++ b/src/pages/Repertoire.tsx
-@@ -311,11 +311,26 @@ function PathwaysView() {
-   const reseedDefaultPathways = useStore((s) => s.reseedDefaultPathways);
-   const navigate = useNavigate();
  
-+  const activeInstruments = db.instruments.filter((i) => i.active);
-+  // Open on the instrument you are actually practising; the toggle still
-+  // widens to all. This never writes sessionInstrumentId back — browsing
-+  // another instrument must not change what Today recommends.
-+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-+  const [filterInstrumentId, setFilterInstrumentId] = useState(() =>
-+    defaultInstrumentFilter(sessionInstrumentId, activeInstruments),
++/**
++ * Add/remove only. Material above already shows every attachment with its
++ * preview and Open action from the composed `itemFiles` list — this stays a
++ * plain CRUD surface rather than a second, partial presentation of the same
++ * files (the shared Attachments component still owns that full presentation
++ * for a lesson's own attachments, which nothing else displays).
++ */
++function ItemFilesCrud({ itemId }: { itemId: string }) {
++  const all = useStore((s) => s.db.attachments);
++  const list = useMemo(
++    () => all.filter((a) => a.ownerId === itemId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
++    [all, itemId],
 +  );
++  const fileRef = useRef<HTMLInputElement>(null);
++  const [busy, setBusy] = useState(false);
++  const [sizeNote, setSizeNote] = useState<string | null>(null);
 +
-   const [creating, setCreating] = useState(false);
-   const [name, setName] = useState('');
-   const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
- 
--  const pathways = useMemo(() => [...db.pathways].sort((a, b) => a.order - b.order), [db.pathways]);
-+  const pathways = useMemo(
-+    () =>
-+      [...db.pathways]
-+        .filter((p) => !filterInstrumentId || !p.instrumentId || p.instrumentId === filterInstrumentId)
-+        .sort((a, b) => a.order - b.order),
-+    [db.pathways, filterInstrumentId],
-+  );
- 
-   function create() {
-     if (!name.trim()) return;
-@@ -331,6 +346,28 @@ function PathwaysView() {
-         Your items, organised along the routes you trust. Add pieces from each stage's list, at your own pace.
-       </p>
- 
-+      {activeInstruments.length > 1 && (
-+        <div className="options" role="group" aria-label="Instrument">
-+          <button
-+            className={`option${!filterInstrumentId ? ' selected' : ''}`}
-+            aria-pressed={!filterInstrumentId}
-+            onClick={() => setFilterInstrumentId('')}
-+          >
-+            All
++  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
++    const files = e.target.files;
++    if (!files || files.length === 0) return;
++    setBusy(true);
++    try {
++      for (const f of Array.from(files)) {
++        const policy = attachmentPolicy(f.size, f.type || '');
++        if (policy.level === 'block') {
++          setSizeNote(`“${f.name}” (${formatBytes(f.size)}) was not added: ${policy.message}`);
++          continue;
++        }
++        await addAttachment('item', itemId, f);
++        if (policy.level === 'warn') {
++          setSizeNote(`“${f.name}” is ${formatBytes(f.size)}. ${policy.message}`);
++        }
++      }
++    } finally {
++      setBusy(false);
++      if (fileRef.current) fileRef.current.value = '';
++    }
++  }
++
++  return (
++    <section className="stack-sm">
++      <div className="row between">
++        <div className="section-label">Files</div>
++        <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={busy}>
++          <PlusIcon /> {busy ? 'Adding…' : 'Add file'}
++        </button>
++      </div>
++      <input ref={fileRef} type="file" accept="application/pdf,image/*,audio/*" multiple hidden onChange={onFiles} />
++      {sizeNote && (
++        <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
++          {sizeNote}{' '}
++          <button className="link tiny" style={{ background: 'none', border: 'none' }} onClick={() => setSizeNote(null)}>
++            OK
 +          </button>
-+          {activeInstruments.map((i) => (
-+            <button
-+              key={i.id}
-+              className={`option${filterInstrumentId === i.id ? ' selected' : ''}`}
-+              aria-pressed={filterInstrumentId === i.id}
-+              onClick={() => setFilterInstrumentId(i.id)}
-+            >
-+              {i.name}
-+            </button>
++        </div>
++      )}
++      {list.length > 0 && (
++        <div className="card card-flush list">
++          {list.map((a) => (
++            <div key={a.id} className="list-row">
++              <div className="grow truncate">{a.name}</div>
++              <div className="tiny faint">
++                {a.kind} · {formatBytes(a.size)}
++              </div>
++              <button
++                className="btn btn-ghost btn-sm btn-danger"
++                onClick={() => {
++                  if (confirm(`Remove "${a.name}"?`)) removeAttachment(a.id);
++                }}
++              >
++                Remove
++              </button>
++            </div>
 +          ))}
 +        </div>
 +      )}
++    </section>
++  );
++}
 +
-       {pathways.map((p) => (
-         <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`)} />
-       ))}
+ /**
+  * Concise "why does this item exist" summary near the top: study source,
+  * pathway stage, lessons, parent work — the same links, at a glance, without
+diff --git a/src/pages/Repertoire.tsx b/src/pages/Repertoire.tsx
+index f1adf98..e6761e3 100644
+--- a/src/pages/Repertoire.tsx
++++ b/src/pages/Repertoire.tsx
+@@ -15,6 +15,7 @@ import {
+   nextLessonDates,
+   overworkedItems,
+   pathwayProgress,
++  pathwaysForInstrumentFilter,
+   scoreItems,
+   stageProgress,
+   stageUnits,
+@@ -325,10 +326,7 @@ function PathwaysView() {
+   const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
+ 
+   const pathways = useMemo(
+-    () =>
+-      [...db.pathways]
+-        .filter((p) => !filterInstrumentId || !p.instrumentId || p.instrumentId === filterInstrumentId)
+-        .sort((a, b) => a.order - b.order),
++    () => pathwaysForInstrumentFilter(db.pathways, filterInstrumentId).slice().sort((a, b) => a.order - b.order),
+     [db.pathways, filterInstrumentId],
+   );
+ 
 ```
 
 **Full current text of every file the rework touched:**
@@ -943,6 +963,15 @@ screens SEED from that value and never WRITE it: browsing another instrument's
 repertoire must not change what Today recommends. The cross-instrument view is never
 removed — only stopped from being the default you undo on every visit.
 
+**A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
+OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
+can hold items from ANY instrument, so showing it while narrowed to Setar can still
+surface a Tar item's progress with no way to know it slipped through. `pathwaysForInstrumentFilter`
+(`selectors.ts`, tested) is the one place this is decided: a real filter keeps only
+pathways scoped to that exact instrument, and only the explicit `''` ("all") filter
+widens back to see General pathways too — the same opt-in-widen shape as everything else
+in this section, not a second rule.
+
 **AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
 (`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
 the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
@@ -957,7 +986,11 @@ schema change and its own lane. Both the PRACTICE screen and ItemDetail render t
 composition — a reference and an attachment for the same piece are never split across two
 sections of the screen. ItemDetail's existing Files section stays below it, but only for
 add/remove: that is a CRUD concern, never a second, partial presentation of what
-`itemFiles` already composed.
+`itemFiles` already composed. It is therefore its own small list local to `ItemDetail.tsx`
+(name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
+for a lesson's own attachments: that component's preview and Open are exactly the
+presentation Material already gives an item's files, and reusing it here would put the
+same file on screen twice.
 
 **THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
 reference resolves through the configured NAS base URL; an attachment resolves to a
@@ -1169,520 +1202,622 @@ the philosophy. Anything that contradicts the "do nots" above needs an explicit 
 from the user, recorded here.
 ```
 
-### src/components/ItemMaterial.tsx
-
-```
-import { useEffect, useMemo, useState } from 'react';
-import { formatFileSize, itemFiles, resolveRecording, type ItemFile } from '../domain';
-import { useStore } from '../store/useStore';
-import { getNasBaseUrl } from '../store/backup';
-import { attachmentObjectURL } from '../store/attachments';
-import { MusicIcon, PlayIcon, ReportIcon } from './icons';
-
-/**
- * The files that already belong to a piece — the class video and score from the
- * lessons it is linked to, plus its own attachments — composed by `itemFiles`
- * and nothing new stored to make it work. Always the FULL composed list, in one
- * place: a reference and an attachment for the same piece are never split
- * across two sections of the screen.
- *
- * The two kinds open by different mechanisms and this component never confuses
- * them: a reference goes through the NAS base URL, an attachment through a
- * blob. Only a local image renders inline; everything else is an explicit open,
- * never an embed, so large media stays on the NAS and this stays a list.
- */
-export default function ItemMaterial({ itemId }: { itemId: string }) {
-  const db = useStore((s) => s.db);
-  const files = useMemo(() => itemFiles(db, itemId), [db, itemId]);
-
-  if (files.length === 0) return null;
-
-  return (
-    <div className="stack-sm">
-      {files.map((f) => (
-        <FileRow key={`${f.source}-${f.id}`} file={f} />
-      ))}
-    </div>
-  );
-}
-
-function KindIcon({ file }: { file: ItemFile }) {
-  const kind = file.kind;
-  if (kind === 'video') return <PlayIcon width={18} height={18} />;
-  if (kind === 'audio') return <MusicIcon width={18} height={18} />;
-  return <ReportIcon width={18} height={18} />;
-}
-
-function FileRow({ file }: { file: ItemFile }) {
-  return file.source === 'reference' ? <ReferenceRow file={file} /> : <AttachmentRow file={file} />;
-}
-
-/** A NAS reference: resolved through the configured base, opened on tap only. */
-function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' }> }) {
-  const resolution = resolveRecording(getNasBaseUrl(), file);
-  const size = formatFileSize(file.sizeBytes);
-
-  return (
-    <div className="card row" style={{ gap: 12 }}>
-      <div className="stage-badge" style={{ background: 'var(--surface-2)', color: 'var(--text-dim)' }}>
-        <KindIcon file={file} />
-      </div>
-      <div className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
-        <div className="truncate" dir="auto">
-          {file.title}
-        </div>
-        <div className="tiny faint">
-          On your NAS · {file.kind}
-          {size ? ` · ${size}` : ''}
-          {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
-          {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
-        </div>
-      </div>
-      <button
-        className="btn btn-sm"
-        disabled={resolution.status !== 'ok'}
-        onClick={() => resolution.status === 'ok' && window.open(resolution.url, '_blank', 'noopener,noreferrer')}
-      >
-        Open
-      </button>
-    </div>
-  );
-}
-
-/** A local attachment: a blob on this device. An image is shown, not just listed. */
-function AttachmentRow({ file }: { file: Extract<ItemFile, { source: 'attachment' }> }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const size = formatFileSize(file.sizeBytes);
-
-  useEffect(() => {
-    if (!file.inline) return;
-    let alive = true;
-    let url: string | null = null;
-    attachmentObjectURL(file.id).then((u) => {
-      if (!u) return;
-      if (alive) {
-        url = u;
-        setPreview(u);
-      } else {
-        URL.revokeObjectURL(u);
-      }
-    });
-    return () => {
-      alive = false;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [file.id, file.inline]);
-
-  async function open() {
-    const u = await attachmentObjectURL(file.id);
-    if (!u) return;
-    window.open(u, '_blank', 'noopener');
-    setTimeout(() => URL.revokeObjectURL(u), 60_000);
-  }
-
-  return (
-    <div className="card stack-sm">
-      <div className="row" style={{ gap: 12 }}>
-        <div className="stage-badge" style={{ background: 'var(--surface-2)', color: 'var(--text-dim)' }}>
-          <KindIcon file={file} />
-        </div>
-        <div className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
-          <div className="truncate" dir="auto">
-            {file.title}
-          </div>
-          <div className="tiny faint">
-            On this device · {file.kind}
-            {size ? ` · ${size}` : ''}
-          </div>
-        </div>
-        <button className="btn btn-sm" onClick={open}>
-          Open
-        </button>
-      </div>
-      {preview && (
-        <img
-          src={preview}
-          alt={file.title}
-          style={{ width: '100%', maxHeight: 320, objectFit: 'contain', borderRadius: 8 }}
-        />
-      )}
-    </div>
-  );
-}
-```
-
-### src/domain/recordings.test.ts
+### src/domain/selectors.test.ts
 
 ```
 import { describe, expect, it } from 'vitest';
 import {
-  formatFileSize,
-  needsBaseUrl,
-  normalizeBaseUrl,
-  relativizeReference,
-  resolveRecording,
-  resolveRecordingUrl,
-} from './recordings';
+  defaultInstrumentFilter,
+  instrumentBalance,
+  itemMatchesSearch,
+  nextLessonNumber,
+  pathwaysForInstrumentFilter,
+  practiceTotals,
+  practiceTotalsByInstrument,
+  startOfWeekISODate,
+  totalMinutesInWindow,
+} from './selectors';
+import { createBlock, createInstrument } from './factories';
+import type { Instrument, Lesson, Pathway, PracticeBlock } from './types';
 
-describe('resolveRecordingUrl', () => {
-  const base = 'https://nas.example.ts.net/media';
+function instrument(id: string): Instrument {
+  return { ...createInstrument({ name: id }, new Date(2026, 0, 1)), id };
+}
 
-  it('uses a full https URL as-is', () => {
-    expect(resolveRecordingUrl(undefined, { path: 'https://x.ts.net/a/b.mp4' })).toBe('https://x.ts.net/a/b.mp4');
+function lesson(partial: Partial<Lesson> & { id: string; instrumentId: string; date: string }): Lesson {
+  return { createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', ...partial };
+}
+
+describe('nextLessonNumber', () => {
+  it('is 1 when the instrument has no numbered lessons', () => {
+    expect(nextLessonNumber([], 'setar')).toBe(1);
+    expect(nextLessonNumber([lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01' })], 'setar')).toBe(1);
   });
 
-  it('joins a relative path under the base URL', () => {
-    expect(resolveRecordingUrl(base, { path: 'setar-classes/session-37/class.mp4' })).toBe(
-      'https://nas.example.ts.net/media/setar-classes/session-37/class.mp4',
+  it('is max existing number + 1, scoped per instrument', () => {
+    const lessons = [
+      lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01', number: 3 }),
+      lesson({ id: 'b', instrumentId: 'setar', date: '2026-02-01', number: 7 }),
+      lesson({ id: 'c', instrumentId: 'tar', date: '2026-02-01', number: 40 }),
+    ];
+    expect(nextLessonNumber(lessons, 'setar')).toBe(8);
+    expect(nextLessonNumber(lessons, 'tar')).toBe(41);
+  });
+
+  it('ignores unnumbered lessons when computing the max', () => {
+    const lessons = [
+      lesson({ id: 'a', instrumentId: 'setar', date: '2026-01-01', number: 5 }),
+      lesson({ id: 'b', instrumentId: 'setar', date: '2026-03-01' }), // no number
+    ];
+    expect(nextLessonNumber(lessons, 'setar')).toBe(6);
+  });
+});
+
+// --- B1: honest calendar totals ----------------------------------------------
+//
+// The trap `blocksInWindow` sets is that it filters on HOURS, so days:1 means
+// "the last 24 hours" and days:7 means "the last 168" — the wrong answer to
+// "how much have I practised today?". These are CALENDAR figures, and the
+// choice is pinned here rather than left as a comment.
+//
+// Local time throughout: the tests construct dates with the local `Date(y, m,
+// d, h)` constructor, exactly as the helpers read them, so they hold in any
+// timezone the owner's devices run in.
+
+function pBlock(startedAt: Date, durationMinutes: number, instrumentId = 'setar'): PracticeBlock {
+  return createBlock(
+    {
+      practiceItemId: 'item-1',
+      instrumentId,
+      durationMinutes,
+      mode: 'repair',
+      focus: 'tone',
+      result: 'slightly_better',
+      startedAt: startedAt.toISOString(),
+    },
+    startedAt,
+  );
+}
+
+// Thursday 18 June 2026, 12:00 local.
+const THURSDAY = new Date(2026, 5, 18, 12, 0);
+
+describe('practiceTotals · calendar days, not rolling windows', () => {
+  it("counts by calendar day, so a block from late yesterday is not part of today's total", () => {
+    // Deliberately INSIDE the last 24 hours — 22:30 the previous evening is
+    // only 13½ hours before "now" — and just as deliberately NOT today.
+    const lateYesterday = pBlock(new Date(2026, 5, 17, 22, 30), 40);
+    const justAfterMidnight = pBlock(new Date(2026, 5, 18, 0, 20), 15);
+
+    const totals = practiceTotals([lateYesterday, justAfterMidnight], THURSDAY);
+    expect(totals.today).toEqual({ minutes: 15, blocks: 1 });
+    // The rolling-window helper would have swept both in — that is the bug.
+    expect(totalMinutesInWindow([lateYesterday, justAfterMidnight], THURSDAY, 1)).toBe(55);
+    // Both are still this week, and both are still all time.
+    expect(totals.week).toEqual({ minutes: 55, blocks: 2 });
+    expect(totals.allTime).toEqual({ minutes: 55, blocks: 2 });
+  });
+
+  it('counts a midnight-crossing block whole against the day it began, including across the Monday boundary', () => {
+    // A block begun 23:40 on Wednesday, 40 minutes long: its minutes run past
+    // midnight, and ALL of them belong to Wednesday. `durationMinutes` is the
+    // figure the owner attested to and deliberately diverges from wall clock,
+    // and routine blocks carry no endedAt to split by — so a block is one
+    // indivisible unit of attested practice.
+    const crossesMidnight = pBlock(new Date(2026, 5, 17, 23, 40), 40);
+    expect(practiceTotals([crossesMidnight], THURSDAY).today).toEqual({ minutes: 0, blocks: 0 });
+    expect(practiceTotals([crossesMidnight], new Date(2026, 5, 17, 23, 59)).today).toEqual({ minutes: 40, blocks: 1 });
+
+    // The SAME rule decides the Monday boundary: begun Sunday 23:30, it
+    // belongs whole to the week that is ending, with nothing carried into the
+    // week that begins forty minutes later.
+    const sundayNight = pBlock(new Date(2026, 5, 14, 23, 30), 40); // Sunday 14 June 2026
+    const monday = new Date(2026, 5, 15, 9, 0);
+    expect(practiceTotals([sundayNight], monday).week).toEqual({ minutes: 0, blocks: 0 });
+    expect(practiceTotals([sundayNight], new Date(2026, 5, 14, 23, 59)).week).toEqual({ minutes: 40, blocks: 1 });
+  });
+
+  it("starts the week on Monday so Sunday's practice belongs to the week that is ending", () => {
+    const sunday = new Date(2026, 5, 14, 20, 0); // Sunday 14 June 2026
+    const monday = new Date(2026, 5, 15, 8, 0);
+    expect(startOfWeekISODate(monday)).toBe('2026-06-15');
+    expect(startOfWeekISODate(sunday)).toBe('2026-06-08'); // the week that is ending
+    // Saturday is still that same week; Thursday's week began on the 15th.
+    expect(startOfWeekISODate(new Date(2026, 5, 20, 8, 0))).toBe('2026-06-15');
+    expect(startOfWeekISODate(THURSDAY)).toBe('2026-06-15');
+
+    const sundayBlock = pBlock(sunday, 25);
+    const mondayBlock = pBlock(monday, 30);
+    // Asked on Monday: only Monday's practice is in the new week.
+    expect(practiceTotals([sundayBlock, mondayBlock], monday).week).toEqual({ minutes: 30, blocks: 1 });
+    // Asked on Sunday evening: Sunday's practice is in the week that is ending.
+    expect(practiceTotals([sundayBlock], sunday).week).toEqual({ minutes: 25, blocks: 1 });
+  });
+
+  it('reports minutes and blocks per instrument, all time included', () => {
+    const blocks = [
+      pBlock(THURSDAY, 20, 'setar'),
+      pBlock(new Date(2026, 5, 16, 10, 0), 30, 'setar'),
+      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // months ago
+    ];
+    const rows = practiceTotalsByInstrument(
+      [instrument('setar'), instrument('guitar')],
+      blocks,
+      THURSDAY,
     );
-  });
-
-  it('URL-encodes spaces and Farsi filenames per segment', () => {
-    const url = resolveRecordingUrl(base, { path: 'setar-classes/session-36/2026-06-09 19.29.16.mp4' })!;
-    expect(url).toContain('2026-06-09%2019.29.16.mp4');
-    const farsi = resolveRecordingUrl(base, { path: 'setar-classes/چهارمضراب-صبا.pdf' })!;
-    expect(farsi).toContain('%D8%'); // percent-encoded Farsi
-    expect(farsi.startsWith(base)).toBe(true);
-  });
-
-  it('tolerates trailing/leading slashes', () => {
-    expect(resolveRecordingUrl('https://nas/media/', { path: '/a/b.mp4' })).toBe('https://nas/media/a/b.mp4');
-  });
-
-  it('returns null for a relative path with no base URL (must prompt)', () => {
-    expect(resolveRecordingUrl(undefined, { path: 'setar-classes/x.mp4' })).toBeNull();
-    expect(resolveRecordingUrl('', { path: 'setar-classes/x.mp4' })).toBeNull();
-  });
-
-  it('returns null for an empty path', () => {
-    expect(resolveRecordingUrl(base, { path: '  ' })).toBeNull();
-  });
-});
-
-describe('needsBaseUrl', () => {
-  it('is true only for a relative path without a base', () => {
-    expect(needsBaseUrl(undefined, { path: 'a/b.mp4' })).toBe(true);
-    expect(needsBaseUrl('https://nas', { path: 'a/b.mp4' })).toBe(false);
-    expect(needsBaseUrl(undefined, { path: 'https://nas/a.mp4' })).toBe(false);
-  });
-});
-
-describe('normalizeBaseUrl', () => {
-  it('prepends https:// to a scheme-less host (the reported bug)', () => {
-    expect(normalizeBaseUrl('ds220plus.taild1d1f7.ts.net')).toBe('https://ds220plus.taild1d1f7.ts.net');
-    expect(normalizeBaseUrl('ds220plus.taild1d1f7.ts.net/media')).toBe('https://ds220plus.taild1d1f7.ts.net/media');
-  });
-
-  it('keeps an explicit scheme and strips a trailing slash', () => {
-    expect(normalizeBaseUrl('https://nas.ts.net/media/')).toBe('https://nas.ts.net/media');
-    expect(normalizeBaseUrl('http://192.168.0.20:8080/x/')).toBe('http://192.168.0.20:8080/x');
-  });
-
-  it('returns null for blank or unparseable input', () => {
-    expect(normalizeBaseUrl('')).toBeNull();
-    expect(normalizeBaseUrl('   ')).toBeNull();
-    expect(normalizeBaseUrl(undefined)).toBeNull();
-    expect(normalizeBaseUrl('http://')).toBeNull();
-    expect(normalizeBaseUrl('not a url at all')).toBeNull();
-  });
-
-  it('rejects non-http(s) schemes', () => {
-    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
-    expect(normalizeBaseUrl('file:///Volumes/x')).toBeNull();
-  });
-});
-
-describe('resolveRecording (status-aware)', () => {
-  it('resolves a scheme-less base without collapsing to an in-app relative URL', () => {
-    const r = resolveRecording('ds220plus.taild1d1f7.ts.net/media', { path: 'setar-classes/session-1/a.mp4' });
-    expect(r).toEqual({ status: 'ok', url: 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-1/a.mp4' });
-  });
-
-  it('flags an unparseable base as bad-base (no silent wrong link)', () => {
-    expect(resolveRecording('http://', { path: 'a/b.mp4' })).toEqual({ status: 'bad-base' });
-  });
-
-  it('flags a missing base and an empty path distinctly', () => {
-    expect(resolveRecording('', { path: 'a/b.mp4' })).toEqual({ status: 'no-base' });
-    expect(resolveRecording('https://nas', { path: '  ' })).toEqual({ status: 'empty' });
-  });
-
-  it('passes a full https path through', () => {
-    expect(resolveRecording(undefined, { path: 'https://x.ts.net/a b/c.mp4' })).toEqual({
-      status: 'ok',
-      url: 'https://x.ts.net/a%20b/c.mp4',
+    expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'guitar']); // most all-time minutes first
+    expect(rows[0]).toMatchObject({
+      today: { minutes: 20, blocks: 1 },
+      week: { minutes: 50, blocks: 2 },
+      allTime: { minutes: 50, blocks: 2 },
+    });
+    expect(rows[1]).toMatchObject({
+      today: { minutes: 0, blocks: 0 },
+      week: { minutes: 0, blocks: 0 },
+      allTime: { minutes: 45, blocks: 1 },
     });
   });
 
-  it('opens a retained absolute URL unchanged, without double-encoding its existing escapes', () => {
-    // A foreign origin or a query-bearing URL is retained verbatim by
-    // relativizeReference (never rewritten). It must still open correctly:
-    // encodeURI() would turn an existing %20 into %2520 — a dead link.
-    expect(resolveRecording(undefined, { path: 'https://example.com/a%20b.pdf' })).toEqual({
-      status: 'ok',
-      url: 'https://example.com/a%20b.pdf',
-    });
-    // Percent-encoded Farsi, as a NAS directory listing would hand it out.
-    const farsi = 'https://example.com/setar-classes/' + encodeURIComponent('چهارمضراب.pdf');
-    expect(resolveRecording(undefined, { path: farsi })).toEqual({ status: 'ok', url: farsi });
-    // A retained query-bearing URL keeps its query string intact.
-    expect(resolveRecording(undefined, { path: 'https://example.com/class.mp4?download=1' })).toEqual({
-      status: 'ok',
-      url: 'https://example.com/class.mp4?download=1',
-    });
+  // Insights shows an overall "All instruments" row over EVERY block, so the
+  // per-instrument rows below it have to account for every one of those
+  // minutes. Passing only the ACTIVE instruments left a retired instrument's
+  // history with no row at all while its minutes still sat in the total — the
+  // rows silently summed to less than the figure printed above them.
+  it("gives a retired instrument its own row, so the rows account for every minute in the overall total", () => {
+    const retired = { ...instrument('guitar'), active: false };
+    const blocks = [
+      pBlock(THURSDAY, 20, 'setar'),
+      pBlock(new Date(2026, 2, 3, 10, 0), 45, 'guitar'), // practised before it was retired
+    ];
+    const rows = practiceTotalsByInstrument([instrument('setar'), retired], blocks, THURSDAY);
+
+    expect(rows.map((r) => r.instrumentId)).toContain('guitar');
+    expect(rows.find((r) => r.instrumentId === 'guitar')?.allTime).toEqual({ minutes: 45, blocks: 1 });
+    const summed = rows.reduce((n, r) => n + r.allTime.minutes, 0);
+    expect(summed).toBe(practiceTotals(blocks, THURSDAY).allTime.minutes);
   });
 });
 
-describe('formatFileSize', () => {
-  it('formats KB/MB/GB, and returns null for missing sizes', () => {
-    expect(formatFileSize(500 * 1024)).toBe('500 KB');
-    expect(formatFileSize(325 * 1024 * 1024)).toBe('325 MB');
-    expect(formatFileSize(686 * 1024 * 1024)).toBe('686 MB');
-    expect(formatFileSize(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
-    expect(formatFileSize(undefined)).toBeNull();
-    expect(formatFileSize(0)).toBeNull();
+// --- A10: the one shipped derived figure that was arithmetically wrong --------
+
+describe('instrumentBalance · the denominator covers exactly the rows shown', () => {
+  it('percentages sum to 100 when blocks exist for an instrument not in the supplied list', () => {
+    // Exactly what Today produces: only the ACTIVE instruments, with ALL
+    // blocks — including a retired instrument's, which gets no row of its own.
+    const supplied = [instrument('setar'), instrument('tar')];
+    const blocks = [
+      pBlock(THURSDAY, 30, 'setar'),
+      pBlock(THURSDAY, 20, 'tar'),
+      pBlock(THURSDAY, 40, 'guitar'), // retired — no row emitted for it
+    ];
+
+    const rows = instrumentBalance(supplied, blocks, THURSDAY, 7);
+    expect(rows.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(rows.find((r) => r.instrumentId === 'setar')!.percent).toBe(60);
+    expect(rows.find((r) => r.instrumentId === 'tar')!.percent).toBe(40);
+    // The retired instrument's minutes are in neither a row nor the denominator.
+    expect(rows.map((r) => r.instrumentId)).toEqual(['setar', 'tar']);
+
+    // A right denominator is only half of it: rounded independently, three
+    // equal shares each become 33% and total 99. The split that cannot divide
+    // evenly is the one that has to sum to 100.
+    const three = [instrument('setar'), instrument('tar'), instrument('guitar')];
+    const thirds = instrumentBalance(
+      three,
+      [
+        pBlock(THURSDAY, 1, 'setar'),
+        pBlock(THURSDAY, 1, 'tar'),
+        pBlock(THURSDAY, 1, 'guitar'),
+        pBlock(THURSDAY, 40, 'santur'), // still omitted, still out of the denominator
+      ],
+      THURSDAY,
+      7,
+    );
+    expect(thirds.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(thirds.map((r) => r.percent).sort()).toEqual([33, 33, 34]);
+
+    // And a row with no practice is never handed a leftover point.
+    const lopsided = instrumentBalance(three, [pBlock(THURSDAY, 3, 'setar'), pBlock(THURSDAY, 3, 'tar')], THURSDAY, 7);
+    expect(lopsided.reduce((s, r) => s + r.percent, 0)).toBe(100);
+    expect(lopsided.find((r) => r.instrumentId === 'guitar')!.percent).toBe(0);
+  });
+
+  it('reports zero percent for every instrument when nothing was practised', () => {
+    const rows = instrumentBalance([instrument('setar')], [], THURSDAY, 7);
+    expect(rows[0]).toMatchObject({ minutes: 0, blocks: 0, percent: 0 });
   });
 });
 
 // ---------------------------------------------------------------------------
-// Transport independence. What is STORED must not name one device's route to
-// the NAS, or every reference dies the day that route changes.
+// The two search boxes (Repertoire's practice list, Start's item picker) and
+// the instrument a browse screen opens on. Both are pure choices, so the
+// wiring is provable in Node even though the screens themselves are not.
 // ---------------------------------------------------------------------------
 
-describe('relativizeReference', () => {
-  const base = 'https://192.168.0.20:5010';
+describe('itemMatchesSearch', () => {
+  it('matches a Persian title when the query uses the Arabic kaf and still rejects an unrelated query', () => {
+    const item = { title: 'کرشمه' }; // stored with the PERSIAN kaf U+06A9
+    const arabicKaf = 'كرشمه'; // what an iOS Arabic keyboard emits (U+0643)
 
-  it('stores a pasted URL under the base as relative, keeps a foreign origin absolute, and leaves a relative path alone', () => {
-    // Copied out of the NAS directory listing, so the Farsi filename arrives
-    // percent-encoded; storing it encoded would double-escape on resolve.
-    const pasted = `${base}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
-    expect(relativizeReference(base, pasted)).toBe('setar-classes/session-37/چهارمضراب.pdf');
+    // The predicate both screens used before this change could never match it.
+    expect(item.title.toLowerCase().includes(arabicKaf.toLowerCase())).toBe(false);
 
-    const foreign = 'https://example.com/setar-classes/session-37/class.mp4';
-    expect(relativizeReference(base, foreign)).toBe(foreign);
-
-    expect(relativizeReference(base, 'setar-classes/session-37/class.mp4')).toBe(
-      'setar-classes/session-37/class.mp4',
-    );
+    expect(itemMatchesSearch(item, arabicKaf)).toBe(true);
+    expect(itemMatchesSearch(item, 'ماهور')).toBe(false);
   });
 
-  it('requires the path boundary, so a sibling folder is not swallowed', () => {
-    const sibling = 'https://192.168.0.20:5010/mediaXYZ/class.mp4';
-    expect(relativizeReference('https://192.168.0.20:5010/media', sibling)).toBe(sibling);
-  });
+  it('finds a Persian title from its Latin transliteration and rejects an unrelated Latin query', () => {
+    const item = { title: 'درآمد' };
 
-  it('stores a pasted URL unchanged when no usable base URL is configured', () => {
-    const pasted = `${base}/setar-classes/session-37/class.mp4`;
-    expect(relativizeReference(undefined, pasted)).toBe(pasted);
-    expect(relativizeReference('', pasted)).toBe(pasted);
-    expect(relativizeReference('   ', pasted)).toBe(pasted);
-    expect(relativizeReference('ftp://nas/media', pasted)).toBe(pasted);
-    expect(relativizeReference('http://[not a url', pasted)).toBe(pasted);
-  });
+    expect(item.title.toLowerCase().includes('daramad')).toBe(false);
 
-  it('leaves a URL carrying a query or fragment absolute rather than guessing', () => {
-    const query = `${base}/setar-classes/class.mp4?download=1`;
-    expect(relativizeReference(base, query)).toBe(query);
+    expect(itemMatchesSearch(item, 'daramad')).toBe(true);
+    expect(itemMatchesSearch(item, 'qqqq')).toBe(false);
+    expect(itemMatchesSearch(item, 'guitar')).toBe(false);
   });
 });
 
-describe('a stored reference survives a change of transport', () => {
-  it('resolves the same relative reference correctly under two different base URLs', () => {
-    const lan = 'https://192.168.0.20:5010';
-    const pasted = `${lan}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
-    const stored = relativizeReference(lan, pasted);
+describe('defaultInstrumentFilter', () => {
+  it('seeds the filter from a resolvable session instrument, widens for all, and falls back when it no longer exists', () => {
+    const instruments = [{ id: 'setar' }, { id: 'tar' }];
 
-    expect(resolveRecordingUrl(lan, { path: stored })).toBe(pasted);
-    // A completely different route to the same NAS — nothing stored changes.
-    expect(resolveRecordingUrl('https://ds220plus.taild1d1f7.ts.net/media', { path: stored })).toBe(
-      `https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`,
-    );
+    expect(defaultInstrumentFilter('setar', instruments)).toBe('setar');
+    expect(defaultInstrumentFilter('all', instruments)).toBe('');
+    expect(defaultInstrumentFilter('deleted-instrument', instruments)).toBe('');
+    expect(defaultInstrumentFilter(null, instruments)).toBe('');
+    expect(defaultInstrumentFilter(undefined, instruments)).toBe('');
   });
 });
 
-describe('the Browse target', () => {
-  it('offers a browse target for a valid base and none for a blank or unparseable one', () => {
-    // Settings' Browse action is gated on exactly this value.
-    expect(normalizeBaseUrl('https://192.168.0.20:5010/')).toBe('https://192.168.0.20:5010');
-    expect(normalizeBaseUrl('192.168.0.20:5010/media')).toBe('https://192.168.0.20:5010/media');
-    expect(normalizeBaseUrl('')).toBeNull();
-    expect(normalizeBaseUrl('   ')).toBeNull();
-    expect(normalizeBaseUrl(undefined)).toBeNull();
-    expect(normalizeBaseUrl('http://[not a url')).toBeNull();
-    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
+describe('pathwaysForInstrumentFilter', () => {
+  function pathway(id: string, instrumentId?: string): Pathway {
+    return {
+      id,
+      instrumentId,
+      name: id,
+      order: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  it('narrows to one instrument\'s own pathways, hides a General pathway that could hold another instrument\'s items, and widens back for all', () => {
+    const setarPathway = pathway('p-setar', 'setar');
+    const tarPathway = pathway('p-tar', 'tar');
+    // General: no instrumentId, so it can hold a Tar item even while the
+    // session instrument is Setar — the counterexample this guards against.
+    const generalPathway = pathway('p-general');
+    const all = [setarPathway, tarPathway, generalPathway];
+
+    expect(pathwaysForInstrumentFilter(all, 'setar')).toEqual([setarPathway]);
+    expect(pathwaysForInstrumentFilter(all, 'tar')).toEqual([tarPathway]);
+    expect(pathwaysForInstrumentFilter(all, '')).toEqual(all);
   });
 });
 ```
 
-### src/domain/recordings.ts
+### src/domain/selectors.ts
 
 ```
-import type { LessonRecording } from './types';
+import type {
+  ID,
+  Instrument,
+  ISODate,
+  Lesson,
+  Pathway,
+  PracticeBlock,
+  PracticeItem,
+  Review,
+} from './types';
+import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
+import { persianSearchMatch } from './farsi';
+import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
-// Class-recording references. The app stores WHERE a recording is, never the
-// bytes: a relative path under a NAS base URL (set in Settings) or a full
-// https:// URL. Resolving a reference is pure; the video is only ever fetched
-// when the user explicitly opens it, never at startup.
+// Derived lists used across the Today, Items and Insights screens. All pure.
 // ---------------------------------------------------------------------------
 
-const HTTP_RE = /^https?:\/\//i;
-
-/** Format a byte count for display (e.g. "686 MB"). */
-export function formatFileSize(bytes: number | undefined): string | null {
-  if (!bytes || bytes <= 0) return null;
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1) return `${Math.round(bytes / 1024)} KB`;
-  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
-  return `${(mb / 1024).toFixed(1)} GB`;
+/**
+ * The search predicate BOTH search boxes use — Repertoire's practice list and
+ * Start's item picker. The data is authored in Farsi, so `toLowerCase().includes()`
+ * can never match a title typed with an Arabic kaf or yeh, which is exactly what
+ * an iOS Arabic keyboard emits. Delegates to the existing, tested matcher: this
+ * is the WIRING that was missing, not a second matcher.
+ */
+export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string): boolean {
+  return persianSearchMatch(item.title, query);
 }
 
 /**
- * Normalise a user-entered NAS base URL to a valid http(s) origin+path.
- * - Missing scheme → assume `https://` (the app runs on an HTTPS origin, so a
- *   bare host like `nas.example.ts.net` would otherwise be treated as a
- *   relative path and every recording would resolve to the same in-app route).
- * - Validates with `new URL`; only http/https accepted.
- * - Strips a trailing slash.
- * Returns null when the value is blank or unparseable.
+ * Which instrument a browse screen (Repertoire, Lessons) OPENS on: the same
+ * persisted session instrument every other screen already reads, with `''`
+ * meaning every instrument. The cross-instrument view survives as an explicit
+ * override — this only chooses the default.
+ *
+ * `instruments` must be the list the screen's own dropdown renders: a session
+ * instrument that no longer resolves there (deleted, or inactive on a screen
+ * that lists only active ones) falls back to every-instrument rather than
+ * seeding a filter with no matching option and showing an empty screen.
  */
-const ANY_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
-
-export function normalizeBaseUrl(raw: string | undefined): string | null {
-  const trimmed = (raw ?? '').trim();
-  if (!trimmed) return null;
-  // A string that already carries a scheme must be http(s); don't silently
-  // rewrite ftp://, file://, etc. into https://.
-  if (ANY_SCHEME_RE.test(trimmed) && !HTTP_RE.test(trimmed)) return null;
-  const withScheme = HTTP_RE.test(trimmed) ? trimmed : `https://${trimmed}`;
-  let url: URL;
-  try {
-    url = new URL(withScheme);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-  return url.toString().replace(/\/+$/, '');
-}
-
-export type RecordingResolution =
-  | { status: 'ok'; url: string }
-  | { status: 'no-base' }
-  | { status: 'bad-base' }
-  | { status: 'empty' };
-
-/**
- * Resolve a recording reference to an openable URL, distinguishing WHY it
- * can't resolve so the UI can react (prompt for a base, warn about a bad one,
- * etc.). Full http(s) paths pass through the `URL` parser rather than
- * `encodeURI` — it escapes a raw unsafe character (a literal space) the same
- * way, but leaves an already-valid `%XX` escape alone instead of re-encoding
- * its `%` into `%25`, which is what a retained foreign or query-bearing URL
- * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
- * paths join under the normalised base with each segment URL-encoded (spaces,
- * Farsi filenames).
- */
-export function resolveRecording(
-  baseUrl: string | undefined,
-  ref: Pick<LessonRecording, 'path'>,
-): RecordingResolution {
-  const p = ref.path.trim();
-  if (!p) return { status: 'empty' };
-  if (HTTP_RE.test(p)) {
-    try {
-      return { status: 'ok', url: new URL(p).toString() };
-    } catch {
-      return { status: 'ok', url: encodeURI(p) };
-    }
-  }
-
-  const raw = (baseUrl ?? '').trim();
-  if (!raw) return { status: 'no-base' };
-  const base = normalizeBaseUrl(raw);
-  if (!base) return { status: 'bad-base' };
-
-  const rel = p
-    .replace(/^\/+/, '')
-    .split('/')
-    .filter(Boolean)
-    .map((seg) => encodeURIComponent(seg))
-    .join('/');
-  // `base` is a validated absolute URL; append the encoded relative path.
-  return { status: 'ok', url: `${base}/${rel}` };
-}
-
-/** Openable URL, or null. Thin wrapper over {@link resolveRecording}. */
-export function resolveRecordingUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): string | null {
-  const r = resolveRecording(baseUrl, ref);
-  return r.status === 'ok' ? r.url : null;
-}
-
-/** Whether opening this reference needs a NAS base URL that isn't set yet. */
-export function needsBaseUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): boolean {
-  return resolveRecording(baseUrl, ref).status === 'no-base';
-}
-
-/** Decode a stored-relative path segment-wise; `resolveRecording` re-encodes. */
-function decodeSegments(rel: string): string {
-  return rel
-    .split('/')
-    .map((seg) => {
-      try {
-        return decodeURIComponent(seg);
-      } catch {
-        return seg; // malformed %-escape: leave it exactly as given
-      }
-    })
-    .join('/');
+export function defaultInstrumentFilter(
+  sessionInstrumentId: string | null | undefined,
+  instruments: Pick<Instrument, 'id'>[],
+): ID | '' {
+  if (!sessionInstrumentId || sessionInstrumentId === 'all') return '';
+  return instruments.some((i) => i.id === sessionInstrumentId) ? sessionInstrumentId : '';
 }
 
 /**
- * Store a pasted reference TRANSPORT-INDEPENDENTLY.
- *
- * Browsing the NAS and pasting a file's URL is the whole point of the Browse
- * link — but an absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS:
- * it dies on a phone away from home, and everywhere at once if the base URL
- * ever changes. So a URL that sits UNDER the configured base is stored as the
- * path beneath it, which every device then resolves through its own base.
- *
- * Everything else is left EXACTLY as given, because guessing is worse than
- * leaving it alone: a different origin is a deliberate external link, a URL
- * carrying a query or fragment is not a plain file path, and a blank or
- * unparseable base is not something to reason from at all.
- *
- * A stored path is decoded (`resolveRecording` encodes each segment on the way
- * out), so a Farsi filename copied from a directory listing survives the round
- * trip instead of being double-escaped into a dead link.
+ * Which pathways a narrowed Pathways view shows. A General pathway
+ * (`instrumentId` unset) can hold items from ANY instrument, so it stays
+ * OUT of a one-instrument view too — narrowing to Setar must not surface a
+ * General pathway's Tar-derived progress. Only the explicit '' ("all")
+ * filter widens back to see it, matching how every other narrowed screen in
+ * this lane treats the cross-instrument view as an opt-in widen, not a
+ * default leak.
  */
-export function relativizeReference(baseUrl: string | undefined, pasted: string): string {
-  const raw = pasted.trim();
-  if (!raw || !HTTP_RE.test(raw)) return raw; // already a relative path
-  const base = normalizeBaseUrl(baseUrl);
-  if (!base) return raw;
+export function pathwaysForInstrumentFilter(pathways: Pathway[], filterInstrumentId: ID | ''): Pathway[] {
+  return filterInstrumentId ? pathways.filter((p) => p.instrumentId === filterInstrumentId) : pathways;
+}
 
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return raw;
+/** The nearest upcoming (today or later) lesson for an instrument, if any. */
+export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
+  const today = todayISODate(now);
+  return lessons
+    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+}
+
+/** A map of instrumentId → nearest upcoming lesson date. */
+export function nextLessonDates(lessons: Lesson[], now: Date): Map<ID, ISODate> {
+  const map = new Map<ID, ISODate>();
+  const today = todayISODate(now);
+  for (const l of lessons) {
+    if (l.date < today) continue;
+    const cur = map.get(l.instrumentId);
+    if (!cur || l.date < cur) map.set(l.instrumentId, l.date);
   }
-  if (url.search || url.hash) return raw;
+  return map;
+}
 
-  // Compare normalised forms (host case, default ports) and require the path
-  // BOUNDARY, so `…/media` never swallows `…/mediaXYZ/`.
-  const prefix = `${base}/`;
-  const abs = url.toString();
-  if (!abs.startsWith(prefix)) return raw;
-  return decodeSegments(abs.slice(prefix.length)) || raw;
+/** Whole days from now until a calendar date (negative if past). */
+export function daysUntil(dateISO: ISODate, now: Date): number {
+  return dayDiff(now, parseISODate(dateISO));
+}
+
+export function lessonsForInstrument(lessons: Lesson[], instrumentId: ID): Lesson[] {
+  return lessons.filter((l) => l.instrumentId === instrumentId).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Suggested next class number for an instrument: max existing + 1, or 1. */
+export function nextLessonNumber(lessons: Lesson[], instrumentId: ID): number {
+  const max = lessons
+    .filter((l) => l.instrumentId === instrumentId && typeof l.number === 'number')
+    .reduce((m, l) => Math.max(m, l.number as number), 0);
+  return max + 1;
+}
+
+/** Items flagged to complete before their instrument's next lesson. */
+export function assignedForLesson(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.assignedForLesson);
+}
+
+export function isDue(item: PracticeItem, now: Date): boolean {
+  const d = overdueDays(item, now);
+  return d !== null && d >= 0;
+}
+
+export function dueItems(items: PracticeItem[], now: Date): PracticeItem[] {
+  return items
+    .filter((i) => isDue(i, now))
+    .sort((a, b) => (overdueDays(b, now) ?? 0) - (overdueDays(a, now) ?? 0));
+}
+
+export function fragileItems(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.status === 'fragile' || i.status === 'repairing');
+}
+
+export function neglectedImportantItems(
+  items: PracticeItem[],
+  now: Date,
+  minImportance = 4,
+  minDays = 8,
+): PracticeItem[] {
+  return items
+    .filter((i) => i.importance >= minImportance && daysSinceTouched(i, now) >= minDays)
+    .filter((i) => i.status !== 'dormant')
+    .sort((a, b) => daysSinceTouched(b, now) - daysSinceTouched(a, now));
+}
+
+export function overworkedItems(
+  items: PracticeItem[],
+  blocks: PracticeBlock[],
+  now: Date,
+): PracticeItem[] {
+  const byItem = groupBlocksByItem(blocks);
+  return items.filter((i) => isSaturated(byItem.get(i.id) ?? [], now));
+}
+
+export function itemsWithTeacherQuestion(items: PracticeItem[]): PracticeItem[] {
+  return items.filter((i) => i.teacherQuestion && i.teacherQuestion.trim().length > 0);
+}
+
+export function dueReviews(reviews: Review[], now: Date): Review[] {
+  return reviews
+    .filter((r) => !r.completedAt)
+    .filter((r) => dayDiff(parseISODate(r.dueDate), now) >= 0)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+export function blocksInWindow(
+  blocks: PracticeBlock[],
+  now: Date,
+  days: number,
+): PracticeBlock[] {
+  const hours = days * 24;
+  // Future-dated blocks (clock skew, edited data) must not shape history.
+  return blocks.filter((b) => {
+    const h = hoursSince(b.startedAt, now);
+    return h >= 0 && h <= hours;
+  });
+}
+
+export interface InstrumentBalanceRow {
+  instrumentId: ID;
+  instrumentName: string;
+  minutes: number;
+  blocks: number;
+  percent: number;
+}
+
+/** Minutes/blocks per instrument over the last `days`, including idle ones. */
+export function instrumentBalance(
+  instruments: Instrument[],
+  blocks: PracticeBlock[],
+  now: Date,
+  days = 7,
+): InstrumentBalanceRow[] {
+  // The denominator must cover exactly the instruments that get a row.
+  // Callers legitimately pass only the ACTIVE instruments alongside ALL
+  // blocks (Today does), and taking the total from every block then meant a
+  // retired instrument's practice sat in the denominator with no row of its
+  // own — so the percentages summed to less than 100.
+  const shown = new Set(instruments.map((i) => i.id));
+  const windowBlocks = blocksInWindow(blocks, now, days).filter((b) => shown.has(b.instrumentId));
+  const totalMinutes = windowBlocks.reduce((s, b) => s + b.durationMinutes, 0);
+
+  const counted = instruments.map((inst) => {
+    const own = windowBlocks.filter((b) => b.instrumentId === inst.id);
+    return {
+      instrumentId: inst.id,
+      instrumentName: inst.name,
+      minutes: own.reduce((s, b) => s + b.durationMinutes, 0),
+      blocks: own.length,
+    };
+  });
+
+  // Rounding each row on its own does NOT keep the sum at 100 even once the
+  // denominator is right: three rows of one minute each round to 33% and total
+  // 99. Largest remainder floors every share and hands the leftover points to
+  // the largest fractions, so the emitted percentages always sum to exactly
+  // 100. A row with no minutes has no fraction, so it can never be handed one.
+  const percents = largestRemainder(counted.map((r) => r.minutes), totalMinutes);
+
+  return counted.map((r, i) => ({ ...r, percent: percents[i] })).sort((a, b) => b.minutes - a.minutes);
+}
+
+/** Split 100 across `values` so the parts are whole numbers summing to 100. */
+function largestRemainder(values: number[], total: number): number[] {
+  if (total <= 0) return values.map(() => 0);
+  const exact = values.map((v) => (v / total) * 100);
+  const out = exact.map((e) => Math.floor(e));
+  let left = 100 - out.reduce((a, b) => a + b, 0);
+  const byFraction = exact
+    .map((e, i) => ({ i, fraction: e - Math.floor(e) }))
+    .filter((x) => x.fraction > 0)
+    .sort((a, b) => b.fraction - a.fraction || a.i - b.i);
+  for (const { i } of byFraction) {
+    if (left <= 0) break;
+    out[i] += 1;
+    left -= 1;
+  }
+  return out;
+}
+
+export function totalMinutesInWindow(blocks: PracticeBlock[], now: Date, days: number): number {
+  return blocksInWindow(blocks, now, days).reduce((s, b) => s + b.durationMinutes, 0);
+}
+
+// --- Honest practice totals --------------------------------------------------
+//
+// CALENDAR figures, not rolling windows. `blocksInWindow` above filters on
+// HOURS, so days:1 means "the last 24 hours" and days:7 means "the last 168" —
+// which is exactly the wrong answer to "how much have I practised today?": a
+// block from late last night is not today's practice. These helpers are
+// therefore separate rather than a reuse of that one.
+//
+// A block belongs WHOLE to the local calendar day it BEGAN, with none of its
+// minutes apportioned into the following day. Two facts in the model settle
+// that rather than convenience: `durationMinutes` is the figure the owner
+// attested to at close and deliberately diverges from wall clock (an abandoned
+// block proposes its target), so `endedAt - startedAt` is not the authored
+// duration; and `endedAt` is optional and absent on routine blocks, so
+// apportioning would quietly apply to some blocks and not others. The same
+// rule decides the week boundary: a session begun Sunday 23:30 belongs to the
+// week that is ending.
+
+export interface PracticeTotal {
+  minutes: number;
+  blocks: number;
+}
+
+/** Monday 00:00 local — ISO-8601 and UK convention — as a calendar date. */
+export function startOfWeekISODate(now: Date): ISODate {
+  const mondayFirst = (now.getDay() + 6) % 7; // Sunday (0) → 6, Monday (1) → 0
+  return addDaysISODate(todayISODate(now), -mondayFirst);
+}
+
+/** The local calendar day a block belongs to. */
+function blockDay(b: PracticeBlock): ISODate {
+  return toISODate(new Date(b.startedAt));
+}
+
+function total(blocks: PracticeBlock[]): PracticeTotal {
+  return {
+    minutes: blocks.reduce((s, b) => s + Math.max(0, Math.round(b.durationMinutes)), 0),
+    blocks: blocks.length,
+  };
+}
+
+export interface PracticeTotals {
+  today: PracticeTotal;
+  week: PracticeTotal;
+  allTime: PracticeTotal;
+}
+
+/** Minutes and block counts for today, this week (from Monday) and all time. */
+export function practiceTotals(blocks: PracticeBlock[], now: Date): PracticeTotals {
+  const today = todayISODate(now);
+  const weekStart = startOfWeekISODate(now);
+  const days = blocks.map((b) => ({ b, day: blockDay(b) }));
+  return {
+    today: total(days.filter((d) => d.day === today).map((d) => d.b)),
+    week: total(days.filter((d) => d.day >= weekStart && d.day <= today).map((d) => d.b)),
+    allTime: total(blocks),
+  };
+}
+
+export interface InstrumentTotalsRow extends PracticeTotals {
+  instrumentId: ID;
+  instrumentName: string;
+}
+
+/** The same calendar figures per instrument, for the full Insights view. */
+export function practiceTotalsByInstrument(
+  instruments: Instrument[],
+  blocks: PracticeBlock[],
+  now: Date,
+): InstrumentTotalsRow[] {
+  return instruments
+    .map((inst) => ({
+      instrumentId: inst.id,
+      instrumentName: inst.name,
+      ...practiceTotals(
+        blocks.filter((b) => b.instrumentId === inst.id),
+        now,
+      ),
+    }))
+    .sort((a, b) => b.allTime.minutes - a.allTime.minutes);
 }
 ```
 
 ### src/pages/ItemDetail.tsx
 
 ```
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  attachmentPolicy,
   BLOCK_MODE_LABELS,
   FOCUS_LABELS,
   ITEM_STATUS_LABELS,
@@ -1703,14 +1838,14 @@ import {
 import { useStore } from '../store/useStore';
 import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
+import { addAttachment, formatBytes, removeAttachment } from '../store/attachments';
 import ItemForm from '../components/ItemForm';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
-import Attachments from '../components/Attachments';
 import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
 import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
-import { ArrowLeftIcon, FlagIcon, PlayIcon } from '../components/icons';
+import { ArrowLeftIcon, FlagIcon, PlayIcon, PlusIcon } from '../components/icons';
 import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
 
 const RESULT_TONE: Record<BlockResult, string> = {
@@ -1914,7 +2049,7 @@ export default function ItemDetail() {
 
       <MaterialSection item={item} />
 
-      <Attachments ownerType="item" ownerId={item.id} />
+      <ItemFilesCrud itemId={item.id} />
 
       {trend.length > 0 && (
         <section className="stack-sm">
@@ -2111,6 +2246,86 @@ function MaterialSection({ item }: { item: PracticeItem }) {
     <section className="stack-sm">
       <div className="section-label">Material</div>
       <ItemMaterial itemId={item.id} />
+    </section>
+  );
+}
+
+/**
+ * Add/remove only. Material above already shows every attachment with its
+ * preview and Open action from the composed `itemFiles` list — this stays a
+ * plain CRUD surface rather than a second, partial presentation of the same
+ * files (the shared Attachments component still owns that full presentation
+ * for a lesson's own attachments, which nothing else displays).
+ */
+function ItemFilesCrud({ itemId }: { itemId: string }) {
+  const all = useStore((s) => s.db.attachments);
+  const list = useMemo(
+    () => all.filter((a) => a.ownerId === itemId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [all, itemId],
+  );
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [sizeNote, setSizeNote] = useState<string | null>(null);
+
+  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      for (const f of Array.from(files)) {
+        const policy = attachmentPolicy(f.size, f.type || '');
+        if (policy.level === 'block') {
+          setSizeNote(`“${f.name}” (${formatBytes(f.size)}) was not added: ${policy.message}`);
+          continue;
+        }
+        await addAttachment('item', itemId, f);
+        if (policy.level === 'warn') {
+          setSizeNote(`“${f.name}” is ${formatBytes(f.size)}. ${policy.message}`);
+        }
+      }
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  return (
+    <section className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Files</div>
+        <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={busy}>
+          <PlusIcon /> {busy ? 'Adding…' : 'Add file'}
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept="application/pdf,image/*,audio/*" multiple hidden onChange={onFiles} />
+      {sizeNote && (
+        <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
+          {sizeNote}{' '}
+          <button className="link tiny" style={{ background: 'none', border: 'none' }} onClick={() => setSizeNote(null)}>
+            OK
+          </button>
+        </div>
+      )}
+      {list.length > 0 && (
+        <div className="card card-flush list">
+          {list.map((a) => (
+            <div key={a.id} className="list-row">
+              <div className="grow truncate">{a.name}</div>
+              <div className="tiny faint">
+                {a.kind} · {formatBytes(a.size)}
+              </div>
+              <button
+                className="btn btn-ghost btn-sm btn-danger"
+                onClick={() => {
+                  if (confirm(`Remove "${a.name}"?`)) removeAttachment(a.id);
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -2323,6 +2538,7 @@ import {
   nextLessonDates,
   overworkedItems,
   pathwayProgress,
+  pathwaysForInstrumentFilter,
   scoreItems,
   stageProgress,
   stageUnits,
@@ -2633,10 +2849,7 @@ function PathwaysView() {
   const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
 
   const pathways = useMemo(
-    () =>
-      [...db.pathways]
-        .filter((p) => !filterInstrumentId || !p.instrumentId || p.instrumentId === filterInstrumentId)
-        .sort((a, b) => a.order - b.order),
+    () => pathwaysForInstrumentFilter(db.pathways, filterInstrumentId).slice().sort((a, b) => a.order - b.order),
     [db.pathways, filterInstrumentId],
   );
 
