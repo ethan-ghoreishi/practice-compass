@@ -4,13 +4,14 @@ import {
   instrumentBalance,
   itemMatchesSearch,
   nextLessonNumber,
+  pathwaysForInstrumentFilter,
   practiceTotals,
   practiceTotalsByInstrument,
   startOfWeekISODate,
   totalMinutesInWindow,
 } from './selectors';
 import { createBlock, createInstrument } from './factories';
-import type { Instrument, Lesson, PracticeBlock } from './types';
+import type { Instrument, Lesson, Pathway, PracticeBlock } from './types';
 
 function instrument(id: string): Instrument {
   return { ...createInstrument({ name: id }, new Date(2026, 0, 1)), id };
@@ -258,5 +259,31 @@ describe('defaultInstrumentFilter', () => {
     expect(defaultInstrumentFilter('deleted-instrument', instruments)).toBe('');
     expect(defaultInstrumentFilter(null, instruments)).toBe('');
     expect(defaultInstrumentFilter(undefined, instruments)).toBe('');
+  });
+});
+
+describe('pathwaysForInstrumentFilter', () => {
+  function pathway(id: string, instrumentId?: string): Pathway {
+    return {
+      id,
+      instrumentId,
+      name: id,
+      order: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  it('narrows to one instrument\'s own pathways, hides a General pathway that could hold another instrument\'s items, and widens back for all', () => {
+    const setarPathway = pathway('p-setar', 'setar');
+    const tarPathway = pathway('p-tar', 'tar');
+    // General: no instrumentId, so it can hold a Tar item even while the
+    // session instrument is Setar — the counterexample this guards against.
+    const generalPathway = pathway('p-general');
+    const all = [setarPathway, tarPathway, generalPathway];
+
+    expect(pathwaysForInstrumentFilter(all, 'setar')).toEqual([setarPathway]);
+    expect(pathwaysForInstrumentFilter(all, 'tar')).toEqual([tarPathway]);
+    expect(pathwaysForInstrumentFilter(all, '')).toEqual(all);
   });
 });

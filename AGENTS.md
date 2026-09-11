@@ -586,6 +586,15 @@ screens SEED from that value and never WRITE it: browsing another instrument's
 repertoire must not change what Today recommends. The cross-instrument view is never
 removed — only stopped from being the default you undo on every visit.
 
+**A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
+OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
+can hold items from ANY instrument, so showing it while narrowed to Setar can still
+surface a Tar item's progress with no way to know it slipped through. `pathwaysForInstrumentFilter`
+(`selectors.ts`, tested) is the one place this is decided: a real filter keeps only
+pathways scoped to that exact instrument, and only the explicit `''` ("all") filter
+widens back to see General pathways too — the same opt-in-widen shape as everything else
+in this section, not a second rule.
+
 **AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
 (`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
 the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
@@ -600,7 +609,11 @@ schema change and its own lane. Both the PRACTICE screen and ItemDetail render t
 composition — a reference and an attachment for the same piece are never split across two
 sections of the screen. ItemDetail's existing Files section stays below it, but only for
 add/remove: that is a CRUD concern, never a second, partial presentation of what
-`itemFiles` already composed.
+`itemFiles` already composed. It is therefore its own small list local to `ItemDetail.tsx`
+(name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
+for a lesson's own attachments: that component's preview and Open are exactly the
+presentation Material already gives an item's files, and reusing it here would put the
+same file on screen twice.
 
 **THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
 reference resolves through the configured NAS base URL; an attachment resolves to a

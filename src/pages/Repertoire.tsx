@@ -15,6 +15,7 @@ import {
   nextLessonDates,
   overworkedItems,
   pathwayProgress,
+  pathwaysForInstrumentFilter,
   scoreItems,
   stageProgress,
   stageUnits,
@@ -325,10 +326,7 @@ function PathwaysView() {
   const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
 
   const pathways = useMemo(
-    () =>
-      [...db.pathways]
-        .filter((p) => !filterInstrumentId || !p.instrumentId || p.instrumentId === filterInstrumentId)
-        .sort((a, b) => a.order - b.order),
+    () => pathwaysForInstrumentFilter(db.pathways, filterInstrumentId).slice().sort((a, b) => a.order - b.order),
     [db.pathways, filterInstrumentId],
   );
 

@@ -3,6 +3,7 @@ import type {
   Instrument,
   ISODate,
   Lesson,
+  Pathway,
   PracticeBlock,
   PracticeItem,
   Review,
@@ -43,6 +44,19 @@ export function defaultInstrumentFilter(
 ): ID | '' {
   if (!sessionInstrumentId || sessionInstrumentId === 'all') return '';
   return instruments.some((i) => i.id === sessionInstrumentId) ? sessionInstrumentId : '';
+}
+
+/**
+ * Which pathways a narrowed Pathways view shows. A General pathway
+ * (`instrumentId` unset) can hold items from ANY instrument, so it stays
+ * OUT of a one-instrument view too — narrowing to Setar must not surface a
+ * General pathway's Tar-derived progress. Only the explicit '' ("all")
+ * filter widens back to see it, matching how every other narrowed screen in
+ * this lane treats the cross-instrument view as an opt-in widen, not a
+ * default leak.
+ */
+export function pathwaysForInstrumentFilter(pathways: Pathway[], filterInstrumentId: ID | ''): Pathway[] {
+  return filterInstrumentId ? pathways.filter((p) => p.instrumentId === filterInstrumentId) : pathways;
 }
 
 /** The nearest upcoming (today or later) lesson for an instrument, if any. */
