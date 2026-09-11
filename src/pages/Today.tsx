@@ -489,12 +489,26 @@ function SessionView({
 
   return (
     <div className="stack-lg">
-      {/* 1 · The one thing to practise now — the app's actual answer, first,
-             directly under the instrument switcher. Orchestrating a session is
-             a choice you make INSTEAD of taking the suggestion, so it no longer
-             comes before it. The English eyebrow stays outside the direction
-             group: dir="auto" resolves from the first strong character, so a
-             Farsi title and its own reason read as one right-aligned block. */}
+      {/* 0 · Two collapsed, peer doorways — a time-budgeted plan and a
+             routine are separate systems, neither subordinate to the other.
+             Both start collapsed (~50px) so the primary recommendation stays
+             above the fold at 390×844, and each carries its own open/close
+             state and its own resume takeover.
+
+             They sit ABOVE the recommendation by OWNER judgement. This lane
+             built the other order — recommendation first, doorways beneath —
+             and the owner tried it on their own iPhone (2026‑09‑11) and
+             preferred this one: Plan and Routines read as belonging at the top
+             of the page, and the recommendation-first version felt less
+             natural. Ordering here is the owner's call, not a derivation, so
+             do not "fix" it back without one. */}
+      <PlanCard instrumentId={instrumentId} />
+      <RoutinesCard instrumentId={instrumentId} />
+
+      {/* 1 · The one thing to practise now — above the fold. The English
+             eyebrow stays outside the direction group: dir="auto" resolves from
+             the first strong character, so a Farsi title and its own reason
+             read as one right-aligned block. */}
       {recs.best && (
         <article className="card card-accent">
           <div className="row between" style={{ marginBottom: 6 }}>
@@ -522,20 +536,12 @@ function SessionView({
         </article>
       )}
 
-      {/* 2 · Two collapsed, peer doorways — a time-budgeted plan and a
-             routine are separate systems, neither subordinate to the other, and
-             neither is nested in the other. Both stay collapsed (~50px) so they
-             cost the recommendation above them almost nothing at 390×844, and
-             each keeps its own open/close state and its own resume takeover. */}
-      <PlanCard instrumentId={instrumentId} />
-      <RoutinesCard instrumentId={instrumentId} />
-
-      {/* 3 · Honest totals — BELOW the recommendation, never above it, so
+      {/* 2 · Honest totals — BELOW the recommendation, never above it, so
              "Practise now" stays above the fold at 390×844. Neutral counts of
              minutes and blocks: no target, no streak, no bar that fills. */}
       <PractisedLine instrumentId={instrumentId} now={now} />
 
-      {/* 4 · A calm sketch of the session. */}
+      {/* 3 · A calm sketch of the session. */}
       {secondary.length > 0 && (
         <section className="card card-quiet stack-sm">
           <div className="section-label">Then, if you have time</div>
@@ -558,7 +564,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 5 · Class commitments for THIS instrument only. */}
+      {/* 4 · Class commitments for THIS instrument only. */}
       {lessonDate && classWork.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">
@@ -584,7 +590,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 6 · Due reviews, with honest actions. */}
+      {/* 5 · Due reviews, with honest actions. */}
       {reviews.length > 0 && (
         <section className="stack-sm">
           <div className="row between">
@@ -642,7 +648,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 7 · Where you are on this instrument's path. */}
+      {/* 6 · Where you are on this instrument's path. */}
       {pathway && stage && (
         <Link
           to={`/pathway/${pathway.id}/${stage.id}`}
@@ -670,7 +676,7 @@ function SessionView({
         </Link>
       )}
 
-      {/* 8 · Shaky material, quick capture, and the open-ended start. */}
+      {/* 7 · Shaky material, quick capture, and the open-ended start. */}
       {fragile.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">Shaky right now</h2>

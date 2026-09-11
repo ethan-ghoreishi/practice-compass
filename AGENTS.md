@@ -47,27 +47,31 @@ instrument, everything below it (recommendation, class work, reviews, pathway po
 quick add, Start) is scoped to that instrument, and the primary recommendation must stay
 above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
 secondary choice — never the default. Never hard‑code a morning/evening schedule and
-never surface another instrument's work inside a session. **THE RECOMMENDATION IS
-THE FIRST THING UNDER THE SWITCHER.** Practise now comes first and the two doorways sit
-BENEATH it: orchestrating a session is a choice you make INSTEAD of taking the
-suggestion, so presenting it first put two orchestration decisions in front of the
-app's actual answer. This deliberately revisits part of the owner's own 2026‑08‑28
-acceptance decision and is REVERSIBLE — it is one ordering change in `Today.tsx` with no
-data or state implication, and the owner's device check (2026‑09‑11) is what settles it.
-The Session Plan and Routines are two independent, peer doorway cards
-(`PlanCard`/`RoutinesCard` in `Today.tsx`) — a time-budgeted session and following a
-routine are separate systems, and OWNER acceptance testing (2026‑08‑28) found nesting
-routines inside the Session Plan's expanded panel read as routines being subordinate to
-picking a duration, so they were pulled out into their own doorway. Moving them below
-the recommendation must not nest one in the other either. Both start collapsed (~50px)
-so they cost the recommendation above them almost nothing; each has its own open/close
-state and its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+never surface another instrument's work inside a session. The Session Plan and
+Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
+`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
+and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
+Plan's expanded panel read as routines being subordinate to picking a duration, so
+they were pulled out into their own doorway. Both start collapsed (~50px) so the
+primary recommendation stays above the fold; each has its own open/close state and
+its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
 session instrument (`routinesForInstrument`), each row showing Edit and — when a
 segment is essential — a visible "Short on time — essentials only" button, plus "New
 routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
 unplaced routine is reachable from at all, so its rows carry the same Edit/Start/
 short-on-time affordances StageDetail's `RoutineCard`/PathwayDetail's `RoutineRow`
 give a placed one.
+
+**THE TWO DOORWAYS SIT ABOVE THE RECOMMENDATION, AND THAT IS AN OWNER JUDGEMENT, NOT A
+DERIVATION.** The 2026‑09‑11 lane BUILT the other order — Practise now directly under
+the instrument switcher, with Plan and Routines beneath it — on the argument that
+orchestrating a session is a choice you make INSTEAD of taking the suggestion. The owner
+tried it on their own iPhone and preferred the original: Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural. The order
+reverted before the lane shipped, which is a PASSING outcome of that check, not a
+failure. Both orders keep the recommendation above the fold at 390×844, so nothing here
+follows from the phone constraint — do not re-derive this ordering from first principles
+and quietly flip it back. It changes only when the owner says so.
 
 ## Review actions have honest, distinct semantics
 
@@ -801,9 +805,10 @@ no scores, no "optimal" claims, no gamification.
 - **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
   store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
   never syncs/backs-up as data.**
-- **Today's plan card stays collapsed (~50px), BELOW "Practise now"** (moved there
-  2026‑09‑11) so the primary recommendation is the first thing under the instrument
-  switcher and still sits above the fold at 390×844. It becomes "Resume your plan"
+- **Today's plan card stays collapsed (~50px) above "Practise now"** so the primary
+  recommendation stays above the fold at 390×844 (verified). Putting it BELOW the
+  recommendation was built and tried in the 2026‑09‑11 lane and the owner preferred it
+  where it is — see "Today is a session workspace" above. It becomes "Resume your plan"
   while one runs. The evidence behind the bucket shape (spacing, interleaving, retrieval
   practice, end-on-stability) is cited soberly in `plan.ts` and `DECISIONS.md` — sane
   defaults, adjustable via `SchedulingParams`, never dressed up as an optimum.

@@ -70,12 +70,22 @@ field), which is exactly the drift r-explainable-scheduling exists to prevent. A
 formatter (`reviewSummaryLine`) renders the line and computes nothing, so a divergent
 date is unrepresentable rather than merely remembered about.
 
-**Today's order was reversed deliberately and reversibly.** Practise now moves directly
-under the instrument switcher, with Plan and Routines as two compact peer doorways
-beneath it. This revisits part of the owner's own 2026-08-28 acceptance decision; it is
-one ordering change with no data or state implication, and if it reads worse on the
-owner's iPhone it reverts before the lane ships — that reversal is a passing outcome,
-not a failure.
+**Today's order was built the other way round, tried, and REVERTED — by design.** The
+lane built Practise now directly under the instrument switcher with Plan and Routines as
+two compact peer doorways beneath it, on the argument that orchestrating a session is a
+choice you make INSTEAD of taking the suggestion. It shipped as one ordering change with
+no data or state implication precisely so the owner's own device could settle it. It did:
+on 2026-09-11 the owner judged the original order better — Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural — so the
+order went back. That reversal is a PASSING outcome of the check, not a failure of the
+lane, and everything else the lane built stands.
+
+Worth recording for whoever reads the code next: BOTH orders keep the recommendation
+above the fold at 390×844, so nothing about this ordering follows from the phone
+constraint or from any other rule in AGENTS.md. It is a taste judgement that only the
+owner can make, and the argument for recommendation-first is genuinely available to
+re-derive — which is exactly why `Today.tsx` and AGENTS.md now say, in so many words,
+not to act on it without asking.
 
 ## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
 
