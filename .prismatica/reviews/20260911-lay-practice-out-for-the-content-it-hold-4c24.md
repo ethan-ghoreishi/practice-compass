@@ -1,37 +1,28 @@
 ---
 id: 20260911-lay-practice-out-for-the-content-it-hold-4c24
 contractId: 20260911-lay-practice-out-for-the-content-it-hold-4c24
-patchId: 7d9a9b307fed42a983f542aa51e84a6191cdb0eb
+patchId: 791c42d4aef6648ac9d67376b8737b6b62a82e81
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: "r-direction-aware-text: mixed-content groups and completeness"
-    summary: Grouping the title and English detail under one dir="auto" changes the
-      detail bidi base to RTL; the full stop moves to the visual start. The same
-      family also contains groups whose first strong text is English and a
-      source check that cannot detect an omitted site.
-    counterexample: With a Farsi recommendation title, Today.tsx:518-526 makes the
-      English reason inherit RTL; buildReason always ends it with a full stop,
-      which FriBidi renders at the visual start under RTL. Today.tsx:308-321
-      resolves routine buttons LTR from Resume your routine or Routines, not the
-      Farsi name. ActiveBlock.tsx:84-100 remains centre-aligned despite the
-      contract requiring the Farsi title and details at the right edge. Removing
-      dir="auto" from the Practise-now group would still pass direction.test.ts
-      because Today has other groups.
-  - family: CloseBlock manual-date preservation
-    summary: "The restructure changes manual-mode behaviour: choosing a different
-      result clears a date the musician already chose, despite the
-      presentation-only boundary and the prior manual-mode rule to keep that
-      date."
-    counterexample: For an item with reviewMode manual, choose a result, open
-      Change, enter a date, then choose another result. planNextReview returns
-      null and CloseBlock.tsx:139-146 unconditionally calls setOverride(null),
-      so the date disappears and saving becomes a deliberate decline instead of
-      scheduling the chosen date. At the baseline, pickResult kept reviewDate
-      when the manual plan was null.
-createdAt: 2026-09-11T20:02:55.035Z
-sealedAt: 2026-09-11T20:15:28.221Z
+    summary: The rework still lets a Farsi title set RTL as the bidi base for
+      separate English or independently authored detail text. The inventory test
+      records attribute sites, but does not prove each child's own bidi
+      direction, so it passes this broken rendering.
+    counterexample: "In src/pages/CloseBlock.tsx:200-204, a Farsi item title makes
+      the English sentence \"A few seconds to capture what happened.\" inherit
+      RTL; its trailing full stop renders at the visual start, the same defect
+      the sealed rejection identified. The family remains wider:
+      src/components/ClassQuestions.tsx:70-76 makes an English question, current
+      problem and last observation inherit the Farsi title's RTL base, even
+      though those are separately authored values; src/pages/Today.tsx:389-392
+      and :630-632 similarly place fixed English metadata under the title's bidi
+      base. src/components/direction.test.ts:102-159 only inventories
+      dir=\"auto\" locations and therefore passes all of these."
+createdAt: 2026-09-11T20:58:19.830Z
+sealedAt: 2026-09-11T21:11:08.267Z
 ---
 
 # Review: Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen
@@ -45,7 +36,7 @@ sealedAt: 2026-09-11T20:15:28.221Z
 - **Contract:** 20260911-lay-practice-out-for-the-content-it-hold-4c24
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/20
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `7d9a9b307fed42a983f542aa51e84a6191cdb0eb`
+- **Diff patch-id:** `791c42d4aef6648ac9d67376b8737b6b62a82e81`
 
 ## The plan the owner approved
 
