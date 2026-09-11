@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { clearBlobs, deleteBlobsForOwner, idbStorage, storageWasEmpty } from './idb';
+import { clearBlobs, deleteBlob, idbStorage, storageWasEmpty } from './idb';
 import { withRevision } from './revision';
 import {
   acknowledgeThrough,
@@ -29,6 +29,7 @@ import {
   focusForItem,
   groupBlocksByItem,
   itemFromCatalogEntry,
+  itemOwnedAttachments,
   retargetRoutineInstrument,
   runElapsedSeconds,
   segmentBoundaries,
@@ -527,12 +528,15 @@ export const useStore = create<StoreState>()(
 
       deleteLesson: (id) => {
         // The lesson owns its attachments; linked items are never touched.
-        void deleteBlobsForOwner(id);
+        // ownerId alone is not a lesson id — an item can share it — so only
+        // an attachment whose ownerType is ALSO 'lesson' is this lesson's own.
+        const owned = get().db.attachments.filter((a) => a.ownerType === 'lesson' && a.ownerId === id);
+        for (const a of owned) void deleteBlob(a.id);
         set((s) => ({
           db: {
             ...s.db,
             lessons: s.db.lessons.filter((l) => l.id !== id),
-            attachments: s.db.attachments.filter((a) => a.ownerId !== id),
+            attachments: s.db.attachments.filter((a) => !(a.ownerType === 'lesson' && a.ownerId === id)),
           },
         }));
       },
@@ -738,7 +742,10 @@ export const useStore = create<StoreState>()(
       },
 
       deleteItem: (id) => {
-        void deleteBlobsForOwner(id);
+        // ownerId alone is not an item id — a lesson can share it — so only
+        // an attachment owned by THIS item (ownerType 'item' too) is deleted.
+        const owned = itemOwnedAttachments(get().db.attachments, id);
+        for (const a of owned) void deleteBlob(a.id);
         const now = new Date();
         set((s) => ({
           db: {
@@ -749,7 +756,7 @@ export const useStore = create<StoreState>()(
               .map((i) => (i.parentItemId === id ? touch({ ...i, parentItemId: undefined }, now) : i)),
             blocks: s.db.blocks.filter((b) => b.practiceItemId !== id),
             reviews: s.db.reviews.filter((r) => r.practiceItemId !== id),
-            attachments: s.db.attachments.filter((a) => a.ownerId !== id),
+            attachments: s.db.attachments.filter((a) => !(a.ownerType === 'item' && a.ownerId === id)),
             lessons: s.db.lessons.map((l) =>
               (l.itemIds ?? []).includes(id)
                 ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== id) }, now)

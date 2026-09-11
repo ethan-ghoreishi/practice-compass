@@ -82,11 +82,11 @@ describe('itemFiles', () => {
     expect(files.filter((f) => f.source === 'reference' && f.path.endsWith('score.pdf'))).toHaveLength(1);
   });
 
-  it("keeps a lesson-owned attachment out of an item's own attachments even when the lesson and item share an id", () => {
-    // Reviewer counterexample: an item and a lesson can collide on id (they
-    // are different owner kinds, not a shared id space), so ownerId alone is
-    // not a valid ownership test. Only ownerType + ownerId together decide
-    // whether an attachment is this item's own.
+  it("keeps a lesson-owned attachment out of an item's own attachments even when the item and a lesson it is linked to share an id", () => {
+    // Reviewer counterexample, reproduced exactly: a database containing an
+    // item AND a lesson with the same id, with an attachment whose ownerType
+    // is 'lesson' and ownerId is that shared id. ownerId alone is not a valid
+    // ownership test — it is only correct together with ownerType.
     const sharedId = 'shared-id';
     const attachments = [
       attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
@@ -95,9 +95,20 @@ describe('itemFiles', () => {
 
     expect(itemOwnedAttachments(attachments, sharedId).map((a) => a.id)).toEqual(['a-item-own']);
 
-    // Same invariant from the composed Material list ItemDetail renders.
-    const state = db({ attachments });
-    expect(itemFiles(state, sharedId).map((f) => f.id)).toEqual(['a-item-own']);
+    // The item is genuinely linked to the colliding-id lesson, so its
+    // recording legitimately appears — only the lesson's ATTACHMENT must not.
+    const state = db({
+      lessons: [
+        lesson({
+          id: sharedId,
+          date: '2026-07-09',
+          itemIds: [sharedId],
+          recordings: [recording({ id: 'r-class', path: 'a/class.mp4' })],
+        }),
+      ],
+      attachments,
+    });
+    expect(itemFiles(state, sharedId).map((f) => f.id)).toEqual(['r-class', 'a-item-own']);
   });
 
   it('excludes references from lessons the item is not linked to and returns nothing when it has none', () => {
