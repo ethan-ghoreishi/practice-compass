@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { itemFiles } from './itemFiles';
+import { itemFiles, itemOwnedAttachments } from './itemFiles';
 import type { AttachmentMeta, Lesson, LessonRecording, PracticeDB } from './types';
 
 function recording(partial: Partial<LessonRecording> & { id: string; path: string }): LessonRecording {
@@ -80,6 +80,24 @@ describe('itemFiles', () => {
     // Newest lesson first, video before score within it, then attachments.
     expect(files.map((f) => f.id)).toEqual(['r-video', 'r-score', 'a-photo']);
     expect(files.filter((f) => f.source === 'reference' && f.path.endsWith('score.pdf'))).toHaveLength(1);
+  });
+
+  it("keeps a lesson-owned attachment out of an item's own attachments even when the lesson and item share an id", () => {
+    // Reviewer counterexample: an item and a lesson can collide on id (they
+    // are different owner kinds, not a shared id space), so ownerId alone is
+    // not a valid ownership test. Only ownerType + ownerId together decide
+    // whether an attachment is this item's own.
+    const sharedId = 'shared-id';
+    const attachments = [
+      attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
+      attachment({ id: 'a-lesson-own', ownerId: sharedId, ownerType: 'lesson', name: 'lesson-file.pdf' }),
+    ];
+
+    expect(itemOwnedAttachments(attachments, sharedId).map((a) => a.id)).toEqual(['a-item-own']);
+
+    // Same invariant from the composed Material list ItemDetail renders.
+    const state = db({ attachments });
+    expect(itemFiles(state, sharedId).map((f) => f.id)).toEqual(['a-item-own']);
   });
 
   it('excludes references from lessons the item is not linked to and returns nothing when it has none', () => {

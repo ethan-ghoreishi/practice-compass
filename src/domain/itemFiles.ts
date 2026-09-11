@@ -63,6 +63,19 @@ function referenceKey(path: string): string {
 }
 
 /**
+ * The single test for "this attachment belongs to this item." `ownerId` alone
+ * is not an item id — a lesson's attachments share the same id space, so a
+ * lesson and an item can collide on id — the ownership check is only correct
+ * when `ownerType` and `ownerId` are checked TOGETHER. Every surface that
+ * lists or removes an item's own attachments (Material's composition here,
+ * and ItemDetail's Files CRUD list) calls this instead of re-deriving the
+ * predicate, so the invariant can't drift between the two call sites.
+ */
+export function itemOwnedAttachments(attachments: AttachmentMeta[], itemId: ID): AttachmentMeta[] {
+  return attachments.filter((a) => a.ownerType === 'item' && a.ownerId === itemId);
+}
+
+/**
  * Every file that already belongs to an item: the NAS references of each lesson
  * the item is LINKED to (deduplicated by path, so a file referenced from two of
  * those lessons appears once), followed by the item's own attachments.
@@ -103,9 +116,9 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
     }
   }
 
-  const attachments = db.attachments
-    .filter((a: AttachmentMeta) => a.ownerType === 'item' && a.ownerId === itemId)
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const attachments = itemOwnedAttachments(db.attachments, itemId).sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  );
   for (const a of attachments) {
     out.push({
       source: 'attachment',

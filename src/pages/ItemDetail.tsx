@@ -14,6 +14,7 @@ import {
   RESULT_LABELS,
   stallHint,
   itemFiles,
+  itemOwnedAttachments,
   type BlockResult,
   type GuitarFields,
   type PersianFields,
@@ -444,7 +445,7 @@ function MaterialSection({ item }: { item: PracticeItem }) {
 function ItemFilesCrud({ itemId }: { itemId: string }) {
   const all = useStore((s) => s.db.attachments);
   const list = useMemo(
-    () => all.filter((a) => a.ownerId === itemId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    () => itemOwnedAttachments(all, itemId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     [all, itemId],
   );
   const fileRef = useRef<HTMLInputElement>(null);

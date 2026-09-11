@@ -601,7 +601,11 @@ the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated B
 a file referenced from two of those lessons appears once, followed by the item's own
 attachments — lessons newest first, kind order within a lesson, attachments oldest
 first. Nothing is persisted to make this view work and no new field exists; these links
-were always in the data and were simply never composed. An item with no lesson link and
+were always in the data and were simply never composed. An attachment's `ownerId` is not
+an item id on its own — a lesson's attachments share the same id space, so a lesson and an
+item can collide on id — so ownership is decided by `ownerType` AND `ownerId` TOGETHER,
+via one shared `itemOwnedAttachments` predicate `itemFiles.ts` reuses rather than every
+call site re-deriving it. An item with no lesson link and
 no attachments yields an EMPTY LIST, and the surfaces render nothing rather than an
 empty frame. An item with no lesson link cannot reference NAS material at all — that is
 the honest gap, and closing it needs a persisted item-level reference, therefore a
@@ -609,7 +613,10 @@ schema change and its own lane. Both the PRACTICE screen and ItemDetail render t
 composition — a reference and an attachment for the same piece are never split across two
 sections of the screen. ItemDetail's existing Files section stays below it, but only for
 add/remove: that is a CRUD concern, never a second, partial presentation of what
-`itemFiles` already composed. It is therefore its own small list local to `ItemDetail.tsx`
+`itemFiles` already composed. It selects its list via the SAME `itemOwnedAttachments`
+predicate rather than filtering `ownerId` alone, so it can never present or remove a
+lesson's attachment that happens to share the item's id. It is therefore its own small
+list local to `ItemDetail.tsx`
 (name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
 for a lesson's own attachments: that component's preview and Open are exactly the
 presentation Material already gives an item's files, and reusing it here would put the
