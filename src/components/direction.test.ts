@@ -82,6 +82,82 @@ const ALLOWED_TITLE_SITES: { file: string; snippet: string; why: string }[] = [
   // rather than silent.
 ];
 
+/**
+ * Every group-level `dir="auto"` site, recorded in source order — duplicates
+ * included, because three bare `<div dir="auto">` in the same file (Today.tsx
+ * has several) are three separate SITES, not one collapsed entry. This is
+ * what "every listed surface has A group" (below) cannot see: a file keeps
+ * passing that check as long as ONE of its groups survives, so deleting the
+ * Practise-now card's own `dir="auto"` — the exact regression a rejected
+ * review found — left Today.tsx's other, unrelated groups to vouch for it.
+ * Comparing the WHOLE ordered inventory instead means removing any one of
+ * these sites — anywhere in any file — shrinks or reorders the array and
+ * fails here, whether or not that file has other groups left.
+ *
+ * Same visibility contract as ALLOWED_TITLE_SITES: this is a recorded ledger,
+ * not a derivation, so a legitimate new group site must be added here (the
+ * "keeps every recorded group site current" test below fails until it is),
+ * exactly as a title exception must be added to the allowlist above.
+ */
+const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
+  { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: '' },
+  { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
+  { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'small dim' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/CloseBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
+  { file: 'pages/Insights.tsx', tagName: 'th', classValue: 'dim' },
+  { file: 'pages/Insights.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'list-row card-link' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'div', classValue: 'list-row' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'link' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'span', classValue: 'dim' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'link' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'row between' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'tiny dim' },
+  { file: 'pages/Lessons.tsx', tagName: 'link', classValue: 'grow' },
+  { file: 'pages/Materials.tsx', tagName: 'section', classValue: 'stack-sm' },
+  { file: 'pages/Materials.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'small dim' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
+  { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
+  { file: 'pages/Repertoire.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Repertoire.tsx', tagName: 'link', classValue: 'row between small card-link' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'row between' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'tiny faint' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: 'card card-quiet row between small' },
+  { file: 'pages/StageDetail.tsx', tagName: 'button', classValue: 'stage-unit-text' },
+  { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/StartBlock.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/TeacherReport.tsx', tagName: 'pre', classValue: 'pre' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'link', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'link', classValue: 'list-row card-link' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: 'grow' },
+];
+
 // --- reading the source -----------------------------------------------------
 
 function sourceFiles(): string[] {
@@ -137,8 +213,63 @@ function classNameOf(tag: string): string {
   return tag.slice(from + 1);
 }
 
+/**
+ * Blank out `//` and `/* *\/` comments before scanning — a prose comment that
+ * mentions `dir="auto"` (this file is full of them, and rightly so) is not an
+ * attribute, and matching it anyway produces a phantom site: at best one with
+ * no enclosing tag, at worst `enclosingTag` walking backward out of the
+ * comment and mis-picking an unrelated real tag from earlier in the file.
+ * String and template literals are copied through verbatim — that is where a
+ * REAL `dir="auto"` attribute value lives — and every character removed is
+ * replaced with a space (newlines kept as newlines) so line numbers and
+ * offsets into the rest of the source are unaffected.
+ */
+function stripComments(src: string): string {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const two = src.slice(i, i + 2);
+    if (two === '//') {
+      while (i < src.length && src[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+    } else if (two === '/*') {
+      out += '  ';
+      i += 2;
+      while (i < src.length && src.slice(i, i + 2) !== '*/') {
+        out += src[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+    } else if (src[i] === '"' || src[i] === "'" || src[i] === '`') {
+      const quote = src[i];
+      out += quote;
+      i += 1;
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\' && i + 1 < src.length) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i += 1;
+      }
+      if (i < src.length) {
+        out += src[i];
+        i += 1;
+      }
+    } else {
+      out += src[i];
+      i += 1;
+    }
+  }
+  return out;
+}
+
 function directionSites(file: string): Site[] {
-  const src = SOURCES[file];
+  const src = stripComments(SOURCES[file]);
   const sites: Site[] = [];
   for (const match of src.matchAll(/dir="auto"/g)) {
     const at = match.index!;
@@ -188,5 +319,13 @@ describe('direction lives on the group', () => {
       const hit = all.some((s) => s.file === entry.file && s.text.includes(entry.snippet) && isTitle(s));
       expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.snippet})`).toBe(true);
     }
+  });
+
+  it('keeps every recorded group site current — removing any ONE of them fails, even when its file has others', () => {
+    const inventory = sourceFiles()
+      .flatMap(directionSites)
+      .filter(isGroup)
+      .map(({ file, tagName, classValue }) => ({ file, tagName, classValue }));
+    expect(inventory).toEqual(GROUP_SITE_INVENTORY);
   });
 });

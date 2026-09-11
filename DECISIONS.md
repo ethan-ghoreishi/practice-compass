@@ -87,6 +87,68 @@ owner can make, and the argument for recommendation-first is genuinely available
 re-derive — which is exactly why `Today.tsx` and AGENTS.md now say, in so many words,
 not to act on it without asking.
 
+**Rejection findings, addressed (fresh review, 2026-09-11).** A sealed fresh review of
+this lane's diff returned `request_changes` against two families, fixed comprehensively
+rather than by patching the two cited examples:
+
+1. **Mixed-content groups and completeness.** Grouping a Farsi title with an
+   ALWAYS-ENGLISH generated detail (`buildReason`, `planSegmentReason`) under one
+   `dir="auto"` fixed the ALIGNMENT but broke the detail's own bidi ordering: the Farsi
+   title's resolved RTL base became the detail's base too, and FriBidi renders a trailing
+   neutral character (the sentence's own full stop) using that base when nothing more
+   specific claims it — so it visually jumped to the start. Fixed by nesting a
+   `dir="ltr"` isolate around each such detail (Today's Practise-now card and secondary
+   recommendations, ItemDetail's "practise this part now", Session Plan's segment
+   list and runner) — grouping and alignment are unchanged, only the isolate's own
+   internal ordering is fixed. A structurally identical bug existed the other way round
+   for FREE TEXT the owner typed after a fixed English label (ActiveBlock's
+   `constraint`/`problem`, "last time you decided to try"): the label was the subtree's
+   first strong text, so `dir="auto"` on the whole line resolved from the label and never
+   saw the owner's own (possibly Farsi) words — fixed the same way the codebase already
+   excludes an eyebrow, by giving the VALUE its own nested `dir="auto"` and leaving the
+   label outside it. Today's Routines doorway had the same eyebrow-first bug at the
+   button level ("Resume your routine"/"Routines" decided the direction, not the routine's
+   own name) — fixed by moving `dir="auto"` off the button and onto a block wrapper
+   around just the name, mirroring the shape `ElsewhereSessions` already used a few lines
+   above it (an inline `<span>` there would silently break `.truncate`'s ellipsis, since
+   `overflow`/`text-overflow` do nothing on a non-replaced inline box). ActiveBlock's
+   header stayed CENTRED despite the contract requiring Farsi right / English left on that
+   screen — the page's own `text-align: center` (correct for the timer ring and buttons)
+   was never overridden for the title group; it now sets `text-align: start` on itself,
+   which is a deliberate LAYOUT CHANGE for English on that one screen and is documented in
+   AGENTS.md as not conflicting with "English keeps its layout" elsewhere (that non-goal
+   guards against a Farsi-style right-align, not against ac-6's explicit left-for-English
+   requirement on Active).
+
+   The COMPLETENESS gap: `direction.test.ts`'s "every surface has a group" check passed
+   as long as ONE group survived anywhere in the file, so deleting the Practise-now card's
+   own `dir="auto"` still passed because Today.tsx has several unrelated groups. Fixed
+   with `GROUP_SITE_INVENTORY` — every group-level site recorded in order, duplicates
+   included, asserted with `toEqual` against the live scan, so removing any ONE recorded
+   site anywhere fails regardless of what else survives in the same file. Building that
+   inventory surfaced a second, unrelated defect in the scanner itself: this file's own
+   prose repeatedly writes the literal string `dir="auto"` in comments, and the naive
+   regex scan matched those too — usually producing a site with no real enclosing tag, but
+   at least once walking backward out of a long comment and mis-attributing an unrelated
+   component tag from elsewhere in the file as if it were the match's real element. The
+   scanner now strips `//` and `/* */` comments (copying string/template literals through
+   verbatim, since that is where a REAL `dir="auto"` attribute value lives) before
+   matching.
+
+2. **CloseBlock manual-date preservation.** `pickResult` cleared the manual `override` on
+   every result change — correct when the engine actually re-plans (a fresh judgement
+   deserves a fresh plan, not a stale correction pinned to the old one), wrong when it
+   doesn't: a manual-mode item (`item.reviewMode === 'manual'`) has no automatic plan for
+   ANY result, so a date the owner had just typed in was never tied to a particular
+   judgement, and clearing it turned a deliberate "come back on this date" into an
+   accidental decline the moment they picked a different result. Fixed by gating the
+   clear on `reviewOverrideSurvivesResultChange(item.reviewMode)`
+   (`src/components/format.ts`) rather than calling `planNextReview` a second time inside
+   `pickResult` — CloseBlock's single `ReviewPlan` derivation is unchanged; this is a
+   boolean read of the item's own mode, not a second value that could disagree with it.
+   The predicate is tested against the real engine across all six results for both a
+   manual- and an auto-mode item, not asserted in prose alone.
+
 ## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
 
 **Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores

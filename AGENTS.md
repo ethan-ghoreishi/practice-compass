@@ -119,6 +119,23 @@ into that one derivation. The line itself comes from `reviewSummaryLine`
 own date the rationale becomes "The date you chose." — quoting the engine's reason would
 explain a number it did not pick. Never reintroduce a second derivation here.
 
+**A MANUALLY CHOSEN DATE SURVIVES CHANGING THE RESULT WHEN NO AUTOMATIC PLAN EXISTS.**
+`pickResult` clears the manual `override` on every fresh result — a correction made
+earlier belonged to the date the PREVIOUS result's plan produced, so carrying it forward
+would pin a date to a judgement it was never made about. But a manual-mode item
+(`item.reviewMode === 'manual'`) has NO automatic plan for ANY result — `computeReview`
+returns `null` unconditionally in manual mode, before it even looks at `result` — so the
+owner's typed-in date was never tied to a particular judgement in the first place, and
+clearing it on every result change silently threw away a date they had just chosen. The
+restructure once did exactly that (`setOverride(null)` unconditionally), turning a
+deliberate "come back on this date" into an accidental decline the moment the musician
+changed which result they picked. `reviewOverrideSurvivesResultChange`
+(`src/components/format.ts`, tested against the real engine across all six results, both
+a manual- and an auto-mode item) reads `item.reviewMode` directly rather than calling
+`planNextReview` a second time inside `pickResult` — CloseBlock keeps its single
+derivation; this is a boolean gate on whether one exists at all, not a second value that
+could disagree with it.
+
 **THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
 243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
 one thing the row exists to identify. The text now claims a whole line whenever the three
@@ -613,11 +630,42 @@ data is entirely Farsi. The rule is now mechanical, not a matter of care:
   (`truncate`, `title-md`, `page-title`, `stage-unit-title`).
 - The group is drawn so the TITLE is the first strong text inside it. Where an English
   eyebrow precedes the title in the DOM — Today's Practise-now card, the close screen's
-  header, Session Plan's minutes/bucket line, ItemDetail's "practise this part now" — the
-  group wraps title + details and LEAVES THE EYEBROW OUT, because `dir="auto"` resolves
-  from the first strong character in the subtree.
-- A group that sits under an ancestor pinning `text-align: left` must set
-  `text-align: start` on itself, or its own direction never reaches the alignment.
+  header, Session Plan's minutes/bucket line, ItemDetail's "practise this part now",
+  Today's Routines doorway ("Resume your routine"/"Routines" precedes the routine's own
+  name), ActiveBlock's "Last time you decided to try:"/"Working on:" — the group wraps
+  title + details and LEAVES THE EYEBROW OUT, because `dir="auto"` resolves from the
+  first strong character in the subtree. Getting this backwards doesn't just mis-align:
+  Today's Routines buttons carried `dir="auto"` on the whole button, so the fixed English
+  label — not the Farsi routine name that followed it — decided the resolved direction,
+  and the button never read the name at all.
+- **A detail that mixes languages needs its OWN nested `dir` inside the group, not the
+  group's resolved direction.** Two different cases, two different attributes:
+  - A detail that is ALWAYS ENGLISH BY CONSTRUCTION — `buildReason`/`planSegmentReason`'s
+    generated sentences (Today's recommendation reason, ItemDetail's "practise this part
+    now" reason, Session Plan's segment reason) — carries its own `dir="ltr"` isolate
+    around the whole sentence, nested inside the group. Grouped under a Farsi title, that
+    div/paragraph still resolves RTL and the detail still sits in the same right-aligned
+    block (nothing about ALIGNMENT changes) — but the isolate fixes the sentence's OWN
+    bidi base to LTR, so the title's RTL base can no longer drag the sentence's trailing
+    full stop to the visual start (FriBidi renders a trailing neutral character using the
+    surrounding base direction when nothing more specific claims it). `dir="ltr"` here is
+    a static fact about content that is never user text, not detection.
+  - A detail that is FREE TEXT the owner typed (ActiveBlock's `constraint`/`problem`,
+    the "last time you decided to try" note) sitting after a fixed English label —
+    `Constraint: `, `Working on: `, `Last time you decided to try: ` — carries its own
+    `dir="auto"` around just the value, not the label. The label would otherwise be the
+    subtree's first strong text (the same eyebrow bug as above) and pin the whole line to
+    English regardless of what the owner actually typed.
+- A group that sits under an ancestor pinning `text-align: left` OR `text-align: center`
+  must set `text-align: start` on itself, or its own direction never reaches the
+  alignment — ActiveBlock's whole screen centres its timer and buttons regardless of
+  language (that stays, it isn't text), but the title group overrides back to `start`
+  so ac-6's "English stays left, Farsi goes right" actually holds on that screen. This
+  is a deliberate LAYOUT CHANGE for English on Active specifically (centred → left) and
+  does not conflict with "English keeps its layout exactly as it is today" elsewhere in
+  this file: that non-goal protects English from being flipped to a Farsi-style
+  right-align, it was never a promise that Active's pre-existing centring was sacred —
+  ac-6 names Active as a checked surface with exactly this expectation.
 - Group HEADINGS that render Farsi (the dastgāh sections, Materials' instrument sections)
   take direction on the SECTION, so a heading can no longer disagree with the rows
   beneath it.
@@ -634,6 +682,24 @@ attribute fails too, since that would break Farsi rendering outright. Genuine ex
 live in that test's explicit allowlist AND here; **the allowlist is currently EMPTY**,
 because every title on every surface turned out to have a group it could join. An
 exception must always be VISIBLE, never silent.
+
+**"a whole skipped file fails" is not the same guarantee as "a deleted site fails."** A
+per-FILE check ("does this file have at least one group somewhere") stays green as long
+as one group survives anywhere in the file — so deleting the Practise-now card's own
+`dir="auto"` from Today.tsx, which carries several other unrelated groups, passed that
+check even though the one thing it was there to prove had broken. `GROUP_SITE_INVENTORY`
+in that test is the fix: every group-level site, recorded in file-then-source order,
+DUPLICATES INCLUDED (three bare `<div dir="auto">` in Today.tsx are three sites, not one
+collapsed entry, or removing one of the three would still pass a de-duplicated list), and
+asserted with `toEqual` against the live scan. Deleting any one recorded site — anywhere,
+in any file — shrinks or reorders that array and fails, regardless of what else survives
+in the same file. It carries the same visibility contract as the title allowlist: a
+legitimate new group site must be added to the recorded array (a test fails until it is),
+never inferred silently. The scanner also strips `//` and `/* */` comments before
+matching — this file's own prose repeatedly writes the literal string `dir="auto"`, and
+matching inside a comment either produces a site with no real enclosing tag or, worse,
+walks backward out of the comment and mis-attributes an unrelated tag from earlier in the
+file.
 
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is

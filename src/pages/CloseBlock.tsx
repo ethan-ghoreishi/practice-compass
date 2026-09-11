@@ -18,7 +18,7 @@ import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { Field, OptionPills } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
-import { reviewSummaryLine } from '../components/format';
+import { reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
   { value: 'worse', label: RESULT_LABELS.worse },
@@ -142,8 +142,11 @@ export default function CloseBlock() {
     // A fresh result means a fresh plan: a correction made earlier belonged to
     // the date the PREVIOUS result produced, and carrying it over would pin a
     // date to a judgement it was never made about. The plan itself is derived
-    // above from `result` — nothing is computed here.
-    setOverride(null);
+    // above from `result` — nothing is computed here. But a manual-mode item
+    // has no automatic plan for ANY result (computeReview returns null
+    // unconditionally in manual mode) — the owner's typed-in date isn't tied
+    // to a judgement at all, so it must survive switching results.
+    if (!reviewOverrideSurvivesResultChange(item?.reviewMode)) setOverride(null);
   }
 
   if (!active || !item) {

@@ -1,4 +1,4 @@
-import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
+import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewMode, type ReviewPlan } from '../domain';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -60,4 +60,18 @@ export function pluralize(n: number, word: string): string {
  */
 export function reviewSummaryLine(plan: ReviewPlan, now: Date = new Date()): string {
   return `Review ${relativeDay(plan.dueDate, now)} · ${REVIEW_TYPE_LABELS[plan.reviewType]} · ${plan.rationale}`;
+}
+
+/**
+ * Whether a manual date correction on the close screen should survive
+ * picking a different result. `computeReview` (and so `planNextReview`)
+ * returns `null` for every result when an item's `reviewMode` is 'manual' —
+ * there is no automatic plan for THIS judgement to replace, so a date the
+ * owner already typed in isn't pinned to the previous result and must not be
+ * cleared just because they picked a different one. `src/domain/**` is out of
+ * scope for this lane, so this reads the item's own mode rather than calling
+ * `planNextReview` a second time — CloseBlock keeps its single derivation.
+ */
+export function reviewOverrideSurvivesResultChange(reviewMode: ReviewMode | undefined): boolean {
+  return reviewMode === 'manual';
 }

@@ -371,7 +371,12 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
             </div>
             <div dir="auto">
               <div className="truncate">{next.score.item.title}</div>
-              <div className="tiny faint truncate">{next.reason}</div>
+              {/* next.reason is always English (buildReason) — its own
+                  dir="ltr" isolate keeps its bidi base fixed regardless of
+                  the title's. */}
+              <div className="tiny faint truncate">
+                <span dir="ltr">{next.reason}</span>
+              </div>
             </div>
           </div>
           <button

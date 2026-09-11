@@ -303,11 +303,18 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     // A legacy routine with no instrumentId isn't foreign to anything.
     const matches = !running?.instrumentId || running.instrumentId === instrumentId;
     const to = `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`;
+    // dir="auto" sits on a wrapper around the routine's OWN name, not on the
+    // whole button: with it on the button, "Resume your routine"/"Routines" —
+    // the fixed English label — is the first strong text in the subtree, so
+    // auto-detection resolved LTR from that label and never saw the Farsi
+    // name that follows.
     if (matches) {
       return (
-        <button className="card card-accent row between" dir="auto" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
+        <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
           <span style={{ fontWeight: 600 }}>Resume your routine</span>
-          <span className="small truncate" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
+          <div dir="auto" style={{ minWidth: 0 }}>
+            <div className="small truncate">{running?.name ?? 'Routine'} ▸</div>
+          </div>
         </button>
       );
     }
@@ -316,9 +323,11 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     // — so this doorway stays visibly blocked rather than offering a Start
     // that can't actually start anything.
     return (
-      <button className="card card-quiet row between" dir="auto" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
+      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
-        <span className="faint small truncate">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
+        <div dir="auto" style={{ minWidth: 0 }}>
+          <div className="faint small truncate">{instrumentName(db, running?.instrumentId)} routine running ▸</div>
+        </div>
       </button>
     );
   }
@@ -508,7 +517,13 @@ function SessionView({
       {/* 1 · The one thing to practise now — above the fold. The English
              eyebrow stays outside the direction group: dir="auto" resolves from
              the first strong character, so a Farsi title and its own reason
-             read as one right-aligned block. */}
+             read as one right-aligned block. `reason` is always English
+             (buildReason is a system-generated sentence, never user text), so
+             it carries its own dir="ltr" isolate: grouped with the title for
+             ALIGNMENT (the group's own resolved direction still governs where
+             the paragraph sits), but with its OWN bidi base fixed to LTR so a
+             Farsi title's RTL base can't drag the reason's trailing full stop
+             to the visual start. */}
       {recs.best && (
         <article className="card card-accent">
           <div className="row between" style={{ marginBottom: 6 }}>
@@ -522,7 +537,7 @@ function SessionView({
               </h2>
             </Link>
             <p className="reason" style={{ marginTop: 6 }}>
-              {recs.best.reason}
+              <span dir="ltr">{recs.best.reason}</span>
             </p>
           </div>
           <div className="row" style={{ marginTop: 12 }}>
@@ -554,7 +569,11 @@ function SessionView({
                 onClick={() => start(rec.score.item)}
               >
                 <span className="truncate">{rec.score.item.title}</span>
-                <div className="tiny faint truncate">{rec.reason}</div>
+                {/* rec.reason is always English (buildReason) — its own dir="ltr"
+                    isolate keeps its bidi base fixed regardless of the title's. */}
+                <div className="tiny faint truncate">
+                  <span dir="ltr">{rec.reason}</span>
+                </div>
               </button>
               <button className="btn btn-sm" onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
                 <PlayIcon />

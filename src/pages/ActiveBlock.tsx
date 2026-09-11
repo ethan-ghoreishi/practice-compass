@@ -87,8 +87,12 @@ export default function ActiveBlock() {
         {/* The title and the details that belong to it are ONE group carrying
             the direction, so a Farsi piece reads as one block. The English
             eyebrow stays OUTSIDE it: dir="auto" resolves from the first strong
-            character in the subtree, so including it would pin the group LTR. */}
-        <div className="stack-sm" dir="auto">
+            character in the subtree, so including it would pin the group LTR.
+            The whole page centres its timer and buttons regardless of
+            language, but the title group overrides that back to `start` —
+            right for Farsi, left for English — or the page's own centring
+            would silently win over the resolved direction. */}
+        <div className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
           <h1 className="page-title" style={{ fontSize: '1.5rem' }}>
             {item?.title ?? 'Practice'}
           </h1>
@@ -96,14 +100,25 @@ export default function ActiveBlock() {
             <span className="chip">{BLOCK_MODE_LABELS[active.mode]}</span>
             <span className="chip">{FOCUS_LABELS[active.focus]}</span>
           </div>
-          {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
+          {/* The constraint VALUE is free text (could be either language) and
+              sits after a fixed English label — its own dir="auto" isolate
+              resolves from its own content, not from "Constraint: " nor from
+              the title above it. */}
+          {active.constraint && (
+            <p className="reason">
+              Constraint: <span dir="auto">{active.constraint}</span>
+            </p>
+          )}
         </div>
       </header>
 
       {previousNextAction && (
-        <div className="card card-quiet small" style={{ textAlign: 'left' }} dir="auto">
+        <div className="card card-quiet small" style={{ textAlign: 'start' }}>
           <span className="faint">Last time you decided to try: </span>
-          {previousNextAction}
+          {/* previousNextAction is free text the owner typed at a previous
+              close — its own dir="auto" resolves from ITS content, not from
+              the fixed English label before it. */}
+          <span dir="auto">{previousNextAction}</span>
         </div>
       )}
 
@@ -197,7 +212,7 @@ export default function ActiveBlock() {
 function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="card card-quiet stack-sm" style={{ textAlign: 'left' }}>
+    <div className="card card-quiet stack-sm" style={{ textAlign: 'start' }}>
       <button
         className="row between"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
@@ -214,9 +229,11 @@ function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }
             </div>
           )}
           {problem && (
-            <div className="small" dir="auto">
+            <div className="small">
               <span className="faint">Working on: </span>
-              {problem}
+              {/* problem resolves from ITS OWN content, not from the fixed
+                  English label before it. */}
+              <span dir="auto">{problem}</span>
             </div>
           )}
           <div className="tiny" style={{ color: 'var(--gold)' }}>

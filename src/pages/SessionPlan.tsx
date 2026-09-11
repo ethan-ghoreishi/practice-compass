@@ -135,7 +135,12 @@ function PlanPreview() {
                 </div>
                 <div dir="auto">
                   <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
-                  <div className="tiny faint">{seg.reason}</div>
+                  {/* seg.reason is always English (planSegmentReason) — its own
+                      dir="ltr" isolate keeps its bidi base fixed regardless of
+                      the title's. */}
+                  <div className="tiny faint">
+                    <span dir="ltr">{seg.reason}</span>
+                  </div>
                 </div>
               </div>
               <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
@@ -230,7 +235,11 @@ function PlanRunner() {
                 </div>
                 <div dir="auto">
                   <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
-                  {isCurrent && <div className="tiny faint">{seg.reason}</div>}
+                  {isCurrent && (
+                    <div className="tiny faint">
+                      <span dir="ltr">{seg.reason}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               {isCurrent && (

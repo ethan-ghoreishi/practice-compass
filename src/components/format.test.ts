@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { createItem, planNextReview, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
-import { relativeDay, reviewSummaryLine } from './format';
+import { type BlockResult, createItem, planNextReview, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
+import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine } from './format';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
+
+const ALL_RESULTS: BlockResult[] = [
+  'worse',
+  'same',
+  'slightly_better',
+  'stable_alone',
+  'stable_in_context',
+  'performable',
+];
 
 /**
  * The close screen collapses the whole scheduling decision to ONE line, with
@@ -48,5 +57,32 @@ describe('reviewSummaryLine', () => {
 
     expect(reviewSummaryLine(engine, NOW)).toBe('Review in 2 days · Repair · A slip resets the interval to 2 days.');
     expect(reviewSummaryLine(corrected, NOW)).toBe('Review in 13 days · Repair · The date you chose.');
+  });
+});
+
+/**
+ * A manually chosen review date must survive changing the result WHEN NO
+ * AUTOMATIC PLAN EXISTS — the rule the close screen used to keep before this
+ * lane restructured it around a single `ReviewPlan`, and lost. The predicate
+ * is bound to the actual engine here (not just asserted in prose): a
+ * manual-mode item has no automatic plan for any of the six results, and an
+ * auto-mode item has one for every one of them.
+ */
+describe('reviewOverrideSurvivesResultChange', () => {
+  it('a manually chosen date survives changing the result when no automatic plan exists', () => {
+    const manualItem = createItem(
+      { instrumentId: 'i', title: 'درآمد شور', status: 'fragile', reviewMode: 'manual' },
+      NOW,
+    );
+    for (const result of ALL_RESULTS) {
+      expect(planNextReview({ item: manualItem, result, now: NOW })).toBeNull();
+    }
+    expect(reviewOverrideSurvivesResultChange(manualItem.reviewMode)).toBe(true);
+
+    const autoItem = createItem({ instrumentId: 'i', title: 'Étude', status: 'fragile' }, NOW);
+    for (const result of ALL_RESULTS) {
+      expect(planNextReview({ item: autoItem, result, now: NOW })).not.toBeNull();
+    }
+    expect(reviewOverrideSurvivesResultChange(autoItem.reviewMode)).toBe(false);
   });
 });
