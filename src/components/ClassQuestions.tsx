@@ -4,7 +4,7 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
 /**
  * "Questions for next class" — the questions to actually ask the teacher,
  * with Copy / Download / Print exports. Farsi and mixed-language text keeps
- * its direction via the global `unicode-bidi: plaintext` and `dir="auto"`.
+ * its direction natively from `dir="auto"` on the group each question sits in.
  * A question is never cleared by practising; the user edits the item to remove
  * it.
  */

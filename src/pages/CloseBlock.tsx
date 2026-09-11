@@ -93,11 +93,16 @@ export default function CloseBlock() {
   const review = useMemo<ReviewPlan | null>(() => {
     const base = item && result ? planNextReview({ item, result, now, params }) : null;
     if (!override) return base;
-    const dueDate = override.dueDate ?? base?.dueDate ?? '';
-    // A per-item MANUAL override gives no engine plan; until the owner picks a
-    // date there is genuinely nothing scheduled, and saying otherwise would be
-    // the fabrication this app refuses.
-    if (!dueDate) return base;
+    // `undefined` means NOT OVERRIDDEN (use the engine's date); `''` means the
+    // owner CLEARED the field — a deliberate "schedule nothing", which
+    // `handleSave` reads as a genuine decline exactly as it did before this
+    // screen was restructured. `??` would collapse those two into one and make
+    // the field un-clearable: it would snap back to the engine's date.
+    const dueDate = override.dueDate !== undefined ? override.dueDate : (base?.dueDate ?? '');
+    // No date is NO PLAN — whether because the item is on manual dates and none
+    // has been picked, or because the owner just cleared it. Returning the
+    // engine's plan here would schedule a date they had deleted.
+    if (!dueDate) return null;
     return {
       intervalDays: base?.intervalDays ?? 0,
       changeStrategy: base?.changeStrategy ?? false,
@@ -121,7 +126,7 @@ export default function CloseBlock() {
       ? 'Not coming back — no review will be scheduled.'
       : review
         ? reviewSummaryLine(review, now)
-        : 'No date yet — this item is on manual dates, so choose one.';
+        : 'No date set — nothing will be scheduled.';
 
   const statusSuggestion = useMemo(
     () =>
@@ -323,7 +328,7 @@ export default function CloseBlock() {
                 <Field label="Review type">
                   <OptionPills
                     ariaLabel="Review type"
-                    value={review?.reviewType ?? 'retention'}
+                    value={review?.reviewType ?? override?.reviewType ?? 'retention'}
                     onChange={(v) => setOverride((o) => ({ ...o, reviewType: v }))}
                     options={(Object.keys(REVIEW_TYPE_LABELS) as ReviewType[]).map((v) => ({
                       value: v,
