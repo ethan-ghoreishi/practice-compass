@@ -1,27 +1,12 @@
 ---
 id: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
 contractId: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
-patchId: 542d5cf770fb659d80e25d823a058b4936d722ad
+patchId: 8a499e4310a15ead619116229ab901824d7c6ed5
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: Attachment ownership across every presentation, count and CRUD surface
-    summary: The ownership-family rework remains incomplete. Attachment identity is
-      ownerType plus ownerId, but src/components/Attachments.tsx:24 and
-      src/components/ItemCard.tsx:16 still filter by ownerId alone. The lesson
-      Files surface can therefore present and delete an item-owned attachment,
-      while ItemCard can count a lesson-owned attachment as belonging to an
-      item. AGENTS.md:612-614 explicitly acknowledges these unresolved sibling
-      violations. Close the family at every attachment ownership read rather
-      than deferring the remaining cases.
-    counterexample: Import a valid database containing an item and lesson with the
-      same id. Give the item one item-owned attachment and the lesson one
-      lesson-owned attachment. The lesson Files section displays both and can
-      remove the item's attachment, including its blob; the item's card reports
-      both files even though only one belongs to it.
-createdAt: 2026-09-11T10:35:13.935Z
-sealedAt: 2026-09-11T10:44:39.154Z
+verdict: approve
+createdAt: 2026-09-11T11:27:03.567Z
+sealedAt: 2026-09-11T11:30:11.330Z
 ---
 
 # Review: Find it and open it: Farsi search, one instrument in view, and every file already linked to a piece
@@ -35,7 +20,7 @@ sealedAt: 2026-09-11T10:44:39.154Z
 - **Contract:** 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/18
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `542d5cf770fb659d80e25d823a058b4936d722ad`
+- **Diff patch-id:** `8a499e4310a15ead619116229ab901824d7c6ed5`
 
 ## The plan the owner approved
 
@@ -425,6 +410,8 @@ Then add a new reference without typing a path: tap Browse, find the file in the
 - DECISIONS.md
 - FUTURE.md
 - README.md
+- src/components/Attachments.tsx
+- src/components/ItemCard.tsx
 - src/components/ItemMaterial.tsx
 - src/domain/index.ts
 - src/domain/itemFiles.test.ts
@@ -466,7 +453,7 @@ Then add a new reference without typing a path: tap Browse, find the file in the
 - **capture-a-practice-item** — touched via src/pages/ItemDetail.tsx, src/store/useStore.ts
 - **clear-a-due-review** — touched via src/store/useStore.ts, src/domain/selectors.ts
 - **install-the-app-and-keep-it-current** — touched via src/pages/Settings.tsx
-- **log-a-class** — touched via src/pages/Lessons.tsx, src/domain/recordings.ts, src/domain/selectors.ts, src/store/useStore.ts
+- **log-a-class** — touched via src/pages/Lessons.tsx, src/components/Attachments.tsx, src/domain/recordings.ts, src/domain/selectors.ts, src/store/useStore.ts
 - **point-this-device-at-the-nas** — touched via src/pages/Settings.tsx, src/pages/Lessons.tsx, src/domain/recordings.ts
 - **practise-todays-recommendation** — touched via src/pages/StartBlock.tsx, src/pages/ActiveBlock.tsx, src/store/useStore.ts
 - **prepare-for-the-next-class** — touched via src/pages/Lessons.tsx
