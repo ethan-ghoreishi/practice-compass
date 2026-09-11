@@ -377,7 +377,7 @@ deadlines (Farsi-aware) · ✅ Per-instrument session workspace · ✅ Sections,
 creation · ✅ GitHub Pages hosting + device sync via GitHub · ✅ CI.
 
 See [`docs/product-spec.md`](docs/product-spec.md) for the product thinking, and
-[`CLAUDE.md`](CLAUDE.md) for the rules that keep this tool from bloating.
+[`AGENTS.md`](AGENTS.md) for the rules that keep this tool from bloating.
 
 ---
 

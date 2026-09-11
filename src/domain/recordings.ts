@@ -55,8 +55,13 @@ export type RecordingResolution =
 /**
  * Resolve a recording reference to an openable URL, distinguishing WHY it
  * can't resolve so the UI can react (prompt for a base, warn about a bad one,
- * etc.). Full http(s) paths pass through; relative paths join under the
- * normalised base with each segment URL-encoded (spaces, Farsi filenames).
+ * etc.). Full http(s) paths pass through the `URL` parser rather than
+ * `encodeURI` — it escapes a raw unsafe character (a literal space) the same
+ * way, but leaves an already-valid `%XX` escape alone instead of re-encoding
+ * its `%` into `%25`, which is what a retained foreign or query-bearing URL
+ * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
+ * paths join under the normalised base with each segment URL-encoded (spaces,
+ * Farsi filenames).
  */
 export function resolveRecording(
   baseUrl: string | undefined,
@@ -64,7 +69,13 @@ export function resolveRecording(
 ): RecordingResolution {
   const p = ref.path.trim();
   if (!p) return { status: 'empty' };
-  if (HTTP_RE.test(p)) return { status: 'ok', url: encodeURI(p) };
+  if (HTTP_RE.test(p)) {
+    try {
+      return { status: 'ok', url: new URL(p).toString() };
+    } catch {
+      return { status: 'ok', url: encodeURI(p) };
+    }
+  }
 
   const raw = (baseUrl ?? '').trim();
   if (!raw) return { status: 'no-base' };
@@ -90,4 +101,58 @@ export function resolveRecordingUrl(baseUrl: string | undefined, ref: Pick<Lesso
 /** Whether opening this reference needs a NAS base URL that isn't set yet. */
 export function needsBaseUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): boolean {
   return resolveRecording(baseUrl, ref).status === 'no-base';
+}
+
+/** Decode a stored-relative path segment-wise; `resolveRecording` re-encodes. */
+function decodeSegments(rel: string): string {
+  return rel
+    .split('/')
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg; // malformed %-escape: leave it exactly as given
+      }
+    })
+    .join('/');
+}
+
+/**
+ * Store a pasted reference TRANSPORT-INDEPENDENTLY.
+ *
+ * Browsing the NAS and pasting a file's URL is the whole point of the Browse
+ * link — but an absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS:
+ * it dies on a phone away from home, and everywhere at once if the base URL
+ * ever changes. So a URL that sits UNDER the configured base is stored as the
+ * path beneath it, which every device then resolves through its own base.
+ *
+ * Everything else is left EXACTLY as given, because guessing is worse than
+ * leaving it alone: a different origin is a deliberate external link, a URL
+ * carrying a query or fragment is not a plain file path, and a blank or
+ * unparseable base is not something to reason from at all.
+ *
+ * A stored path is decoded (`resolveRecording` encodes each segment on the way
+ * out), so a Farsi filename copied from a directory listing survives the round
+ * trip instead of being double-escaped into a dead link.
+ */
+export function relativizeReference(baseUrl: string | undefined, pasted: string): string {
+  const raw = pasted.trim();
+  if (!raw || !HTTP_RE.test(raw)) return raw; // already a relative path
+  const base = normalizeBaseUrl(baseUrl);
+  if (!base) return raw;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (url.search || url.hash) return raw;
+
+  // Compare normalised forms (host case, default ports) and require the path
+  // BOUNDARY, so `…/media` never swallows `…/mediaXYZ/`.
+  const prefix = `${base}/`;
+  const abs = url.toString();
+  if (!abs.startsWith(prefix)) return raw;
+  return decodeSegments(abs.slice(prefix.length)) || raw;
 }

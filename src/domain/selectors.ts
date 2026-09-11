@@ -3,16 +3,61 @@ import type {
   Instrument,
   ISODate,
   Lesson,
+  Pathway,
   PracticeBlock,
   PracticeItem,
   Review,
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
+import { persianSearchMatch } from './farsi';
 import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Derived lists used across the Today, Items and Insights screens. All pure.
 // ---------------------------------------------------------------------------
+
+/**
+ * The search predicate BOTH search boxes use — Repertoire's practice list and
+ * Start's item picker. The data is authored in Farsi, so `toLowerCase().includes()`
+ * can never match a title typed with an Arabic kaf or yeh, which is exactly what
+ * an iOS Arabic keyboard emits. Delegates to the existing, tested matcher: this
+ * is the WIRING that was missing, not a second matcher.
+ */
+export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string): boolean {
+  return persianSearchMatch(item.title, query);
+}
+
+/**
+ * Which instrument a browse screen (Repertoire, Lessons) OPENS on: the same
+ * persisted session instrument every other screen already reads, with `''`
+ * meaning every instrument. The cross-instrument view survives as an explicit
+ * override — this only chooses the default.
+ *
+ * `instruments` must be the list the screen's own dropdown renders: a session
+ * instrument that no longer resolves there (deleted, or inactive on a screen
+ * that lists only active ones) falls back to every-instrument rather than
+ * seeding a filter with no matching option and showing an empty screen.
+ */
+export function defaultInstrumentFilter(
+  sessionInstrumentId: string | null | undefined,
+  instruments: Pick<Instrument, 'id'>[],
+): ID | '' {
+  if (!sessionInstrumentId || sessionInstrumentId === 'all') return '';
+  return instruments.some((i) => i.id === sessionInstrumentId) ? sessionInstrumentId : '';
+}
+
+/**
+ * Which pathways a narrowed Pathways view shows. A General pathway
+ * (`instrumentId` unset) can hold items from ANY instrument, so it stays
+ * OUT of a one-instrument view too — narrowing to Setar must not surface a
+ * General pathway's Tar-derived progress. Only the explicit '' ("all")
+ * filter widens back to see it, matching how every other narrowed screen in
+ * this lane treats the cross-instrument view as an opt-in widen, not a
+ * default leak.
+ */
+export function pathwaysForInstrumentFilter(pathways: Pathway[], filterInstrumentId: ID | ''): Pathway[] {
+  return filterInstrumentId ? pathways.filter((p) => p.instrumentId === filterInstrumentId) : pathways;
+}
 
 /** The nearest upcoming (today or later) lesson for an instrument, if any. */
 export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {

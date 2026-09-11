@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  defaultInstrumentFilter,
   instrumentBalance,
+  itemMatchesSearch,
   nextLessonNumber,
+  pathwaysForInstrumentFilter,
   practiceTotals,
   practiceTotalsByInstrument,
   startOfWeekISODate,
   totalMinutesInWindow,
 } from './selectors';
 import { createBlock, createInstrument } from './factories';
-import type { Instrument, Lesson, PracticeBlock } from './types';
+import type { Instrument, Lesson, Pathway, PracticeBlock } from './types';
 
 function instrument(id: string): Instrument {
   return { ...createInstrument({ name: id }, new Date(2026, 0, 1)), id };
@@ -215,5 +218,72 @@ describe('instrumentBalance · the denominator covers exactly the rows shown', (
   it('reports zero percent for every instrument when nothing was practised', () => {
     const rows = instrumentBalance([instrument('setar')], [], THURSDAY, 7);
     expect(rows[0]).toMatchObject({ minutes: 0, blocks: 0, percent: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The two search boxes (Repertoire's practice list, Start's item picker) and
+// the instrument a browse screen opens on. Both are pure choices, so the
+// wiring is provable in Node even though the screens themselves are not.
+// ---------------------------------------------------------------------------
+
+describe('itemMatchesSearch', () => {
+  it('matches a Persian title when the query uses the Arabic kaf and still rejects an unrelated query', () => {
+    const item = { title: 'کرشمه' }; // stored with the PERSIAN kaf U+06A9
+    const arabicKaf = 'كرشمه'; // what an iOS Arabic keyboard emits (U+0643)
+
+    // The predicate both screens used before this change could never match it.
+    expect(item.title.toLowerCase().includes(arabicKaf.toLowerCase())).toBe(false);
+
+    expect(itemMatchesSearch(item, arabicKaf)).toBe(true);
+    expect(itemMatchesSearch(item, 'ماهور')).toBe(false);
+  });
+
+  it('finds a Persian title from its Latin transliteration and rejects an unrelated Latin query', () => {
+    const item = { title: 'درآمد' };
+
+    expect(item.title.toLowerCase().includes('daramad')).toBe(false);
+
+    expect(itemMatchesSearch(item, 'daramad')).toBe(true);
+    expect(itemMatchesSearch(item, 'qqqq')).toBe(false);
+    expect(itemMatchesSearch(item, 'guitar')).toBe(false);
+  });
+});
+
+describe('defaultInstrumentFilter', () => {
+  it('seeds the filter from a resolvable session instrument, widens for all, and falls back when it no longer exists', () => {
+    const instruments = [{ id: 'setar' }, { id: 'tar' }];
+
+    expect(defaultInstrumentFilter('setar', instruments)).toBe('setar');
+    expect(defaultInstrumentFilter('all', instruments)).toBe('');
+    expect(defaultInstrumentFilter('deleted-instrument', instruments)).toBe('');
+    expect(defaultInstrumentFilter(null, instruments)).toBe('');
+    expect(defaultInstrumentFilter(undefined, instruments)).toBe('');
+  });
+});
+
+describe('pathwaysForInstrumentFilter', () => {
+  function pathway(id: string, instrumentId?: string): Pathway {
+    return {
+      id,
+      instrumentId,
+      name: id,
+      order: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+  }
+
+  it('narrows to one instrument\'s own pathways, hides a General pathway that could hold another instrument\'s items, and widens back for all', () => {
+    const setarPathway = pathway('p-setar', 'setar');
+    const tarPathway = pathway('p-tar', 'tar');
+    // General: no instrumentId, so it can hold a Tar item even while the
+    // session instrument is Setar — the counterexample this guards against.
+    const generalPathway = pathway('p-general');
+    const all = [setarPathway, tarPathway, generalPathway];
+
+    expect(pathwaysForInstrumentFilter(all, 'setar')).toEqual([setarPathway]);
+    expect(pathwaysForInstrumentFilter(all, 'tar')).toEqual([tarPathway]);
+    expect(pathwaysForInstrumentFilter(all, '')).toEqual(all);
   });
 });

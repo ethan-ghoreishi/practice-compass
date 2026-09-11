@@ -548,7 +548,7 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
         </div>
         <Field
           label="NAS recordings base URL"
-          hint="e.g. https://ds220plus.taild1d1f7.ts.net/media — relative recording paths are joined onto this. Stored on this device only; never synced, never a password. See DECISIONS.md to serve the folder over HTTPS."
+          hint="e.g. https://192.168.0.20:5010 — relative recording paths are joined onto this. Stored on this device only; never synced, never a password. Change it freely: references are stored relative to it, so nothing breaks. See DECISIONS.md for what is serving the folder."
         >
           <input
             className="input"
@@ -558,7 +558,7 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="https://ds220plus.taild1d1f7.ts.net/media"
+            placeholder="https://192.168.0.20:5010"
             value={baseUrl}
             onChange={(e) => setBaseUrlState(e.target.value)}
             onBlur={commitBaseUrl}
@@ -571,6 +571,21 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
         ) : normalized ? (
           <div className="tiny faint">Resolves to: {normalized}/…</div>
         ) : null}
+
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">
+            Browse the NAS to find a file, then copy its URL and paste it into a lesson — a URL under this base is
+            stored as a relative path, so it keeps working whatever route a device takes to the NAS.
+          </div>
+          <button
+            className="btn btn-sm"
+            style={{ flex: 'none' }}
+            disabled={!normalized}
+            onClick={() => normalized && window.open(`${normalized}/`, '_blank', 'noopener,noreferrer')}
+          >
+            Browse
+          </button>
+        </div>
 
         <div className="row between" style={{ gap: 8 }}>
           <div className="tiny faint">Open session 1’s recording to check the base URL works.</div>

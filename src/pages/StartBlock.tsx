@@ -8,6 +8,7 @@ import {
   defaultModeForStatus,
   FOCUS_LABELS,
   ITEM_TYPE_LABELS,
+  itemMatchesSearch,
   type BlockMode,
   type FocusArea,
   type PracticeItem,
@@ -54,11 +55,9 @@ export default function StartBlock() {
   const [title, setTitle] = useState('');
 
   const items = useMemo(() => itemsForInstrument(db, instrumentId), [db, instrumentId]);
-  const filtered = useMemo(
-    () =>
-      items.filter((i) => i.title.toLowerCase().includes(search.trim().toLowerCase())),
-    [items, search],
-  );
+  // Farsi-aware: an Arabic kaf from the iOS keyboard finds a Persian kaf, and
+  // "daramad" finds درآمد.
+  const filtered = useMemo(() => items.filter((i) => itemMatchesSearch(i, search)), [items, search]);
   const selectedItem = items.find((i) => i.id === selectedItemId) ?? null;
 
   function pickInstrument(id: string) {

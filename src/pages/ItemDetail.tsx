@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
+  attachmentPolicy,
   BLOCK_MODE_LABELS,
   FOCUS_LABELS,
   ITEM_STATUS_LABELS,
@@ -12,6 +13,8 @@ import {
   pickNextPart,
   RESULT_LABELS,
   stallHint,
+  itemFiles,
+  itemOwnedAttachments,
   type BlockResult,
   type GuitarFields,
   type PersianFields,
@@ -20,13 +23,14 @@ import {
 import { useStore } from '../store/useStore';
 import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
+import { addAttachment, formatBytes, removeAttachment } from '../store/attachments';
 import ItemForm from '../components/ItemForm';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
-import Attachments from '../components/Attachments';
+import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
 import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
-import { ArrowLeftIcon, FlagIcon, PlayIcon } from '../components/icons';
+import { ArrowLeftIcon, FlagIcon, PlayIcon, PlusIcon } from '../components/icons';
 import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
 
 const RESULT_TONE: Record<BlockResult, string> = {
@@ -228,7 +232,9 @@ export default function ItemDetail() {
 
       <ItemNotes itemId={item.id} />
 
-      <Attachments ownerType="item" ownerId={item.id} />
+      <MaterialSection item={item} />
+
+      <ItemFilesCrud itemId={item.id} />
 
       {trend.length > 0 && (
         <section className="stack-sm">
@@ -406,6 +412,105 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
           Add part
         </button>
       </div>
+    </section>
+  );
+}
+
+/**
+ * Everything that already belongs to this piece, in ONE place: the class video
+ * and score from the lessons it is linked to, and its own attachments,
+ * composed and deduplicated by `itemFiles` — nothing new is stored to show
+ * them. Files stays below for add/remove; this section is what was previously
+ * unreachable (lesson references) or split across two sections (attachments).
+ */
+function MaterialSection({ item }: { item: PracticeItem }) {
+  const db = useStore((s) => s.db);
+  const files = useMemo(() => itemFiles(db, item.id), [db, item.id]);
+  if (files.length === 0) return null;
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Material</div>
+      <ItemMaterial itemId={item.id} />
+    </section>
+  );
+}
+
+/**
+ * Add/remove only. Material above already shows every attachment with its
+ * preview and Open action from the composed `itemFiles` list — this stays a
+ * plain CRUD surface rather than a second, partial presentation of the same
+ * files (the shared Attachments component still owns that full presentation
+ * for a lesson's own attachments, which nothing else displays).
+ */
+function ItemFilesCrud({ itemId }: { itemId: string }) {
+  const all = useStore((s) => s.db.attachments);
+  const list = useMemo(
+    () => itemOwnedAttachments(all, itemId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [all, itemId],
+  );
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [sizeNote, setSizeNote] = useState<string | null>(null);
+
+  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      for (const f of Array.from(files)) {
+        const policy = attachmentPolicy(f.size, f.type || '');
+        if (policy.level === 'block') {
+          setSizeNote(`“${f.name}” (${formatBytes(f.size)}) was not added: ${policy.message}`);
+          continue;
+        }
+        await addAttachment('item', itemId, f);
+        if (policy.level === 'warn') {
+          setSizeNote(`“${f.name}” is ${formatBytes(f.size)}. ${policy.message}`);
+        }
+      }
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  return (
+    <section className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Files</div>
+        <button className="btn btn-ghost btn-sm" onClick={() => fileRef.current?.click()} disabled={busy}>
+          <PlusIcon /> {busy ? 'Adding…' : 'Add file'}
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept="application/pdf,image/*,audio/*" multiple hidden onChange={onFiles} />
+      {sizeNote && (
+        <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
+          {sizeNote}{' '}
+          <button className="link tiny" style={{ background: 'none', border: 'none' }} onClick={() => setSizeNote(null)}>
+            OK
+          </button>
+        </div>
+      )}
+      {list.length > 0 && (
+        <div className="card card-flush list">
+          {list.map((a) => (
+            <div key={a.id} className="list-row">
+              <div className="grow truncate">{a.name}</div>
+              <div className="tiny faint">
+                {a.kind} · {formatBytes(a.size)}
+              </div>
+              <button
+                className="btn btn-ghost btn-sm btn-danger"
+                onClick={() => {
+                  if (confirm(`Remove "${a.name}"?`)) removeAttachment(a.id);
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatFileSize, needsBaseUrl, normalizeBaseUrl, resolveRecording, resolveRecordingUrl } from './recordings';
+import {
+  formatFileSize,
+  needsBaseUrl,
+  normalizeBaseUrl,
+  relativizeReference,
+  resolveRecording,
+  resolveRecordingUrl,
+} from './recordings';
 
 describe('resolveRecordingUrl', () => {
   const base = 'https://nas.example.ts.net/media';
@@ -90,6 +97,24 @@ describe('resolveRecording (status-aware)', () => {
       url: 'https://x.ts.net/a%20b/c.mp4',
     });
   });
+
+  it('opens a retained absolute URL unchanged, without double-encoding its existing escapes', () => {
+    // A foreign origin or a query-bearing URL is retained verbatim by
+    // relativizeReference (never rewritten). It must still open correctly:
+    // encodeURI() would turn an existing %20 into %2520 — a dead link.
+    expect(resolveRecording(undefined, { path: 'https://example.com/a%20b.pdf' })).toEqual({
+      status: 'ok',
+      url: 'https://example.com/a%20b.pdf',
+    });
+    // Percent-encoded Farsi, as a NAS directory listing would hand it out.
+    const farsi = 'https://example.com/setar-classes/' + encodeURIComponent('چهارمضراب.pdf');
+    expect(resolveRecording(undefined, { path: farsi })).toEqual({ status: 'ok', url: farsi });
+    // A retained query-bearing URL keeps its query string intact.
+    expect(resolveRecording(undefined, { path: 'https://example.com/class.mp4?download=1' })).toEqual({
+      status: 'ok',
+      url: 'https://example.com/class.mp4?download=1',
+    });
+  });
 });
 
 describe('formatFileSize', () => {
@@ -100,5 +125,74 @@ describe('formatFileSize', () => {
     expect(formatFileSize(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
     expect(formatFileSize(undefined)).toBeNull();
     expect(formatFileSize(0)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Transport independence. What is STORED must not name one device's route to
+// the NAS, or every reference dies the day that route changes.
+// ---------------------------------------------------------------------------
+
+describe('relativizeReference', () => {
+  const base = 'https://192.168.0.20:5010';
+
+  it('stores a pasted URL under the base as relative, keeps a foreign origin absolute, and leaves a relative path alone', () => {
+    // Copied out of the NAS directory listing, so the Farsi filename arrives
+    // percent-encoded; storing it encoded would double-escape on resolve.
+    const pasted = `${base}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
+    expect(relativizeReference(base, pasted)).toBe('setar-classes/session-37/چهارمضراب.pdf');
+
+    const foreign = 'https://example.com/setar-classes/session-37/class.mp4';
+    expect(relativizeReference(base, foreign)).toBe(foreign);
+
+    expect(relativizeReference(base, 'setar-classes/session-37/class.mp4')).toBe(
+      'setar-classes/session-37/class.mp4',
+    );
+  });
+
+  it('requires the path boundary, so a sibling folder is not swallowed', () => {
+    const sibling = 'https://192.168.0.20:5010/mediaXYZ/class.mp4';
+    expect(relativizeReference('https://192.168.0.20:5010/media', sibling)).toBe(sibling);
+  });
+
+  it('stores a pasted URL unchanged when no usable base URL is configured', () => {
+    const pasted = `${base}/setar-classes/session-37/class.mp4`;
+    expect(relativizeReference(undefined, pasted)).toBe(pasted);
+    expect(relativizeReference('', pasted)).toBe(pasted);
+    expect(relativizeReference('   ', pasted)).toBe(pasted);
+    expect(relativizeReference('ftp://nas/media', pasted)).toBe(pasted);
+    expect(relativizeReference('http://[not a url', pasted)).toBe(pasted);
+  });
+
+  it('leaves a URL carrying a query or fragment absolute rather than guessing', () => {
+    const query = `${base}/setar-classes/class.mp4?download=1`;
+    expect(relativizeReference(base, query)).toBe(query);
+  });
+});
+
+describe('a stored reference survives a change of transport', () => {
+  it('resolves the same relative reference correctly under two different base URLs', () => {
+    const lan = 'https://192.168.0.20:5010';
+    const pasted = `${lan}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
+    const stored = relativizeReference(lan, pasted);
+
+    expect(resolveRecordingUrl(lan, { path: stored })).toBe(pasted);
+    // A completely different route to the same NAS — nothing stored changes.
+    expect(resolveRecordingUrl('https://ds220plus.taild1d1f7.ts.net/media', { path: stored })).toBe(
+      `https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`,
+    );
+  });
+});
+
+describe('the Browse target', () => {
+  it('offers a browse target for a valid base and none for a blank or unparseable one', () => {
+    // Settings' Browse action is gated on exactly this value.
+    expect(normalizeBaseUrl('https://192.168.0.20:5010/')).toBe('https://192.168.0.20:5010');
+    expect(normalizeBaseUrl('192.168.0.20:5010/media')).toBe('https://192.168.0.20:5010/media');
+    expect(normalizeBaseUrl('')).toBeNull();
+    expect(normalizeBaseUrl('   ')).toBeNull();
+    expect(normalizeBaseUrl(undefined)).toBeNull();
+    expect(normalizeBaseUrl('http://[not a url')).toBeNull();
+    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
   });
 });

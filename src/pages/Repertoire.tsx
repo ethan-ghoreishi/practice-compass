@@ -2,10 +2,12 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   currentStage,
+  defaultInstrumentFilter,
   formsPresent,
   groupBlocksByItem,
   groupByDastgah,
   isDue,
+  itemMatchesSearch,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
@@ -13,6 +15,7 @@ import {
   nextLessonDates,
   overworkedItems,
   pathwayProgress,
+  pathwaysForInstrumentFilter,
   scoreItems,
   stageProgress,
   stageUnits,
@@ -93,7 +96,13 @@ function MyRepertoireView() {
   const now = useMemo(() => new Date(), []);
 
   const activeInstruments = db.instruments.filter((i) => i.active);
-  const [instrumentId, setInstrumentId] = useState('');
+  // Open on the instrument you are actually practising; the dropdown still
+  // widens to all. This never writes sessionInstrumentId back — browsing
+  // another instrument must not change what Today recommends.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, activeInstruments),
+  );
   const [formFilter, setFormFilter] = useState('');
 
   const scope = useMemo(
@@ -303,11 +312,23 @@ function PathwaysView() {
   const reseedDefaultPathways = useStore((s) => s.reseedDefaultPathways);
   const navigate = useNavigate();
 
+  const activeInstruments = db.instruments.filter((i) => i.active);
+  // Open on the instrument you are actually practising; the toggle still
+  // widens to all. This never writes sessionInstrumentId back — browsing
+  // another instrument must not change what Today recommends.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [filterInstrumentId, setFilterInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, activeInstruments),
+  );
+
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
 
-  const pathways = useMemo(() => [...db.pathways].sort((a, b) => a.order - b.order), [db.pathways]);
+  const pathways = useMemo(
+    () => pathwaysForInstrumentFilter(db.pathways, filterInstrumentId).slice().sort((a, b) => a.order - b.order),
+    [db.pathways, filterInstrumentId],
+  );
 
   function create() {
     if (!name.trim()) return;
@@ -322,6 +343,28 @@ function PathwaysView() {
       <p className="page-sub" style={{ marginTop: -8 }}>
         Your items, organised along the routes you trust. Add pieces from each stage's list, at your own pace.
       </p>
+
+      {activeInstruments.length > 1 && (
+        <div className="options" role="group" aria-label="Instrument">
+          <button
+            className={`option${!filterInstrumentId ? ' selected' : ''}`}
+            aria-pressed={!filterInstrumentId}
+            onClick={() => setFilterInstrumentId('')}
+          >
+            All
+          </button>
+          {activeInstruments.map((i) => (
+            <button
+              key={i.id}
+              className={`option${filterInstrumentId === i.id ? ' selected' : ''}`}
+              aria-pressed={filterInstrumentId === i.id}
+              onClick={() => setFilterInstrumentId(i.id)}
+            >
+              {i.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {pathways.map((p) => (
         <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`)} />
@@ -425,7 +468,12 @@ function AllItemsView() {
 
   const now = useMemo(() => new Date(), []);
   const [search, setSearch] = useState('');
-  const [instrumentId, setInstrumentId] = useState('');
+  // Seeded from the session instrument (never written back) against the same
+  // list the dropdown below renders.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, db.instruments),
+  );
   const [status, setStatus] = useState<ItemStatus | ''>('');
   const [type, setType] = useState<ItemType | ''>('');
   const [quick, setQuick] = useState<Set<Quick>>(new Set());
@@ -451,7 +499,7 @@ function AllItemsView() {
   const visible = scored
     .map((s) => s.item)
     .filter((item) => {
-      if (search && !item.title.toLowerCase().includes(search.trim().toLowerCase())) return false;
+      if (!itemMatchesSearch(item, search)) return false;
       if (instrumentId && item.instrumentId !== instrumentId) return false;
       if (status && item.status !== status) return false;
       if (type && item.itemType !== type) return false;

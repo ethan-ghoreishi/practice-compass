@@ -2,13 +2,13 @@
 
 Durable record of non-obvious choices. Newest first.
 
-## Serving NAS class recordings over HTTPS (Task 3, 2026-07)
+## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
 
-**Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos live on
-the Synology NAS under `homes/ethan/SNDK/video-courses` (on disk:
-`/volume1/homes/ethan/SNDK/video-courses`). A lesson recording stores a *relative*
-path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a
-**NAS base URL** set in Settings. Two things must be true for playback:
+**Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores
+live on the Synology NAS under `homes/ethan/SNDK/video-courses` (on disk:
+`/volume1/homes/ethan/SNDK/video-courses`). A lesson reference stores a *relative*
+path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a **NAS
+base URL** set in Settings. Two things must be true for playback:
 
 1. The base URL must be a real `https://` origin. (A scheme-less value like
    `ds220plus.taild1d1f7.ts.net` was previously concatenated raw and treated as a
@@ -18,32 +18,49 @@ path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a
 2. The folder must be served over HTTPS. DSM on `:5000` does **not** serve raw
    files, and plain `http://` links are mixed content that iOS blocks.
 
-**Chosen: Tailscale Serve on the Synology.** Gives a valid `ts.net` certificate and
-tailnet-only access with no extra software; Go's file server supports Range
-requests, so video seeking works.
+**What is ACTUALLY running (probed 2026-09-10, and this corrects what this record
+used to claim).** This file previously recorded *Tailscale Serve on the Synology* as
+the chosen mechanism, with a runbook. That is **not** what is in place, and an agent
+following that runbook would have configured the wrong thing:
 
-Runbook (the user applies this once — SSH is disabled by default so the assistant
-cannot run it):
+- There is **no Tailscale CLI and no Tailscale.app on this Mac**.
+- `https://192.168.0.20:5010/` answers **HTTP 200 from nginx** and already serves
+  **real browsable directory listings** (mod_autoindex-style "Index of /"), whose
+  document root IS the `video-courses` folder — it lists `setar-classes/`,
+  `tar-classes/` and `classical-guitar/`, and `/setar-classes/` answers 200. So the
+  existing relative references already resolve against it, and a **Browse** link
+  needs no server change whatsoever; the capability was already there and unused.
+- The certificate is Synology's own default (`CN=synology`, issuer
+  `Synology Inc. CA`) and does **not** match `192.168.0.20`. That is why this works
+  on the MacBook, where the exception has been accepted, and why **each new device
+  must accept the certificate once** before NAS links open there. A certificate
+  prompt on the iPhone is INFRASTRUCTURE, not an app defect.
 
-1. DSM → Control Panel → Terminal & SNMP → **enable SSH** (temporary is fine).
-2. `ssh <admin>@192.168.0.20` and verify the path:
-   `ls /volume1/homes/ethan/SNDK/video-courses/setar-classes`
-3. Serve the folder under a `/media` path (leaves the ts.net root free):
-   `sudo tailscale serve --bg --set-path /media /volume1/homes/ethan/SNDK/video-courses`
-   (CLI, if `tailscale` isn't on PATH:
-   `/var/packages/Tailscale/target/bin/tailscale serve --bg --set-path /media /volume1/homes/ethan/SNDK/video-courses`)
-4. In the app: **Settings → NAS recordings base URL** =
-   `https://ds220plus.taild1d1f7.ts.net/media`, then **Test link** (opens session 1).
-5. Devices need **Tailscale ON** to play. Disable SSH again afterwards if preferred.
+**Current base URL:** `https://192.168.0.20:5010` (LAN only).
 
-To undo: `tailscale serve --https=443 off` (or `tailscale serve reset`).
+**The app is deliberately TRANSPORT-AGNOSTIC, and that is now enforced rather than
+hoped for.** A reference pasted from the NAS listing is stored **relative** to the
+configured base (`relativizeReference`, `recordings.ts`, tested) instead of as the
+absolute URL the browser gave you. An absolute URL would pin that reference to one
+route to the NAS — dead on a phone away from home, and dead everywhere the day the
+base URL changes. Because only the path is stored, **choosing the transport is a
+decision that can be changed later without rewriting a single stored reference.**
 
-**Rejected alternatives.** WebDAV (auth prompts break iOS inline video);
-per-file File Station share links (unmaintainable — one link per file). A Synology
-Web Station static vhost with the Tailscale cert is a viable fallback if Serve is
-unavailable, but Serve needs no DSM vhost config and is simpler.
+**That choice is deliberately left OPEN.** Staying on the LAN address, moving to
+Tailscale (`ts.net` gives a valid certificate and tailnet-only access; Go's file
+server supports Range requests, so video seeking works), or putting a reverse proxy
+in front are all still available. Whichever is chosen, only the Settings base URL
+changes.
 
-**Never modify the recordings themselves** — the app only stores references.
+**Rejected alternatives.** WebDAV (auth prompts break iOS inline video); per-file
+File Station share links (unmaintainable — one link per file). Also deliberately NOT
+built: a `scan:nas` index feeding an in-app file picker — the NAS already renders
+browsable listings, so browse → copy → paste closes most of the gap without adding a
+build script, a generated reference module, a staleness story and a Mac-only
+dependency. Revisit only if browsing and pasting proves insufficient in real use.
+
+**Never modify the recordings themselves** — the app only stores references, and
+removing a reference never touches the NAS file.
 
 ---
 

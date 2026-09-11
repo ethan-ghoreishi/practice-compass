@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BLOCK_MODE_LABELS, FOCUS_LABELS, lastNextAction, nextSignal } from '../domain';
+import { BLOCK_MODE_LABELS, FOCUS_LABELS, itemFiles, lastNextAction, nextSignal } from '../domain';
 import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { formatClock } from '../components/format';
+import ItemMaterial from '../components/ItemMaterial';
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
 
@@ -71,6 +72,9 @@ export default function ActiveBlock() {
   // time reaches you BEFORE you start playing, rather than being written on
   // every close and read nowhere.
   const previousNextAction = lastNextAction(itemBlocks(db, active.itemId));
+  // Whether there is anything to open at all — a pure read, no blob work: the
+  // disclosure below renders nothing until it is actually opened.
+  const hasMaterial = itemFiles(db, active.itemId).length > 0;
   const elapsed = sessionElapsedSeconds(active);
   const targetSeconds = active.targetMinutes * 60;
   const reached = elapsed >= targetSeconds; // durable for the rest of the block — practising past target is ordinary, never un-happens
@@ -148,6 +152,8 @@ export default function ActiveBlock() {
         </button>
       </div>
 
+      {hasMaterial && <MaterialDuringPractice itemId={active.itemId} />}
+
       {showNote ? (
         <textarea
           className="textarea"
@@ -212,6 +218,30 @@ function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * The score, the class video, the photo of the page — one CLOSED disclosure,
+ * below the timer AND below Pause/Finish (the buttons you reach for with the
+ * instrument in your hands), in the same shape as "About this piece". Nothing loads until
+ * it is opened, and nothing here touches the clock, the wake lock or the
+ * boundary signal: a photo renders inline, everything else opens in a tab.
+ */
+function MaterialDuringPractice({ itemId }: { itemId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="card card-quiet stack-sm" style={{ textAlign: 'left' }}>
+      <button
+        className="row between"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="section-label">Material</span>
+        <span className="tiny faint">{open ? 'hide' : 'show'}</span>
+      </button>
+      {open && <ItemMaterial itemId={itemId} />}
     </div>
   );
 }
