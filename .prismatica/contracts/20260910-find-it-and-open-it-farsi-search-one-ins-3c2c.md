@@ -5,7 +5,7 @@ title: "Find it and open it: Farsi search, one instrument in view, and every
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/18
 intent: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: 5325ce31dc5c93996ed26d4be991916c2eaa9eb0
   branch: main
