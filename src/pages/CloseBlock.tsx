@@ -196,12 +196,18 @@ export default function CloseBlock() {
         <div className="eyebrow">{instrumentName(db, item.instrumentId)}</div>
         {/* The item's own name leads its group, so a Farsi title and the line
             beneath it read as one block. The English eyebrow stays outside:
-            dir="auto" resolves from the first strong character in the subtree. */}
+            dir="auto" resolves from the first strong character in the subtree.
+            "A few seconds…" is fixed English page copy, never user text — its
+            own dir="ltr" isolate keeps its bidi base fixed regardless of the
+            title's, so a Farsi title's RTL base can't drag its trailing full
+            stop to the visual start. */}
         <div className="stack-sm" dir="auto">
           <h1 className="page-title" style={{ fontSize: '1.45rem' }}>
             {item.title}
           </h1>
-          <p className="page-sub">A few seconds to capture what happened.</p>
+          <p className="page-sub">
+            <span dir="ltr">A few seconds to capture what happened.</span>
+          </p>
         </div>
       </header>
 

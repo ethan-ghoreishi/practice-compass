@@ -97,9 +97,16 @@ export default function PathwayDetail() {
             {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
             {pathway.source ? ` · ${pathway.source}` : ''}
           </div>
-          {pathway.description && <p className="page-sub">{pathway.description}</p>}
+          {/* description/note are authored independently of the pathway's own
+              name (a user can edit either on its own) — their own dir="auto"
+              isolates resolve from their own content, not from pathway.name's. */}
+          {pathway.description && (
+            <p className="page-sub" dir="auto">
+              {pathway.description}
+            </p>
+          )}
           {pathway.note && (
-            <div className="card card-quiet small dim" style={{ marginTop: 4 }}>
+            <div className="card card-quiet small dim" dir="auto" style={{ marginTop: 4 }}>
               {pathway.note}
             </div>
           )}
@@ -352,8 +359,10 @@ function RoutineRow({
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>
+          {/* Generated English metadata, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi routine name's RTL base. */}
           <div className="tiny faint">
-            {routine.segments.length} segments · {total} min
+            <span dir="ltr">{routine.segments.length} segments · {total} min</span>
           </div>
         </div>
         <div className="row" style={{ gap: 6 }}>

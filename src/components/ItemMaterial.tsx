@@ -57,7 +57,9 @@ function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' 
         <div className="truncate">
           {file.title}
         </div>
-        <div className="tiny faint">
+        {/* Fixed English page copy, never user text — its own dir="ltr"
+            isolate keeps it from inheriting a Farsi title's RTL base. */}
+        <div className="tiny faint" dir="ltr">
           On your NAS · {file.kind}
           {size ? ` · ${size}` : ''}
           {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
@@ -116,7 +118,9 @@ function AttachmentRow({ file }: { file: Extract<ItemFile, { source: 'attachment
           <div className="truncate">
             {file.title}
           </div>
-          <div className="tiny faint">
+          {/* Fixed English page copy, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi title's RTL base. */}
+          <div className="tiny faint" dir="ltr">
             On this device · {file.kind}
             {size ? ` · ${size}` : ''}
           </div>

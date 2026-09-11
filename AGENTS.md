@@ -701,6 +701,63 @@ matching inside a comment either produces a site with no real enclosing tag or, 
 walks backward out of the comment and mis-attributes an unrelated tag from earlier in the
 file.
 
+**A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN.**
+A sealed review rejected the first pass at this section for exactly that gap: the
+inventory above proves a title and its details share ONE resolved direction (the fix this
+whole rule exists for), but it says nothing about a CHILD inside that group whose own
+bidi base needs to be independent of the title's — a Farsi title makes the group resolve
+RTL, and anything else in that subtree with no `dir` of its own is exposed to that same
+RTL base. That is exactly right for a caption that belongs to the title (the point of
+grouping), but wrong for two other shapes:
+
+- **Fixed English page copy or generated metadata** — a hardcoded sentence
+  (`CloseBlock`'s "A few seconds to capture what happened.", `StaleNote`'s "Running far
+  past its target…"), or a phrase built from numbers and English words
+  (`{n} segments · {m} min`, `due {relativeDay(...)}`) — is never user text and never
+  changes language, so it carries its own `dir="ltr"` isolate, nested inside the group,
+  the same shape already established for `reason` props (Today/ItemDetail/SessionPlan).
+  The counterexample the review found: `CloseBlock.tsx`'s "A few seconds…" sentence sat
+  bare in the item-title group, so a Farsi title made its trailing full stop render at
+  the visual start — the same defect this section already fixed once, reappearing one
+  level down. `TodayRoutineRow`/`PathwayDetail`'s `RoutineRow`/`StageDetail`'s
+  `RoutineCard` all render the identical "N segments · M min" phrase and all needed the
+  same isolate — a fix applied to one occurrence of a repeated pattern and not the
+  others is exactly the kind of gap this closure exists to catch.
+- **An independently-authored value** — a question, a problem, an observation, a
+  pathway's own description or note — carries its own `dir="auto"` isolate for the same
+  reason `ActiveBlock`'s `constraint`/`problem`/`previousNextAction` already do: its
+  language cannot be assumed from the title sitting next to it. The counterexample:
+  `ClassQuestions`' question/problem/last-observation sat bare in the title's `<li>`
+  group with no isolate of any kind — unlike `ActiveBlock`'s established shape (a fixed
+  English label left bare, immediately followed by the value in its own `dir="auto"`),
+  which `ClassQuestions` now matches rather than inventing a third pattern.
+
+**THIS IS DELIBERATELY NOT "no bare Latin text in a group."** A short fixed label
+immediately followed by its own isolate — `Constraint: ` before
+`<span dir="auto">{value}</span>`, `Problem: ` before the same shape in
+`ClassQuestions` — stays bare on purpose; flagging it would force a change to an
+already-correct, already-reviewed pattern. What actually breaks is a real PHRASE that
+reaches the end of a group's rendered content with nothing to isolate it — which is
+what `src/components/direction.test.ts`'s `unexemptedPhrase` scans for mechanically: it
+walks a group's body in source order, accumulating exposed literal text, and clears
+that accumulation the moment it is immediately followed by any element carrying its own
+`dir=` — regardless of the accumulated text's length, which is what keeps the
+`ActiveBlock` label shape passing. Only a run that survives to a TAG boundary (not an
+expression boundary — `{n} segments · {m} min` is one generated phrase split across two
+expressions and must not fragment into single, individually-innocent words) and reads
+as two or more words is flagged. This is the "detectable, not enumerated" half the
+rejected review asked for: a NEW hardcoded sentence dropped into a group without its own
+isolate fails this test on its own, the same way a missed title already failed the
+group-vs-title test above.
+
+What that scan cannot see from source — an independently-authored VALUE (an
+expression whose content is opaque, like `{q.currentProblem}`) needing `dir="auto"`, or
+a component like `StaleNote` whose OWN return value needs to be isolated regardless of
+which title group calls it — is a recorded ledger instead, `ISOLATED_VALUE_SITES` and
+`LTR_ISOLATE_SITES` in the same test file, carrying the identical visibility contract as
+`GROUP_SITE_INVENTORY`: a legitimate new one must be added, visibly, or the test fails
+until it is.
+
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
 a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard

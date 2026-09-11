@@ -102,6 +102,9 @@ const ALLOWED_TITLE_SITES: { file: string; snippet: string; why: string }[] = [
 const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
   { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
   { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: '' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'small' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
@@ -128,6 +131,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Materials.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Materials.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'p', classValue: 'page-sub' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'card card-quiet small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'button', classValue: 'grow' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: '' },
@@ -170,6 +175,7 @@ interface Site {
   tagName: string;
   classValue: string;
   text: string;
+  at: number;
 }
 
 /** The opening tag that an index sits inside, brace- and quote-aware. */
@@ -280,6 +286,7 @@ function directionSites(file: string): Site[] {
       tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
       classValue: classNameOf(tag),
       text: tag,
+      at,
     });
   }
   return sites;
@@ -291,6 +298,167 @@ const isGroup = (site: Site) => !isTitle(site) && !isField(site);
 
 const allowed = (site: Site) =>
   ALLOWED_TITLE_SITES.some((e) => e.file === site.file && site.text.includes(e.snippet));
+
+// --- mixed-content groups: a child's OWN bidi base, not just the group's ---
+//
+// A rejected review found that the inventory above proves a GROUP carries
+// direction, but nothing proved that a fixed English sentence or an
+// independently-authored value sitting INSIDE that group has a bidi base of
+// its own. A Farsi title makes the whole group resolve RTL; anything else in
+// that subtree with no `dir` of its own is exposed to that same RTL base —
+// which is exactly right for a caption that belongs to the title (that is
+// the whole point of grouping), but wrong for fixed page copy or a separately
+// authored value that could be a different script entirely.
+//
+// This can't be reduced to "no bare Latin text in a group": a short fixed
+// label immediately followed by its own isolate — `Constraint: ` before
+// `<span dir="auto">{value}</span>`, the established shape ActiveBlock set —
+// is deliberately left bare, and flagging it would force changes to an
+// already-correct, already-reviewed pattern. What actually breaks is a real
+// PHRASE (2+ words) that reaches the end of the group with nothing to isolate
+// it: `unexemptedPhrase` walks a group's body in source order, accumulating
+// exposed literal text (skipping `{…}` expressions, whose content is opaque
+// from source) into a run, and clears that run the moment it is immediately
+// followed by an element carrying its own `dir=` — the run is exempted
+// regardless of length, because whatever risk existed is now the isolate's
+// to own. Only a run that survives to the end of the group's body, and that
+// reads as a real phrase, is flagged.
+
+/** The element's body span: from just after its own opening tag's `>` to just
+ *  after its matching closing tag (empty for a self-closing tag). Depth
+ *  tracking is generic — any opened tag increases it, any closed tag
+ *  decreases it — since well-formed JSX nests properly regardless of name. */
+function elementBody(src: string, tag: string, openAt: number): { start: number; end: number } {
+  const start = openAt + tag.length;
+  if (tag.endsWith('/>')) return { start, end: start };
+  let depth = 1;
+  let i = start;
+  while (i < src.length && depth > 0) {
+    if (src[i] === '<') {
+      if (src[i + 1] === '/') {
+        const close = src.indexOf('>', i);
+        i = close < 0 ? src.length : close + 1;
+        depth -= 1;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const inner = enclosingTag(src, i);
+        i += inner.length;
+        if (!inner.endsWith('/>')) depth += 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return { start, end: i };
+}
+
+/** The first exposed, unexempted 2+-word phrase in a group's body, or null
+ *  when everything either belongs to an expression or leads into its own
+ *  isolate. See the block comment above for what "exempted" means. */
+function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): string | null {
+  let buffer = '';
+  // A run is judged at each TAG boundary (open or close) — two adjacent but
+  // unrelated elements (e.g. two one-word buttons, "Edit" and "Delete") must
+  // never concatenate into a false 2-word phrase. An EXPRESSION boundary does
+  // NOT judge the run: `{n} segments · {m} min` is one generated phrase split
+  // across two expressions, and judging at each `{` would fragment it into
+  // single, individually-innocent words, hiding the real violation.
+  const flush = (): string | null => {
+    const words = buffer.trim().match(/[A-Za-z]+/g) ?? [];
+    buffer = '';
+    return words.length >= 2 ? words.join(' ') : null;
+  };
+  let i = bodyStart;
+  while (i < bodyEnd) {
+    const c = src[i];
+    if (c === '{') {
+      let depth = 1;
+      i += 1;
+      while (i < bodyEnd && depth > 0) {
+        if (src[i] === '{') depth += 1;
+        else if (src[i] === '}') depth -= 1;
+        i += 1;
+      }
+      continue;
+    }
+    if (c === '<') {
+      if (src[i + 1] === '/') {
+        const hit = flush();
+        if (hit) return hit;
+        const close = src.indexOf('>', i);
+        i = close < 0 ? bodyEnd : close + 1;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const hit = flush();
+        if (hit) return hit;
+        const tag = enclosingTag(src, i);
+        if (/\sdir="(auto|ltr|rtl)"/.test(tag)) {
+          const body = elementBody(src, tag, i);
+          i = body.end; // exempted: leads into its own isolate, whatever its length
+        } else {
+          i += tag.length; // transparent: its children are scanned in the same pass
+        }
+        continue;
+      }
+    }
+    buffer += c;
+    i += 1;
+  }
+  return flush();
+}
+
+/**
+ * Independently-authored values (case ii: a question, a note, an observation
+ * — content whose own language cannot be assumed from the title next to it)
+ * that carry their own `dir=` isolate, so they resolve from their OWN content
+ * rather than the group's. Unlike the fixed-copy phrases above, these are
+ * plain expressions (`{q.currentProblem}`, `{pathway.note}`) — their value is
+ * opaque from source, so completeness here is a recorded ledger, not a
+ * derivation, exactly like ALLOWED_TITLE_SITES and GROUP_SITE_INVENTORY: a
+ * legitimate new one must be added, visibly, rather than left silent.
+ */
+const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{active.constraint}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{problem}</span>' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<div className="small" dir="auto">' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.currentProblem}</span>' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.lastObservation}</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
+  { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
+  { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
+];
+
+/**
+ * Fixed English copy or generated metadata (case i: `buildReason`,
+ * `relativeDay`, a hardcoded sentence) that is ALWAYS English by
+ * construction, wrapped in its own `dir="ltr"` isolate so a Farsi title's RTL
+ * base can't drag its trailing punctuation to the visual start. Recorded for
+ * the same reason as ISOLATED_VALUE_SITES: a call like `StaleNote` renders
+ * from a different function than its call site, so no source scan at the
+ * call site can see whether its OWN return value is isolated.
+ */
+const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
+  { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
+  { file: 'pages/Today.tsx', snippet: 'className="faint small truncate" dir="ltr">{instrumentName' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
+  { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
+  { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
+  { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },
+  { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
+  { file: 'pages/Lessons.tsx', snippet: 'className="tiny" dir="ltr" style={{ color: \'var(--tone-warn)\' }}' },
+  { file: 'pages/Lessons.tsx', snippet: 'className="tiny" dir="ltr" style={{ color: \'var(--tone-alert)\' }}' },
+  { file: 'components/ItemMaterial.tsx', snippet: 'className="tiny faint" dir="ltr">\n          On your NAS' },
+  { file: 'components/ItemMaterial.tsx', snippet: 'className="tiny faint" dir="ltr">\n            On this device' },
+];
 
 // --- the check --------------------------------------------------------------
 
@@ -327,5 +495,33 @@ describe('direction lives on the group', () => {
       .filter(isGroup)
       .map(({ file, tagName, classValue }) => ({ file, tagName, classValue }));
     expect(inventory).toEqual(GROUP_SITE_INVENTORY);
+  });
+
+  it('no fixed English phrase in a group inherits the title\'s bidi base unisolated', () => {
+    const violations: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of directionSites(file).filter(isGroup)) {
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const phrase = unexemptedPhrase(src, body.start, body.end);
+        if (phrase) violations.push(`${file}:${site.line} — "${phrase}" is exposed to the group's bidi base`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps every independently-authored value isolated from the group it sits in', () => {
+    for (const entry of ISOLATED_VALUE_SITES) {
+      const hit = SOURCES[entry.file]?.includes(entry.snippet);
+      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
+    }
+  });
+
+  it('keeps every fixed-English / generated-metadata site isolated from the group it sits in', () => {
+    for (const entry of LTR_ISOLATE_SITES) {
+      const hit = SOURCES[entry.file]?.includes(entry.snippet);
+      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
+    }
   });
 });

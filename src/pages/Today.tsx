@@ -144,7 +144,15 @@ export default function Today() {
  */
 function StaleNote({ active, now }: { active: ActiveSession; now: Date }) {
   if (!isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes)) return null;
-  return <div className="tiny faint">Running far past its target — finish it, correct the minutes, or discard it.</div>;
+  // Fixed English page copy, rendered inside both the In-progress card's and
+  // ElsewhereSessions' title groups — its own dir="ltr" isolate keeps its
+  // bidi base fixed regardless of the item's title, so a Farsi title's RTL
+  // base can't drag its trailing full stop to the visual start.
+  return (
+    <div className="tiny faint">
+      <span dir="ltr">Running far past its target — finish it, correct the minutes, or discard it.</span>
+    </div>
+  );
 }
 
 function ElsewhereSessions({
@@ -326,7 +334,9 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
       <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
         <div dir="auto" style={{ minWidth: 0 }}>
-          <div className="faint small truncate">{instrumentName(db, running?.instrumentId)} routine running ▸</div>
+          {/* Fixed English page copy, never user text — its own dir="ltr"
+              isolate keeps it from inheriting the group's bidi base. */}
+          <div className="faint small truncate" dir="ltr">{instrumentName(db, running?.instrumentId)} routine running ▸</div>
         </div>
       </button>
     );
@@ -388,7 +398,11 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
       <div className="row between">
         <div dir="auto" style={{ minWidth: 0 }}>
           <div className="truncate">{routine.name}</div>
-          <div className="tiny faint">{routine.segments.length} segments · {total} min</div>
+          {/* Generated English metadata, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi routine name's RTL base. */}
+          <div className="tiny faint">
+            <span dir="ltr">{routine.segments.length} segments · {total} min</span>
+          </div>
         </div>
         <div className="row" style={{ gap: 6 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
@@ -629,7 +643,12 @@ function SessionView({
                 <div key={r.id} className="list-row" style={{ flexWrap: 'wrap' }}>
                   <div dir="auto" style={{ flex: '1 1 220px', minWidth: 0, textAlign: 'start' }}>
                     <div>{item.title}</div>
-                    <div className="tiny faint">due {relativeDay(r.dueDate, now)}</div>
+                    {/* relativeDay is always English ("today"/"3 days ago") —
+                        its own dir="ltr" isolate keeps it from inheriting a
+                        Farsi title's RTL base. */}
+                    <div className="tiny faint">
+                      due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>
+                    </div>
                   </div>
                   <div className="row" style={{ flex: 'none', marginInlineStart: 'auto' }}>
                     <button

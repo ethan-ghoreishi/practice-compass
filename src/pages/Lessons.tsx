@@ -524,8 +524,10 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
                   {rec.notes}
                 </div>
               )}
+              {/* Fixed English page copy, never user text — its own dir="ltr"
+                  isolate keeps it from inheriting a Farsi title's RTL base. */}
               {resolution.status === 'no-base' && (
-                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
+                <div className="tiny" dir="ltr" style={{ color: 'var(--tone-warn)' }}>
                   Set your NAS base URL in{' '}
                   <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
                     Settings
@@ -534,7 +536,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
                 </div>
               )}
               {resolution.status === 'bad-base' && (
-                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+                <div className="tiny" dir="ltr" style={{ color: 'var(--tone-alert)' }}>
                   Your NAS base URL isn’t a valid web address — fix it in{' '}
                   <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
                     Settings

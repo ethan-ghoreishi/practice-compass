@@ -149,6 +149,45 @@ rather than by patching the two cited examples:
    The predicate is tested against the real engine across all six results for both a
    manual- and an auto-mode item, not asserted in prose alone.
 
+**Second rejection, closed as a family rather than as four counterexamples
+(2026-09-11).** A second sealed review found the FIRST fix's isolate pattern had not
+been applied everywhere it was needed: `CloseBlock`'s own "A few seconds to capture
+what happened." sat bare in the item-title group (the identical defect the first
+rejection fixed elsewhere in the same file's neighbours), and `ClassQuestions`'
+question/problem/last-observation carried no isolate of any kind, unlike the
+`ActiveBlock` shape the first fix established. Rather than patching just those two
+call sites, the whole surface list was re-audited for the same two shapes:
+
+- **Fixed English copy/metadata bare in a group** — beyond the two named sites, the
+  same "N segments · M min" phrase existed identically in THREE places
+  (`Today.tsx`'s `TodayRoutineRow`, `PathwayDetail.tsx`'s `RoutineRow`,
+  `StageDetail.tsx`'s `RoutineCard` — one component per surface a routine can be
+  started from, never refactored into one shared component), `StaleNote`'s "Running
+  far past its target…" (rendered inside two different title groups), Today's due-review
+  caption ("due `relativeDay(...)`"), the NAS-reference warning sentences
+  (`Lessons.tsx`, `ItemMaterial.tsx`), `ItemDetail.tsx`'s "Study source:" label and
+  `StageDetail.tsx`'s "Added "…" — not practised yet." undo banner. Every one now
+  carries the same nested `dir="ltr"` isolate as the first fix's `reason` spans.
+- **Independently-authored values bare in a group** — `PathwayDetail.tsx`'s
+  `pathway.description`/`pathway.note`, editable independently of the pathway's own
+  name, needed the same `dir="auto"` isolate `ActiveBlock`'s `constraint`/`problem`
+  already carry.
+
+**The test itself was the real gap, not just the four sites.** `direction.test.ts`
+proved a GROUP carries direction; it never proved a CHILD inside it does. A generic
+"no bare Latin text in a group" rule would have forced changes to the already-correct
+`ActiveBlock` label shape (`Constraint: ` stays bare on purpose, immediately followed
+by its own isolate), so the new check (`unexemptedPhrase`) walks a group's body in
+source order, judges an accumulated run of exposed text at each TAG boundary (never at
+an expression boundary, or `{n} segments · {m} min` fragments into single innocent
+words), and exempts a run — regardless of its length — the moment it is immediately
+followed by an element carrying its own `dir=`. Two recorded ledgers
+(`ISOLATED_VALUE_SITES`, `LTR_ISOLATE_SITES`) cover what no source scan can prove:
+an expression's own content (`{q.currentProblem}`) is opaque from source, and a
+component like `StaleNote` renders its isolate from its OWN definition, invisible from
+any of its call sites. Both carry the same visibility contract as
+`GROUP_SITE_INVENTORY` — a new site must be added, visibly, never inferred silently.
+
 ## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
 
 **Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores

@@ -189,7 +189,10 @@ export default function StageDetail() {
         <div className="section-label">In this stage</div>
         {undo && (
           <div className="card card-quiet row between small" dir="auto" style={{ gap: 8 }}>
-            <span className="truncate">
+            {/* Fixed English page copy with the item's own (possibly Farsi)
+                title embedded mid-sentence — its own dir="ltr" isolate fixes
+                the sentence's bidi base regardless of the embedded title. */}
+            <span className="truncate" dir="ltr">
               Added “{undo.title}” — not practised yet.
             </span>
             <div className="row" style={{ gap: 6, flex: 'none' }}>
@@ -357,8 +360,12 @@ function RoutineCard({
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>
+          {/* Generated English metadata, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi routine name's RTL base. */}
           <div className="tiny faint">
-            {routine.segments.length} segments · {total} min{bound ? '' : ' · guided warm-up, not logged as practice'}
+            <span dir="ltr">
+              {routine.segments.length} segments · {total} min{bound ? '' : ' · guided warm-up, not logged as practice'}
+            </span>
           </div>
         </div>
         <div className="row" style={{ gap: 6 }}>

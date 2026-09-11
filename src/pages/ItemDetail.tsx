@@ -557,7 +557,8 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
         )}
         {material && (
           <span className="dim" dir="auto">
-            Study source: <strong style={{ color: 'var(--text)' }}>{material.title}</strong>
+            <span dir="ltr">Study source: </span>
+            <strong style={{ color: 'var(--text)' }}>{material.title}</strong>
           </span>
         )}
         {stage && (

@@ -3,10 +3,12 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
 
 /**
  * "Questions for next class" — the questions to actually ask the teacher,
- * with Copy / Download / Print exports. Farsi and mixed-language text keeps
- * its direction natively from `dir="auto"` on the group each question sits in.
- * A question is never cleared by practising; the user edits the item to remove
- * it.
+ * with Copy / Download / Print exports. The title leads each question's own
+ * group (`dir="auto"` on the `<li>`), but the question, problem and last
+ * observation are each authored independently of the title AND of each
+ * other, so each carries its OWN `dir="auto"` isolate rather than inheriting
+ * the title's resolved direction. A question is never cleared by practising;
+ * the user edits the item to remove it.
  */
 export default function ClassQuestions({
   instrumentName,
@@ -71,9 +73,22 @@ export default function ClassQuestions({
               <div className="small" style={{ fontWeight: 600 }}>
                 {q.title}
               </div>
-              <div className="small">{q.question}</div>
-              {q.currentProblem && <div className="tiny faint">Problem: {q.currentProblem}</div>}
-              {q.lastObservation && <div className="tiny faint">Last time: {q.lastObservation}</div>}
+              {/* question/problem/observation are each authored independently
+                  of the title (and of each other) — their own dir="auto"
+                  isolates resolve from their own content, not from q.title's. */}
+              <div className="small" dir="auto">
+                {q.question}
+              </div>
+              {q.currentProblem && (
+                <div className="tiny faint">
+                  Problem: <span dir="auto">{q.currentProblem}</span>
+                </div>
+              )}
+              {q.lastObservation && (
+                <div className="tiny faint">
+                  Last time: <span dir="auto">{q.lastObservation}</span>
+                </div>
+              )}
             </li>
           ))}
         </ol>
