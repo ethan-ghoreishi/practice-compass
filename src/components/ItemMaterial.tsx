@@ -53,8 +53,8 @@ function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' 
       <div className="stage-badge" style={{ background: 'var(--surface-2)', color: 'var(--text-dim)' }}>
         <KindIcon file={file} />
       </div>
-      <div className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
-        <div className="truncate" dir="auto">
+      <div className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
+        <div className="truncate">
           {file.title}
         </div>
         <div className="tiny faint">
@@ -112,8 +112,8 @@ function AttachmentRow({ file }: { file: Extract<ItemFile, { source: 'attachment
         <div className="stage-badge" style={{ background: 'var(--surface-2)', color: 'var(--text-dim)' }}>
           <KindIcon file={file} />
         </div>
-        <div className="grow" style={{ minWidth: 0, textAlign: 'left' }}>
-          <div className="truncate" dir="auto">
+        <div className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
+          <div className="truncate">
             {file.title}
           </div>
           <div className="tiny faint">

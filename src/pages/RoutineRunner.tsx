@@ -175,8 +175,8 @@ export default function RoutineRunner() {
           <div className="card stack-sm" style={{ textAlign: 'left' }}>
             <div className="section-label">Recorded</div>
             {[...recorded.entries()].map(([itemId, minutes]) => (
-              <div key={itemId} className="row between">
-                <span dir="auto" className="truncate">
+              <div key={itemId} className="row between" dir="auto">
+                <span className="truncate">
                   {getItem(db, itemId)?.title ?? 'Item'}
                 </span>
                 <span className="tiny faint">{minutes} min</span>
@@ -246,7 +246,9 @@ export default function RoutineRunner() {
         </div>
       </div>
 
-      <div>
+      {/* The segment's own label leads, so it and the item beneath it read as
+          one block rather than pointing at opposite edges. */}
+      <div dir="auto">
         <div className="title-md" style={{ fontSize: '1.2rem' }}>
           {seg.label}
         </div>

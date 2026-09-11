@@ -167,13 +167,13 @@ export default function Materials() {
           const mats = db.materials.filter((m) => m.instrumentId === inst.id);
           if (mats.length === 0) return null;
           return (
-            <section key={inst.id} className="stack-sm">
+            <section key={inst.id} className="stack-sm" dir="auto">
               <h2 className="title-md">{inst.name}</h2>
               <div className="card card-flush list">
                 {mats.map((m) => (
                   <div key={m.id} className="list-row">
-                    <div className="grow">
-                      <div className="truncate" dir="auto">
+                    <div className="grow" dir="auto">
+                      <div className="truncate">
                         {m.title}
                       </div>
                       <div className="tiny faint">

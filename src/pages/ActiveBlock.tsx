@@ -84,14 +84,20 @@ export default function ActiveBlock() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
       <header className="stack-sm">
         <div className="eyebrow">{instrumentName(db, active.instrumentId)}</div>
-        <h1 className="page-title" dir="auto" style={{ fontSize: '1.5rem' }}>
-          {item?.title ?? 'Practice'}
-        </h1>
-        <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-          <span className="chip">{BLOCK_MODE_LABELS[active.mode]}</span>
-          <span className="chip">{FOCUS_LABELS[active.focus]}</span>
+        {/* The title and the details that belong to it are ONE group carrying
+            the direction, so a Farsi piece reads as one block. The English
+            eyebrow stays OUTSIDE it: dir="auto" resolves from the first strong
+            character in the subtree, so including it would pin the group LTR. */}
+        <div className="stack-sm" dir="auto">
+          <h1 className="page-title" style={{ fontSize: '1.5rem' }}>
+            {item?.title ?? 'Practice'}
+          </h1>
+          <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
+            <span className="chip">{BLOCK_MODE_LABELS[active.mode]}</span>
+            <span className="chip">{FOCUS_LABELS[active.focus]}</span>
+          </div>
+          {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
         </div>
-        {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
       </header>
 
       {previousNextAction && (

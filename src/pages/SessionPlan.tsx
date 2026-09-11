@@ -133,8 +133,10 @@ function PlanPreview() {
                   <span className="tiny faint">{BUCKET_LABEL[seg.bucket]}</span>
                   {seg.core && <span className="tiny" style={{ color: 'var(--accent)' }}>core</span>}
                 </div>
-                <div className="truncate" dir="auto" style={{ fontWeight: 500 }}>{seg.title}</div>
-                <div className="tiny faint" dir="auto">{seg.reason}</div>
+                <div dir="auto">
+                  <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
+                  <div className="tiny faint">{seg.reason}</div>
+                </div>
               </div>
               <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
                 Swap
@@ -226,8 +228,10 @@ function PlanRunner() {
                   {seg.status === 'done' && <span className="tiny" style={{ color: 'var(--tone-good)' }}>done</span>}
                   {seg.status === 'skipped' && <span className="tiny faint">skipped</span>}
                 </div>
-                <div className="truncate" dir="auto" style={{ fontWeight: 500 }}>{seg.title}</div>
-                {isCurrent && <div className="tiny faint" dir="auto">{seg.reason}</div>}
+                <div dir="auto">
+                  <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
+                  {isCurrent && <div className="tiny faint">{seg.reason}</div>}
+                </div>
               </div>
               {isCurrent && (
                 <div className="row" style={{ gap: 6, flex: 'none' }}>

@@ -121,9 +121,11 @@ export default function ItemDetail() {
         <ArrowLeftIcon width={16} height={16} /> {fromLabel}
       </Link>
 
-      <header className="stack-sm">
+      {/* Title and the details that belong to it in ONE group, so a Farsi
+          item's name and its own metadata line align to the same edge. */}
+      <header className="stack-sm" dir="auto">
         <div className="row between" style={{ alignItems: 'flex-start' }}>
-          <h1 className="page-title" dir="auto">
+          <h1 className="page-title">
             {item.title}
           </h1>
           <StatusBadge status={item.status} />
@@ -367,10 +369,10 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
             <div className="tiny" style={{ color: 'var(--accent)' }}>
               Practise this part now · 10 min
             </div>
-            <div className="truncate" dir="auto">
-              {next.score.item.title}
+            <div dir="auto">
+              <div className="truncate">{next.score.item.title}</div>
+              <div className="tiny faint truncate">{next.reason}</div>
             </div>
-            <div className="tiny faint truncate">{next.reason}</div>
           </div>
           <button
             className="btn btn-sm btn-primary"
@@ -388,8 +390,8 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
       {parts.length > 0 && (
         <div className="card card-flush list">
           {parts.map((p) => (
-            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" style={{ borderRadius: 0 }}>
-              <div className="grow truncate" dir="auto">
+            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" dir="auto" style={{ borderRadius: 0 }}>
+              <div className="grow truncate">
                 {p.title}
               </div>
               <StatusBadge status={p.status} />
@@ -494,7 +496,7 @@ function ItemFilesCrud({ itemId }: { itemId: string }) {
       {list.length > 0 && (
         <div className="card card-flush list">
           {list.map((a) => (
-            <div key={a.id} className="list-row">
+            <div key={a.id} className="list-row" dir="auto">
               <div className="grow truncate">{a.name}</div>
               <div className="tiny faint">
                 {a.kind} · {formatBytes(a.size)}

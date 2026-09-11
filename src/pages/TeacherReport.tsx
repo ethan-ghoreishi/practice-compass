@@ -89,7 +89,7 @@ export default function TeacherReport() {
             {copied ? 'Copied ✓' : 'Copy report'}
           </button>
           <div className="card">
-            <pre className="pre">{report}</pre>
+            <pre className="pre" dir="auto">{report}</pre>
           </div>
         </>
       ) : (

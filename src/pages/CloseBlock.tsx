@@ -5,6 +5,7 @@ import {
   planNextReview,
   proposedCloseMinutes,
   type ReviewAnswer,
+  type ReviewPlan,
   RESULT_LABELS,
   REVIEW_TYPE_LABELS,
   suggestStatusAfterBlock,
@@ -17,7 +18,7 @@ import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { Field, OptionPills } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
-import { relativeDay } from '../components/format';
+import { reviewSummaryLine } from '../components/format';
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
   { value: 'worse', label: RESULT_LABELS.worse },
@@ -55,8 +56,10 @@ export default function CloseBlock() {
   const [bodyNote, setBodyNote] = useState('');
   const [showBodyNote, setShowBodyNote] = useState(false);
   const [comeBack, setComeBack] = useState(true);
-  const [reviewDate, setReviewDate] = useState('');
-  const [reviewType, setReviewType] = useState<ReviewType>('retention');
+  // A CORRECTION to the engine's plan, never a second copy of it. Held as an
+  // override so there is still exactly ONE review value on this screen (below).
+  const [override, setOverride] = useState<{ dueDate?: string; reviewType?: ReviewType } | null>(null);
+  const [showReviewControls, setShowReviewControls] = useState(false);
   const [acceptStatus, setAcceptStatus] = useState(true);
   const [becomeTeacherQ, setBecomeTeacherQ] = useState(false);
   const [teacherQText, setTeacherQText] = useState(item?.teacherQuestion ?? '');
@@ -75,10 +78,50 @@ export default function CloseBlock() {
   // previewed here is exactly the date that gets saved.
   const params = useMemo(() => clampSchedulingParams(db.settings), [db.settings]);
 
-  const reviewSuggestion = useMemo(
-    () => (item && result ? planNextReview({ item, result, now, params }) : null),
-    [item, result, now, params],
-  );
+  /**
+   * THE review decision on this screen — one value, derived once.
+   *
+   * The engine's plan for the chosen result, with any correction the owner made
+   * folded INTO it. The collapsed line, the date field behind the disclosure and
+   * the date handed to `closeSession` are three renderings of THIS object, so
+   * "the date shown before saving is exactly the date saved" holds by
+   * construction: a divergent date is unrepresentable, not merely remembered
+   * about. A second `planNextReview` call anywhere in this file — there used to
+   * be one, seeding the field from a different invocation than the preview —
+   * would reintroduce exactly the drift r-explainable-scheduling forbids.
+   */
+  const review = useMemo<ReviewPlan | null>(() => {
+    const base = item && result ? planNextReview({ item, result, now, params }) : null;
+    if (!override) return base;
+    const dueDate = override.dueDate ?? base?.dueDate ?? '';
+    // A per-item MANUAL override gives no engine plan; until the owner picks a
+    // date there is genuinely nothing scheduled, and saying otherwise would be
+    // the fabrication this app refuses.
+    if (!dueDate) return base;
+    return {
+      intervalDays: base?.intervalDays ?? 0,
+      changeStrategy: base?.changeStrategy ?? false,
+      dueDate,
+      reviewType: override.reviewType ?? base?.reviewType ?? 'retention',
+      // The rationale explains the DATE. Once the owner sets their own, quoting
+      // the engine's reason would explain a number it did not choose.
+      rationale: base && dueDate === base.dueDate ? base.rationale : 'The date you chose.',
+    };
+  }, [item, result, now, params, override]);
+
+  /**
+   * The one line the screen shows for that decision. Every branch is honest
+   * about what will be SAVED: the plan when there is one, the deliberate "no"
+   * when the owner declined, and plainly nothing when no result has been picked
+   * — never a date the close is not actually going to write.
+   */
+  const reviewLine = !result
+    ? 'Pick how it went and the next review appears here.'
+    : !comeBack
+      ? 'Not coming back — no review will be scheduled.'
+      : review
+        ? reviewSummaryLine(review, now)
+        : 'No date yet — this item is on manual dates, so choose one.';
 
   const statusSuggestion = useMemo(
     () =>
@@ -90,14 +133,12 @@ export default function CloseBlock() {
 
   function pickResult(r: BlockResult) {
     setResult(r);
-    if (!item) return;
-    const s = planNextReview({ item, result: r, now, params });
     setComeBack(true);
-    if (s) {
-      setReviewDate(s.dueDate);
-      setReviewType(s.reviewType);
-    }
-    // Manual mode (s === null): keep the date the user chooses.
+    // A fresh result means a fresh plan: a correction made earlier belonged to
+    // the date the PREVIOUS result produced, and carrying it over would pin a
+    // date to a judgement it was never made about. The plan itself is derived
+    // above from `result` — nothing is computed here.
+    setOverride(null);
   }
 
   if (!active || !item) {
@@ -114,14 +155,14 @@ export default function CloseBlock() {
   /**
    * Saving with a result answers the review question; saving WITHOUT one
    * answers nothing about it, so the schedule must not move. Stated in one
-   * place rather than emerging from `comeBack && !!reviewDate`, and forced to
+   * place rather than emerging from `comeBack && !!review`, and forced to
    * 'unanswered' by the escape hatch even when a result had been picked (and
-   * so had already filled in a date) — otherwise that date would leak into a
+   * so had already produced a plan) — otherwise that date would leak into a
    * close that deliberately recorded no judgement.
    */
   function handleSave(withoutResult = false) {
     const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
-    const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && reviewDate ? 'scheduled' : 'declined';
+    const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && review ? 'scheduled' : 'declined';
     const newStatus: ItemStatus | undefined =
       !withoutResult && acceptStatus && statusSuggestion.suggestedStatus ? statusSuggestion.suggestedStatus : undefined;
 
@@ -133,8 +174,8 @@ export default function CloseBlock() {
       bodyNote: bodyNote.trim() || undefined,
       newStatus,
       answer,
-      nextReviewDate: answer === 'scheduled' ? reviewDate : undefined,
-      reviewType,
+      nextReviewDate: answer === 'scheduled' ? review?.dueDate : undefined,
+      reviewType: review?.reviewType ?? 'retention',
       teacherQuestion: becomeTeacherQ ? teacherQText.trim() : undefined,
     });
     // If a Session Plan is running, return to it (closeSession advanced it).
@@ -145,10 +186,15 @@ export default function CloseBlock() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
       <header className="stack-sm">
         <div className="eyebrow">{instrumentName(db, item.instrumentId)}</div>
-        <h1 className="page-title" style={{ fontSize: '1.45rem' }}>
-          {item.title}
-        </h1>
-        <p className="page-sub">A few seconds to capture what happened.</p>
+        {/* The item's own name leads its group, so a Farsi title and the line
+            beneath it read as one block. The English eyebrow stays outside:
+            dir="auto" resolves from the first strong character in the subtree. */}
+        <div className="stack-sm" dir="auto">
+          <h1 className="page-title" style={{ fontSize: '1.45rem' }}>
+            {item.title}
+          </h1>
+          <p className="page-sub">A few seconds to capture what happened.</p>
+        </div>
       </header>
 
       <Field label="How did it go?">
@@ -173,24 +219,6 @@ export default function CloseBlock() {
         </div>
       )}
 
-      <Field
-        label="Minutes practised"
-        hint={
-          proposed.stale
-            ? `The clock ran far past its ${active.targetMinutes}-minute target, so that target is proposed rather than the whole gap — change it to what you actually played.`
-            : undefined
-        }
-      >
-        <input
-          className="input"
-          type="number"
-          min={1}
-          value={duration}
-          onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))}
-          style={{ maxWidth: 120 }}
-        />
-      </Field>
-
       <Field label="One observation">
         <textarea
           className="textarea"
@@ -206,6 +234,24 @@ export default function CloseBlock() {
           placeholder="The one thing to try next time"
           value={nextAction}
           onChange={(e) => setNextAction(e.target.value)}
+        />
+      </Field>
+
+      <Field
+        label="Minutes practised"
+        hint={
+          proposed.stale
+            ? `The clock ran far past its ${active.targetMinutes}-minute target, so that target is proposed rather than the whole gap — change it to what you actually played.`
+            : undefined
+        }
+      >
+        <input
+          className="input"
+          type="number"
+          min={1}
+          value={duration}
+          onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))}
+          style={{ maxWidth: 120 }}
         />
       </Field>
 
@@ -240,36 +286,57 @@ export default function CloseBlock() {
         </div>
       )}
 
+      {/* The scheduling decision, collapsed to ONE honest line: the date and
+          type that will actually be saved, with the controls a tap behind it.
+          Same data, same defaults, same required result — less supervision of
+          the algorithm while the musician's own words are still fresh. Every
+          rendering here reads `review`; nothing computes a date. */}
       <div className="card card-quiet stack-sm">
         <div className="row between">
-          <div className="small">Should this come back?</div>
-          <YesNo value={comeBack} onChange={setComeBack} />
+          <div className="small" style={{ minWidth: 0 }}>{reviewLine}</div>
+          <button
+            type="button"
+            className="btn btn-sm"
+            style={{ flex: 'none' }}
+            aria-expanded={showReviewControls}
+            onClick={() => setShowReviewControls((o) => !o)}
+          >
+            {showReviewControls ? 'Done' : 'Change'}
+          </button>
         </div>
-        {comeBack && (
-          <div className="grid-2">
-            <Field
-              label="Next review"
-              hint={reviewSuggestion ? `${relativeDay(reviewSuggestion.dueDate, now)} · ${reviewSuggestion.rationale}` : 'Set a date yourself.'}
-            >
-              <input className="input" type="date" value={reviewDate} onChange={(e) => setReviewDate(e.target.value)} />
-              {reviewSuggestion && (
+        {showReviewControls && (
+          <>
+            <div className="row between">
+              <div className="small">Should this come back?</div>
+              <YesNo value={comeBack} onChange={setComeBack} />
+            </div>
+            {comeBack && (
+              <>
+                <Field label="Next review">
+                  <input
+                    className="input"
+                    type="date"
+                    value={review?.dueDate ?? ''}
+                    onChange={(e) => setOverride((o) => ({ ...o, dueDate: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Review type">
+                  <OptionPills
+                    ariaLabel="Review type"
+                    value={review?.reviewType ?? 'retention'}
+                    onChange={(v) => setOverride((o) => ({ ...o, reviewType: v }))}
+                    options={(Object.keys(REVIEW_TYPE_LABELS) as ReviewType[]).map((v) => ({
+                      value: v,
+                      label: REVIEW_TYPE_LABELS[v],
+                    }))}
+                  />
+                </Field>
                 <Link to="/settings#how-scheduling-works" className="tiny faint" style={{ textDecoration: 'underline' }}>
                   Why this date?
                 </Link>
-              )}
-            </Field>
-            <Field label="Review type">
-              <OptionPills
-                ariaLabel="Review type"
-                value={reviewType}
-                onChange={setReviewType}
-                options={(Object.keys(REVIEW_TYPE_LABELS) as ReviewType[]).map((v) => ({
-                  value: v,
-                  label: REVIEW_TYPE_LABELS[v],
-                }))}
-              />
-            </Field>
-          </div>
+              </>
+            )}
+          </>
         )}
       </div>
 

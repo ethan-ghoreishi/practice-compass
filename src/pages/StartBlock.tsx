@@ -192,7 +192,7 @@ export default function StartBlock() {
                     }}
                     onClick={() => pickItem(item)}
                   >
-                    <div className="grow">
+                    <div className="grow" dir="auto" style={{ textAlign: 'start' }}>
                       <div className="truncate">{item.title}</div>
                       <div className="tiny faint">{ITEM_TYPE_LABELS[item.itemType]}</div>
                     </div>

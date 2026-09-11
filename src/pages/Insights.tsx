@@ -118,7 +118,7 @@ function PractiseTotals({ now }: { now: Date }) {
             </tr>
             {rows.map((r) => (
               <tr key={r.instrumentId}>
-                <th style={CELL} scope="row" className="dim">{r.instrumentName}</th>
+                <th style={CELL} scope="row" className="dim" dir="auto">{r.instrumentName}</th>
                 <td style={NUM} className="dim">{cell(r.today)}</td>
                 <td style={NUM} className="dim">{cell(r.week)}</td>
                 <td style={NUM} className="dim">{cell(r.allTime)}</td>
@@ -150,10 +150,12 @@ function InsightCard({ insight }: { insight: Insight }) {
       <div className="section-label" style={{ marginBottom: 4 }}>
         {insight.category}
       </div>
-      <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
-        {insight.title}
+      <div dir="auto">
+        <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
+          {insight.title}
+        </div>
+        <div className="small dim">{insight.body}</div>
       </div>
-      <div className="small dim">{insight.body}</div>
     </article>
   );
 }

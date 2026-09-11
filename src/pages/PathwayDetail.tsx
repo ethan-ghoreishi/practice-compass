@@ -91,7 +91,7 @@ export default function PathwayDetail() {
           onCancel={() => setEditing(false)}
         />
       ) : (
-        <header className="stack-sm">
+        <header className="stack-sm" dir="auto">
           <h1 className="page-title">{pathway.name}</h1>
           <div className="tiny faint">
             {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
@@ -302,16 +302,16 @@ function StageRow({
       >
         {sp.complete ? <CheckIcon width={18} height={18} /> : num}
       </div>
-      <button className="grow" style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit' }} onClick={onOpen}>
+      <button className="grow" dir="auto" style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit' }} onClick={onOpen}>
         <div className="row" style={{ gap: 8 }}>
-          <span dir="auto">{stage.code}</span>
+          <span>{stage.code}</span>
           {isCurrent && <span className="badge tone-progress">{isPinned ? 'Current · pinned' : 'Current'}</span>}
           {sp.complete && <span className="badge tone-good">Done</span>}
           {sp.addedItems > 0 && !sp.complete && (
             <span className="tiny faint">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
           )}
         </div>
-        <div className="tiny faint" dir="auto">{stage.title !== stage.code ? stage.title : `${sp.total} piece${sp.total === 1 ? '' : 's'}`}</div>
+        <div className="tiny faint">{stage.title !== stage.code ? stage.title : `${sp.total} piece${sp.total === 1 ? '' : 's'}`}</div>
         <div className="row" style={{ gap: 8, marginTop: 6 }}>
           <span className="balance-track grow" style={{ maxWidth: 180 }}>
             <span className="balance-fill" style={{ width: `${sp.percent}%` }} />
@@ -348,7 +348,7 @@ function RoutineRow({
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div>
+        <div dir="auto">
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>

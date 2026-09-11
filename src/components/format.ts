@@ -1,4 +1,4 @@
-import { dayDiff, parseISODate } from '../domain';
+import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -45,4 +45,19 @@ export function relativeFromDateTime(iso: string | undefined, now: Date = new Da
 
 export function pluralize(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * The close screen's ONE honest line for the review decision — "Review in 2
+ * days · Repair · …" — read off the SAME ReviewPlan that seeds the date field
+ * behind the disclosure.
+ *
+ * It is a pure FORMATTER, never a second derivation: it reports the plan's
+ * three fields and computes no date of its own. That is what makes
+ * r-explainable-scheduling's "the date shown before saving is exactly the date
+ * saved" hold by construction on a screen where the decision is collapsed to a
+ * line — a divergent date is unrepresentable, not merely remembered about.
+ */
+export function reviewSummaryLine(plan: ReviewPlan, now: Date = new Date()): string {
+  return `Review ${relativeDay(plan.dueDate, now)} · ${REVIEW_TYPE_LABELS[plan.reviewType]} · ${plan.rationale}`;
 }

@@ -257,7 +257,7 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 
   return (
     <section className="stack-sm">
-      <div className="row between">
+      <div className="row between" dir="auto">
         <h2 className="title-md">{name}</h2>
         {next ? (
           <span className="badge tone-progress">
@@ -514,8 +514,8 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
             <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
               <KindIcon kind={kind} />
             </span>
-            <div className="grow" style={{ minWidth: 0 }}>
-              <div className="truncate" dir="auto">
+            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+              <div className="truncate">
                 {rec.title}
               </div>
               <div className="tiny faint">{meta}</div>
@@ -654,8 +654,8 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
         <div className="card card-flush list">
           {linked.map((item) => (
             <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
-              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" style={{ minWidth: 0 }}>
-                <div className="truncate" dir="auto">
+              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                <div className="truncate">
                   {item.title}
                 </div>
                 <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>

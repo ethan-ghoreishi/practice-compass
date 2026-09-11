@@ -188,8 +188,8 @@ export default function StageDetail() {
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
         {undo && (
-          <div className="card card-quiet row between small" style={{ gap: 8 }}>
-            <span className="truncate" dir="auto">
+          <div className="card card-quiet row between small" dir="auto" style={{ gap: 8 }}>
+            <span className="truncate">
               Added “{undo.title}” — not practised yet.
             </span>
             <div className="row" style={{ gap: 6, flex: 'none' }}>
@@ -297,8 +297,9 @@ function UnitRow({
         className="stage-unit-text"
         onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : onAdd())}
         title={item ? 'Open item' : 'Add to your items'}
+        dir="auto"
       >
-        <div className="stage-unit-title" dir="auto">
+        <div className="stage-unit-title">
           {unit.title}
         </div>
         <div className="tiny faint">{meta.join(' · ')}</div>
@@ -352,7 +353,7 @@ function RoutineCard({
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div>
+        <div dir="auto">
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>

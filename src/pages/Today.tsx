@@ -92,10 +92,10 @@ export default function Today() {
         <Link to="/active" className="card card-accent card-link row between">
           <div>
             <div className="eyebrow">In progress</div>
-            <div className="title-md" dir="auto">
-              {getItem(db, active.itemId)?.title ?? 'Practice block'}
+            <div dir="auto">
+              <div className="title-md">{getItem(db, active.itemId)?.title ?? 'Practice block'}</div>
+              <StaleNote active={active} now={now} />
             </div>
-            <StaleNote active={active} now={now} />
           </div>
           <span className="btn btn-primary btn-sm">
             <PlayIcon /> Resume
@@ -201,10 +201,10 @@ function ElsewhereSessions({
         <Link key={r.key} to={r.to} className="card card-quiet card-link row between">
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="tiny faint">{r.detail}</div>
-            <div className="small truncate" dir="auto">
-              {r.label}
+            <div dir="auto">
+              <div className="small truncate">{r.label}</div>
+              {r.note}
             </div>
-            {r.note}
           </div>
           <span className="tiny faint" style={{ flex: 'none' }}>
             Resume ▸
@@ -305,9 +305,9 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     const to = `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`;
     if (matches) {
       return (
-        <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
+        <button className="card card-accent row between" dir="auto" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
           <span style={{ fontWeight: 600 }}>Resume your routine</span>
-          <span className="small truncate" dir="auto" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
+          <span className="small truncate" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
         </button>
       );
     }
@@ -316,9 +316,9 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     // — so this doorway stays visibly blocked rather than offering a Start
     // that can't actually start anything.
     return (
-      <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
+      <button className="card card-quiet row between" dir="auto" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
-        <span className="faint small truncate" dir="auto">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
+        <span className="faint small truncate">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
       </button>
     );
   }
@@ -377,8 +377,8 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div style={{ minWidth: 0 }}>
-          <div className="truncate" dir="auto">{routine.name}</div>
+        <div dir="auto" style={{ minWidth: 0 }}>
+          <div className="truncate">{routine.name}</div>
           <div className="tiny faint">{routine.segments.length} segments · {total} min</div>
         </div>
         <div className="row" style={{ gap: 6 }}>
@@ -489,28 +489,28 @@ function SessionView({
 
   return (
     <div className="stack-lg">
-      {/* 0 · Two collapsed, peer doorways — a time-budgeted plan and a
-             routine are separate systems, neither subordinate to the other.
-             Both start collapsed so the primary recommendation stays above
-             the fold at 390×844. */}
-      <PlanCard instrumentId={instrumentId} />
-      <RoutinesCard instrumentId={instrumentId} />
-
-      {/* 1 · The one thing to practise now — above the fold. */}
+      {/* 1 · The one thing to practise now — the app's actual answer, first,
+             directly under the instrument switcher. Orchestrating a session is
+             a choice you make INSTEAD of taking the suggestion, so it no longer
+             comes before it. The English eyebrow stays outside the direction
+             group: dir="auto" resolves from the first strong character, so a
+             Farsi title and its own reason read as one right-aligned block. */}
       {recs.best && (
         <article className="card card-accent">
           <div className="row between" style={{ marginBottom: 6 }}>
             <span className="eyebrow">Practise now</span>
             <StatusBadge status={recs.best.score.item.status} />
           </div>
-          <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
-            <h2 className="title-md" dir="auto" style={{ fontSize: '1.3rem' }}>
-              {recs.best.score.item.title}
-            </h2>
-          </Link>
-          <p className="reason" style={{ marginTop: 6 }}>
-            {recs.best.reason}
-          </p>
+          <div dir="auto">
+            <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
+              <h2 className="title-md" style={{ fontSize: '1.3rem' }}>
+                {recs.best.score.item.title}
+              </h2>
+            </Link>
+            <p className="reason" style={{ marginTop: 6 }}>
+              {recs.best.reason}
+            </p>
+          </div>
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn btn-primary btn-lg grow" onClick={() => start(recs.best!.score.item)}>
               <PlayIcon /> Start · 10 min
@@ -522,12 +522,20 @@ function SessionView({
         </article>
       )}
 
-      {/* 2 · Honest totals — BELOW the recommendation, never above it, so
+      {/* 2 · Two collapsed, peer doorways — a time-budgeted plan and a
+             routine are separate systems, neither subordinate to the other, and
+             neither is nested in the other. Both stay collapsed (~50px) so they
+             cost the recommendation above them almost nothing at 390×844, and
+             each keeps its own open/close state and its own resume takeover. */}
+      <PlanCard instrumentId={instrumentId} />
+      <RoutinesCard instrumentId={instrumentId} />
+
+      {/* 3 · Honest totals — BELOW the recommendation, never above it, so
              "Practise now" stays above the fold at 390×844. Neutral counts of
              minutes and blocks: no target, no streak, no bar that fills. */}
       <PractisedLine instrumentId={instrumentId} now={now} />
 
-      {/* 3 · A calm sketch of the session. */}
+      {/* 4 · A calm sketch of the session. */}
       {secondary.length > 0 && (
         <section className="card card-quiet stack-sm">
           <div className="section-label">Then, if you have time</div>
@@ -535,12 +543,11 @@ function SessionView({
             <div key={rec.kind} className="row" style={{ gap: 10 }}>
               <button
                 className="grow"
-                style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
+                dir="auto"
+                style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
                 onClick={() => start(rec.score.item)}
               >
-                <span className="truncate" dir="auto">
-                  {rec.score.item.title}
-                </span>
+                <span className="truncate">{rec.score.item.title}</span>
                 <div className="tiny faint truncate">{rec.reason}</div>
               </button>
               <button className="btn btn-sm" onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
@@ -551,7 +558,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 3 · Class commitments for THIS instrument only. */}
+      {/* 5 · Class commitments for THIS instrument only. */}
       {lessonDate && classWork.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">
@@ -564,10 +571,8 @@ function SessionView({
           <div className="card card-flush list">
             {classWork.map((item) => (
               <div key={item.id} className="list-row">
-                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" style={{ minWidth: 0 }}>
-                  <div className="truncate" dir="auto">
-                    {item.title}
-                  </div>
+                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                  <div className="truncate">{item.title}</div>
                   <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
                 </Link>
                 <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
@@ -579,7 +584,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 4 · Due reviews, with honest actions. */}
+      {/* 6 · Due reviews, with honest actions. */}
       {reviews.length > 0 && (
         <section className="stack-sm">
           <div className="row between">
@@ -590,39 +595,45 @@ function SessionView({
             {reviews.map((r) => {
               const item = itemById.get(r.practiceItemId)!;
               return (
-                <div key={r.id} className="list-row">
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div className="truncate" dir="auto">
-                      {item.title}
-                    </div>
+                // The item's NAME is what this row exists to identify. Three
+                // controls used to leave it 113px of a 356px row — about 13
+                // characters of a Farsi title. Now the title claims a whole
+                // line whenever the three actions cannot sit beside it, and it
+                // wraps instead of truncating. All three keep their existing,
+                // deliberately distinct meanings: this is layout only.
+                <div key={r.id} className="list-row" style={{ flexWrap: 'wrap' }}>
+                  <div dir="auto" style={{ flex: '1 1 220px', minWidth: 0, textAlign: 'start' }}>
+                    <div>{item.title}</div>
                     <div className="tiny faint">due {relativeDay(r.dueDate, now)}</div>
                   </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Hide for the rest of today (no schedule change)"
-                    onClick={() => notNowReview(r.id)}
-                  >
-                    Not now
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Move the review 2 days from today"
-                    onClick={() => snoozeReview(r.id)}
-                  >
-                    +2d
-                  </button>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      if (active && active.itemId !== item.id) return;
-                      if (activeRoutine) return;
-                      startItemSession(item.id);
-                      navigate('/active');
-                    }}
-                    aria-label={`Review ${item.title}`}
-                  >
-                    <PlayIcon />
-                  </button>
+                  <div className="row" style={{ flex: 'none', marginInlineStart: 'auto' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      title="Hide for the rest of today (no schedule change)"
+                      onClick={() => notNowReview(r.id)}
+                    >
+                      Not now
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      title="Move the review 2 days from today"
+                      onClick={() => snoozeReview(r.id)}
+                    >
+                      +2d
+                    </button>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => {
+                        if (active && active.itemId !== item.id) return;
+                        if (activeRoutine) return;
+                        startItemSession(item.id);
+                        navigate('/active');
+                      }}
+                      aria-label={`Review ${item.title}`}
+                    >
+                      <PlayIcon />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -631,7 +642,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 5 · Where you are on this instrument's path. */}
+      {/* 7 · Where you are on this instrument's path. */}
       {pathway && stage && (
         <Link
           to={`/pathway/${pathway.id}/${stage.id}`}
@@ -659,16 +670,14 @@ function SessionView({
         </Link>
       )}
 
-      {/* 6 · Shaky material, quick capture, and the open-ended start. */}
+      {/* 8 · Shaky material, quick capture, and the open-ended start. */}
       {fragile.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">Shaky right now</h2>
           <div className="card card-flush list">
             {fragile.slice(0, 4).map((item) => (
-              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" style={{ borderRadius: 0 }}>
-                <div className="grow truncate" dir="auto">
-                  {item.title}
-                </div>
+              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" dir="auto" style={{ borderRadius: 0 }}>
+                <div className="grow truncate">{item.title}</div>
                 <StatusBadge status={item.status} />
                 <ChevronRightIcon width={16} height={16} className="faint" />
               </Link>
@@ -762,9 +771,9 @@ function OverviewView({ now }: { now: Date }) {
                     navigate('/');
                   }}
                 >
-                  <div className="grow" style={{ minWidth: 0 }}>
+                  <div className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
                     <div>{inst.name}</div>
-                    <div className="tiny faint truncate" dir="auto">
+                    <div className="tiny faint truncate">
                       {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
                       {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
                     </div>

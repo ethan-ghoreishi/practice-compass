@@ -47,14 +47,21 @@ instrument, everything below it (recommendation, class work, reviews, pathway po
 quick add, Start) is scoped to that instrument, and the primary recommendation must stay
 above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
 secondary choice — never the default. Never hard‑code a morning/evening schedule and
-never surface another instrument's work inside a session. The Session Plan and
-Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
-`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
-and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
-Plan's expanded panel read as routines being subordinate to picking a duration, so
-they were pulled out into their own doorway. Both start collapsed (~50px) so the
-primary recommendation stays above the fold; each has its own open/close state and
-its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+never surface another instrument's work inside a session. **THE RECOMMENDATION IS
+THE FIRST THING UNDER THE SWITCHER.** Practise now comes first and the two doorways sit
+BENEATH it: orchestrating a session is a choice you make INSTEAD of taking the
+suggestion, so presenting it first put two orchestration decisions in front of the
+app's actual answer. This deliberately revisits part of the owner's own 2026‑08‑28
+acceptance decision and is REVERSIBLE — it is one ordering change in `Today.tsx` with no
+data or state implication, and the owner's device check (2026‑09‑11) is what settles it.
+The Session Plan and Routines are two independent, peer doorway cards
+(`PlanCard`/`RoutinesCard` in `Today.tsx`) — a time-budgeted session and following a
+routine are separate systems, and OWNER acceptance testing (2026‑08‑28) found nesting
+routines inside the Session Plan's expanded panel read as routines being subordinate to
+picking a duration, so they were pulled out into their own doorway. Moving them below
+the recommendation must not nest one in the other either. Both start collapsed (~50px)
+so they cost the recommendation above them almost nothing; each has its own open/close
+state and its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
 session instrument (`routinesForInstrument`), each row showing Edit and — when a
 segment is essential — a visible "Short on time — essentials only" button, plus "New
 routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
@@ -87,6 +94,33 @@ so the array change is reachable from a Node test; `CloseBlock` states the mappi
 place and the escape hatch forces `'unanswered'` even when a result had already filled in
 a date. r-explainable-scheduling's "the date shown is the date saved" now includes when
 that date is deliberately left UNCHANGED.
+
+**THE CLOSE SCREEN LEADS WITH THE MUSICIAN'S WORDS, AND DERIVES THE DATE ONCE.** How it
+went, what you noticed and what to try next time are always visible and come BEFORE the
+minutes and the scheduler. The whole scheduling decision is ONE honest line — "Review in
+2 days · Repair · …" — with the date field, the review-type choice, "Why this date?" and
+the come-back Yes/No a single tap behind it. (It used to run 1689px at 390×844, with the
+engine's controls fully expanded before a result had been chosen, and a two-column grid
+whose right column stacked five review-type pills vertically.)
+
+There is exactly ONE `ReviewPlan` value in that component (`review`, a `useMemo`): the
+engine's plan for the chosen result with any manual correction folded INTO it. The
+collapsed line, the date field and the value handed to `closeSession` are three
+renderings of THAT object, so a divergent date is UNREPRESENTABLE rather than merely
+guarded against — there used to be a second `planNextReview` call seeding the field from
+a different invocation than the preview. `clampSchedulingParams(db.settings)` is threaded
+into that one derivation. The line itself comes from `reviewSummaryLine`
+(`src/components/format.ts`, tested): a pure FORMATTER that reports the plan's `dueDate`,
+`reviewType` and `rationale` and computes no date of its own. Once the owner sets their
+own date the rationale becomes "The date you chose." — quoting the engine's reason would
+explain a number it did not pick. Never reintroduce a second derivation here.
+
+**THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
+243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
+one thing the row exists to identify. The text now claims a whole line whenever the three
+actions cannot sit beside it (`flex: 1 1 220px` with `flex-wrap`) and WRAPS instead of
+truncating. All three actions keep their existing, deliberately distinct meanings: this
+is layout only.
 
 ## Nothing replaces an unfinished practice session
 
@@ -506,7 +540,9 @@ own pace, on a route they trust. Protect that:
 
 `Lesson` records (per instrument, date + free-form notes) support the user's real
 workflow: record the class, rewatch it, type up notes (often **in Farsi** — all free-text
-fields must stay direction-aware; `unicode-bidi: plaintext` handles this globally), then
+fields must stay direction-aware; `.input`/`.textarea` carry `unicode-bidi: plaintext`,
+which is the only place that rule is set — it is NOT global, and display text gets its
+direction from the grouping rule below), then
 create/link the concrete practice items (`lesson.itemIds` — a link, never ownership;
 unlinking keeps the item). "Originated in this lesson" (`itemIds`) is separate from
 "work on before the next class" (`assignedForLesson`), which gives a per-instrument
@@ -554,8 +590,46 @@ the Farsi conversion needs no migration. `src/domain/farsi.ts` (tested) provides
 `normalizePersian` (fold Arabic↔Persian yeh/kaf, digits, ZWNJ, whitespace — preserves
 آ), `faCollator` for sorting, and Latin transliteration aliases for search
 (`persianSearchMatch`); `groupByDastgah` folds spelling variants and ranks by Farsi or
-Latin dastgāh names. All Farsi surfaces use `dir="auto"` + the global
-`unicode-bidi: plaintext`.
+Latin dastgāh names. Every Farsi surface resolves its direction NATIVELY, via
+`dir="auto"` — never by detecting a script in JavaScript and never by reordering text.
+Free-text FIELDS also carry `unicode-bidi: plaintext` (set on `.input`/`.textarea` in
+`global.css`, and nowhere else — this was previously described here as global, which was
+never true).
+
+**LAYOUT FOLLOWS THE DIRECTION OF THE CONTENT IT SHOWS.** A title and the details that
+belong to it sit in ONE group carrying `dir="auto"`, so a Persian item reads as one
+right-aligned block. Before 2026‑09‑11 direction sat on the TITLE alone at 47 sites and
+on no container anywhere: a Farsi title resolved RTL and hugged the right edge of its
+cell while its own "due 14 days ago" caption, carrying no direction at all, hugged the
+left — the app looked polished in English and broken on the two instruments whose seeded
+data is entirely Farsi. The rule is now mechanical, not a matter of care:
+
+- `dir="auto"` appears on GROUPS (the element holding a title together with the details
+  that belong to it) and on free-text FIELDS — **never bare on a title element**
+  (`truncate`, `title-md`, `page-title`, `stage-unit-title`).
+- The group is drawn so the TITLE is the first strong text inside it. Where an English
+  eyebrow precedes the title in the DOM — Today's Practise-now card, the close screen's
+  header, Session Plan's minutes/bucket line, ItemDetail's "practise this part now" — the
+  group wraps title + details and LEAVES THE EYEBROW OUT, because `dir="auto"` resolves
+  from the first strong character in the subtree.
+- A group that sits under an ancestor pinning `text-align: left` must set
+  `text-align: start` on itself, or its own direction never reaches the alignment.
+- Group HEADINGS that render Farsi (the dastgāh sections, Materials' instrument sections)
+  take direction on the SECTION, so a heading can no longer disagree with the rows
+  beneath it.
+- A lone title with no caption of its own takes the group it shares with its badge or
+  action — the row itself.
+- OUT of scope by construction: `<option>` contents (the native control owns their
+  rendering) and titles inside `confirm()`/toast template strings (plain strings, not
+  laid-out blocks). `ItemForm.tsx`, `QuickAdd.tsx` and `RoutineEdit.tsx` hold field sites
+  only and are correct as they are.
+
+`src/components/direction.test.ts` holds this closed and records the surface list, so a
+missed title FAILS and a whole skipped file FAILS — and "fixing" one by deleting the
+attribute fails too, since that would break Farsi rendering outright. Genuine exceptions
+live in that test's explicit allowlist AND here; **the allowlist is currently EMPTY**,
+because every title on every surface turned out to have a group it could join. An
+exception must always be VISIBLE, never silent.
 
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
@@ -727,8 +801,9 @@ no scores, no "optimal" claims, no gamification.
 - **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
   store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
   never syncs/backs-up as data.**
-- **Today's plan card stays collapsed (~50px) above "Practise now"** so the primary
-  recommendation stays above the fold at 390×844 (verified). It becomes "Resume your plan"
+- **Today's plan card stays collapsed (~50px), BELOW "Practise now"** (moved there
+  2026‑09‑11) so the primary recommendation is the first thing under the instrument
+  switcher and still sits above the fold at 390×844. It becomes "Resume your plan"
   while one runs. The evidence behind the bucket shape (spacing, interleaving, retrieval
   practice, end-on-stability) is cited soberly in `plan.ts` and `DECISIONS.md` — sane
   defaults, adjustable via `SchedulingParams`, never dressed up as an optimum.
@@ -798,6 +873,26 @@ Repertoire views) · "Add practice item" (full form) · "Based on / reference" (
 pathway's provenance) · "Connect it (optional)" (the links group). A practice item may
 link to a study source, a stage, lessons and a parent work at once; links never
 duplicate the item.
+
+## Colour is checked by a test, not by eye
+
+`src/styles/contrast.test.ts` computes WCAG ratios from the SHIPPED stylesheet and fails
+the suite if a listed pair drops below AA for small text (4.5:1). The checked
+(foreground token, background token) pairs are written out explicitly in that test, so a
+token that is NOT covered is a visible omission rather than a silent one; the claim is
+bounded to those pairs and is not a claim about every possible combination. A
+translucent background (`--tone-*-soft` behind a `.badge`/`.chip`, `--accent-soft`
+behind a selected option) is composited over the opaque surface the pair names — badges
+are the only place `--tone-rest` renders at all, so an opaque pair for it would be a
+fiction.
+
+Every block that declares the palette is asserted, not just the first: `global.css`
+declares the light palette TWICE — at `:root[data-theme='light']` and again inside
+`@media (prefers-color-scheme: light) { :root:not([data-theme]) }` — and the duplicate is
+what an owner who has never picked a theme actually sees. **Move a light token in both
+blocks or the test fails.** Only tokens that FAIL a listed pair move; every passing token
+is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim` and
+`--accent-contrast` are unchanged), and no layout, spacing or type changes with them.
 
 ## Architecture rules
 

@@ -67,23 +67,13 @@ export default function ClassQuestions({
       ) : (
         <ol className="stack-sm" style={{ margin: 0, paddingInlineStart: 22 }}>
           {questions.map((q) => (
-            <li key={q.itemId}>
-              <div className="small" dir="auto" style={{ fontWeight: 600 }}>
+            <li key={q.itemId} dir="auto">
+              <div className="small" style={{ fontWeight: 600 }}>
                 {q.title}
               </div>
-              <div className="small" dir="auto">
-                {q.question}
-              </div>
-              {q.currentProblem && (
-                <div className="tiny faint" dir="auto">
-                  Problem: {q.currentProblem}
-                </div>
-              )}
-              {q.lastObservation && (
-                <div className="tiny faint" dir="auto">
-                  Last time: {q.lastObservation}
-                </div>
-              )}
+              <div className="small">{q.question}</div>
+              {q.currentProblem && <div className="tiny faint">Problem: {q.currentProblem}</div>}
+              {q.lastObservation && <div className="tiny faint">Last time: {q.lastObservation}</div>}
             </li>
           ))}
         </ol>

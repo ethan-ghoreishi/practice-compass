@@ -201,9 +201,9 @@ function MyRepertoireView() {
       )}
 
       {dastgahGroups.map((g) => (
-        <section key={g.dastgah} className="stack-sm">
+        <section key={g.dastgah} className="stack-sm" dir="auto">
           <div className="row between">
-            <h2 className="title-md" dir="auto">
+            <h2 className="title-md">
               {g.dastgah === UNCLASSIFIED_DASTGAH ? 'No dastgāh yet' : g.dastgah}
             </h2>
             <span className="tiny faint">
@@ -220,9 +220,9 @@ function MyRepertoireView() {
 
       {otherWorks.length > 0 &&
         sourceGroups.map((g) => (
-          <section key={g.label} className="stack-sm">
+          <section key={g.label} className="stack-sm" dir="auto">
             <div className="row between">
-              <h2 className="title-md" dir="auto">
+              <h2 className="title-md">
                 {g.label}
               </h2>
               <span className="tiny faint">
@@ -258,11 +258,11 @@ function WorkRow({
   return (
     <div className="list-row" style={{ flexWrap: 'wrap' }}>
       <Link to={`/items/${work.id}`} state={{ from: '/repertoire' }} className="grow row" style={{ minWidth: 0, gap: 10 }}>
-        <div className="grow" style={{ minWidth: 0 }}>
-          <div className="truncate" dir="auto">
+        <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+          <div className="truncate">
             {work.title}
           </div>
-          <div className="tiny faint truncate" dir="auto">
+          <div className="tiny faint truncate">
             {[
               work.persian?.form,
               work.persian?.composer,
@@ -289,8 +289,8 @@ function WorkRow({
           {open && (
             <div className="stack-sm" style={{ width: '100%', paddingLeft: 14, marginTop: 6 }}>
               {parts.map((p) => (
-                <Link key={p.id} to={`/items/${p.id}`} state={{ from: '/repertoire' }} className="row between small card-link" style={{ minWidth: 0 }}>
-                  <span className="truncate dim" dir="auto">
+                <Link key={p.id} to={`/items/${p.id}`} state={{ from: '/repertoire' }} className="row between small card-link" dir="auto" style={{ minWidth: 0 }}>
+                  <span className="truncate dim">
                     {p.title}
                   </span>
                   <StatusBadge status={p.status} />

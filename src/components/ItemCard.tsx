@@ -21,7 +21,7 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
   return (
     <Link to={`/items/${item.id}`} state={{ from: '/repertoire' }} className="card card-link">
       <div className="row between" style={{ alignItems: 'flex-start' }}>
-        <div className="grow">
+        <div className="grow" dir="auto">
           <div className="title-md">{item.title}</div>
           <div className="row-wrap small dim" style={{ marginTop: 3 }}>
             <span>{inst}</span>
@@ -39,7 +39,7 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
       </div>
 
       {item.currentProblem && (
-        <div className="small dim" style={{ marginTop: 8 }}>
+        <div className="small dim" dir="auto" style={{ marginTop: 8 }}>
           {item.currentProblem}
         </div>
       )}

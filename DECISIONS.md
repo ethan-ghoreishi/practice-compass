@@ -2,6 +2,81 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## The content leads: direction on the group, and a colour list that is bounded on purpose (2026-09-11)
+
+**Direction lives on the GROUP, never on the title.** `dir="auto"` was on 47 title
+elements and on no container anywhere, so a Farsi title resolved RTL and hugged the right
+edge of its cell while its own English caption hugged the left. The fix is not a new
+mechanism — it is moving the SAME native attribute up one level, to the element that
+holds a title together with the details belonging to it. Two consequences are worth
+recording because they are not obvious:
+
+1. `dir="auto"` resolves from the FIRST STRONG CHARACTER in the subtree, so where an
+   English eyebrow precedes the title in the DOM (Today's Practise-now card, the close
+   screen's header, Session Plan's minutes/bucket line) the group is drawn around
+   title + details and the eyebrow is deliberately left OUTSIDE it. Wrapping the whole
+   card would pin the group LTR and change nothing.
+2. Direction alone does not move text. Several groups sit under an ancestor pinning
+   `text-align: left` (a picker row button, the practice screen's centred column), and
+   `left` is inherited as a COMPUTED value — it does not re-resolve per element. Those
+   groups set `text-align: start` on themselves.
+
+The sweep is held closed by `src/components/direction.test.ts` rather than by care, and
+its exception allowlist came out EMPTY: every title on every surface had a group it could
+join. `PathwayDetail`'s stage rows were the candidate exception (an ascii-looking code
+like "2A" leading a Farsi title) — but the Setar and Tar seeds author stage codes in
+Farsi (`نشست`, `شور`, `ماهور`), so grouping code + title is both correct and what the
+owner actually sees. Even where a group DOES resolve LTR from its code, that is the point:
+the code and the title then agree instead of pointing at opposite edges.
+
+**The colour list is bounded, and the planner's "six failing tokens" was an undercount.**
+The plan measured each foreground token against `--bg` only. Two tokens fail there and
+were missed (`--tone-progress` 4.41, `--tone-rest` 4.26), and more importantly `--bg` is
+not where several of them RENDER: `--tone-rest` only ever appears as `.badge`/`.chip`
+text over its own translucent `--tone-rest-soft` fill. `src/styles/contrast.test.ts`
+therefore lists the pairs each token is ACTUALLY rendered on, compositing a translucent
+fill over the card it sits in, and asserts them in all three palette blocks.
+
+That honest list moves EIGHT light tokens (`--text-faint`, `--accent`, `--gold`,
+`--tone-alert`, `--tone-warn`, `--tone-progress`, `--tone-good`, `--tone-rest`) and FOUR
+dark ones (`--text-faint`, `--tone-alert`, `--tone-progress`, `--tone-rest`) rather than
+the six + one the plan predicted. The list was NOT trimmed to make that arithmetic come
+out right: an uncovered token is supposed to be a visible omission, and dropping badges
+would have left two of the five tone tokens with no coverage at all. Three of the four
+dark moves are 1–7 units and imperceptible. `--accent-contrast` (white on the primary
+Start button, 3.95 at HEAD) needed no move of its own — darkening `--accent` to clear AA
+against the page took that pair to 5.94. Every `-soft` fill, `--text`, `--text-dim` and
+`--accent-dim` are untouched, because they pass.
+
+**Both light blocks, every time.** `global.css` declares the light palette twice — at
+`:root[data-theme='light']` and again inside `@media (prefers-color-scheme: light)
+{ :root:not([data-theme]) }`. The duplicate is what an owner who never picked a theme
+sees, so the test asserts both blocks AND that they agree token for token.
+
+**Reading the stylesheet needed a workaround, not a config change.** `src` is typechecked
+by `tsconfig.app.json`, which does not enable node types, and Vitest blanks every `.css`
+module — `?raw` included — unless `test.css` is on in `vite.config.ts`. Both files are
+outside this lane's scope. So the contrast test reads the real file through a dynamic
+import whose specifier the compiler cannot resolve statically. Reading the REAL file is
+the whole point: a table of colours copied into the test would keep passing while the app
+shipped something else. The direction test needs no such trick — `import.meta.glob` with
+`?raw` works for `.tsx`, and a glob also means a NEW page is swept in automatically.
+
+**One ReviewPlan on the close screen.** The collapsed summary line and the expanded date
+field are two renderings of ONE value, with a manual correction folded into it rather
+than held beside it. The guarantee had to be structural: `CloseBlock` previously called
+`planNextReview` twice (once for the preview hint, once inside `pickResult` to seed the
+field), which is exactly the drift r-explainable-scheduling exists to prevent. A pure
+formatter (`reviewSummaryLine`) renders the line and computes nothing, so a divergent
+date is unrepresentable rather than merely remembered about.
+
+**Today's order was reversed deliberately and reversibly.** Practise now moves directly
+under the instrument switcher, with Plan and Routines as two compact peer doorways
+beneath it. This revisits part of the owner's own 2026-08-28 acceptance decision; it is
+one ordering change with no data or state implication, and if it reads worse on the
+owner's iPhone it reverts before the lane ships — that reversal is a passing outcome,
+not a failure.
+
 ## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
 
 **Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores

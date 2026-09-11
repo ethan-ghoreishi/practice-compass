@@ -136,7 +136,8 @@ function AttachmentRow({ att }: { att: AttachmentMeta }) {
       )}
       <button
         className="grow"
-        style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
+        dir="auto"
+        style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
         onClick={open}
       >
         <div className="truncate">{att.name}</div>
