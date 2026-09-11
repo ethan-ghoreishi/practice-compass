@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { itemFiles, itemOwnedAttachments } from './itemFiles';
+import { attachmentsOwnedBy, itemFiles, itemOwnedAttachments } from './itemFiles';
 import type { AttachmentMeta, Lesson, LessonRecording, PracticeDB } from './types';
 
 function recording(partial: Partial<LessonRecording> & { id: string; path: string }): LessonRecording {
@@ -109,6 +109,23 @@ describe('itemFiles', () => {
       attachments,
     });
     expect(itemFiles(state, sharedId).map((f) => f.id)).toEqual(['r-class', 'a-item-own']);
+  });
+
+  it("mirrors the collision the other way: a lesson's own attachments never include an item's, on the same shared id", () => {
+    // The surface this guards is the lesson Files section (Attachments.tsx,
+    // rendered with ownerType="lesson") and ItemCard's file-count badge
+    // (ownerType="item") — both must resolve through attachmentsOwnedBy
+    // rather than filtering ownerId alone, or a collision leaks across owners
+    // in both directions: the lesson's list would show/allow deleting the
+    // item's attachment, and the item's count would include the lesson's.
+    const sharedId = 'shared-id';
+    const attachments = [
+      attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
+      attachment({ id: 'a-lesson-own', ownerId: sharedId, ownerType: 'lesson', name: 'lesson-file.pdf' }),
+    ];
+
+    expect(attachmentsOwnedBy(attachments, 'lesson', sharedId).map((a) => a.id)).toEqual(['a-lesson-own']);
+    expect(attachmentsOwnedBy(attachments, 'item', sharedId).map((a) => a.id)).toEqual(['a-item-own']);
   });
 
   it('excludes references from lessons the item is not linked to and returns nothing when it has none', () => {

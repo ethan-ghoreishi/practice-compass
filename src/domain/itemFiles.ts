@@ -1,4 +1,4 @@
-import type { AttachmentKind, AttachmentMeta, ID, LessonFileKind, PracticeDB } from './types';
+import type { AttachmentKind, AttachmentMeta, AttachmentOwnerType, ID, LessonFileKind, PracticeDB } from './types';
 
 // ---------------------------------------------------------------------------
 // An item's MATERIAL — composed, never stored.
@@ -63,16 +63,25 @@ function referenceKey(path: string): string {
 }
 
 /**
- * The single test for "this attachment belongs to this item." `ownerId` alone
- * is not an item id — a lesson's attachments share the same id space, so a
- * lesson and an item can collide on id — the ownership check is only correct
- * when `ownerType` and `ownerId` are checked TOGETHER. Every surface that
- * lists or removes an item's own attachments (Material's composition here,
- * and ItemDetail's Files CRUD list) calls this instead of re-deriving the
- * predicate, so the invariant can't drift between the two call sites.
+ * The single test for "this attachment belongs to this owner." `ownerId`
+ * alone is not enough — an item and a lesson can collide on id, since each
+ * has its own id space — so the check is only correct when `ownerType` and
+ * `ownerId` are checked TOGETHER. Every surface that lists, counts or removes
+ * attachments (an item's own files, a lesson's own Files section, ItemCard's
+ * file-count badge) calls this instead of re-deriving the predicate, so the
+ * invariant can't drift between call sites.
  */
+export function attachmentsOwnedBy(
+  attachments: AttachmentMeta[],
+  ownerType: AttachmentOwnerType,
+  ownerId: ID,
+): AttachmentMeta[] {
+  return attachments.filter((a) => a.ownerType === ownerType && a.ownerId === ownerId);
+}
+
+/** `attachmentsOwnedBy` narrowed to an item — the common case at every item surface. */
 export function itemOwnedAttachments(attachments: AttachmentMeta[], itemId: ID): AttachmentMeta[] {
-  return attachments.filter((a) => a.ownerType === 'item' && a.ownerId === itemId);
+  return attachmentsOwnedBy(attachments, 'item', itemId);
 }
 
 /**

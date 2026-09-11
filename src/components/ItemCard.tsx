@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import {
   FOCUS_LABELS,
   ITEM_TYPE_LABELS,
+  itemOwnedAttachments,
   type PracticeItem,
 } from '../domain';
 import { useStore } from '../store/useStore';
@@ -13,7 +14,9 @@ import { formatMinutes, relativeDay, relativeFromDateTime } from './format';
 export default function ItemCard({ item, now = new Date() }: { item: PracticeItem; now?: Date }) {
   const db = useStore((s) => s.db);
   const inst = instrumentName(db, item.instrumentId);
-  const fileCount = db.attachments.filter((a) => a.ownerId === item.id).length;
+  // ownerId alone can collide with a lesson's id, so count only via the
+  // shared ownerType+ownerId predicate — never a lesson's own attachment.
+  const fileCount = itemOwnedAttachments(db.attachments, item.id).length;
 
   return (
     <Link to={`/items/${item.id}`} state={{ from: '/repertoire' }} className="card card-link">

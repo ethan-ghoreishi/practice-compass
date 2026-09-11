@@ -1,8 +1,8 @@
 ---
 id: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
 contractId: 20260910-find-it-and-open-it-farsi-search-one-ins-3c2c
-contractHash: 5b0b85d87de5fb8a4a88525f7515b81a4642cac6d343ba7b3eaebafc3212fa7d
-createdAt: 2026-09-10T22:24:58.725Z
+contractHash: 2e1efb65bce711515a24d29306c32b6a8245fc71f4381f079ef35fc5d04c0bc6
+createdAt: 2026-09-11T11:00:49.137Z
 skills:
   - ui-work
   - build
@@ -1208,6 +1208,8 @@ Find it and open it: Farsi search, one instrument in view, and every file alread
 - src/pages/StartBlock.tsx
 - src/store/lookups.ts
 - src/store/useStore.ts
+- src/components/Attachments.tsx
+- src/components/ItemCard.tsx
 
 Never touch:
 
@@ -1288,7 +1290,7 @@ Never touch:
 
 ## Current progress
 
-Not started — no checks have run yet. Default state is "not ready".
+Last checks passed (2026-09-11T03:03:53.496Z). Rework loops so far: 1.
 
 ## Before you finish
 

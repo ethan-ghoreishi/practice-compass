@@ -121,7 +121,12 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
     return upcoming?.id ?? allLessons[0]?.id ?? null;
   }, [allLessons, now]);
   const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
-  const selected = allLessons.find((l) => l.id === selectedId) ?? null;
+  // `selectedId` is state so a click sticks across re-renders, but narrowing
+  // (or a delete) can leave it pointing at a lesson `allLessons` no longer
+  // has — falling back to the same smart default keeps the detail pane and
+  // the sidebar highlight in sync instead of silently blanking.
+  const effectiveSelectedId = allLessons.some((l) => l.id === selectedId) ? selectedId : defaultSelection;
+  const selected = allLessons.find((l) => l.id === effectiveSelectedId) ?? null;
 
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [date, setDate] = useState(todayISODate(now));
@@ -154,7 +159,7 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
                     key={l.id}
                     className="list-row"
                     style={{
-                      background: l.id === selectedId ? 'var(--accent-soft)' : 'none',
+                      background: l.id === effectiveSelectedId ? 'var(--accent-soft)' : 'none',
                       border: 'none',
                       width: '100%',
                       textAlign: 'left',

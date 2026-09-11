@@ -35,6 +35,8 @@ allowedPaths:
   - src/pages/StartBlock.tsx
   - src/store/lookups.ts
   - src/store/useStore.ts
+  - src/components/Attachments.tsx
+  - src/components/ItemCard.tsx
 forbiddenPaths:
   - src/domain/types.ts
   - src/domain/migrations.ts
@@ -290,7 +292,12 @@ docsDelta:
   - FUTURE.md
   - README.md
 createdAt: 2026-09-10T22:24:52.985Z
-amendments: []
+amendments:
+  - at: 2026-09-11T10:58:01.390Z
+    reason: "Close the sealed review's ownership-family finding: Attachments.tsx:24
+      and ItemCard.tsx:16 filter attachments by ownerId alone; the fix requires
+      editing them directly, and neither file is in allowedPaths"
+    description: "allow: +src/components/Attachments.tsx, src/components/ItemCard.tsx"
 ---
 
 # Find it and open it: Farsi search, one instrument in view, and every file already linked to a piece
@@ -323,6 +330,8 @@ amendments: []
 - src/pages/StartBlock.tsx
 - src/store/lookups.ts
 - src/store/useStore.ts
+- src/components/Attachments.tsx
+- src/components/ItemCard.tsx
 
 ## Never touch
 
@@ -400,5 +409,5 @@ amendments: []
 
 ## Amendments
 
-_none_
+- 2026-09-11T10:58:01.390Z — Close the sealed review's ownership-family finding: Attachments.tsx:24 and ItemCard.tsx:16 filter attachments by ownerId alone; the fix requires editing them directly, and neither file is in allowedPaths: allow: +src/components/Attachments.tsx, src/components/ItemCard.tsx
 

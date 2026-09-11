@@ -604,15 +604,15 @@ first. Nothing is persisted to make this view work and no new field exists; thes
 were always in the data and were simply never composed. An attachment's `ownerId` is not
 an item id on its own — a lesson's attachments share the same id space, so a lesson and an
 item can collide on id — so ownership is decided by `ownerType` AND `ownerId` TOGETHER, via
-one shared `itemOwnedAttachments` predicate (`itemFiles.ts`, exported and tested). Every
-surface an item's own attachments FEED INTO reuses it rather than re-deriving the
-predicate: Material's composition here, ItemDetail's Files CRUD list below, and
-`deleteItem`/`deleteLesson` (`useStore.ts`) choosing which attachment metadata AND blobs
-to destroy — so neither delete can cross-contaminate the other owner type on a colliding
-id. The shared `Attachments` component (a lesson's own file list) and `ItemCard`'s file-count
-badge still filter by `ownerId` alone; that is a pre-existing gap in code this lane does not
-touch, not a new one, and is left for its own fix. An item with no lesson link and
-no attachments yields an EMPTY LIST, and the surfaces render nothing rather than an
+one shared `attachmentsOwnedBy(attachments, ownerType, ownerId)` predicate (`itemFiles.ts`,
+exported and tested), with `itemOwnedAttachments` as its item-scoped wrapper. EVERY surface
+that lists, counts or removes attachments reuses it rather than re-deriving the check:
+Material's composition here, ItemDetail's Files CRUD list below, the shared `Attachments`
+component (a lesson's own file list, `ownerType="lesson"`), `ItemCard`'s file-count badge, and
+`deleteItem`/`deleteLesson` (`useStore.ts`) choosing which attachment metadata AND blobs to
+destroy — so no read, count or delete can cross-contaminate the other owner type on a
+colliding id. An item with no lesson link and no attachments yields an EMPTY LIST, and the
+surfaces render nothing rather than an
 empty frame. An item with no lesson link cannot reference NAS material at all — that is
 the honest gap, and closing it needs a persisted item-level reference, therefore a
 schema change and its own lane. Both the PRACTICE screen and ItemDetail render the WHOLE

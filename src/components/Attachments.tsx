@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { attachmentPolicy, type AttachmentMeta, type AttachmentOwnerType } from '../domain';
+import { attachmentPolicy, attachmentsOwnedBy, type AttachmentMeta, type AttachmentOwnerType } from '../domain';
 import { useStore } from '../store/useStore';
 import {
   addAttachment,
@@ -20,9 +20,11 @@ export default function Attachments({
   emptyHint?: string;
 }) {
   const all = useStore((s) => s.db.attachments);
+  // ownerId alone can collide (an item and a lesson can share an id), so
+  // ownership is only correct checked together with ownerType.
   const list = useMemo(
-    () => all.filter((a) => a.ownerId === ownerId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [all, ownerId],
+    () => attachmentsOwnedBy(all, ownerType, ownerId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [all, ownerType, ownerId],
   );
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
