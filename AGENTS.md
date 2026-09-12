@@ -811,16 +811,18 @@ fixed one exactly and had been missed), `ActiveBlock.tsx`'s mode/focus chips (th
 practice screen itself), `Attachments.tsx`'s and `ItemDetail.tsx`'s file kind/size line,
 `StartBlock.tsx`'s and `Today.tsx`'s item-type/status labels, `StageDetail.tsx`'s
 strand/status `meta` line, `PathwayDetail.tsx`'s "Current"/"Done"/item-count badges and
-its piece-count fallback, `Today.tsx`'s "routine running" indicator and its cross-
-instrument Overview row (a fixed sentence embedding the next item's own possibly-Farsi
-title — isolated the same way `StageDetail`'s undo banner already does, whole sentence
-under one `dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of
-which also embed an item's own title mid-sentence). One further site needed the OTHER
-isolate — `dir="auto"` for a value authored independently of its neighbour, not
-`dir="ltr"` for generated copy: `RoutineRunner.tsx`'s "Next: {label}" (the upcoming
-segment's own name). `PathwayDetail.tsx`'s pathway `source` field got the same
-treatment (free text beside the generated instrument name), but its stage's own
-`title` was tried the same way and REVERTED: `stage.title` is not authored
+its piece-count fallback, `Today.tsx`'s "routine running" indicator (at the time, one
+`dir="ltr"` isolate covering the whole phrase — a sealed review later found that this
+wrongly pinned the instrument name inside it too; see below) and its cross-instrument
+Overview row (a fixed sentence embedding the next item's own possibly-Farsi title —
+isolated the same way `StageDetail`'s undo banner already does, whole sentence under one
+`dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of which also
+embed an item's own title mid-sentence). One further site needed the OTHER isolate —
+`dir="auto"` for a value authored independently of its neighbour, not `dir="ltr"` for
+generated copy: `RoutineRunner.tsx`'s "Next: {label}" (the upcoming segment's own name).
+`PathwayDetail.tsx`'s pathway `source` field got the same treatment (free text beside the
+instrument name, at the time itself still wrongly isolated as `dir="ltr"` — see below),
+but its stage's own `title` was tried the same way and REVERTED: `stage.title` is not authored
 independently of `stage.code`, it is the SAME stage's own fuller name, and this file
 already settles (a few paragraphs up) that the two must AGREE on whichever direction
 the group resolves — isolating `stage.title` would have pulled it OUT of the button's
@@ -846,10 +848,11 @@ throughout every previous pass of this lane, invisible to a scanner whose entire
 is "detectable, not enumerated." Fixed by giving `<>` the same weight as any other
 opening tag. Re-running the FULL suite after the fix surfaced exactly this one
 violation — nothing else in the currently-scanned files was hiding behind the same
-bug — now closed with the same `dir="ltr"` (`instrumentName`, `ITEM_TYPE_LABELS`,
-"difficulty N/5", "saturated — consider resting") the rest of this section already
-established, while `stage.code` and the material label stay bare for the same reason
-`stage.title` does two paragraphs up. The lesson generalises beyond this one bug: an
+bug — now closed with the same `dir="ltr"` (at the time, `instrumentName` sat in this
+same list too — a sealed review later found that wrong; see below — plus
+`ITEM_TYPE_LABELS`, "difficulty N/5", "saturated — consider resting") the rest of this
+section already established, while `stage.code` and the material label stay bare for the
+same reason `stage.title` does two paragraphs up. The lesson generalises beyond this one bug: an
 example-driven fix only ever closes the examples in front of it; only re-deriving a
 shared helper's own correctness from what it claims to do (does `<>` open or close a
 nesting level? — the answer was always "both, and this code only handled one") finds
@@ -887,6 +890,30 @@ file more trustworthy, not just the new ones — the exact failure mode the file
 out of the comment and mis-attributing an unrelated tag") was silently possible for any
 file containing a stray apostrophe in plain prose, this codebase's Setar/Tar seed data
 included.
+
+**AN INSTRUMENT NAME IS THE OWNER'S OWN EDITABLE TEXT, NEVER GENERATED COPY — GETTING
+THIS BACKWARDS IS A CLASSIFICATION MISTAKE, NOT A MISSED LOCATION.** A sealed review
+found four sites (`ItemCard.tsx`, `ItemDetail.tsx`, `PathwayDetail.tsx`,
+`Repertoire.tsx`) pinning an item's or work's instrument name under `dir="ltr"` right
+alongside genuinely generated metadata like `ITEM_TYPE_LABELS` — Settings lets an
+instrument be renamed, Farsi included, so forcing a renamed instrument to LTR gives it
+the wrong bidi base, the exact defect every other isolate in this file exists to
+prevent. Auditing every remaining `LTR_ISOLATE_SITES` entry against its real source
+(not just the four named) found a fifth of the identical shape — `Today.tsx`'s "routine
+running" row bundled the instrument name and the fixed English suffix into ONE
+`dir="ltr"` span — and two more with no direction treatment AT ALL, invisible to that
+same audit because it can only see spans that already carry a `dir`: the Plan doorway's
+mismatched-instrument row (the exact twin of the routine row, same bundling, just
+missing the isolate rather than misusing it) and the weekly Balance row's instrument
+name, sitting bare inside a `.truncate` title span. All seven now isolate the
+instrument name on its own `dir="auto"` — nested one level in for the Balance row
+rather than on `.balance-row` itself, because that row is a CSS GRID and giving IT a
+resolved RTL direction would reverse its three columns for a Farsi instrument, flipping
+the bar and percentage to the other side. The fix generalises past these seven
+locations: `direction.test.ts` now also fails if any `dir="ltr"`/`"rtl"` isolate's body
+calls `instrumentName(` (or references ItemCard's own `inst` alias for it), so a future
+regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
+happened to name.
 
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is

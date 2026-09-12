@@ -2,6 +2,25 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
+
+A sealed review found four sites (`ItemCard.tsx`, `ItemDetail.tsx`,
+`PathwayDetail.tsx`, `Repertoire.tsx`) forcing an item's or work's instrument name under
+`dir="ltr"` as if it were generated metadata like `ITEM_TYPE_LABELS` sitting next to
+it — but an instrument is renameable in Settings, Farsi included, so it is the owner's
+own editable text and needed its own `dir="auto"` isolate instead. Auditing every
+remaining `LTR_ISOLATE_SITES` entry against its real source (not just the four named)
+found a fifth of the identical shape (`Today.tsx`'s "routine running" row, bundling the
+instrument name and a fixed English suffix into one `dir="ltr"` span) and two with no
+direction treatment at all — invisible to that audit because it can only see spans that
+already carry a `dir`: the Plan doorway's mismatched-instrument row (the exact twin of
+the routine row) and the weekly Balance row's instrument name, bare inside a
+`.truncate` title span whose row is a CSS grid (isolating the row itself, rather than
+the name, would have reversed its three columns for a Farsi instrument). All seven now
+carry their own `dir="auto"`, and `direction.test.ts` bans the SHAPE going forward — any
+`dir="ltr"`/`"rtl"` isolate whose body calls `instrumentName(` fails — rather than
+re-closing whichever locations a reviewer happened to enumerate.
+
 ## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
 
 A third sealed review of the direction lane found the SAME family — mixed-content

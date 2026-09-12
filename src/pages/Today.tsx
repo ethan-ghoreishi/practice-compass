@@ -256,7 +256,14 @@ function PlanCard({ instrumentId }: { instrumentId: string }) {
     return (
       <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Plan this session</span>
-        <span className="faint small">{instrumentName(db, activePlan.instrumentId)} plan running ▸</span>
+        {/* Same split as the Routines doorway below: the instrument name is
+            the owner's own editable text (its own dir="auto" isolate, never
+            bare alongside fixed English), and "plan running ▸" keeps its own
+            dir="ltr" isolate as generated page copy. */}
+        <span className="faint small">
+          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>
+          <span dir="ltr"> plan running ▸</span>
+        </span>
       </button>
     );
   }
@@ -872,7 +879,16 @@ function OverviewView({ now }: { now: Date }) {
           ) : (
             balance.map((b) => (
               <div key={b.instrumentId} className="balance-row">
-                <span className="small truncate">{b.instrumentName}</span>
+                {/* The instrument name is the owner's own editable text — its
+                    own dir="auto" isolate, nested inside .truncate rather than
+                    on it (a title class may never carry dir="auto" directly).
+                    Not on the row itself: .balance-row is a CSS grid and
+                    giving it a resolved RTL direction would reverse its three
+                    columns, jumping the bar and percentage to the other side
+                    for a Farsi instrument — this isolates the text only. */}
+                <span className="small truncate">
+                  <span dir="auto">{b.instrumentName}</span>
+                </span>
                 <span className="balance-track">
                   <span className="balance-fill" style={{ width: `${b.percent}%` }} />
                 </span>

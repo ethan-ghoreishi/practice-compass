@@ -191,6 +191,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/TeacherReport.tsx', tagName: 'pre', classValue: 'pre' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
@@ -201,6 +202,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'link', classValue: 'list-row card-link' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
 ];
 
 // --- reading the source -----------------------------------------------------
@@ -569,6 +571,15 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{instrumentName(db, work.instrumentId)}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="auto">{instrumentName(db, running?.instrumentId)}</span>' },
+  // Same audit, two more sites with no dir treatment at all rather than a
+  // forced dir="ltr" one — just as wrong, and easier to miss because nothing
+  // in the source marked them. PlanCard's mismatched-instrument row was the
+  // exact twin of the RoutinesCard row above it; the weekly balance row's
+  // instrument name sits inside a CSS GRID (.balance-row), so its isolate is
+  // nested one level in rather than on the row, or a Farsi name would flip
+  // the grid's three columns.
+  { file: 'pages/Today.tsx', snippet: '<span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="auto">{b.instrumentName}</span>' },
 ];
 
 /**
@@ -587,6 +598,7 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> plan running ▸</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
   {
     file: 'pages/Today.tsx',
@@ -798,6 +810,29 @@ describe('direction lives on the group', () => {
       .flatMap(isolateSites)
       .filter((s) => !INLINE_ISOLATE_TAGS.includes(s.tagName))
       .map((s) => `${s.file}:${s.line} — dir="ltr"/"rtl" on a <${s.tagName}>, not an inline span`);
+    expect(violations).toEqual([]);
+  });
+
+  // A sealed review found FOUR sites forcing an instrument name — the OWNER'S
+  // OWN editable text, never generated copy — under dir="ltr" as if it were
+  // metadata like ITEM_TYPE_LABELS sitting next to it. Auditing the rest of
+  // LTR_ISOLATE_SITES by hand found three more of the identical shape. A
+  // location list closes only the sites that happened to exist today; this
+  // bans the SHAPE, so a future dir="ltr"/"rtl" wrapped around an instrument
+  // name fails here regardless of which file it turns up in.
+  it('no dir="ltr"/"rtl" isolate wraps an instrument name', () => {
+    const violations: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of isolateSites(file)) {
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const bodyText = src.slice(body.start, body.end);
+        if (/\binstrumentName\(|\{inst\}/.test(bodyText)) {
+          violations.push(`${file}:${site.line} — an instrument name sits inside a dir="ltr"/"rtl" isolate`);
+        }
+      }
+    }
     expect(violations).toEqual([]);
   });
 
