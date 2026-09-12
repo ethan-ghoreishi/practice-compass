@@ -136,6 +136,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
   { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/ItemCard.tsx', tagName: 'span', classValue: '' },
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
@@ -148,6 +149,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Insights.tsx', tagName: 'th', classValue: 'dim' },
   { file: 'pages/Insights.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/ItemDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/ItemDetail.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'list-row card-link' },
   { file: 'pages/ItemDetail.tsx', tagName: 'div', classValue: 'list-row' },
@@ -162,6 +164,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Materials.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'p', classValue: 'page-sub' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'card card-quiet small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'small dim' },
@@ -170,6 +173,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Repertoire.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
@@ -189,6 +193,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'button', classValue: 'grow' },
@@ -550,6 +555,20 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
+  // Instrument names are the OWNER'S OWN editable text (renameable in
+  // Settings, Farsi included), never generated copy — a sealed review found
+  // four sites forcing them to dir="ltr" as if they were generated metadata,
+  // and this file's own audit of every remaining LTR_ISOLATE_SITES entry
+  // found a fifth (Today.tsx's "routine running" row) with the identical
+  // defect. All five now isolate the instrument name on its own dir="auto".
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="auto">{inst}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{instrumentName(db, item.instrumentId)}</span>' },
+  {
+    file: 'pages/PathwayDetail.tsx',
+    snippet: "<span dir=\"auto\">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>",
+  },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{instrumentName(db, work.instrumentId)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="auto">{instrumentName(db, running?.instrumentId)}</span>' },
 ];
 
 /**
@@ -567,7 +586,7 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{instrumentName(db, running?.instrumentId)} routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
   {
     file: 'pages/Today.tsx',
@@ -576,7 +595,6 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{instrumentName(db, item.instrumentId)}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">difficulty {item.difficulty}/5</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
@@ -586,10 +604,6 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
   { file: 'pages/StageDetail.tsx', snippet: '<span dir="ltr">{meta.join(\' · \')}</span>' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
-  {
-    file: 'pages/PathwayDetail.tsx',
-    snippet: "<span dir=\"ltr\">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>",
-  },
   { file: 'pages/PathwayDetail.tsx', snippet: "<span className=\"badge tone-progress\" dir=\"ltr\">{isPinned ? 'Current · pinned' : 'Current'}</span>" },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span className="badge tone-good" dir="ltr">Done</span>' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems' },
@@ -609,11 +623,9 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
     file: 'pages/Repertoire.tsx',
     snippet: '<span className="tiny faint" dir="ltr">\n              {g.works.length} work',
   },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">{instrumentName(db, work.instrumentId)}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
-  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{inst}</span>' },
   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
   { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },

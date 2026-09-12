@@ -93,11 +93,14 @@ export default function PathwayDetail() {
       ) : (
         <header className="stack-sm" dir="auto">
           <h1 className="page-title">{pathway.name}</h1>
-          {/* The instrument name is generated metadata (its own dir="ltr"
-              isolate); pathway.source is authored independently (its own
-              dir="auto" isolate) — never one isolate speaking for both. */}
+          {/* The instrument name is the owner's own editable text (renameable
+              in Settings, Farsi included) — its own dir="auto" isolate, same
+              as pathway.source right after it, so neither is pinned to a
+              foreign LTR base or speaks for the other. The 'General'
+              fallback (no instrument) is plain ASCII and resolves the same
+              way under dir="auto". */}
           <div className="tiny faint">
-            <span dir="ltr">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
+            <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
             {pathway.source && (
               <>
                 {' · '}

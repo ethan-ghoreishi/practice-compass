@@ -23,14 +23,18 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
       <div className="row between" style={{ alignItems: 'flex-start' }}>
         <div className="grow" dir="auto">
           <div className="title-md">{item.title}</div>
-          {/* Instrument name, item-type and focus labels are generated
-              metadata, never user text — each gets its own dir="ltr" isolate
-              so it can't inherit a Farsi title's RTL base. Each stays its
-              own flex item (not merged under one wrapper) so the row's
-              existing gap spacing is unaffected — this is a direction-only
-              change. */}
+          {/* Item-type and focus labels are generated metadata, never user
+              text — each gets its own dir="ltr" isolate so it can't inherit
+              a Farsi title's RTL base. The instrument name is the OWNER'S OWN
+              editable text (Settings lets it be renamed, e.g. into Farsi), so
+              it gets dir="auto" instead — forcing it LTR would give a Farsi
+              instrument name the wrong bidi base, the exact defect this
+              isolate exists to prevent for everything else on the line. Each
+              stays its own flex item (not merged under one wrapper) so the
+              row's existing gap spacing is unaffected — this is a
+              direction-only change. */}
           <div className="row-wrap small dim" style={{ marginTop: 3 }}>
-            <span dir="ltr">{inst}</span>
+            <span dir="auto">{inst}</span>
             <span className="faint">·</span>
             <span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>
             {item.primaryFocus && (

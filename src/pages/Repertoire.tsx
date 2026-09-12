@@ -268,10 +268,12 @@ function WorkRow({
           <div className="truncate">
             {work.title}
           </div>
-          {/* form/composer/gusheh are authored independently of the work's
-              own title (their own dir="auto" isolates); the instrument name
-              and last-practised phrase are generated metadata (their own
-              dir="ltr" isolates) — never one isolate speaking for all of
+          {/* form/composer/gusheh and the instrument name are all authored
+              independently of the work's own title (their own dir="auto"
+              isolates — the instrument name is the owner's own editable
+              text, renameable in Settings, Farsi included, never generated
+              copy); the last-practised phrase is generated metadata (its own
+              dir="ltr" isolate) — never one isolate speaking for all of
               them, and never joined into one bare string that inherits
               whichever direction the title happened to resolve. */}
           <div className="tiny faint truncate">
@@ -283,7 +285,7 @@ function WorkRow({
                   gusheh: <span dir="auto">{work.persian.gusheh}</span>
                 </span>
               ) : null,
-              <span dir="ltr">{instrumentName(db, work.instrumentId)}</span>,
+              <span dir="auto">{instrumentName(db, work.instrumentId)}</span>,
               <span dir="ltr">
                 {work.lastPractisedAt ? `last ${relativeFromDateTime(work.lastPractisedAt, now)}` : 'not practised yet'}
               </span>,

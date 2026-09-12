@@ -334,13 +334,17 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
       <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
         <div dir="auto" style={{ minWidth: 0 }}>
-          {/* Fixed English page copy, never user text — its own dir="ltr"
-              isolate. Inline (span), not dir="ltr" on this block: a block
-              isolate resolves its OWN text-align independently of the
+          {/* The instrument name is the owner's own editable text (renameable
+              in Settings, Farsi included) — its own dir="auto" isolate, not
+              lumped into the fixed English suffix that follows it. "routine
+              running ▸" is page copy, never user text, so it keeps its own
+              dir="ltr" isolate. Both inline (span), not dir on this block: a
+              block isolate resolves its OWN text-align independently of the
               group, which is the exact split a rejected review found
               elsewhere in this lane. */}
           <div className="faint small truncate">
-            <span dir="ltr">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
+            <span dir="auto">{instrumentName(db, running?.instrumentId)}</span>
+            <span dir="ltr"> routine running ▸</span>
           </div>
         </div>
       </button>

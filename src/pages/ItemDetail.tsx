@@ -130,14 +130,17 @@ export default function ItemDetail() {
           </h1>
           <StatusBadge status={item.status} />
         </div>
-        {/* instrumentName/ITEM_TYPE_LABELS are generated English metadata,
-            never user text — each gets its own dir="ltr" isolate. stage.code
-            and the material label stay bare: both are user-authored and can
-            be Farsi themselves (the Setar/Tar seeds author stage codes in
-            Farsi too), so they correctly share the group's own resolved
-            direction rather than being pinned to a foreign one. */}
+        {/* ITEM_TYPE_LABELS is generated English metadata, never user text —
+            it gets its own dir="ltr" isolate. The instrument name is the
+            owner's own editable text (renameable in Settings, Farsi
+            included), so it gets dir="auto" instead of being pinned to a
+            foreign LTR base. stage.code and the material label stay bare:
+            both are user-authored and can be Farsi themselves (the Setar/Tar
+            seeds author stage codes in Farsi too), so they correctly share
+            the group's own resolved direction rather than being pinned to a
+            foreign one. */}
         <div className="row-wrap small dim">
-          <span dir="ltr">{instrumentName(db, item.instrumentId)}</span>
+          <span dir="auto">{instrumentName(db, item.instrumentId)}</span>
           <span className="faint">·</span>
           <span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>
           {stage && (
