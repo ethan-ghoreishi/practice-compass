@@ -166,7 +166,6 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'card card-quiet small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'button', classValue: 'grow' },
-  { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
@@ -399,10 +398,25 @@ const allowed = (site: Site) =>
 // to own. Only a run that survives to the end of the group's body, and that
 // reads as a real phrase, is flagged.
 
-/** The element's body span: from just after its own opening tag's `>` to just
- *  after its matching closing tag (empty for a self-closing tag). Depth
- *  tracking is generic — any opened tag increases it, any closed tag
- *  decreases it — since well-formed JSX nests properly regardless of name. */
+/**
+ * The element's body span: from just after its own opening tag's `>` to just
+ * after its matching closing tag (empty for a self-closing tag). Depth
+ * tracking is generic — any opened tag increases it, any closed tag
+ * decreases it — since well-formed JSX nests properly regardless of name.
+ *
+ * A React Fragment shorthand (`<>…</>`) is EVERY bit as much an opening/
+ * closing pair as a named tag, and must be counted as one: `</>` starts with
+ * `/` so the CLOSING branch below already matched it (correctly decrementing
+ * depth), but `<>` starts with neither `/` nor a letter, so it fell through
+ * unmatched and never incremented depth. Every `<>…</>` pair inside a body
+ * therefore decremented depth ONE MORE TIME than it was ever incremented —
+ * on a group whose conditional content used a fragment (`{cond && (<>…
+ * </>)}`, the shape `{stage && (<><span>…</span><Link>…</Link></>)}` already
+ * uses in this codebase), depth hit zero several tags before the group's
+ * REAL close, silently truncating the body `unexemptedPhrase` scans and
+ * hiding every violation after that point — exactly the kind of gap a
+ * "detectable, not enumerated" claim must not have.
+ */
 function elementBody(src: string, tag: string, openAt: number): { start: number; end: number } {
   const start = openAt + tag.length;
   if (tag.endsWith('/>')) return { start, end: start };
@@ -414,6 +428,13 @@ function elementBody(src: string, tag: string, openAt: number): { start: number;
         const close = src.indexOf('>', i);
         i = close < 0 ? src.length : close + 1;
         depth -= 1;
+        continue;
+      }
+      if (src[i + 1] === '>') {
+        // Fragment shorthand open, <>. Its close, </>, is matched by the
+        // ordinary closing-tag branch above, so this one must increment.
+        i += 2;
+        depth += 1;
         continue;
       }
       if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
@@ -524,7 +545,6 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
-  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{stage.title}</span>' },
   { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
   { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
@@ -556,6 +576,10 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{instrumentName(db, item.instrumentId)}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">difficulty {item.difficulty}/5</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
   { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
   { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
   { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },

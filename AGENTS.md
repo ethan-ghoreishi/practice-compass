@@ -767,10 +767,14 @@ that resolves against THAT box's OWN `direction` — give the div its own `dir="
 its `text-align: start` resolves LEFT regardless of the group's (possibly RTL) resolved
 direction, splitting the detail from a right-aligned Farsi title exactly as before, just
 relocated one level down. An inline isolate (`<span dir="ltr">`, nested inside a block
-that carries no `dir` of its own) never has this problem, because `text-align` is a
-block-level concept a `<span>` never establishes — the established shape throughout this
-file was always the span form, and the block form was a new, narrower regression in one
-fix. `direction.test.ts` now bans the shape mechanically rather than by care: no
+that carries no `dir` of its own) never has this problem: `text-align` only governs how a
+BLOCK aligns its own content, and a `<span>` is not itself a block — even where a flex
+container blockifies it into a flex item, that item sizes to its content, so there is no
+extra width for its own `text-align` to act on. Its `dir` therefore only ever isolates the
+Unicode bidi algorithm's treatment of the text inside it, never which edge anything
+visually sits on — the established shape throughout this file was always the span form,
+and the block form was a new, narrower regression in one fix. `direction.test.ts` now
+bans the shape mechanically rather than by care: no
 `dir="ltr"`/`dir="rtl"` may sit on any tag but `span`/`bdi`, full stop, so this class of
 bug cannot resurface in any file, named here or not — one location fixed and the anti-
 pattern deleted are two different guarantees, and only the second is durable.
@@ -811,12 +815,45 @@ its piece-count fallback, `Today.tsx`'s "routine running" indicator and its cros
 instrument Overview row (a fixed sentence embedding the next item's own possibly-Farsi
 title — isolated the same way `StageDetail`'s undo banner already does, whole sentence
 under one `dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of
-which also embed an item's own title mid-sentence). Two further sites needed the OTHER
+which also embed an item's own title mid-sentence). One further site needed the OTHER
 isolate — `dir="auto"` for a value authored independently of its neighbour, not
 `dir="ltr"` for generated copy: `RoutineRunner.tsx`'s "Next: {label}" (the upcoming
-segment's own name) and `PathwayDetail.tsx`'s pathway `source` field and a stage's own
-`title` (both free text, unlike the instrument name and piece-count fallback beside
-them, which stayed `dir="ltr"`).
+segment's own name). `PathwayDetail.tsx`'s pathway `source` field got the same
+treatment (free text beside the generated instrument name), but its stage's own
+`title` was tried the same way and REVERTED: `stage.title` is not authored
+independently of `stage.code`, it is the SAME stage's own fuller name, and this file
+already settles (a few paragraphs up) that the two must AGREE on whichever direction
+the group resolves — isolating `stage.title` would have pulled it OUT of the button's
+own `dir="auto"` detection (a nested `dir` is skipped by the HTML auto algorithm),
+which can flip the group's resolved direction whenever `stage.code` itself carries no
+strong character. It stays a bare `<span>`, exactly like `stage.code`.
+
+**RE-DERIVING THE TEST'S OWN TAG TRAVERSAL FROM FIRST PRINCIPLES FOUND A DEEPER GAP
+THAN ANY SINGLE MISSED FILE.** `elementBody` (the helper both `unexemptedPhrase` and
+the isolate-skip logic use to find where an element's content ends) tracked nesting
+depth by incrementing on every opening tag and decrementing on every closing one —
+except a React Fragment shorthand, `<>`, starts with neither `/` nor a letter, so it
+matched NEITHER branch and never incremented depth, while its own close, `</>`, starts
+with `/` and DID match the closing branch, decrementing it. Every `<>…</>` pair inside
+a body therefore owed depth one MORE decrement than it was ever given an increment for
+— and this codebase's own established shape for a conditional detail
+(`{stage && (<><span>…</span><Link>…</Link></>)}`, exactly what `ItemDetail.tsx`'s
+header uses) hits that shape twice. On that header, depth reached zero several tags
+before the real `</header>`, so `unexemptedPhrase` silently stopped scanning before
+ever reaching `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a
+real, unisolated generated-English phrase that had been sitting in the group
+throughout every previous pass of this lane, invisible to a scanner whose entire claim
+is "detectable, not enumerated." Fixed by giving `<>` the same weight as any other
+opening tag. Re-running the FULL suite after the fix surfaced exactly this one
+violation — nothing else in the currently-scanned files was hiding behind the same
+bug — now closed with the same `dir="ltr"` (`instrumentName`, `ITEM_TYPE_LABELS`,
+"difficulty N/5", "saturated — consider resting") the rest of this section already
+established, while `stage.code` and the material label stay bare for the same reason
+`stage.title` does two paragraphs up. The lesson generalises beyond this one bug: an
+example-driven fix only ever closes the examples in front of it; only re-deriving a
+shared helper's own correctness from what it claims to do (does `<>` open or close a
+nesting level? — the answer was always "both, and this code only handled one") finds
+what a location list, however carefully audited, cannot.
 
 Two sites the stronger scanner flagged are recorded, VISIBLY, as genuine exceptions in
 `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: `PathwayDetail.tsx`'s stage-progress

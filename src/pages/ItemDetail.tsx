@@ -130,10 +130,16 @@ export default function ItemDetail() {
           </h1>
           <StatusBadge status={item.status} />
         </div>
+        {/* instrumentName/ITEM_TYPE_LABELS are generated English metadata,
+            never user text — each gets its own dir="ltr" isolate. stage.code
+            and the material label stay bare: both are user-authored and can
+            be Farsi themselves (the Setar/Tar seeds author stage codes in
+            Farsi too), so they correctly share the group's own resolved
+            direction rather than being pinned to a foreign one. */}
         <div className="row-wrap small dim">
-          <span>{instrumentName(db, item.instrumentId)}</span>
+          <span dir="ltr">{instrumentName(db, item.instrumentId)}</span>
           <span className="faint">·</span>
-          <span>{ITEM_TYPE_LABELS[item.itemType]}</span>
+          <span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>
           {stage && (
             <>
               <span className="faint">·</span>
@@ -149,12 +155,16 @@ export default function ItemDetail() {
             </>
           )}
         </div>
+        {/* Generated English metadata, never user text — each gets its own
+            dir="ltr" isolate so it can't inherit the title's RTL base. */}
         <div className="row-wrap" style={{ gap: 16, marginTop: 4 }}>
           <span className="row tiny faint" style={{ gap: 6 }}>
             <Stars value={item.importance} /> importance
           </span>
-          <span className="tiny faint">difficulty {item.difficulty}/5</span>
-          {item.saturationWarning && <span className="tiny warn-flag">saturated — consider resting</span>}
+          <span className="tiny faint" dir="ltr">difficulty {item.difficulty}/5</span>
+          {item.saturationWarning && (
+            <span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>
+          )}
         </div>
       </header>
 

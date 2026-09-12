@@ -331,13 +331,16 @@ function StageRow({
             <span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
           )}
         </div>
-        {/* stage.title is authored independently of stage.code (its own
-            dir="auto" isolate) when the two differ; the generated
-            piece-count fallback is fixed English (its own dir="ltr"
-            isolate) when they don't. */}
+        {/* stage.title is the SAME stage's own fuller name, not a value
+            authored independently of stage.code — it stays bare, exactly
+            like stage.code's own span above, so the two agree on whichever
+            direction the group resolves rather than one silently
+            overriding the other. The piece-count fallback (rendered only
+            when title and code are the same) is generated English and
+            gets its own dir="ltr" isolate. */}
         <div className="tiny faint">
           {stage.title !== stage.code ? (
-            <span dir="auto">{stage.title}</span>
+            <span>{stage.title}</span>
           ) : (
             <span dir="ltr">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>
           )}

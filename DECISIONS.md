@@ -51,12 +51,57 @@ groups, alignment, list markers, completeness — still open in `ItemMaterial.ts
    `StageDetail`'s undo banner already does), and `Insights`' generated observation
    sentences. Two sites needed `dir="auto"` rather than `dir="ltr"` — a value authored
    independently of its neighbour, not generated copy: `RoutineRunner`'s upcoming
-   segment label and `PathwayDetail`'s pathway `source` and a stage's own `title`. Two
+   segment label and `PathwayDetail`'s pathway `source`. A stage's own `title` was
+   tried the same way and REVERTED: `stage.title` is not authored independently of
+   `stage.code` — it is the SAME stage's fuller name, rendered only when it differs
+   from the code — and a prior lane already settled that the two should AGREE on
+   whichever direction the group resolves rather than one overriding the other
+   (`PathwayDetail`'s stage rows, 2026-09-11 entry below: "even where a group DOES
+   resolve LTR from its code, that is the point"). Isolating `stage.title` in its own
+   `dir="auto"` would have pulled it OUT of the button's own auto-detection (a nested
+   `dir` attribute is skipped by the HTML algorithm), which can flip the group's OWN
+   resolved direction whenever `stage.code` itself has no strong character — the
+   opposite of "agree." It stays a bare `<span>`, exactly like `stage.code`. Two
    flagged sites were genuine exceptions, recorded visibly in a new
    `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: a numeric progress counter
    (`{sp.done}/{sp.total}` — digits carry no bidi risk) and a compound "Pathway — Stage"
    breadcrumb built from two fields (one continuous label, not a title split from a
    foreign caption).
+
+4. **`elementBody`'s depth counter did not recognise React's Fragment shorthand as an
+   opening tag, only as a closing one — silently truncating the body several checks
+   scan.** `</>` starts with `/`, so it matched the ordinary CLOSING-tag branch and
+   decremented depth; `<>` starts with neither `/` nor a letter, so it matched nothing
+   and never incremented it. Every `<>…</>` pair inside a group's body therefore
+   decremented depth once more than it was ever incremented — and this codebase's own
+   established shape for a conditional detail (`{stage && (<><span>…</span>
+   <Link>…</Link></>)}`, `ItemDetail.tsx`'s header) uses exactly that shorthand. On
+   that header, depth hit zero several tags before the `</header>` actually closes,
+   so `unexemptedPhrase` silently stopped scanning before ever reaching
+   `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a real,
+   unisolated generated-English phrase that had been sitting in the group the whole
+   time, invisible to a scanner whose whole claim is "detectable, not enumerated."
+   Fixed by giving `<>` the same weight as any other opening tag; the fix surfaced
+   this one concrete violation across every file the suite scans (no others were
+   hiding behind it), now fixed with the same `dir="ltr"`/`dir="auto"` split as its
+   sibling `row-wrap` (`instrumentName`/`ITEM_TYPE_LABELS` generated, `stage.code`/
+   the material label left bare since both can be Farsi themselves) and its
+   importance/difficulty/saturated row. A structural bug in the TEST's own tag
+   traversal is exactly the kind of gap a purely example-driven fix cannot close —
+   only re-deriving the traversal from first principles (does this construct open or
+   close a nesting level?) finds it.
+
+**A restructure, not a pure direction-only edit, in `Repertoire.tsx`'s `WorkRow`.**
+Its metadata line was `[form, composer, gusheh, instrumentName, lastPractised]
+.filter(Boolean).join(' · ')` — a single STRING assembled from fields in two
+different authorships (Persian identity fields, genuinely Farsi; instrument name and
+the last-practised phrase, generated English). A joined string has no seam to hang a
+`dir=` on partway through, so isolating it correctly required rebuilding the array as
+JSX nodes (`<span dir="auto">`/`<span dir="ltr">` per fragment) joined with an
+explicit separator, rather than adding an attribute to existing markup. This is more
+than the "direction wiring only" the contract asks of a non-loop file, but there was
+no lighter way to give each fragment its own bidi base — flagged here rather than
+left for a reviewer to have to notice on their own.
 
 **The scanner's own comment-stripping had a latent bug this work exposed, not
 introduced.** `stripComments` treated any `'`/`"` as a real string delimiter and
