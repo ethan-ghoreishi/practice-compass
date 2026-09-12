@@ -2,6 +2,36 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
+
+A fifth sealed review found the fourth rejection's fix was still a negative check —
+banning `dir="ltr"`/`"rtl"` around an instrument name — which cannot detect a name with
+NO direction treatment at all, an alias beyond the two literal anchors the check knew
+(`instrumentName`, `{inst}`), or a name fused into a template string before anything
+renders. Real, live instances of all three: Repertoire's `PathwayCard`, Session Plan's
+two page titles, wide Lessons' sidebar heading and detail-pane header, Today's
+cross-instrument "in progress"/"plan"/"routine" rows (built as pre-joined template
+strings), Today's instrument switcher and `EmptyState` title and "Before your … class"
+heading, and ActiveBlock's/CloseBlock's own eyebrow (mis-classifying the instrument's own
+name as fixed English in their own comments). Fixed by replacing the ban with a positive,
+mechanically-discovering check in `direction.test.ts`: `instrumentNameOccurrences` finds
+every current renderer from the SHAPES this codebase uses to produce one (the helper call,
+a property read, a local alias of either via destructure-rename/const-binding/find-and-name,
+or a per-item `.name` read inside an `instruments` iteration) rather than a location list,
+and `resolvesOwnDirection` asserts the invariant itself — the nearest ancestor `dir` must
+be `"auto"` AND nothing else may render before the name within that ancestor's body, or
+the ancestor's resolution belongs to whatever precedes it, not to the name riding along
+beside it. Two sites deliberately stay bare because they are already the first strong
+content of their own dir="auto" ancestor (Insights.tsx's `<th>`, Today.tsx's
+cross-instrument `{inst.name}` row) — isolating either would break, not fix, them, the
+same reasoning that earlier reverted isolating `stage.title`. Two gaps are named rather
+than silently left: `QuickAdd.tsx`'s instrument-picker button has the identical bare-name
+defect but sits in a file this lane's own contract puts out of scope, so the check
+explicitly excludes it instead of failing on a bug this lane cannot fix; and
+`src/domain/insights.ts` fuses an instrument name into a generated sentence one layer
+below where a presentation-only lane can reach, left open for its own lane. See
+AGENTS.md's "A FIFTH REJECTION..." section for the full account.
+
 ## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
 
 A sealed review found four sites (`ItemCard.tsx`, `ItemDetail.tsx`,

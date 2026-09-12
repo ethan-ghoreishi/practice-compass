@@ -918,6 +918,65 @@ Balance row's own property-access form) — or ItemCard's own `inst` alias for i
 future regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
 happened to name.
 
+**A FIFTH REJECTION FOUND THE SHAPE-BAN STILL WASN'T ENOUGH, BECAUSE IT WAS ONLY EVER A
+NEGATIVE CHECK.** Banning `dir="ltr"`/`"rtl"` around an instrument name catches nothing
+about a name rendered with NO direction treatment at all, an alias beyond the two literal
+anchors the check happened to know (`instrumentName`, `{inst}`), or a name fused into a
+template string (`` `${instrumentName(db, x)} plan` ``) before anything could render it —
+three shapes a fourth sealed review found live in the app (Repertoire's `PathwayCard`,
+Session Plan's two page titles, wide Lessons' sidebar heading and its detail-pane header,
+Today's cross-instrument "in progress"/"plan"/"routine" rows, Today's `EmptyState` title
+and "Before your … class" heading, and ActiveBlock's/CloseBlock's own eyebrow — the last
+two mis-classifying the instrument's own name as "the English eyebrow" in their own
+comments). `direction.test.ts` now asserts the invariant itself rather than banning one
+way of getting it wrong: `instrumentNameOccurrences` DISCOVERS every current renderer
+mechanically — the `instrumentName(db, id)` call, a bare `.instrumentName` property read,
+a LOCAL ALIAS of either (a destructured, renamed prop; a `const X = instrumentName(...)`
+binding; a `const X = …instruments….find(...)?.name` binding, generalised past the literal
+spelling "instrumentName" so a differently-named local is still caught), and a per-item
+`.name` read inside an `instruments.map`/`.filter().map` callback or an inline
+`instruments.find(...)?.name` — rather than requiring each to be re-listed by hand.
+`resolvesOwnDirection` then asserts the POSITIVE invariant: the name's nearest ancestor
+`dir` must be `"auto"`, AND nothing else may render before it within that SAME ancestor's
+body — a `dir="auto"` ancestor resolves from whichever strong character comes FIRST in
+its subtree, so an item's own title (or anything else) preceding the name inside the same
+auto group claims that resolution for itself, exactly the classification mistake this
+whole family exists to catch. `isFusedIntoTemplate` separately catches the template-fusion
+shape. A declaration/binding site (the alias's own introduction) and a value forwarded as
+a JSX ATTRIBUTE (`instrumentName={x}`, prop-drilling rather than a DOM text render — the
+receiving component is checked wherever IT renders the value; `ClassQuestions` never does)
+are both excluded, visibly, in the check's own comments rather than by a silent gap.
+
+Two real sites deliberately stay BARE and must keep passing exactly as they are:
+Insights.tsx's `<th dir="auto">{r.instrumentName}</th>` and Today.tsx's cross-instrument
+`<div className="grow" dir="auto">…<div>{inst.name}</div>…` row. Both already resolve
+correctly because the name is genuinely the FIRST strong content of their own dir="auto"
+ancestor; wrapping either in a nested isolate would BREAK, not fix, them — `dir="auto"`
+skips a descendant that already carries its own `dir` when hunting for a first strong
+character, so the ancestor would lose its only resolution source and silently fall back to
+LTR for a Farsi instrument, the same reasoning this file already used once to revert
+isolating `stage.title`. The completion gate for this check was empirical, not assumed:
+each discovery shape above was mutated back to its broken form in turn and confirmed to
+fail the test before being reverted, and the check itself asserts it discovers a non-zero
+set of sites overall, so a regression that makes every pattern silently stop matching
+cannot masquerade as "nothing to report."
+
+Two gaps are named here because this lane cannot close them, not because they were missed.
+`src/components/QuickAdd.tsx`'s instrument-picker button renders `{i.name}` with no
+direction treatment at all — a real instance of this same defect — but `QuickAdd.tsx`,
+`ItemForm.tsx` and `RoutineEdit.tsx` are this lane's own contract's declared non-goal
+("their dir=\"auto\" usage is already correct and must not be touched"), so
+`direction.test.ts`'s instrument-name check explicitly excludes all three rather than
+either silently passing over a real bug or failing a check this lane cannot act on.
+Separately, `src/domain/insights.ts` (a forbidden path here) bakes
+`${r.instrumentName} ${r.percent}%` for every instrument into one generated sentence
+before Today or Insights ever renders it — the identical "fused into a string" defect,
+sitting one layer below where a presentation-only lane can reach it. Today.tsx's own
+render of that sentence (`insight.body`) was still tightened to match Insights.tsx's
+existing inline `<span dir="ltr">` isolate (it was previously a bare, undirected block),
+but the embedded instrument name inside that generated sentence stays open pending a
+domain-layer fix and its own lane.
+
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
 a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard

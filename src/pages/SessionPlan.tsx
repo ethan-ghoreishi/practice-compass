@@ -111,7 +111,13 @@ function PlanPreview() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
       <header className="stack-sm">
         <div className="row between">
-          <h1 className="page-title">Your {instrumentName(db, instrumentId)} session</h1>
+          {/* The instrument name is the owner's own editable text — its own
+              dir="auto" isolate, nested inside the title rather than bare, so
+              a Farsi name doesn't inherit whatever base the title's fixed
+              English words would otherwise resolve to. */}
+          <h1 className="page-title">
+            Your <span dir="auto">{instrumentName(db, instrumentId)}</span> session
+          </h1>
           <Link to="/" className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} aria-label="Back to Today">
             <XIcon />
           </Link>
@@ -197,7 +203,10 @@ function PlanRunner() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
       <header className="stack-sm">
         <div className="row between">
-          <h1 className="page-title">{instrumentName(db, activePlan.instrumentId)} session</h1>
+          {/* Same isolate as the picker's own title above. */}
+          <h1 className="page-title">
+            <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span> session
+          </h1>
           <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={finish} aria-label="End the plan">
             <XIcon />
           </button>

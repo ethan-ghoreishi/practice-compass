@@ -457,8 +457,16 @@ function PathwayCard({
         </div>
         <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
       </div>
+      {/* The instrument name (or 'General') is the owner's own editable text
+          — its own dir="auto" isolate, same as PathwayDetail's identical
+          line. An INLINE isolate (a span, never a block) fixes the name's
+          own bidi base without touching this card's own textAlign:'left' —
+          text-align is a block concept a span never participates in, per
+          this file's own "an isolate must be inline" rule. stage.code/title
+          stay bare, same reasoning as PathwayDetail: it's the stage's own
+          compound label, not a foreign caption. */}
       <div className="tiny faint truncate">
-        {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
+        <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
         {stage ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}` : ''}
       </div>
       <div className="row" style={{ gap: 8 }}>

@@ -141,11 +141,19 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
           const flagged = assignedForLesson(db.items).filter((i) => i.instrumentId === inst.id);
           return (
             <section key={inst.id} className="stack-sm">
-              <div className="row between">
+              {/* The instrument's own name leads this group (dir="auto"
+                  resolves from the first strong character), same shape as
+                  InstrumentLessons' identical row below — the badge gets its
+                  own dir="ltr" isolate so it can't inherit the name's base. */}
+              <div className="row between" dir="auto">
                 <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
                   {inst.name}
                 </h2>
-                {next && <span className="badge tone-progress">next {relativeDay(next.date, now)}</span>}
+                {next && (
+                  <span className="badge tone-progress" dir="ltr">
+                    next {relativeDay(next.date, now)}
+                  </span>
+                )}
               </div>
               {next && flagged.length > 0 && (
                 <div className="tiny dim">
@@ -224,8 +232,14 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
         {selected ? (
           <>
             <div className="row between">
+              {/* The instrument name is the owner's own editable text — its
+                  own dir="auto" isolate. lessonLabel is always digits +
+                  English by construction ("Class N · date") — its own
+                  dir="ltr" isolate keeps the two from being fused into one
+                  bare, undirected string as they used to be. */}
               <strong>
-                {instruments.find((i) => i.id === selected.instrumentId)?.name} · {lessonLabel(selected)}
+                <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
+                <span dir="ltr"> · {lessonLabel(selected)}</span>
               </strong>
               <span className="tiny faint">{relativeDay(selected.date, now)}</span>
             </div>

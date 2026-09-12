@@ -74,6 +74,7 @@ export default function Today() {
             className={`option${!overview && selected?.id === i.id ? ' selected' : ''}`}
             aria-pressed={!overview && selected?.id === i.id}
             onClick={() => setSessionInstrument(i.id)}
+            dir="auto"
           >
             {i.name}
           </button>
@@ -167,13 +168,23 @@ function ElsewhereSessions({
   const activePlan = useStore((s) => s.activePlan);
   const activeRoutine = useStore((s) => s.activeRoutine);
 
-  const rows: { key: string; label: string; detail: string; to: string; note?: ReactNode }[] = [];
+  // label/detail are ReactNode, never a pre-joined string: the instrument
+  // name is the OWNER'S OWN editable text and needs its own dir="auto"
+  // isolate, distinct from the fixed English suffix's dir="ltr" one. Joining
+  // them into one string first (as this used to do) would fuse the two
+  // before render, leaving nothing left to isolate independently.
+  const rows: { key: string; label: ReactNode; detail: ReactNode; to: string; note?: ReactNode }[] = [];
 
   if (active && active.instrumentId !== selectedInstrumentId) {
     rows.push({
       key: 'active',
       label: getItem(db, active.itemId)?.title ?? 'Practice block',
-      detail: `${instrumentName(db, active.instrumentId)} · in progress`,
+      detail: (
+        <>
+          <span dir="auto">{instrumentName(db, active.instrumentId)}</span>
+          <span dir="ltr"> · in progress</span>
+        </>
+      ),
       to: '/active',
       note: <StaleNote active={active} now={now} />,
     });
@@ -182,7 +193,12 @@ function ElsewhereSessions({
     const done = activePlan.segments.filter((s) => s.status === 'done').length;
     rows.push({
       key: 'plan',
-      label: `${instrumentName(db, activePlan.instrumentId)} plan`,
+      label: (
+        <>
+          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>
+          <span dir="ltr"> plan</span>
+        </>
+      ),
       detail: `${done} of ${activePlan.segments.length} done`,
       to: '/plan',
     });
@@ -195,7 +211,12 @@ function ElsewhereSessions({
       rows.push({
         key: 'routine',
         label: routine.name,
-        detail: `${instrumentName(db, routine.instrumentId)} routine`,
+        detail: (
+          <>
+            <span dir="auto">{instrumentName(db, routine.instrumentId)}</span>
+            <span dir="ltr"> routine</span>
+          </>
+        ),
         to: `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`,
       });
     }
@@ -515,7 +536,18 @@ function SessionView({
     return (
       <div className="stack">
         <div className="card">
-          <EmptyState icon={<MusicIcon />} title={`Nothing for ${name} yet`}>
+          {/* EmptyState's title is a ReactNode precisely so a fused string
+              like the old `Nothing for ${name} yet` never has to swallow the
+              instrument name's own direction — it gets its own dir="auto"
+              isolate instead of being joined into the fixed English first. */}
+          <EmptyState
+            icon={<MusicIcon />}
+            title={
+              <>
+                Nothing for <span dir="auto">{name}</span> yet
+              </>
+            }
+          >
             Add your first piece or exercise below — a title is enough.
           </EmptyState>
         </div>
@@ -617,7 +649,10 @@ function SessionView({
       {lessonDate && classWork.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">
-            Before your {name} class
+            {/* The instrument name is the owner's own editable text — its own
+                dir="auto" isolate, never fused bare into this fixed English
+                sentence. */}
+            Before your <span dir="auto">{name}</span> class
             <span className="dim" style={{ fontWeight: 400 }}>
               {' '}
               · {daysUntil(lessonDate, now) <= 0 ? 'today' : `in ${daysUntil(lessonDate, now)} day${daysUntil(lessonDate, now) === 1 ? '' : 's'}`}
@@ -865,7 +900,20 @@ function OverviewView({ now }: { now: Date }) {
               <div className="section-label" style={{ marginBottom: 4 }}>
                 Insight
               </div>
-              <div>{insight.body}</div>
+              {/* Generated English metadata, matching Insights.tsx's own
+                  treatment of the identical field — an INLINE dir="ltr"
+                  isolate (never a block: text-align is a block concept a
+                  span never participates in) keeps its bidi base fixed.
+                  NOTE: the balance insight's body is built in
+                  src/domain/insights.ts (out of this presentation-only
+                  lane's reach) by joining `${r.instrumentName} ${r.percent}%`
+                  for every instrument into one sentence — an embedded Farsi
+                  instrument name there still inherits this isolate's LTR
+                  base, same defect as the rest of this section, left open
+                  pending a domain-layer fix. See AGENTS.md. */}
+              <div>
+                <span dir="ltr">{insight.body}</span>
+              </div>
             </div>
           </div>
         </section>

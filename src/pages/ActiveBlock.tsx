@@ -83,11 +83,16 @@ export default function ActiveBlock() {
   return (
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
       <header className="stack-sm">
-        <div className="eyebrow">{instrumentName(db, active.instrumentId)}</div>
-        {/* The title and the details that belong to it are ONE group carrying
-            the direction, so a Farsi piece reads as one block. The English
-            eyebrow stays OUTSIDE it: dir="auto" resolves from the first strong
-            character in the subtree, so including it would pin the group LTR.
+        {/* The eyebrow renders the INSTRUMENT'S OWN editable name (Settings
+            lets it be renamed, Farsi included) — never fixed English copy —
+            so it carries its own dir="auto" rather than being bare. It stays
+            its own group, OUTSIDE the title's: dir="auto" resolves from the
+            first strong character in a subtree, so folding it into the title
+            group would let the instrument's script decide the item title's
+            own direction instead of the title's own content deciding it. */}
+        <div className="eyebrow" dir="auto">{instrumentName(db, active.instrumentId)}</div>
+        {/* The item title and the details that belong to it are ONE group
+            carrying the direction, so a Farsi piece reads as one block.
             The whole page centres its timer and buttons regardless of
             language, but the title group overrides that back to `start` —
             right for Farsi, left for English — or the page's own centring

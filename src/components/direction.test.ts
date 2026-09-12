@@ -140,11 +140,13 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'eyebrow' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/CloseBlock.tsx', tagName: 'div', classValue: 'eyebrow' },
   { file: 'pages/CloseBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
   { file: 'pages/Insights.tsx', tagName: 'th', classValue: 'dim' },
   { file: 'pages/Insights.tsx', tagName: 'div', classValue: '' },
@@ -156,6 +158,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'link' },
   { file: 'pages/ItemDetail.tsx', tagName: 'span', classValue: 'dim' },
   { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'link' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'row between' },
+  { file: 'pages/Lessons.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'row between' },
   { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'tiny dim' },
@@ -178,26 +182,35 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'link', classValue: 'row between small card-link' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'row between' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'tiny faint' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: 'card card-quiet row between small' },
   { file: 'pages/StageDetail.tsx', tagName: 'button', classValue: 'stage-unit-text' },
   { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/StartBlock.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/TeacherReport.tsx', tagName: 'pre', classValue: 'pre' },
+  { file: 'pages/Today.tsx', tagName: 'button', classValue: "`option${!overview && selected?.id === i.id ? ' selected' : ''}`" },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'link', classValue: 'grow' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'link', classValue: 'list-row card-link' },
@@ -557,29 +570,15 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
-  // Instrument names are the OWNER'S OWN editable text (renameable in
-  // Settings, Farsi included), never generated copy — a sealed review found
-  // four sites forcing them to dir="ltr" as if they were generated metadata,
-  // and this file's own audit of every remaining LTR_ISOLATE_SITES entry
-  // found a fifth (Today.tsx's "routine running" row) with the identical
-  // defect. All five now isolate the instrument name on its own dir="auto".
-  { file: 'components/ItemCard.tsx', snippet: '<span dir="auto">{inst}</span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{instrumentName(db, item.instrumentId)}</span>' },
-  {
-    file: 'pages/PathwayDetail.tsx',
-    snippet: "<span dir=\"auto\">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>",
-  },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{instrumentName(db, work.instrumentId)}</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="auto">{instrumentName(db, running?.instrumentId)}</span>' },
-  // Same audit, two more sites with no dir treatment at all rather than a
-  // forced dir="ltr" one — just as wrong, and easier to miss because nothing
-  // in the source marked them. PlanCard's mismatched-instrument row was the
-  // exact twin of the RoutinesCard row above it; the weekly balance row's
-  // instrument name sits inside a CSS GRID (.balance-row), so its isolate is
-  // nested one level in rather than on the row, or a Farsi name would flip
-  // the grid's three columns.
-  { file: 'pages/Today.tsx', snippet: '<span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="auto">{b.instrumentName}</span>' },
+  // Instrument names used to be tracked here too, one exact snippet per site.
+  // A sealed review found that shape structurally insufficient FOUR times
+  // running: each rework closed only the sites a reviewer had named, while
+  // aliases, property access and names fused into template strings kept
+  // slipping through undetected. Instrument names are now covered by a
+  // dedicated, pattern-driven check below ('an instrument name resolves its
+  // own direction wherever it renders') that discovers every renderer of the
+  // name mechanically instead of requiring each one to be re-listed here —
+  // see that check for the full rationale.
 ];
 
 /**
@@ -726,6 +725,357 @@ function reservesRoomOnBothSides(tag: string): boolean {
   return hasStart === hasEnd; // both set, or neither — never start-only
 }
 
+// --- an instrument name resolves its own direction, wherever it renders ----
+//
+// Four consecutive sealed reviews rejected this family for the same root
+// cause: every rework closed the handful of sites a reviewer had named by
+// file:line, while the same defect kept resurfacing in a shape the fix
+// hadn't covered — an alias, a property read, a name folded into a template
+// string before anything could render. A location list can only ever be as
+// complete as the audit that built it. This discovers every CURRENT
+// renderer of an instrument's name mechanically, from the shapes this
+// codebase actually uses to produce one, rather than requiring each to be
+// re-listed by hand:
+//   - the instrumentName(db, id) helper, called directly;
+//   - a bare `.instrumentName` property read (a selector row's own field);
+//   - a LOCAL ALIAS of either — a destructured, renamed prop
+//     (`instrumentName: name`), or a `const X = instrumentName(...)`
+//     binding — found by locating the alias's OWN declaration, then
+//     scanning the rest of the file for bare reads of it;
+//   - a direct `.name` read on an Instrument object bound by iterating
+//     `db.instruments` (a `.map`/`.filter().map` callback's own parameter,
+//     or an inline `instruments.find(...)?.name` with no variable at all).
+// An instrument is renameable in Settings, Farsi included, so every one of
+// these is the OWNER'S OWN editable text, never generated copy.
+//
+// The invariant asserted is the one BEHIND the fix, not the fix's own site
+// list: a rendered instrument name resolves its OWN direction — nothing may
+// fuse it into a plain string with other text before it renders, and its
+// nearest enclosing `dir` (searching outward through real ancestors, never
+// a neighbouring SIBLING) must be "auto", never absent and never forced to
+// "ltr"/"rtl". A declaration/binding site (the alias's own introduction) is
+// not itself a render and is excluded; so is a value forwarded as a JSX
+// ATTRIBUTE (`instrumentName={x}`) — that is prop-drilling, not a DOM text
+// render, and the component actually receiving it is checked wherever IT
+// renders the value (ClassQuestions never does — it only builds
+// clipboard/filename text with the prop, never a laid-out block).
+
+/** Index of the `)` matching the `(` at `openAt`, skipping over the contents
+ *  of any string/template so a stray bracket character inside one (none
+ *  exist in the callbacks this scans today) can never desync the count. */
+function matchingParenClose(src: string, openAt: number): number {
+  let depth = 0;
+  let i = openAt;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    } else if (c === '"' || c === "'" || c === '`') {
+      const close = src.indexOf(c, i + 1);
+      i = close < 0 ? src.length : close;
+    }
+    i += 1;
+  }
+  return src.length;
+}
+
+/** Walks back over a receiver chain (`db.instruments` → the start of `db`)
+ *  so a declaration check lands on the true start of the expression, not
+ *  wherever a matched sub-pattern happens to begin inside it. */
+function receiverChainStart(src: string, at: number): number {
+  let i = at;
+  while (i > 0 && src[i - 1] === '.') {
+    let k = i - 1;
+    while (k > 0 && /[\w$]/.test(src[k - 1] ?? '')) k -= 1;
+    if (k === i - 1) break; // a bare '.' with no identifier before it
+    i = k;
+  }
+  return i;
+}
+
+/**
+ * The tag name, dir value and own body-start offset of every element
+ * enclosing position `at`, outermost first — the ANCESTOR chain, not just
+ * the nearest opening tag. What resolves a name's direction is the nearest
+ * ancestor carrying ANY dir at all, which is not necessarily the immediate
+ * parent: ActiveBlock's/CloseBlock's eyebrow divs sit right next to (not
+ * inside) the title's own dir="auto" group, so that group must never count
+ * for them.
+ */
+function ancestorChain(src: string, at: number): { tagName: string; dir: string | null; bodyStart: number }[] {
+  const stack: { tagName: string; dir: string | null; bodyStart: number }[] = [];
+  let i = 0;
+  while (i < at) {
+    if (src[i] === '<') {
+      if (src[i + 1] === '/') {
+        const close = src.indexOf('>', i);
+        i = close < 0 ? at : close + 1;
+        stack.pop();
+        continue;
+      }
+      if (src[i + 1] === '>') {
+        stack.push({ tagName: '', dir: null, bodyStart: i + 2 }); // fragment shorthand, never carries dir
+        i += 2;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const tag = enclosingTag(src, i);
+        const tagEnd = i + tag.length;
+        i = tagEnd;
+        if (!tag.endsWith('/>')) {
+          const dirMatch = /\sdir="(auto|ltr|rtl)"/.exec(tag);
+          const nameMatch = /^<\s*([A-Za-z][\w.]*)/.exec(tag);
+          stack.push({ tagName: (nameMatch?.[1] ?? '').toLowerCase(), dir: dirMatch ? dirMatch[1] : null, bodyStart: tagEnd });
+        }
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return stack;
+}
+
+/**
+ * Whatever renders BEFORE position `at` inside a body that runs from
+ * `bodyStart` to `at` — real sibling content only, opaque-but-present
+ * markers ('X') standing in for anything whose actual text isn't visible
+ * from source. Two things are deliberately NOT "preceding content":
+ *   - A bare `{` that is the START of the very expression `at` sits inside
+ *     (`<span dir="auto">{instrumentName(...)}</span>` has no sibling
+ *     before the call, just the brace opening its own container) — this
+ *     function stops (returns what it has so far) the moment it finds the
+ *     `{…}` or `<tag>…</tag>` that CONTAINS `at`, rather than descending
+ *     through it as if it were a finished sibling.
+ *   - A ternary/logical-AND's UNTAKEN branch or its own condition text
+ *     (`{cond ? instrumentName(db, x) : 'General'}`) — these sit inside
+ *     the SAME expression as `at`, never as separate rendered siblings, so
+ *     stopping at that expression's boundary (rather than treating its
+ *     condition as literal preceding text) is what keeps this from
+ *     flagging PathwayDetail's and Repertoire's `cond ? instrumentName(...)
+ *     : 'General'` pattern as though "cond ? " had rendered first.
+ * A COMPLETE prior `{…}` expression or `<tag>…</tag>` element (one that
+ * closes before `at`) DOES count, opaquely — an item's own title rendered
+ * in an earlier sibling div is real content even though this text scan
+ * can't see what the title actually says.
+ */
+function contentBefore(src: string, bodyStart: number, at: number): string {
+  let i = bodyStart;
+  let out = '';
+  while (i < at) {
+    const c = src[i];
+    if (c === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
+      const tag = enclosingTag(src, i);
+      if (tag.endsWith('/>')) {
+        out += 'X'; // a self-closing element — opaque prior content
+        i += tag.length;
+        continue;
+      }
+      const body = elementBody(src, tag, i);
+      if (body.end <= at) {
+        out += 'X'; // this whole child closes before `at` — opaque prior content
+        i = body.end;
+      } else {
+        return out + contentBefore(src, body.start, at); // `at` is inside this child — descend, don't skip it
+      }
+      continue;
+    }
+    if (c === '{') {
+      const closeAt = matchingBraceClose(src, i);
+      if (closeAt <= at) {
+        out += 'X'; // a full sibling expression — opaque prior content
+        i = closeAt + 1;
+      } else {
+        return out; // `at` is inside THIS expression — its own condition/branches never count
+      }
+      continue;
+    }
+    if (!/\s/.test(c)) out += c; // literal JSX text
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Whether an occurrence at `at` resolves ITS OWN direction — the nearest
+ * ancestor carrying any `dir` must be "auto", AND nothing else may render
+ * before it within that SAME ancestor's body. A dir="auto" ancestor
+ * resolves from whichever strong character comes FIRST in its subtree: if
+ * an item's own title (or any other independently-authored value) precedes
+ * the name inside the same auto ancestor, the ancestor's resolution belongs
+ * to THAT value, not to the name riding along beside it — exactly the
+ * classification mistake this whole family exists to catch (ItemCard's row
+ * would silently regress this way if its instrument name ever lost its own
+ * `<span dir="auto">` and merely sat inside the row's outer auto group).
+ * Two real sites deliberately rely on being genuinely FIRST rather than
+ * carrying their own isolate — Insights.tsx's `<th dir="auto">` and
+ * Today.tsx's cross-instrument `{inst.name}` — and this still accepts both.
+ */
+function resolvesOwnDirection(src: string, at: number): { ok: boolean; dir: string | null } {
+  const chain = ancestorChain(src, at);
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const entry = chain[i];
+    if (entry.dir === null) continue;
+    if (entry.dir !== 'auto') return { ok: false, dir: entry.dir };
+    return { ok: contentBefore(src, entry.bodyStart, at).length === 0, dir: 'auto' };
+  }
+  return { ok: false, dir: null };
+}
+
+/** `<option>` contents are excluded from this whole family by the contract:
+ *  the native control owns their rendering, so no dir treatment applies. */
+function isInsideOption(src: string, at: number): boolean {
+  return ancestorChain(src, at).some((a) => a.tagName === 'option');
+}
+
+/** Index just past the matching `}` for the `{` at `openAt`. */
+function matchingBraceClose(src: string, openAt: number): number {
+  let depth = 0;
+  let i = openAt;
+  while (i < src.length) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+    i += 1;
+  }
+  return src.length;
+}
+
+/**
+ * True when `matchStart` sits inside a `${…}` template substitution whose
+ * enclosing backtick template also holds OTHER literal text — the shape
+ * that fuses a name with fixed words into one string before anything can
+ * render, so no isolate can ever wrap the name alone by the time it
+ * reaches JSX (`Nothing for ${name} yet`, `${instrumentName(db, x)} plan`).
+ * A template holding ONLY the one substitution has nothing fused into it.
+ */
+function isFusedIntoTemplate(src: string, matchStart: number): boolean {
+  if (src.slice(matchStart - 2, matchStart) !== '${') return false;
+  const subClose = matchingBraceClose(src, matchStart - 1);
+  const openBacktick = src.lastIndexOf('`', matchStart);
+  const closeBacktick = src.indexOf('`', subClose);
+  if (openBacktick < 0 || closeBacktick < 0) return true; // malformed — be conservative
+  const body = src.slice(openBacktick + 1, closeBacktick).replace(/\$\{[^{}]*\}/g, '');
+  return body.trim().length > 0;
+}
+
+/** Every current DOM-text render of an instrument's name in `file`, as
+ *  [start, end) spans into the (comment-stripped) source. See the block
+ *  comment above for the shapes discovered and excluded. */
+function instrumentNameOccurrences(file: string): { at: number; end: number }[] {
+  const src = stripComments(SOURCES[file]);
+  const occurrences: { at: number; end: number }[] = [];
+
+  const isAttributeValue = (at: number): boolean =>
+    /[A-Za-z][\w-]*=\{\s*$/.test(src.slice(Math.max(0, at - 60), at));
+  const isDeclarationRhs = (at: number): boolean =>
+    /\b(?:const|let)\s+\w+\s*=\s*$/.test(src.slice(Math.max(0, at - 80), at));
+  const record = (at: number, end: number) => {
+    if (isAttributeValue(at)) return; // prop-drilling — the callee is checked separately
+    if (isInsideOption(src, at)) return; // native control owns its own rendering
+    occurrences.push({ at, end });
+  };
+
+  // instrumentName(db, EXPR) — direct calls. A call bound to a const is an
+  // alias, not itself a render; its later bare reads are tracked below.
+  for (const m of src.matchAll(/\binstrumentName\(([^()]*)\)/g)) {
+    if (isDeclarationRhs(m.index!)) continue;
+    record(m.index!, m.index! + m[0].length);
+  }
+
+  // X.instrumentName — property reads, receiver chain included so a
+  // declaration check lands before the whole expression, not mid-chain.
+  // `m.index` is the dot itself, so first step back over the identifier
+  // immediately before it (receiverChainStart expects to start AT an
+  // identifier, not at a dot).
+  for (const m of src.matchAll(/\.\s*instrumentName\b/g)) {
+    let idStart = m.index!;
+    while (idStart > 0 && /[\w$]/.test(src[idStart - 1] ?? '')) idStart -= 1;
+    const start = receiverChainStart(src, idStart);
+    if (isDeclarationRhs(start)) continue;
+    record(start, m.index! + m[0].length);
+  }
+
+  // Local aliases: a destructured, renamed prop (excluding the type
+  // annotation `instrumentName: string`, which reads identically), a
+  // `const X = instrumentName(...)` binding, or a `const X =
+  // …instruments….find(...)?.name` binding — the last generalised past the
+  // literal spelling "instrumentName" so a differently-named local (or a
+  // future one) is still caught.
+  const aliases = new Set<string>();
+  for (const m of src.matchAll(/\binstrumentName\s*:\s*(\w+)/g)) {
+    if (m[1] !== 'string') aliases.add(m[1]);
+  }
+  for (const m of src.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*instrumentName\(/g)) {
+    aliases.add(m[1]);
+  }
+  for (const m of src.matchAll(
+    /\b(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?\binstruments\b[^;\n]*?\.find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
+  )) {
+    aliases.add(m[1]);
+  }
+  for (const alias of aliases) {
+    for (const m of src.matchAll(new RegExp(`\\b${alias}\\b`, 'g'))) {
+      const at = m.index!;
+      const end = at + alias.length;
+      const before = src.slice(Math.max(0, at - 20), at);
+      const after = src.slice(end, end + 20);
+      // A BARE alias is a standalone identifier — `.name` on some unrelated
+      // object (`routine.name`, `selected.name`) merely ENDS in the same
+      // letters and must never count just because a plain-text \b-bounded
+      // scan can't tell "name" the alias from "name" the property name.
+      if (before.endsWith('.')) continue;
+      const isBindingLhs = /\b(?:const|let)\s+$/.test(before) && /^\s*=(?!=)/.test(after);
+      const isRenameTarget = /\binstrumentName\s*:\s*$/.test(before);
+      // `<ClassQuestions instrumentName={instrumentName} />` — the KEY is
+      // this same word too (coincidentally, since the alias here happens to
+      // be spelled "instrumentName"); it is the attribute's NAME, not a
+      // value being read, and must not be confused with the VALUE right
+      // after it, which `record`'s own isAttributeValue check still catches.
+      const isAttributeName = /^\s*=\{/.test(after);
+      if (isBindingLhs || isRenameTarget || isAttributeName) continue; // the alias's own introduction, not a read
+      record(at, end);
+    }
+  }
+
+  // A per-item `.name` read inside a `db.instruments`/`instruments` iteration
+  // — `(?:\.\w+\([^()]*\))*` tolerates any number of chained hops
+  // (`.filter(...).map(...)`) before the `.map(` that actually binds a
+  // per-instrument callback parameter.
+  for (const m of src.matchAll(
+    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*map\(\s*\(?\s*(\w+)\s*\)?\s*=>/g,
+  )) {
+    const param = m[1];
+    const mapOpenParen = m.index! + m[0].lastIndexOf('map(') + 'map('.length - 1;
+    const bodyStart = m.index! + m[0].length;
+    const bodyEnd = matchingParenClose(src, mapOpenParen);
+    const scope = src.slice(bodyStart, bodyEnd);
+    for (const im of scope.matchAll(new RegExp(`\\b${param}\\.name\\b`, 'g'))) {
+      record(bodyStart + im.index!, bodyStart + im.index! + im[0].length);
+    }
+  }
+
+  // An inline `instruments.find(...)?.name` with no intermediate variable —
+  // the whole expression is the render candidate. One already bound to a
+  // `const` was tracked as an alias above instead. `(?:[^()]|\([^()]*\))*`
+  // (not the plain `[^()]*` the .map( pattern above gets away with) is
+  // needed here because .find's own callback is itself parenthesized —
+  // `.find((i) => i.id === x)` nests one paren level that a no-parens-
+  // allowed class can never get past.
+  for (const m of src.matchAll(
+    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
+  )) {
+    const start = receiverChainStart(src, m.index!);
+    if (isDeclarationRhs(start)) continue;
+    record(start, m.index! + m[0].length);
+  }
+
+  return occurrences.sort((a, b) => a.at - b.at);
+}
+
 // --- the check --------------------------------------------------------------
 
 describe('direction lives on the group', () => {
@@ -840,6 +1190,64 @@ describe('direction lives on the group', () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  // See the block comment above `instrumentNameOccurrences` for the full
+  // rationale and the shapes discovered. This supersedes the previous
+  // approach of listing each fixed site's exact snippet in
+  // ISOLATED_VALUE_SITES: that ledger could only ever vouch for sites a
+  // human had already found, and four rounds of rejection on this exact
+  // family showed that was never enough. Two real sites deliberately keep
+  // resolving from an ANCESTOR rather than their own isolate — Insights.tsx's
+  // `<th dir="auto">` and Today.tsx's cross-instrument `{inst.name}` — and
+  // this check accepts that (it asks about the name's own resolved
+  // direction, not the shape of the markup around it); wrapping either in a
+  // nested isolate later would silently regress the GROUP's own resolution
+  // instead (dir="auto" skips a descendant that carries its own dir when
+  // hunting for a first strong character), which is caught separately by
+  // `GROUP_SITE_INVENTORY`'s exhaustive equality against any new dir="auto"
+  // site, not by this check.
+  //
+  // Excluded: ItemForm.tsx, QuickAdd.tsx and RoutineEdit.tsx, the three
+  // files this lane's own contract puts out of scope ("their dir='auto'
+  // usage is already correct and must not be touched"). That claim turned
+  // out to be wrong for one of them — QuickAdd.tsx's instrument-picker
+  // button renders `{i.name}` with no dir anywhere — but fixing it means
+  // editing a forbidden file, so it is named here and in AGENTS.md instead
+  // of silently passing OR silently failing a check this lane cannot act on.
+  const OUT_OF_SCOPE_FOR_THIS_LANE = ['components/ItemForm.tsx', 'components/QuickAdd.tsx', 'pages/RoutineEdit.tsx'];
+  it('an instrument name resolves its own direction, wherever it renders', () => {
+    const violations: string[] = [];
+    let sitesSeen = 0;
+    for (const file of sourceFiles().filter((f) => !OUT_OF_SCOPE_FOR_THIS_LANE.includes(f))) {
+      const src = stripComments(SOURCES[file]);
+      const occurrences = instrumentNameOccurrences(file);
+      sitesSeen += occurrences.length;
+      for (const { at, end } of occurrences) {
+        if (isFusedIntoTemplate(src, at)) {
+          const line = src.slice(0, at).split('\n').length;
+          violations.push(`${file}:${line} — an instrument name is fused into a template string before it renders`);
+          continue;
+        }
+        const { ok, dir } = resolvesOwnDirection(src, at);
+        if (!ok) {
+          const line = src.slice(0, at).split('\n').length;
+          const found =
+            dir === null
+              ? 'no dir="" ancestor at all'
+              : dir === 'auto'
+                ? 'a dir="auto" ancestor whose resolution is already claimed by something preceding it'
+                : `an ancestor forces dir="${dir}"`;
+          violations.push(`${file}:${line} — "${src.slice(at, end)}" resolves its direction from ${found}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // A scanner that silently finds nothing is not proof of nothing being
+    // wrong — this fails if a regression in the discovery patterns above
+    // ever made them stop matching entirely (every shape they cover is
+    // exercised by real code in this app today).
+    expect(sitesSeen).toBeGreaterThan(0);
   });
 
   it('a list containing a direction-variable item reserves marker room on both sides', () => {

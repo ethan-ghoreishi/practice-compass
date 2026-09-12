@@ -120,7 +120,10 @@ export function EmptyState({
   children,
 }: {
   icon?: ReactNode;
-  title: string;
+  // ReactNode, not string: a caller embedding an instrument's own editable
+  // name needs to isolate it with its own dir="auto" span rather than fusing
+  // it into one plain string that this component would then render bare.
+  title: ReactNode;
   children?: ReactNode;
 }) {
   return (

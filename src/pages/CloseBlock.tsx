@@ -193,10 +193,14 @@ export default function CloseBlock() {
   return (
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
       <header className="stack-sm">
-        <div className="eyebrow">{instrumentName(db, item.instrumentId)}</div>
+        {/* The eyebrow renders the INSTRUMENT'S OWN editable name, never fixed
+            English copy — its own dir="auto" rather than bare. */}
+        <div className="eyebrow" dir="auto">{instrumentName(db, item.instrumentId)}</div>
         {/* The item's own name leads its group, so a Farsi title and the line
-            beneath it read as one block. The English eyebrow stays outside:
-            dir="auto" resolves from the first strong character in the subtree.
+            beneath it read as one block. The eyebrow stays its own group,
+            outside this one: dir="auto" resolves from the first strong
+            character in a subtree, so folding the eyebrow in would let the
+            instrument's script decide the item title's own direction.
             "A few seconds…" is fixed English page copy, never user text — its
             own dir="ltr" isolate keeps its bidi base fixed regardless of the
             title's, so a Farsi title's RTL base can't drag its trailing full
