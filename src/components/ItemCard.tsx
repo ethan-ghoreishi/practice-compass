@@ -23,14 +23,20 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
       <div className="row between" style={{ alignItems: 'flex-start' }}>
         <div className="grow" dir="auto">
           <div className="title-md">{item.title}</div>
+          {/* Instrument name, item-type and focus labels are generated
+              metadata, never user text — each gets its own dir="ltr" isolate
+              so it can't inherit a Farsi title's RTL base. Each stays its
+              own flex item (not merged under one wrapper) so the row's
+              existing gap spacing is unaffected — this is a direction-only
+              change. */}
           <div className="row-wrap small dim" style={{ marginTop: 3 }}>
-            <span>{inst}</span>
+            <span dir="ltr">{inst}</span>
             <span className="faint">·</span>
-            <span>{ITEM_TYPE_LABELS[item.itemType]}</span>
+            <span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>
             {item.primaryFocus && (
               <>
                 <span className="faint">·</span>
-                <span>{FOCUS_LABELS[item.primaryFocus]}</span>
+                <span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>
               </>
             )}
           </div>

@@ -154,7 +154,14 @@ function InsightCard({ insight }: { insight: Insight }) {
         <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
           {insight.title}
         </div>
-        <div className="small dim">{insight.body}</div>
+        {/* Fixed English sentence with an item's own (possibly Farsi) title
+            sometimes embedded mid-sentence (e.g. `Most of your time went to
+            "${item.title}"…`) — its own dir="ltr" isolate fixes the
+            sentence's bidi base regardless of any embedded title, the same
+            shape StageDetail's undo banner already uses. */}
+        <div className="small dim">
+          <span dir="ltr">{insight.body}</span>
+        </div>
       </div>
     </article>
   );

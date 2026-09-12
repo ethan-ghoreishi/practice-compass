@@ -2,6 +2,77 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
+
+A third sealed review of the direction lane found the SAME family — mixed-content
+groups, alignment, list markers, completeness — still open in `ItemMaterial.tsx`,
+`Materials.tsx`, `ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx` and
+`ClassQuestions.tsx`, closed as three root causes rather than as seven counterexamples.
+
+1. **A block-level isolate resolves its own alignment, independently of the group.**
+   `ItemMaterial.tsx`'s detail line carried `<div className="tiny faint" dir="ltr">…
+   </div>` — the isolate fixed the sentence's own bidi ordering but, because
+   `text-align: start` is a per-box computed value resolved against that box's OWN
+   `direction`, gave the div's `text-align` a LEFT resolution regardless of the group's
+   (possibly RTL) one — the detail split from a right-aligned Farsi title exactly as
+   before, one level down. Fixed by moving every such isolate to an inline `<span>`
+   nested inside a `dir`-less block (the shape already used everywhere else in the
+   file), and closed for good with a mechanical rule in `direction.test.ts`: no
+   `dir="ltr"`/`dir="rtl"` may sit on anything but `span`/`bdi`. One rejected review
+   found one file doing this; a structural ban is what stops a second file doing it
+   next lane.
+
+2. **A native list marker follows its OWN list item's direction, not the list's.**
+   `ClassQuestions.tsx`'s `<ol>` reserved gutter space with `paddingInlineStart` alone
+   while each `<li>` resolves its own direction via `dir="auto"` — the browser positions
+   the outside `::marker` on that li's OWN start edge, so a Farsi item's marker lands on
+   the right, the side the list reserved no room for, and gets pressed against or past
+   the content border. Fixed with symmetric `paddingInline`. `direction.test.ts` scans
+   every `<ol>`/`<ul>` for this shape now, not just this one list.
+
+3. **The scanner itself skipped every `{…}` expression as opaque, contributing zero
+   words — hiding a run built ENTIRELY from expressions.** `Materials.tsx`'s
+   `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '} {itemCount(...)}
+   item{...}` reads as zero literal words to a scanner counting only literal text, while
+   rendering three always-English fragments in a row, unisolated, next to a title that
+   could resolve RTL. `unexemptedPhrase` now counts an opaque, non-JSX-bearing
+   expression as ONE token (its content stays invisible from source, but its
+   unisolated PRESENCE next to other content is the shape being caught); an expression
+   containing its own nested JSX stays fully opaque, since its children are already
+   reachable by the outer whole-file scan. That one change, plus re-auditing every
+   recorded group by hand, surfaced the five named sites and further, unnamed ones of
+   the identical shape: `Repertoire.tsx`'s second, near-duplicate work-count span (the
+   non-Persian branch mirrors the fixed one and had simply been missed), `ActiveBlock`'s
+   own mode/focus chips, `Attachments`'/`ItemDetail`'s file kind/size line,
+   `StartBlock`'s/`Today`'s item-type/status labels, `StageDetail`'s strand/status
+   line, `PathwayDetail`'s "Current"/"Done"/item-count badges and piece-count fallback,
+   `Today`'s "routine running" indicator and its cross-instrument Overview row (a fixed
+   sentence embedding the next item's own possibly-Farsi title, isolated the way
+   `StageDetail`'s undo banner already does), and `Insights`' generated observation
+   sentences. Two sites needed `dir="auto"` rather than `dir="ltr"` — a value authored
+   independently of its neighbour, not generated copy: `RoutineRunner`'s upcoming
+   segment label and `PathwayDetail`'s pathway `source` and a stage's own `title`. Two
+   flagged sites were genuine exceptions, recorded visibly in a new
+   `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: a numeric progress counter
+   (`{sp.done}/{sp.total}` — digits carry no bidi risk) and a compound "Pathway — Stage"
+   breadcrumb built from two fields (one continuous label, not a title split from a
+   foreign caption).
+
+**The scanner's own comment-stripping had a latent bug this work exposed, not
+introduced.** `stripComments` treated any `'`/`"` as a real string delimiter and
+scanned forward, unbounded, for its match. Plain JSX text containing an apostrophe
+(`StageDetail.tsx`: "That stage doesn't exist.") is not a string at all; hitting that
+apostrophe put the scanner into a phantom "inside a string" state that swallowed
+everything after it — including real comments — until an unrelated quote later
+happened to close it, cascading through the rest of the file. This had been silently
+true all along and only surfaced because a new comment inside the corrupted span
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the new block-isolate scan as a phantom real attribute. Fixed at the
+root: a `'`/`"` now starts a real string only if its match appears before the next
+newline (every real string/attribute value here is single-line); otherwise it passes
+through as ordinary text. Backtick template literals keep their unbounded, multi-line
+scan. This makes every check in the file more trustworthy, not just the new ones.
+
 ## The content leads: direction on the group, and a colour list that is bounded on purpose (2026-09-11)
 
 **Direction lives on the GROUP, never on the title.** `dir="auto"` was on 47 title

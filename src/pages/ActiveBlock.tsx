@@ -96,9 +96,12 @@ export default function ActiveBlock() {
           <h1 className="page-title" style={{ fontSize: '1.5rem' }}>
             {item?.title ?? 'Practice'}
           </h1>
+          {/* Mode/focus chips are generated English metadata, never user
+              text — each gets its own dir="ltr" isolate so it can't inherit
+              a Farsi title's RTL base. */}
           <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-            <span className="chip">{BLOCK_MODE_LABELS[active.mode]}</span>
-            <span className="chip">{FOCUS_LABELS[active.focus]}</span>
+            <span className="chip" dir="ltr">{BLOCK_MODE_LABELS[active.mode]}</span>
+            <span className="chip" dir="ltr">{FOCUS_LABELS[active.focus]}</span>
           </div>
           {/* The constraint VALUE is free text (could be either language) and
               sits after a fixed English label — its own dir="auto" isolate

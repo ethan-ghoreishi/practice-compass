@@ -93,9 +93,17 @@ export default function PathwayDetail() {
       ) : (
         <header className="stack-sm" dir="auto">
           <h1 className="page-title">{pathway.name}</h1>
+          {/* The instrument name is generated metadata (its own dir="ltr"
+              isolate); pathway.source is authored independently (its own
+              dir="auto" isolate) — never one isolate speaking for both. */}
           <div className="tiny faint">
-            {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
-            {pathway.source ? ` · ${pathway.source}` : ''}
+            <span dir="ltr">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
+            {pathway.source && (
+              <>
+                {' · '}
+                <span dir="auto">{pathway.source}</span>
+              </>
+            )}
           </div>
           {/* description/note are authored independently of the pathway's own
               name (a user can edit either on its own) — their own dir="auto"
@@ -310,15 +318,30 @@ function StageRow({
         {sp.complete ? <CheckIcon width={18} height={18} /> : num}
       </div>
       <button className="grow" dir="auto" style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit' }} onClick={onOpen}>
+        {/* stage.code leads (the group's own anchor); the badges after it are
+            fixed English, never user text — each gets its own dir="ltr"
+            isolate so it can't inherit stage.code's RTL base. */}
         <div className="row" style={{ gap: 8 }}>
           <span>{stage.code}</span>
-          {isCurrent && <span className="badge tone-progress">{isPinned ? 'Current · pinned' : 'Current'}</span>}
-          {sp.complete && <span className="badge tone-good">Done</span>}
+          {isCurrent && (
+            <span className="badge tone-progress" dir="ltr">{isPinned ? 'Current · pinned' : 'Current'}</span>
+          )}
+          {sp.complete && <span className="badge tone-good" dir="ltr">Done</span>}
           {sp.addedItems > 0 && !sp.complete && (
-            <span className="tiny faint">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
+            <span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
           )}
         </div>
-        <div className="tiny faint">{stage.title !== stage.code ? stage.title : `${sp.total} piece${sp.total === 1 ? '' : 's'}`}</div>
+        {/* stage.title is authored independently of stage.code (its own
+            dir="auto" isolate) when the two differ; the generated
+            piece-count fallback is fixed English (its own dir="ltr"
+            isolate) when they don't. */}
+        <div className="tiny faint">
+          {stage.title !== stage.code ? (
+            <span dir="auto">{stage.title}</span>
+          ) : (
+            <span dir="ltr">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>
+          )}
+        </div>
         <div className="row" style={{ gap: 8, marginTop: 6 }}>
           <span className="balance-track grow" style={{ maxWidth: 180 }}>
             <span className="balance-fill" style={{ width: `${sp.percent}%` }} />

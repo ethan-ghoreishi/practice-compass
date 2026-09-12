@@ -503,8 +503,13 @@ function ItemFilesCrud({ itemId }: { itemId: string }) {
           {list.map((a) => (
             <div key={a.id} className="list-row" dir="auto">
               <div className="grow truncate">{a.name}</div>
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting a Farsi file
+                  name's RTL base. */}
               <div className="tiny faint">
-                {a.kind} · {formatBytes(a.size)}
+                <span dir="ltr">
+                  {a.kind} · {formatBytes(a.size)}
+                </span>
               </div>
               <button
                 className="btn btn-ghost btn-sm btn-danger"

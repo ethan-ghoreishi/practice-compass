@@ -58,12 +58,19 @@ function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' 
           {file.title}
         </div>
         {/* Fixed English page copy, never user text — its own dir="ltr"
-            isolate keeps it from inheriting a Farsi title's RTL base. */}
-        <div className="tiny faint" dir="ltr">
-          On your NAS · {file.kind}
-          {size ? ` · ${size}` : ''}
-          {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
-          {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
+            isolate keeps it from inheriting a Farsi title's RTL base. This
+            must be an inline isolate (span), not a block dir="ltr" div: a
+            block establishes its own direction context, so text-align:start
+            inherited from the group would resolve LEFT for it regardless of
+            the group's own (possibly RTL) resolved direction — splitting the
+            detail from the title it belongs to. */}
+        <div className="tiny faint">
+          <span dir="ltr">
+            On your NAS · {file.kind}
+            {size ? ` · ${size}` : ''}
+            {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
+            {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
+          </span>
         </div>
       </div>
       <button
@@ -119,10 +126,14 @@ function AttachmentRow({ file }: { file: Extract<ItemFile, { source: 'attachment
             {file.title}
           </div>
           {/* Fixed English page copy, never user text — its own dir="ltr"
-              isolate keeps it from inheriting a Farsi title's RTL base. */}
-          <div className="tiny faint" dir="ltr">
-            On this device · {file.kind}
-            {size ? ` · ${size}` : ''}
+              isolate. Inline (span), not a block dir="ltr" div — see the
+              ReferenceRow comment above for why the block form breaks
+              alignment. */}
+          <div className="tiny faint">
+            <span dir="ltr">
+              On this device · {file.kind}
+              {size ? ` · ${size}` : ''}
+            </span>
           </div>
         </div>
         <button className="btn btn-sm" onClick={open}>

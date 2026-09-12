@@ -305,7 +305,11 @@ function UnitRow({
         <div className="stage-unit-title">
           {unit.title}
         </div>
-        <div className="tiny faint">{meta.join(' · ')}</div>
+        {/* Generated English metadata, never user text — its own dir="ltr"
+            isolate keeps it from inheriting a Farsi title's RTL base. */}
+        <div className="tiny faint">
+          <span dir="ltr">{meta.join(' · ')}</span>
+        </div>
         {unit.entry?.about && !item && (
           <div className="tiny dim" style={{ marginTop: 3 }}>
             {unit.entry.about}

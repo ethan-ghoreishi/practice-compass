@@ -206,7 +206,10 @@ function MyRepertoireView() {
             <h2 className="title-md">
               {g.dastgah === UNCLASSIFIED_DASTGAH ? 'No dastgāh yet' : g.dastgah}
             </h2>
-            <span className="tiny faint">
+            {/* Generated English metadata, never user text — its own
+                dir="ltr" isolate keeps it from inheriting the dastgāh
+                heading's RTL base. */}
+            <span className="tiny faint" dir="ltr">
               {g.works.length} work{g.works.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -225,7 +228,10 @@ function MyRepertoireView() {
               <h2 className="title-md">
                 {g.label}
               </h2>
-              <span className="tiny faint">
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting the group
+                  heading's RTL base. */}
+              <span className="tiny faint" dir="ltr">
                 {g.works.length} work{g.works.length === 1 ? '' : 's'}
               </span>
             </div>
@@ -262,16 +268,33 @@ function WorkRow({
           <div className="truncate">
             {work.title}
           </div>
+          {/* form/composer/gusheh are authored independently of the work's
+              own title (their own dir="auto" isolates); the instrument name
+              and last-practised phrase are generated metadata (their own
+              dir="ltr" isolates) — never one isolate speaking for all of
+              them, and never joined into one bare string that inherits
+              whichever direction the title happened to resolve. */}
           <div className="tiny faint truncate">
             {[
-              work.persian?.form,
-              work.persian?.composer,
-              work.persian?.gusheh && `gusheh: ${work.persian.gusheh}`,
-              instrumentName(db, work.instrumentId),
-              work.lastPractisedAt ? `last ${relativeFromDateTime(work.lastPractisedAt, now)}` : 'not practised yet',
+              work.persian?.form ? <span dir="auto">{work.persian.form}</span> : null,
+              work.persian?.composer ? <span dir="auto">{work.persian.composer}</span> : null,
+              work.persian?.gusheh ? (
+                <span>
+                  gusheh: <span dir="auto">{work.persian.gusheh}</span>
+                </span>
+              ) : null,
+              <span dir="ltr">{instrumentName(db, work.instrumentId)}</span>,
+              <span dir="ltr">
+                {work.lastPractisedAt ? `last ${relativeFromDateTime(work.lastPractisedAt, now)}` : 'not practised yet'}
+              </span>,
             ]
               .filter(Boolean)
-              .join(' · ')}
+              .map((node, i) => (
+                <span key={i}>
+                  {i > 0 ? ' · ' : ''}
+                  {node}
+                </span>
+              ))}
           </div>
         </div>
         <StatusBadge status={work.status} />

@@ -67,7 +67,13 @@ export default function ClassQuestions({
           Nothing to ask yet. Flag an item “for next class” and add a teacher question — it will collect here.
         </div>
       ) : (
-        <ol className="stack-sm" style={{ margin: 0, paddingInlineStart: 22 }}>
+        /* paddingInline (both sides), not paddingInlineStart alone: each
+           li below resolves its OWN direction via dir="auto", and the
+           native ::marker sits on the START edge of THAT li, not of this
+           ol — a Farsi item's marker lands on the right, an English item's
+           on the left. Symmetric padding leaves it room to be seen in full
+           on whichever side it lands. */
+        <ol className="stack-sm" style={{ margin: 0, paddingInline: 22 }}>
           {questions.map((q) => (
             <li key={q.itemId} dir="auto">
               <div className="small" style={{ fontWeight: 600 }}>

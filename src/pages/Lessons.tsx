@@ -259,12 +259,15 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
     <section className="stack-sm">
       <div className="row between" dir="auto">
         <h2 className="title-md">{name}</h2>
+        {/* Fixed English page copy / generated metadata, never user text —
+            its own dir="ltr" isolate keeps it from inheriting the
+            instrument name's RTL base. */}
         {next ? (
-          <span className="badge tone-progress">
+          <span className="badge tone-progress" dir="ltr">
             next class {relativeDay(next.date, now)}
           </span>
         ) : (
-          <span className="tiny faint">no class planned</span>
+          <span className="tiny faint" dir="ltr">no class planned</span>
         )}
       </div>
 
@@ -518,30 +521,42 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
               <div className="truncate">
                 {rec.title}
               </div>
-              <div className="tiny faint">{meta}</div>
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting a Farsi title's
+                  RTL base. */}
+              <div className="tiny faint">
+                <span dir="ltr">{meta}</span>
+              </div>
               {rec.notes && (
                 <div className="tiny dim" dir="auto">
                   {rec.notes}
                 </div>
               )}
               {/* Fixed English page copy, never user text — its own dir="ltr"
-                  isolate keeps it from inheriting a Farsi title's RTL base. */}
+                  isolate keeps it from inheriting a Farsi title's RTL base.
+                  Inline (span), not dir="ltr" on these blocks: a block
+                  isolate resolves its OWN text-align independently of the
+                  group, splitting it from a right-aligned Farsi title. */}
               {resolution.status === 'no-base' && (
-                <div className="tiny" dir="ltr" style={{ color: 'var(--tone-warn)' }}>
-                  Set your NAS base URL in{' '}
-                  <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                    Settings
-                  </button>{' '}
-                  to open this.
+                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
+                  <span dir="ltr">
+                    Set your NAS base URL in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>{' '}
+                    to open this.
+                  </span>
                 </div>
               )}
               {resolution.status === 'bad-base' && (
-                <div className="tiny" dir="ltr" style={{ color: 'var(--tone-alert)' }}>
-                  Your NAS base URL isn’t a valid web address — fix it in{' '}
-                  <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                    Settings
-                  </button>
-                  .
+                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+                  <span dir="ltr">
+                    Your NAS base URL isn’t a valid web address — fix it in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>
+                    .
+                  </span>
                 </div>
               )}
             </div>
@@ -660,7 +675,12 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
                 <div className="truncate">
                   {item.title}
                 </div>
-                <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
+                {/* Generated English metadata, never user text — its own
+                    dir="ltr" isolate keeps it from inheriting a Farsi
+                    title's RTL base. */}
+                <div className="tiny faint">
+                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
+                </div>
               </Link>
               <button
                 className={`btn btn-sm${item.assignedForLesson ? ' btn-primary' : ''}`}

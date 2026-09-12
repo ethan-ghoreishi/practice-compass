@@ -83,6 +83,36 @@ const ALLOWED_TITLE_SITES: { file: string; snippet: string; why: string }[] = [
 ];
 
 /**
+ * Genuine exceptions to `unexemptedPhrase`'s 2+-token rule, visible for the
+ * same reason `ALLOWED_TITLE_SITES` is: a stale entry (its `tagSnippet` no
+ * longer found on the named group) fails the test below, so an exception
+ * can't quietly outlive the code it was written for. Both entries here are
+ * TWO+ opaque data expressions that read as a single compound VALUE, not a
+ * title split from a foreign caption — the shape this whole family exists to
+ * catch:
+ * - `{sp.done}/{sp.total}` (PathwayDetail's stage progress) is a numeric
+ *   counter ("3/5") — digits carry no bidi risk on their own, unlike an
+ *   English WORD dropped into an RTL run.
+ * - `` `${pathway.name} — ` `` followed by `{stage.code}` (ItemDetail's
+ *   breadcrumb) is one continuous "Pathway — Stage" label built from two
+ *   fields, exactly the same kind of compound anchor a lone title already
+ *   forms with the badge it sits next to elsewhere in this file — there is
+ *   no separate "caption" here to have its own opinion about direction.
+ */
+const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: string }[] = [
+  {
+    file: 'pages/PathwayDetail.tsx',
+    tagSnippet: '<button className="grow" dir="auto"',
+    why: '{sp.done}/{sp.total} is a numeric progress counter, not English words',
+  },
+  {
+    file: 'pages/ItemDetail.tsx',
+    tagSnippet: 'stage.pathwayId',
+    why: 'pathway name + stage code is one compound breadcrumb label, not a title plus a foreign caption',
+  },
+];
+
+/**
  * Every group-level `dir="auto"` site, recorded in source order — duplicates
  * included, because three bare `<div dir="auto">` in the same file (Today.tsx
  * has several) are three separate SITES, not one collapsed entry. This is
@@ -131,18 +161,24 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Materials.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Materials.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'p', classValue: 'page-sub' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'card card-quiet small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
   { file: 'pages/Repertoire.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'link', classValue: 'row between small card-link' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'row between' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'tiny faint' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: 'card card-quiet row between small' },
@@ -229,6 +265,18 @@ function classNameOf(tag: string): string {
  * REAL `dir="auto"` attribute value lives — and every character removed is
  * replaced with a space (newlines kept as newlines) so line numbers and
  * offsets into the rest of the source are unaffected.
+ *
+ * A `'`/`"` is treated as a real string delimiter only if its MATCHING quote
+ * shows up before the next newline. A genuine JS string/JSX attribute value
+ * in this codebase is always single-line, so this is a safe bound — and it
+ * is a NECESSARY one: plain JSX text containing an apostrophe ("That stage
+ * doesn't exist.") is not a string at all, and treating it as one made the
+ * scanner consume every real comment and tag after it — including this
+ * file's OWN prose, once a comment happened to quote `dir="ltr"` inside that
+ * unterminated span — as literal, unstripped text. A backtick template
+ * literal has no such single-line guarantee in general (this codebase's
+ * few multi-line ones are template literals), so it keeps the unbounded
+ * scan.
  */
 function stripComments(src: string): string {
   let out = '';
@@ -249,7 +297,34 @@ function stripComments(src: string): string {
       }
       out += '  ';
       i += 2;
-    } else if (src[i] === '"' || src[i] === "'" || src[i] === '`') {
+    } else if (src[i] === '"' || src[i] === "'") {
+      const quote = src[i];
+      const lineEnd = src.indexOf('\n', i + 1);
+      const searchEnd = lineEnd < 0 ? src.length : lineEnd;
+      const close = src.indexOf(quote, i + 1);
+      if (close < 0 || close > searchEnd) {
+        // No same-line match — an apostrophe/quote in plain text, not a
+        // real string. Pass it through and keep scanning normally right
+        // after it, so a later quote on the same or a later line gets its
+        // own fresh (and likely correct) chance to pair up.
+        out += src[i];
+        i += 1;
+        continue;
+      }
+      out += quote;
+      i += 1;
+      while (i < close) {
+        if (src[i] === '\\' && i + 1 < close) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i += 1;
+      }
+      out += src[i];
+      i += 1;
+    } else if (src[i] === '`') {
       const quote = src[i];
       out += quote;
       i += 1;
@@ -353,9 +428,26 @@ function elementBody(src: string, tag: string, openAt: number): { start: number;
   return { start, end: i };
 }
 
-/** The first exposed, unexempted 2+-word phrase in a group's body, or null
- *  when everything either belongs to an expression or leads into its own
- *  isolate. See the block comment above for what "exempted" means. */
+/**
+ * The first exposed, unexempted 2+-token run in a group's body, or null when
+ * everything either belongs to an isolate or never accumulates a real phrase.
+ * See the block comment above for what "exempted" means.
+ *
+ * A DATA expression (`{item.title}`, `{ITEM_TYPE_LABELS[item.itemType]}`,
+ * `{formatBytes(a.size)}`) counts as ONE opaque token — its actual rendered
+ * text is invisible from source, but its mere PRESENCE, unisolated, next to
+ * other content is exactly the shape a rejected review found live in the
+ * app: `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '}
+ * {itemCount(...)} item{...}` reads as zero words to a scanner that only
+ * counts literal text, yet renders three always-English fragments in a row.
+ * Treating each such expression as a token turns that invisible run into a
+ * 3+-token hit without ever needing to know what the labels actually say.
+ * An expression that contains its own nested JSX (`{cond && <div dir="auto">
+ * …</div>}`) is left fully opaque (zero contribution) as before — its
+ * children are independent elements, already reachable by the outer scan
+ * over the whole file, and forcing them through this same linear buffer
+ * would require a real JSX parser this file deliberately doesn't have.
+ */
 function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): string | null {
   let buffer = '';
   // A run is judged at each TAG boundary (open or close) — two adjacent but
@@ -373,6 +465,7 @@ function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): stri
   while (i < bodyEnd) {
     const c = src[i];
     if (c === '{') {
+      const exprStart = i + 1;
       let depth = 1;
       i += 1;
       while (i < bodyEnd && depth > 0) {
@@ -380,6 +473,8 @@ function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): stri
         else if (src[i] === '}') depth -= 1;
         i += 1;
       }
+      const exprText = src.slice(exprStart, i - 1);
+      if (!/<[A-Za-z]/.test(exprText)) buffer += ' X ';
       continue;
     }
     if (c === '<') {
@@ -428,7 +523,13 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.lastObservation}</span>' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{stage.title}</span>' },
   { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
+  { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
 ];
 
 /**
@@ -446,19 +547,136 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
-  { file: 'pages/Today.tsx', snippet: 'className="faint small truncate" dir="ltr">{instrumentName' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{instrumentName(db, running?.instrumentId)} routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  {
+    file: 'pages/Today.tsx',
+    snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
+  },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
   { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
   { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
   { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },
   { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
+  { file: 'pages/StageDetail.tsx', snippet: '<span dir="ltr">{meta.join(\' · \')}</span>' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
-  { file: 'pages/Lessons.tsx', snippet: 'className="tiny" dir="ltr" style={{ color: \'var(--tone-warn)\' }}' },
-  { file: 'pages/Lessons.tsx', snippet: 'className="tiny" dir="ltr" style={{ color: \'var(--tone-alert)\' }}' },
-  { file: 'components/ItemMaterial.tsx', snippet: 'className="tiny faint" dir="ltr">\n          On your NAS' },
-  { file: 'components/ItemMaterial.tsx', snippet: 'className="tiny faint" dir="ltr">\n            On this device' },
+  {
+    file: 'pages/PathwayDetail.tsx',
+    snippet: "<span dir=\"ltr\">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>",
+  },
+  { file: 'pages/PathwayDetail.tsx', snippet: "<span className=\"badge tone-progress\" dir=\"ltr\">{isPinned ? 'Current · pinned' : 'Current'}</span>" },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="badge tone-good" dir="ltr">Done</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems' },
+  { file: 'pages/PathwayDetail.tsx', snippet: "<span dir=\"ltr\">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>" },
+  { file: 'pages/Lessons.tsx', snippet: '<span className="badge tone-progress" dir="ltr">' },
+  { file: 'pages/Lessons.tsx', snippet: '<span className="tiny faint" dir="ltr">no class planned</span>' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{meta}</span>' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Set your NAS base URL in' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Your NAS base URL isn’t a valid web address' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  { file: 'pages/RoutineRunner.tsx', snippet: '<span className="tiny faint" dir="ltr">{minutes} min</span>' },
+  { file: 'pages/StartBlock.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'pages/Insights.tsx', snippet: '<span dir="ltr">{insight.body}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{BLOCK_MODE_LABELS[active.mode]}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{FOCUS_LABELS[active.focus]}</span>' },
+  {
+    file: 'pages/Repertoire.tsx',
+    snippet: '<span className="tiny faint" dir="ltr">\n              {g.works.length} work',
+  },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">{instrumentName(db, work.instrumentId)}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
+  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
+  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{inst}</span>' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
+  { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
+  {
+    file: 'pages/Materials.tsx',
+    snippet: '<span dir="ltr">\n                          {MATERIAL_SOURCE_LABELS[m.sourceType]}',
+  },
 ];
+
+// --- an isolate must be INLINE, never a block that resolves its own align --
+//
+// A rejected review found `ItemMaterial.tsx` fixing a Farsi title's detail
+// line with `<div className="tiny faint" dir="ltr">…</div>` — a BLOCK
+// carrying the isolate directly. `text-align: start`, inherited from the
+// group, is a per-BOX computed value: it resolves against that box's OWN
+// `direction`, not the group's. Give the block its own `dir="ltr"` and its
+// `text-align: start` resolves LEFT regardless of the group's (possibly RTL)
+// resolved direction — splitting the detail from a right-aligned Farsi title
+// exactly as before, just relocated. An INLINE isolate (`<span dir="ltr">`)
+// never has this problem: `text-align` is a block-level concept, so a span's
+// own `dir` only isolates the Unicode bidi algorithm's treatment of the text
+// inside it and never touches which edge the enclosing block aligns to. This
+// is therefore not a location to enumerate but a SHAPE to ban outright: no
+// `dir="ltr"`/`dir="rtl"` may ever sit on a tag other than `span`/`bdi`,
+// full stop, so this class of bug cannot come back in any file, named here
+// or not.
+const INLINE_ISOLATE_TAGS = ['span', 'bdi'];
+
+function isolateSites(file: string): Site[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: Site[] = [];
+  for (const match of src.matchAll(/dir="(?:ltr|rtl)"/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
+      classValue: classNameOf(tag),
+      text: tag,
+      at,
+    });
+  }
+  return sites;
+}
+
+// --- a native list marker must stay inside the card on EITHER side ---------
+//
+// A rejected review found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+// space with `paddingInlineStart` alone while its `<li>`s each resolve their
+// OWN direction via `dir="auto"`: the browser positions each `<li>`'s
+// outside `::marker` on ITS OWN start edge, not the `<ol>`'s, so a Farsi
+// item's marker lands on the right — the side the `<ol>` reserved no room
+// for — and gets pressed against or past the content border. This scans
+// every `<ol>`/`<ul>` in the recorded surfaces (not just the one known
+// today) and requires symmetric room on both sides whenever a directionally
+// variable `<li>` could put the marker on either one.
+function listSites(file: string): { file: string; line: number; tag: string; hasAutoLi: boolean }[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: { file: string; line: number; tag: string; hasAutoLi: boolean }[] = [];
+  for (const match of src.matchAll(/<(ol|ul)\b/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    if (tag.endsWith('/>')) continue;
+    const body = elementBody(src, tag, at);
+    const bodyText = src.slice(body.start, body.end);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tag,
+      hasAutoLi: /<li\b[^>]*\sdir="auto"/.test(bodyText),
+    });
+  }
+  return sites;
+}
+
+/** True when the list's own inline style leaves room for a marker on either
+ *  side: explicit `paddingInline`, an equal start+end pair, or a marker that
+ *  never sits in a separate gutter at all (`listStylePosition: 'inside'`). */
+function reservesRoomOnBothSides(tag: string): boolean {
+  const style = tag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+  if (/listStylePosition\s*:\s*['"]inside['"]/.test(style)) return true;
+  if (/\bpaddingInline\s*:/.test(style)) return true;
+  const hasStart = /paddingInlineStart\s*:|paddingLeft\s*:/.test(style);
+  const hasEnd = /paddingInlineEnd\s*:|paddingRight\s*:/.test(style);
+  return hasStart === hasEnd; // both set, or neither — never start-only
+}
 
 // --- the check --------------------------------------------------------------
 
@@ -498,10 +716,13 @@ describe('direction lives on the group', () => {
   });
 
   it('no fixed English phrase in a group inherits the title\'s bidi base unisolated', () => {
+    const exempt = (file: string, tagText: string) =>
+      UNEXEMPTED_PHRASE_ALLOWLIST.some((e) => e.file === file && tagText.includes(e.tagSnippet));
     const violations: string[] = [];
     for (const file of sourceFiles()) {
       const src = stripComments(SOURCES[file]);
       for (const site of directionSites(file).filter(isGroup)) {
+        if (exempt(file, site.text)) continue;
         const openAt = src.lastIndexOf('<', site.at);
         const body = elementBody(src, site.text, openAt);
         const phrase = unexemptedPhrase(src, body.start, body.end);
@@ -509,6 +730,17 @@ describe('direction lives on the group', () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it('keeps every listed unexempted-phrase exception real, so it cannot rot', () => {
+    for (const entry of UNEXEMPTED_PHRASE_ALLOWLIST) {
+      const hit = sourceFiles()
+        .filter((f) => f === entry.file)
+        .flatMap(directionSites)
+        .filter(isGroup)
+        .some((s) => s.text.includes(entry.tagSnippet));
+      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.tagSnippet})`).toBe(true);
+    }
   });
 
   it('keeps every independently-authored value isolated from the group it sits in', () => {
@@ -523,5 +755,21 @@ describe('direction lives on the group', () => {
       const hit = SOURCES[entry.file]?.includes(entry.snippet);
       expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
     }
+  });
+
+  it('a bidi isolate is always inline (span/bdi), never a block that resolves its own alignment', () => {
+    const violations = sourceFiles()
+      .flatMap(isolateSites)
+      .filter((s) => !INLINE_ISOLATE_TAGS.includes(s.tagName))
+      .map((s) => `${s.file}:${s.line} — dir="ltr"/"rtl" on a <${s.tagName}>, not an inline span`);
+    expect(violations).toEqual([]);
+  });
+
+  it('a list containing a direction-variable item reserves marker room on both sides', () => {
+    const violations = sourceFiles()
+      .flatMap(listSites)
+      .filter((s) => s.hasAutoLi && !reservesRoomOnBothSides(s.tag))
+      .map((s) => `${s.file}:${s.line} — <ol>/<ul> reserves gutter on only one side for a marker that can land on either`);
+    expect(violations).toEqual([]);
   });
 });

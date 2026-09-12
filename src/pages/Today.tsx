@@ -335,8 +335,13 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
         <div dir="auto" style={{ minWidth: 0 }}>
           {/* Fixed English page copy, never user text — its own dir="ltr"
-              isolate keeps it from inheriting the group's bidi base. */}
-          <div className="faint small truncate" dir="ltr">{instrumentName(db, running?.instrumentId)} routine running ▸</div>
+              isolate. Inline (span), not dir="ltr" on this block: a block
+              isolate resolves its OWN text-align independently of the
+              group, which is the exact split a rejected review found
+              elsewhere in this lane. */}
+          <div className="faint small truncate">
+            <span dir="ltr">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
+          </div>
         </div>
       </button>
     );
@@ -612,7 +617,12 @@ function SessionView({
               <div key={item.id} className="list-row">
                 <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
                   <div className="truncate">{item.title}</div>
-                  <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
+                  {/* Generated English metadata, never user text — its own
+                      dir="ltr" isolate keeps it from inheriting a Farsi
+                      title's RTL base. */}
+                  <div className="tiny faint">
+                    <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
+                  </div>
                 </Link>
                 <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
                   <PlayIcon />
@@ -817,9 +827,16 @@ function OverviewView({ now }: { now: Date }) {
                 >
                   <div className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
                     <div>{inst.name}</div>
+                    {/* Fixed English copy with the next item's own
+                        (possibly Farsi) title embedded mid-sentence — its
+                        own dir="ltr" isolate fixes the sentence's bidi base
+                        regardless of the embedded title, the same shape
+                        StageDetail's undo banner already uses. */}
                     <div className="tiny faint truncate">
-                      {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
-                      {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
+                      <span dir="ltr">
+                        {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
+                        {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
+                      </span>
                     </div>
                   </div>
                   <ChevronRightIcon width={16} height={16} className="faint" />
