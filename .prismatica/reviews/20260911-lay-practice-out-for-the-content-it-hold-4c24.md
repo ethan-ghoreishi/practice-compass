@@ -1,36 +1,28 @@
 ---
 id: 20260911-lay-practice-out-for-the-content-it-hold-4c24
 contractId: 20260911-lay-practice-out-for-the-content-it-hold-4c24
-patchId: c37ac69dbec7ba712674add9892b17878a0eccdf
+patchId: 8a77866854eadf781a2220e5886f89364142478b
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: "r-direction-aware-text: mixed-content groups, alignment, list markers
-      and completeness"
-    summary: The direction rework still splits some Farsi titles from English
-      details, leaves further generated metadata inheriting the title's bidi
-      base, and moves native ordered-list markers outside the available right
-      edge. The new source test cannot discover these expression-based and
-      rendered-layout counterexamples.
-    counterexample: In src/components/ItemMaterial.tsx:56-66 and :117-126, the group
-      resolves RTL with text-align:start, but its English detail is a
-      block-level dir="ltr" element, so the detail aligns left while the Farsi
-      title aligns right. The family remains wider at
-      src/pages/Materials.tsx:175-182, src/components/ItemCard.tsx:24-36,
-      src/pages/RoutineRunner.tsx:178-182, src/pages/Lessons.tsx:260-268 and
-      src/pages/Repertoire.tsx:204-211, where generated English metadata remains
-      unisolated inside auto-direction groups. In
-      src/components/ClassQuestions.tsx:70-72, the ol remains LTR and allocates
-      only paddingInlineStart on the left, while each Farsi li now resolves RTL;
-      the native outside marker moves to the unpadded right and the visible 1.
-      is pressed against or beyond the content border on Mac and iPhone.
-      src/components/direction.test.ts:375-383 skips expression contents, its
-      isolate ledgers only prove manually listed snippets exist, and no check
-      covers list-marker containment, so the named test passes all these
-      counterexamples.
-createdAt: 2026-09-11T21:54:04.763Z
-sealedAt: 2026-09-12T00:04:41.257Z
+  - family: "r-direction-aware-text: independently-authored values and isolate
+      semantics"
+    summary: The rework incorrectly classifies user-authored instrument names as
+      generated English metadata and forces them to LTR. This leaves the
+      mixed-content direction family incomplete, while the named source test
+      explicitly accepts the broken sites.
+    counterexample: Set an instrument name to "سه‌تار (ایرانی)." and view an item
+      card or item detail. src/components/ItemCard.tsx:33 and
+      src/pages/ItemDetail.tsx:140 render instrumentName(...) inside dir="ltr",
+      giving the Persian value the wrong bidi base. The same error appears in
+      src/pages/PathwayDetail.tsx:100 and src/pages/Repertoire.tsx:286.
+      Instrument names are editable user content and require their own
+      dir="auto" isolate. src/components/direction.test.ts records these sites
+      in LTR_ISOLATE_SITES, so the named direction test passes rather than
+      detecting the semantic misclassification.
+createdAt: 2026-09-12T01:52:53.482Z
+sealedAt: 2026-09-12T02:16:25.496Z
 ---
 
 # Review: Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen
@@ -44,7 +36,7 @@ sealedAt: 2026-09-12T00:04:41.257Z
 - **Contract:** 20260911-lay-practice-out-for-the-content-it-hold-4c24
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/20
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `c37ac69dbec7ba712674add9892b17878a0eccdf`
+- **Diff patch-id:** `8a77866854eadf781a2220e5886f89364142478b`
 
 ## The plan the owner approved
 
