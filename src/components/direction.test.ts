@@ -819,7 +819,13 @@ describe('direction lives on the group', () => {
   // LTR_ISOLATE_SITES by hand found three more of the identical shape. A
   // location list closes only the sites that happened to exist today; this
   // bans the SHAPE, so a future dir="ltr"/"rtl" wrapped around an instrument
-  // name fails here regardless of which file it turns up in.
+  // name fails here regardless of which file it turns up in. The pattern is
+  // deliberately NOT anchored to a call — `\binstrumentName\(` alone missed
+  // `{b.instrumentName}` (a property access, no call, no parenthesis) in the
+  // very same audit that added this test — so it also matches a bare
+  // `instrumentName` identifier, covering a property access and a value
+  // passed through as a prop (e.g. `TeacherReport.tsx`'s local `instrumentName`
+  // variable), not just a direct call.
   it('no dir="ltr"/"rtl" isolate wraps an instrument name', () => {
     const violations: string[] = [];
     for (const file of sourceFiles()) {
@@ -828,7 +834,7 @@ describe('direction lives on the group', () => {
         const openAt = src.lastIndexOf('<', site.at);
         const body = elementBody(src, site.text, openAt);
         const bodyText = src.slice(body.start, body.end);
-        if (/\binstrumentName\(|\{inst\}/.test(bodyText)) {
+        if (/\binstrumentName\b|\{inst\}/.test(bodyText)) {
           violations.push(`${file}:${site.line} — an instrument name sits inside a dir="ltr"/"rtl" isolate`);
         }
       }
