@@ -1,28 +1,36 @@
 ---
 id: 20260911-lay-practice-out-for-the-content-it-hold-4c24
 contractId: 20260911-lay-practice-out-for-the-content-it-hold-4c24
-patchId: 791c42d4aef6648ac9d67376b8737b6b62a82e81
+patchId: c37ac69dbec7ba712674add9892b17878a0eccdf
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: "r-direction-aware-text: mixed-content groups and completeness"
-    summary: The rework still lets a Farsi title set RTL as the bidi base for
-      separate English or independently authored detail text. The inventory test
-      records attribute sites, but does not prove each child's own bidi
-      direction, so it passes this broken rendering.
-    counterexample: "In src/pages/CloseBlock.tsx:200-204, a Farsi item title makes
-      the English sentence \"A few seconds to capture what happened.\" inherit
-      RTL; its trailing full stop renders at the visual start, the same defect
-      the sealed rejection identified. The family remains wider:
-      src/components/ClassQuestions.tsx:70-76 makes an English question, current
-      problem and last observation inherit the Farsi title's RTL base, even
-      though those are separately authored values; src/pages/Today.tsx:389-392
-      and :630-632 similarly place fixed English metadata under the title's bidi
-      base. src/components/direction.test.ts:102-159 only inventories
-      dir=\"auto\" locations and therefore passes all of these."
-createdAt: 2026-09-11T20:58:19.830Z
-sealedAt: 2026-09-11T21:11:08.267Z
+  - family: "r-direction-aware-text: mixed-content groups, alignment, list markers
+      and completeness"
+    summary: The direction rework still splits some Farsi titles from English
+      details, leaves further generated metadata inheriting the title's bidi
+      base, and moves native ordered-list markers outside the available right
+      edge. The new source test cannot discover these expression-based and
+      rendered-layout counterexamples.
+    counterexample: In src/components/ItemMaterial.tsx:56-66 and :117-126, the group
+      resolves RTL with text-align:start, but its English detail is a
+      block-level dir="ltr" element, so the detail aligns left while the Farsi
+      title aligns right. The family remains wider at
+      src/pages/Materials.tsx:175-182, src/components/ItemCard.tsx:24-36,
+      src/pages/RoutineRunner.tsx:178-182, src/pages/Lessons.tsx:260-268 and
+      src/pages/Repertoire.tsx:204-211, where generated English metadata remains
+      unisolated inside auto-direction groups. In
+      src/components/ClassQuestions.tsx:70-72, the ol remains LTR and allocates
+      only paddingInlineStart on the left, while each Farsi li now resolves RTL;
+      the native outside marker moves to the unpadded right and the visible 1.
+      is pressed against or beyond the content border on Mac and iPhone.
+      src/components/direction.test.ts:375-383 skips expression contents, its
+      isolate ledgers only prove manually listed snippets exist, and no check
+      covers list-marker containment, so the named test passes all these
+      counterexamples.
+createdAt: 2026-09-11T21:54:04.763Z
+sealedAt: 2026-09-12T00:04:41.257Z
 ---
 
 # Review: Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen
@@ -36,7 +44,7 @@ sealedAt: 2026-09-11T21:11:08.267Z
 - **Contract:** 20260911-lay-practice-out-for-the-content-it-hold-4c24
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/20
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `791c42d4aef6648ac9d67376b8737b6b62a82e81`
+- **Diff patch-id:** `c37ac69dbec7ba712674add9892b17878a0eccdf`
 
 ## The plan the owner approved
 
