@@ -911,8 +911,11 @@ rather than on `.balance-row` itself, because that row is a CSS GRID and giving 
 resolved RTL direction would reverse its three columns for a Farsi instrument, flipping
 the bar and percentage to the other side. The fix generalises past these seven
 locations: `direction.test.ts` now also fails if any `dir="ltr"`/`"rtl"` isolate's body
-calls `instrumentName(` (or references ItemCard's own `inst` alias for it), so a future
-regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
+references `instrumentName` — a call, a bare identifier, or a property access like
+`b.instrumentName` all match, not only the call form (the widened check was itself the
+product of a caught regression: an earlier `\binstrumentName\(` version missed the
+Balance row's own property-access form) — or ItemCard's own `inst` alias for it, so a
+future regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
 happened to name.
 
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is

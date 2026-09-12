@@ -18,7 +18,8 @@ the routine row) and the weekly Balance row's instrument name, bare inside a
 `.truncate` title span whose row is a CSS grid (isolating the row itself, rather than
 the name, would have reversed its three columns for a Farsi instrument). All seven now
 carry their own `dir="auto"`, and `direction.test.ts` bans the SHAPE going forward — any
-`dir="ltr"`/`"rtl"` isolate whose body calls `instrumentName(` fails — rather than
+`dir="ltr"`/`"rtl"` isolate whose body references `instrumentName` (a call, a bare
+identifier, or a property access like `b.instrumentName`) fails — rather than
 re-closing whichever locations a reviewer happened to enumerate.
 
 ## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
