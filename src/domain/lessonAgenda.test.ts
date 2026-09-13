@@ -24,13 +24,13 @@ import {
   questionsForLessonId,
   unassignedOpenQuestions,
 } from './questions';
-import { buildReportData } from './report';
+import { buildReportData, renderReportText } from './report';
 import { recommend } from './recommend';
 import { scoreItem } from './scoring';
 import { createInstrument, createItem, createLesson } from './factories';
 import { emptyDB } from './seed';
 import { addDays, parseISODate, toISODate } from './util';
-import type { ID, ISODate, Lesson, LessonAgendaEntry, PracticeItem, PracticeDB } from './types';
+import type { ID, ISODate, Lesson, LessonAgendaEntry, LessonQuestion, PracticeItem, PracticeDB } from './types';
 
 const NOW = new Date('2026-05-10T10:00:00.000Z');
 const INST = 'setar';
@@ -135,6 +135,19 @@ describe('preparation and questions are independent commitments', () => {
     expect(report.lessonHistory).toEqual([]);
     const noLesson = buildReportData(db, { instrumentId: INST, from: day(-30), to: day(0), now: NOW });
     expect(noLesson.lessonQuestions).toEqual([]);
+    // The two lists OVERLAP in the data — openQuestions is instrument-wide and
+    // lessonQuestions is a subset of it — so the rendered sheet, which is what
+    // actually goes into the room, must still name each question ONCE. A
+    // duplicated next-class agenda is exactly what this model exists to end.
+    const sheet = renderReportText(report);
+    const question = agenda.find((e) => e.id === 'q-a') as LessonQuestion;
+    expect(sheet.split(question.text).length - 1).toBe(1);
+    expect(sheet).toContain('To ask at the class this report is for:');
+    expect(sheet).toContain('Other open questions (not for that class):');
+    // With no class chosen it is the only list, under its own general heading.
+    const generalSheet = renderReportText(noLesson);
+    expect(generalSheet.split(question.text).length - 1).toBe(1);
+    expect(generalSheet).toContain('Open questions for teacher');
   });
 });
 

@@ -77,6 +77,7 @@ export default function TeacherReport() {
         <Field label="Instrument">
           <select
             className="select"
+            aria-label="Instrument"
             value={instrumentId}
             onChange={(e) => {
               setInstrumentId(e.target.value);
@@ -91,7 +92,14 @@ export default function TeacherReport() {
           </select>
         </Field>
         <Field label="Class this report is for">
-          <select className="select" value={lessonId} onChange={(e) => setLessonChoice(e.target.value)}>
+          {/* Field is a role="group" div, never a <label> (interactive controls
+              must not nest inside one), so the control carries its own name. */}
+          <select
+            className="select"
+            aria-label="Class this report is for"
+            value={lessonId}
+            onChange={(e) => setLessonChoice(e.target.value)}
+          >
             <option value="">No particular class</option>
             {lessons.map((l) => (
               <option key={l.id} value={l.id}>

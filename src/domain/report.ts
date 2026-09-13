@@ -141,13 +141,16 @@ export function renderReportText(data: ReportData): string {
   }
   push();
 
-  push('Open questions for teacher (current, not part of the period above):');
-  if (data.openQuestions.length === 0) push('- (none recorded)');
-  data.openQuestions.forEach((q, idx) => {
-    const where = q.unassigned ? ' [unassigned]' : '';
-    push(`${idx + 1}. ${q.question}${q.title ? ` (${q.title})` : ''}${where}`);
-  });
-  push();
+  // `openQuestions` is every open question on the instrument and
+  // `lessonQuestions` the chosen class's own, so the two OVERLAP by
+  // construction — every question aimed at that class is in both. The DATA
+  // keeps them whole (each answers its own question honestly); the rendered
+  // sheet is what goes into the room, and printing the same question under two
+  // headings is exactly the duplicated next-class agenda this model exists to
+  // end. So the class's own questions are listed once, under the class, and the
+  // general list keeps only what is left — labelled for what it then is.
+  const forThisClass = new Set(data.lessonQuestions.map((q) => q.id));
+  const otherOpen = data.openQuestions.filter((q) => !forThisClass.has(q.id));
 
   if (data.lessonQuestions.length > 0) {
     push('To ask at the class this report is for:');
@@ -156,6 +159,18 @@ export function renderReportText(data: ReportData): string {
     });
     push();
   }
+
+  push(
+    forThisClass.size > 0
+      ? 'Other open questions (not for that class):'
+      : 'Open questions for teacher (current, not part of the period above):',
+  );
+  if (otherOpen.length === 0) push('- (none recorded)');
+  otherOpen.forEach((q, idx) => {
+    const where = q.unassigned ? ' [unassigned]' : '';
+    push(`${idx + 1}. ${q.question}${q.title ? ` (${q.title})` : ''}${where}`);
+  });
+  push();
 
   if (data.lessonHistory.length > 0) {
     push('Already asked at that class:');
