@@ -360,7 +360,14 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     // ---- 2. warm-up: optional, real minutes, never at the cost of the work --
     const warmupMinutes = Math.max(MIN_SEGMENT_MINUTES, Math.round(B * params.warmupShare));
     if (B - warmupMinutes >= MAIN_WORK_FLOOR_MINUTES) {
-      add(pick(pool.filter((s) => isWarmupSuitable(s.item)), false), 'warmup', { repeat: isRepeatPool });
+      // A warm-up never consumes work that is WANTED for itself: an item
+      // whose review is due deserves the retrieval slot, and one committed to
+      // a class deserves real practice. Spending either as the warm-up would
+      // quietly drop the need that made it urgent.
+      const warmupPool = pool.filter(
+        (s) => isWarmupSuitable(s.item) && !dueById.has(s.item.id) && s.parts.lesson === 0,
+      );
+      add(pick(warmupPool, false), 'warmup', { repeat: isRepeatPool });
     }
 
     // ---- 3. fill the middle with further useful work ------------------------

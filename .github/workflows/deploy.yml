@@ -26,6 +26,11 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The two real-browser journeys are ordinary Vitest tests driving
+      # Playwright as a library, so they run inside `npm test` and must have
+      # their browser present. A missing browser FAILS them with a setup
+      # message — they never skip.
+      - run: npx playwright install --with-deps chromium
       - run: npm run lint
       - run: npm test
       - run: npm run build
