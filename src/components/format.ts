@@ -1,4 +1,13 @@
-import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewMode, type ReviewPlan } from '../domain';
+import {
+  dayDiff,
+  parseISODate,
+  planNextReview,
+  REVIEW_TYPE_LABELS,
+  type BlockResult,
+  type PracticeItem,
+  type ReviewPlan,
+  type SchedulingParams,
+} from '../domain';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -78,15 +87,39 @@ export function reviewSummaryLine(plan: ReviewPlan, now: Date = new Date()): str
 }
 
 /**
- * Whether a manual date correction on the close screen should survive
- * picking a different result. `computeReview` (and so `planNextReview`)
- * returns `null` for every result when an item's `reviewMode` is 'manual' —
- * there is no automatic plan for THIS judgement to replace, so a date the
- * owner already typed in isn't pinned to the previous result and must not be
- * cleared just because they picked a different one. `src/domain/**` is out of
- * scope for this lane, so this reads the item's own mode rather than calling
- * `planNextReview` a second time — CloseBlock keeps its single derivation.
+ * Whether a manual date correction on the close screen should survive picking
+ * a different result.
+ *
+ * A correction the owner made earlier belongs to the date the PREVIOUS result
+ * produced, so carrying it forward would pin a date to a judgement it was
+ * never made about — unless the engine's answer does not depend on the
+ * judgement at all. That is now true in several more cases than "manual mode":
+ * a fixed cadence, a date the owner chose, a legacy date of unknown
+ * provenance, and an ordinary automatic date that is simply not due yet all
+ * produce the SAME answer for every result, so a typed-in date was never tied
+ * to one of them.
+ *
+ * So this asks the real engine instead of naming the cases: does the plan
+ * differ across the six results? It is a BOOLEAN GATE on whether an automatic
+ * plan that depends on the result exists at all — not a second value that
+ * could disagree with CloseBlock's single derivation.
  */
-export function reviewOverrideSurvivesResultChange(reviewMode: ReviewMode | undefined): boolean {
-  return reviewMode === 'manual';
+export function reviewOverrideSurvivesResultChange(
+  item: PracticeItem,
+  now: Date,
+  params?: SchedulingParams,
+): boolean {
+  const dates = RESULTS_FOR_OVERRIDE_CHECK.map(
+    (result) => planNextReview({ item, result, now, params })?.dueDate ?? null,
+  );
+  return new Set(dates).size === 1;
 }
+
+const RESULTS_FOR_OVERRIDE_CHECK: BlockResult[] = [
+  'worse',
+  'same',
+  'slightly_better',
+  'stable_alone',
+  'stable_in_context',
+  'performable',
+];

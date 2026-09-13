@@ -11,6 +11,16 @@ import {
   completeOpenReviewsFor,
   computeReviewOutcome,
   installDatabase,
+  createPreparation,
+  createQuestion,
+  detachItem as detachAgendaItem,
+  detachLesson as detachAgendaLesson,
+  markQuestionAsked as markAgendaQuestionAsked,
+  reopenQuestion as reopenAgendaQuestion,
+  retargetEntriesForItemInstrument,
+  retargetEntry as retargetAgendaEntry,
+  scheduleAgainPlan,
+  setQuestionAnswer as setAgendaQuestionAnswer,
   resolveReviewDate,
   applyReviewDateToRows,
   applyReviewDateToRow,
@@ -201,8 +211,12 @@ export interface CloseSessionInput {
   answer: ReviewAnswer;
   nextReviewDate?: ISODate;
   reviewType?: ReviewType;
-  /** When set, written onto the item as its teacher question. */
-  teacherQuestion?: string;
+  /**
+   * A question raised during this close. It becomes its OWN agenda entry —
+   * it never overwrites an existing question, and it never marks the item as
+   * work committed for a class. Targetless means honestly unassigned.
+   */
+  newQuestion?: { text: string; lessonId?: ID };
 }
 
 export interface ItemPatch {
@@ -216,7 +230,6 @@ export interface ItemPatch {
   currentProblem?: string;
   primaryFocus?: FocusArea;
   bestStrategy?: string;
-  teacherQuestion?: string;
   notes?: string;
   tags?: string[];
   /** `undefined` (key absent) keeps the schedule; `null` clears it; an ISODate moves it — and its open review row with it (§1.5). */
@@ -321,7 +334,24 @@ interface StoreState {
   /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
   removeCatalogItem: (id: ID) => boolean;
   placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
-  toggleAssignedForLesson: (itemId: ID) => void;
+
+  // Lesson agenda — commitments and questions, each naming its own class
+  /** Commit an item to a specific class (or capture it unassigned). Returns the entry id. */
+  addLessonPreparation: (itemId: ID, lessonId?: ID) => ID | null;
+  /** Raise a question. It is its own entry; nothing else is overwritten. */
+  addLessonQuestion: (input: { text: string; instrumentId: ID; itemId?: ID; lessonId?: ID }) => ID | null;
+  /** Edit a question's text. Never touches its asked state or answer. */
+  updateLessonQuestion: (id: ID, text: string) => void;
+  /** Point an entry at a different class, or at none. The only carry-forward. */
+  setAgendaTarget: (id: ID, lessonId: ID | undefined) => void;
+  /** Mark asked (optionally with the teacher's answer). Logs no practice. */
+  markQuestionAsked: (id: ID, answer?: string) => void;
+  /** Put an asked question back on the open list. */
+  reopenQuestion: (id: ID) => void;
+  /** Record or replace a teacher answer without changing the asked state. */
+  setQuestionAnswer: (id: ID, answer: string) => void;
+  /** Remove an entry. Never deletes the item or its practice. */
+  removeAgendaEntry: (id: ID) => void;
   /** Create a practice item from a stage's reference catalog entry; returns its id. */
   addFromCatalog: (stageId: ID, entryKey: string) => ID;
   /** Begin a session on an existing item (with smart defaults). */
@@ -343,6 +373,12 @@ interface StoreState {
   notNowReview: (id: ID) => void;
   /** Snooze: honestly move the due date N days from today (no SM-2 change). */
   snoozeReview: (id: ID, days?: number) => void;
+  /**
+   * "Schedule again" from the item itself: set the one pending date on both
+   * the item and its review row, creating the row when none is open. Purely
+   * administrative — no block, no result, no SM-2 progress.
+   */
+  scheduleReviewAgain: (itemId: ID, dueDate: ISODate, reviewType?: ReviewType) => void;
 
   // Pathways
   addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
@@ -453,8 +489,12 @@ export const useStore = create<StoreState>()(
         const seg = activePlan.segments[activePlan.pointer];
         if (!seg) return;
         const item = db.items.find((i) => i.id === seg.itemId);
-        if (!item) {
-          // The item was deleted since the plan was built — skip past it.
+        // Revalidated LIVE, not trusted from the plan: an item can be deleted
+        // or moved to another instrument between building the plan and
+        // reaching this segment. Either way the segment is visibly skipped —
+        // it is never played under the wrong instrument, and skipping logs
+        // nothing.
+        if (!item || item.instrumentId !== activePlan.instrumentId) {
           get().skipPlanSegment();
           return;
         }
@@ -527,6 +567,7 @@ export const useStore = create<StoreState>()(
       },
 
       deleteLesson: (id) => {
+        const detachNow = new Date();
         // The lesson owns its attachments; linked items are never touched.
         // ownerId alone is not a lesson id — an item can share it — so only
         // an attachment whose ownerType is ALSO 'lesson' is this lesson's own.
@@ -537,6 +578,10 @@ export const useStore = create<StoreState>()(
             ...s.db,
             lessons: s.db.lessons.filter((l) => l.id !== id),
             attachments: s.db.attachments.filter((a) => !(a.ownerType === 'lesson' && a.ownerId === id)),
+            // Entries that named it become visibly unassigned and REMEMBER
+            // which class they were for. Nothing is deleted and nothing is
+            // silently reassigned to another class.
+            lessonAgenda: detachAgendaLesson(s.db.lessonAgenda, id, detachNow),
           },
         }));
       },
@@ -727,6 +772,12 @@ export const useStore = create<StoreState>()(
             pathwayRoutines: newInstrumentId
               ? unbindItemWhereInstrumentMismatch(s.db.pathwayRoutines, id, newInstrumentId, now)
               : s.db.pathwayRoutines,
+            // Its commitments and questions follow it; a class target that no
+            // longer matches is cleared rather than pointing at another
+            // instrument's lesson.
+            lessonAgenda: newInstrumentId
+              ? retargetEntriesForItemInstrument(s.db.lessonAgenda, id, newInstrumentId, s.db.lessons, now)
+              : s.db.lessonAgenda,
           },
         }));
       },
@@ -764,6 +815,10 @@ export const useStore = create<StoreState>()(
             ),
             // The segment survives as an unbound countdown — never removed.
             pathwayRoutines: unbindItemFromRoutines(s.db.pathwayRoutines, id, now),
+            // Commitments to prepare a deleted item go with it; QUESTIONS
+            // survive, detached, because a question and its answer are the
+            // owner's record of a class, not a property of the item.
+            lessonAgenda: detachAgendaItem(s.db.lessonAgenda, id, now),
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -791,16 +846,90 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      toggleAssignedForLesson: (itemId) => {
+      addLessonPreparation: (itemId, lessonId) => {
         const now = new Date();
+        const { db } = get();
+        const item = db.items.find((i) => i.id === itemId);
+        if (!item) return null;
+        // A class on another instrument is never a valid target — refuse
+        // rather than silently rewriting either side.
+        if (lessonId) {
+          const lesson = db.lessons.find((l) => l.id === lessonId);
+          if (!lesson || lesson.instrumentId !== item.instrumentId) return null;
+        }
+        // One commitment per item per class: committing twice is the same
+        // commitment, not two.
+        const existing = db.lessonAgenda.find(
+          (e) => e.kind === 'preparation' && e.itemId === itemId && e.lessonId === lessonId,
+        );
+        if (existing) return existing.id;
+        const entry = createPreparation({
+          id: newId(),
+          itemId,
+          instrumentId: item.instrumentId,
+          lessonId,
+          now,
+        });
+        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
+        return entry.id;
+      },
+
+      addLessonQuestion: (input) => {
+        const now = new Date();
+        const text = input.text.trim();
+        if (!text) return null;
+        const { db } = get();
+        if (input.itemId) {
+          const item = db.items.find((i) => i.id === input.itemId);
+          if (!item || item.instrumentId !== input.instrumentId) return null;
+        }
+        if (input.lessonId) {
+          const lesson = db.lessons.find((l) => l.id === input.lessonId);
+          if (!lesson || lesson.instrumentId !== input.instrumentId) return null;
+        }
+        const entry = createQuestion({ id: newId(), ...input, text, now });
+        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
+        return entry.id;
+      },
+
+      updateLessonQuestion: (id, text) => {
+        const now = new Date();
+        const trimmed = text.trim();
+        if (!trimmed) return;
         set((s) => ({
           db: {
             ...s.db,
-            items: s.db.items.map((i) =>
-              i.id === itemId ? touch({ ...i, assignedForLesson: !i.assignedForLesson }, now) : i,
+            lessonAgenda: s.db.lessonAgenda.map((e) =>
+              e.id === id && e.kind === 'question' ? touch({ ...e, text: trimmed }, now) : e,
             ),
           },
         }));
+      },
+
+      setAgendaTarget: (id, lessonId) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, lessonAgenda: retargetAgendaEntry(s.db.lessonAgenda, id, lessonId, s.db.lessons, now) },
+        }));
+      },
+
+      markQuestionAsked: (id, answer) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: markAgendaQuestionAsked(s.db.lessonAgenda, id, now, answer) } }));
+      },
+
+      reopenQuestion: (id) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: reopenAgendaQuestion(s.db.lessonAgenda, id, now) } }));
+      },
+
+      setQuestionAnswer: (id, answer) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: setAgendaQuestionAnswer(s.db.lessonAgenda, id, answer, now) } }));
+      },
+
+      removeAgendaEntry: (id) => {
+        set((s) => ({ db: { ...s.db, lessonAgenda: s.db.lessonAgenda.filter((e) => e.id !== id) } }));
       },
 
       addFromCatalog: (stageId, entryKey) => {
@@ -954,11 +1083,35 @@ export const useStore = create<StoreState>()(
             srReps: outcome.sr.srReps,
             srEase: outcome.sr.srEase,
             srIntervalDays: outcome.sr.srIntervalDays,
+            // The one-advance-per-day marker only moves when the decision
+            // actually advanced spacing; every other close leaves it alone.
+            ...(outcome.sr.srLastProgressDay ? { srLastProgressDay: outcome.sr.srLastProgressDay } : {}),
           };
         }
-        if (input.teacherQuestion !== undefined) {
-          updatedItem = { ...updatedItem, teacherQuestion: input.teacherQuestion.trim() || undefined };
+        // Provenance travels with the date, from the same decision: an
+        // engine-proposed date is the engine's to move again, a typed one is
+        // the owner's and is protected until it comes due.
+        if (outcome.nextReviewSource !== undefined) {
+          updatedItem = {
+            ...updatedItem,
+            nextReviewSource: outcome.nextReviewSource ?? undefined,
+          };
         }
+
+        // A question raised here becomes its own agenda entry. It never
+        // overwrites another question and never commits the item to a class.
+        const questionText = input.newQuestion?.text.trim();
+        const newQuestion =
+          questionText
+            ? createQuestion({
+                id: newId(),
+                text: questionText,
+                instrumentId: item.instrumentId,
+                itemId: item.id,
+                lessonId: input.newQuestion?.lessonId,
+                now,
+              })
+            : undefined;
 
         // Complete this item's open reviews only when the SAME decision that
         // set the date says so, and schedule the next from that one date
@@ -1004,6 +1157,7 @@ export const useStore = create<StoreState>()(
             blocks: [...db.blocks, block],
             items: db.items.map((i) => (i.id === item.id ? updatedItem : i)),
             reviews,
+            lessonAgenda: newQuestion ? [...db.lessonAgenda, newQuestion] : db.lessonAgenda,
           },
           active: null,
           activePlan: nextPlan,
@@ -1051,8 +1205,12 @@ export const useStore = create<StoreState>()(
                 applyReviewDateToRow({ reviews: s.db.reviews, reviewId: id, instruction: dueDate, now }) ??
                 s.db.reviews,
               // Keep the item's own schedule in step so nothing shows overdue.
+              // A snooze is the owner's own choice of date, so it is stamped
+              // as theirs: extra practice before it must not quietly undo it.
               items: s.db.items.map((i) =>
-                i.id === review.practiceItemId ? touch({ ...i, nextReviewDate: write.nextReviewDate }, now) : i,
+                i.id === review.practiceItemId
+                  ? touch({ ...i, nextReviewDate: write.nextReviewDate, nextReviewSource: 'user' as const }, now)
+                  : i,
               ),
             },
           };
@@ -1060,6 +1218,35 @@ export const useStore = create<StoreState>()(
       },
 
       // --- Pathways --------------------------------------------------------
+
+      scheduleReviewAgain: (itemId, dueDate, reviewType) => {
+        const now = new Date();
+        set((s) => {
+          const item = s.db.items.find((i) => i.id === itemId);
+          if (!item) return s;
+          const plan = scheduleAgainPlan({ item, reviews: s.db.reviews, dueDate, reviewType, now });
+          const reviews = plan.createRow
+            ? [
+                ...plan.reviews,
+                createReview({ practiceItemId: itemId, dueDate: plan.dueDate, reviewType: plan.reviewType }, now),
+              ]
+            : plan.reviews;
+          return {
+            db: {
+              ...s.db,
+              // The owner chose this date, so the engine treats it as
+              // authoritative until it comes due. No block, no result, no
+              // statistics and no SM-2 movement: this is administration.
+              items: s.db.items.map((i) =>
+                i.id === itemId
+                  ? touch({ ...i, nextReviewDate: plan.dueDate, nextReviewSource: 'user' as const }, now)
+                  : i,
+              ),
+              reviews,
+            },
+          };
+        });
+      },
 
       addPathway: (input) => {
         const now = new Date();

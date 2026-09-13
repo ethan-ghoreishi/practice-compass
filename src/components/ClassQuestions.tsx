@@ -137,16 +137,20 @@ export default function ClassQuestions({
   dateLabel: string;
   questions: ClassQuestion[];
 }) {
-  const [copied, setCopied] = useState(false);
+  // Three states, not a boolean: a FAILED copy has to say so and offer
+  // something else, or the owner walks into class believing the list is on
+  // their clipboard. The clipboard is refused routinely — an insecure origin,
+  // a denied permission, a browser that needs a fresher user gesture.
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
   const text = renderClassQuestionsText(instrumentName, dateLabel, questions);
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+      setCopyState('copied');
+      setTimeout(() => setCopyState('idle'), 1800);
     } catch {
-      setCopied(false);
+      setCopyState('failed');
     }
   }
 
@@ -168,7 +172,7 @@ export default function ClassQuestions({
         {questions.length > 0 && (
           <div className="row" style={{ gap: 6 }}>
             <button className="btn btn-ghost btn-sm" onClick={copy}>
-              {copied ? 'Copied ✓' : 'Copy'}
+              {copyState === 'copied' ? 'Copied ✓' : 'Copy'}
             </button>
             <button className="btn btn-ghost btn-sm" onClick={download}>
               Download
@@ -180,9 +184,30 @@ export default function ClassQuestions({
         )}
       </div>
 
+      {/* Announced, not merely coloured: a live region so the outcome reaches
+          assistive technology as well as the eye. */}
+      <div role="status" aria-live="polite" className="tiny">
+        {copyState === 'copied' ? (
+          <span dir="ltr">Questions copied to the clipboard.</span>
+        ) : copyState === 'failed' ? (
+          <span dir="ltr">
+            Couldn’t copy — your browser refused clipboard access. The full text is below: select it, or use Download.
+          </span>
+        ) : null}
+      </div>
+      {copyState === 'failed' && (
+        <textarea
+          className="textarea"
+          readOnly
+          aria-label="Questions text to select and copy"
+          value={text}
+          style={{ minHeight: 140 }}
+        />
+      )}
+
       {questions.length === 0 ? (
         <div className="card card-quiet small dim">
-          Nothing to ask yet. Flag an item “for next class” and add a teacher question — it will collect here.
+          Nothing to ask at this class yet. Add a question from an item or from the class itself — it will collect here.
         </div>
       ) : (
         /* No native marker: an outside ::marker's own logical position for a
@@ -214,7 +239,7 @@ export default function ClassQuestions({
           style={{ margin: 0, padding: 0, listStyle: 'none' }}
         >
           {questions.map((q, i) => (
-            <li key={q.itemId} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
+            <li key={q.id} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
               <span className="tiny faint" aria-hidden="true" style={{ flexShrink: 0 }}>
                 {i + 1}.
               </span>
@@ -225,9 +250,11 @@ export default function ClassQuestions({
                     resolving from its own content rather than anchoring the
                     li (that would pin the ordinal to the title's language,
                     splitting it from the question whenever the two differ). */}
-                <div className="small" dir="auto" style={{ fontWeight: 600 }}>
-                  {q.title}
-                </div>
+                {q.title && (
+                  <div className="small" dir="auto" style={{ fontWeight: 600 }}>
+                    {q.title}
+                  </div>
+                )}
                 {/* Bare, deliberately: q.question is guaranteed non-empty
                     (questionsForNextClass filters on it) and is what the
                     li's dir="auto" hunt is meant to land on, so the ordinal

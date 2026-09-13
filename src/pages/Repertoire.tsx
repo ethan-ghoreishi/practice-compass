@@ -12,7 +12,6 @@ import {
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
   neglectedScore,
-  nextLessonDates,
   overworkedItems,
   pathwayProgress,
   pathwaysForInstrumentFilter,
@@ -25,6 +24,8 @@ import {
   type ItemType,
   type Pathway as PathwayT,
   type RepertoireWork,
+  itemsWithOpenQuestion,
+  preparationDatesByItem,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
@@ -520,10 +521,20 @@ function AllItemsView() {
   const [type, setType] = useState<ItemType | ''>('');
   const [quick, setQuick] = useState<Set<Quick>>(new Set());
 
-  const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
+  // The agenda is the one source of "committed for a class" and "has an open
+  // question" — both were item fields that could only ever hold one answer.
+  const preparationDates = useMemo(
+    () => preparationDatesByItem(db.lessonAgenda, db.lessons, now),
+    [db.lessonAgenda, db.lessons, now],
+  );
+  const committedItemIds = useMemo(() => new Set(preparationDates.keys()), [preparationDates]);
+  const itemsWithOpenQuestionIds = useMemo(
+    () => new Set(itemsWithOpenQuestion(db.items, db.lessonAgenda).map((i) => i.id)),
+    [db.items, db.lessonAgenda],
+  );
   const scored = useMemo(
-    () => scoreItems(db.items, groupBlocksByItem(db.blocks), now, lessonDates),
-    [db.items, db.blocks, now, lessonDates],
+    () => scoreItems(db.items, groupBlocksByItem(db.blocks), now, preparationDates),
+    [db.items, db.blocks, now, preparationDates],
   );
   const overworkedIds = useMemo(
     () => new Set(overworkedItems(db.items, db.blocks, now).map((i) => i.id)),
@@ -546,11 +557,11 @@ function AllItemsView() {
       if (status && item.status !== status) return false;
       if (type && item.itemType !== type) return false;
       if (quick.has('due') && !isDue(item, now)) return false;
-      if (quick.has('lesson') && !item.assignedForLesson) return false;
+      if (quick.has('lesson') && !committedItemIds.has(item.id)) return false;
       if (quick.has('fragile') && item.status !== 'fragile' && item.status !== 'repairing') return false;
       if (quick.has('neglected') && neglectedScore(item, now) < 2) return false;
       if (quick.has('overworked') && !overworkedIds.has(item.id)) return false;
-      if (quick.has('teacher') && !(item.teacherQuestion && item.teacherQuestion.trim())) return false;
+      if (quick.has('teacher') && !itemsWithOpenQuestionIds.has(item.id)) return false;
       return true;
     });
 

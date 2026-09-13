@@ -84,7 +84,6 @@ export interface CreateItemInput {
   stageId?: ID;
   strand?: StepStrand;
   catalogKey?: string;
-  assignedForLesson?: boolean;
   parentItemId?: ID;
   status?: ItemStatus;
   importance?: Rating;
@@ -92,7 +91,6 @@ export interface CreateItemInput {
   currentProblem?: string;
   primaryFocus?: FocusArea;
   bestStrategy?: string;
-  teacherQuestion?: string;
   notes?: string;
   tags?: string[];
   nextReviewDate?: ISODate;
@@ -111,7 +109,6 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     stageId: input.stageId,
     strand: input.strand,
     catalogKey: input.catalogKey,
-    assignedForLesson: input.assignedForLesson,
     parentItemId: input.parentItemId,
     title: input.title.trim(),
     itemType: input.itemType ?? 'other',
@@ -121,7 +118,6 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     currentProblem: input.currentProblem?.trim() || undefined,
     primaryFocus: input.primaryFocus,
     bestStrategy: input.bestStrategy?.trim() || undefined,
-    teacherQuestion: input.teacherQuestion?.trim() || undefined,
     notes: input.notes?.trim() || undefined,
     tags: input.tags ?? [],
     nextReviewDate: input.nextReviewDate,

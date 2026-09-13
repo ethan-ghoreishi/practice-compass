@@ -25,7 +25,6 @@ export interface ItemFormValues {
   primaryFocus: FocusArea | '';
   currentProblem: string;
   bestStrategy: string;
-  teacherQuestion: string;
   tags: string;
   reviewMode: ReviewMode;
   reviewIntervalDays: string;
@@ -48,7 +47,6 @@ export function emptyItemValues(instrumentId: string): ItemFormValues {
     primaryFocus: '',
     currentProblem: '',
     bestStrategy: '',
-    teacherQuestion: '',
     tags: '',
     reviewMode: 'auto',
     reviewIntervalDays: '',
@@ -72,7 +70,6 @@ export function itemToValues(item: PracticeItem): ItemFormValues {
     primaryFocus: item.primaryFocus ?? '',
     currentProblem: item.currentProblem ?? '',
     bestStrategy: item.bestStrategy ?? '',
-    teacherQuestion: item.teacherQuestion ?? '',
     tags: item.tags.join(', '),
     reviewMode: item.reviewMode ?? 'auto',
     reviewIntervalDays: item.reviewIntervalDays ? String(item.reviewIntervalDays) : '',
@@ -101,7 +98,6 @@ export function valuesToCreateInput(v: ItemFormValues) {
     primaryFocus: v.primaryFocus || undefined,
     currentProblem: v.currentProblem.trim() || undefined,
     bestStrategy: v.bestStrategy.trim() || undefined,
-    teacherQuestion: v.teacherQuestion.trim() || undefined,
     tags: v.tags
       .split(',')
       .map((t) => t.trim())

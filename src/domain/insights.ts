@@ -10,7 +10,7 @@ import {
   blocksInWindow,
   fragileItems,
   instrumentBalance,
-  itemsWithTeacherQuestion,
+  itemsWithOpenQuestion,
   neglectedImportantItems,
 } from './selectors';
 import { daysSince } from './util';
@@ -183,7 +183,7 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
   }
 
   // 9. Teacher questions -----------------------------------------------------
-  const teacherQs = itemsWithTeacherQuestion(db.items);
+  const teacherQs = itemsWithOpenQuestion(db.items, db.lessonAgenda);
   if (teacherQs.length > 0) {
     insights.push({
       id: 'teacher-questions',

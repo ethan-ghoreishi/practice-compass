@@ -3,7 +3,7 @@ import {
   addDays,
   buildTeacherReport,
   nextLessonFor,
-  questionsForNextClass,
+  openQuestionsForInstrument,
   toISODate,
   todayISODate,
 } from '../domain';
@@ -26,7 +26,7 @@ export default function TeacherReport() {
   );
 
   const questions = useMemo(
-    () => (instrumentId ? questionsForNextClass(db.items, instrumentId) : []),
+    () => (instrumentId ? openQuestionsForInstrument(db.lessonAgenda, db.items, instrumentId) : []),
     [db.items, instrumentId],
   );
   const nextClass = instrumentId ? nextLessonFor(db.lessons, instrumentId, now) : null;

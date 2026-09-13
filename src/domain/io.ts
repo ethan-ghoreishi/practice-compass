@@ -2,6 +2,8 @@ import type { ExportFile, PracticeDB } from './types';
 import { SCHEMA_VERSION } from './types';
 import { nowISO } from './util';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
+import { validateLessonAgenda } from './lessonAgenda';
+import { validateSchedulingFields } from './scheduling';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -33,6 +35,7 @@ const ARRAY_KEYS = [
   'pathwayRoutines',
   'attachments',
   'lessons',
+  'lessonAgenda',
 ] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -83,6 +86,7 @@ export function validateDB(input: unknown): PracticeDB {
     pathwayRoutines: migrated.pathwayRoutines ?? [],
     attachments: migrated.attachments ?? [],
     lessons: migrated.lessons ?? [],
+    lessonAgenda: migrated.lessonAgenda ?? [],
     // Optional scheduling knobs — a top-level object, not an array. Carry it
     // through so a user's adjusted params survive export/import round-trips.
     ...(isRecord(migrated.settings) ? { settings: migrated.settings as unknown as PracticeDB['settings'] } : {}),
@@ -95,6 +99,17 @@ export function validateDB(input: unknown): PracticeDB {
       throw new Error(`Some entries in "${key}" are missing an id.`);
     }
   }
+
+  // The v12 model, checked BEFORE anything installs this database (§C7). This
+  // is deliberately bounded to the lesson agenda and the scheduling fields it
+  // shares a schema version with — the decision loop's own inputs and
+  // outcomes — and is NOT a general repair of legacy malformed records.
+  // Invalid intent is REJECTED with actionable detail, never silently filtered
+  // away: dropping an entry the owner wrote is the data loss this guards.
+  const agendaProblem = validateLessonAgenda(db);
+  if (agendaProblem) throw new Error(agendaProblem);
+  const schedulingProblem = validateSchedulingFields(db);
+  if (schedulingProblem) throw new Error(schedulingProblem);
 
   return db;
 }

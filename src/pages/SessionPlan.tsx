@@ -3,16 +3,23 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   buildSessionPlan,
   currentStage,
-  nextLessonDates,
+  MAX_BUDGET_MINUTES,
+  MIN_BUDGET_MINUTES,
+  preparationDatesByItem,
   redistributePlan,
   swapSegment,
   clampSchedulingParams,
+  validateBudgetMinutes,
   type PlanBucket,
   type SessionPlan as SessionPlanT,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
 import { CheckIcon, MinusIcon, PlayIcon, XIcon } from '../components/icons';
+import { useDecisionNow } from '../components/useDecisionNow';
+
+/** The presets the picker offers; any whole minute in range is still accepted. */
+const BUDGET_PRESETS = [5, 10, 15, 20, 30, 45, 60] as const;
 
 const BUCKET_LABEL: Record<PlanBucket, string> = {
   warmup: 'Warm-up',
@@ -38,14 +45,19 @@ function PlanPreview() {
   const startPlan = useStore((s) => s.startPlan);
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const now = useMemo(() => new Date(), []);
+  // Refreshed at a local-day boundary so a preview left open overnight never
+  // plans against yesterday's due dates and lesson deadlines.
+  const now = useDecisionNow();
 
   const instrumentId = sessionInstrumentId ?? db.instruments.find((i) => i.active)?.id ?? db.instruments[0]?.id ?? '';
-  const queryMinutes = Number(params.get('minutes'));
-  const budget = Number.isFinite(queryMinutes) && queryMinutes > 0 ? Math.round(queryMinutes) : planMinutes[instrumentId] ?? 20;
+  // Invalid input is rejected at the boundary, never clamped into a session
+  // length the owner did not choose or looped over.
+  const queryMinutes = validateBudgetMinutes(Number(params.get('minutes')));
+  const [chosen, setChosen] = useState<number | null>(null);
+  const budget = chosen ?? queryMinutes ?? validateBudgetMinutes(planMinutes[instrumentId]) ?? 20;
 
   const build = useMemo(() => {
-    const lessonDates = nextLessonDates(db.lessons, now);
+    const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
     const pathway = db.pathways.find((p) => p.instrumentId === instrumentId);
     const stage = pathway ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId) : null;
     const stageItemIds = stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
@@ -56,11 +68,11 @@ function PlanPreview() {
       items: db.items,
       blocks: db.blocks,
       reviews: db.reviews,
-      lessonDates,
+      preparationDates,
       stageItemIds,
       params: clampSchedulingParams(db.settings),
     });
-  }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.pathways, db.pathwayStages, db.settings, now]);
+  }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.lessonAgenda, db.pathways, db.pathwayStages, db.settings, now]);
 
   const [plan, setPlan] = useState<SessionPlanT>(build);
   // Re-seed the editable copy whenever the freshly-built plan changes.
@@ -72,7 +84,7 @@ function PlanPreview() {
 
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
   const editorArgs = () => {
-    const lessonDates = nextLessonDates(db.lessons, now);
+    const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
     const pathway = db.pathways.find((p) => p.instrumentId === instrumentId);
     const stage = pathway ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId) : null;
     const stageItemIds = stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
@@ -82,7 +94,7 @@ function PlanPreview() {
       items: db.items,
       blocks: db.blocks,
       reviews: db.reviews,
-      lessonDates,
+      preparationDates,
       stageItemIds,
       params: clampSchedulingParams(db.settings),
       excludeIds: new Set(plan.segments.map((s) => s.itemId)),
@@ -124,6 +136,43 @@ function PlanPreview() {
         </div>
         <p className="page-sub">{plan.summary}</p>
       </header>
+
+      {/* How long have you got? The presets cover the ordinary answers
+          (5 and 10 included — a five-minute session is a real session, and
+          used to have no preset at all), and the number entry covers every
+          other whole minute in range. An out-of-range or unreadable value is
+          simply not accepted, rather than quietly becoming something else. */}
+      <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
+        <legend className="section-label">How long have you got?</legend>
+        <div className="options">
+          {BUDGET_PRESETS.map((m) => (
+            <button
+              key={m}
+              type="button"
+              className={`option${budget === m ? ' selected' : ''}`}
+              aria-pressed={budget === m}
+              onClick={() => setChosen(m)}
+            >
+              {m} min
+            </button>
+          ))}
+        </div>
+        <input
+          className="input"
+          type="number"
+          inputMode="numeric"
+          min={MIN_BUDGET_MINUTES}
+          max={MAX_BUDGET_MINUTES}
+          step={1}
+          aria-label="Session length in minutes"
+          value={budget}
+          onChange={(e) => {
+            const v = validateBudgetMinutes(Number(e.target.value));
+            if (v !== null) setChosen(v);
+          }}
+          style={{ maxWidth: 120 }}
+        />
+      </fieldset>
 
       {plan.segments.length === 0 ? (
         <div className="card">

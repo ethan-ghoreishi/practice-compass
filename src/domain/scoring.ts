@@ -1,14 +1,24 @@
-import type { BlockResult, ItemStatus, PracticeBlock, PracticeItem } from './types';
-import { dayDiff, daysSince, hoursSince, parseISODate } from './util';
+import type { BlockResult, ID, ISODate, ItemStatus, PracticeBlock, PracticeItem } from './types';
+import { dayDiff, daysSince, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Deterministic priority scoring.
 //
 //   priority = importance*2 + difficulty + fragility + overdue
-//            + teacherRelevance + neglected − saturationPenalty
+//            + neglected + lessonUrgency − exposurePenalty
 //
 // Every sub-score is a small pure function so each can be unit-tested in
-// isolation and the breakdown can be shown to the user as a plain reason.
+// isolation and the breakdown can be shown to the user as a plain reason. The
+// exact numbers, windows and bounds are published in
+// docs/scheduling-evidence.md so a reviewer can calculate any answer by hand.
+//
+// Two things are deliberately NOT in this formula:
+//   • a teacher question. A question is something to ASK, not evidence that
+//     the item needs practice; it used to add three points and quietly
+//     reorder the day around a note to self.
+//   • a permanent count-based saturation penalty. Over-practice is measured as
+//     bounded, DECAYING recent minutes instead, so an item drilled hard in
+//     January is not still excluded in September.
 // ---------------------------------------------------------------------------
 
 const FRAGILITY_BY_STATUS: Record<ItemStatus, number> = {
@@ -45,10 +55,6 @@ export function overdueScore(item: PracticeItem, now: Date): number {
   return 5; // 14+ days overdue
 }
 
-export function teacherRelevanceScore(item: PracticeItem): number {
-  return item.teacherQuestion && item.teacherQuestion.trim() ? 3 : 0;
-}
-
 /**
  * Days since the item was last touched. Falls back to `createdAt` so a brand
  * new, never-practised item still ages into the "neglected" bands rather than
@@ -67,13 +73,62 @@ export function neglectedScore(item: PracticeItem, now: Date): number {
   return 4; // 31+ days
 }
 
-/** Blocks for one item that started within the last `hours`. */
-export function recentBlockCount(
+// --- Recent exposure ---------------------------------------------------------
+//
+// "How much have I actually played this lately?" — measured in MINUTES over
+// local calendar days, decaying to nothing across a bounded window.
+//
+// Minutes, not block counts: one 30-minute session and three 10-minute ones
+// are the same amount of practice, and counting blocks made the longer session
+// look like LESS exposure than the shorter ones. Local calendar days, not
+// hours: an hours-based window slides with the clock, so a block from late
+// last night counts differently depending on what time you open the app, and
+// it misreads a DST day. Every block counts equally — a routine-bound block is
+// real practice, and an unlogged one still used up the time.
+
+/** Days of history that can contribute exposure at all. */
+export const EXPOSURE_WINDOW_DAYS = 7;
+/** Decayed minutes per penalty point. */
+export const EXPOSURE_MINUTES_PER_POINT = 10;
+/** The most priority exposure can ever take away. */
+export const EXPOSURE_PENALTY_MAX = 6;
+/** Decayed minutes at which an item is flagged as heavily practised lately. */
+export const SATURATION_EXPOSURE_MINUTES = 60;
+
+/** Linear decay: today counts fully, the oldest day in the window a seventh. */
+export function exposureWeight(daysAgo: number, windowDays = EXPOSURE_WINDOW_DAYS): number {
+  if (daysAgo < 0 || daysAgo >= windowDays) return 0;
+  return (windowDays - daysAgo) / windowDays;
+}
+
+/**
+ * Decayed minutes of practice on this item within the window. Future-dated
+ * blocks (clock skew, hand-edited data) contribute nothing to PAST exposure,
+ * and negative or unreadable durations count as zero rather than as credit.
+ */
+export function recentExposureMinutes(
   itemBlocks: PracticeBlock[],
   now: Date,
-  hours = 48,
+  windowDays = EXPOSURE_WINDOW_DAYS,
 ): number {
-  return itemBlocks.filter((b) => hoursSince(b.startedAt, now) <= hours).length;
+  const today = todayISODate(now);
+  let sum = 0;
+  for (const b of itemBlocks) {
+    const day = toISODate(new Date(b.startedAt));
+    if (!day || day > today) continue;
+    const age = dayDiff(parseISODate(day), now);
+    const w = exposureWeight(age, windowDays);
+    if (w <= 0) continue;
+    const minutes = Number.isFinite(b.durationMinutes) ? Math.max(0, Math.round(b.durationMinutes)) : 0;
+    sum += minutes * w;
+  }
+  return sum;
+}
+
+/** Whole priority points recent exposure takes away — bounded, never fatal. */
+export function exposurePenalty(itemBlocks: PracticeBlock[], now: Date): number {
+  const minutes = recentExposureMinutes(itemBlocks, now);
+  return Math.min(EXPOSURE_PENALTY_MAX, Math.floor(minutes / EXPOSURE_MINUTES_PER_POINT));
 }
 
 /** The item's most recent logged results, newest first (ignores `not_logged`). */
@@ -85,19 +140,34 @@ export function recentResults(itemBlocks: PracticeBlock[], n = 3): BlockResult[]
     .map((b) => b.result);
 }
 
-/** True when the last `n` logged results are all "same". */
+/**
+ * True when the last `n` logged results are all "same". A STRATEGY HINT only —
+ * "try something different rather than more repetitions". It is deliberately
+ * no longer an eligibility signal: three identical results in January must not
+ * still be hiding the item from the planner in September.
+ */
 export function lastResultsAllSame(itemBlocks: PracticeBlock[], n = 3): boolean {
   const results = recentResults(itemBlocks, n);
   return results.length >= n && results.every((r) => r === 'same');
 }
 
-/** True when an item is over-drilled (too frequent, or stuck on "same"). */
+/** Heavily practised lately — a calm display warning, never an exclusion. */
 export function isSaturated(itemBlocks: PracticeBlock[], now: Date): boolean {
-  return recentBlockCount(itemBlocks, now) >= 3 || lastResultsAllSame(itemBlocks);
+  return recentExposureMinutes(itemBlocks, now) >= SATURATION_EXPOSURE_MINUTES;
 }
 
-export function saturationPenalty(itemBlocks: PracticeBlock[], now: Date): number {
-  return isSaturated(itemBlocks, now) ? 3 : 0;
+/**
+ * The ONE eligibility policy every automatic pool shares: Today's
+ * recommendations, the initial plan, regeneration, swaps and every fallback.
+ *
+ * Resting ("dormant") material is work the owner has deliberately put down. It
+ * stays fully practisable by choosing it directly, and its existing review
+ * data is never erased — a simple status change brings it back. What it must
+ * not do is keep surfacing in suggestions, including through a fallback that
+ * quietly widens to "everything" when the honest answer is an empty pool.
+ */
+export function isProactiveCandidate(item: PracticeItem): boolean {
+  return item.status !== 'dormant';
 }
 
 export interface ScoreParts {
@@ -105,9 +175,8 @@ export interface ScoreParts {
   difficulty: number;
   fragility: number;
   overdue: number;
-  teacher: number;
   neglected: number;
-  saturationPenalty: number;
+  exposurePenalty: number;
   lesson: number;
 }
 
@@ -115,25 +184,32 @@ export interface ItemScore {
   item: PracticeItem;
   total: number;
   parts: ScoreParts;
+  /** Heavily practised in the last week — shown, never used to exclude. */
   saturated: boolean;
+  /** Decayed minutes behind `parts.exposurePenalty`, for honest reasons. */
+  exposureMinutes: number;
   overdueDays: number | null;
   daysSincePractised: number | null;
-  /** Days until the instrument's next lesson (if assigned); null otherwise. */
+  /** Days until the class this item is actually committed to; null otherwise. */
   daysToLesson: number | null;
+  /** The date of that class, so a reason can name it. */
+  lessonDate: ISODate | null;
 }
 
 /**
- * Priority boost for an item flagged to complete before its next lesson — it
- * climbs as the class approaches, so assigned work gets finished on time.
+ * Priority boost for an item committed to a SPECIFIC class, climbing as that
+ * class approaches. The date comes from the commitment's own lesson — never
+ * from "the next class, whenever that is", which is how a rolling flag used to
+ * let a commitment made for March inherit January's deadline for ever.
+ *
+ * A past or unassigned commitment scores zero: its deadline has gone, or it
+ * never named one.
  */
-export function lessonUrgencyScore(
-  item: PracticeItem,
-  nextLessonDate: string | undefined,
-  now: Date,
-): number {
-  if (!item.assignedForLesson || !nextLessonDate) return 0;
-  const d = dayDiff(now, parseISODate(nextLessonDate));
-  if (d <= 0) return 8; // due for / past the class
+export function lessonUrgencyScore(preparationDate: ISODate | undefined, now: Date): number {
+  if (!preparationDate) return 0;
+  const d = dayDiff(now, parseISODate(preparationDate));
+  if (d < 0) return 0; // the class has passed
+  if (d === 0) return 8; // today
   if (d <= 2) return 7;
   if (d <= 5) return 6;
   if (d <= 10) return 5;
@@ -145,17 +221,17 @@ export function scoreItem(
   item: PracticeItem,
   itemBlocks: PracticeBlock[],
   now: Date,
-  nextLessonDate?: string,
+  preparationDate?: ISODate,
 ): ItemScore {
+  const exposureMinutes = recentExposureMinutes(itemBlocks, now);
   const parts: ScoreParts = {
     importance: item.importance * 2,
     difficulty: item.difficulty,
     fragility: fragilityScore(item.status),
     overdue: overdueScore(item, now),
-    teacher: teacherRelevanceScore(item),
     neglected: neglectedScore(item, now),
-    saturationPenalty: saturationPenalty(itemBlocks, now),
-    lesson: lessonUrgencyScore(item, nextLessonDate, now),
+    exposurePenalty: Math.min(EXPOSURE_PENALTY_MAX, Math.floor(exposureMinutes / EXPOSURE_MINUTES_PER_POINT)),
+    lesson: lessonUrgencyScore(preparationDate, now),
   };
 
   const total =
@@ -163,33 +239,42 @@ export function scoreItem(
     parts.difficulty +
     parts.fragility +
     parts.overdue +
-    parts.teacher +
     parts.neglected +
     parts.lesson -
-    parts.saturationPenalty;
+    parts.exposurePenalty;
+
+  const daysToLesson = preparationDate ? dayDiff(now, parseISODate(preparationDate)) : null;
 
   return {
     item,
     total,
     parts,
-    saturated: isSaturated(itemBlocks, now),
+    saturated: exposureMinutes >= SATURATION_EXPOSURE_MINUTES,
+    exposureMinutes,
     overdueDays: overdueDays(item, now),
     daysSincePractised: daysSince(item.lastPractisedAt, now) ?? null,
-    daysToLesson:
-      item.assignedForLesson && nextLessonDate ? dayDiff(now, parseISODate(nextLessonDate)) : null,
+    daysToLesson: daysToLesson !== null && daysToLesson >= 0 ? daysToLesson : null,
+    lessonDate: daysToLesson !== null && daysToLesson >= 0 ? preparationDate! : null,
   };
 }
 
-/** Convenience: score a list of items given a lookup of blocks per item. */
+/**
+ * Score a list of items. `preparationDates` maps an ITEM id to the date of the
+ * class it is committed to (`preparationDatesByItem` in lessonAgenda.ts).
+ *
+ * Ties break on the item's own id, not on array order: two items with the same
+ * total must rank the same way whatever order storage happened to hand them
+ * over, or a plan silently depends on how a database was written.
+ */
 export function scoreItems(
   items: PracticeItem[],
   blocksByItem: Map<string, PracticeBlock[]>,
   now: Date,
-  lessonDates?: Map<string, string>,
+  preparationDates?: Map<ID, ISODate>,
 ): ItemScore[] {
   return items
-    .map((item) => scoreItem(item, blocksByItem.get(item.id) ?? [], now, lessonDates?.get(item.instrumentId)))
-    .sort((a, b) => b.total - a.total);
+    .map((item) => scoreItem(item, blocksByItem.get(item.id) ?? [], now, preparationDates?.get(item.id)))
+    .sort((a, b) => b.total - a.total || a.item.id.localeCompare(b.item.id));
 }
 
 export function groupBlocksByItem(blocks: PracticeBlock[]): Map<string, PracticeBlock[]> {

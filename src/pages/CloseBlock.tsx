@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   clampSchedulingParams,
+  defaultTargetLesson,
+  lessonLabel,
   planNextReview,
   proposedCloseMinutes,
   type ReviewAnswer,
@@ -19,6 +21,7 @@ import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { Field, OptionPills } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
 import { reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
+import { useDecisionNow } from '../components/useDecisionNow';
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
   { value: 'worse', label: RESULT_LABELS.worse },
@@ -36,7 +39,11 @@ export default function CloseBlock() {
   const cancelSession = useStore((s) => s.cancelSession);
   const resumeSession = useStore((s) => s.resumeSession);
   const navigate = useNavigate();
-  const now = useMemo(() => new Date(), []);
+  // The DAY this decision is made in, refreshed at a local-day boundary or
+  // when the page comes back into view. A close screen left open across
+  // midnight must not write a date derived from yesterday — and the draft in
+  // the fields above survives the refresh, because only `now` changes.
+  const now = useDecisionNow();
 
   const item = active ? getItem(db, active.itemId) : undefined;
   // The clock was paused on Finish, so the elapsed figure is frozen —
@@ -62,7 +69,10 @@ export default function CloseBlock() {
   const [showReviewControls, setShowReviewControls] = useState(false);
   const [acceptStatus, setAcceptStatus] = useState(true);
   const [becomeTeacherQ, setBecomeTeacherQ] = useState(false);
-  const [teacherQText, setTeacherQText] = useState(item?.teacherQuestion ?? '');
+  // A NEW question every time: it becomes its own agenda entry rather than
+  // overwriting whatever the item already carried, and raising one never
+  // commits the item to a class.
+  const [teacherQText, setTeacherQText] = useState('');
 
   // Recent results including the (pending) one, for the "three same" check.
   const recentSameStreak = useMemo(() => {
@@ -77,6 +87,15 @@ export default function CloseBlock() {
   // Use the same scheduling knobs the store will persist with, so the date
   // previewed here is exactly the date that gets saved.
   const params = useMemo(() => clampSchedulingParams(db.settings), [db.settings]);
+
+  // A question raised here defaults to the nearest upcoming class on this
+  // instrument, named in the caption below so the target is never a guess the
+  // owner cannot see. With no upcoming class it is saved unassigned rather
+  // than pointed at one that does not exist.
+  const questionLesson = useMemo(
+    () => (item ? defaultTargetLesson(db.lessons, item.instrumentId, now) : undefined),
+    [db.lessons, item, now],
+  );
 
   /**
    * THE review decision on this screen — one value, derived once.
@@ -146,7 +165,7 @@ export default function CloseBlock() {
     // has no automatic plan for ANY result (computeReview returns null
     // unconditionally in manual mode) — the owner's typed-in date isn't tied
     // to a judgement at all, so it must survive switching results.
-    if (!reviewOverrideSurvivesResultChange(item?.reviewMode)) setOverride(null);
+    if (item && !reviewOverrideSurvivesResultChange(item, now, params)) setOverride(null);
   }
 
   if (!active || !item) {
@@ -184,7 +203,10 @@ export default function CloseBlock() {
       answer,
       nextReviewDate: answer === 'scheduled' ? review?.dueDate : undefined,
       reviewType: review?.reviewType ?? 'retention',
-      teacherQuestion: becomeTeacherQ ? teacherQText.trim() : undefined,
+      newQuestion:
+        becomeTeacherQ && teacherQText.trim()
+          ? { text: teacherQText.trim(), lessonId: questionLesson?.id }
+          : undefined,
     });
     // If a Session Plan is running, return to it (closeSession advanced it).
     navigate(useStore.getState().activePlan ? '/plan' : '/');
@@ -364,12 +386,22 @@ export default function CloseBlock() {
           <YesNo value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
         </div>
         {becomeTeacherQ && (
-          <textarea
-            className="textarea"
-            placeholder="What will you ask your teacher?"
-            value={teacherQText}
-            onChange={(e) => setTeacherQText(e.target.value)}
-          />
+          <>
+            <textarea
+              className="textarea"
+              placeholder="What will you ask your teacher?"
+              aria-label="Question for your teacher"
+              value={teacherQText}
+              onChange={(e) => setTeacherQText(e.target.value)}
+            />
+            <p className="tiny faint">
+              <span dir="ltr">
+                {questionLesson
+                  ? `It will be asked at ${lessonLabel(questionLesson)}. It does not commit this item to that class.`
+                  : 'There is no upcoming class yet, so it will be saved unassigned.'}
+              </span>
+            </p>
+          </>
         )}
       </div>
 

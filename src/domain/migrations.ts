@@ -1,5 +1,11 @@
 import { seedPathways } from './pathwaySeed';
-import { SCHEMA_VERSION, type AttachmentMeta, type PracticeDB } from './types';
+import {
+  SCHEMA_VERSION,
+  type AttachmentMeta,
+  type LessonAgendaEntry,
+  type PracticeDB,
+  type PracticeItem,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // The one migration chain every inbound database runs, whatever door it came
@@ -140,6 +146,102 @@ function migrateToV11(db: PracticeDB): PracticeDB {
 }
 
 /**
+ * v11 → v12: the item's rolling `assignedForLesson` boolean and its single
+ * mutable `teacherQuestion` string become entries in the one `lessonAgenda`
+ * collection.
+ *
+ * Every conversion is UNASSIGNED. The old data recorded WHICH class it was for
+ * nowhere at all — the boolean only ever meant "the next one", whenever that
+ * happened to be — so naming a lesson here would be a guess. Deriving one from
+ * today's clock would also make the same database migrate differently on two
+ * devices run on different days, which is exactly what C5 forbids: this step
+ * reads no clock, and its timestamps come from the ITEM's own, so the result is
+ * byte-identical whenever and wherever it runs.
+ *
+ * A question converts whatever the boolean said: the two were always
+ * independent facts, and requiring both is how the old "questions for next
+ * class" list silently dropped questions on unflagged items.
+ *
+ * Multiline text stays ONE question. A teacher question typed as three lines in
+ * one box is one thing the owner meant to ask, and splitting on newlines would
+ * invent questions they never wrote.
+ *
+ * Idempotent by construction: the conversion is driven by the legacy fields,
+ * which this step then removes, and it never creates an entry whose id already
+ * describes the same thing. An already-current database — including one whose
+ * agenda is legitimately EMPTY — comes through unchanged.
+ */
+function migrateToV12(db: PracticeDB): PracticeDB {
+  type LegacyItem = PracticeItem & { assignedForLesson?: boolean; teacherQuestion?: string };
+  const existing: LegacyAgenda[] = ((db.lessonAgenda ?? []) as LegacyAgenda[]).slice();
+  const takenIds = new Set(existing.map((e) => e?.id).filter((id): id is string => typeof id === 'string'));
+
+  const represented = (base: string, kind: 'preparation' | 'question', itemId: string): boolean =>
+    existing.some((e) => e?.id === base && e?.kind === kind && e?.itemId === itemId);
+
+  // A deterministic id that cannot collide with an UNRELATED entry that
+  // happens to already own the obvious one. Same input, same output, always.
+  const freeId = (base: string): string => {
+    if (!takenIds.has(base)) return base;
+    for (let n = 2; ; n++) {
+      const candidate = `${base}~${n}`;
+      if (!takenIds.has(candidate)) return candidate;
+    }
+  };
+
+  const added: LessonAgendaEntry[] = [];
+  const items = (db.items ?? []).map((raw) => {
+    const item = raw as LegacyItem;
+    const { assignedForLesson, teacherQuestion, ...rest } = item;
+    if (assignedForLesson === undefined && teacherQuestion === undefined) return raw;
+
+    // The entry's own timestamps come from the item it was extracted from:
+    // data, never a clock.
+    const at = item.updatedAt ?? item.createdAt ?? '';
+
+    if (assignedForLesson === true) {
+      const base = `prep:${item.id}`;
+      if (!represented(base, 'preparation', item.id)) {
+        const id = freeId(base);
+        takenIds.add(id);
+        added.push({
+          id,
+          kind: 'preparation',
+          itemId: item.id,
+          instrumentId: item.instrumentId,
+          createdAt: at,
+          updatedAt: at,
+        });
+      }
+    }
+    if (typeof teacherQuestion === 'string' && teacherQuestion.trim().length > 0) {
+      const base = `question:${item.id}`;
+      if (!represented(base, 'question', item.id)) {
+        const id = freeId(base);
+        takenIds.add(id);
+        added.push({
+          id,
+          kind: 'question',
+          // Verbatim: not trimmed, not split, not re-wrapped.
+          text: teacherQuestion,
+          itemId: item.id,
+          instrumentId: item.instrumentId,
+          createdAt: at,
+          updatedAt: at,
+        });
+      }
+    }
+    // The legacy fields go only now that their content is represented.
+    return rest as PracticeItem;
+  });
+
+  return { ...db, items, lessonAgenda: [...(existing as LessonAgendaEntry[]), ...added] };
+}
+
+/** The agenda as it may arrive: possibly absent, possibly partially migrated. */
+type LegacyAgenda = { id?: string; kind?: string; itemId?: string } | undefined;
+
+/**
  * Bring a database of any known version fully to the current schema. Must
  * run BEFORE normalisation to the current shape — legacy fields the chain
  * reads (`pathwaySteps`, an attachment's `itemId`) would otherwise already be
@@ -157,5 +259,6 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   if (fromVersion < 9) next = migrateToV9(next);
   if (fromVersion < 10) next = migrateToV10(next);
   if (fromVersion < 11) next = migrateToV11(next);
+  if (fromVersion < 12) next = migrateToV12(next);
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

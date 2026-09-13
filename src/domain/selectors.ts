@@ -3,6 +3,7 @@ import type {
   Instrument,
   ISODate,
   Lesson,
+  LessonAgendaEntry,
   Pathway,
   PracticeBlock,
   PracticeItem,
@@ -10,6 +11,7 @@ import type {
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
 import { persianSearchMatch } from './farsi';
+import { isOpenQuestion, itemsPreparedForLesson } from './lessonAgenda';
 import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
@@ -96,9 +98,20 @@ export function nextLessonNumber(lessons: Lesson[], instrumentId: ID): number {
   return max + 1;
 }
 
-/** Items flagged to complete before their instrument's next lesson. */
-export function assignedForLesson(items: PracticeItem[]): PracticeItem[] {
-  return items.filter((i) => i.assignedForLesson);
+/**
+ * Items with a live commitment to prepare for a class. Derived from the ONE
+ * lesson-agenda collection, so "for next class" is always a commitment to a
+ * NAMED class with its own date — never a rolling flag that follows whichever
+ * class happens to be next.
+ */
+export function itemsCommittedForLesson(
+  items: PracticeItem[],
+  agenda: LessonAgendaEntry[],
+  lessons: Lesson[],
+  now: Date,
+): PracticeItem[] {
+  const prepared = itemsPreparedForLesson(agenda, lessons, now);
+  return items.filter((i) => prepared.has(i.id));
 }
 
 export function isDue(item: PracticeItem, now: Date): boolean {
@@ -137,8 +150,12 @@ export function overworkedItems(
   return items.filter((i) => isSaturated(byItem.get(i.id) ?? [], now));
 }
 
-export function itemsWithTeacherQuestion(items: PracticeItem[]): PracticeItem[] {
-  return items.filter((i) => i.teacherQuestion && i.teacherQuestion.trim().length > 0);
+/** Items that carry at least one still-open teacher question. */
+export function itemsWithOpenQuestion(items: PracticeItem[], agenda: LessonAgendaEntry[]): PracticeItem[] {
+  const withQuestion = new Set(
+    agenda.filter(isOpenQuestion).map((q) => q.itemId).filter((id): id is ID => !!id),
+  );
+  return items.filter((i) => withQuestion.has(i.id));
 }
 
 export function dueReviews(reviews: Review[], now: Date): Review[] {

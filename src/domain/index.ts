@@ -14,6 +14,7 @@ export * from './practiceSession';
 export * from './farsi';
 export * from './persian';
 export * from './repertoire';
+export * from './lessonAgenda';
 export * from './questions';
 export * from './recordings';
 export * from './setarClasses';

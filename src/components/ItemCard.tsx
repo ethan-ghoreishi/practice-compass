@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import {
   FOCUS_LABELS,
+  isOpenQuestion,
   ITEM_TYPE_LABELS,
   itemOwnedAttachments,
   type PracticeItem,
@@ -17,6 +18,9 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
   // ownerId alone can collide with a lesson's id, so count only via the
   // shared ownerType+ownerId predicate — never a lesson's own attachment.
   const fileCount = itemOwnedAttachments(db.attachments, item.id).length;
+  // Open questions come from the one agenda collection — an item can carry
+  // several, and a question is never evidence the item needs practice.
+  const openQuestionCount = db.lessonAgenda.filter((e) => isOpenQuestion(e) && e.itemId === item.id).length;
 
   return (
     <Link to={`/items/${item.id}`} state={{ from: '/repertoire' }} className="card card-link">
@@ -66,9 +70,9 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
             <ClockIcon width={12} height={12} /> review {relativeDay(item.nextReviewDate, now)}
           </span>
         )}
-        {item.teacherQuestion && (
+        {openQuestionCount > 0 && (
           <span className="row warn-flag" style={{ gap: 4 }}>
-            <FlagIcon width={12} height={12} /> teacher
+            <FlagIcon width={12} height={12} /> {openQuestionCount} to ask
           </span>
         )}
         {fileCount > 0 && (

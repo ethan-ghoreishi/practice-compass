@@ -49,7 +49,6 @@ export default function ItemForm({
     Boolean(
       initial.currentProblem ||
         initial.bestStrategy ||
-        initial.teacherQuestion ||
         initial.tags ||
         Object.entries(initial.persian).some(([k, val]) => val && !['dastgahAvaz', 'form', 'composer', 'gusheh'].includes(k)) ||
         Object.values(initial.guitar).some(Boolean),
@@ -352,7 +351,7 @@ export default function ItemForm({
         style={{ background: 'none', border: 'none', textAlign: 'left' }}
         onClick={() => setShowWorking((s) => !s)}
       >
-        {showWorking ? '− Hide' : '+ Add'} working notes (problem, strategy, teacher question…)
+        {showWorking ? '− Hide' : '+ Add'} working notes (problem, strategy, tags…)
       </button>
       {showWorking && (
         <>
@@ -361,9 +360,6 @@ export default function ItemForm({
           </Field>
           <Field label="Best strategy">
             <textarea className="textarea" dir="auto" value={v.bestStrategy} onChange={(e) => set({ bestStrategy: e.target.value })} />
-          </Field>
-          <Field label="Teacher question">
-            <textarea className="textarea" dir="auto" value={v.teacherQuestion} onChange={(e) => set({ teacherQuestion: e.target.value })} />
           </Field>
           <Field label="Tags" hint="Comma-separated">
             <input className="input" dir="auto" value={v.tags} onChange={(e) => set({ tags: e.target.value })} placeholder="e.g. foroud, evenness" />

@@ -21,6 +21,7 @@ import {
   type PathwayRoutine,
   type PracticeItem,
   type Recommendation,
+  preparationDatesByItem,
 } from '../domain';
 import { sessionElapsedSeconds, useStore, type ActiveSession } from '../store/useStore';
 import { getItem, instrumentName } from '../store/lookups';
@@ -485,9 +486,15 @@ function SessionView({
   const navigate = useNavigate();
 
   const lessonDates = useMemo(() => nextLessonDates(db.lessons, now), [db.lessons, now]);
+  // Lesson urgency comes from each item's OWN commitment, so a piece
+  // committed for a later class never inherits the next class's deadline.
+  const preparationDates = useMemo(
+    () => preparationDatesByItem(db.lessonAgenda, db.lessons, now),
+    [db.lessonAgenda, db.lessons, now],
+  );
   const recs = useMemo(
-    () => recommendForInstrument(instrumentId, db.items, db.blocks, now, lessonDates),
-    [instrumentId, db.items, db.blocks, now, lessonDates],
+    () => recommendForInstrument(instrumentId, db.items, db.blocks, now, preparationDates),
+    [instrumentId, db.items, db.blocks, now, preparationDates],
   );
 
   const items = useMemo(() => db.items.filter((i) => i.instrumentId === instrumentId), [db.items, instrumentId]);
@@ -495,8 +502,8 @@ function SessionView({
 
   const lessonDate = lessonDates.get(instrumentId);
   const classWork = useMemo(
-    () => (lessonDate ? items.filter((i) => i.assignedForLesson) : []),
-    [items, lessonDate],
+    () => items.filter((i) => preparationDates.has(i.id)),
+    [items, preparationDates],
   );
 
   const hiddenToday = notNow.date === todayISODate(now) ? new Set(notNow.ids) : new Set<string>();
