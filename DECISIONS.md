@@ -52,7 +52,15 @@ Verified against the real running Teacher Report page with DELIBERATELY MISMATCH
 both directions (Farsi question line followed by an English one, and the reverse; an English
 item title over a Farsi question, and the reverse), at a 350px forced width: each bullet's
 computed `direction` and its bullet dot's measured x-position follow that line alone, while
-the item's ordinal still tracks the question's first line.
+the item's ordinal still tracks the question's first line. In the Farsi-titled item, the
+bare Farsi first line computes `rtl` with its dot at x 327–333 (the right edge) and the
+isolated English second line computes `ltr` with its dot at 0–6; in the English-titled item
+the mirror holds — bare English line `ltr`, dot at 19–25, isolated Farsi line `rtl`, dot at
+344–350 — with the ordinal at 0–11 rather than 341–350. The `direction.test.ts` checks are
+shape checks over the source, so these measured figures are the only evidence that what the
+shape encodes actually renders; the discovery set behind the alignment check spans four
+files (Repertoire ×2, RoutineRunner, StartBlock, Today), not the counterexample's own file
+alone, so it cannot pass by having quietly emptied.
 
 **The guard.** The sealed finding was right that the existing ac-5 check only required one
 direction-aware group SOMEWHERE per file, which neither counterexample could fail.
