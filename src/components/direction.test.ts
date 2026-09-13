@@ -745,6 +745,9 @@ function disablesNativeMarker(tag: string): boolean {
  *  mechanism that lets its own content (an ordinal, a badge) reorder with
  *  its own resolved direction instead of depending on a static layout. */
 function isDirectionAwareContainer(liTag: string): boolean {
+  // `.row` is `display: flex` in global.css — this is a source scan trusting
+  // a fact declared in a different file; renaming or redefining that class
+  // would silently blind this check.
   if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
   const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
   return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);

@@ -92,8 +92,19 @@ export default function ClassQuestions({
            wrapper around title/question/details — dir="auto" skips a
            descendant that has its own dir when hunting for a first strong
            character, so giving the wrapper one would leave the <li> with no
-           resolution source of its own. */
-        <ol className="stack-sm" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+           resolution source of its own.
+
+           role="list": WebKit drops an <ol>/<ul>'s own list semantics from
+           the accessibility tree once `list-style: none` removes its visual
+           marker — an explicit role restores VoiceOver's "list, N items" and
+           each <li>'s position announcement, which the visible ordinal
+           (aria-hidden below, so it isn't announced twice) does not carry
+           on its own. */
+        <ol
+          role="list"
+          className="stack-sm"
+          style={{ margin: 0, padding: 0, listStyle: 'none' }}
+        >
           {questions.map((q, i) => (
             <li key={q.itemId} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
               <span className="tiny faint" aria-hidden="true" style={{ flexShrink: 0 }}>

@@ -20,7 +20,11 @@ when hunting for a first strong character, so giving the wrapper one would leave
 (`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
 now asserts the mechanism directly — no native marker, and the `<li>` is itself a
 flex/grid container — rather than measuring a proxy for it; each half was confirmed to
-fail on its own when reverted.
+fail on its own when reverted. `role="list"` on the `<ol>` pays back the one accessibility
+cost of removing the marker: WebKit drops an `<ol>`'s list semantics from the
+accessibility tree once `list-style: none` takes its marker away, which would have gone
+unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
+surfaced.
 
 The same finding covered `ClassQuestions`' `Problem:`/`Last time:` lines: the established
 bare-label-then-isolate shape gives the value its own bidi CHARACTER order but never its

@@ -807,6 +807,13 @@ outright, and that `<li>` must itself be a flex/grid container able to reorder i
 content — a shape check on the fix itself, not a measurement around a browser behaviour
 nothing here can verify.
 
+Removing the native marker has an accessibility cost the visual fix alone doesn't pay
+back: WebKit drops an `<ol>`'s own list semantics from the accessibility tree once
+`list-style: none` removes its marker, so VoiceOver on the owner's own iPhone — the exact
+device this fix targets — would stop announcing "list, N items" or a question's position
+in it. `role="list"` on the `<ol>` restores that; the visible ordinal carries
+`aria-hidden` so it is not announced a second time on top of it.
+
 **A LABEL'S VALUE GETS ITS OWN ALIGNMENT WHEN IT WRAPS, NOT JUST ITS OWN BIDI ORDER.**
 The same sixth finding covered `ClassQuestions`' `Problem:`/`Last time:` lines. The
 established shape — a fixed English label left bare, immediately followed by the value in
