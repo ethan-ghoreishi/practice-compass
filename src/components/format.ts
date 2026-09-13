@@ -59,7 +59,8 @@ export function pluralize(n: number, word: string): string {
 
 /**
  * A free-text field's own non-empty lines. There is no data structure for
- * "multiple questions" — `teacherQuestion`/`currentProblem`/`lastObservation`
+ * "multiple questions" — a lesson-agenda question's text, `currentProblem` and
+ * `lastObservation`
  * are each one `<textarea>`, so two distinct questions typed for the same
  * item live as two lines of one string. This is how a renderer tells "one
  * line" (plain text) from "several" (worth a bulleted breakdown) apart,

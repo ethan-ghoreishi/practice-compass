@@ -566,8 +566,8 @@ which is the only place that rule is set — it is NOT global, and display text 
 direction from the grouping rule below), then
 create/link the concrete practice items (`lesson.itemIds` — a link, never ownership;
 unlinking keeps the item). "Originated in this lesson" (`itemIds`) is separate from
-"work on before the next class" (`assignedForLesson`), which gives a per-instrument
-priority boost that climbs as that instrument's next lesson approaches
+"prepare this FOR that class" — a `preparation` entry in the lesson agenda (see below),
+which gives a priority boost climbing towards ITS OWN class's date
 (`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app — a monthly
 class is a real commitment, not a manufactured streak. Keep it per-instrument and
 generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
@@ -592,13 +592,63 @@ between `// [scan:begin]`/`// [scan:end]` markers and is regenerated from the re
 folder by `npm run scan:setar` (`scripts/scan-setar-classes.mjs`, stdlib, dry-run by
 default; pure helpers unit-tested) — references only, never copying bytes.
 
-## Questions for next class
+## Lesson commitments and questions are ONE typed collection (schema v12)
 
-`questionsForNextClass` (`src/domain/questions.ts`, tested) collects items where
-`assignedForLesson === true` AND `teacherQuestion` is non-empty, scoped to one
-instrument, ordered by the Persian collator. Shown on the upcoming lesson and the
-Teacher Report with Copy / Download / print-friendly export (`ClassQuestions`). A
-question is NEVER auto-cleared by practising; the user edits the item to remove it.
+`PracticeDB.lessonAgenda` is the single home for "prepare this before that class" and
+"ask this at that class" (`src/domain/lessonAgenda.ts`, pure and tested; queries in
+`questions.ts`; UI in `src/components/LessonAgenda.tsx`). It replaced the item's rolling
+`assignedForLesson` boolean and its single mutable `teacherQuestion` string, neither of
+which could name WHICH class it meant or hold more than one answer.
+
+- **Two kinds, one discriminated union.** `preparation` links an item to a lesson;
+  `question` carries its own text, an OPTIONAL item, a lesson target and an open → asked
+  lifecycle with an optional answer. Never separate independently toggleable booleans
+  for next-class / asked / archived / completed.
+- **A commitment names ITS OWN class, and that class's date is its only deadline.**
+  `preparationDatesByItem` is the ONLY channel by which lesson intent reaches practice
+  priority. A commitment for March never inherits January's deadline, a past commitment
+  carries none, and an unassigned one carries none.
+- **A QUESTION CHANGES NO PRACTICE PRIORITY, EVER.** It used to add three points and
+  quietly reorder the day around a note to self.
+- **An entry with no lesson is visibly UNASSIGNED, never guessed onto a class.** New
+  entries default to the nearest upcoming lesson on that instrument with the date named
+  on screen; with no future lesson they are captured unassigned.
+- **Questions are selected BY LESSON ID** (`questionsForLessonId` /
+  `openQuestionsForLessonId`), not by instrument — every future class used to show the
+  identical list. `ClassQuestions` still exports them (Copy / Download / print), and a
+  refused clipboard now says so in a live region and offers a selectable textarea.
+- **Asked is explicit and reversible, and stays HISTORY.** Marking asked logs no
+  practice and changes no urgency; the entry leaves the open lists, stays with the class
+  it was asked at, and is never copied forward. An unasked question on a past class
+  stays there until the owner explicitly moves it (`retargetEntry`).
+- **Detaching preserves identity.** Deleting a lesson leaves its entries unassigned with
+  `detachedFromLessonId` set; deleting an item removes its preparations (a commitment to
+  prepare something that no longer exists means nothing) but KEEPS its questions with
+  `detachedFromItemId` — a question and the teacher's answer are the owner's record of a
+  class, not a property of the item. Nothing here deletes an item or its practice.
+- **A question is never cleared by practising.** `CloseBlock` can raise one; it becomes
+  its OWN entry and never overwrites another, and raising it does not commit the item to
+  a class.
+
+**The v11 → v12 migration converts legacy intent exactly once, and guesses nothing.**
+`migrateToV12` turns each `assignedForLesson === true` into ONE unassigned preparation
+and each non-empty `teacherQuestion` into ONE unassigned question — whatever the boolean
+said, because the two were always independent facts. It reads NO clock (its timestamps
+come from the item's own), so the same database migrates identically on two devices run
+on different days. Multiline text stays ONE question. Ids are deterministic
+(`prep:<itemId>` / `question:<itemId>`, with a `~2` suffix only when an unrelated entry
+already owns one), the conversion is presence-aware, and the legacy fields are removed
+only once their content is represented — so it is idempotent, including over an
+already-current database whose agenda is legitimately empty.
+
+**Inbound validation rejects invalid NEW intent and tolerates legacy debris.**
+`validateLessonAgenda` + `validateSchedulingFields` run inside `validateDB`, before
+`replaceAllBlobs` and before any install: unknown kinds, missing ids, duplicate ids, a
+missing instrument, empty question text, unreadable dates and a target that RESOLVES to
+a different instrument all refuse the import with actionable detail. A reference that no
+longer resolves at all (an item or class deleted years ago) is tolerated — every reader
+copes with it, and refusing a restore over one is the data loss this guard exists to
+prevent, not an example of it.
 
 ## Persian text is canonical, and direction-aware
 
@@ -898,8 +948,8 @@ a second time.
 
 **THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
 NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
-Seventh/Eighth findings' — used seed data where an item's title and its `teacherQuestion`
-happen to share a language. That is exactly the one condition under which the underlying
+Seventh/Eighth findings' — used seed data where an item's title and its teacher question
+(then an item field, now a `lessonAgenda` entry) happen to share a language. That is exactly the one condition under which the underlying
 bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
 descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
 and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
@@ -915,9 +965,10 @@ sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse c
 an item's title is free text the owner chooses for their own reasons and has no obligation
 to share a language with a teacher's question about it.
 
-The fix reverses which of the two is left bare. `questionsForNextClass` guarantees
-`q.question` is non-empty on every row this component ever renders (it filters on exactly
-that field); `q.title` carries no such guarantee and is authored completely independently.
+The fix reverses which of the two is left bare. The lesson-agenda query behind this list
+(`openQuestionsForLessonId`, formerly `questionsForNextClass`) guarantees `q.question` is
+non-empty on every row this component ever renders — a question entry has no meaning
+without its text; `q.title` carries no such guarantee and is authored completely independently.
 The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
 applied to the OTHER field this time), so it renders in its own correct direction but is
 taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
@@ -1152,8 +1203,8 @@ RTL run, and excluding it is also what keeps this rule from demanding an unreque
 change on the deliberately centred practice screens.
 
 **EVERY LINE OF A MULTI-LINE FREE-TEXT FIELD RESOLVES ITS OWN DIRECTION — EXCEPT THE ONE
-THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for
-`teacherQuestion`/`currentProblem`/`lastObservation` (one `<textarea>` each, so several
+THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for the question text and
+`currentProblem`/`lastObservation` (one `<textarea>` each, so several
 distinct questions live as several lines of one string; `splitLines` in `format.ts`, tested)
 first shipped with every bullet bare, on the argument that lines typed into one box in one
 sitting share one direction. They do not — a Farsi question and an English one go into the
@@ -1306,20 +1357,75 @@ exports, backups and synced data.
 
 ## Review scheduling stays explainable
 
-`computeReview` (in `scheduling.ts`) is an **SM-2 spaced-repetition engine** adapted to
-music: per item it tracks `srReps` / `srEase` / `srIntervalDays`; good reviews expand the
-interval, a slip resets it, and importance/difficulty pull material a little sooner. It
-supports per-item overrides (Auto / fixed cadence / Manual) and returns a plain `rationale`.
-Keep it deterministic and explainable — don't turn it into an opaque model, and keep the
-SM-2 tests green. Item status labels are plain-language for the user — keep the enum keys
-stable and only change the display labels in `labels.ts`.
+`decideReview` (in `scheduling.ts`) is the ONE pure decision behind closing a block: the
+date disposition, the SM-2 transition and the sentence that explains them, together.
+`planNextReview` previews it, `computeReviewOutcome` turns it into the write, and the
+close screen renders it — three renderings of one value, never three derivations. Per
+item it tracks `srReps` / `srEase` / `srIntervalDays`, plus `nextReviewSource` (who chose
+the current date) and `srLastProgressDay` (the one-advance-per-day marker). Every number
+is published in `docs/scheduling-evidence.md`.
+
+**PRACTICE IS EXPOSURE; ONLY ELIGIBLE RETENTION EVIDENCE ADVANCES SPACING.** Eligible
+means ALL THREE of: a logged `stable_alone` / `stable_in_context` / `performable`; at or
+after the pending due date (or the first opportunity, when no date exists); and spacing
+not already advanced today. Each of those independently blocks an advance. A missing,
+`undefined` or `not_logged` result never advances — which is exactly what a routine block
+is, so routine exposure can never become a retention judgement.
+
+**`same` IS NOT FAILED RECALL.** This engine used to map it to a quality of 2, which fell
+into the slip branch and reset a schedule the musician had every reason to trust. No
+improvement is distinct from deterioration. Before a due date, `same` and
+`slightly_better` change nothing; AT a due automatic review they REPEAT the current gap
+(the configured first gap if there is none) without touching repetitions or ease, and
+neither is ever described as a slip.
+
+**ONLY `worse` MAY BRING AN AUTOMATIC DATE FORWARD**, to the EARLIER of the existing date
+and the repair proposal — never later, so a repeated negative close cannot slide
+tomorrow's repair into next week. Nothing else is read as failure: not duration, not
+mode, not difficulty, not a teacher question, not a stale clock.
+
+**A DATE THE OWNER OWNS IS NOT THE ENGINE'S TO MOVE.** A FUTURE date is PROTECTED when
+the owner chose it (typed, snoozed, or re-armed — `nextReviewSource: 'user'`), when the
+item is on a fixed cadence, or when its provenance predates this field and is therefore
+unknown. Early practice, `worse` included, leaves it exactly where it is. Protection ends
+when the date comes due: it is then the review, whoever chose it. Manual mode with no
+newly chosen date preserves the pending schedule — an empty automatic proposal is not an
+implicit "no".
+
+**ONE ADVANCE PER ITEM PER LOCAL CALENDAR DAY**, recorded as `srLastProgressDay`. It is
+an administrative eligibility marker, never a measured retention score: clearing and
+re-arming the date, a reload, a sync, or simply closing a second block cannot buy a
+second expansion.
+
+**THE RATIONALE REPORTS THE FINAL SAVED DATE.** It used to quote the raw setting: a
+three-day repair gap on an easy, unimportant item produced a four-day date and said
+"three days".
+
+**A CLOSE THAT ONLY KEEPS A DATE COMPLETES NOTHING.** `ReviewOutcome.completeOpenReviews`
+is false for a `keep`, so extra practice before a review leaves that pending row OPEN —
+it is not the review it was scheduled for. `closeOverrideDate` (`format.ts`, tested) is
+the seam that makes this hold: the close screen SHOWS the date that will stand, which for
+an early session is the item's existing one, and passing that back as an explicit
+override would both stamp every engine-proposed date as the owner's and turn every keep
+into a write. Only a date actually typed into the field is an override.
+
+**"Schedule again" is administration, not practice.** `scheduleAgainPlan` sets ONE date on
+the item and its pending row, CREATING the row when none is open (the case the old date
+helper could not reach, which left a declined review unreachable from the item's own
+screen). No block, no result, no statistics, no SM-2 movement.
+`pendingScheduleConflict` REPORTS legacy open rows that disagree rather than silently
+discarding one.
+
+Keep it deterministic and explainable — don't turn it into an opaque model. Item status
+labels are plain-language for the user — keep the enum keys stable and only change the
+display labels in `labels.ts`.
 
 **The engine is visible AND adjustable, never magic.** `SchedulingParams`
 (`src/domain/types.ts`) holds bounded knobs — the SM-2 first/second/slip-reset gaps and
 the Session Plan minute shares — persisted as an OPTIONAL `PracticeDB.settings` (schema
 **v10**; `undefined ⇒ DEFAULT_SCHEDULING_PARAMS`, so old backups import unchanged and
 `validateDB` carries the field through). `DEFAULT_SCHEDULING_PARAMS` reproduces the
-historical constants EXACTLY — `computeReview`/`planNextReview` take an optional `params`
+historical constants EXACTLY — `decideReview`/`planNextReview` take an optional `params`
 whose default is byte-identical to before (a snapshot test guards this). Every call site
 that shows OR persists a date must thread the SAME params (`db.settings`): the store into
 `closeSession`, `CloseBlock` into both preview calls — the date shown must equal the date
@@ -1337,13 +1443,44 @@ one-sentence reason. It **reuses the same `scoreItems` priority numbers** as the
 recommendation engine — no second, hidden ranking. It is organisation, never judgement:
 no scores, no "optimal" claims, no gamification.
 
-- **The invariant: segment minutes ALWAYS sum to the budget** (`buildSessionPlan`,
-  `allocateMinutes` — largest-remainder split, min 2/segment, drops the lowest-priority
-  segments when the budget can't seat them all). Keep it deterministic (explicit `now`,
-  stable score-desc-then-id tiebreaks) and keep the sum==budget tests green across
-  15/20/30/45/60 and the edge cases (0 items, 1 item, all-saturated, everything
-  practised-today → falls back and says so). `redistributePlan`/`swapSegment` are the pure
-  editors; the preview page tweaks a LOCAL copy before `startPlan`.
+- **The invariant: minutes NEVER exceed the budget, and normally use all of it**
+  (`buildSessionPlan`, `allocateMinutes` — weighted split, min 2 and max 25 per segment,
+  drops the lowest-priority segments when the budget can't seat them all). An HONEST
+  REMAINDER is allowed and stated in the summary: two items and two hours is not a reason
+  to propose a sixty-minute block on each. Budgets are whole minutes from 5 to 120;
+  anything else (non-finite, zero, out of range) is REJECTED at the boundary
+  (`validateBudgetMinutes`) rather than clamped into a session the owner never chose.
+  Keep it deterministic (explicit `now`, stable score-desc-then-id tiebreaks) and keep
+  the edge cases green (0 items, 1 item, resting-only, everything practised-today →
+  repeats honestly and says so). `redistributePlan`/`swapSegment` are the pure editors and
+  preserve each segment's identity, role and reason; the preview page tweaks a LOCAL copy
+  before `startPlan`.
+- **THE ANCHOR COMES FROM REAL URGENCY, BEFORE ANY ROLE DECORATION.** A five-minute
+  session used to pre-select new deep work and only then consider an item committed for
+  tomorrow's class. Under 12 minutes the session is ONE useful main focus, no warm-up and
+  no cool-down. Usable material, improvisation, rhythm and theory are ordinary useful
+  work even though they fit none of the old buckets.
+- **Warm-up is a ROLE an ordinary familiar item fills, never a tag.** `isWarmupSuitable`
+  wants low demand (difficulty ≤ 3) AND evidence of familiarity (a settled status or 3+
+  real sessions) — an unfamiliar demanding étude is not a warm-up because it is labelled
+  "technique". It never consumes a due review or a class commitment, its share
+  (`warmupShare`) is a PINNED allocation target rather than a weight, and with nothing
+  suitable it is omitted honestly.
+- **ONE eligibility policy** (`isProactiveCandidate`) across Today, the initial build,
+  regeneration, swaps and every fallback: resting material never surfaces in a
+  suggestion, and a fallback never widens to reach it. Direct, deliberate practice of a
+  resting item stays available and its review data is untouched.
+- **Over-practice is bounded, decaying recent MINUTES**, not a block count and not a run
+  of identical results (`recentExposureMinutes`, `exposurePenalty`). Three "same" results
+  in January are a strategy hint in January, not a permanent penalty in September, and
+  one 30-minute session is the same exposure as three 10-minute ones. A modest diversity
+  preference (≤ 2 points, from the item's existing strand/type) is subordinate to every
+  real need.
+- **A preview is rebuilt for what it is FOR** — instrument and budget — and is marked as
+  needing regeneration when the underlying practice data changes beneath it, rather than
+  silently starting stale work. `beginPlanSegment` revalidates the item LIVE
+  (`planSegmentStartable`): deleted or moved to another instrument ⇒ visibly skipped,
+  another clock running ⇒ refused. Skipping logs nothing.
 - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
   warm-up timer) stays untouched. The runner orchestrates the existing
   start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
@@ -1464,7 +1601,10 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  `SCHEMA_VERSION`. Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+  adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
+  neither is ever guessed for old data, so an existing future date keeps UNKNOWN
+  provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
   it belonged to — but only when that pathway names an instrument that actually resolves
   in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
   reference all leave the routine honestly unscoped rather than inventing one), and never
@@ -1478,6 +1618,25 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
 `npm test` must pass. The suite guards the behaviour that makes the recommendations
 trustworthy; if you change the scoring formula or scheduling intervals, update the tests
 in the same change and make sure they still describe correct behaviour.
+
+**Two of them drive the REAL app in a real browser.**
+`tests/daily-practice.browser.test.ts` and `tests/lesson-agenda.browser.test.ts` are
+ordinary Vitest tests using Playwright as a LIBRARY through `tests/practiceBrowser.ts`,
+so their results land in the same report everything else does — a standalone Playwright
+run would prove nothing to the check engine. Each starts its own Vite dev server and its
+own browser CONTEXT (its own IndexedDB, its own localStorage, no GitHub and no NAS), at a
+390×844 viewport, with the clock fixed so every derived date is deterministic. They seed
+themselves by importing a fixture through the real Settings control and drive rendered
+controls by role and name — never a debug hook, never a source regex.
+
+Local setup, once: `npx playwright install chromium`. **A missing browser FAILS these
+tests with that instruction; it never skips them** — a check that quietly passes because
+it did not run is worse than no check at all. All three CI workflows install the browser
+before `npm test` for the same reason.
+
+`tests/fixtures/practice-decisions-v11.json` is the legacy (pre-agenda) database; the
+v12 one is its migrated output plus the scheduling state a v12 build writes. The unit
+tests read the SAME bytes the journeys import, through Vite's `?raw`.
 
 ## Roadmap items are allowed (they were designed for)
 
