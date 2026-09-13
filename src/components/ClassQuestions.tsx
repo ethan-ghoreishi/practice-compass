@@ -71,32 +71,59 @@ import { splitLines } from './format';
  * item". A bullet carries no ordinal meaning, so it can never collide with
  * the outer numbering.
  *
- * The bullet is a real element, the first child of a flex `.row` — the same
- * "never rely on a native `::marker`'s own logical position" policy the
- * outer ordinal follows — but, UNLIKE the outer `<li>`, it carries NO
- * `dir="auto"` of its own. These lines all came out of one field the
- * musician wrote in one sitting, not independently authored values, so they
- * share whichever direction that field already resolves to rather than each
- * choosing one for itself. Left bare they inherit it and are never skipped
- * by an ancestor's own `dir="auto"` hunt — which matters specifically for
- * the QUESTION: the outer `<li>` anchors on it being bare, and an isolate
- * here (as `dir="auto"` on the title already is) would remove a multi-line
- * question from that hunt entirely, silently defaulting the whole item's
- * direction to LTR.
+ * EACH LINE IS INDEPENDENTLY AUTHORED, so each resolves its OWN direction.
+ * A sealed finding rejected the first pass at this, which left every bullet
+ * bare on the argument that lines from one field share one direction: they
+ * do not. A musician who types a Farsi question and an English one into the
+ * same box gets two lines whose languages genuinely differ, and leaving
+ * them all bare pinned every following line to the FIRST line's direction —
+ * an English line dragged RTL, or a Farsi one dragged LTR, with its bullet
+ * on the wrong side.
+ *
+ * The catch the first pass was right about is real, though: `dir="auto"`
+ * skips any descendant carrying its own `dir` when hunting for a first
+ * strong character, and the outer `<li dir="auto">` (and the Problem /
+ * Last time value wrapper) has nothing else left to hunt — the title is
+ * already isolated. Isolating EVERY line would leave the whole item with no
+ * resolution source and a silent LTR fallback, regressing the ninth
+ * finding's "the ordinal always tracks the question".
+ *
+ * Both hold one way only: the FIRST line is the ANCHOR and stays bare, so
+ * the enclosing group resolves from it — which means that line still
+ * follows its own language, since the direction it inherits is the one it
+ * produced. Every line AFTER it carries its own `dir="auto"` on the row, so
+ * its text and its bullet both follow that line alone. The two branches are
+ * written out literally rather than as `dir={i === 0 ? undefined : 'auto'}`:
+ * direction.test.ts is a source scanner, and a computed attribute is
+ * invisible to every guard in it.
  */
+function bullet(line: string, key: number, own: boolean) {
+  const dot = (
+    <span aria-hidden="true" className="tiny faint" style={{ flexShrink: 0 }}>
+      •
+    </span>
+  );
+  const style = { alignItems: 'flex-start', gap: 6 } as const;
+  // Two literal branches, not one computed dir — see the note above.
+  return own ? (
+    <li key={key} dir="auto" className="row" style={style}>
+      {dot}
+      <span className="grow">{line}</span>
+    </li>
+  ) : (
+    <li key={key} className="row" style={style}>
+      {dot}
+      <span className="grow">{line}</span>
+    </li>
+  );
+}
+
 function renderFreeText(text: string): ReactNode {
   const lines = splitLines(text);
   if (lines.length <= 1) return text;
   return (
     <ul role="list" style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0, listStyle: 'none' }}>
-      {lines.map((line, i) => (
-        <li key={i} className="row" style={{ alignItems: 'flex-start', gap: 6 }}>
-          <span aria-hidden="true" className="tiny faint" style={{ flexShrink: 0 }}>
-            •
-          </span>
-          <span className="grow">{line}</span>
-        </li>
-      ))}
+      {lines.map((line, i) => bullet(line, i, i > 0))}
     </ul>
   );
 }

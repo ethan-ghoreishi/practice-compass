@@ -1129,6 +1129,61 @@ existing inline `<span dir="ltr">` isolate (it was previously a bare, undirected
 but the embedded instrument name inside that generated sentence stays open pending a
 domain-layer fix and its own lane.
 
+**A RESOLVED DIRECTION THAT NEVER REACHES THE ALIGNMENT IS NOT A FIX, AND NEITHER IS ONE
+WITH NOTHING TO RESOLVE FROM.** A tenth sealed finding named two counterexamples, both in
+this same family, and both invisible to the guard as it stood.
+
+Repertoire's `PathwayCard` rendered a user-authored `pathway.name` inside
+`<button style={{ textAlign: 'left' }}>` with NO direction-resolving group between them. A
+Farsi pathway name shaped correctly — the browser's bidi algorithm needs no help for that —
+and then sat pinned to the English edge, split from its own instrument/stage caption
+underneath. The inline `<span dir="auto">` already on that caption could never have fixed
+it: `text-align` is a BLOCK concept, which is exactly why this file's own "an isolate must
+be INLINE" rule exists. The fix is ONE group carrying `dir="auto"` AND re-declaring
+`textAlign: 'start'`, sitting INSIDE the button (the Balance-row precedent — the chevron row
+and the progress bar are layout, not text). Either half alone leaves the name where it was:
+a group with no `start` resolves a direction the alignment never hears about, and a `start`
+with no group has no direction to resolve. The same shape, audited across the app, was live
+in two more places and fixed with it — Insights' `<th style={CELL} dir="auto">` (CELL pinned
+`textAlign: 'left'` over an instrument name the owner can rename to Farsi; it is `'start'`
+now) and RoutineRunner's "Recorded" rows under a card pinning `'left'`. `center` is
+deliberately NOT a forcing value: centred text points at no edge, so it cannot misalign an
+RTL run, and excluding it is also what keeps this rule from demanding an unrequested layout
+change on the deliberately centred practice screens.
+
+**EVERY LINE OF A MULTI-LINE FREE-TEXT FIELD RESOLVES ITS OWN DIRECTION — EXCEPT THE ONE
+THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for
+`teacherQuestion`/`currentProblem`/`lastObservation` (one `<textarea>` each, so several
+distinct questions live as several lines of one string; `splitLines` in `format.ts`, tested)
+first shipped with every bullet bare, on the argument that lines typed into one box in one
+sitting share one direction. They do not — a Farsi question and an English one go into the
+same field — and bare lines all inherit the FIRST line's direction, dragging an English line
+RTL with its bullet on the wrong side, or the reverse. But the catch that argument was right
+about is real, and is why this is not simply "isolate every line": `dir="auto"` skips any
+descendant carrying its own `dir`, and the enclosing `<li dir="auto">` (and the
+Problem/Last-time value wrapper) has nothing else left to hunt once the title is isolated —
+isolating every line would leave the item with no resolution source and a silent LTR
+fallback, which is the ninth finding all over again. Both hold ONE way only: the FIRST line
+is the ANCHOR and stays BARE — it still follows its own language, because the direction it
+inherits is the direction it produced — and every line AFTER it carries its own `dir="auto"`
+on the row, so that line's text and its bullet follow it alone. The two branches are written
+out LITERALLY (never `dir={i === 0 ? undefined : 'auto'}`): `direction.test.ts` is a source
+scanner, and a computed attribute is invisible to every guard in it.
+
+`direction.test.ts` holds both closed with checks that assert the invariants rather than the
+presence of a group somewhere in a file — which is what the finding correctly said ac-5's
+own check could never fail on. The first discovers every element carrying a title class
+whose body renders an opaque data expression, and, when anything above it forces
+`textAlign: 'left'`/`'right'` — inline OR through a module-level style constant it names,
+the shape the Insights counterexample was actually written in — requires a `dir="auto"`
+group below that forcing element which re-declares `textAlign: 'start'`; it also fails any
+`dir="auto"` group that pins a physical alignment on ITSELF. The second asserts the anchor
+shape directly: exactly one bare branch, exactly one `dir="auto"` branch, and the isolate on
+the branch chosen for lines AFTER the first. Seven mutations were confirmed to fail before
+either was committed. Verification used DELIBERATELY MISMATCHED languages in both directions
+against the real running pages — the lesson this file keeps relearning, applied before the
+fact this time rather than after.
+
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
 a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard

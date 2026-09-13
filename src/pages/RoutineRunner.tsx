@@ -174,8 +174,13 @@ export default function RoutineRunner() {
         {recorded.size > 0 ? (
           <div className="card stack-sm" style={{ textAlign: 'left' }}>
             <div className="section-label">Recorded</div>
+            {/* textAlign 'start' on the row itself: the card above pins a
+                physical 'left', so without this the row resolves a Farsi
+                item's direction but never carries it to the alignment —
+                the title shapes RTL and still hugs the English edge.
+                Identical to 'left' for an English title. */}
             {[...recorded.entries()].map(([itemId, minutes]) => (
-              <div key={itemId} className="row between" dir="auto">
+              <div key={itemId} className="row between" dir="auto" style={{ textAlign: 'start' }}>
                 <span className="truncate">
                   {getItem(db, itemId)?.title ?? 'Item'}
                 </span>

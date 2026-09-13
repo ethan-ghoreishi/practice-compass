@@ -132,6 +132,7 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
 const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
   { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
   { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: 'row' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: 'row' },
   { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'small' },
   { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
   { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
@@ -182,6 +183,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Repertoire.tsx', tagName: 'link', classValue: 'row between small card-link' },
+  { file: 'pages/Repertoire.tsx', tagName: 'div', classValue: 'stack-sm' },
   { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'row between' },
   { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: '' },
@@ -1164,6 +1166,117 @@ function instrumentNameOccurrences(file: string): { at: number; end: number }[] 
   return occurrences.sort((a, b) => a.at - b.at);
 }
 
+// --- a forced physical alignment never overrides a data title's own ------
+//
+// An EIGHTH SEALED FINDING found Repertoire's PathwayCard rendering a
+// user-authored pathway name inside a `<button style={{ textAlign: 'left' }}>`
+// with no direction-resolving group anywhere between them: a Farsi pathway
+// name shaped correctly (the browser's own bidi algorithm needs no help for
+// that) and then sat pinned to the English edge, split from the instrument /
+// stage caption underneath it. The inline instrument isolate already on that
+// caption could never fix it — `text-align` is a BLOCK concept, and this
+// file's own "an isolate must be inline" rule exists precisely because a
+// `<span>` never participates in one.
+//
+// Two things have to hold together, which is why this is ONE check rather
+// than two: the title needs a `dir="auto"` group to resolve from, AND that
+// group has to sit BELOW whatever is forcing a physical alignment and
+// re-declare `textAlign: 'start'`, or the direction it resolves never
+// reaches the alignment. Either half alone leaves the name exactly where it
+// was. `center` is deliberately NOT a forcing value: centred text points at
+// no edge, so it cannot misalign an RTL run — only `left`/`right` can, and
+// excluding `center` is also what keeps this from demanding an unrequested
+// layout change on the deliberately centred practice screens.
+//
+// The scan resolves a `style={CONST}` / `style={{ ...CONST, x }}` reference
+// against module-level `const NAME = { … }` declarations in the same file,
+// because that is how the real counterexample this found in Insights.tsx was
+// written (`<th style={CELL} dir="auto">{r.instrumentName}</th>`, with CELL
+// pinning `textAlign: 'left'`) — a scanner that only read inline literals
+// would have called that site clean.
+
+/** Module-level `const NAME = { … }` style objects, by name. */
+function styleConstants(src: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of src.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*(?::\s*[\w.<>]+)?\s*=\s*\{([^{}]*)\}/g)) {
+    out[m[1]] = m[2];
+  }
+  return out;
+}
+
+/** The whole text of a tag's `style={…}` attribute value, with any
+ *  module-level style constant it names spliced in. */
+function styleTextOf(tag: string, consts: Record<string, string>): string {
+  const at = tag.indexOf('style=');
+  if (at < 0) return '';
+  const from = tag.indexOf('{', at);
+  if (from < 0) return '';
+  let depth = 0;
+  let end = tag.length;
+  for (let i = from; i < tag.length; i += 1) {
+    if (tag[i] === '{') depth += 1;
+    else if (tag[i] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+  const inline = tag.slice(from, end);
+  const referenced = [...inline.matchAll(/[A-Za-z_$][\w$]*/g)]
+    .map((m) => consts[m[0]])
+    .filter(Boolean)
+    .join(' ');
+  return `${inline} ${referenced}`;
+}
+
+/** 'left'/'right' when a tag forces a PHYSICAL alignment over its content
+ *  (directly or through a style constant), null otherwise. 'center' points
+ *  at no edge and never misaligns an RTL run, so it is not forcing. */
+function forcedAlign(tag: string, consts: Record<string, string>): string | null {
+  return /textAlign\s*:\s*['"](left|right)['"]/.exec(styleTextOf(tag, consts))?.[1] ?? null;
+}
+
+/** True when a tag re-declares the logical `textAlign: 'start'`. */
+function declaresStart(tag: string, consts: Record<string, string>): boolean {
+  return /textAlign\s*:\s*['"]start['"]/.test(styleTextOf(tag, consts));
+}
+
+/**
+ * Every element carrying a TITLE class whose body renders an OPAQUE data
+ * expression — the owner's own text, whose language cannot be known from
+ * source. A title made only of literal copy ("Routine complete") is fixed
+ * English and never needs a direction of its own.
+ */
+function dataTitleSites(file: string): { line: number; tag: string; at: number }[] {
+  const src = stripComments(SOURCES[file]);
+  const out: { line: number; tag: string; at: number }[] = [];
+  for (const m of src.matchAll(/<[A-Za-z][\w.]*\s[^>]*className=/g)) {
+    const at = m.index!;
+    const tag = enclosingTag(src, at + 1);
+    if (!TITLE_CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(classNameOf(tag)))) continue;
+    if (tag.endsWith('/>')) continue;
+    const body = elementBody(src, tag, at);
+    if (!src.slice(body.start, body.end).includes('{')) continue;
+    out.push({ line: src.slice(0, at).split('\n').length, tag, at });
+  }
+  return out;
+}
+
+/**
+ * The ancestor chain of a title, innermost FIRST, each entry carrying its own
+ * opening tag text so this check can read both its `dir` and its alignment.
+ */
+function ancestorTags(src: string, at: number): { tag: string; dir: string | null }[] {
+  return ancestorChain(src, at)
+    .map((e) => {
+      const tag = enclosingTag(src, e.bodyStart - 1);
+      return { tag, dir: e.dir };
+    })
+    .reverse();
+}
+
 // --- the check --------------------------------------------------------------
 
 describe('direction lives on the group', () => {
@@ -1395,7 +1508,9 @@ describe('direction lives on the group', () => {
   it("the question anchors ClassQuestions' <li>, not the independently-authored title", () => {
     const file = 'components/ClassQuestions.tsx';
     const src = stripComments(SOURCES[file]);
-    const liSite = directionSites(file).find((s) => s.tagName === 'li');
+    // The item's own <li>, not one of renderFreeText's bullet rows (which
+    // now carry dir="auto" of their own and appear earlier in the file).
+    const liSite = directionSites(file).find((s) => s.tagName === 'li' && s.text.includes('key={q.itemId}'));
     expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
     const openAt = src.lastIndexOf('<', liSite!.at);
     const body = elementBody(src, liSite!.text, openAt);
@@ -1407,5 +1522,91 @@ describe('direction lives on the group', () => {
       /\sdir="auto"/,
     );
     expect(questionTag, "the question must stay bare so the <li> resolves from it").not.toMatch(/\sdir=/);
+  });
+
+  // An EIGHTH SEALED FINDING: Repertoire's PathwayCard forced a user-authored
+  // pathway name left (the button's own textAlign:'left') with no
+  // direction-resolving group anywhere above it, so a Persian pathway read
+  // against the English edge while its own caption sat beside it. The two
+  // halves are asserted together because either alone leaves the name where
+  // it was: a group to resolve the direction FROM, and that same group
+  // re-declaring the logical `textAlign: 'start'` below whatever pinned a
+  // physical one. Discovered mechanically from the shapes the app actually
+  // uses (a title class whose body renders an opaque data expression; an
+  // alignment pinned inline OR through a module-level style constant), not
+  // from a list of locations a reviewer happened to name.
+  it('no forced left/right alignment overrides a data title\'s own resolved direction', () => {
+    const violations: string[] = [];
+    let titlesSeen = 0;
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      const consts = styleConstants(src);
+      for (const title of dataTitleSites(file)) {
+        // A title carrying its own dir is an isolate (fixed copy deliberately
+        // pinned), judged by the isolate rules above, not by this one.
+        if (/\sdir="(auto|ltr|rtl)"/.test(title.tag)) continue;
+        const chain = [{ tag: title.tag, dir: null as string | null }, ...ancestorTags(src, title.at + 1)];
+        const forcedAt = chain.findIndex((e) => forcedAlign(e.tag, consts) !== null);
+        if (forcedAt < 0) continue; // nothing forces a physical edge on this title
+        titlesSeen += 1;
+        const where = `${file}:${title.line} [${classNameOf(title.tag).trim()}]`;
+        // The group must sit strictly BELOW the forcing element (a smaller
+        // index is nearer the title), resolve direction, and restore start.
+        const group = chain.slice(0, forcedAt).find((e) => e.dir !== null);
+        if (!group) {
+          violations.push(`${where} — forced ${forcedAlign(chain[forcedAt].tag, consts)} with no dir group between`);
+        } else if (group.dir !== 'auto') {
+          violations.push(`${where} — the nearest group pins dir="${group.dir}" instead of resolving the title's own`);
+        } else if (!declaresStart(group.tag, consts)) {
+          violations.push(`${where} — its dir="auto" group never restores textAlign:'start', so the resolved direction never reaches the alignment`);
+        }
+      }
+      // The same defect one level up, in a shape no title-class filter can
+      // see: a group that resolves a direction and then pins a physical edge
+      // ON ITSELF. Insights' per-instrument <th style={CELL} dir="auto"> was
+      // exactly this — CELL pinning textAlign:'left' over the owner's own
+      // (renameable, Farsi-capable) instrument name.
+      for (const group of directionSites(file).filter(isGroup)) {
+        const forced = forcedAlign(group.text, consts);
+        if (forced) {
+          violations.push(
+            `${file}:${group.line} — a dir="auto" group pins textAlign:'${forced}', overriding the direction it just resolved`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // Same discipline as the checks above: a scanner that silently matches
+    // nothing is not proof that nothing needed checking.
+    expect(titlesSeen).toBeGreaterThan(0);
+  });
+
+  // The same EIGHTH FINDING's second half: renderFreeText rendered every line
+  // of a multi-line question/problem/observation bare, so one Farsi line
+  // dragged every following English line RTL (and the reverse). Each line is
+  // independently authored and resolves its OWN direction — except the FIRST,
+  // which stays bare ON PURPOSE: it is the only strong text left for the
+  // enclosing dir="auto" (the item's <li>, the Problem/Last-time value
+  // wrapper) to resolve from, since the title is already isolated. Isolating
+  // it too would leave the whole item with no resolution source and a silent
+  // LTR fallback — the ninth finding, back again. Mutation-tested both ways:
+  // making the first line resolve its own direction fails here, and so does
+  // leaving the rest bare.
+  it('every line after the anchor of a multi-line free-text field resolves its own direction', () => {
+    const file = 'components/ClassQuestions.tsx';
+    const src = stripComments(SOURCES[file]);
+    const at = src.indexOf('function bullet(');
+    expect(at, 'renderFreeText\'s per-line renderer not found').toBeGreaterThan(-1);
+    const end = src.indexOf('\nfunction renderFreeText', at);
+    const liTags = [...src.slice(at, end).matchAll(/<li\b[^>]*>/g)].map((m) => m[0]);
+    expect(liTags.length, 'expected an anchor branch and an own-direction branch').toBe(2);
+    const bare = liTags.filter((t) => !/\sdir=/.test(t));
+    const own = liTags.filter((t) => /\sdir="auto"/.test(t));
+    expect(bare.length, 'exactly one line — the anchor — stays bare').toBe(1);
+    expect(own.length, 'every other line carries its own dir="auto"').toBe(1);
+    // …and the branch that gets the isolate is the one chosen for lines
+    // AFTER the first, never the first itself.
+    expect(src.slice(at, end)).toMatch(/return own \? \(\s*<li key=\{key\} dir="auto"/);
+    expect(src.slice(end)).toMatch(/bullet\(line, i, i > 0\)/);
   });
 });

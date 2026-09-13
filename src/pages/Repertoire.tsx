@@ -450,24 +450,33 @@ function PathwayCard({
 
   return (
     <button className="card card-link stack-sm" style={{ width: '100%', textAlign: 'left' }} onClick={onOpen}>
-      <div className="row between">
-        <div className="row" style={{ gap: 8, minWidth: 0 }}>
-          <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
-          <span className="title-md truncate">{pathway.name}</span>
+      {/* The pathway's own name and the line of metadata under it are ONE
+          group, carrying the direction, so a Farsi name and its own caption
+          read as one right-aligned block — the rule the rest of this app
+          already follows. The group sits INSIDE the button rather than on
+          it (the Balance-row precedent: the chevron's `row between` and the
+          progress bar below are layout, not text, and giving them a
+          resolved RTL direction would swap the bar and the counter), and it
+          re-declares textAlign:'start' because the button pins
+          textAlign:'left' — a resolved direction that never reaches the
+          alignment leaves a Persian title pinned left exactly as before.
+          The instrument name keeps its own inline dir="auto" isolate for
+          the reason PathwayDetail's identical line does: it is the owner's
+          own editable text and need not share the pathway name's language.
+          stage.code/title stay bare — it's the stage's own compound label,
+          not a foreign caption. */}
+      <div className="stack-sm" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
+        <div className="row between">
+          <div className="row" style={{ gap: 8, minWidth: 0 }}>
+            <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
+            <span className="title-md truncate">{pathway.name}</span>
+          </div>
+          <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
         </div>
-        <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
-      </div>
-      {/* The instrument name (or 'General') is the owner's own editable text
-          — its own dir="auto" isolate, same as PathwayDetail's identical
-          line. An INLINE isolate (a span, never a block) fixes the name's
-          own bidi base without touching this card's own textAlign:'left' —
-          text-align is a block concept a span never participates in, per
-          this file's own "an isolate must be inline" rule. stage.code/title
-          stay bare, same reasoning as PathwayDetail: it's the stage's own
-          compound label, not a foreign caption. */}
-      <div className="tiny faint truncate">
-        <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
-        {stage ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}` : ''}
+        <div className="tiny faint truncate">
+          <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
+          {stage ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}` : ''}
+        </div>
       </div>
       <div className="row" style={{ gap: 8 }}>
         <span className="balance-track grow">

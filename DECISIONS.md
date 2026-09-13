@@ -2,6 +2,73 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Tenth rejection: a resolved direction that never reaches the alignment, and lines that share one (2026-09-13)
+
+Two counterexamples, one family — and both were invisible to the guard, which is the third
+thing this entry fixes.
+
+**A user-authored title under a forced physical alignment.** Repertoire's `PathwayCard`
+rendered `pathway.name` inside `<button style={{ textAlign: 'left' }}>` with no
+direction-resolving group between them. The browser shaped a Farsi pathway name correctly
+(bidi needs no help for that) and then pinned it to the English edge, split from its own
+instrument/stage caption. The inline `<span dir="auto">` already on that caption could
+never have fixed it: `text-align` is a BLOCK concept, and this repo's own "an isolate must
+be inline" rule exists precisely because a `<span>` never participates in one. Fixed by
+wrapping the name and its caption in ONE `dir="auto"` group that also re-declares
+`textAlign: 'start'` — both halves, because either alone leaves the name where it was. The
+group sits INSIDE the button rather than on it (the Balance-row precedent: the progress bar
+and its counter below are layout, not text). Measured against the live page: before,
+the Farsi name occupied x 41–184 of a 1068px card; after, 884–1027, with its caption on the
+same edge. The English card is byte-identical in layout (`start` === `left` under LTR).
+
+Auditing the same shape across the app found two more real instances, fixed with it:
+Insights' per-instrument `<th style={CELL} dir="auto">{r.instrumentName}</th>`, where
+`CELL` pinned `textAlign: 'left'` over an instrument name the owner can rename to Farsi
+(CELL now uses `'start'`), and RoutineRunner's "Recorded" rows, whose `dir="auto"` row sat
+under a card pinning `'left'`. `center` is deliberately NOT treated as forcing: centred text
+points at no edge, so it cannot misalign an RTL run — which is also what keeps this from
+demanding an unrequested layout change on the deliberately centred practice screens.
+
+**Lines of one field that are not one language.** The bulleted multi-line renderer added
+for `teacherQuestion`/`currentProblem`/`lastObservation` left every bullet bare, arguing
+that lines typed into one box share one direction. They do not: a musician who types a
+Farsi question and an English one into the same field gets two lines whose languages
+genuinely differ, and bare lines all inherit the FIRST line's direction — an English line
+dragged RTL with its bullet on the wrong side, or the reverse.
+
+The catch that argument was right about is real, though, and is why this is not simply
+"isolate every line": `dir="auto"` skips any descendant carrying its own `dir`, and the
+enclosing `<li dir="auto">` (and the Problem/Last-time value wrapper) has nothing else left
+to hunt, since the Ninth rejection above already isolated the title. Isolating every line
+would leave the whole item with no resolution source and a silent LTR fallback — the Ninth
+rejection, back again. Both hold one way only: the FIRST line is the ANCHOR and stays bare
+(it still follows its own language, because the direction it inherits is the one it
+produced), and every line AFTER it carries its own `dir="auto"` on the row, so its text and
+its bullet both follow that line alone. The two branches are written out literally rather
+than as `dir={i === 0 ? undefined : 'auto'}`, because `direction.test.ts` is a source
+scanner and a computed attribute is invisible to every guard in it.
+
+Verified against the real running Teacher Report page with DELIBERATELY MISMATCHED data in
+both directions (Farsi question line followed by an English one, and the reverse; an English
+item title over a Farsi question, and the reverse), at a 350px forced width: each bullet's
+computed `direction` and its bullet dot's measured x-position follow that line alone, while
+the item's ordinal still tracks the question's first line.
+
+**The guard.** The sealed finding was right that the existing ac-5 check only required one
+direction-aware group SOMEWHERE per file, which neither counterexample could fail.
+`direction.test.ts` adds two checks that assert the invariants themselves. The first
+discovers, mechanically, every element carrying a title class whose body renders an opaque
+data expression, and — when anything above it forces `textAlign: 'left'`/`'right'`, inline
+OR through a module-level style constant it names (which is how the Insights counterexample
+was written) — requires a `dir="auto"` group below that forcing element which re-declares
+`textAlign: 'start'`; it also fails any `dir="auto"` group that pins a physical alignment on
+itself. The second asserts the anchor shape of the multi-line renderer: exactly one bare
+line branch, exactly one `dir="auto"` branch, and the isolate on the branch chosen for lines
+AFTER the first. Seven mutations were confirmed to fail the suite before this was committed
+— dropping the group's `textAlign: 'start'`, dropping its `dir`, making both bullets bare,
+making both bullets isolated, moving the anchor to the last line, reverting `CELL` to
+`'left'`, and dropping RoutineRunner's `'start'`.
+
 ## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
 
 The Eighth review below concluded no further structural change was needed, using seed data
