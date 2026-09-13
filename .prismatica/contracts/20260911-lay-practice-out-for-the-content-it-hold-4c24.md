@@ -5,7 +5,7 @@ title: Lay practice out for the content it holds — Persian-aware cards, roomie
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/20
 intent: 20260911-lay-practice-out-for-the-content-it-hold-4c24
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: 7a71179772f679d37791796cdd0ef64e8b1d2f49
   branch: main

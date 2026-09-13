@@ -1,0 +1,11 @@
+{
+  "id": "20260911-lay-practice-out-for-the-content-it-hold-4c24",
+  "contractId": "20260911-lay-practice-out-for-the-content-it-hold-4c24",
+  "patchId": "1c85fc6fb59ab1a22cac40bb123696586ae4fa69",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-09-13T18:01:43.911Z",
+  "algorithm": "ed25519",
+  "signature": "jNWpnKNX3oSAGrae5y2Yv3RBFDcEnqFEH3aTCvpx0hVVLgsJY5bVtWqh254slvKUgIW1Wa+THHg3nag/w9LtAQ==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}
