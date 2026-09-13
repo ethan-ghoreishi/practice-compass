@@ -65,6 +65,7 @@ const SURFACES = [
   'components/ItemCard.tsx',
   'components/ItemMaterial.tsx',
   'components/ClassQuestions.tsx',
+  'components/LessonAgenda.tsx',
   'components/Attachments.tsx',
 ];
 
@@ -110,6 +111,18 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
     tagSnippet: 'stage.pathwayId',
     why: 'pathway name + stage code is one compound breadcrumb label, not a title plus a foreign caption',
   },
+  {
+    // The two "tokens" here are the bidi-neutral ordinal DIGIT and the
+    // QUESTION itself — not English words dropped into an RTL run. Both are
+    // bare BY CONSTRUCTION and must stay that way: the ninth finding above
+    // established that the <li>'s dir="auto" must resolve from the question
+    // (the only field guaranteed present), and dir="auto" skips any
+    // descendant carrying its own dir. Isolating either would put the ordinal
+    // back on the title's side — the exact bug this shape exists to fix.
+    file: 'components/ClassQuestions.tsx',
+    tagSnippet: '<li key={q.id} dir="auto"',
+    why: 'a neutral ordinal digit plus the question that anchors the row — both bare on purpose',
+  },
 ];
 
 /**
@@ -141,6 +154,10 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/LessonAgenda.tsx', tagName: 'div', classValue: '' },
+  { file: 'components/LessonAgenda.tsx', tagName: 'div', classValue: 'small' },
+  { file: 'components/LessonAgenda.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/LessonAgenda.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'eyebrow' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
   { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
@@ -198,7 +215,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/StartBlock.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'pages/TeacherReport.tsx', tagName: 'pre', classValue: 'pre' },
-  { file: 'pages/Today.tsx', tagName: 'button', classValue: "`option${!overview && selected?.id === i.id ? ' selected' : ''}`" },
+  { file: 'pages/Today.tsx', tagName: 'button', classValue: '`option${!overview && selected?.id === i.id ? \' selected\' : \'\'}`' },
   { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
   { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
@@ -1510,7 +1527,7 @@ describe('direction lives on the group', () => {
     const src = stripComments(SOURCES[file]);
     // The item's own <li>, not one of renderFreeText's bullet rows (which
     // now carry dir="auto" of their own and appear earlier in the file).
-    const liSite = directionSites(file).find((s) => s.tagName === 'li' && s.text.includes('key={q.itemId}'));
+    const liSite = directionSites(file).find((s) => s.tagName === 'li' && s.text.includes('key={q.id}'));
     expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
     const openAt = src.lastIndexOf('<', liSite!.at);
     const body = elementBody(src, liSite!.text, openAt);
