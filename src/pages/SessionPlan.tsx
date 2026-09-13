@@ -75,12 +75,24 @@ function PlanPreview() {
   }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.lessonAgenda, db.pathways, db.pathwayStages, db.settings, now]);
 
   const [plan, setPlan] = useState<SessionPlanT>(build);
-  // Re-seed the editable copy whenever the freshly-built plan changes.
-  const [seed, setSeed] = useState(build.generatedAt);
-  if (build.generatedAt !== seed) {
-    setSeed(build.generatedAt);
+  // WHAT the plan was built FOR. `generatedAt` used to be the re-seed key, and
+  // it never changed within a mount (the page froze `now`), so changing the
+  // budget or the instrument left the previous plan on screen — a preview of a
+  // session the owner was no longer asking for.
+  const seedKey = `${instrumentId}|${budget}`;
+  const [seed, setSeed] = useState(seedKey);
+  // The data revision the visible draft was built from. A change to the items,
+  // blocks or reviews underneath it does NOT silently rewrite the draft (that
+  // would throw away deliberate swaps and removals) — it marks the draft as
+  // needing regeneration, so stale work can never be started by accident.
+  const rev = useStore((s) => s.rev);
+  const [baseRev, setBaseRev] = useState(rev);
+  if (seedKey !== seed) {
+    setSeed(seedKey);
     setPlan(build);
+    setBaseRev(rev);
   }
+  const stale = rev !== baseRev;
 
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
   const editorArgs = () => {
@@ -103,7 +115,8 @@ function PlanPreview() {
 
   function regenerate() {
     setPlan(build);
-    setSeed(build.generatedAt);
+    setSeed(seedKey);
+    setBaseRev(rev);
   }
   function removeAt(i: number) {
     const segments = plan.segments.filter((_, idx) => idx !== i);
@@ -113,7 +126,7 @@ function PlanPreview() {
     setPlan(swapSegment(plan, i, editorArgs()));
   }
   function start() {
-    if (plan.segments.length === 0) return;
+    if (plan.segments.length === 0 || stale) return;
     setPlanMinutes(instrumentId, plan.budgetMinutes);
     startPlan(plan);
     navigate('/plan');
@@ -213,8 +226,18 @@ function PlanPreview() {
         </div>
       )}
 
+      {stale && (
+        <div className="card card-quiet small" role="status" style={{ color: 'var(--tone-warn)' }}>
+          <span dir="ltr">Your practice data changed while this plan was open. Regenerate it before you start.</span>
+        </div>
+      )}
+
       <div className="row" style={{ gap: 10 }}>
-        <button className="btn btn-primary btn-lg grow" onClick={start} disabled={plan.segments.length === 0}>
+        <button
+          className="btn btn-primary btn-lg grow"
+          onClick={start}
+          disabled={plan.segments.length === 0 || stale}
+        >
           <PlayIcon /> Start plan
         </button>
         <button className="btn btn-lg" onClick={regenerate}>Regenerate</button>

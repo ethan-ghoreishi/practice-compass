@@ -284,7 +284,14 @@ export default function Settings() {
             </button>
           </div>
           <div className="tiny faint">A backup is one file with all your data and attached files — save it to your NAS or iCloud.</div>
-          <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={onImportFile} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            aria-label="Import backup file"
+            hidden
+            onChange={onImportFile}
+          />
           <Field hint="Replaces all data with the original demo dataset.">
             <button
               className="btn btn-sm"

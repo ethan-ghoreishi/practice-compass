@@ -291,6 +291,7 @@ export default function CloseBlock() {
           className="input"
           type="number"
           min={1}
+          aria-label="Minutes practised"
           value={duration}
           onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))}
           style={{ maxWidth: 120 }}
@@ -358,6 +359,7 @@ export default function CloseBlock() {
                   <input
                     className="input"
                     type="date"
+                    aria-label="Next review date"
                     value={review?.dueDate ?? ''}
                     onChange={(e) => setOverride((o) => ({ ...o, dueDate: e.target.value }))}
                   />
