@@ -814,31 +814,56 @@ device this fix targets — would stop announcing "list, N items" or a question'
 in it. `role="list"` on the `<ol>` restores that; the visible ordinal carries
 `aria-hidden` so it is not announced a second time on top of it.
 
-**A LABEL'S VALUE GETS ITS OWN ALIGNMENT WHEN IT WRAPS, NOT JUST ITS OWN BIDI ORDER.**
-The same sixth finding covered `ClassQuestions`' `Problem:`/`Last time:` lines. The
-established shape — a fixed English label left bare, immediately followed by the value in
-its own `dir="auto"` isolate — is unchanged and still correct for what it was built to
-fix: the value's own CHARACTERS shape correctly regardless of the label or the title next
-to it. What it never gave the value was its own ALIGNMENT — a plain inline
-`<span dir="auto">` has no width of its own to align within on a single line, but
-`currentProblem`/`lastObservation` are free-text notes that can wrap on a narrow phone
-card, and a wrapped span still lays its continuation lines out inside whatever block
-contains it. A long Farsi note trailing an English-titled item's "Problem: " would wrap
-its second and third lines flush against the LEFT margin, ragged right — the opposite of
-how a Farsi paragraph reads. Both value isolates now also carry
-`display: 'inline-block'` and an explicit `textAlign: 'start'`: for a short, single-line
-value this changes nothing visible (the box is exactly as wide as its one line, so
-`text-align` has nothing to act on), but a value long enough to wrap now does so inside
-its OWN block formatting context, so each wrapped line aligns to the value's OWN resolved
-direction — right for Farsi, left for English — independent of the label or the title.
-This is deliberately NOT generalised to `ActiveBlock`'s
+**A ROW'S OWN ALIGNMENT COMES FROM THE VALUE, NEVER FROM A LABEL MARKED OUT OF THE HUNT.**
+The sixth finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed
+at the time as a WRAP-alignment gap: the established shape — a fixed English label left
+bare, immediately followed by the value in its own `dir="auto"` isolate — gives the
+value's own CHARACTERS correct bidi order, but a plain inline span has no width of its own
+to align a wrapped line within, so a long value was given `display: 'inline-block'` +
+`textAlign: 'start'` to align its OWN wrapped lines independent of whatever surrounded it.
+
+A SEVENTH SEALED FINDING found that diagnosis addressed the wrong claim. Giving the value
+its own wrap-line alignment is not the same claim as giving the ROW — the element that
+actually positions "Label: value" as a unit — the right alignment in the first place. The
+row itself was left BARE in both the original and the wrap-alignment fix, so it inherited
+whichever direction the TITLE above it resolved to, regardless of what script the VALUE
+was written in. For a Farsi title with a Farsi value this looked right by coincidence
+(inherited-from-title happened to match the value); for an English-titled item with a
+Farsi problem note, the whole row stayed pinned left — the label's inherited position, not
+the value's own — with the value's internal characters shaping correctly but its overall
+POSITION wrong regardless of whether it wrapped. This is exactly the "a group carrying
+direction is not the same claim as every child in it having its own" family two sections
+up, just not yet applied to a row whose OWN direction, not merely a child's bidi base,
+needed to track an independently-authored value.
+
+The fix moves `dir="auto"` from the value to the ROW, and marks the LABEL — never the
+value — with its own `dir="ltr"`. Not because the label's text ever changes: `dir="auto"`
+skips a descendant that carries its own `dir` when hunting for a first strong character
+(the exact mechanism the eyebrow/title split above already relies on), so marking the
+label takes it OUT of that hunt and leaves the deliberately bare value as the row's only
+candidate. Marking the value too would take BOTH out, leaving the row with nothing to
+resolve from and a silent fallback to LTR no matter what the value says — confirmed to
+fail the new check when tried, alongside the opposite mutation (removing the label's
+`dir="ltr"` entirely, reverting to the original bug), which the pre-existing
+`unexemptedPhrase` check also independently catches. Verified across all four
+title/value language combinations at both a 350px (iPhone-card-width) and a 700px
+(desktop) container width: a value's own language determines its row's alignment
+independent of the title, in both directions, at both widths — and with all four lines
+(title, question, Problem, Last time) now agreeing, the block reads as one attached unit
+against the marker rather than two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the two `ISOLATED_VALUE_SITES` snippet entries with a SHAPE
+check, `isLabelFirstAutoRow`: any `dir="auto"` group whose body opens with a
+`<span dir="ltr">…</span>` must have no other `dir=` anywhere else in its body. It is not
+anchored to `ClassQuestions.tsx` — it would catch the identical regression in any future
+file adopting this label-first-row pattern, the same "shape, not a location list"
+discipline the instrument-name and native-marker checks above already established. This
+is deliberately NOT generalised to `ActiveBlock`'s
 `constraint`/`problem`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
-the identical bare-label-then-isolate shape: those are short, single-line values in this
-app's real data today, so the wrap case this fixes does not arise for them, and touching
-files this lane's own brief did not name would be scope the sealed finding never asked
-for. If one of them is ever observed wrapping on a real device, the same
-`display: 'inline-block'` + `textAlign: 'start'` pair is the fix — applied where the
-failure actually shows up, never assembled as a location list ahead of evidence.
+the older bare-label-then-isolate shape: those fields sit directly under their own title
+in this app's real data (never independently mismatched), so the failure this fixes does
+not arise for them, and touching files this lane's own brief did not name would be scope
+the sealed finding never asked for.
 
 **THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
 every `{…}` expression as fully opaque, contributing zero words — which is exactly

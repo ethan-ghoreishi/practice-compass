@@ -2,6 +2,48 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
+
+A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's
+`display: 'inline-block'` fix for `ClassQuestions`' `Problem:`/`Last time:` rows still
+wrong — not merely incomplete. That fix gave the VALUE its own bidi character order and
+its own wrap-line alignment, but left the ROW that positions "Label: value" as a unit
+BARE, so the row inherited whichever direction the TITLE above it resolved to — right for
+a Farsi title, left for an English one — regardless of what script the value was actually
+written in. For the common case (title and value the same language) this looked correct
+by coincidence; for an English-titled item with a Farsi problem note, the whole row
+stayed pinned left, exactly where the inherited direction put it, with the value's
+internal shaping correct but its POSITION wrong. This is the same root cause the
+"A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN"
+section already named for other files, just not yet applied to a LABEL-plus-VALUE row.
+
+Fixed by moving `dir="auto"` from the value to the ROW itself, and marking the LABEL —
+never the value — with its own `dir="ltr"`. This is not because the label's text ever
+changes; `dir="auto"` skips a descendant that carries its own `dir` when hunting for a
+first strong character, so marking the label takes it OUT of that hunt and leaves the
+(deliberately bare) value as the row's only resolution source. Marking the value too
+would take BOTH out, leaving the row with nothing to resolve from and a silent fallback
+to LTR regardless of the value's own script — confirmed to fail the new test when tried.
+Verified across all four combinations (Farsi/English title × Farsi/English value) at both
+a narrow (350px, iPhone-card-width) and a wide (700px, desktop) container: a value's own
+language now determines its row's alignment independently of the title, in both
+directions, at both widths. This also resolved the number/title "detachment" the same
+finding reported: with all four lines (title, question, Problem, Last time) correctly
+right-aligning together, the block reads as one coherent unit against the marker instead
+of two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the `ISOLATED_VALUE_SITES` ledger entries for these rows
+with a shape check, `isLabelFirstAutoRow` / "a label-first auto row's value stays bare":
+any `dir="auto"` group whose body opens with a `<span dir="ltr">…</span>` must have no
+other `dir=` anywhere else in its body, or the row has nothing left to resolve from. It is
+a SHAPE check, not a ClassQuestions-specific one, so it would catch the same regression in
+any future file using this pattern. Two mutations were confirmed to fail before this was
+committed: marking the value `dir="auto"` too (caught by the new check and by
+`GROUP_SITE_INVENTORY`'s exact-order equality), and removing the label's `dir="ltr"`
+entirely — reverting to the original bug — which the PRE-EXISTING `unexemptedPhrase` check
+also catches on its own (the bare "Problem" label plus the value's opaque expression reads
+as a 2-word exposed phrase), giving this shape two independent guards.
+
 ## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
 
 A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
@@ -26,16 +68,12 @@ accessibility tree once `list-style: none` takes its marker away, which would ha
 unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
 surfaced.
 
-The same finding covered `ClassQuestions`' `Problem:`/`Last time:` lines: the established
-bare-label-then-isolate shape gives the value its own bidi CHARACTER order but never its
-own ALIGNMENT, so a long Farsi note trailing an English title wraps its continuation
-lines flush left instead of right. Both value isolates now also carry
-`display: 'inline-block'` and `textAlign: 'start'` — inert for a short single-line value,
-but giving a wrapped value its own block formatting context so its wrapped lines align to
-its OWN resolved direction. Deliberately NOT generalised to ActiveBlock's or
-RoutineRunner's identical-shaped fields, none of which wrap in this app's real data today
-— see AGENTS.md's "A LABEL'S VALUE GETS ITS OWN ALIGNMENT..." section for the full
-reasoning and the boundary.
+The same finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed at
+the time as a wrap-alignment gap and fixed with `display: 'inline-block'` on the value's
+own isolate. A seventh sealed finding (below) found that diagnosis incomplete — the value
+having its own bidi order was never the same claim as the ROW having the right
+alignment — and replaced it with a different fix entirely. See "Seventh rejection" above
+for what actually shipped.
 
 ## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
 

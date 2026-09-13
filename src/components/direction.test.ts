@@ -133,8 +133,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
   { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: 'row' },
   { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'small' },
-  { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
-  { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'grow' },
   { file: 'components/ItemCard.tsx', tagName: 'span', classValue: '' },
   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
@@ -560,14 +560,6 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{problem}</span>' },
   { file: 'components/ClassQuestions.tsx', snippet: '<div className="small" dir="auto">' },
-  {
-    file: 'components/ClassQuestions.tsx',
-    snippet: "<span dir=\"auto\" style={{ display: 'inline-block', textAlign: 'start' }}>{q.currentProblem}</span>",
-  },
-  {
-    file: 'components/ClassQuestions.tsx',
-    snippet: "<span dir=\"auto\" style={{ display: 'inline-block', textAlign: 'start' }}>{q.lastObservation}</span>",
-  },
   { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
@@ -585,6 +577,16 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   // own direction wherever it renders') that discovers every renderer of the
   // name mechanically instead of requiring each one to be re-listed here —
   // see that check for the full rationale.
+  //
+  // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
+  // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
+  // them to a different shape entirely — the ROW carries dir="auto" and the
+  // LABEL is marked dir="ltr" to take it out of the auto hunt, so the row's
+  // OWN alignment comes from the value rather than from an ancestor's
+  // resolved direction — covered by the dedicated shape check below
+  // ('a label-first auto row's value stays bare...') rather than a snippet
+  // ledger, since the point is the RELATIONSHIP between the label and the
+  // value, not either one's presence on its own.
 ];
 
 /**
@@ -643,6 +645,8 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem:</span>' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time:</span>' },
   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
   { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
@@ -751,6 +755,39 @@ function isDirectionAwareContainer(liTag: string): boolean {
   if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
   const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
   return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);
+}
+
+// --- a row's alignment comes from its value, never a label marked out of the hunt ---
+//
+// A SEVENTH SEALED FINDING found `ClassQuestions.tsx`'s Problem:/Last time:
+// rows still misaligned after the sixth rework: giving the VALUE its own
+// `dir="auto"` isolate (or later, `display: inline-block`) makes the value's
+// OWN characters shape correctly, but the ROW that positions "Label: value"
+// as a unit was left bare, inheriting whichever direction the TITLE above it
+// happened to resolve to — right for a Farsi title, left for an English one
+// — regardless of what script the value itself was written in. An
+// English-titled item with a Farsi problem note left the whole "Problem:
+// ..." row pinned to the left, exactly where the label's own inherited
+// direction put it, with the value's internal shaping correct but its
+// POSITION wrong.
+//
+// The fix gives the ROW itself `dir="auto"`, and marks the LABEL —
+// `Problem:`/`Last time:`, never the value — with its own `dir="ltr"`. This
+// is not because the label's text ever changes; it is because `dir="auto"`
+// skips a descendant that carries its own `dir` when hunting for a first
+// strong character (the same mechanism the group-vs-title rule above relies
+// on). Marking the label takes it OUT of that hunt, so the row's resolution
+// comes from whatever is left — the value, left deliberately BARE. Marking
+// the value too would take BOTH out, leaving the row with no candidate at
+// all and a silent fallback to LTR no matter what the value says — the
+// regression this check exists to catch. This is a SHAPE check, not a
+// ClassQuestions-specific one: it fires on any file using the same
+// label-first `dir="auto"` row pattern.
+function isLabelFirstAutoRow(file: string, site: Site): boolean {
+  const src = stripComments(SOURCES[file]);
+  const openAt = src.lastIndexOf('<', site.at);
+  const body = elementBody(src, site.text, openAt);
+  return /^\s*<span dir="ltr">[^<]*<\/span>/.test(src.slice(body.start, body.end));
 }
 
 // --- an instrument name resolves its own direction, wherever it renders ----
@@ -1294,5 +1331,30 @@ describe('direction lives on the group', () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it("a label-first auto row's value stays bare, so the row still has a direction to resolve from", () => {
+    const violations: string[] = [];
+    let rowsSeen = 0;
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of directionSites(file).filter(isGroup)) {
+        if (!isLabelFirstAutoRow(file, site)) continue;
+        rowsSeen += 1;
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const bodyText = src.slice(body.start, body.end);
+        const afterLabel = bodyText.replace(/^\s*<span dir="ltr">[^<]*<\/span>/, '');
+        if (/\sdir="(?:auto|ltr|rtl)"/.test(afterLabel)) {
+          violations.push(
+            `${file}:${site.line} — the value in a label-first row carries its own dir, leaving the row with nothing left to resolve from`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // Same discipline as the instrument-name check above: a scanner that
+    // silently matches nothing is not proof nothing needs checking.
+    expect(rowsSeen).toBeGreaterThan(0);
   });
 });

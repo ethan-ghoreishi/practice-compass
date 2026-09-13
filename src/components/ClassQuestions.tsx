@@ -7,20 +7,22 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
  * direction-aware unit: the ordinal number is a real element inside a flex
  * `<li dir="auto">`, never a native `::marker` — a marker's own logical
  * position for a direction-variable list item is a browser implementation
- * detail that escaped the card on the owner's own iPhone even with
- * symmetric gutter room reserved for it, so it is never relied on at all.
- * The title leads the li's own resolution (bare, no dir of its own); the
- * question, problem and last observation are each authored independently of
- * the title AND of each other, so each carries its OWN `dir="auto"` isolate.
- * Problem/Last time keep a fixed English label, immediately followed by the
- * value's own isolate — `ActiveBlock`'s established shape — refined so a
- * value long enough to wrap on a narrow phone wraps according to ITS OWN
- * resolved direction rather than the label's: the isolate is block-level
- * (`display: inline-block`), which changes nothing for a short value (its
- * box is exactly as wide as its one line) but right-aligns a wrapped Farsi
- * value's own continuation lines even when the label ahead of it is English.
- * A question is never cleared by practising; the user edits the item to
- * remove it.
+ * detail no gutter measurement can guarantee, so it is never relied on at
+ * all. The title leads the li's own resolution (bare, no dir of its own);
+ * the question is authored independently of the title, so it carries its
+ * OWN `dir="auto"` isolate.
+ *
+ * Problem/Last time are each their OWN group: the ROW itself carries
+ * `dir="auto"`, so the row's alignment comes from the VALUE, not from the
+ * title above it or from whichever direction the label happens to read in.
+ * The fixed English label is marked `dir="ltr"` — not because its own text
+ * ever changes, but because `dir="auto"` skips a descendant that carries its
+ * own `dir` when hunting for a first strong character, so marking the label
+ * takes it OUT of that hunt and leaves the value as the only candidate. The
+ * value itself is bare (no `dir` of its own): were it marked too, BOTH
+ * children would be skipped and the row would have no resolution source at
+ * all, falling back to LTR regardless of what the value says. A question is
+ * never cleared by practising; the user edits the item to remove it.
  */
 export default function ClassQuestions({
   instrumentName,
@@ -114,20 +116,26 @@ export default function ClassQuestions({
                 <div className="small" style={{ fontWeight: 600 }}>
                   {q.title}
                 </div>
-                {/* question/problem/observation are each authored independently
-                    of the title (and of each other) — their own dir="auto"
-                    isolates resolve from their own content, not from q.title's. */}
+                {/* The question is authored independently of the title — its own
+                    dir="auto" isolate resolves from its own content, not from
+                    q.title's. */}
                 <div className="small" dir="auto">
                   {q.question}
                 </div>
+                {/* The ROW resolves direction from the VALUE, never the label:
+                    dir="ltr" on the label takes it out of the auto hunt, and the
+                    bare value is what's left for the row's dir="auto" to find. A
+                    Farsi value right-aligns the whole row even under an
+                    English title; an English value left-aligns it even under a
+                    Farsi one — the label never claims the direction either way. */}
                 {q.currentProblem && (
-                  <div className="tiny faint">
-                    Problem: <span dir="auto" style={{ display: 'inline-block', textAlign: 'start' }}>{q.currentProblem}</span>
+                  <div className="tiny faint" dir="auto">
+                    <span dir="ltr">Problem:</span> {q.currentProblem}
                   </div>
                 )}
                 {q.lastObservation && (
-                  <div className="tiny faint">
-                    Last time: <span dir="auto" style={{ display: 'inline-block', textAlign: 'start' }}>{q.lastObservation}</span>
+                  <div className="tiny faint" dir="auto">
+                    <span dir="ltr">Last time:</span> {q.lastObservation}
                   </div>
                 )}
               </div>
