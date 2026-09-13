@@ -48,6 +48,21 @@ export function pluralize(n: number, word: string): string {
 }
 
 /**
+ * A free-text field's own non-empty lines. There is no data structure for
+ * "multiple questions" — `teacherQuestion`/`currentProblem`/`lastObservation`
+ * are each one `<textarea>`, so two distinct questions typed for the same
+ * item live as two lines of one string. This is how a renderer tells "one
+ * line" (plain text) from "several" (worth a bulleted breakdown) apart,
+ * without inventing a schema change for what is still one field.
+ */
+export function splitLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
  * The close screen's ONE honest line for the review decision — "Review in 2
  * days · Repair · …" — read off the SAME ReviewPlan that seeds the date field
  * behind the disclosure.

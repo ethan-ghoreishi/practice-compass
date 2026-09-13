@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { renderClassQuestionsText, type ClassQuestion } from '../domain';
+import { splitLines } from './format';
 
 /**
  * "Questions for next class" — the questions to actually ask the teacher,
@@ -53,6 +55,52 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
  * question is never cleared by practising; the user edits the item to
  * remove it.
  */
+
+/**
+ * Several distinct questions/problems typed for the same item have nowhere
+ * to live but ONE `<textarea>` — there is no "multiple questions" structure,
+ * and inventing one (a schema change, add/remove rows in the form) is a
+ * bigger change than the actual complaint: two lines of free text were
+ * running together as one paragraph with no visual separator, only readable
+ * as two questions if you already knew to look for a question mark.
+ *
+ * A single line renders exactly as before. Two or more render as a bulleted
+ * list, deliberately NOT a second numbered one: the item above is already
+ * numbered (1. 2. …), and re-using numbers one level down would read as
+ * "item 2, question 2" — indistinguishable at a glance from "the second
+ * item". A bullet carries no ordinal meaning, so it can never collide with
+ * the outer numbering.
+ *
+ * The bullet is a real element, the first child of a flex `.row` — the same
+ * "never rely on a native `::marker`'s own logical position" policy the
+ * outer ordinal follows — but, UNLIKE the outer `<li>`, it carries NO
+ * `dir="auto"` of its own. These lines all came out of one field the
+ * musician wrote in one sitting, not independently authored values, so they
+ * share whichever direction that field already resolves to rather than each
+ * choosing one for itself. Left bare they inherit it and are never skipped
+ * by an ancestor's own `dir="auto"` hunt — which matters specifically for
+ * the QUESTION: the outer `<li>` anchors on it being bare, and an isolate
+ * here (as `dir="auto"` on the title already is) would remove a multi-line
+ * question from that hunt entirely, silently defaulting the whole item's
+ * direction to LTR.
+ */
+function renderFreeText(text: string): ReactNode {
+  const lines = splitLines(text);
+  if (lines.length <= 1) return text;
+  return (
+    <ul role="list" style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0, listStyle: 'none' }}>
+      {lines.map((line, i) => (
+        <li key={i} className="row" style={{ alignItems: 'flex-start', gap: 6 }}>
+          <span aria-hidden="true" className="tiny faint" style={{ flexShrink: 0 }}>
+            •
+          </span>
+          <span className="grow">{line}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function ClassQuestions({
   instrumentName,
   dateLabel,
@@ -158,7 +206,7 @@ export default function ClassQuestions({
                     li's dir="auto" hunt is meant to land on, so the ordinal
                     always tracks the question, never the optional title. */}
                 <div className="small">
-                  {q.question}
+                  {renderFreeText(q.question)}
                 </div>
                 {/* Stacked, not inline: the caption's wrapper carries no dir of
                     its own, so it inherits the li's (question-driven) direction
@@ -171,7 +219,7 @@ export default function ClassQuestions({
                       <span dir="ltr">Problem</span>
                     </div>
                     <div className="tiny faint" dir="auto">
-                      {q.currentProblem}
+                      {renderFreeText(q.currentProblem)}
                     </div>
                   </div>
                 )}
@@ -181,7 +229,7 @@ export default function ClassQuestions({
                       <span dir="ltr">Last time</span>
                     </div>
                     <div className="tiny faint" dir="auto">
-                      {q.lastObservation}
+                      {renderFreeText(q.lastObservation)}
                     </div>
                   </div>
                 )}

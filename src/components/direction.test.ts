@@ -569,11 +569,11 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
   {
     file: 'components/ClassQuestions.tsx',
-    snippet: '<div className="tiny faint" dir="auto">\n                      {q.currentProblem}',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.currentProblem)}',
   },
   {
     file: 'components/ClassQuestions.tsx',
-    snippet: '<div className="tiny faint" dir="auto">\n                      {q.lastObservation}',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.lastObservation)}',
   },
   // Instrument names used to be tracked here too, one exact snippet per site.
   // A sealed review found that shape structurally insufficient FOUR times

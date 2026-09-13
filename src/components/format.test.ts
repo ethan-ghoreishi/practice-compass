@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type BlockResult, createItem, planNextReview, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
-import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine } from './format';
+import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine, splitLines } from './format';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -84,5 +84,17 @@ describe('reviewOverrideSurvivesResultChange', () => {
       expect(planNextReview({ item: autoItem, result, now: NOW })).not.toBeNull();
     }
     expect(reviewOverrideSurvivesResultChange(autoItem.reviewMode)).toBe(false);
+  });
+});
+
+describe('splitLines', () => {
+  it('splits a multi-line free-text field into its trimmed, non-empty lines', () => {
+    expect(splitLines('سوال اول؟\nسوال دوم؟')).toEqual(['سوال اول؟', 'سوال دوم؟']);
+  });
+
+  it('keeps a single line as one entry, and drops blank lines and surrounding whitespace', () => {
+    expect(splitLines('one question')).toEqual(['one question']);
+    expect(splitLines('a\n\n  \nb\n')).toEqual(['a', 'b']);
+    expect(splitLines('  padded  ')).toEqual(['padded']);
   });
 });
