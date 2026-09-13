@@ -465,3 +465,122 @@ describe('a running plan keeps its progress and refuses stale work', () => {
     expect(advancePlanPointer([doneSeg], 0)).toBe(1); // finished
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression coverage carried forward from before this lane.
+//
+// `PlanSegment.core` and the warm-up-first/cool-down-last ordering are shape
+// guarantees this lane KEPT — `core` is still derived in `buildSessionPlan`,
+// still preserved across `swapSegment`, and still rendered on the Session Plan
+// page — but the ac-named tables assert minutes, identity and reasons rather
+// than these, so both stopped being covered when the old per-function tests
+// were replaced.
+// ---------------------------------------------------------------------------
+
+describe('a review segment stays inside its configured slot window', () => {
+  // `reviewSlotMinMinutes` / `reviewSlotMaxMinutes` are live knobs — Settings
+  // exposes them, `clampSchedulingParams` bounds them to [2,5] and [5,12], and
+  // `allocateMinutes` still applies them after the weighted split (a retrieval
+  // check should not quietly take half the session, nor be squeezed to
+  // nothing). The lane's own allocation tests assert the uniform per-segment
+  // bounds and the pinned warm-up share, so this window stopped being covered.
+  // Values here are inside the documented bounds on purpose: an out-of-range
+  // knob is clamped before it is read, which would make this pass vacuously.
+  const BUCKETS = ['warmup', 'lesson', 'review', 'deep', 'cooldown'] as const;
+  const REVIEW = BUCKETS.indexOf('review');
+  const alloc = (budget: number, min: number, max: number) =>
+    allocateMinutes([...BUCKETS], budget, {
+      ...DEFAULT_SCHEDULING_PARAMS,
+      reviewSlotMinMinutes: min,
+      reviewSlotMaxMinutes: max,
+    });
+
+  it('the ceiling caps a long session’s review, and widening it gives real minutes back', () => {
+    const tight = alloc(60, 2, 5);
+    const wide = alloc(60, 5, 12);
+    expect(tight[REVIEW]).toBeLessThanOrEqual(5);
+    // Strictly more, not merely different: the knob is READ, not just stored.
+    expect(wide[REVIEW]).toBeGreaterThan(tight[REVIEW]);
+    expect(wide[REVIEW]).toBeLessThanOrEqual(12);
+    // The surplus moves to other work; the budget is never exceeded.
+    expect(sum(tight)).toBeLessThanOrEqual(60);
+    expect(sum(wide)).toBeLessThanOrEqual(60);
+  });
+
+  it('the floor lifts a short session’s review, taking the minutes from other work', () => {
+    for (const budget of [20, 30]) {
+      const low = alloc(budget, 2, 5);
+      const lifted = alloc(budget, 5, 12);
+      expect(low[REVIEW], `${budget} min`).toBeLessThan(5);
+      expect(lifted[REVIEW], `${budget} min`).toBeGreaterThanOrEqual(5);
+      // Taken from other segments, not conjured: the total does not grow.
+      expect(sum(lifted), `${budget} min`).toBeLessThanOrEqual(sum(low));
+      expect(sum(lifted), `${budget} min`).toBeLessThanOrEqual(budget);
+      expect(lifted.every((m) => m >= MIN_SEGMENT_MINUTES), `${budget} min`).toBe(true);
+    }
+  });
+});
+
+describe('a plan’s shape is as honest as its minutes', () => {
+  const richArgs = () => {
+    const warm = it_({ id: 'warm', title: 'Warm', status: 'integrated', difficulty: 2, timesPractised: 12, importance: 2 });
+    const lesson = it_({ id: 'lesson', title: 'Lesson', status: 'fragile', importance: 5 });
+    const due = it_({ id: 'due', title: 'Due', status: 'usable', importance: 4, nextReviewDate: day(-2) });
+    const deep = it_({ id: 'deep', title: 'Deep', status: 'new', importance: 4, difficulty: 5 });
+    const cool = it_({ id: 'cool', title: 'Cool', status: 'performable', importance: 2, difficulty: 1, timesPractised: 20 });
+    // Ordinary middle work, so the cool-down candidate is still unspent when
+    // the cool-down step runs — without it the middle fill takes `cool` and
+    // the ordering assertion below would pass vacuously.
+    const extra = it_({ id: 'extra', title: 'Extra', status: 'usable', importance: 3, difficulty: 3 });
+    const spare = it_({ id: 'spare', title: 'Spare', status: 'fragile', importance: 4, difficulty: 3 });
+    return baseArgs({
+      items: [warm, lesson, due, deep, cool, extra, spare],
+      reviews: [createReview({ practiceItemId: 'due', dueDate: day(-2), reviewType: 'retention' }, NOW)],
+      preparationDates: prep('lesson', day(1)),
+      budgetMinutes: 60,
+    });
+  };
+
+  it('marks the work the session is actually FOR, never more than three segments', () => {
+    const plan = buildSessionPlan(richArgs());
+    const core = plan.segments.filter((s) => s.core);
+    expect(core.length).toBeGreaterThanOrEqual(1);
+    expect(core.length).toBeLessThanOrEqual(3);
+    // The anchor — the first non-warm-up segment — is always core: it is the
+    // reason the session exists, whatever roles decorate it.
+    const anchor = plan.segments.find((s) => s.bucket !== 'warmup')!;
+    expect(anchor.core).toBe(true);
+    // A warm-up is core when there is one, because the session's own opening
+    // is part of what it is for — but it never displaces the anchor.
+    const warmup = plan.segments.find((s) => s.bucket === 'warmup');
+    if (warmup) expect(warmup.core).toBe(true);
+    // Nothing outside that set is marked: `core` is a claim about the two or
+    // three segments the session exists for, not a decoration on every row.
+    expect(plan.segments.filter((s) => !s.core).length).toBeGreaterThan(0);
+  });
+
+  it('puts a warm-up first and a cool-down last whenever it has them', () => {
+    const plan = buildSessionPlan(richArgs());
+    const buckets = plan.segments.map((s) => s.bucket);
+    // Both roles are genuinely present for this fixture — asserted, so this
+    // can never degrade into a pair of conditions that are simply never met.
+    expect(buckets).toContain('warmup');
+    expect(buckets).toContain('cooldown');
+    expect(buckets.indexOf('warmup')).toBe(0);
+    expect(buckets.lastIndexOf('cooldown')).toBe(buckets.length - 1);
+    // Neither role may appear twice — they bracket the session, not fill it.
+    expect(buckets.filter((b) => b === 'warmup').length).toBeLessThanOrEqual(1);
+    expect(buckets.filter((b) => b === 'cooldown').length).toBeLessThanOrEqual(1);
+  });
+
+  it('a swap with nothing to swap to returns the plan unchanged', () => {
+    const plan = buildSessionPlan(richArgs());
+    const args = richArgs();
+    // Everything eligible is already in the plan, so there is no alternative
+    // candidate — the editor must leave the segment exactly as it was rather
+    // than emptying it or reaching for ineligible work.
+    const exclude = new Set([...plan.segments.map((s) => s.itemId), ...args.items.map((i) => i.id)]);
+    const unchanged = swapSegment(plan, 0, { ...args, excludeIds: exclude });
+    expect(unchanged.segments[0]).toEqual(plan.segments[0]);
+  });
+});

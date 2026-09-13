@@ -220,3 +220,60 @@ describe('scoreItems is deterministic', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression coverage carried forward from before this lane.
+//
+// The baseline asserted the priority total against the documented formula
+// arithmetic. This lane changed two TERMS of that formula (a count-based
+// saturation penalty became decaying exposure minutes; teacher relevance
+// became the commitment's own class deadline) but not its SHAPE, and the
+// ac-named tests compare scores to each other rather than to the published
+// arithmetic — so the one thing Settings and AGENTS.md actually promise the
+// owner stopped being checked. This is that check, restored against the
+// current terms.
+// ---------------------------------------------------------------------------
+
+describe('the published priority formula is the formula', () => {
+  it('total is importance×2 + difficulty + fragility + overdue + neglected + class deadline − recent minutes', () => {
+    const item = itemAt({
+      instrumentId: 'i',
+      title: 'Formula',
+      status: 'fragile',
+      importance: 4,
+      difficulty: 2,
+    });
+    const overdueItem: PracticeItem = {
+      ...item,
+      nextReviewDate: day(-3),
+      lastPractisedAt: addDays(NOW, -9).toISOString(),
+    };
+    // 45 minutes today: enough exposure to produce a real, non-zero penalty.
+    const blocks = [blockAgo(overdueItem.id, 0, 'same', 45)];
+    const lessonDate = day(2);
+
+    const score = scoreItem(overdueItem, blocks, NOW, lessonDate);
+    const p = score.parts;
+
+    // Every term is the published function of the item, not an ad-hoc number.
+    expect(p.importance).toBe(overdueItem.importance * 2);
+    expect(p.difficulty).toBe(overdueItem.difficulty);
+    expect(p.fragility).toBe(fragilityScore(overdueItem.status));
+    expect(p.overdue).toBe(overdueScore(overdueItem, NOW));
+    expect(p.neglected).toBe(neglectedScore(overdueItem, NOW));
+    expect(p.lesson).toBe(lessonUrgencyScore(lessonDate, NOW));
+    expect(p.exposurePenalty).toBe(exposurePenalty(blocks, NOW));
+
+    // …and the total is exactly their signed sum — exposure SUBTRACTS.
+    expect(score.total).toBe(
+      p.importance + p.difficulty + p.fragility + p.overdue + p.neglected + p.lesson - p.exposurePenalty,
+    );
+
+    // The terms that must actually be exercised here are non-zero, so this
+    // can never pass by summing a row of zeroes.
+    expect(p.overdue).toBeGreaterThan(0);
+    expect(p.neglected).toBeGreaterThan(0);
+    expect(p.lesson).toBeGreaterThan(0);
+    expect(p.exposurePenalty).toBeGreaterThan(0);
+  });
+});

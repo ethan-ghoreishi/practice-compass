@@ -78,6 +78,7 @@ allowedPaths:
   - AGENTS.md
   - docs/product-spec.md
   - docs/scheduling-evidence.md
+  - src/domain/itemFiles.test.ts
 forbiddenPaths:
   - src/store/gitRemote.ts
   - src/store/githubSync.ts
@@ -373,7 +374,13 @@ docsDelta:
   - docs/product-spec.md
   - docs/scheduling-evidence.md
 createdAt: 2026-09-13T20:48:36.452Z
-amendments: []
+amendments:
+  - at: 2026-09-13T21:54:28.281Z
+    reason: "PracticeDB.lessonAgenda is now required by this lane. The existing
+      itemFiles test fixture therefore needs lessonAgenda: [] to remain
+      type-correct. This is a one-line fixture compatibility update only and
+      does not change item-files behaviour."
+    description: "allow: +src/domain/itemFiles.test.ts"
 ---
 
 # Build a daily session I can trust, from lesson commitments to the next review
@@ -450,6 +457,7 @@ amendments: []
 - AGENTS.md
 - docs/product-spec.md
 - docs/scheduling-evidence.md
+- src/domain/itemFiles.test.ts
 
 ## Never touch
 
@@ -529,5 +537,5 @@ amendments: []
 
 ## Amendments
 
-_none_
+- 2026-09-13T21:54:28.281Z — PracticeDB.lessonAgenda is now required by this lane. The existing itemFiles test fixture therefore needs lessonAgenda: [] to remain type-correct. This is a one-line fixture compatibility update only and does not change item-files behaviour.: allow: +src/domain/itemFiles.test.ts
 

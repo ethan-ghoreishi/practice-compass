@@ -132,8 +132,11 @@ describe('the real seeded CGS Stage 1 fixture (13 segments, one item repeated 4x
     const outcome = applyRoutineRun(runSegments, totalSeconds, [chunkChordsItem], new Map(), NOW);
     expect(outcome.blocks).toHaveLength(1);
     expect(outcome.blocks[0].durationMinutes).toBe(4);
-    // Per-segment blocks (the collision this lane exists to avoid) would trip
-    // isSaturated's 3-in-48-hours rule immediately; one aggregated block does not.
+    // Per-segment blocks (the collision this lane exists to avoid) would each
+    // carry the FULL authored duration, so four of them would report roughly
+    // four times the minutes that were actually played — and `isSaturated` now
+    // measures recent exposure in minutes, so the inflation is exactly what it
+    // would read. One aggregated block reports the 4 minutes really spent.
     expect(isSaturated(outcome.blocks, NOW)).toBe(false);
     expect(outcome.items[0].saturationWarning).toBe(false);
   });

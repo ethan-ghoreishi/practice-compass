@@ -560,3 +560,91 @@ describe('status suggestions and dormancy', () => {
     expect(shouldSuggestDormant(item({ lastPractisedAt: addDays(NOW, -2).toISOString() }), NOW)).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression coverage carried forward from before this lane.
+//
+// These invariants belong to code this lane KEPT — the two row-scoped date
+// writers, the snooze clamp, the explicit-`now` contract and the params
+// default. The lane's ac-named tables exercise each of these functions, but
+// only on their main branch and only ever with rows belonging to ONE item, so
+// the isolation and edge branches below stopped being covered when the old
+// per-function tests were replaced. Restored verbatim in substance; nothing
+// here asserts anything about the new decision engine.
+// ---------------------------------------------------------------------------
+
+describe('a date write touches the rows it names, and nothing else', () => {
+  const openRow = (dueDate: ISODate, o: Partial<Review> = {}): Review => ({
+    ...createReview({ practiceItemId: 'item-1', dueDate, reviewType: 'retention' }, NOW),
+    ...o,
+  });
+
+  it('moving an item’s date leaves completed rows and other items untouched', () => {
+    const mine = openRow(day(-1));
+    const completedMine = { ...openRow(day(-30)), id: 'done', completedAt: NOW.toISOString() };
+    const other = { ...createReview({ practiceItemId: 'item-2', dueDate: day(1), reviewType: 'retention' }, NOW), id: 'other' };
+
+    const updated = applyReviewDateToRows({
+      reviews: [mine, completedMine, other],
+      practiceItemId: 'item-1',
+      instruction: day(5),
+      now: NOW,
+    })!;
+
+    expect(updated.find((r) => r.id === mine.id)!.dueDate).toBe(day(5));
+    expect(updated.find((r) => r.id === 'done')).toEqual(completedMine);
+    expect(updated.find((r) => r.id === 'other')).toEqual(other);
+  });
+
+  it('the row-scoped write keeps, clears or moves exactly one row', () => {
+    const a = { ...openRow(day(-14)), id: 'a' };
+    const b = { ...openRow(day(-1)), id: 'b' };
+    const other = { ...createReview({ practiceItemId: 'item-2', dueDate: day(1), reviewType: 'retention' }, NOW), id: 'other' };
+
+    // ABSENT — no write at all, so the caller leaves its rows as they are.
+    expect(applyReviewDateToRow({ reviews: [a], reviewId: 'a', instruction: undefined, now: NOW })).toBeUndefined();
+
+    // NULL — removes only the named row; a SECOND open row for the SAME item
+    // survives, which is what makes this distinct from the item-scoped write.
+    const cleared = applyReviewDateToRow({ reviews: [a, b], reviewId: 'a', instruction: null, now: NOW })!;
+    expect(cleared.find((r) => r.id === 'a')).toBeUndefined();
+    expect(cleared.find((r) => r.id === 'b')!.dueDate).toBe(b.dueDate);
+
+    // A DATE — moves the named row and leaves another item's row alone.
+    const moved = applyReviewDateToRow({ reviews: [a, other], reviewId: 'a', instruction: day(5), now: NOW })!;
+    expect(moved.find((r) => r.id === 'a')!.dueDate).toBe(day(5));
+    expect(moved.find((r) => r.id === 'other')).toEqual(other);
+  });
+
+  it('snooze never lands in the past or on today', () => {
+    expect(snoozePlan(2, NOW).dueDate).toBe(day(2));
+    expect(snoozePlan(0, NOW).dueDate).toBe(day(1));
+    expect(snoozePlan(-3, NOW).dueDate).toBe(day(1));
+  });
+});
+
+describe('the engine never reads the wall clock, and its defaults are the default', () => {
+  it('requires an explicit now at the type level', () => {
+    // @ts-expect-error — `now` is required; omitting it must fail to compile
+    // rather than silently fall back to `new Date()`.
+    computeReviewOutcome({ item: item(), answer: 'scheduled' });
+  });
+
+  it('passing the explicit defaults is byte-identical to passing nothing', () => {
+    const cases: { it: PracticeItem; r: BlockResult }[] = [
+      { it: item({ nextReviewDate: TODAY }), r: 'stable_alone' },
+      { it: item({ nextReviewDate: TODAY, srReps: 1, srIntervalDays: 2 }), r: 'stable_alone' },
+      { it: item({ nextReviewDate: TODAY, srReps: 2, srIntervalDays: 6 }), r: 'stable_in_context' },
+      { it: item({ nextReviewDate: TODAY, srReps: 4, srIntervalDays: 30 }), r: 'worse' },
+      { it: item({ nextReviewDate: TODAY, importance: 5, difficulty: 5, srReps: 2, srIntervalDays: 6 }), r: 'stable_in_context' },
+    ];
+    for (const c of cases) {
+      expect(decideReview({ item: c.it, result: c.r, now: NOW, params: DEFAULT_SCHEDULING_PARAMS })).toEqual(
+        decideReview({ item: c.it, result: c.r, now: NOW }),
+      );
+      expect(planNextReview({ item: c.it, result: c.r, now: NOW, params: DEFAULT_SCHEDULING_PARAMS })).toEqual(
+        planNextReview({ item: c.it, result: c.r, now: NOW }),
+      );
+    }
+  });
+});

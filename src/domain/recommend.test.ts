@@ -206,3 +206,35 @@ describe('parts and stall hints', () => {
     expect(stallHint(item, [])).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression coverage carried forward from before this lane.
+//
+// An EMPTY library is a different branch from a resting-only one: ac-5 proves
+// a pool that exists but is all resting stays honestly empty, and says nothing
+// about there being no items at all, or about an instrument that simply has
+// none of its own. Both are live branches; both were covered before.
+// ---------------------------------------------------------------------------
+
+describe('nothing to recommend is a real answer', () => {
+  it('an empty library yields empty cards, and a bare instrument never borrows another’s', () => {
+    const empty = recommend([], [], NOW);
+    expect(empty.best).toBeNull();
+    expect(empty.quickWin).toBeNull();
+    expect(empty.maintenance).toBeNull();
+
+    // An instrument with no items of its own returns nothing — it must never
+    // reach across to the instrument that does have work.
+    const theirs = mk({ id: 'theirs', title: 'Guitar study', instrumentId: 'guitar', importance: 5 });
+    const bare = recommendForInstrument(INST, [theirs], [], NOW);
+    expect(bare.best).toBeNull();
+    expect(bare.quickWin).toBeNull();
+    expect(bare.maintenance).toBeNull();
+
+    // …while the instrument that owns it still gets it.
+    expect(recommendForInstrument('guitar', [theirs], [], NOW).best?.score.item.id).toBe('theirs');
+
+    // A piece with no parts has no part to practise next.
+    expect(pickNextPart('theirs', [theirs], [], NOW)).toBeNull();
+  });
+});
