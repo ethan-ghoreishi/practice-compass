@@ -885,10 +885,63 @@ that no flex-sizing change can touch it, because there is nothing wrong with the
 begin with. A ragged left edge on right-aligned lines of differing length is ordinary
 typography (the same thing an address block or a right-aligned caption does), not a
 resolvable defect, and the row-direction fix above is what actually closed the gap the
-owner was reacting to: before it, Problem/Last-time sat at the FAR left (~25px, the
-opposite edge entirely) while title/question sat at ~330px — a hard two-line/two-line
-split, not mere length variance. Once all four lines agree on which edge they hug, what's
-left is length variance, and there is no further structural change this finding calls for.
+owner was reacting to for THAT screenshot: before it, Problem/Last-time sat at the FAR left
+(~25px, the opposite edge entirely) while title/question sat at ~330px — a hard
+two-line/two-line split, not mere length variance. Once all four lines agree on which edge
+they hug, the remaining spread is length variance, and no further padding or flex-sizing
+change was warranted for it specifically. **This measurement is scoped to the ragged-edge
+question alone and is NOT a claim that every marker-attachment complaint was closed** — a
+NINTH finding below, on the exact same screenshot's underlying data, found a real,
+different structural bug in how the `<li>` itself picks its resolved direction. Read that
+finding for the actual fix; do not re-derive "nothing more to do here" from this measurement
+a second time.
+
+**THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
+NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
+Seventh/Eighth findings' — used seed data where an item's title and its `teacherQuestion`
+happen to share a language. That is exactly the one condition under which the underlying
+bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
+descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
+and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
+isolates — so the hunt could only ever land on the bare TITLE. Whichever language the TITLE
+happened to be in decided which side the ordinal rendered on, regardless of the question's
+own language. An OWNER pass with a title and question in DIFFERENT languages (reproduced
+directly against the live running app — the real Teacher Report page, not a clone — by
+temporarily setting an English title on the real seeded Farsi item via the store) showed
+this concretely: the ordinal and title landed together on the English side, while the
+question — right-aligned by its own independent `dir="auto"`, correctly, on its own terms —
+sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse combination
+(Farsi title, English question) reproduced the mirror image. Neither combination is exotic:
+an item's title is free text the owner chooses for their own reasons and has no obligation
+to share a language with a teacher's question about it.
+
+The fix reverses which of the two is left bare. `questionsForNextClass` guarantees
+`q.question` is non-empty on every row this component ever renders (it filters on exactly
+that field); `q.title` carries no such guarantee and is authored completely independently.
+The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
+applied to the OTHER field this time), so it renders in its own correct direction but is
+taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
+`dir="auto"` actually finds — the marker now always tracks the question, the one field
+guaranteed present, never the optional title. Structural, not padding: this is the same
+skip mechanism this file already relies on throughout, applied to the correct field.
+Verified directly against the real, running page
+(not a synthetic clone) at both a 390px (real DOM node, width forced via the live element's
+own style, not `resize_window` — which does not affect layout in this environment — so the
+SAME component tree is exercised, just narrower) and the full desktop width: an English
+title with a Farsi question now attaches the marker to the question (right) with the title
+independently left-aligned; a Farsi title with an English question attaches the marker to
+the question (left) with the title independently right-aligned; the original matching-language
+case (both Farsi) is unaffected. `direction.test.ts` records this as a dedicated,
+mutation-tested shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the
+title's tag carries `dir="auto"` and the question's does not — confirmed to fail under both
+reverted mutations (title bare again; question marked again) before being committed.
+
+**THE LESSON THIS FILE KEEPS RELEARNING:** matching-language seed data proves a fix works
+when title and value AGREE, and says nothing about what happens when they DISAGREE — the
+Seventh finding's row-direction fix and this Ninth finding are the same shape of gap,
+found twice because the same seed data was trusted twice. Any future verification of a
+mixed-language surface in this file should deliberately construct a MISMATCHED case, not
+only the matching one already in the seed.
 
 **THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
 every `{…}` expression as fully opaque, contributing zero words — which is exactly

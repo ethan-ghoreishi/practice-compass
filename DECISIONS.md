@@ -2,7 +2,56 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
+
+The Eighth review below concluded no further structural change was needed, using seed data
+where the item's title and its `teacherQuestion` share a language (both Farsi). An OWNER
+pass reported the marker was STILL not attached to the question on the real, current build
+— and, tested directly against the real running app (the actual Teacher Report page, not a
+synthetic clone), with a title and question set to DIFFERENT languages, this was true and
+was a genuinely different, previously undiagnosed bug: the Eighth review's own conclusion
+does not extend past the one language combination its evidence used.
+
+Root cause: `<li dir="auto">`'s hunt for a first strong character skips any descendant that
+carries its own `dir`. The question and the Problem/Last-time rows all already carried
+their own `dir="auto"` isolates, so the hunt could only ever land on the bare TITLE —
+meaning the ordinal's side was decided by the TITLE's language alone, regardless of the
+QUESTION's. With matching languages this is invisible (title and question agree on which
+side to hug); with an English title and a Farsi question (or the reverse), the ordinal and
+title land on one side while the question — correctly right- or left-aligned by its own
+independent isolate — lands on the OTHER, unattached from the marker entirely. Reproduced
+both ways by temporarily setting an English title on the real seeded Farsi item via the
+live store (`useStore.getState().updateItem(...)`) against the actual running page, at both
+a 390px-forced real DOM width and the full desktop width.
+
+Fixed by reversing which field is left bare: `questionsForNextClass` guarantees
+`q.question` is non-empty on every row this component renders (that is its filter); `q.title`
+carries no such guarantee. The title now carries its own `dir="auto"` isolate (out of the
+`<li>`'s hunt, rendering in its own correct direction independently); the question is left
+bare, so the `<li>`'s `dir="auto"` — and therefore the ordinal's side — always tracks it.
+Verified at both widths, both mismatch directions, and confirmed the original
+matching-language case is unaffected. `direction.test.ts` adds a dedicated, mutation-tested
+shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the title's tag
+carries `dir="auto"` and the question's does not; both reverting the title and re-marking
+the question were confirmed to fail it (and, independently, `GROUP_SITE_INVENTORY`'s exact
+count) before this was committed. The stale `ISOLATED_VALUE_SITES` entry for the question's
+old isolate was removed; no new entry was needed for the title's new one since it is a
+plain `GROUP_SITE_INVENTORY` site (same tag/class the old entry already tracked).
+
+The general lesson, restated because this is the second time this file has learned it: a
+verification built entirely from matching-language seed data proves a fix holds when the
+two sides AGREE and says nothing about what happens when they DISAGREE. The Seventh
+rejection's row-direction fix and this Ninth rejection are the same shape of gap, closed
+twice because the same seed data was trusted twice.
+
 ## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
+
+**Scope note (superseded in part by the Ninth rejection above):** this review's conclusion
+— that no further structural change was warranted — was correct only for the ragged-edge
+question it actually measured, using seed data with a Farsi title AND a Farsi question. It
+was not, and should not have been read as, a claim that every marker-attachment complaint
+on this screenshot was closed; a real, different bug (title/question language mismatch)
+was still open and is fixed above.
 
 A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
 the "1." marker looked detached from the Farsi question because the Problem/Last-time

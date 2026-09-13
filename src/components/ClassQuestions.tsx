@@ -8,9 +8,22 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
  * `<li dir="auto">`, never a native `::marker` — a marker's own logical
  * position for a direction-variable list item is a browser implementation
  * detail no gutter measurement can guarantee, so it is never relied on at
- * all. The title leads the li's own resolution (bare, no dir of its own);
- * the question is authored independently of the title, so it carries its
- * OWN `dir="auto"` isolate.
+ * all.
+ *
+ * THE QUESTION leads the li's own resolution — never the title. `dir="auto"`
+ * skips any descendant that carries its own `dir` when hunting for a first
+ * strong character, so whichever of title/question is left BARE is what the
+ * ordinal's side tracks. `questionsForNextClass` guarantees `q.question` is
+ * non-empty on every rendered row; `q.title` carries no such guarantee and is
+ * authored independently (an item's own name, which need not share the
+ * question's language) — an OWNER-observed regression found the ordinal
+ * pinned to whichever language the TITLE happened to be in (bare, leading
+ * the hunt) while the question resolved its own, different direction and
+ * landed on the opposite edge, unattached from the marker entirely. The
+ * title now carries its OWN `dir="auto"` isolate (taking it OUT of the
+ * hunt, same skip mechanism, so an English title still renders left and a
+ * Farsi one still renders right, independently); the question is left bare,
+ * so it is what the li's `dir="auto"` actually finds.
  *
  * Problem/Last time are each their OWN group: the ROW itself carries
  * `dir="auto"`, so the row's alignment comes from the VALUE, not from the
@@ -94,7 +107,9 @@ export default function ClassQuestions({
            wrapper around title/question/details — dir="auto" skips a
            descendant that has its own dir when hunting for a first strong
            character, so giving the wrapper one would leave the <li> with no
-           resolution source of its own.
+           resolution source of its own. The QUESTION (below) is left bare
+           for the same reason, deliberately — it is what the li's hunt is
+           meant to find, since it is always present and the title is not.
 
            role="list": WebKit drops an <ol>/<ul>'s own list semantics from
            the accessibility tree once `list-style: none` removes its visual
@@ -113,13 +128,20 @@ export default function ClassQuestions({
                 {i + 1}.
               </span>
               <div className="stack-sm grow">
-                <div className="small" style={{ fontWeight: 600 }}>
+                {/* The title is authored independently of the question — an
+                    item's own name, which need not share the question's
+                    language — so it carries its own dir="auto" isolate,
+                    resolving from its own content rather than anchoring the
+                    li (that would pin the ordinal to the title's language,
+                    splitting it from the question whenever the two differ). */}
+                <div className="small" dir="auto" style={{ fontWeight: 600 }}>
                   {q.title}
                 </div>
-                {/* The question is authored independently of the title — its own
-                    dir="auto" isolate resolves from its own content, not from
-                    q.title's. */}
-                <div className="small" dir="auto">
+                {/* Bare, deliberately: q.question is guaranteed non-empty
+                    (questionsForNextClass filters on it) and is what the
+                    li's dir="auto" hunt is meant to land on, so the ordinal
+                    always tracks the question, never the optional title. */}
+                <div className="small">
                   {q.question}
                 </div>
                 {/* The ROW resolves direction from the VALUE, never the label:

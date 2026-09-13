@@ -559,7 +559,6 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{active.constraint}</span>' },
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{problem}</span>' },
-  { file: 'components/ClassQuestions.tsx', snippet: '<div className="small" dir="auto">' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
@@ -587,6 +586,18 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   // ('a label-first auto row's value stays bare...') rather than a snippet
   // ledger, since the point is the RELATIONSHIP between the label and the
   // value, not either one's presence on its own.
+  //
+  // ClassQuestions' q.question used to be tracked here too, isolated with
+  // its own dir="auto" span while the title was left bare to anchor the
+  // <li>. An OWNER-observed regression found that backwards: the title is
+  // optional and independently authored, so anchoring the li on it split
+  // the ordinal from the question whenever the two differed in language.
+  // The roles are now reversed — title isolated, question bare — which
+  // makes the title's new dir="auto" a plain GROUP_SITE_INVENTORY entry
+  // (same tag/class as the old question entry, so that ledger needs no
+  // edit) rather than a value-ledger one, and adds a dedicated shape check
+  // below ('the question anchors the group's direction...') asserting the
+  // anchor is the question, not the title.
 ];
 
 /**
@@ -1356,5 +1367,33 @@ describe('direction lives on the group', () => {
     // Same discipline as the instrument-name check above: a scanner that
     // silently matches nothing is not proof nothing needs checking.
     expect(rowsSeen).toBeGreaterThan(0);
+  });
+
+  // An OWNER-observed regression found ClassQuestions' <li dir="auto">
+  // anchored on the wrong candidate: the title was left bare (leading the
+  // hunt) while the question carried its own isolate — so an item whose
+  // title and question differed in language put the ordinal on the
+  // title's side while the question (the only field questionsForNextClass
+  // actually guarantees is non-empty) resolved its own, different
+  // direction and landed on the opposite edge, unattached from the
+  // marker entirely. Matching-language seed data never exposed this: the
+  // bug only shows when the two differ. Fixed by reversing which one is
+  // bare — the question anchors the <li>, the title gets its own isolate
+  // — and asserted directly here rather than trusting seed data again.
+  it("the question anchors ClassQuestions' <li>, not the independently-authored title", () => {
+    const file = 'components/ClassQuestions.tsx';
+    const src = stripComments(SOURCES[file]);
+    const liSite = directionSites(file).find((s) => s.tagName === 'li');
+    expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
+    const openAt = src.lastIndexOf('<', liSite!.at);
+    const body = elementBody(src, liSite!.text, openAt);
+    const bodyText = src.slice(body.start, body.end);
+    const smallDivs = [...bodyText.matchAll(/<div className="small"[^>]*>/g)].map((m) => m[0]);
+    expect(smallDivs.length, 'expected a title div and a question div').toBeGreaterThanOrEqual(2);
+    const [titleTag, questionTag] = smallDivs;
+    expect(titleTag, 'the title must carry its own dir="auto" isolate, out of the <li>\'s hunt').toMatch(
+      /\sdir="auto"/,
+    );
+    expect(questionTag, "the question must stay bare so the <li> resolves from it").not.toMatch(/\sdir=/);
   });
 });
