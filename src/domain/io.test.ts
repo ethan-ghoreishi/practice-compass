@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { validateDB, parseImport } from './io';
+import { serializeExport, validateDB, parseImport } from './io';
 import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
 import { createBlock, createItem, createLesson } from './factories';
@@ -180,5 +181,168 @@ describe('per-instrument lesson dates', () => {
     expect(map.get('tar')).toBe(toISODate(addDays(NOW, 2)));
     expect(map.get('guitar')).toBeUndefined();
     expect(nextLessonFor(lessons, 'guitar', NOW)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-15 — C5/C6/C7: every inbound door, and what must be refused at it
+// ---------------------------------------------------------------------------
+
+const V11_TEXT = readFileSync('tests/fixtures/practice-decisions-v11.json', 'utf8');
+const V12_TEXT = readFileSync('tests/fixtures/practice-decisions-v12.json', 'utf8');
+
+/** The shapes `validateDB` accepts, i.e. every door an inbound database uses. */
+function doors(text: string): { label: string; payload: unknown }[] {
+  const wrapped = JSON.parse(text) as { data: unknown };
+  return [
+    { label: 'full backup (data + files)', payload: JSON.parse(text) },
+    { label: 'wrapped export', payload: { app: 'practice-compass', schemaVersion: 11, data: wrapped.data } },
+    { label: 'bare database', payload: wrapped.data },
+  ];
+}
+
+describe('the v12 model at every inbound door', () => {
+  it('all inbound paths preserve the new model or reject before replacement', () => {
+    // 1. Every door migrates identically. `importFullBackup` (manual import,
+    //    sync pull, Keep remote, archive restore) and the store's own
+    //    `importDB` all route through THIS function, so a door that behaved
+    //    differently would have to bypass it.
+    const reference = JSON.stringify(validateDB(JSON.parse(V11_TEXT)));
+    for (const { label, payload } of doors(V11_TEXT)) {
+      expect(JSON.stringify(validateDB(payload)), label).toBe(reference);
+    }
+
+    // 2. A CURRENT v12 database round-trips with its agenda, question history,
+    //    scheduling provenance and one-advance-per-day marker intact.
+    const v12 = validateDB(JSON.parse(V12_TEXT));
+    const enriched: PracticeDB = {
+      ...v12,
+      items: v12.items.map((i) =>
+        i.id === 'i-scheduled'
+          ? { ...i, nextReviewSource: 'user' as const, srLastProgressDay: '2026-08-01' }
+          : i,
+      ),
+      lessonAgenda: v12.lessonAgenda.map((e) =>
+        e.kind === 'question' && e.itemId === 'i-q-farsi'
+          ? { ...e, askedAt: '2026-08-02T10:00:00.000Z', answer: 'بله، زینت را سبک‌تر کن.' }
+          : e,
+      ),
+    };
+    const round = validateDB(JSON.parse(serializeExport(enriched)));
+    expect(round.lessonAgenda).toEqual(enriched.lessonAgenda);
+    const scheduled = round.items.find((i) => i.id === 'i-scheduled')!;
+    expect(scheduled.nextReviewSource).toBe('user');
+    expect(scheduled.srLastProgressDay).toBe('2026-08-01');
+    expect(scheduled.srReps).toBe(3);
+    expect(scheduled.reviewMode).toBe('manual');
+
+    // 3. INVALID NEW DATA is refused with actionable detail, and nothing is
+    //    filtered away quietly — dropping an entry the owner wrote is the
+    //    data loss this guard exists to prevent.
+    const bad = (agenda: unknown[]) => () => validateDB({ ...v12, lessonAgenda: agenda });
+    const sample = v12.lessonAgenda[0];
+    expect(bad([{ ...sample, kind: 'reminder' }])).toThrow(/unknown kind/);
+    expect(bad([{ ...sample, id: undefined }])).toThrow(/missing an id/);
+    expect(bad([sample, { ...v12.lessonAgenda[1], id: sample.id }])).toThrow(/share the id/);
+    expect(bad([{ ...sample, instrumentId: '' }])).toThrow(/missing its instrument/);
+    expect(bad([{ ...sample, lessonId: 'L-guitar-past' }])).toThrow(/different instrument/);
+    expect(bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: '  ' }])).toThrow(/has no text/);
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
+    ).toThrow(/unreadable asked date/);
+    expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
+    // An INCOMPLETE conversion — a legacy field still set with no entry to
+    // represent it — is converted rather than accepted as-is, because the
+    // chain runs on every inbound database whatever version it claims.
+    const halfConverted = validateDB({
+      ...v12,
+      schemaVersion: 11,
+      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'left behind' } : i)),
+    });
+    expect(halfConverted.lessonAgenda.some((e) => e.kind === 'question' && e.text === 'left behind')).toBe(true);
+
+    // 4. LEGITIMATE unassigned and detached historical records PASS.
+    expect(() =>
+      validateDB({
+        ...v12,
+        lessonAgenda: [
+          { ...sample, lessonId: undefined, detachedFromLessonId: 'L-setar-past' },
+          {
+            kind: 'question',
+            id: 'q-detached',
+            instrumentId: 'setar',
+            text: 'Asked about a piece I have since deleted',
+            askedAt: '2026-02-01T00:00:00.000Z',
+            answer: 'Yes.',
+            detachedFromItemId: 'long-gone',
+            createdAt: '2026-02-01T00:00:00.000Z',
+            updatedAt: '2026-02-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    ).not.toThrow();
+
+    // 5. A NEWER schema is still refused outright rather than silently
+    //    downgraded and stripped of whatever it added.
+    expect(() => validateDB({ ...v12, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+
+    // 6. No fake repair of old data: the v11 fixture's dangling instrument
+    //    reference survives exactly as it arrived.
+    const migrated = validateDB(JSON.parse(V11_TEXT));
+    expect(migrated.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
+    expect(migrated.lessonAgenda.find((e) => e.itemId === 'i-dangling')?.instrumentId).toBe('gone');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-16 — C8: the rollout / rollback route
+// ---------------------------------------------------------------------------
+
+describe('the documented rollback route', () => {
+  it('rollback fixtures preserve exports without pretending v12 can be downgraded', () => {
+    // The owner's PRE-UPGRADE export restores into this build, upgrading
+    // deterministically — the same result twice, whatever day it is run.
+    const first = validateDB(JSON.parse(V11_TEXT));
+    const second = validateDB(JSON.parse(V11_TEXT));
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
+    expect(first.schemaVersion).toBe(SCHEMA_VERSION);
+
+    // Attachment METADATA and the fixture's file bytes both survive the trip:
+    // the metadata through the database, the bytes as the backup's own files
+    // array, which `importFullBackup` writes before the data is installed.
+    expect(first.attachments).toHaveLength(1);
+    expect(first.attachments[0]).toMatchObject({ id: 'att-1', ownerType: 'item', ownerId: 'i-scheduled' });
+    const files = (JSON.parse(V11_TEXT) as { files: { id: string; data: string }[] }).files;
+    expect(files.map((f) => f.id)).toEqual(['att-1']);
+    expect(Buffer.from(files[0].data, 'base64').toString()).toBe('score bytes');
+
+    // A POST-UPGRADE export keeps everything v12 added — answers, manual
+    // dates, provenance and SR state.
+    const answered: PracticeDB = {
+      ...first,
+      lessonAgenda: first.lessonAgenda.map((e) =>
+        e.kind === 'question' && e.itemId === 'i-q-only'
+          ? { ...e, lessonId: 'L-setar-1', askedAt: '2027-03-05T10:00:00.000Z', answer: 'Tone first.' }
+          : e,
+      ),
+    };
+    const restored = validateDB(JSON.parse(serializeExport(answered)));
+    const q = restored.lessonAgenda.find((e) => e.itemId === 'i-q-only' && e.kind === 'question')!;
+    expect(q).toMatchObject({ lessonId: 'L-setar-1', answer: 'Tone first.' });
+    expect(q.askedAt).toBe('2027-03-05T10:00:00.000Z');
+    const manual = restored.items.find((i) => i.id === 'i-scheduled')!;
+    expect(manual.nextReviewDate).toBe('2027-01-15');
+    expect(manual.srEase).toBe(2.6);
+
+    // THERE IS NO DOWNGRADE. An older build refuses a v12 file outright, and
+    // this build must not pretend otherwise by rewriting the number or
+    // dropping the new fields: the exported file says 12 and carries them.
+    const exported = JSON.parse(serializeExport(answered)) as { schemaVersion: number; data: PracticeDB };
+    expect(exported.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(exported.data.lessonAgenda.length).toBeGreaterThan(0);
+    expect(() => validateDB({ ...first, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+    // An old v11 build can only restore an explicitly chosen PRE-upgrade
+    // backup — which still exists, unchanged, and still says 11.
+    expect((JSON.parse(V11_TEXT) as { schemaVersion: number }).schemaVersion).toBe(11);
   });
 });

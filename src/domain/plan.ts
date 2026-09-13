@@ -360,7 +360,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     // ---- 2. warm-up: optional, real minutes, never at the cost of the work --
     const warmupMinutes = Math.max(MIN_SEGMENT_MINUTES, Math.round(B * params.warmupShare));
     if (B - warmupMinutes >= MAIN_WORK_FLOOR_MINUTES) {
-      add(pick(pool.filter((s) => isWarmupSuitable(s.item)), false), 'warmup');
+      add(pick(pool.filter((s) => isWarmupSuitable(s.item)), false), 'warmup', { repeat: isRepeatPool });
     }
 
     // ---- 3. fill the middle with further useful work ------------------------
@@ -375,7 +375,9 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
 
     // ---- 4. cool-down: optional familiar work, never a slot to fill ---------
     if (wantCooldown && selected.length < target) {
-      add(pick(pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status)), false), 'cooldown');
+      add(pick(pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status)), false), 'cooldown', {
+        repeat: isRepeatPool,
+      });
     }
   }
 
@@ -482,20 +484,45 @@ export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: 
   if (list.length === 1) return [Math.min(B, MAX_SEGMENT_MINUTES)];
 
   const p = clampSchedulingParams(params);
-  const weights = list.map((b) => weightFor(b, p));
-  const sumW = weights.reduce((a, w) => a + w, 0);
-  const alloc = weights.map((w) =>
-    Math.min(MAX_SEGMENT_MINUTES, Math.max(MIN_SEGMENT_MINUTES, Math.floor((B * w) / sumW))),
-  );
+  const alloc: number[] = new Array(list.length).fill(0);
+
+  // The warm-up's share is a REAL ALLOCATION TARGET, not a weight nudge: it is
+  // pinned to `round(B × warmupShare)` and then left alone. Bounded by
+  // feasibility — never below the floor, never above the ceiling, and never so
+  // large that another segment cannot reach the floor. Everything else splits
+  // what remains, so the published share is the number the owner actually
+  // sees on the screen rather than an input to a weighting they cannot check.
+  const warmupIdx = list.indexOf('warmup');
+  const rest = list.map((_, i) => i).filter((i) => i !== warmupIdx);
+  let pool = B;
+  if (warmupIdx >= 0) {
+    const headroom = B - rest.length * MIN_SEGMENT_MINUTES;
+    const target = Math.round(B * p.warmupShare);
+    alloc[warmupIdx] = Math.max(
+      MIN_SEGMENT_MINUTES,
+      Math.min(target, MAX_SEGMENT_MINUTES, Math.max(MIN_SEGMENT_MINUTES, headroom)),
+    );
+    pool = B - alloc[warmupIdx];
+  }
+
+  const weights = rest.map((i) => weightFor(list[i], p));
+  const sumW = weights.reduce((a, w) => a + w, 0) || 1;
+  rest.forEach((i, k) => {
+    alloc[i] = Math.min(
+      MAX_SEGMENT_MINUTES,
+      Math.max(MIN_SEGMENT_MINUTES, Math.floor((pool * weights[k]) / sumW)),
+    );
+  });
 
   let total = alloc.reduce((a, m) => a + m, 0);
-  const byPriority = list
-    .map((b, i) => ({ b, i }))
+  const byPriority = rest
+    .map((i) => ({ b: list[i], i }))
     .sort((a, z) => BUCKET_PRIORITY.indexOf(a.b) - BUCKET_PRIORITY.indexOf(z.b) || a.i - z.i)
     .map((x) => x.i);
 
   // Hand out the shortfall to the highest-priority segments that still have
-  // room under the ceiling. When none has room, the remainder stays unspent.
+  // room under the ceiling. When none has room, the remainder stays unspent —
+  // an honest short plan beats stretching two items across two hours.
   let guard = 0;
   while (total < B && guard++ < 10000) {
     let changed = false;
@@ -526,10 +553,9 @@ export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: 
   }
 
   // Keep review segments within the configured slot window — a retrieval check
-  // should not quietly take half the session. Minutes taken from a review go
-  // to the highest-priority other segment with room; minutes a too-small
-  // review needs come from the lowest-priority one that stays at the floor.
-  const reviewIdx = list.map((b, i) => (b === 'review' ? i : -1)).filter((i) => i >= 0);
+  // should not quietly take half the session. Minutes move only among the
+  // non-warm-up segments, so the warm-up's pinned share survives this step.
+  const reviewIdx = rest.filter((i) => list[i] === 'review');
   if (reviewIdx.length > 0) {
     const others = byPriority.filter((i) => list[i] !== 'review');
     const othersLowestFirst = others.slice().reverse();
@@ -580,8 +606,9 @@ export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: 
 }
 
 function weightFor(bucket: PlanBucket, params: SchedulingParams): number {
-  // Nudge the base weights toward the user's warm-up / deep shares.
-  if (bucket === 'warmup') return BUCKET_WEIGHT.warmup * (params.warmupShare / DEFAULT_SCHEDULING_PARAMS.warmupShare);
+  // Warm-up is deliberately absent: its share is a pinned allocation target
+  // above, not a weight. Having both was two half-mechanisms for one number,
+  // and meant the published share was never the minutes anyone actually got.
   if (bucket === 'deep') return BUCKET_WEIGHT.deep * (params.deepWorkShare / DEFAULT_SCHEDULING_PARAMS.deepWorkShare);
   return BUCKET_WEIGHT[bucket];
 }
@@ -696,3 +723,88 @@ export function swapSegment(
 
 /** Exposure window this planner reasons over, re-exported for the docs table. */
 export { EXPOSURE_WINDOW_DAYS };
+
+// --- Running a plan ----------------------------------------------------------
+//
+// The pointer transitions live here, pure, for the same reason every other
+// decision does: the store cannot be imported in a Node test (it pulls in
+// Dexie), so a transition written inline there would be provable only through
+// a browser. These are the transitions; `useStore` is the thin caller.
+
+export type PlanSegmentStatus = 'pending' | 'done' | 'skipped';
+
+export interface PlanRunSegment extends PlanSegment {
+  status: PlanSegmentStatus;
+}
+
+export interface PlanRun {
+  instrumentId: string;
+  budgetMinutes: number;
+  startedAt: string;
+  /** Index of the next segment to practise; === segments.length when finished. */
+  pointer: number;
+  segments: PlanRunSegment[];
+}
+
+/**
+ * The next still-PENDING segment. It wraps once to the start, so a pending
+ * segment the pointer has already jumped past is not stranded; a segment the
+ * owner deliberately skipped stays skipped. `segments.length` means finished.
+ */
+export function advancePlanPointer(segments: PlanRunSegment[], from: number): number {
+  for (let i = from + 1; i < segments.length; i++) {
+    if (segments[i].status === 'pending') return i;
+  }
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].status === 'pending') return i;
+  }
+  return segments.length;
+}
+
+/**
+ * A block just closed. When it was the CURRENT segment's item, that segment is
+ * done and the pointer moves on; anything else leaves the run untouched —
+ * practising something off-plan is ordinary, not plan progress.
+ */
+export function completePlanSegment(run: PlanRun, itemId: string): PlanRun {
+  const seg = run.segments[run.pointer];
+  if (!seg || seg.itemId !== itemId || seg.status !== 'pending') return run;
+  const segments = run.segments.map((s, i) => (i === run.pointer ? { ...s, status: 'done' as const } : s));
+  return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
+}
+
+/** Skip the current segment. Records nothing: a skipped segment is not practice. */
+export function skipPlanSegment(run: PlanRun): PlanRun {
+  const seg = run.segments[run.pointer];
+  if (!seg || seg.status !== 'pending') return run;
+  const segments = run.segments.map((s, i) => (i === run.pointer ? { ...s, status: 'skipped' as const } : s));
+  return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
+}
+
+export type PlanStartCheck =
+  | { ok: true; item: PracticeItem }
+  | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
+
+/**
+ * May the current segment be started right now? Revalidated against LIVE data
+ * every time, never trusted from the plan: between building a plan and reaching
+ * a segment the item can be deleted or moved to another instrument, and another
+ * clock can have been started.
+ *
+ * A `deleted`/`moved` segment is visibly skipped by the caller rather than
+ * played under the wrong instrument; a `busy` verdict refuses outright, because
+ * replacing an unfinished block or routine run would destroy real practice.
+ */
+export function planSegmentStartable(
+  run: PlanRun,
+  items: PracticeItem[],
+  busy = false,
+): PlanStartCheck {
+  if (busy) return { ok: false, reason: 'busy' };
+  const seg = run.segments[run.pointer];
+  if (!seg) return { ok: false, reason: 'finished' };
+  const item = items.find((i) => i.id === seg.itemId);
+  if (!item) return { ok: false, reason: 'deleted' };
+  if (item.instrumentId !== run.instrumentId) return { ok: false, reason: 'moved' };
+  return { ok: true, item };
+}

@@ -5,6 +5,7 @@ import {
   REVIEW_TYPE_LABELS,
   type BlockResult,
   type PracticeItem,
+  type ReviewAnswer,
   type ReviewPlan,
   type SchedulingParams,
 } from '../domain';
@@ -123,3 +124,26 @@ const RESULTS_FOR_OVERRIDE_CHECK: BlockResult[] = [
   'stable_in_context',
   'performable',
 ];
+
+/**
+ * The date a close hands to the store as an EXPLICIT OWNER OVERRIDE.
+ *
+ * ONLY a date the owner actually typed into the field. The close screen shows
+ * the date that will stand, which for an early session is the item's EXISTING
+ * date — passing that back as an override would be catastrophically wrong in
+ * two ways at once: it would stamp every engine-proposed date as user-chosen
+ * (so `worse` could never bring it forward again), and it would turn every
+ * "keep" decision into a write, completing the pending review row and
+ * replacing it on a session that was only extra practice.
+ *
+ * The discriminator is `override.dueDate` specifically, not `override` itself:
+ * changing only the review-type pills sets an override with no date, and that
+ * is not the owner choosing a date.
+ */
+export function closeOverrideDate(
+  answer: ReviewAnswer,
+  override: { dueDate?: string } | null,
+): string | undefined {
+  if (answer !== 'scheduled') return undefined;
+  return override?.dueDate ? override.dueDate : undefined;
+}

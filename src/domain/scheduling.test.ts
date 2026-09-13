@@ -3,24 +3,30 @@ import {
   applyReviewDateToRow,
   applyReviewDateToRows,
   clampSchedulingParams,
-  computeReview,
   completeOpenReviewsFor,
   computeReviewOutcome,
+  decideReview,
   DEFAULT_SCHEDULING_PARAMS,
+  isProtectedPendingDate,
+  pendingScheduleConflict,
   planNextReview,
   resolveReviewDate,
   SCHEDULING_BOUNDS,
+  scheduleAgainPlan,
   shouldSuggestDormant,
   snoozePlan,
   suggestStatusAfterBlock,
+  validateSchedulingFields,
 } from './scheduling';
-import type { SchedulingParams } from './types';
+import type { BlockResult, ISODate, PracticeItem, Review, SchedulingParams } from './types';
 import { applyBlockStats } from './blocks';
 import { createBlock, createItem, createReview } from './factories';
 import { addDays, toISODate } from './util';
-import type { ItemStatus, PracticeItem, Rating } from './types';
+import type { ItemStatus, Rating } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
+const TODAY = toISODate(NOW);
+const day = (n: number): ISODate => toISODate(addDays(NOW, n));
 
 /** A closed block, for handing an outcome's date through applyBlockStats. */
 function closedBlock() {
@@ -35,428 +41,522 @@ function item(o: Partial<PracticeItem> & { status?: ItemStatus; importance?: Rat
     { instrumentId: 'i', title: 't', status: o.status ?? 'usable', importance: o.importance ?? 3, difficulty: o.difficulty ?? 3 },
     NOW,
   );
-  return { ...base, ...o };
+  return { ...base, id: 'item-1', ...o };
 }
 
-describe('computeReview · spaced repetition (auto)', () => {
-  it('grows the interval across successful reviews', () => {
-    const r1 = computeReview(item(), 'stable_alone', NOW)!; // 1st good rep
-    expect(r1.srReps).toBe(1);
-    expect(r1.intervalDays).toBe(2);
+const STABLE: BlockResult[] = ['stable_alone', 'stable_in_context', 'performable'];
+const ALL_RESULTS: BlockResult[] = ['worse', 'same', 'slightly_better', ...STABLE];
 
-    const r2 = computeReview(item({ srReps: 1, srIntervalDays: 2, srEase: 2.5 }), 'stable_alone', NOW)!;
-    expect(r2.srReps).toBe(2);
-    expect(r2.intervalDays).toBe(6);
+// ---------------------------------------------------------------------------
+// ac-1 — A1/A2/A3
+// ---------------------------------------------------------------------------
 
-    const r3 = computeReview(item({ srReps: 2, srIntervalDays: 6, srEase: 2.5 }), 'stable_in_context', NOW)!;
-    expect(r3.srReps).toBe(3);
-    expect(r3.intervalDays).toBe(15); // round(6 * 2.5)
-  });
-
-  it('resets to tomorrow when it slips (poor result)', () => {
-    const r = computeReview(item({ srReps: 4, srIntervalDays: 30 }), 'worse', NOW)!;
-    expect(r.srReps).toBe(0);
-    expect(r.intervalDays).toBe(1);
-  });
-
-  it('flags a strategy change on "same" and resets', () => {
-    const r = computeReview(item({ srReps: 3, srIntervalDays: 20 }), 'same', NOW)!;
-    expect(r.changeStrategy).toBe(true);
-    expect(r.intervalDays).toBe(1);
-  });
-
-  it('pulls important & difficult material sooner', () => {
-    const plain = computeReview(item({ srReps: 2, srIntervalDays: 6, importance: 3, difficulty: 3 }), 'stable_in_context', NOW)!;
-    const urgent = computeReview(item({ srReps: 2, srIntervalDays: 6, importance: 5, difficulty: 5 }), 'stable_in_context', NOW)!;
-    expect(urgent.intervalDays).toBeLessThan(plain.intervalDays);
-  });
-
-  it('sets the due date from today + interval', () => {
-    const r = computeReview(item(), 'stable_alone', NOW)!;
-    expect(r.dueDate).toBe(toISODate(addDays(NOW, r.intervalDays)));
-  });
-});
-
-describe('computeReview · modes', () => {
-  it('returns null in manual mode and for unlogged blocks', () => {
-    expect(computeReview(item({ reviewMode: 'manual' }), 'stable_alone', NOW)).toBeNull();
-    expect(computeReview(item(), 'not_logged', NOW)).toBeNull();
-  });
-
-  it('uses the fixed cadence in interval mode', () => {
-    const r = computeReview(item({ reviewMode: 'interval', reviewIntervalDays: 3 }), 'stable_alone', NOW)!;
-    expect(r.intervalDays).toBe(3);
-    expect(r.dueDate).toBe(toISODate(addDays(NOW, 3)));
-  });
-
-  it('fixed cadence does not overwrite the SM-2 interval base', () => {
-    const r = computeReview(
-      item({ reviewMode: 'interval', reviewIntervalDays: 30, srReps: 2, srEase: 2.5, srIntervalDays: 6 }),
-      'stable_alone',
-      NOW,
-    )!;
-    expect(r.intervalDays).toBe(30); // the fixed cadence still decides the due date
-    expect(r.srIntervalDays).toBe(6); // but the underlying Auto base is untouched
-  });
-});
-
-describe('planNextReview preview', () => {
-  it('mirrors computeReview without the SR-state fields', () => {
-    const p = planNextReview({ item: item(), result: 'stable_alone', now: NOW })!;
-    expect(p.intervalDays).toBe(2);
-    expect('srReps' in p).toBe(false);
-  });
-});
-
-describe('resolveReviewDate — the tri-state review-date primitive', () => {
-  it('returns undefined (no change) for an absent instruction', () => {
-    expect(resolveReviewDate(undefined)).toBeUndefined();
-  });
-
-  it('clears the schedule for null', () => {
-    expect(resolveReviewDate(null)).toEqual({ nextReviewDate: undefined });
-  });
-
-  it('sets the schedule for an explicit date', () => {
-    const date = toISODate(addDays(NOW, 5));
-    expect(resolveReviewDate(date)).toEqual({ nextReviewDate: date });
-  });
-});
-
-describe("applyReviewDateToRows — the coupled write to an item's Review rows", () => {
-  const itemId = 'item-1';
-
-  function openReview(dueDate: string) {
-    return createReview({ practiceItemId: itemId, dueDate, reviewType: 'retention' }, NOW);
-  }
-
-  it('leaves the review schedule untouched when an item update does not include a review date', () => {
-    const reviews = [openReview(toISODate(addDays(NOW, -14)))];
-    expect(
-      applyReviewDateToRows({ reviews, practiceItemId: itemId, instruction: undefined, now: NOW }),
-    ).toBeUndefined();
-  });
-
-  it("moves the open review row when the item's review date changes", () => {
-    const reviews = [openReview(toISODate(addDays(NOW, -14)))];
-    const date = toISODate(addDays(NOW, 5));
-    const updated = applyReviewDateToRows({ reviews, practiceItemId: itemId, instruction: date, now: NOW })!;
-    expect(updated[0].dueDate).toBe(date);
-  });
-
-  it('removes the open review row when the schedule is cleared', () => {
-    const reviews = [openReview(toISODate(addDays(NOW, -14)))];
-    const updated = applyReviewDateToRows({ reviews, practiceItemId: itemId, instruction: null, now: NOW })!;
-    expect(updated).toHaveLength(0);
-  });
-
-  it('only touches the open row for this item, leaving completed rows and other items alone', () => {
-    const mine = openReview(toISODate(addDays(NOW, -1)));
-    const completedMine = { ...openReview(toISODate(addDays(NOW, -30))), completedAt: NOW.toISOString() };
-    const other = createReview({ practiceItemId: 'item-2', dueDate: toISODate(addDays(NOW, 1)), reviewType: 'retention' }, NOW);
-    const date = toISODate(addDays(NOW, 5));
-
-    const updated = applyReviewDateToRows({
-      reviews: [mine, completedMine, other],
-      practiceItemId: itemId,
-      instruction: date,
-      now: NOW,
-    })!;
-
-    expect(updated.find((r) => r.id === mine.id)!.dueDate).toBe(date);
-    expect(updated.find((r) => r.id === completedMine.id)!.dueDate).toBe(completedMine.dueDate);
-    expect(updated.find((r) => r.id === other.id)!.dueDate).toBe(other.dueDate);
-  });
-
-  it('snooze moves the same date on the item and the review without changing SM-2 state', () => {
-    const stale = item({ nextReviewDate: toISODate(addDays(NOW, -3)), srReps: 3, srEase: 2.6, srIntervalDays: 15 });
-    const review = openReview(toISODate(addDays(NOW, -3)));
-    const { dueDate } = snoozePlan(2, NOW);
-
-    // The two writes snoozeReview actually performs: the SELECTED row (by
-    // its own id — applyReviewDateToRow, not the item-scoped
-    // applyReviewDateToRows), and the item, from the same resolved value.
-    const updatedReviews = applyReviewDateToRow({
-      reviews: [review],
-      reviewId: review.id,
-      instruction: dueDate,
-      now: NOW,
-    })!;
-    const write = resolveReviewDate(dueDate)!;
-    const updatedItem = { ...stale, nextReviewDate: write.nextReviewDate };
-
-    expect(updatedReviews[0].dueDate).toBe(dueDate);
-    expect(updatedItem.nextReviewDate).toBe(dueDate);
-    expect(updatedItem.srReps).toBe(stale.srReps);
-    expect(updatedItem.srEase).toBe(stale.srEase);
-    expect(updatedItem.srIntervalDays).toBe(stale.srIntervalDays);
-  });
-});
-
-describe('applyReviewDateToRow — the row-scoped write snoozeReview needs', () => {
-  const itemId = 'item-1';
-
-  function openReview(dueDate: string) {
-    return createReview({ practiceItemId: itemId, dueDate, reviewType: 'retention' }, NOW);
-  }
-
-  it('leaves the row untouched when the instruction is absent', () => {
-    const reviews = [openReview(toISODate(addDays(NOW, -14)))];
-    expect(
-      applyReviewDateToRow({ reviews, reviewId: reviews[0].id, instruction: undefined, now: NOW }),
-    ).toBeUndefined();
-  });
-
-  it('moves only the selected row, leaving a second open review for the SAME item untouched', () => {
-    // The regression the review caught: two open rows on one item — a
-    // real, if unusual, shape (e.g. a stale row left behind by a bug, or
-    // two review types in flight at once). Snoozing review A must not
-    // silently move review B.
-    const a = openReview(toISODate(addDays(NOW, -14)));
-    const b = openReview(toISODate(addDays(NOW, -1)));
-    const date = toISODate(addDays(NOW, 2));
-
-    const updated = applyReviewDateToRow({ reviews: [a, b], reviewId: a.id, instruction: date, now: NOW })!;
-
-    expect(updated.find((r) => r.id === a.id)!.dueDate).toBe(date);
-    expect(updated.find((r) => r.id === b.id)!.dueDate).toBe(b.dueDate);
-  });
-
-  it('removes only the selected row when its instruction clears the schedule', () => {
-    const a = openReview(toISODate(addDays(NOW, -14)));
-    const b = openReview(toISODate(addDays(NOW, -1)));
-
-    const updated = applyReviewDateToRow({ reviews: [a, b], reviewId: a.id, instruction: null, now: NOW })!;
-
-    expect(updated.find((r) => r.id === a.id)).toBeUndefined();
-    expect(updated.find((r) => r.id === b.id)!.dueDate).toBe(b.dueDate);
-  });
-
-  it('leaves other items alone', () => {
-    const mine = openReview(toISODate(addDays(NOW, -1)));
-    const other = createReview({ practiceItemId: 'item-2', dueDate: toISODate(addDays(NOW, 1)), reviewType: 'retention' }, NOW);
-    const date = toISODate(addDays(NOW, 5));
-
-    const updated = applyReviewDateToRow({ reviews: [mine, other], reviewId: mine.id, instruction: date, now: NOW })!;
-
-    expect(updated.find((r) => r.id === mine.id)!.dueDate).toBe(date);
-    expect(updated.find((r) => r.id === other.id)!.dueDate).toBe(other.dueDate);
-  });
-});
-
-describe('computeReviewOutcome — the decision behind closing a block', () => {
-  it('requires an explicit now at the type level — this must never read the wall clock', () => {
-    // @ts-expect-error — `now` is required; omitting it must fail to compile
-    // rather than silently fall back to `new Date()`.
-    computeReviewOutcome({ item: item(), answer: 'scheduled' });
-  });
-
-  it("clears the item's next review date when no review is scheduled", () => {
-    const stale = item({ nextReviewDate: toISODate(addDays(NOW, -14)) });
-    const outcome = computeReviewOutcome({ item: stale, result: 'stable_alone', answer: 'declined', now: NOW });
-    // Tri-state, ready for applyBlockStats: null clears (§1.1), not undefined-keeps.
-    expect(outcome.nextReviewDate).toBeNull();
-  });
-
-  it("keeps the item's next review date when a review is scheduled", () => {
-    const date = toISODate(addDays(NOW, 5));
-    const outcome = computeReviewOutcome({
-      item: item(),
-      result: 'stable_alone',
-      answer: 'scheduled',
-      nextReviewDate: date,
-      now: NOW,
+describe('eligible retention evidence, and nothing else, advances spacing', () => {
+  it('early successful practice preserves the pending review and spacing state', () => {
+    // A future AUTOMATIC date: the review has not happened yet, so a good
+    // session before it is extra practice, not retrieval evidence.
+    const pending = day(5);
+    const base = item({
+      nextReviewDate: pending,
+      nextReviewSource: 'auto',
+      srReps: 2,
+      srEase: 2.5,
+      srIntervalDays: 6,
     });
-    expect(outcome.nextReviewDate).toBe(date);
-  });
 
-  it('writes one date to both the item and its new review row', () => {
-    const outcome = computeReviewOutcome({
-      item: item({ srReps: 2, srIntervalDays: 6, srEase: 2.5 }),
-      result: 'stable_in_context',
-      answer: 'scheduled', // no explicit nextReviewDate — falls back to the SM-2 suggestion
-      now: NOW,
-    });
-    expect(outcome.nextReviewDate).toBeTruthy();
-    expect(outcome.review?.dueDate).toBe(outcome.nextReviewDate);
-  });
+    for (const result of STABLE) {
+      const d = decideReview({ item: base, result, now: NOW });
+      expect(d.disposition, result).toBe('keep');
+      expect(d.effectiveDate, result).toBe(pending);
+      expect(d.advanced, result).toBe(false);
+      expect(d.sr, result).toBeUndefined();
 
-  it('leaves SM-2 state untouched when no review is scheduled', () => {
-    const outcome = computeReviewOutcome({
-      item: item({ srReps: 3, srEase: 2.6, srIntervalDays: 15 }),
-      result: 'worse',
-      answer: 'declined',
-      now: NOW,
-    });
-    expect(outcome.sr).toBeUndefined();
-  });
-});
+      // The pending ROW keeps its identity too: nothing is completed and
+      // nothing replaces it.
+      const outcome = computeReviewOutcome({ item: base, result, answer: 'scheduled', now: NOW });
+      expect(outcome.nextReviewDate, result).toBeUndefined();
+      expect(outcome.completeOpenReviews, result).toBe(false);
+      expect(outcome.review, result).toBeUndefined();
 
-// --- A6: answering nothing is not declining ----------------------------------
-//
-// The whole bug was that the code could not tell those two states apart.
-// `!scheduleReview` conflated "the owner declined a review" (clear the date,
-// close the row) with "the owner answered nothing" (change neither), so one
-// skipped tap erased the item's next date, completed its open review and left
-// SM-2 state stale — while the panel read "Should this come back? Yes" above an
-// empty date field. Both halves are ONE decision, so both are asserted against
-// the same discriminating pair.
+      const rows = [createReview({ practiceItemId: base.id, dueDate: pending, reviewType: 'retention' }, NOW)];
+      expect(
+        completeOpenReviewsFor({
+          reviews: rows,
+          practiceItemId: base.id,
+          complete: outcome.completeOpenReviews,
+          result,
+          now: NOW,
+        }),
+        result,
+      ).toEqual(rows);
 
-describe('A6 · a resultless close must not touch the schedule', () => {
-  const itemId = 'item-1';
-  const WAS = toISODate(addDays(NOW, 9));
-
-  it('keeps the item\'s review date when no result was chosen and still clears it when a review is declined', () => {
-    const scheduled = item({ nextReviewDate: WAS, srReps: 3, srEase: 2.6, srIntervalDays: 15 });
-
-    // No result chosen: `undefined` is "keep", which applyBlockStats reads as
-    // leaving item.nextReviewDate exactly as it was.
-    const unanswered = computeReviewOutcome({ item: scheduled, answer: 'unanswered', now: NOW });
-    expect(unanswered.nextReviewDate).toBeUndefined();
-    expect(applyBlockStats(scheduled, closedBlock(), {
-      itemBlocksIncludingNew: [closedBlock()],
-      now: NOW,
-      nextReviewDate: unanswered.nextReviewDate,
-    }).nextReviewDate).toBe(WAS);
-
-    // A genuine decline still clears it, exactly as it always has.
-    const declined = computeReviewOutcome({ item: scheduled, result: 'stable_alone', answer: 'declined', now: NOW });
-    expect(declined.nextReviewDate).toBeNull();
-    expect(applyBlockStats(scheduled, closedBlock(), {
-      itemBlocksIncludingNew: [closedBlock()],
-      now: NOW,
-      nextReviewDate: declined.nextReviewDate,
-    }).nextReviewDate).toBeUndefined();
-  });
-
-  it('leaves an open review row open when no result was chosen and still completes it on a genuine decline', () => {
-    const open = createReview({ practiceItemId: itemId, dueDate: WAS, reviewType: 'retention' }, NOW);
-
-    const unanswered = computeReviewOutcome({ item: item(), answer: 'unanswered', now: NOW });
-    expect(unanswered.completeOpenReviews).toBe(false);
-    const afterUnanswered = completeOpenReviewsFor({
-      reviews: [open],
-      practiceItemId: itemId,
-      complete: unanswered.completeOpenReviews,
-      now: NOW,
-    });
-    expect(afterUnanswered[0].completedAt).toBeUndefined();
-    expect(afterUnanswered[0].dueDate).toBe(WAS);
-
-    const declined = computeReviewOutcome({ item: item(), result: 'stable_alone', answer: 'declined', now: NOW });
-    expect(declined.completeOpenReviews).toBe(true);
-    const afterDecline = completeOpenReviewsFor({
-      reviews: [open],
-      practiceItemId: itemId,
-      complete: declined.completeOpenReviews,
-      result: 'stable_alone',
-      now: NOW,
-    });
-    expect(afterDecline[0].completedAt).toBeTruthy();
-  });
-
-  it('leaves SM-2 state untouched when nothing was answered', () => {
-    const outcome = computeReviewOutcome({
-      item: item({ srReps: 3, srEase: 2.6, srIntervalDays: 15 }),
-      answer: 'unanswered',
-      now: NOW,
-    });
-    expect(outcome.sr).toBeUndefined();
-  });
-
-  it('still completes the open row when a review IS scheduled — practising is what completes one', () => {
-    const outcome = computeReviewOutcome({ item: item(), result: 'stable_alone', answer: 'scheduled', now: NOW });
-    expect(outcome.completeOpenReviews).toBe(true);
-    expect(outcome.review?.dueDate).toBe(outcome.nextReviewDate);
-  });
-});
-
-describe('adjustable scheduling params', () => {
-  it('passing the explicit defaults is byte-identical to passing nothing', () => {
-    const cases: { it: PracticeItem; r: Parameters<typeof computeReview>[1] }[] = [
-      { it: item(), r: 'stable_alone' },
-      { it: item({ srReps: 1, srIntervalDays: 2 }), r: 'stable_alone' },
-      { it: item({ srReps: 2, srIntervalDays: 6 }), r: 'stable_in_context' },
-      { it: item({ srReps: 4, srIntervalDays: 30 }), r: 'worse' },
-      { it: item({ importance: 5, difficulty: 5, srReps: 2, srIntervalDays: 6 }), r: 'stable_in_context' },
-    ];
-    for (const c of cases) {
-      expect(computeReview(c.it, c.r, NOW, DEFAULT_SCHEDULING_PARAMS)).toEqual(computeReview(c.it, c.r, NOW));
+      // The real block stats DO change — minutes and results are recorded.
+      const next = applyBlockStats(base, closedBlock(), {
+        itemBlocksIncludingNew: [closedBlock()],
+        now: NOW,
+        nextReviewDate: outcome.nextReviewDate,
+      });
+      expect(next.timesPractised, result).toBe(base.timesPractised + 1);
+      expect(next.nextReviewDate, result).toBe(pending);
+      expect(next.srReps, result).toBe(2);
+      expect(next.srIntervalDays, result).toBe(6);
     }
   });
 
-  it('the defaults reproduce the historical constants exactly', () => {
-    expect(DEFAULT_SCHEDULING_PARAMS.sm2FirstIntervalDays).toBe(2);
-    expect(DEFAULT_SCHEDULING_PARAMS.sm2SecondIntervalDays).toBe(6);
-    expect(DEFAULT_SCHEDULING_PARAMS.sm2SlipResetDays).toBe(1);
+  it('a due stable result advances spacing exactly once per local calendar day', () => {
+    const due = item({ nextReviewDate: TODAY, nextReviewSource: 'auto', srReps: 1, srIntervalDays: 2, srEase: 2.5 });
+
+    const first = decideReview({ item: due, result: 'stable_alone', now: NOW });
+    expect(first.disposition).toBe('set');
+    expect(first.advanced).toBe(true);
+    expect(first.sr).toMatchObject({ srReps: 2, srIntervalDays: 6, srLastProgressDay: TODAY });
+    expect(first.dueDate).toBe(day(6));
+
+    // The marker the first advance wrote is what blocks a second one — even
+    // after the date has been cleared and re-armed, or the app reloaded.
+    const advancedToday = { ...due, ...first.sr, nextReviewDate: first.dueDate, nextReviewSource: 'auto' as const };
+    const second = decideReview({ item: advancedToday, result: 'performable', now: NOW });
+    expect(second.disposition).toBe('keep');
+    expect(second.advanced).toBe(false);
+
+    const rearmed = { ...advancedToday, nextReviewDate: undefined };
+    const third = decideReview({ item: rearmed, result: 'performable', now: NOW });
+    expect(third.advanced).toBe(false);
+    expect(third.disposition).toBe('keep');
+
+    // Tomorrow, with the review genuinely due again, it advances once more.
+    const tomorrow = new Date(addDays(NOW, 1));
+    const dueAgain = { ...advancedToday, nextReviewDate: toISODate(tomorrow) };
+    expect(decideReview({ item: dueAgain, result: 'performable', now: tomorrow }).advanced).toBe(true);
   });
 
-  it('honours widened intervals in the SM-2 rungs', () => {
-    const params: SchedulingParams = { ...DEFAULT_SCHEDULING_PARAMS, sm2FirstIntervalDays: 4, sm2SecondIntervalDays: 10 };
-    expect(computeReview(item(), 'stable_alone', NOW, params)!.intervalDays).toBe(4);
-    expect(computeReview(item({ srReps: 1, srIntervalDays: 4 }), 'stable_alone', NOW, params)!.intervalDays).toBe(10);
-  });
+  it('a first schedule with no date is an eligible opportunity, and unlogged results never advance', () => {
+    const fresh = item({ nextReviewDate: undefined });
+    const first = decideReview({ item: fresh, result: 'stable_alone', now: NOW });
+    expect(first.disposition).toBe('set');
+    expect(first.advanced).toBe(true);
+    expect(first.dueDate).toBe(day(2));
 
-  it('honours a longer slip-reset gap, with matching rationale', () => {
-    const params: SchedulingParams = { ...DEFAULT_SCHEDULING_PARAMS, sm2SlipResetDays: 3 };
-    const r = computeReview(item({ srReps: 4, srIntervalDays: 30 }), 'worse', NOW, params)!;
-    expect(r.intervalDays).toBe(3);
-    expect(r.rationale).toMatch(/back in 3 days/);
-  });
+    for (const result of [undefined, 'not_logged'] as (BlockResult | undefined)[]) {
+      const d = decideReview({ item: fresh, result, now: NOW });
+      expect(d.disposition, String(result)).toBe('keep');
+      expect(d.advanced, String(result)).toBe(false);
+      expect(d.sr, String(result)).toBeUndefined();
+    }
 
-  it('clampSchedulingParams fills defaults, clamps out-of-range, rounds integers', () => {
-    expect(clampSchedulingParams(undefined)).toEqual(DEFAULT_SCHEDULING_PARAMS);
-    const clamped = clampSchedulingParams({
-      sm2FirstIntervalDays: 99,
-      sm2SecondIntervalDays: 0,
-      sm2SlipResetDays: 2.6,
-      warmupShare: 5,
-      deepWorkShare: -1,
+    // Routine exposure is exactly this case: `applyRoutineRun` writes blocks
+    // with the factory default `not_logged` and never reaches a close screen,
+    // so a routine can never become a retention judgement.
+    const routineClose = computeReviewOutcome({
+      item: fresh,
+      result: 'not_logged',
+      answer: 'unanswered',
+      now: NOW,
     });
-    expect(clamped.sm2FirstIntervalDays).toBe(SCHEDULING_BOUNDS.sm2FirstIntervalDays[1]); // 4
-    expect(clamped.sm2SecondIntervalDays).toBe(SCHEDULING_BOUNDS.sm2SecondIntervalDays[0]); // 3
-    expect(clamped.sm2SlipResetDays).toBe(3); // round(2.6) clamped into 1–3
-    expect(clamped.warmupShare).toBe(SCHEDULING_BOUNDS.warmupShare[1]); // 0.15
-    expect(clamped.deepWorkShare).toBe(SCHEDULING_BOUNDS.deepWorkShare[0]); // 0.25
-  });
-
-  it('keeps the review-slot window coherent (max ≥ min)', () => {
-    const c = clampSchedulingParams({ reviewSlotMinMinutes: 5, reviewSlotMaxMinutes: 5 });
-    expect(c.reviewSlotMaxMinutes).toBeGreaterThanOrEqual(c.reviewSlotMinMinutes);
+    expect(routineClose.nextReviewDate).toBeUndefined();
+    expect(routineClose.completeOpenReviews).toBe(false);
+    expect(routineClose.sr).toBeUndefined();
   });
 });
 
-describe('suggestStatusAfterBlock', () => {
-  it('promotes shaky → coming together on stable_alone', () => {
-    expect(suggestStatusAfterBlock({ item: item({ status: 'fragile' }), result: 'stable_alone', last3AllSame: false }).suggestedStatus).toBe('usable');
+// ---------------------------------------------------------------------------
+// ac-2 — A3/A4
+// ---------------------------------------------------------------------------
+
+describe('no improvement is not failed recall', () => {
+  it('only deterioration can bring an automatic review forward', () => {
+    const pending = day(5);
+    const auto = item({ nextReviewDate: pending, nextReviewSource: 'auto', srReps: 3, srIntervalDays: 10, srEase: 2.5 });
+
+    // `same` and `slightly_better` before the date: schedule and SR untouched,
+    // and never described as a slip.
+    for (const result of ['same', 'slightly_better'] as BlockResult[]) {
+      const d = decideReview({ item: auto, result, now: NOW });
+      expect(d.disposition, result).toBe('keep');
+      expect(d.effectiveDate, result).toBe(pending);
+      expect(d.sr, result).toBeUndefined();
+      expect(d.rationale.toLowerCase(), result).not.toContain('slip');
+    }
+
+    // At the due date they REPEAT the current gap: no extra repetition, no
+    // ease change, no reset.
+    const due = { ...auto, nextReviewDate: TODAY };
+    for (const result of ['same', 'slightly_better'] as BlockResult[]) {
+      const d = decideReview({ item: due, result, now: NOW });
+      expect(d.disposition, result).toBe('set');
+      expect(d.advanced, result).toBe(false);
+      expect(d.sr, result).toMatchObject({ srReps: 3, srEase: 2.5, srIntervalDays: 10 });
+      expect(d.sr?.srLastProgressDay, result).toBeUndefined();
+      expect(d.dueDate, result).toBe(day(10));
+      expect(d.rationale.toLowerCase(), result).not.toContain('slip');
+    }
+
+    // With no interval yet, "the same gap again" is the configured first gap.
+    const neverScheduled = item({ nextReviewDate: TODAY, nextReviewSource: 'auto' });
+    expect(decideReview({ item: neverScheduled, result: 'same', now: NOW }).dueDate).toBe(day(2));
   });
-  it('keeps status but advises a new strategy after three "same"', () => {
-    const s = suggestStatusAfterBlock({ item: item({ status: 'fragile' }), result: 'same', last3AllSame: true });
-    expect(s.suggestedStatus).toBeUndefined();
-    expect(s.message).toMatch(/strategy/i);
+
+  it('worse shortens an automatic future date to min(existing, repair) and never postpones it', () => {
+    const params: SchedulingParams = { ...DEFAULT_SCHEDULING_PARAMS, sm2SlipResetDays: 3 };
+
+    // Far-off date: the repair proposal is earlier, so it wins.
+    const far = item({ nextReviewDate: day(30), nextReviewSource: 'auto', srReps: 4, srIntervalDays: 30 });
+    const shortened = decideReview({ item: far, result: 'worse', now: NOW, params });
+    expect(shortened.disposition).toBe('set');
+    expect(shortened.dueDate).toBe(day(3));
+    expect(shortened.sr).toMatchObject({ srReps: 0, srIntervalDays: 3 });
+
+    // A date already sooner than the repair proposal is NOT pushed out.
+    const soon = item({ nextReviewDate: day(1), nextReviewSource: 'auto' });
+    expect(decideReview({ item: soon, result: 'worse', now: NOW, params }).dueDate).toBe(day(1));
+
+    // Repetition cannot slide it either: feeding the result back in leaves it.
+    const after = { ...soon, nextReviewDate: day(1) };
+    expect(decideReview({ item: after, result: 'worse', now: NOW, params }).dueDate).toBe(day(1));
+  });
+
+  it('the rationale reports the final saved date, not the raw setting', () => {
+    const params: SchedulingParams = { ...DEFAULT_SCHEDULING_PARAMS, sm2SlipResetDays: 3 };
+    // importance 1 / difficulty 1 stretch 3 days to round(3 × 1.16 × 1.10) = 4.
+    const easy = item({ importance: 1, difficulty: 1, nextReviewDate: TODAY, nextReviewSource: 'auto' });
+    const d = decideReview({ item: easy, result: 'worse', now: NOW, params });
+    expect(d.dueDate).toBe(day(4));
+    expect(d.rationale).toContain('4 days');
+    expect(d.rationale).not.toContain('3 days');
   });
 });
 
-describe('snoozePlan ("not now" with an honest date move)', () => {
-  it('pushes the due date N days from today — not from the stale old due date', () => {
-    expect(snoozePlan(2, NOW).dueDate).toBe(toISODate(addDays(NOW, 2)));
-    expect(snoozePlan(7, NOW).dueDate).toBe(toISODate(addDays(NOW, 7)));
+// ---------------------------------------------------------------------------
+// ac-3 — A5/C6
+// ---------------------------------------------------------------------------
+
+describe('a date the owner owns is not the engine’s to move', () => {
+  it('manual and fixed dates survive extra practice without advancing spacing', () => {
+    const future = day(9);
+    const protectedItems: { label: string; value: PracticeItem }[] = [
+      { label: 'manual override of an auto date', value: item({ nextReviewDate: future, nextReviewSource: 'user' }) },
+      { label: 'manual mode', value: item({ nextReviewDate: future, reviewMode: 'manual', nextReviewSource: 'user' }) },
+      {
+        label: 'fixed cadence',
+        value: item({ nextReviewDate: future, reviewMode: 'interval', reviewIntervalDays: 14, nextReviewSource: 'auto' }),
+      },
+      { label: 'snoozed date', value: item({ nextReviewDate: future, nextReviewSource: 'user' }) },
+      { label: 'legacy unknown provenance', value: item({ nextReviewDate: future, nextReviewSource: undefined }) },
+    ];
+
+    for (const { label, value } of protectedItems) {
+      expect(isProtectedPendingDate(value, NOW), label).toBe(true);
+      for (const result of ALL_RESULTS) {
+        const d = decideReview({ item: value, result, now: NOW });
+        expect(d.disposition, `${label} · ${result}`).toBe('keep');
+        expect(d.effectiveDate, `${label} · ${result}`).toBe(future);
+        expect(d.advanced, `${label} · ${result}`).toBe(false);
+        expect(d.sr, `${label} · ${result}`).toBeUndefined();
+      }
+    }
   });
 
-  it('never snoozes into the past or by zero', () => {
-    expect(snoozePlan(0, NOW).dueDate).toBe(toISODate(addDays(NOW, 1)));
-    expect(snoozePlan(-3, NOW).dueDate).toBe(toISODate(addDays(NOW, 1)));
+  it('a due protected date hands the item back to its own review mode', () => {
+    // AT the date, protection ends — it is the review, whoever chose it.
+    const dueUserDate = item({ nextReviewDate: TODAY, nextReviewSource: 'user', srReps: 1, srIntervalDays: 2 });
+    expect(isProtectedPendingDate(dueUserDate, NOW)).toBe(false);
+    const advanced = decideReview({ item: dueUserDate, result: 'stable_alone', now: NOW });
+    expect(advanced.advanced).toBe(true);
+    expect(advanced.dueDate).toBe(day(6));
+
+    // A fixed cadence uses its configured gap and leaves SM-2 alone.
+    const dueFixed = item({
+      nextReviewDate: TODAY,
+      reviewMode: 'interval',
+      reviewIntervalDays: 14,
+      srReps: 3,
+      srEase: 2.5,
+      srIntervalDays: 10,
+    });
+    const fixed = decideReview({ item: dueFixed, result: 'stable_in_context', now: NOW });
+    expect(fixed.dueDate).toBe(day(14));
+    expect(fixed.sr).toBeUndefined();
+    expect(fixed.advanced).toBe(false);
+
+    // Manual mode never proposes at all — the pending schedule simply stands.
+    const dueManual = item({ nextReviewDate: TODAY, reviewMode: 'manual' });
+    const manual = computeReviewOutcome({ item: dueManual, result: 'stable_alone', answer: 'scheduled', now: NOW });
+    expect(manual.nextReviewDate).toBeUndefined();
+    expect(manual.completeOpenReviews).toBe(false);
+
+    // …unless the owner explicitly declines.
+    const declined = computeReviewOutcome({ item: dueManual, result: 'stable_alone', answer: 'declined', now: NOW });
+    expect(declined.nextReviewDate).toBeNull();
+    expect(declined.completeOpenReviews).toBe(true);
+  });
+
+  it('an explicit date edit is respected in either direction and recorded as the owner’s', () => {
+    const auto = item({ nextReviewDate: TODAY, nextReviewSource: 'auto', srReps: 1, srIntervalDays: 2 });
+    const engineDate = decideReview({ item: auto, result: 'stable_alone', now: NOW }).dueDate;
+    expect(engineDate).toBe(day(6));
+
+    for (const chosen of [day(2), day(40)]) {
+      const outcome = computeReviewOutcome({
+        item: auto,
+        result: 'stable_alone',
+        answer: 'scheduled',
+        nextReviewDate: chosen,
+        now: NOW,
+      });
+      expect(outcome.nextReviewDate, chosen).toBe(chosen);
+      expect(outcome.nextReviewSource, chosen).toBe('user');
+      expect(outcome.review?.dueDate, chosen).toBe(chosen);
+    }
   });
 });
 
-describe('shouldSuggestDormant', () => {
-  it('suggests dormant after 30+ idle days, but not for resting items', () => {
-    const stale = item({ status: 'usable' });
-    stale.lastPractisedAt = addDays(NOW, -31).toISOString();
-    expect(shouldSuggestDormant(stale, NOW)).toBe(true);
+// ---------------------------------------------------------------------------
+// ac-4 — A6
+// ---------------------------------------------------------------------------
 
-    const maint = item({ status: 'maintenance' });
-    maint.lastPractisedAt = addDays(NOW, -60).toISOString();
-    expect(shouldSuggestDormant(maint, NOW)).toBe(false);
+describe('the pending review has exactly one date, and three honest answers', () => {
+  it('decline unanswered and schedule again make distinct pending review transitions', () => {
+    const pending = day(4);
+    const base = item({ nextReviewDate: pending, nextReviewSource: 'auto', srReps: 2, srIntervalDays: 6 });
+    const openRow = createReview({ practiceItemId: base.id, dueDate: pending, reviewType: 'retention' }, NOW);
+    const completedRow: Review = {
+      ...createReview({ practiceItemId: base.id, dueDate: day(-30), reviewType: 'retention' }, NOW),
+      id: 'old',
+      completedAt: NOW.toISOString(),
+      result: 'stable_alone',
+    };
+    const rows = [completedRow, openRow];
+
+    // 1. UNANSWERED — nothing about the schedule was judged.
+    const unanswered = computeReviewOutcome({ item: base, result: 'not_logged', answer: 'unanswered', now: NOW });
+    expect(unanswered).toMatchObject({ nextReviewDate: undefined, nextReviewSource: undefined, completeOpenReviews: false });
+    expect(
+      completeOpenReviewsFor({ reviews: rows, practiceItemId: base.id, complete: false, now: NOW }),
+    ).toEqual(rows);
+
+    // 2. DECLINED — a deliberate No: date cleared, row completed, no fake
+    //    result and no spacing progress.
+    const declined = computeReviewOutcome({ item: base, result: 'same', answer: 'declined', now: NOW });
+    expect(declined).toMatchObject({ nextReviewDate: null, nextReviewSource: null, completeOpenReviews: true });
+    expect(declined.sr).toBeUndefined();
+    const afterDecline = applyBlockStats(base, closedBlock(), {
+      itemBlocksIncludingNew: [closedBlock()],
+      now: NOW,
+      nextReviewDate: declined.nextReviewDate,
+    });
+    expect(afterDecline.nextReviewDate).toBeUndefined();
+    expect(afterDecline.srReps).toBe(2); // untouched
+    const closedRows = completeOpenReviewsFor({
+      reviews: rows,
+      practiceItemId: base.id,
+      complete: true,
+      result: 'same',
+      now: NOW,
+    });
+    expect(closedRows.every((r) => !!r.completedAt)).toBe(true);
+    expect(closedRows.find((r) => r.id === 'old')).toEqual(completedRow); // history intact
+
+    // 3. SCHEDULE AGAIN with an existing open row — the row MOVES, no
+    //    duplicate is created, and nothing is completed.
+    const chosen = day(11);
+    const edit = scheduleAgainPlan({ item: afterDecline, reviews: [completedRow, openRow], dueDate: chosen, now: NOW });
+    expect(edit.createRow).toBe(false);
+    expect(edit.reviews.filter((r) => !r.completedAt)).toHaveLength(1);
+    expect(edit.reviews.find((r) => r.id === openRow.id)?.dueDate).toBe(chosen);
+    expect(edit.reviews.find((r) => r.id === 'old')).toEqual(completedRow);
+
+    // 4. SCHEDULE AGAIN with NO open row — one has to be created, which the
+    //    old date helper could never do: it only updated existing rows.
+    const noRow = scheduleAgainPlan({ item: afterDecline, reviews: [completedRow], dueDate: chosen, now: NOW });
+    expect(noRow.createRow).toBe(true);
+    expect(noRow.reviews).toEqual([completedRow]);
+
+    // Repeating it does not pile up pending rows.
+    const again = scheduleAgainPlan({
+      item: afterDecline,
+      reviews: [completedRow, { ...openRow, dueDate: chosen }],
+      dueDate: chosen,
+      now: NOW,
+    });
+    expect(again.createRow).toBe(false);
+    expect(again.reviews.filter((r) => !r.completedAt)).toHaveLength(1);
+
+    // 5. SNOOZE — one row moves, honestly, with no SM-2 change.
+    const snoozed = snoozePlan(2, NOW);
+    expect(snoozed.dueDate).toBe(day(2));
+    const snoozedRows = applyReviewDateToRow({
+      reviews: [completedRow, openRow],
+      reviewId: openRow.id,
+      instruction: snoozed.dueDate,
+      now: NOW,
+    })!;
+    expect(snoozedRows.find((r) => r.id === openRow.id)?.dueDate).toBe(snoozed.dueDate);
+    expect(snoozedRows.find((r) => r.id === 'old')).toEqual(completedRow);
+
+    // 6. Item and row always agree after a scheduled close.
+    const dueItem = { ...base, nextReviewDate: TODAY };
+    const scheduled = computeReviewOutcome({ item: dueItem, result: 'stable_alone', answer: 'scheduled', now: NOW });
+    expect(scheduled.review?.dueDate).toBe(scheduled.nextReviewDate);
+  });
+
+  it('conflicting legacy pending dates are reported, not silently discarded', () => {
+    const base = item({ nextReviewDate: day(4) });
+    const a = { ...createReview({ practiceItemId: base.id, dueDate: day(4), reviewType: 'retention' }, NOW), id: 'a' };
+    const b = { ...createReview({ practiceItemId: base.id, dueDate: day(9), reviewType: 'retention' }, NOW), id: 'b' };
+
+    expect(pendingScheduleConflict(base, [a])).toBeNull();
+    const conflict = pendingScheduleConflict(base, [a, b])!;
+    expect(conflict.rows.map((r) => r.id)).toEqual(['a', 'b']);
+    expect(conflict.message).toContain(day(9));
+
+    // Normalising is a deliberate WRITE, and it keeps both rows — nothing is
+    // deleted and no completion is fabricated.
+    const normalised = applyReviewDateToRows({
+      reviews: [a, b],
+      practiceItemId: base.id,
+      instruction: day(4),
+      now: NOW,
+    })!;
+    expect(normalised).toHaveLength(2);
+    expect(normalised.every((r) => r.dueDate === day(4) && !r.completedAt)).toBe(true);
+    expect(pendingScheduleConflict(base, normalised)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The preview the close screen renders is the decision it saves
+// ---------------------------------------------------------------------------
+
+describe('planNextReview previews the decision, never a second one', () => {
+  it('shows the date that will stand, whether the decision writes it or keeps it', () => {
+    const kept = item({ nextReviewDate: day(5), nextReviewSource: 'user' });
+    expect(planNextReview({ item: kept, result: 'stable_alone', now: NOW })?.dueDate).toBe(day(5));
+
+    const due = item({ nextReviewDate: TODAY, nextReviewSource: 'auto' });
+    const preview = planNextReview({ item: due, result: 'stable_alone', now: NOW })!;
+    const saved = computeReviewOutcome({ item: due, result: 'stable_alone', answer: 'scheduled', now: NOW });
+    expect(preview.dueDate).toBe(saved.nextReviewDate);
+
+    // Nothing at all to show when there is genuinely no date.
+    const blank = item({ nextReviewDate: undefined, reviewMode: 'manual' });
+    expect(planNextReview({ item: blank, result: 'stable_alone', now: NOW })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inbound validation (used by ac-15's wiring test too)
+// ---------------------------------------------------------------------------
+
+describe('validateSchedulingFields', () => {
+  it('rejects unreadable new scheduling data and tolerates legacy debris', () => {
+    const good = item({ nextReviewDate: day(3), nextReviewSource: 'auto', srLastProgressDay: TODAY });
+    expect(validateSchedulingFields({ items: [good], reviews: [] })).toBeNull();
+
+    expect(
+      validateSchedulingFields({ items: [{ ...good, nextReviewDate: 'soon' }], reviews: [] }),
+    ).toMatch(/next-review date/);
+    expect(
+      validateSchedulingFields({ items: [{ ...good, nextReviewSource: 'guess' as never }], reviews: [] }),
+    ).toMatch(/review-date source/);
+    expect(
+      validateSchedulingFields({ items: [{ ...good, srLastProgressDay: '18-06-2026' }], reviews: [] }),
+    ).toMatch(/spacing-progress day/);
+    expect(validateSchedulingFields({ items: [{ ...good, srEase: NaN }], reviews: [] })).toMatch(/srEase/);
+
+    // A pending row pointing at a deleted item is legacy debris, not invalid
+    // new intent: it must not make an entire restore fail.
+    const orphan = createReview({ practiceItemId: 'gone', dueDate: day(1), reviewType: 'retention' }, NOW);
+    expect(validateSchedulingFields({ items: [good], reviews: [orphan] })).toBeNull();
+    expect(
+      validateSchedulingFields({ items: [good], reviews: [{ ...orphan, dueDate: 'whenever' }] }),
+    ).toMatch(/due date/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unchanged behaviour that must stay unchanged
+// ---------------------------------------------------------------------------
+
+describe('scheduling knobs', () => {
+  it('defaults reproduce the historical intervals exactly', () => {
+    expect(DEFAULT_SCHEDULING_PARAMS).toEqual({
+      sm2FirstIntervalDays: 2,
+      sm2SecondIntervalDays: 6,
+      sm2SlipResetDays: 1,
+      warmupShare: 0.12,
+      deepWorkShare: 0.33,
+      reviewSlotMinMinutes: 3,
+      reviewSlotMaxMinutes: 7,
+    });
+  });
+
+  it('clamps every knob into its documented bounds', () => {
+    const wild = clampSchedulingParams({
+      sm2FirstIntervalDays: 99,
+      sm2SecondIntervalDays: -4,
+      sm2SlipResetDays: 2.4,
+      warmupShare: 0.9,
+      deepWorkShare: 0.01,
+      reviewSlotMinMinutes: 100,
+      reviewSlotMaxMinutes: 1,
+    });
+    for (const key of Object.keys(SCHEDULING_BOUNDS) as (keyof SchedulingParams)[]) {
+      const [lo, hi] = SCHEDULING_BOUNDS[key];
+      expect(wild[key], key).toBeGreaterThanOrEqual(lo);
+      expect(wild[key], key).toBeLessThanOrEqual(hi);
+    }
+    expect(wild.reviewSlotMaxMinutes).toBeGreaterThanOrEqual(wild.reviewSlotMinMinutes);
+    expect(clampSchedulingParams(undefined)).toEqual(DEFAULT_SCHEDULING_PARAMS);
+  });
+
+  it('the configured gaps actually drive the dates', () => {
+    const params: SchedulingParams = { ...DEFAULT_SCHEDULING_PARAMS, sm2FirstIntervalDays: 4, sm2SecondIntervalDays: 9 };
+    const first = decideReview({ item: item({ nextReviewDate: TODAY }), result: 'stable_alone', now: NOW, params });
+    expect(first.dueDate).toBe(day(4));
+    const second = decideReview({
+      item: item({ nextReviewDate: TODAY, srReps: 1, srIntervalDays: 4 }),
+      result: 'stable_alone',
+      now: NOW,
+      params,
+    });
+    expect(second.dueDate).toBe(day(9));
+  });
+});
+
+describe('the tri-state review-date instruction', () => {
+  it('absent keeps, null clears, a date sets both sides', () => {
+    expect(resolveReviewDate(undefined)).toBeUndefined();
+    expect(resolveReviewDate(null)).toEqual({ nextReviewDate: undefined });
+    expect(resolveReviewDate(day(3))).toEqual({ nextReviewDate: day(3) });
+
+    const open = createReview({ practiceItemId: 'item-1', dueDate: day(1), reviewType: 'retention' }, NOW);
+    expect(applyReviewDateToRows({ reviews: [open], practiceItemId: 'item-1', instruction: undefined, now: NOW })).toBeUndefined();
+    expect(applyReviewDateToRows({ reviews: [open], practiceItemId: 'item-1', instruction: null, now: NOW })).toEqual([]);
+    expect(
+      applyReviewDateToRows({ reviews: [open], practiceItemId: 'item-1', instruction: day(8), now: NOW })![0].dueDate,
+    ).toBe(day(8));
+  });
+});
+
+describe('status suggestions and dormancy', () => {
+  it('suggests, never forces, and still flags a three-same streak', () => {
+    expect(
+      suggestStatusAfterBlock({ item: item({ status: 'fragile' }), result: 'stable_alone', last3AllSame: false })
+        .suggestedStatus,
+    ).toBe('usable');
+    expect(
+      suggestStatusAfterBlock({ item: item({ status: 'usable' }), result: 'stable_in_context', last3AllSame: false })
+        .suggestedStatus,
+    ).toBe('integrated');
+    const streak = suggestStatusAfterBlock({ item: item(), result: 'same', last3AllSame: true });
+    expect(streak.suggestedStatus).toBeUndefined();
+    expect(streak.message).toContain('different strategy');
+  });
+
+  it('suggests dormancy only for long-untouched, still-active material', () => {
+    const old = item({ lastPractisedAt: addDays(NOW, -40).toISOString() });
+    expect(shouldSuggestDormant(old, NOW)).toBe(true);
+    expect(shouldSuggestDormant({ ...old, status: 'dormant' }, NOW)).toBe(false);
+    expect(shouldSuggestDormant(item({ lastPractisedAt: addDays(NOW, -2).toISOString() }), NOW)).toBe(false);
   });
 });

@@ -75,14 +75,24 @@ describe('applyBlockStats', () => {
     expect(updated.timesPractised).toBe(1);
   });
 
-  it('sets the saturation warning when the item is over-drilled', () => {
+  // Over-practice is MINUTES lately, not a block count and not a run of
+  // identical results — three ten-minute sessions across three days is
+  // ordinary practice, and a January run of "same" is a strategy hint in
+  // January, not a permanent warning in September.
+  it('sets the saturation warning from recent minutes, not from block counts or old results', () => {
     const item = freshItem();
-    const blocks = [block('same', 10, 0), block('same', 10, 1), block('same', 10, 2)];
-    const updated = applyBlockStats(item, blocks[0], {
-      itemBlocksIncludingNew: blocks,
-      now: NOW,
-    });
-    expect(updated.saturationWarning).toBe(true);
+    const modest = [block('same', 10, 0), block('same', 10, 1), block('same', 10, 2)];
+    expect(applyBlockStats(item, modest[0], { itemBlocksIncludingNew: modest, now: NOW }).saturationWarning).toBe(
+      false,
+    );
+
+    const heavy = [block('slightly_better', 45, 0), block('slightly_better', 45, 1)];
+    expect(applyBlockStats(item, heavy[0], { itemBlocksIncludingNew: heavy, now: NOW }).saturationWarning).toBe(true);
+
+    const longAgo = [block('same', 60, 40), block('same', 60, 45), block('same', 60, 50)];
+    expect(applyBlockStats(item, longAgo[0], { itemBlocksIncludingNew: longAgo, now: NOW }).saturationWarning).toBe(
+      false,
+    );
   });
 
   it('does not accept negative minutes', () => {

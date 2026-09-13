@@ -90,8 +90,15 @@ export function neglectedScore(item: PracticeItem, now: Date): number {
 export const EXPOSURE_WINDOW_DAYS = 7;
 /** Decayed minutes per penalty point. */
 export const EXPOSURE_MINUTES_PER_POINT = 10;
-/** The most priority exposure can ever take away. */
-export const EXPOSURE_PENALTY_MAX = 6;
+/**
+ * The most priority exposure can ever take away — deliberately EQUAL to the
+ * largest boost a class deadline can give (`lessonUrgencyScore`'s 8). Sustained
+ * heavy practice can therefore fully offset a deadline, so maintenance work
+ * stays reachable behind a repeatedly drilled committed item, and can never do
+ * MORE than offset it, so genuinely urgent work is never buried by having been
+ * practised. Both ends bounded, on purpose.
+ */
+export const EXPOSURE_PENALTY_MAX = 8;
 /** Decayed minutes at which an item is flagged as heavily practised lately. */
 export const SATURATION_EXPOSURE_MINUTES = 60;
 

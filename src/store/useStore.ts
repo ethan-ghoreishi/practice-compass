@@ -19,7 +19,10 @@ import {
   reopenQuestion as reopenAgendaQuestion,
   retargetEntriesForItemInstrument,
   retargetEntry as retargetAgendaEntry,
+  completePlanSegment,
+  planSegmentStartable,
   scheduleAgainPlan,
+  skipPlanSegment as skipPlanSegmentRun,
   setQuestionAnswer as setAgendaQuestionAnswer,
   resolveReviewDate,
   applyReviewDateToRows,
@@ -88,8 +91,8 @@ import {
   type ReviewType,
   type RoutineSegment,
   type RunSegment,
+  type PlanRunSegment,
   type SchedulingParams,
-  type PlanSegment,
   type SessionPlan,
 } from '../domain';
 import type { CreateItemInput } from '../domain/factories';
@@ -129,10 +132,8 @@ export function sessionElapsedSeconds(s: ActiveSession, now: Date = new Date()):
   return Math.max(0, Math.floor(s.accumulatedSeconds + live));
 }
 
-/** A plan segment plus its live run status. */
-export interface PlanSegmentState extends PlanSegment {
-  status: 'pending' | 'done' | 'skipped';
-}
+/** A plan segment plus its live run status (the domain's own run shape). */
+export type PlanSegmentState = PlanRunSegment;
 
 /** The Session Plan currently being run (ephemeral — never in PracticeDB). */
 export interface ActivePlan {
@@ -175,17 +176,6 @@ export interface ActiveRoutine {
 }
 
 /** Advance the pointer to the next still-pending segment (or one past the end). */
-function advancePointer(segments: PlanSegmentState[], from: number): number {
-  for (let i = from + 1; i < segments.length; i++) {
-    if (segments[i].status === 'pending') return i;
-  }
-  // Nothing pending after `from`; look from the start (skips may have been jumped).
-  for (let i = 0; i < segments.length; i++) {
-    if (segments[i].status === 'pending') return i;
-  }
-  return segments.length;
-}
-
 export interface StartSessionInput {
   itemId: ID;
   instrumentId: ID;
@@ -484,20 +474,21 @@ export const useStore = create<StoreState>()(
         }),
 
       beginPlanSegment: () => {
-        const { activePlan, db } = get();
+        const { activePlan, db, active, activeRoutine } = get();
         if (!activePlan) return;
         const seg = activePlan.segments[activePlan.pointer];
-        if (!seg) return;
-        const item = db.items.find((i) => i.id === seg.itemId);
-        // Revalidated LIVE, not trusted from the plan: an item can be deleted
-        // or moved to another instrument between building the plan and
-        // reaching this segment. Either way the segment is visibly skipped —
-        // it is never played under the wrong instrument, and skipping logs
-        // nothing.
-        if (!item || item.instrumentId !== activePlan.instrumentId) {
-          get().skipPlanSegment();
+        // Revalidated LIVE against the same pure check a test can reach, never
+        // trusted from the plan: an item can be deleted or moved to another
+        // instrument between building the plan and reaching this segment.
+        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
+        if (!check.ok) {
+          // A deleted or moved item is visibly skipped (and skipping logs
+          // nothing); a busy clock is refused outright rather than replaced.
+          if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
           return;
         }
+        const item = check.item;
+        if (!seg) return;
         get().startSession({
           itemId: item.id,
           instrumentId: item.instrumentId,
@@ -509,13 +500,7 @@ export const useStore = create<StoreState>()(
       },
 
       skipPlanSegment: () =>
-        set((s) => {
-          if (!s.activePlan) return {};
-          const segments = s.activePlan.segments.map((seg, i) =>
-            i === s.activePlan!.pointer && seg.status === 'pending' ? { ...seg, status: 'skipped' as const } : seg,
-          );
-          return { activePlan: { ...s.activePlan, segments, pointer: advancePointer(segments, s.activePlan.pointer) } };
-        }),
+        set((s) => (s.activePlan ? { activePlan: skipPlanSegmentRun(s.activePlan) } : {})),
 
       endPlan: () => set({ activePlan: null }),
 
@@ -1101,17 +1086,21 @@ export const useStore = create<StoreState>()(
         // A question raised here becomes its own agenda entry. It never
         // overwrites another question and never commits the item to a class.
         const questionText = input.newQuestion?.text.trim();
-        const newQuestion =
-          questionText
-            ? createQuestion({
-                id: newId(),
-                text: questionText,
-                instrumentId: item.instrumentId,
-                itemId: item.id,
-                lessonId: input.newQuestion?.lessonId,
-                now,
-              })
-            : undefined;
+        // The same target validation the guarded action applies: a class on
+        // another instrument is never a valid target, so the question is saved
+        // honestly unassigned rather than pointed at somebody else's lesson.
+        const questionLessonId = input.newQuestion?.lessonId;
+        const questionLesson = questionLessonId ? db.lessons.find((l) => l.id === questionLessonId) : undefined;
+        const newQuestion = questionText
+          ? createQuestion({
+              id: newId(),
+              text: questionText,
+              instrumentId: item.instrumentId,
+              itemId: item.id,
+              lessonId: questionLesson?.instrumentId === item.instrumentId ? questionLesson.id : undefined,
+              now,
+            })
+          : undefined;
 
         // Complete this item's open reviews only when the SAME decision that
         // set the date says so, and schedule the next from that one date
@@ -1140,16 +1129,7 @@ export const useStore = create<StoreState>()(
         // If a Session Plan is running and this block closed its current
         // segment's item, mark that segment done and advance. The plain flow
         // (no active plan) is byte-identical to before.
-        let nextPlan = activePlan;
-        if (activePlan) {
-          const seg = activePlan.segments[activePlan.pointer];
-          if (seg && seg.itemId === item.id && seg.status === 'pending') {
-            const segments = activePlan.segments.map((s, i) =>
-              i === activePlan.pointer ? { ...s, status: 'done' as const } : s,
-            );
-            nextPlan = { ...activePlan, segments, pointer: advancePointer(segments, activePlan.pointer) };
-          }
-        }
+        const nextPlan = activePlan ? completePlanSegment(activePlan, item.id) : activePlan;
 
         set({
           db: {

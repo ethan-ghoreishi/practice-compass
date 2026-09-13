@@ -20,7 +20,7 @@ import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { Field, OptionPills } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
-import { reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
+import { closeOverrideDate, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
 import { useDecisionNow } from '../components/useDecisionNow';
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
@@ -201,7 +201,9 @@ export default function CloseBlock() {
       bodyNote: bodyNote.trim() || undefined,
       newStatus,
       answer,
-      nextReviewDate: answer === 'scheduled' ? review?.dueDate : undefined,
+      // ONLY a date the owner actually typed — never the date the screen is
+      // merely SHOWING, which for an early session is the item's existing one.
+      nextReviewDate: closeOverrideDate(answer, override),
       reviewType: review?.reviewType ?? 'retention',
       newQuestion:
         becomeTeacherQ && teacherQText.trim()

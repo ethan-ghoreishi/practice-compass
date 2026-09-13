@@ -763,7 +763,6 @@ const REVIEW_TYPES: ReviewType[] = ['retention', 'repair', 'integration', 'maint
  * rather than discarded here.
  */
 export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews'>): string | null {
-  const itemIds = new Set(db.items.map((i) => i.id));
   for (const i of db.items) {
     if (i.nextReviewDate !== undefined && !ISO_DATE.test(String(i.nextReviewDate))) {
       return `Item "${i.title ?? i.id}" has an unreadable next-review date.`;
@@ -790,7 +789,10 @@ export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews
     seen.add(r.id);
     if (!ISO_DATE.test(String(r.dueDate))) return `A review for "${r.practiceItemId}" has an unreadable due date.`;
     if (!REVIEW_TYPES.includes(r.reviewType)) return `A review for "${r.practiceItemId}" has an unknown type.`;
-    if (!itemIds.has(r.practiceItemId)) return `A review points at a practice item that does not exist.`;
+    // A row pointing at an item that no longer exists is legacy debris, not
+    // invalid new intent — it is tolerated (and ignored by every reader) rather
+    // than used to refuse an entire restore. Repairing it belongs to the
+    // separate storage-integrity work, not to this decision loop.
   }
   return null;
 }

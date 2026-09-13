@@ -359,32 +359,50 @@ export function validateLessonAgenda(
     if (e.kind !== 'preparation' && e.kind !== 'question') {
       return `Lesson-agenda entry "${e.id}" has an unknown kind.`;
     }
-    if (typeof e.instrumentId !== 'string' || !instruments.has(e.instrumentId)) {
-      return `Lesson-agenda entry "${e.id}" names an instrument that does not exist.`;
+    // An instrument id is REQUIRED, but an id that no longer resolves is not
+    // grounds to refuse the whole import: the v12 migration mints entries from
+    // existing items, and an old backup can legitimately hold an item whose
+    // instrument was deleted years ago. Refusing that would make the owner's
+    // own pre-upgrade export — the documented recovery copy — unrestorable.
+    // What IS checked is that a target actually PRESENT agrees with it.
+    if (typeof e.instrumentId !== 'string' || !e.instrumentId) {
+      return `Lesson-agenda entry "${e.id}" is missing its instrument.`;
     }
-    if (e.lessonId !== undefined) {
-      const lesson = typeof e.lessonId === 'string' ? lessonById.get(e.lessonId) : undefined;
-      if (!lesson) return `Lesson-agenda entry "${e.id}" names a class that does not exist.`;
-      if (lesson.instrumentId !== e.instrumentId) {
+    void instruments;
+    // A target that RESOLVES must agree with the entry's instrument — that is
+    // the invariant this model exists to keep, and a mismatch is invalid new
+    // intent. A target that no longer resolves is legacy debris: every reader
+    // already copes with it (a question with a missing item renders without a
+    // title; a preparation naming a missing item matches nothing), and
+    // refusing an entire restore over one is the data loss this guard is
+    // supposed to prevent, not an example of it.
+    if (typeof e.lessonId === 'string') {
+      const lesson = lessonById.get(e.lessonId);
+      if (lesson && lesson.instrumentId !== e.instrumentId) {
         return `Lesson-agenda entry "${e.id}" names a class on a different instrument.`;
       }
+    } else if (e.lessonId !== undefined) {
+      return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
     }
     if (e.kind === 'preparation') {
-      const item = typeof e.itemId === 'string' ? itemById.get(e.itemId) : undefined;
-      if (!item) return `Preparation "${e.id}" names a practice item that does not exist.`;
-      if (item.instrumentId !== e.instrumentId) {
+      if (typeof e.itemId !== 'string' || !e.itemId) {
+        return `Preparation "${e.id}" names no practice item.`;
+      }
+      const item = itemById.get(e.itemId);
+      if (item && item.instrumentId !== e.instrumentId) {
         return `Preparation "${e.id}" names an item on a different instrument.`;
       }
     } else {
       if (typeof e.text !== 'string' || !e.text.trim()) {
         return `Question "${e.id}" has no text.`;
       }
-      if (e.itemId !== undefined) {
-        const item = typeof e.itemId === 'string' ? itemById.get(e.itemId) : undefined;
-        if (!item) return `Question "${e.id}" names a practice item that does not exist.`;
-        if (item.instrumentId !== e.instrumentId) {
+      if (typeof e.itemId === 'string') {
+        const item = itemById.get(e.itemId);
+        if (item && item.instrumentId !== e.instrumentId) {
           return `Question "${e.id}" names an item on a different instrument.`;
         }
+      } else if (e.itemId !== undefined) {
+        return `Question "${e.id}" has an unreadable item reference.`;
       }
       if (e.askedAt !== undefined && (typeof e.askedAt !== 'string' || !ISO_DATE_TIME.test(e.askedAt))) {
         return `Question "${e.id}" has an unreadable asked date.`;

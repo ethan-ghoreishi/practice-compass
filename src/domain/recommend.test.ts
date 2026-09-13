@@ -1,10 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { pickNextPart, recommend, recommendForInstrument, stallHint } from './recommend';
+import { buildReason, pickNextPart, recommend, recommendForInstrument, stallHint } from './recommend';
+import { buildSessionPlan, swapSegment } from './plan';
 import { createSeedDB } from './seed';
-import { createBlock, createItem } from './factories';
-import type { BlockResult, PracticeItem } from './types';
+import { createBlock, createItem, createLesson } from './factories';
+import { createPreparation, createQuestion, preparationDatesByItem } from './lessonAgenda';
+import { scoreItem } from './scoring';
+import { addDays, toISODate } from './util';
+import type { BlockResult, ISODate, Lesson, PracticeItem } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
+const INST = 'inst';
+const day = (n: number): ISODate => toISODate(addDays(NOW, n));
+
+function mk(o: Partial<PracticeItem> & { id: string; title: string }): PracticeItem {
+  const base = createItem(
+    {
+      instrumentId: o.instrumentId ?? INST,
+      title: o.title,
+      status: o.status ?? 'usable',
+      importance: o.importance ?? 3,
+      difficulty: o.difficulty ?? 3,
+    },
+    NOW,
+  );
+  return { ...base, ...o };
+}
 
 function sameBlocks(item: PracticeItem, n = 3) {
   return Array.from({ length: n }, (_, idx) =>
@@ -15,133 +35,174 @@ function sameBlocks(item: PracticeItem, n = 3) {
         durationMinutes: 10,
         mode: 'repair',
         focus: 'tone',
-        result: 'same',
-        startedAt: new Date(NOW.getTime() - idx * 3_600_000).toISOString(),
+        result: 'same' as BlockResult,
+        startedAt: addDays(NOW, -(40 + idx)).toISOString(),
       },
       NOW,
     ),
   );
 }
 
-describe('recommend', () => {
-  it('selects three distinct, explained cards from the seed data', () => {
-    const db = createSeedDB(NOW);
-    // Seed titles are Farsi for Setar/Tar; select by stable properties instead.
-    const rizeh = db.items.find((i) => i.status === 'fragile')!; // the Tar rizeh item
-    const shift = db.items.find((i) => i.title.includes('shift'))!; // guitar item, English
-    const daramad = db.items.find((i) => i.catalogKey === 'daramad')!; // Setar maintenance item
+// ---------------------------------------------------------------------------
+// ac-5 — B3/C2
+// ---------------------------------------------------------------------------
 
-    const recs = recommend(db.items, db.blocks, NOW);
+describe('one eligibility policy, shared by every automatic pool', () => {
+  it('recommendations exclude resting items and question only urgency', () => {
+    const resting = mk({ id: 'resting', title: 'resting piece', status: 'dormant', importance: 5, difficulty: 5 });
+    const active = mk({ id: 'active', title: 'active piece', status: 'usable', importance: 2, difficulty: 2 });
 
-    // Iraq phrase 4 is the highest raw score but is saturated, so the best
-    // next focus skips it in favour of the fragile, overdue Rizeh item.
-    expect(recs.best?.score.item.id).toBe(rizeh.id);
-    expect(recs.quickWin?.score.item.id).toBe(shift.id);
-    expect(recs.maintenance?.score.item.id).toBe(daramad.id);
-
-    const ids = [recs.best, recs.quickWin, recs.maintenance].map((r) => r?.score.item.id);
-    expect(new Set(ids).size).toBe(3); // all distinct
-
-    expect(recs.best?.reason).toMatch(/^Next up/);
-    expect(recs.quickWin?.reason).toMatch(/^A quick win/);
-    expect(recs.maintenance?.reason).toMatch(/^Worth keeping fresh/);
-  });
-
-  it('explains the drivers in plain language', () => {
-    const db = createSeedDB(NOW);
-    const recs = recommend(db.items, db.blocks, NOW);
-    // Rizeh is fragile with an overdue review — the reason must say so.
-    expect(recs.best?.reason).toMatch(/review is .* overdue/);
-    expect(recs.best?.reason).toMatch(/shaky|fragile/i);
-  });
-
-  it('falls back to a saturated item when nothing else is available', () => {
-    const item = createItem({ instrumentId: 'i', title: 'Only item', status: 'fragile', importance: 4 }, NOW);
-    const sat: BlockResult[] = ['same', 'same', 'same'];
-    const blocks = sat.map((r, idx) =>
-      createBlock(
-        {
-          practiceItemId: item.id,
-          instrumentId: 'i',
-          durationMinutes: 10,
-          mode: 'repair',
-          focus: 'tone',
-          result: r,
-          startedAt: new Date(NOW.getTime() - idx * 3_600_000).toISOString(),
-        },
-        NOW,
-      ),
-    );
-    const recs = recommend([item], blocks, NOW);
-    expect(recs.best?.score.item.id).toBe(item.id);
-    expect(recs.best?.score.saturated).toBe(true);
-  });
-
-  it('returns nulls for an empty library', () => {
-    const recs = recommend([], [], NOW);
-    expect(recs.best).toBeNull();
-    expect(recs.quickWin).toBeNull();
-    expect(recs.maintenance).toBeNull();
-  });
-});
-
-describe('recommendForInstrument (session scoping)', () => {
-  it('never surfaces another instrument in a Setar session', () => {
-    const db = createSeedDB(NOW);
-    const setarId = db.instruments.find((i) => i.name === 'Setar')!.id;
-
-    const recs = recommendForInstrument(setarId, db.items, db.blocks, NOW);
-    for (const r of [recs.best, recs.quickWin, recs.maintenance]) {
-      if (r) expect(r.score.item.instrumentId).toBe(setarId);
+    // 1. DORMANT vs ACTIVE across recommend, plan and swap — including when
+    //    resting material would otherwise outscore everything.
+    const recs = recommend([resting, active], [], NOW);
+    for (const card of [recs.best, recs.quickWin, recs.maintenance]) {
+      expect(card?.score.item.id).not.toBe('resting');
     }
-    // And the cards exist — Setar has items in the seed.
-    expect(recs.best).not.toBeNull();
-  });
+    expect(recs.best?.score.item.id).toBe('active');
 
-  it('an instrument with no items yields empty cards, not leakage', () => {
-    const db = createSeedDB(NOW);
-    const recs = recommendForInstrument('nonexistent-instrument', db.items, db.blocks, NOW);
-    expect(recs.best).toBeNull();
-    expect(recs.quickWin).toBeNull();
-    expect(recs.maintenance).toBeNull();
+    const plan = buildSessionPlan({
+      instrumentId: INST,
+      budgetMinutes: 30,
+      now: NOW,
+      items: [resting, active],
+      blocks: [],
+      reviews: [],
+    });
+    expect(plan.segments.map((s) => s.itemId)).not.toContain('resting');
+
+    const swapped = swapSegment(plan, 0, {
+      instrumentId: INST,
+      now: NOW,
+      items: [resting, active],
+      blocks: [],
+      reviews: [],
+    });
+    expect(swapped.segments.map((s) => s.itemId)).not.toContain('resting');
+
+    // 2. A resting-only pool is HONESTLY EMPTY — never resurrected by a
+    //    fallback that quietly widens to "everything left".
+    const onlyResting = recommend([resting], [], NOW);
+    expect(onlyResting.best).toBeNull();
+    expect(onlyResting.quickWin).toBeNull();
+    expect(onlyResting.maintenance).toBeNull();
+    const emptyPlan = buildSessionPlan({
+      instrumentId: INST,
+      budgetMinutes: 30,
+      now: NOW,
+      items: [resting],
+      blocks: [],
+      reviews: [],
+    });
+    expect(emptyPlan.segments).toEqual([]);
+    expect(emptyPlan.summary).toContain('resting');
+
+    // 3. Direct, deliberate practice of a resting item stays possible: its
+    //    data is intact and a simple status change brings it straight back.
+    expect(resting.nextReviewDate).toBe(undefined);
+    const reactivated = { ...resting, status: 'usable' as const };
+    expect(recommend([reactivated, active], [], NOW).best?.score.item.id).toBe('resting');
+
+    // 4. A QUESTION alone changes no practice priority. A PREPARATION naming
+    //    a real future class does — from its OWN class's date.
+    const lessonSoon: Lesson = { ...createLesson({ instrumentId: INST, date: day(1) }, NOW), id: 'lesson-soon' };
+    const lessonLater: Lesson = { ...createLesson({ instrumentId: INST, date: day(25) }, NOW), id: 'lesson-later' };
+    const lessonPast: Lesson = { ...createLesson({ instrumentId: INST, date: day(-3) }, NOW), id: 'lesson-past' };
+    const otherInstrumentLesson: Lesson = {
+      ...createLesson({ instrumentId: 'other', date: day(1) }, NOW),
+      id: 'lesson-other',
+    };
+    const lessons = [lessonSoon, lessonLater, lessonPast, otherInstrumentLesson];
+
+    const questionOnly = mk({ id: 'q-only', title: 'has a question' });
+    const preparedSoon = mk({ id: 'prep-soon', title: 'for the class on Friday' });
+    const preparedLater = mk({ id: 'prep-later', title: 'for a class next month' });
+    const preparedPast = mk({ id: 'prep-past', title: 'was for a class that has gone' });
+    const unassigned = mk({ id: 'prep-none', title: 'class work, no class named' });
+    const wrongInstrument = mk({ id: 'prep-other', title: "another instrument's class" });
+
+    const agenda = [
+      createQuestion({ id: 'q1', text: 'ask about the foroud', instrumentId: INST, itemId: 'q-only', lessonId: 'lesson-soon', now: NOW }),
+      createPreparation({ id: 'p1', itemId: 'prep-soon', instrumentId: INST, lessonId: 'lesson-soon', now: NOW }),
+      createPreparation({ id: 'p2', itemId: 'prep-later', instrumentId: INST, lessonId: 'lesson-later', now: NOW }),
+      createPreparation({ id: 'p3', itemId: 'prep-past', instrumentId: INST, lessonId: 'lesson-past', now: NOW }),
+      createPreparation({ id: 'p4', itemId: 'prep-none', instrumentId: INST, now: NOW }),
+      createPreparation({ id: 'p5', itemId: 'prep-other', instrumentId: INST, lessonId: 'lesson-other', now: NOW }),
+    ];
+    const dates = preparationDatesByItem(agenda, lessons, NOW);
+
+    expect(dates.get('q-only')).toBeUndefined();
+    expect(dates.get('prep-soon')).toBe(day(1));
+    expect(dates.get('prep-later')).toBe(day(25));
+    expect(dates.get('prep-past')).toBeUndefined();
+    expect(dates.get('prep-none')).toBeUndefined();
+    expect(dates.get('prep-other')).toBeUndefined(); // target on another instrument
+
+    const base = scoreItem(questionOnly, [], NOW, dates.get('q-only')).total;
+    expect(scoreItem(preparedPast, [], NOW, dates.get('prep-past')).total).toBe(base);
+    expect(scoreItem(unassigned, [], NOW, dates.get('prep-none')).total).toBe(base);
+    expect(scoreItem(wrongInstrument, [], NOW, dates.get('prep-other')).total).toBe(base);
+    expect(scoreItem(preparedLater, [], NOW, dates.get('prep-later')).total).toBeGreaterThan(base);
+    expect(scoreItem(preparedSoon, [], NOW, dates.get('prep-soon')).total).toBeGreaterThan(
+      scoreItem(preparedLater, [], NOW, dates.get('prep-later')).total,
+    );
+
+    const withAgenda = recommend(
+      [questionOnly, preparedSoon, preparedLater, preparedPast, unassigned, wrongInstrument],
+      [],
+      NOW,
+      dates,
+    );
+    expect(withAgenda.best?.score.item.id).toBe('prep-soon');
+    expect(withAgenda.best?.reason).toContain(day(1));
+    // No reason anywhere claims a question is a reason to practise.
+    for (const card of [withAgenda.best, withAgenda.quickWin, withAgenda.maintenance]) {
+      expect(card?.reason ?? '').not.toContain('question');
+    }
   });
 });
 
-describe('études: pickNextPart & stallHint', () => {
-  const parent = createItem(
-    { instrumentId: 'g', title: 'Study in C', itemType: 'full_piece', status: 'repairing' },
-    NOW,
-  );
-  const partA = { ...createItem({ instrumentId: 'g', title: 'Bars 1–8', parentItemId: parent.id, importance: 3, difficulty: 3, status: 'usable' }, NOW) };
-  const partB = { ...createItem({ instrumentId: 'g', title: 'Bars 9–16', parentItemId: parent.id, importance: 5, difficulty: 4, status: 'fragile' }, NOW) };
-
-  it('picks the highest-priority non-saturated part, deterministically', () => {
-    const pick = pickNextPart(parent.id, [parent, partA, partB], [], NOW);
-    expect(pick?.score.item.id).toBe(partB.id); // important + fragile beats usable
-    expect(pick?.reason.length).toBeGreaterThan(0);
+describe('recommend', () => {
+  it('selects distinct, explained cards and never repeats an item', () => {
+    const db = createSeedDB(NOW);
+    const dates = preparationDatesByItem(db.lessonAgenda, db.lessons, NOW);
+    const recs = recommend(db.items, db.blocks, NOW, dates);
+    const ids = [recs.best, recs.quickWin, recs.maintenance].filter(Boolean).map((r) => r!.score.item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const card of [recs.best, recs.quickWin, recs.maintenance]) {
+      if (card) expect(card.reason.length).toBeGreaterThan(0);
+    }
   });
 
-  it('avoids a saturated part when another exists, but never returns null while parts exist', () => {
-    const blocks = sameBlocks(partB);
-    const pick = pickNextPart(parent.id, [parent, partA, partB], blocks, NOW);
-    expect(pick?.score.item.id).toBe(partA.id);
-
-    const onlySaturated = pickNextPart(parent.id, [parent, partB], blocks, NOW);
-    expect(onlySaturated?.score.item.id).toBe(partB.id);
+  it('scopes to one instrument', () => {
+    const db = createSeedDB(NOW);
+    const setar = db.instruments.find((i) => i.name === 'Setar')!;
+    const recs = recommendForInstrument(setar.id, db.items, db.blocks, NOW);
+    for (const card of [recs.best, recs.quickWin, recs.maintenance]) {
+      if (card) expect(card.score.item.instrumentId).toBe(setar.id);
+    }
   });
 
-  it('returns null when the piece has no parts', () => {
-    expect(pickNextPart(parent.id, [parent], [], NOW)).toBeNull();
+  it('names the decisive numbers in the reason', () => {
+    const overdue = mk({ id: 'od', title: 'overdue', nextReviewDate: day(-4), importance: 5 });
+    const reason = buildReason(scoreItem(overdue, [], NOW), 'best');
+    expect(reason).toContain('4 days overdue');
+    expect(reason).toContain('important');
+  });
+});
+
+describe('parts and stall hints', () => {
+  it('picks one part deterministically and skips resting parts', () => {
+    const parent = mk({ id: 'parent', title: 'étude' });
+    const partA = mk({ id: 'part-a', title: 'bars 1–8', parentItemId: 'parent', status: 'fragile', importance: 5 });
+    const partB = mk({ id: 'part-b', title: 'bars 9–16', parentItemId: 'parent', status: 'dormant', importance: 5, difficulty: 5 });
+    const pick = pickNextPart('parent', [parent, partA, partB], [], NOW);
+    expect(pick?.score.item.id).toBe('part-a');
   });
 
-  it('stalling suggests a smaller unit for whole pieces, a new strategy for small units — never guilt', () => {
-    const wholeHint = stallHint(parent, sameBlocks(parent));
-    expect(wholeHint).toMatch(/smaller unit/i);
-    const phrase = createItem({ instrumentId: 'g', title: 'One phrase', itemType: 'phrase' }, NOW);
-    const phraseHint = stallHint(phrase, sameBlocks(phrase));
-    expect(phraseHint).toMatch(/different strategy/i);
-    expect(stallHint(parent, [])).toBeNull();
-    // Calm voice: no quotas, no shame words.
-    expect(wholeHint).not.toMatch(/must|behind|fail/i);
+  it('offers a calm strategy hint after three same results — and nothing else', () => {
+    const item = mk({ id: 'stalled', title: 'stalled', itemType: 'full_piece' });
+    const blocks = sameBlocks(item);
+    expect(stallHint(item, blocks)).toContain('smaller unit');
+    expect(stallHint(item, [])).toBeNull();
   });
 });

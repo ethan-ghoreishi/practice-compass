@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
 import { createSeedDB } from './seed';
@@ -127,5 +128,120 @@ describe('v11 routine instrumentId backfill', () => {
     expect(byId.get('r-legacy-empty')!.instrumentId).toBeUndefined();
     expect(byId.get('r-dangling')!.instrumentId).toBeUndefined();
     expect(byId.get('r-real')!.instrumentId).toBe('i-setar');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-14 — C5: the one-time conversion of legacy lesson intent
+// ---------------------------------------------------------------------------
+
+const V11_FIXTURE = JSON.parse(
+  readFileSync('tests/fixtures/practice-decisions-v11.json', 'utf8'),
+) as { data: PracticeDB };
+
+type LegacyItem = { id: string; assignedForLesson?: boolean; teacherQuestion?: string };
+
+function v11(): PracticeDB {
+  return JSON.parse(JSON.stringify(V11_FIXTURE.data)) as PracticeDB;
+}
+
+describe('v11 → v12 · legacy lesson intent', () => {
+  it('legacy lesson intent migrates unassigned exactly once without losing text', () => {
+    const source = v11();
+    const out = migrateToCurrent(v11(), 11);
+    const agenda = out.lessonAgenda;
+    const preparations = agenda.filter((e) => e.kind === 'preparation');
+    const questions = agenda.filter((e) => e.kind === 'question');
+
+    // 1. EVERY conversion is UNASSIGNED. The old data recorded no target, so
+    //    none is invented — not from today's clock, not from the nearest
+    //    class, not from a creation time.
+    expect(agenda.every((e) => e.lessonId === undefined)).toBe(true);
+    expect(agenda.every((e) => e.detachedFromLessonId === undefined)).toBe(true);
+
+    // 2. EXACTLY ONE preparation per `assignedForLesson: true` item, and none
+    //    for false or missing. (One entry the fixture already held is an
+    //    UNRELATED question, so the comparison is per item, not a raw count.)
+    const flaggedTrue = (source.items as unknown as LegacyItem[])
+      .filter((i) => i.assignedForLesson === true)
+      .map((i) => i.id)
+      .sort();
+    expect([...new Set(preparations.map((e) => e.itemId))].sort()).toEqual(flaggedTrue);
+    for (const id of flaggedTrue) {
+      expect(preparations.filter((e) => e.itemId === id), id).toHaveLength(1);
+    }
+    const notFlagged = (source.items as unknown as LegacyItem[])
+      .filter((i) => i.assignedForLesson !== true)
+      .map((i) => i.id);
+    for (const id of notFlagged) {
+      expect(preparations.some((e) => e.itemId === id), id).toBe(false);
+    }
+
+    // 3. EXACTLY ONE question per NON-EMPTY teacherQuestion, whatever the
+    //    boolean said — the old "both fields" rule silently dropped questions
+    //    on unflagged items. Whitespace-only text represents nothing.
+    const withText = (source.items as unknown as LegacyItem[])
+      .filter((i) => typeof i.teacherQuestion === 'string' && i.teacherQuestion.trim().length > 0)
+      .map((i) => i.id)
+      .sort();
+    for (const id of withText) {
+      const original = (source.items as unknown as LegacyItem[]).find((i) => i.id === id)!.teacherQuestion!;
+      expect(questions.filter((q) => q.itemId === id && q.text === original), id).toHaveLength(1);
+    }
+    expect(questions.some((q) => q.itemId === 'i-q-empty')).toBe(false);
+    expect(questions.some((q) => q.itemId === 'i-q-only')).toBe(true); // never flagged, still converted
+
+    // 4. Multiline text stays ONE question — splitting on newlines would
+    //    invent questions the owner never wrote.
+    const farsi = questions.find((q) => q.itemId === 'i-q-farsi')!;
+    expect(farsi.text.split('\n').length).toBeGreaterThan(2);
+
+    // 5. NOTHING IS INVENTED: no asked state, no answer, no target — and the
+    //    entry count grew by exactly what the legacy fields described.
+    expect(questions.every((q) => q.askedAt === undefined && q.answer === undefined)).toBe(true);
+    const preExisting = new Set(source.lessonAgenda.map((e) => e.id));
+    const added = agenda.filter((e) => !preExisting.has(e.id));
+    expect(added).toHaveLength(flaggedTrue.length + withText.length - 2); // i-premigrated's two already existed
+
+    // 6. A PARTIALLY MIGRATED database converts nothing twice, and an id that
+    //    an UNRELATED entry already owns gets a deterministic alternative
+    //    rather than colliding.
+    expect(agenda.filter((e) => e.itemId === 'i-premigrated')).toHaveLength(2);
+    expect(agenda.find((e) => e.id === 'prep:i-collision')!.kind).toBe('question'); // the pre-existing one
+    expect(agenda.find((e) => e.id === 'prep:i-collision~2')).toMatchObject({
+      kind: 'preparation',
+      itemId: 'i-collision',
+    });
+
+    // 7. The legacy fields are gone only now their content is represented.
+    for (const raw of out.items as unknown as LegacyItem[]) {
+      expect('assignedForLesson' in raw, raw.id).toBe(false);
+      expect('teacherQuestion' in raw, raw.id).toBe(false);
+    }
+
+    // 8. IDENTICAL on any day, and on repeated application.
+    const differentDay = migrateToCurrent(v11(), 11);
+    expect(JSON.stringify(differentDay)).toBe(JSON.stringify(out));
+    const twice = migrateToCurrent(migrateToCurrent(v11(), 11), OLDEST_SCHEMA_VERSION);
+    expect(JSON.stringify(twice)).toBe(JSON.stringify(out));
+
+    // 9. Already-current EMPTY collections stay empty.
+    const current: PracticeDB = { ...out, items: [], lessonAgenda: [] };
+    expect(migrateToCurrent(current, SCHEMA_VERSION).lessonAgenda).toEqual([]);
+
+    // 10. Unrelated data and SR state come through byte-equivalent.
+    const strip = (db: PracticeDB) =>
+      JSON.stringify({
+        ...db,
+        schemaVersion: 0,
+        lessonAgenda: [],
+        items: db.items.map((i) => {
+          const copy = { ...i } as Record<string, unknown>;
+          delete copy.assignedForLesson;
+          delete copy.teacherQuestion;
+          return copy;
+        }),
+      });
+    expect(strip(out)).toBe(strip(source));
   });
 });
