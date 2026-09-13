@@ -567,6 +567,14 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
+  {
+    file: 'components/ClassQuestions.tsx',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {q.currentProblem}',
+  },
+  {
+    file: 'components/ClassQuestions.tsx',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {q.lastObservation}',
+  },
   // Instrument names used to be tracked here too, one exact snippet per site.
   // A sealed review found that shape structurally insufficient FOUR times
   // running: each rework closed only the sites a reviewer had named, while
@@ -579,13 +587,17 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   //
   // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
   // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
-  // them to a different shape entirely — the ROW carries dir="auto" and the
-  // LABEL is marked dir="ltr" to take it out of the auto hunt, so the row's
-  // OWN alignment comes from the value rather than from an ancestor's
-  // resolved direction — covered by the dedicated shape check below
-  // ('a label-first auto row's value stays bare...') rather than a snippet
-  // ledger, since the point is the RELATIONSHIP between the label and the
-  // value, not either one's presence on its own.
+  // them to a "label-first auto row" shape (row carries dir="auto", label
+  // isolated dir="ltr" to take it out of the hunt, value left bare) covered
+  // by the dedicated shape check below instead of a snippet ledger. A TENTH
+  // finding found THAT shape puts the label at the wrong visual end whenever
+  // the row resolves RTL: isolating the label makes it an atomic run the
+  // bidi algorithm is free to reorder, so its trailing colon landed on the
+  // outer edge, detached from the value. The fix stacks caption over value
+  // instead of one inline line, which removes the single line the two ever
+  // had to contend a resolution source for — so the value is back to being a
+  // plain isolated value, tracked in ISOLATED_VALUE_SITES below, and the
+  // caption is back to being an ordinary LTR_ISOLATE_SITES entry.
   //
   // ClassQuestions' q.question used to be tracked here too, isolated with
   // its own dir="auto" span while the title was left bare to anchor the
@@ -656,8 +668,8 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem:</span>' },
-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time:</span>' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem</span>' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time</span>' },
   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
   { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },

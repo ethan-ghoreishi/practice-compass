@@ -25,17 +25,33 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
  * Farsi one still renders right, independently); the question is left bare,
  * so it is what the li's `dir="auto"` actually finds.
  *
- * Problem/Last time are each their OWN group: the ROW itself carries
- * `dir="auto"`, so the row's alignment comes from the VALUE, not from the
- * title above it or from whichever direction the label happens to read in.
- * The fixed English label is marked `dir="ltr"` — not because its own text
- * ever changes, but because `dir="auto"` skips a descendant that carries its
- * own `dir` when hunting for a first strong character, so marking the label
- * takes it OUT of that hunt and leaves the value as the only candidate. The
- * value itself is bare (no `dir` of its own): were it marked too, BOTH
- * children would be skipped and the row would have no resolution source at
- * all, falling back to LTR regardless of what the value says. A question is
- * never cleared by practising; the user edits the item to remove it.
+ * Problem/Last time are each STACKED, a caption above its value, rather than
+ * one inline "Label: value" line. An OWNER-observed regression found the
+ * previous inline shape — the row carrying `dir="auto"`, the label isolated
+ * `dir="ltr"` to take it out of the hunt, the value left bare — put the
+ * label at the wrong VISUAL end whenever the row resolved RTL: `dir="ltr"`
+ * makes the label an isolated, atomic run, and the Unicode bidi algorithm
+ * reorders that atomic run to the position its RTL neighbour's algorithm
+ * dictates, not the position it was written in. The label's own trailing
+ * colon ended up on the OUTER edge, pointing at nothing, with the value
+ * sitting on the far side of it rather than beside it — correct on-value
+ * character shaping, wrong pairing.
+ *
+ * Stacking removes the single inline line the two ever had to fight over.
+ * The caption (`<span dir="ltr">`, isolated so it can never itself flip, and
+ * inline rather than block so its isolate cannot hijack its own line's
+ * alignment — see direction.test.ts's "a bidi isolate is always inline"
+ * rule) sits in a plain, undirected wrapper: with no `dir` of its own that
+ * wrapper inherits the surrounding `direction` from the `<li>` (i.e. from
+ * the QUESTION), so the caption aligns to the same edge as the rest of the
+ * card. The value below it keeps its own `dir="auto"` isolate, resolving
+ * from its OWN content exactly as before — independently RTL for a Farsi
+ * note, independently LTR for an English one, whichever the question is.
+ * The two lines sit close together (a tighter gap than separates the
+ * fields from each other) so they still read as one pair, without either
+ * one's direction ever being able to drag the other out of place. A
+ * question is never cleared by practising; the user edits the item to
+ * remove it.
  */
 export default function ClassQuestions({
   instrumentName,
@@ -144,20 +160,29 @@ export default function ClassQuestions({
                 <div className="small">
                   {q.question}
                 </div>
-                {/* The ROW resolves direction from the VALUE, never the label:
-                    dir="ltr" on the label takes it out of the auto hunt, and the
-                    bare value is what's left for the row's dir="auto" to find. A
-                    Farsi value right-aligns the whole row even under an
-                    English title; an English value left-aligns it even under a
-                    Farsi one — the label never claims the direction either way. */}
+                {/* Stacked, not inline: the caption's wrapper carries no dir of
+                    its own, so it inherits the li's (question-driven) direction
+                    and aligns with the rest of the card; the value below keeps
+                    its own dir="auto", resolving from its own content. Neither
+                    line's direction can drag the other out of place. */}
                 {q.currentProblem && (
-                  <div className="tiny faint" dir="auto">
-                    <span dir="ltr">Problem:</span> {q.currentProblem}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div className="tiny faint">
+                      <span dir="ltr">Problem</span>
+                    </div>
+                    <div className="tiny faint" dir="auto">
+                      {q.currentProblem}
+                    </div>
                   </div>
                 )}
                 {q.lastObservation && (
-                  <div className="tiny faint" dir="auto">
-                    <span dir="ltr">Last time:</span> {q.lastObservation}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div className="tiny faint">
+                      <span dir="ltr">Last time</span>
+                    </div>
+                    <div className="tiny faint" dir="auto">
+                      {q.lastObservation}
+                    </div>
                   </div>
                 )}
               </div>
