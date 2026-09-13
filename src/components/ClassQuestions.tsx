@@ -4,8 +4,11 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
 import { splitLines } from './format';
 
 /**
- * "Questions for next class" — the questions to actually ask the teacher,
- * with Copy / Download / Print exports. Each question is one coherent,
+ * The questions to actually ask the teacher — for ONE named class, or every
+ * open one on an instrument — with Copy / Download / Print exports. Which of
+ * the two this list is comes from the caller's `title`/`dateLabel`, never from
+ * a hardcoded heading.
+ * Each question is one coherent,
  * direction-aware unit: the ordinal number is a real element inside a flex
  * `<li dir="auto">`, never a native `::marker` — a marker's own logical
  * position for a direction-variable list item is a browser implementation
@@ -129,10 +132,20 @@ function renderFreeText(text: string): ReactNode {
 }
 
 export default function ClassQuestions({
+  title,
   instrumentName,
   dateLabel,
   questions,
 }: {
+  /**
+   * What this particular list IS. Required, never defaulted: the component is
+   * used for one named class's own agenda (Lessons) and for every open question
+   * on an instrument whatever class it names (the Teacher Report with no class
+   * chosen), and a hardcoded "Questions for next class" described the second as
+   * the first — unassigned questions and questions aimed at a LATER class both
+   * read as "what to ask at the next one".
+   */
+  title: string;
   instrumentName: string;
   dateLabel: string;
   questions: ClassQuestion[];
@@ -168,7 +181,7 @@ export default function ClassQuestions({
   return (
     <section className="stack-sm">
       <div className="row between">
-        <div className="section-label">Questions for next class</div>
+        <div className="section-label">{title}</div>
         {questions.length > 0 && (
           <div className="row" style={{ gap: 6 }}>
             <button className="btn btn-ghost btn-sm" onClick={copy}>

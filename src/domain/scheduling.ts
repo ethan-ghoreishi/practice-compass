@@ -657,8 +657,11 @@ export function completeOpenReviewsFor(args: {
 
 // --- Review actions that are NOT practice ------------------------------------
 //
-// Practising (closing a block) is the only thing that *completes* a review and
-// advances SM-2. The other actions have deliberately small, honest semantics:
+// Practising (closing a block) is the only thing that *can* complete a review or
+// advance SM-2 — and `decideReview` above decides whether a given close actually
+// does: an early session on a not-yet-due item keeps the date, leaves the pending
+// row open and leaves SM-2 untouched. The other actions have deliberately small,
+// honest semantics:
 //   • snooze  — "not now": push the due date N days from today. No SM-2 change,
 //               no pretend result. The overdue nag disappears because the date
 //               genuinely moved.

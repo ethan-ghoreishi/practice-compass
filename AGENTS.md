@@ -75,8 +75,15 @@ and quietly flip it back. It changes only when the owner says so.
 
 ## Review actions have honest, distinct semantics
 
-Practising (closing a block) is the ONLY thing that completes a review and advances
-SM‑2. "Not now" hides a due review for the rest of today (no schedule change). Snooze
+Practising (closing a block) is the ONLY thing that can complete a review or advance
+SM‑2 — but it does not always do either. **Practice is exposure; only eligible retention
+evidence advances spacing.** A good session on an item whose review is not yet due is real
+practice (minutes, result, observation, next action all recorded) and is not the review it
+was scheduled for: `decideReview` KEEPS the date, leaves `srReps`/`srEase`/`srIntervalDays`
+untouched and leaves the pending row OPEN. `srLastProgressDay` holds that to at most one
+advance per local calendar day, so re-arming a date or reloading cannot buy a second.
+Nothing else may complete a review at all. "Not now" hides a due review for the rest of
+today (no schedule change). Snooze
 (+2d) genuinely moves the due date on both the review and the item — never fabricate a
 result, and never leave a stale overdue item after an action. The Finish button freezes
 the clock (`pauseSession`) before the close screen; reflection time is not counted.
@@ -131,10 +138,16 @@ restructure once did exactly that (`setOverride(null)` unconditionally), turning
 deliberate "come back on this date" into an accidental decline the moment the musician
 changed which result they picked. `reviewOverrideSurvivesResultChange`
 (`src/components/format.ts`, tested against the real engine across all six results, both
-a manual- and an auto-mode item) reads `item.reviewMode` directly rather than calling
-`planNextReview` a second time inside `pickResult` — CloseBlock keeps its single
-derivation; this is a boolean gate on whether one exists at all, not a second value that
-could disagree with it.
+a manual- and an auto-mode item) asks the ENGINE whether its answer depends on the
+judgement at all: it calls `planNextReview` once per result and returns true when all six
+produce the same date. Reading `item.reviewMode === 'manual'` directly — which is what it
+used to do — was a PROXY for that question, correct only while manual mode was the sole
+way an item could have no per-result plan. It is not any more: a protected pending date
+(one the owner chose, or a snooze) is kept for every result too, so a mode check would
+clear a just-typed date on an auto-mode item whose date was never tied to a judgement
+either. Calling the engine is still a boolean GATE on whether a per-result plan exists at
+all, never a second value CloseBlock could render — CloseBlock keeps its single
+derivation, and this function returns no date.
 
 **THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
 243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
@@ -1487,7 +1500,9 @@ no scores, no "optimal" claims, no gamification.
   segment (its minutes become the target). `closeSession` has a tail that, when a plan is
   running and the closed block was the current segment, marks it `done` and advances the
   pointer — **the plain flow (no active plan) is byte-identical to before.** Skipping logs
-  nothing. Practising is still the only thing that completes a review / advances SM-2.
+  nothing. Practising is still the only thing that CAN complete a review or advance SM-2,
+  and a plan segment closed before that item's review is due keeps the date and the
+  spacing state exactly as an ordinary early session does.
 - **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
   store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
   never syncs/backs-up as data.**

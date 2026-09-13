@@ -433,7 +433,14 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
           selected by its id. A past class keeps its unasked questions on its
           own page (above) rather than showing an export sheet for a class
           that has already happened. */}
-      {upcoming && <ClassQuestions instrumentName={instrumentName} dateLabel={lessonLabel(lesson)} questions={questions} />}
+      {upcoming && (
+        <ClassQuestions
+          title="Questions for this class"
+          instrumentName={instrumentName}
+          dateLabel={lessonLabel(lesson)}
+          questions={questions}
+        />
+      )}
 
       <LessonRecordings lesson={lesson} />
 

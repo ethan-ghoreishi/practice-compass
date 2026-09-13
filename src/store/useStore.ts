@@ -746,7 +746,17 @@ export const useStore = create<StoreState>()(
             items: s.db.items.map((i) => {
               if (i.id !== id) return i;
               const next = { ...i, ...rest };
-              if (write) next.nextReviewDate = write.nextReviewDate;
+              if (write) {
+                next.nextReviewDate = write.nextReviewDate;
+                // A date arriving through an explicit item patch is the
+                // OWNER'S, never the engine's — stamp the provenance here so
+                // this cannot become a fourth path that writes a date without
+                // one (closeSession, snoozeReview and scheduleReviewAgain all
+                // stamp their own). Without it an owner-edited date on an
+                // auto-source item would stay 'auto' and lose the protection
+                // A4/A5 promise it. Clearing the date clears the provenance.
+                next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
+              }
               return touch(next, now);
             }),
             reviews:
