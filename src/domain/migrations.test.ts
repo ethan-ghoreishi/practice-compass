@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import v11FixtureText from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
 import { createSeedDB } from './seed';
 import { SCHEMA_VERSION, type Pathway, type PracticeDB } from './types';
@@ -135,9 +135,10 @@ describe('v11 routine instrumentId backfill', () => {
 // ac-14 — C5: the one-time conversion of legacy lesson intent
 // ---------------------------------------------------------------------------
 
-const V11_FIXTURE = JSON.parse(
-  readFileSync('tests/fixtures/practice-decisions-v11.json', 'utf8'),
-) as { data: PracticeDB };
+// The fixture is read through Vite's `?raw` import rather than node:fs: the
+// app's own tsconfig does not carry Node types, and the fixture has to be the
+// SAME bytes the browser journeys import through the real UI.
+const V11_FIXTURE = JSON.parse(v11FixtureText) as { data: PracticeDB };
 
 type LegacyItem = { id: string; assignedForLesson?: boolean; teacherQuestion?: string };
 

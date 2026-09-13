@@ -45,6 +45,10 @@ function db(partial: Partial<PracticeDB>): PracticeDB {
     pathwayRoutines: [],
     attachments: [],
     lessons: [],
+    // Schema v12's lesson agenda. This file's own subject (composing an
+    // item's material) is untouched by it; the field is listed because
+    // PracticeDB now requires it.
+    lessonAgenda: [],
     ...partial,
   };
 }

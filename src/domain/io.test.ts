@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
+import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
 import { serializeExport, validateDB, parseImport } from './io';
 import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
@@ -188,8 +189,7 @@ describe('per-instrument lesson dates', () => {
 // ac-15 — C5/C6/C7: every inbound door, and what must be refused at it
 // ---------------------------------------------------------------------------
 
-const V11_TEXT = readFileSync('tests/fixtures/practice-decisions-v11.json', 'utf8');
-const V12_TEXT = readFileSync('tests/fixtures/practice-decisions-v12.json', 'utf8');
+// The exact bytes the browser journeys import through the real UI.
 
 /** The shapes `validateDB` accepts, i.e. every door an inbound database uses. */
 function doors(text: string): { label: string; payload: unknown }[] {
@@ -314,7 +314,7 @@ describe('the documented rollback route', () => {
     expect(first.attachments[0]).toMatchObject({ id: 'att-1', ownerType: 'item', ownerId: 'i-scheduled' });
     const files = (JSON.parse(V11_TEXT) as { files: { id: string; data: string }[] }).files;
     expect(files.map((f) => f.id)).toEqual(['att-1']);
-    expect(Buffer.from(files[0].data, 'base64').toString()).toBe('score bytes');
+    expect(atob(files[0].data)).toBe('score bytes');
 
     // A POST-UPGRADE export keeps everything v12 added — answers, manual
     // dates, provenance and SR state.
@@ -327,9 +327,9 @@ describe('the documented rollback route', () => {
       ),
     };
     const restored = validateDB(JSON.parse(serializeExport(answered)));
-    const q = restored.lessonAgenda.find((e) => e.itemId === 'i-q-only' && e.kind === 'question')!;
+    const q = restored.lessonAgenda.find((e) => e.kind === 'question' && e.itemId === 'i-q-only')!;
     expect(q).toMatchObject({ lessonId: 'L-setar-1', answer: 'Tone first.' });
-    expect(q.askedAt).toBe('2027-03-05T10:00:00.000Z');
+    expect(q.kind === 'question' && q.askedAt).toBe('2027-03-05T10:00:00.000Z');
     const manual = restored.items.find((i) => i.id === 'i-scheduled')!;
     expect(manual.nextReviewDate).toBe('2027-01-15');
     expect(manual.srEase).toBe(2.6);
