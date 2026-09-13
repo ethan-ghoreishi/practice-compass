@@ -1,8 +1,8 @@
 ---
 id: 20260913-build-a-daily-session-i-can-trust-from-l-402e
 contractId: 20260913-build-a-daily-session-i-can-trust-from-l-402e
-contractHash: ec12fc2deb31d597eac123b1fa4d5955552a1cabdf921e754a4c34611185c68d
-createdAt: 2026-09-13T20:48:42.056Z
+contractHash: e99ba11850b5cb0ab65613772a8e6ede221e6da2127640d851482ee9d5bb6e8c
+createdAt: 2026-09-13T22:02:58.685Z
 skills:
   - ui-work
   - build
@@ -1330,6 +1330,7 @@ Build a daily session I can trust, from lesson commitments to the next review
 - AGENTS.md
 - docs/product-spec.md
 - docs/scheduling-evidence.md
+- src/domain/itemFiles.test.ts
 
 Never touch:
 
