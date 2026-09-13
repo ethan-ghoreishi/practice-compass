@@ -1,36 +1,31 @@
 ---
 id: 20260911-lay-practice-out-for-the-content-it-hold-4c24
 contractId: 20260911-lay-practice-out-for-the-content-it-hold-4c24
-patchId: 0da935226a1c779f7d97d630c5d94a6a27836a35
+patchId: 84206331a4c439cecb8334e2013830b88e6c21a7
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: "r-direction-aware-text: Questions-for-next-class marker attachment,
-      independently-authored values and rendered alignment"
-    summary: "The Questions-for-next-class block does not form a coherent
-      direction-aware list item on the OWNER device. Symmetric list padding
-      fixes clipping only. The marker can remain at the far left while an
-      independently-authored Farsi question aligns right, and the Problem:/Last
-      time: rows inherit the surrounding item's block alignment even though
-      their Farsi values have inline dir=\"auto\". The direction test proves
-      gutter availability and source placement, but not the rendered marker side
-      or row alignment required by ac-6."
-    counterexample: "In ClassQuestions.tsx the <li dir=\"auto\"> resolves from
-      q.title, while q.question has a separate dir=\"auto\" block. For an RTL
-      question, the OWNER-observed marker remains at the far left rather than
-      sitting beside the RTL content. The sibling Problem: and Last time: blocks
-      have no direction of their own; wrapping only q.currentProblem or
-      q.lastObservation in an inline dir=\"auto\" span cannot change the parent
-      block's start edge, so a Farsi value still reads from the left-side row.
-      Rework the whole Questions-for-next-class block so each numbered RTL entry
-      has an attached marker inside the container and every
-      independently-authored question/problem/observation determines the
-      appropriate rendered alignment without allowing fixed English labels to
-      claim its bidi base. Extend the named direction guard to cover the
-      invariant that failed, not merely two-sided padding."
-createdAt: 2026-09-12T11:54:55.193Z
-sealedAt: 2026-09-12T23:21:54.401Z
+  - family: "r-direction-aware-text: Questions-for-next-class mixed-label rows"
+    summary: The OWNER check confirms the ordinal and Farsi question now form the
+      intended coherent RTL item. The remaining issue is the presentation of the
+      mixed English-label/Farsi-value rows for Problem and Last time. Their
+      individual text directions are already correct, but the current visual
+      ordering leaves the English label's colon on the outer side of the row
+      rather than between the label and the value, so the pair does not read as
+      one coherent label-value relationship.
+    counterexample: With a Farsi Problem or Last time value, the row is correctly
+      right-aligned, the fixed English label is LTR and the user-authored value
+      is RTL. However, because the English label sits to the right of the Farsi
+      value and still renders literally as "Problem:" / "Last time:", the colon
+      appears on the far/right side of the English label and faces empty space
+      instead of separating the label from its value. Preserve the current
+      right-aligned question/ordinal layout and the native directions of both
+      texts, but render each metadata row so the label and value have an obvious
+      visual relationship and any separator sits between them rather than on the
+      outside.
+createdAt: 2026-09-13T03:02:56.590Z
+sealedAt: 2026-09-13T03:34:46.011Z
 ---
 
 # Review: Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen
@@ -44,291 +39,7 @@ sealedAt: 2026-09-12T23:21:54.401Z
 - **Contract:** 20260911-lay-practice-out-for-the-content-it-hold-4c24
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/20
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `0da935226a1c779f7d97d630c5d94a6a27836a35`
-
-## The plan the owner approved
-
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
-
-````yaml
-# Approved intent: Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Plan the next wide-scope lane from current main, with a stronger emphasis than previous lanes on FRONT-END QUALITY, UI/UX and MOBILE USABILITY. I want Practice Compass to feel: calm, refined and mature; highly usable and obvious without explanation; information-dense only where useful, never cluttered; understated rather than gamified, flashy or generic SaaS; deliberate and polished enough to feel like a personal tool I would want to use every day; visually coherent across Today, Repertoire, Start, Lessons, practice, close, Insights and Settings. The lane should still be wide but genuinely coherent — not a grab-bag of unrelated fixes. Preserve good existing decisions rather than redesigning for novelty.
-> 
-> What the inspection found, and what we agreed in the planning conversation:
-> 
-> The app is inspected at 390x844 with the CURRENT Farsi seed (an earlier look used a stale Latin demo database and was misleading). With real Persian content the dominant defect is systemic and was missed by the 2026-09-10 review entirely: every Farsi title right-aligns while its own English details left-align in the same cell. Verified in the DOM — the title is <div class="truncate" dir="auto"> and computes direction:rtl / text-align:start, its sibling <div class="tiny faint"> has no dir and computes ltr / start. 80 dir="auto" sites across 17 files; no container anywhere carries direction. The app looks polished in English and broken in Farsi — on the two instruments whose seeded data is entirely Farsi.
-> 
-> AGREED (four decisions taken in the planning conversation):
-> 1. The iPhone keyboard / bottom-nav drift gets ITS OWN DEVICE LANE, next — not this one. I traced it but it cannot be settled from source: three candidate causes have three different fixes (residual in window.scrollY -> lengthen the 80ms settle delay; residual in visualViewport.offsetTop -> resetIfIdle cannot fix it at all and the shell must track the visual viewport, replacing the 100dvh model; or the guard's own smooth scrollIntoView fired at focusin+300ms still animating when the focusout reset lands at +80ms). Its first deliverable is a readout I take on my own iPhone, so bundling it would stall this whole lane on my device.
-> 2. Today's order: BUILD IT with the recommendation first (Practise now directly under the instrument switcher, Plan and Routines as compact doorways beneath), and prove it with a manual:OWNER check on my actual iPhone. If it reads worse to me than the current order, it reverts before the lane ships. This revisits part of my own 2026-08-28 OWNER acceptance decision, deliberately and reversibly.
-> 3. The direction fix is applied EVERYWHERE it is needed, not just the core loop — a bidi fix applied to half the app is worse than none. Outside the practice loop, ONLY the direction wiring changes.
-> 4. Builder: claude.
-> 
-> Also agreed: do NOT add jsdom, .test.tsx or browser journeys in this lane. I asked for that to be reassessed; the honest answer is no — jsdom cannot compute dir=auto resolution or text-align, so it could assert only where an attribute sits, which is weaker than the visual check that has to happen anyway. The keyboard lane is where a pure extraction genuinely pays, following the repo's own screenAwake.ts pattern.
-
-## Why
-
-One sentence ties this lane together: EVERYWHERE THE APP SHOWS YOUR PRACTICE, THE CONTENT LEADS — the title and the details that belong to it align together, the item's name gets the room, your own words come before the scheduler's controls, and every label can actually be read.
-
-All four pieces are the same failure: the presentation layer failing the content it holds. None of them touches a domain decision, the store, or the schema, which is what makes a wide lane reviewable — the boundary is 'presentation only', enforced by forbidding src/domain/** and src/store/**.
-
-Measured evidence, all at 390x844 on current HEAD:
-- DIRECTION. Title cell 113px wide inside a 356px row; title right-aligned, its own 'due 14 days ago' left-aligned. Same split on the Practise-now card (eyebrow left / Farsi title right / English reason left), the 'Before your Setar class' row, Repertoire item rows, and the dastgah group heading (Farsi text left-aligned because that element has no dir at all, while the items under it right-align).
-- ROOM. That 113px title cell exists because 'Not now' + '+2d' + a play button take 243px of the row. The item title truncates to about 13 characters — the one thing the row exists to identify.
-- CLOSE SCREEN. 1689px of content in a 785px viewport: 2.15 screens. The review panel is a two-column grid at 390px whose right column is five review-type pills stacked VERTICALLY and whose left column crams a native date input, a 'Why this date?' link and a rationale paragraph into roughly 100px. The engine's controls are fully expanded before the musician has said how it went.
-- CONTRAST. Computed from the shipped tokens. Light theme fails WCAG AA for small text on --text-faint (2.89), --gold (3.13), --accent (3.50), --tone-warn (3.50), --tone-alert (3.57), --tone-good (3.62) — and white on --accent is 3.95, which is the label on the primary 'Start' button, the single most important control in this Flow. Dark theme fails only --text-faint (3.68 on --bg, 3.35 on --surface), which is the class used for every card's metadata line.
-
-What is deliberately NOT here, and why it is not lost: the iOS keyboard (own device lane, gated on an owner readout), SM-2 advancing once per closed block instead of once per due date (a real open defect, but it changes what r-practice-completes-reviews MEANS and needs a signed owner decision), Settings' structure (4594px with exactly one heading element — a different Flow), and Repertoire's three-line header wrap and two ontology paragraphs (a different Flow). Each is named so the next lane can pick it up.
-
-## Today
-
-Today opens on the session instrument and shows, in this order: the instrument switcher, a collapsed 'Plan this session' doorway, a collapsed 'Routines' doorway, then the PRACTISE NOW card. The recommendation is above the fold at 390x844 but is the fourth thing on screen — two orchestration choices are presented before the app's actual answer.
-
-Within that card, and within every row and card downstream of it, Persian content is laid out backwards. A Farsi title carries dir="auto" and resolves to direction:rtl, so it aligns to the right edge of its cell; the English eyebrow above it, the English reason beneath it and the 'due N days ago' caption under it carry no direction at all and align to the left edge of the same cell. Nothing in the app ever puts direction on a container: 80 dir="auto" attributes across 17 files, zero on a wrapper. unicode-bidi: plaintext is set on .input and .textarea only, not globally as AGENTS.md states.
-
-A due-review row gives its title 113px of a 356px row because 'Not now', '+2d' and the play button take the rest, so Farsi titles truncate after roughly 13 characters.
-
-The close screen is 1689px tall at 390px — 2.15 screens. Result, minutes, observation, next action, a body/tension disclosure, a status suggestion, 'Should this come back?', a native date field, a 'Why this date?' rationale and five vertically stacked review-type pills are all reachable on one scroll, with the scheduling controls fully expanded before a result has been chosen. Saving already, correctly, requires a result, and 'Save without a result' keeps not_logged deliberate.
-
-Light theme fails WCAG AA for small text on six tokens, including white on --accent at 3.95 — the primary Start button's own label. Dark theme fails --text-faint, the class used for every metadata line.
-
-## Instead
-
-1. DIRECTION FOLLOWS CONTENT, EVERYWHERE. A title and the details that belong to it are wrapped in one group that carries the direction, so both align to the same edge: a Farsi item reads as one right-aligned block, an English item stays exactly as it looks today. Direction stays NATIVE — dir="auto" resolved by the browser from the first strong character; no hand-rolled detection, no reordering of text in JavaScript. Where an English eyebrow precedes the Farsi title in the DOM (the Practise-now card), the group is drawn around title+reason rather than the whole card, because dir="auto" resolves from the first strong character in the subtree. Applied at every existing title/details pair across Today, Start, Active, Close, Repertoire, Lessons, Pathways, Stages, Session Plan, Routine runner, Materials, Item detail and the shared item components. Group headings that render Farsi (the dastgah headings) get direction too, so a heading no longer disagrees with the rows beneath it.
-
-THE COMPLETION BOUNDARY IS EXPLICIT, so neither builder nor reviewer has to guess whether the sweep is finished. The rule: after this lane, dir="auto" appears on GROUPS (the element holding a title together with the details that belong to it) and on free-text FIELDS (input/textarea/select) — and never bare on a title element. At HEAD 7a71179 there are exactly 80 dir="auto" occurrences, which reconcile as 32 + 47 + 1. Two defect shapes are in scope; a third category is explicitly out.
-
-  SHAPE A — direction sits on the title instead of the group. 47 display-text sites in 12 files, enumerated by line so a reviewer can tick them off:
-    src/pages/Today.tsx (11) — 95, 204, 310, 321, 381, 507, 541, 568, 595, 669, 767
-    src/pages/ItemDetail.tsx (6) — 126, 370, 392, 546, 552, 559
-    src/pages/Repertoire.tsx (5) — 206, 225, 262, 265, 293
-    src/pages/ActiveBlock.tsx (4) — 87, 98, 206, 211
-    src/pages/SessionPlan.tsx (4) — 136, 137, 229, 230
-    src/components/ClassQuestions.tsx (4) — 71, 74, 78, 83
-    src/pages/Lessons.tsx (3) — 518, 523, 658
-    src/pages/PathwayDetail.tsx (3) — 240, 307, 314
-    src/pages/StageDetail.tsx (2) — 192, 301
-    src/pages/RoutineRunner.tsx (2) — 179, 254
-    src/components/ItemMaterial.tsx (2) — 57, 116
-    src/pages/Materials.tsx (1) — 176
-  SHAPE B — a user-authored title rendered with NO direction at all, which is just as wrong and easier to miss because nothing in the source marks it. The confirmed rendering instances: CloseBlock.tsx:149 (the close screen's own item title — that file has zero dir="auto" today), StartBlock.tsx:196 (the item-picker rows), ItemCard.tsx:25 (the shared card title), Attachments.tsx:142 and ItemDetail.tsx:498 (user file names), ItemDetail.tsx:553 (study source), Insights.tsx:154 and :156 (insight text that embeds item titles), Repertoire.tsx:431 and PathwayDetail.tsx:95 (pathway names), PathwayDetail.tsx:353, StageDetail.tsx:357 and RoutineRunner.tsx:216 (routine names), Materials.tsx:171 and Lessons.tsx:261 (instrument headings), Lessons.tsx:647 (item title), TeacherReport.tsx:57 and Today.tsx:766 (instrument names).
-
-  EXPLICITLY OUT, so a reviewer does not raise them as misses: the 32 free-text FIELD sites in 10 files, which already work and stay byte-identical; the contents of <option> elements (RoutineEdit.tsx:215, ItemForm.tsx:218 and the instrument selects), because the native control owns their rendering; and title text inside confirm() and toast template strings, which are plain strings, not laid-out blocks. src/components/ItemForm.tsx, src/components/QuickAdd.tsx and src/pages/RoutineEdit.tsx are therefore NOT in scope at all: between them they hold 15 field sites and zero display-text sites.
-
-  Both shapes are held closed mechanically by a named test rather than by care (see the acceptance checks), and AGENTS.md records the surface list so the next lane inherits it. If the builder finds a title that genuinely has no group, the exception goes in that test's explicit allowlist and in AGENTS.md — an exception must be VISIBLE, never silent.
-
-2. THE ITEM'S NAME GETS THE ROOM. The due-review row stops starving its title to seat three controls: the title takes the width it needs and the actions are arranged so a real Farsi title is legible rather than truncated after a few characters. 'Not now', '+2d' and 'practise' all remain reachable and keep their existing, distinct semantics — this is layout only.
-
-3. THE RECOMMENDATION IS FIRST. Practise now sits directly under the instrument switcher; 'Plan this session' and 'Routines' become two compact doorways beneath it, still peers of each other, still independently openable, still carrying their 'Resume your plan' / 'Resume your routine' takeovers. Built as the new default and judged on the owner's own iPhone; it reverts before the lane ships if it reads worse than the current order.
-
-4. THE CLOSE SCREEN PUTS THE MUSICIAN'S WORDS FIRST. Always visible: how did it go, what did you notice, what to try next time. The scheduling decision collapses to ONE honest line — the date and review type that will actually be saved, e.g. 'Review in 2 days · Repair' — with the full controls (date field, review-type choice, 'Why this date?', the come-back Yes/No) one tap behind it. Same data, same defaults, same required result, same 'Save without a result' escape hatch; less supervision of the algorithm. The one-line summary is computed from the SAME ReviewPlan object that seeds the date field, so r-explainable-scheduling's 'the date shown before saving is exactly the date saved' holds by construction rather than by care, and that formatter is pure and unit-tested.
-
-5. EVERY LABEL CAN BE READ. The failing colour tokens move — in both themes — until every small-text pair the app ships meets WCAG AA, white on --accent included. A test computes the ratios from the shipped stylesheet and fails the suite if a token regresses, so this cannot silently come back.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- The owner's daily instruments (Setar, Tar) hold Farsi-authored titles, so the direction defect affects most of their real content; Classical Guitar is English and must look unchanged.
-- dir="auto" resolves from the first strong character in the element's subtree, so wrapping a title+details group works only where the title precedes the details in the DOM — which is true of every row inspected, but NOT of the Practise-now card, whose English 'PRACTISE NOW' eyebrow comes first.
-- jsdom cannot compute dir=auto resolution or text-align, so a component test could only assert where an attribute sits — weaker than the visual check that must happen anyway. That is why no test infrastructure is added in this lane.
-- The contrast test reads the shipped stylesheet with fs and computes WCAG ratios in Node; it needs no new dependency and no environment change to the existing vitest 'node' setup.
-- Moving the recommendation above the two doorways is reversible: it is one ordering change in Today.tsx with no data or state implications, so the manual:OWNER judgement can genuinely send it back.
-- If collapsing CloseBlock to a single ReviewPlan derivation turns out to be impossible once the builder is in the file, then jsdom earns its cost for that ONE assertion — 'the summary line and the date input show the same date' is a plain two-places-one-value check and jsdom does that well. The no-jsdom decision is reasoned from the direction work, where jsdom genuinely cannot compute dir=auto resolution or text-align; that reasoning does not transfer to this assertion. Structural collapse stays the first choice, and the fallback is named here so the builder does not pick one silently.
-
-**Possible conflicts**
-
-- src/styles/global.css is also the file the iOS keyboard lane will need. With wipLimit 2 both lanes can be open at once; sequence them or expect a merge in that one file.
-- src/pages/Today.tsx is a touchpoint of clear-a-due-review as well as this Flow. The due-review row re-layout changes how that Flow LOOKS without changing what any of its three actions does — that Flow's truth should not need re-recording, but its mechanics hash will move.
-- Colour tokens are global, so every Flow's appearance shifts slightly. Only the pairs that fail AA move; the rest are left alone.
-- Repertoire, Lessons, Pathway, Stage, Materials and Item detail are touchpoints of other Flows and are in scope for the direction wiring ONLY. A reviewer seeing those files changed should find nothing in them but the direction grouping.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Plan the next wide-scope lane from current main, with a stronger emphasis than previous lanes on FRONT-END QUALITY, UI/UX and MOBILE USABILITY. I want Practice Compass to feel: calm, refined and mature; highly usable and obvious without explanation; information-dense only where useful, never cluttered; understated rather than gamified, flashy or generic SaaS; deliberate and polished enough to feel like a personal tool I would want to use every day; visually coherent across Today, Repertoire, Start, Lessons, practice, close, Insights and Settings. The lane should still be wide but genuinely coherent — not a grab-bag of unrelated fixes. Preserve good existing decisions rather than redesigning for novelty.\n\nWhat the inspection found, and what we agreed in the planning conversation:\n\nThe app is inspected at 390x844 with the CURRENT Farsi seed (an earlier look used a stale Latin demo database and was misleading). With real Persian content the dominant defect is systemic and was missed by the 2026-09-10 review entirely: every Farsi title right-aligns while its own English details left-align in the same cell. Verified in the DOM — the title is <div class=\"truncate\" dir=\"auto\"> and computes direction:rtl / text-align:start, its sibling <div class=\"tiny faint\"> has no dir and computes ltr / start. 80 dir=\"auto\" sites across 17 files; no container anywhere carries direction. The app looks polished in English and broken in Farsi — on the two instruments whose seeded data is entirely Farsi.\n\nAGREED (four decisions taken in the planning conversation):\n1. The iPhone keyboard / bottom-nav drift gets ITS OWN DEVICE LANE, next — not this one. I traced it but it cannot be settled from source: three candidate causes have three different fixes (residual in window.scrollY -> lengthen the 80ms settle delay; residual in visualViewport.offsetTop -> resetIfIdle cannot fix it at all and the shell must track the visual viewport, replacing the 100dvh model; or the guard's own smooth scrollIntoView fired at focusin+300ms still animating when the focusout reset lands at +80ms). Its first deliverable is a readout I take on my own iPhone, so bundling it would stall this whole lane on my device.\n2. Today's order: BUILD IT with the recommendation first (Practise now directly under the instrument switcher, Plan and Routines as compact doorways beneath), and prove it with a manual:OWNER check on my actual iPhone. If it reads worse to me than the current order, it reverts before the lane ships. This revisits part of my own 2026-08-28 OWNER acceptance decision, deliberately and reversibly.\n3. The direction fix is applied EVERYWHERE it is needed, not just the core loop — a bidi fix applied to half the app is worse than none. Outside the practice loop, ONLY the direction wiring changes.\n4. Builder: claude.\n\nAlso agreed: do NOT add jsdom, .test.tsx or browser journeys in this lane. I asked for that to be reassessed; the honest answer is no — jsdom cannot compute dir=auto resolution or text-align, so it could assert only where an attribute sits, which is weaker than the visual check that has to happen anyway. The keyboard lane is where a pure extraction genuinely pays, following the repo's own screenAwake.ts pattern.",
-  "builder": "claude",
-  "summary": "Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen",
-  "rationale": "One sentence ties this lane together: EVERYWHERE THE APP SHOWS YOUR PRACTICE, THE CONTENT LEADS — the title and the details that belong to it align together, the item's name gets the room, your own words come before the scheduler's controls, and every label can actually be read.\n\nAll four pieces are the same failure: the presentation layer failing the content it holds. None of them touches a domain decision, the store, or the schema, which is what makes a wide lane reviewable — the boundary is 'presentation only', enforced by forbidding src/domain/** and src/store/**.\n\nMeasured evidence, all at 390x844 on current HEAD:\n- DIRECTION. Title cell 113px wide inside a 356px row; title right-aligned, its own 'due 14 days ago' left-aligned. Same split on the Practise-now card (eyebrow left / Farsi title right / English reason left), the 'Before your Setar class' row, Repertoire item rows, and the dastgah group heading (Farsi text left-aligned because that element has no dir at all, while the items under it right-align).\n- ROOM. That 113px title cell exists because 'Not now' + '+2d' + a play button take 243px of the row. The item title truncates to about 13 characters — the one thing the row exists to identify.\n- CLOSE SCREEN. 1689px of content in a 785px viewport: 2.15 screens. The review panel is a two-column grid at 390px whose right column is five review-type pills stacked VERTICALLY and whose left column crams a native date input, a 'Why this date?' link and a rationale paragraph into roughly 100px. The engine's controls are fully expanded before the musician has said how it went.\n- CONTRAST. Computed from the shipped tokens. Light theme fails WCAG AA for small text on --text-faint (2.89), --gold (3.13), --accent (3.50), --tone-warn (3.50), --tone-alert (3.57), --tone-good (3.62) — and white on --accent is 3.95, which is the label on the primary 'Start' button, the single most important control in this Flow. Dark theme fails only --text-faint (3.68 on --bg, 3.35 on --surface), which is the class used for every card's metadata line.\n\nWhat is deliberately NOT here, and why it is not lost: the iOS keyboard (own device lane, gated on an owner readout), SM-2 advancing once per closed block instead of once per due date (a real open defect, but it changes what r-practice-completes-reviews MEANS and needs a signed owner decision), Settings' structure (4594px with exactly one heading element — a different Flow), and Repertoire's three-line header wrap and two ontology paragraphs (a different Flow). Each is named so the next lane can pick it up.",
-  "kind": "existing-flow",
-  "flowId": "practise-todays-recommendation",
-  "currentBehaviour": "Today opens on the session instrument and shows, in this order: the instrument switcher, a collapsed 'Plan this session' doorway, a collapsed 'Routines' doorway, then the PRACTISE NOW card. The recommendation is above the fold at 390x844 but is the fourth thing on screen — two orchestration choices are presented before the app's actual answer.\n\nWithin that card, and within every row and card downstream of it, Persian content is laid out backwards. A Farsi title carries dir=\"auto\" and resolves to direction:rtl, so it aligns to the right edge of its cell; the English eyebrow above it, the English reason beneath it and the 'due N days ago' caption under it carry no direction at all and align to the left edge of the same cell. Nothing in the app ever puts direction on a container: 80 dir=\"auto\" attributes across 17 files, zero on a wrapper. unicode-bidi: plaintext is set on .input and .textarea only, not globally as AGENTS.md states.\n\nA due-review row gives its title 113px of a 356px row because 'Not now', '+2d' and the play button take the rest, so Farsi titles truncate after roughly 13 characters.\n\nThe close screen is 1689px tall at 390px — 2.15 screens. Result, minutes, observation, next action, a body/tension disclosure, a status suggestion, 'Should this come back?', a native date field, a 'Why this date?' rationale and five vertically stacked review-type pills are all reachable on one scroll, with the scheduling controls fully expanded before a result has been chosen. Saving already, correctly, requires a result, and 'Save without a result' keeps not_logged deliberate.\n\nLight theme fails WCAG AA for small text on six tokens, including white on --accent at 3.95 — the primary Start button's own label. Dark theme fails --text-faint, the class used for every metadata line.",
-  "desiredBehaviour": "1. DIRECTION FOLLOWS CONTENT, EVERYWHERE. A title and the details that belong to it are wrapped in one group that carries the direction, so both align to the same edge: a Farsi item reads as one right-aligned block, an English item stays exactly as it looks today. Direction stays NATIVE — dir=\"auto\" resolved by the browser from the first strong character; no hand-rolled detection, no reordering of text in JavaScript. Where an English eyebrow precedes the Farsi title in the DOM (the Practise-now card), the group is drawn around title+reason rather than the whole card, because dir=\"auto\" resolves from the first strong character in the subtree. Applied at every existing title/details pair across Today, Start, Active, Close, Repertoire, Lessons, Pathways, Stages, Session Plan, Routine runner, Materials, Item detail and the shared item components. Group headings that render Farsi (the dastgah headings) get direction too, so a heading no longer disagrees with the rows beneath it.\n\nTHE COMPLETION BOUNDARY IS EXPLICIT, so neither builder nor reviewer has to guess whether the sweep is finished. The rule: after this lane, dir=\"auto\" appears on GROUPS (the element holding a title together with the details that belong to it) and on free-text FIELDS (input/textarea/select) — and never bare on a title element. At HEAD 7a71179 there are exactly 80 dir=\"auto\" occurrences, which reconcile as 32 + 47 + 1. Two defect shapes are in scope; a third category is explicitly out.\n\n  SHAPE A — direction sits on the title instead of the group. 47 display-text sites in 12 files, enumerated by line so a reviewer can tick them off:\n    src/pages/Today.tsx (11) — 95, 204, 310, 321, 381, 507, 541, 568, 595, 669, 767\n    src/pages/ItemDetail.tsx (6) — 126, 370, 392, 546, 552, 559\n    src/pages/Repertoire.tsx (5) — 206, 225, 262, 265, 293\n    src/pages/ActiveBlock.tsx (4) — 87, 98, 206, 211\n    src/pages/SessionPlan.tsx (4) — 136, 137, 229, 230\n    src/components/ClassQuestions.tsx (4) — 71, 74, 78, 83\n    src/pages/Lessons.tsx (3) — 518, 523, 658\n    src/pages/PathwayDetail.tsx (3) — 240, 307, 314\n    src/pages/StageDetail.tsx (2) — 192, 301\n    src/pages/RoutineRunner.tsx (2) — 179, 254\n    src/components/ItemMaterial.tsx (2) — 57, 116\n    src/pages/Materials.tsx (1) — 176\n  SHAPE B — a user-authored title rendered with NO direction at all, which is just as wrong and easier to miss because nothing in the source marks it. The confirmed rendering instances: CloseBlock.tsx:149 (the close screen's own item title — that file has zero dir=\"auto\" today), StartBlock.tsx:196 (the item-picker rows), ItemCard.tsx:25 (the shared card title), Attachments.tsx:142 and ItemDetail.tsx:498 (user file names), ItemDetail.tsx:553 (study source), Insights.tsx:154 and :156 (insight text that embeds item titles), Repertoire.tsx:431 and PathwayDetail.tsx:95 (pathway names), PathwayDetail.tsx:353, StageDetail.tsx:357 and RoutineRunner.tsx:216 (routine names), Materials.tsx:171 and Lessons.tsx:261 (instrument headings), Lessons.tsx:647 (item title), TeacherReport.tsx:57 and Today.tsx:766 (instrument names).\n\n  EXPLICITLY OUT, so a reviewer does not raise them as misses: the 32 free-text FIELD sites in 10 files, which already work and stay byte-identical; the contents of <option> elements (RoutineEdit.tsx:215, ItemForm.tsx:218 and the instrument selects), because the native control owns their rendering; and title text inside confirm() and toast template strings, which are plain strings, not laid-out blocks. src/components/ItemForm.tsx, src/components/QuickAdd.tsx and src/pages/RoutineEdit.tsx are therefore NOT in scope at all: between them they hold 15 field sites and zero display-text sites.\n\n  Both shapes are held closed mechanically by a named test rather than by care (see the acceptance checks), and AGENTS.md records the surface list so the next lane inherits it. If the builder finds a title that genuinely has no group, the exception goes in that test's explicit allowlist and in AGENTS.md — an exception must be VISIBLE, never silent.\n\n2. THE ITEM'S NAME GETS THE ROOM. The due-review row stops starving its title to seat three controls: the title takes the width it needs and the actions are arranged so a real Farsi title is legible rather than truncated after a few characters. 'Not now', '+2d' and 'practise' all remain reachable and keep their existing, distinct semantics — this is layout only.\n\n3. THE RECOMMENDATION IS FIRST. Practise now sits directly under the instrument switcher; 'Plan this session' and 'Routines' become two compact doorways beneath it, still peers of each other, still independently openable, still carrying their 'Resume your plan' / 'Resume your routine' takeovers. Built as the new default and judged on the owner's own iPhone; it reverts before the lane ships if it reads worse than the current order.\n\n4. THE CLOSE SCREEN PUTS THE MUSICIAN'S WORDS FIRST. Always visible: how did it go, what did you notice, what to try next time. The scheduling decision collapses to ONE honest line — the date and review type that will actually be saved, e.g. 'Review in 2 days · Repair' — with the full controls (date field, review-type choice, 'Why this date?', the come-back Yes/No) one tap behind it. Same data, same defaults, same required result, same 'Save without a result' escape hatch; less supervision of the algorithm. The one-line summary is computed from the SAME ReviewPlan object that seeds the date field, so r-explainable-scheduling's 'the date shown before saving is exactly the date saved' holds by construction rather than by care, and that formatter is pure and unit-tested.\n\n5. EVERY LABEL CAN BE READ. The failing colour tokens move — in both themes — until every small-text pair the app ships meets WCAG AA, white on --accent included. A test computes the ratios from the shipped stylesheet and fails the suite if a token regresses, so this cannot silently come back.",
-  "mustNotChange": [
-    "No file under src/domain/** or src/store/** changes: computeReview, computeReviewOutcome, completeOpenReviewsFor, resolveReviewDate, scoreItems, recommend, buildSessionPlan and every other decision stay byte-identical. This lane is presentation only.",
-    "No schema change, no SCHEMA_VERSION bump, no migration — nothing this lane does is persisted.",
-    "CloseBlock derives the review date ONCE. There is a single ReviewPlan value in that component; the collapsed summary line and the expanded date field are two renderings of it, and clampSchedulingParams(db.settings) is threaded into that one derivation. A second planNextReview call, or a date computed anywhere but from that value, is the drift r-explainable-scheduling exists to prevent — the guarantee must be that a divergent date is UNREPRESENTABLE, not that both call sites were remembered. (CloseBlock.tsx:79 and :94 are two derivations today.)",
-    "A result stays REQUIRED to save a block, and 'Save without a result' stays reachable and deliberate so not_logged is still a real choice; a resultless close still leaves the item's review date AND its open Review row untouched.",
-    "r-quick-start holds: starting stays under 30 seconds, closing under 60, and no new required field is introduced anywhere.",
-    "The Active screen stays a practice screen — no dashboard, no viewer, no new panel. useScreenAwake/screenAwake and nextSignal are untouched, and nothing in this lane may influence a recorded minute.",
-    "The shell stays the next lane's territory: the 100dvh height model with its 100vh @supports fallback, overflow:hidden on html/body/#root, only <main> scrolling, and the .tabbar rules in global.css are all untouched, as is src/components/useViewportGuard.ts.",
-    "r-no-gamification: no re-layout introduces a streak, score, badge, fabricated percentage, bar that fills or colour that judges.",
-    "Direction stays native — dir=\"auto\" resolved by the browser. No hand-rolled direction detection and no reordering of Farsi text in JavaScript.",
-    "The primary recommendation stays above the fold at 390x844, and r-one-instrument-per-session holds: no other instrument's work appears inside a session.",
-    "Both search boxes keep filtering through itemMatchesSearch. English-only content (Classical Guitar) keeps its LAYOUT exactly as it is today — same left alignment, same order, same grouping; the direction work must be a no-op for it. The ONE intended difference on English screens is the colour-token correction, which is global by nature and applies to every screen in both languages: six failing tokens move, every passing token is left untouched, and no layout, spacing or type changes with them.",
-    "Session Plan and Routines remain two independent peer doorways with their own open/close state and their own resume takeovers — moving them below the recommendation must not nest one inside the other.",
-    "Any title that genuinely cannot be grouped is recorded as an explicit, named exception in the direction test's allowlist and in AGENTS.md. Silently leaving a title ungrouped, or satisfying the test by deleting dir=\"auto\" without moving it to a group, both fail the lane — the second would break Farsi rendering outright."
-  ],
-  "assumptions": [
-    "The owner's daily instruments (Setar, Tar) hold Farsi-authored titles, so the direction defect affects most of their real content; Classical Guitar is English and must look unchanged.",
-    "dir=\"auto\" resolves from the first strong character in the element's subtree, so wrapping a title+details group works only where the title precedes the details in the DOM — which is true of every row inspected, but NOT of the Practise-now card, whose English 'PRACTISE NOW' eyebrow comes first.",
-    "jsdom cannot compute dir=auto resolution or text-align, so a component test could only assert where an attribute sits — weaker than the visual check that must happen anyway. That is why no test infrastructure is added in this lane.",
-    "The contrast test reads the shipped stylesheet with fs and computes WCAG ratios in Node; it needs no new dependency and no environment change to the existing vitest 'node' setup.",
-    "Moving the recommendation above the two doorways is reversible: it is one ordering change in Today.tsx with no data or state implications, so the manual:OWNER judgement can genuinely send it back.",
-    "If collapsing CloseBlock to a single ReviewPlan derivation turns out to be impossible once the builder is in the file, then jsdom earns its cost for that ONE assertion — 'the summary line and the date input show the same date' is a plain two-places-one-value check and jsdom does that well. The no-jsdom decision is reasoned from the direction work, where jsdom genuinely cannot compute dir=auto resolution or text-align; that reasoning does not transfer to this assertion. Structural collapse stays the first choice, and the fallback is named here so the builder does not pick one silently."
-  ],
-  "possibleConflicts": [
-    "src/styles/global.css is also the file the iOS keyboard lane will need. With wipLimit 2 both lanes can be open at once; sequence them or expect a merge in that one file.",
-    "src/pages/Today.tsx is a touchpoint of clear-a-due-review as well as this Flow. The due-review row re-layout changes how that Flow LOOKS without changing what any of its three actions does — that Flow's truth should not need re-recording, but its mechanics hash will move.",
-    "Colour tokens are global, so every Flow's appearance shifts slightly. Only the pairs that fail AA move; the rest are left alone.",
-    "Repertoire, Lessons, Pathway, Stage, Materials and Item detail are touchpoints of other Flows and are in scope for the direction wiring ONLY. A reviewer seeing those files changed should find nothing in them but the direction grouping."
-  ],
-  "scope": {
-    "allow": [
-      "src/pages/Today.tsx",
-      "src/pages/StartBlock.tsx",
-      "src/pages/ActiveBlock.tsx",
-      "src/pages/CloseBlock.tsx",
-      "src/pages/Repertoire.tsx",
-      "src/pages/ItemDetail.tsx",
-      "src/pages/Lessons.tsx",
-      "src/pages/PathwayDetail.tsx",
-      "src/pages/StageDetail.tsx",
-      "src/pages/SessionPlan.tsx",
-      "src/pages/RoutineRunner.tsx",
-      "src/pages/Materials.tsx",
-      "src/pages/Insights.tsx",
-      "src/pages/TeacherReport.tsx",
-      "src/components/ItemCard.tsx",
-      "src/components/ItemMaterial.tsx",
-      "src/components/ClassQuestions.tsx",
-      "src/components/Attachments.tsx",
-      "src/components/ui.tsx",
-      "src/components/format.ts",
-      "src/components/format.test.ts",
-      "src/components/direction.test.ts",
-      "src/styles/global.css",
-      "src/styles/contrast.test.ts",
-      "AGENTS.md",
-      "DECISIONS.md"
-    ],
-    "forbid": [
-      "src/domain/**",
-      "src/store/**",
-      "src/App.tsx",
-      "src/main.tsx",
-      "src/components/Layout.tsx",
-      "src/components/useViewportGuard.ts",
-      "src/components/useScreenAwake.ts",
-      "src/components/screenAwake.ts",
-      "src/pages/Settings.tsx",
-      "src/pages/More.tsx",
-      "src/pages/NewItem.tsx",
-      "vite.config.ts",
-      "index.html",
-      "package.json",
-      ".prismatica/**",
-      ".github/**"
-    ]
-  },
-  "exclusions": [
-    "The iOS keyboard / bottom-nav drift, and everything in src/components/useViewportGuard.ts and src/components/Layout.tsx. Agreed as its own device lane, next: its three candidate causes have three different fixes, and choosing between them needs an instrumented readout the owner takes on the real iPhone before a line is written.",
-    "jsdom, .test.tsx and browser journeys as a general capability. Reassessed for this lane specifically and deliberately not added — checks.journeys stays false — because the bulk of the work is direction layout, which jsdom cannot evaluate at all (no dir=auto resolution, no text-align computation), so it would assert only where an attribute sits. The ONE exception is named in the assumptions: if CloseBlock cannot be collapsed to a single ReviewPlan, jsdom may be added for that single two-places-one-value assertion and nothing else. The keyboard lane is where a pure, port-injected extraction genuinely pays, following the repo's own screenAwake.ts precedent.",
-    "Settings' structure (4594px, exactly one heading element, sections as unlabelled divs). Real, and both an IA and an accessibility problem — but it belongs to adjust-how-scheduling-works and back-up-and-restore, not to the practice loop.",
-    "Repertoire's header (the 'Add practice item' button wrapping to three lines at 390px) and its two explanatory ontology paragraphs. Belongs to browse-my-repertoire. In Repertoire.tsx and the other non-loop files, ONLY the direction wiring changes.",
-    "SM-2 advancing once per closed block rather than once per due date, so practising the same item three times in an afternoon pushes its next review from 2 days to about 15. Still open and still wrong, but it changes what r-practice-completes-reviews MEANS and therefore needs a signed owner decision of its own. Named here so it is not lost — it should be the lane after the keyboard.",
-    "Still-open findings that belong to no part of this sentence: dormant/'Resting' items still scored and still gaining neglect, ItemForm allowing an item to become its own parent and leaving stale family metadata on an instrument switch, a malformed backup attachment being skipped and then destroyed, frozen 'now' on CloseBlock/ItemDetail/Lessons/Repertoire/SessionPlan/TeacherReport (and the SessionPlan reseed that can therefore never fire), Insights and the Teacher report mixing 'during this period' with 'right now', Settings describing sync as 'newest copy wins', Field giving single controls no accessible name, and .prismatica/product-map.md still holding placeholders.",
-    "src/components/ItemForm.tsx, src/components/QuickAdd.tsx and src/pages/RoutineEdit.tsx are deliberately outside scope. The corrected inventory shows they hold 15 free-text FIELD sites and zero display-text sites between them — their dir=\"auto\" usage is already correct and must not be touched."
-  ],
-  "acceptance": [
-    {
-      "description": "REGRESSION GUARD, stated as such: the tri-state close decision is pure and sits in forbidden territory, so this test cannot fail from this lane's edits — it exists to prove the restructure did not reach past its scope. It discriminates 'no result chosen' (item's next review date kept) from 'review genuinely declined' (date cleared), the two states a skipped tap used to conflate.",
-      "test": "keeps the item's review date when no result was chosen and still clears it when a review is declined"
-    },
-    {
-      "description": "REGRESSION GUARD, same standing as the previous one: a resultless close leaves the item's open Review row OPEN while a genuine decline completes it. Green today and must stay green; it proves scope was respected, not that the new wiring is correct.",
-      "test": "leaves an open review row open when no result was chosen and still completes it on a genuine decline"
-    },
-    {
-      "description": "THIS is the check that guards the restructure. CloseBlock is collapsed to a SINGLE ReviewPlan value, and the new pure formatter reports exactly that plan's dueDate, reviewType and rationale — so the collapsed line and the expanded date field are two renderings of one value and a divergent date becomes unrepresentable, the way installDatabase's signature makes an un-reset install unrepresentable. New formatter in src/components/format.ts, tested in a new src/components/format.test.ts under the existing node environment.",
-      "test": "the one-line review summary reports exactly the ReviewPlan's due date, type and rationale"
-    },
-    {
-      "description": "An explicitly listed set of (foreground token, background token) pairs — the ones the app actually renders small text in, written out in the test so a reviewer can see exactly what is and is not covered — meets WCAG AA (4.5:1). The list must include the two pairs measured as failing at HEAD: --accent-contrast on --accent (the primary Start button's own label, 3.95 in light) and --text-faint on --bg (2.89 light, 3.68 dark). Ratios are computed from the shipped stylesheet and asserted in EVERY block where those tokens are declared, not the first: global.css declares the light palette twice — at :root[data-theme='light'] (line 80) and again inside @media (prefers-color-scheme: light) { :root:not([data-theme]) } (line 114) — and the duplicate is what an owner who has never picked a theme actually sees. A regression in either block fails the suite. The claim is bounded to the listed pairs; it is not a claim about every theoretically possible combination. New test in src/styles/contrast.test.ts.",
-      "test": "every listed colour pair meets WCAG AA in every block where its tokens are declared"
-    },
-    {
-      "description": "The direction sweep is provably complete rather than spot-checked, which is what stops a reviewer later finding 'PathwayDetail was a stated surface but one title was missed'. The test scans the source and asserts BOTH halves: (a) no element carrying a title class (truncate, title-md, page-title, stage-unit-title) carries dir=\"auto\" directly any more — a missed title still has it and fails; and (b) every file on the recorded surface list carries direction on at least one group element that is neither a title nor an input/textarea — so a whole skipped file fails, and 'fixing' it by deleting the attribute fails too. Genuine exceptions live in an explicit allowlist inside the test, so they are visible to the reviewer. New test in src/components/direction.test.ts.",
-      "test": "direction lives on the group: no title element carries dir=\"auto\", and every listed surface has one"
-    },
-    {
-      "description": "On the owner's iPhone, in the INSTALLED PWA, Farsi and English are discriminated correctly rather than uniformly re-aligned: a Farsi item's title AND its own details both align to the right edge, while an English item's title and details both stay on the left — checked on Today (the Practise-now card, a due-review row and the class row), Start, Active, Close, Repertoire and Lessons. A card where the title and its details still point at opposite edges fails, and so does an English card that has started aligning right. This check is deliberately REPRESENTATIVE, not exhaustive: completeness across all 16 surfaces is the automated direction test's job, and this one proves that what the test enforces actually renders correctly on the device.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "On the owner's iPhone at 390x844 with the recommendation moved above the two doorways: Practise now is the first thing under the instrument switcher, 'Plan this session' and 'Routines' are both still reachable without scrolling and still open independently, and the owner judges the new order better than the old. If it reads worse, the order reverts before the lane ships — that reversal is a passing outcome of this check, not a failure of the lane.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "The saved-data boundary, end to end on the restructured screen — the one check that can actually fail from this lane's edits. Close three blocks on the same item and discriminate the outcomes: (a) 'Save without a result' leaves the item's next review date unchanged and leaves it listed under Due reviews; (b) choosing a result saves EXACTLY the date the collapsed line showed before saving, verified by reopening the item; (c) opening the controls and answering 'Should this come back? No' clears the date and removes it from Due reviews. If the restructure has rewired the tri-state mapping, (a) and (c) stop differing — which is the bug this app already paid a heavy lane to fix once.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "Answered TRUE for saved data deliberately, even though no file under src/store/** or src/domain/** may change. The close screen is the one place in this lane that WRITES: it saves a practice block and, with it, an item's next review date and the state of its open Review row. Restructuring that screen moves the controls that feed those writes, and this repository has already paid for exactly that mistake once — a single skipped tap used to erase a next review date, complete the open row and leave SM-2 state stale while the panel read 'Should this come back? Yes'. So the lane is scoped to forbid the decision code, and the checks are honest about which of them can actually fail from it. The two named domain tests are REGRESSION GUARDS — pure, in forbidden territory, green today, and green whether or not the new wiring is right; they prove scope was respected, nothing more. The restructure itself is guarded two ways: structurally, by collapsing CloseBlock to a SINGLE ReviewPlan so a divergent date is unrepresentable rather than merely discouraged, with a pure test on the formatter that renders it; and behaviourally, by an owner check that discriminates 'saved without a result' from 'review declined' on the real screen, which is the only place the wiring is observable. Nothing else in the lane persists anything: direction grouping, row widths, screen order and colour tokens are all presentation. No schema, no migration, no backup or sync format is touched."
-  },
-  "delta": {
-    "today": "Today shows two orchestration doorways before the app's actual answer, and from that card onward the app lays Persian content out backwards. A Farsi title resolves to direction:rtl and hugs the right edge of its cell while the English eyebrow above it, the reason below it and the 'due N days ago' caption under it all hug the left edge of the same cell — 80 dir=\"auto\" attributes across 17 files and not one of them on a container. The due-review row leaves its title 113px of a 356px row, so a Farsi title truncates after about 13 characters. The close screen runs 1689px at 390x844 with the scheduling engine's controls — a native date field, a rationale paragraph squeezed into roughly 100px, and five review-type pills stacked vertically — fully expanded before the musician has said how it went. And in light theme the label on the primary Start button sits at 3.95:1, below AA.",
-    "instead": "The content leads. A title and the details that belong to it sit in one group that carries the direction, so a Farsi item reads as one right-aligned block and an English item looks exactly as it does today — resolved natively by dir=\"auto\", never by hand. The due-review row gives the title the room and keeps all three actions with their existing distinct meanings. Practise now moves directly under the instrument switcher, with Plan and Routines as two compact peer doorways beneath it. The close screen leads with how it went, what you noticed and what to try next time, and collapses the whole scheduling decision into one honest line carrying the date and type that will actually be saved, one tap from the full controls — computed from the same ReviewPlan that seeds the date field, so the date shown is still the date saved. And every small-text colour pair meets AA in both themes, with a test that recomputes the ratios from the shipped stylesheet so it cannot quietly regress.",
-    "keep": [
-      "A result stays required to save, and 'Save without a result' stays a reachable, deliberate way to record not_logged.",
-      "A resultless close still changes no schedule: the item's date stays and its open Review row stays open; only a genuine decline clears and completes.",
-      "Practising stays the only thing that completes a review and advances SM-2; 'Not now' still only hides for the day and '+2d' still moves the real date on both sides.",
-      "Starting stays under 30 seconds, closing under 60, and a title stays the only required field anywhere.",
-      "The Active screen stays deliberately empty — the ring, the elapsed figure, the two controls and the two existing disclosures. The wake lock and the boundary announcement are untouched and no recorded minute is affected.",
-      "Session Plan and Routines stay two independent peer doorways, each with its own state and its own resume takeover; neither becomes a child of the other.",
-      "No streak, score, badge, fabricated percentage or judging colour appears anywhere in the re-layout.",
-      "English content renders exactly as it does today, and the shell — its 100dvh height model and its tab bar — is left entirely to the next lane."
-    ],
-    "assumptions": [],
-    "showMe": "On the iPhone, open Today on Setar. Practise now is the first thing under the instrument switcher, and the Farsi title with its English reason now sit as one right-aligned block instead of splitting across the card. Scroll to a due review: the Farsi title is legible instead of cut to a few characters, and its 'due N days ago' caption sits under it on the same edge. Switch to Classical Guitar — 'Study in C — full run' looks exactly as it always has, left-aligned. Start a block, finish it: the close screen asks how it went, what you noticed and what to try next time, and the whole review decision is one line, 'Review in 2 days · Repair', with a tap to open the date and type if you want them. Open it and the date is the same date the line just told you. Then switch to light theme and read the small grey metadata lines and the Start button's own label — both are legible now, and a test in the suite will fail if either ever drifts back."
-  },
-  "desiredRules": [
-    "Layout follows the direction of the content it shows: a title and the details that belong to it sit in one group that carries dir=\"auto\", so a Persian item reads as one block instead of splitting across the card. Direction is resolved natively by the browser, never detected in JavaScript, and it lives on the group or on a free-text field — never bare on a title element.",
-    "Colour is checked by a test, not by eye: the foreground tokens the app renders small text in are asserted at WCAG AA (4.5:1) against the background tokens they are actually rendered on, in every block where those tokens are declared. The checked pairs are listed explicitly in the test, so a token that is not covered is a visible omission rather than a silent one."
-  ],
-  "docsDelta": [
-    "AGENTS.md",
-    "DECISIONS.md"
-  ]
-}
-```
-````
+- **Diff patch-id:** `84206331a4c439cecb8334e2013830b88e6c21a7`
 
 ## The Delta this change was framed from
 
@@ -365,34 +76,4421 @@ On the iPhone, open Today on Setar. Practise now is the first thing under the in
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- AGENTS.md
-- DECISIONS.md
-- src/components/Attachments.tsx
-- src/components/ClassQuestions.tsx
-- src/components/ItemCard.tsx
-- src/components/ItemMaterial.tsx
-- src/components/direction.test.ts
-- src/components/format.test.ts
-- src/components/format.ts
-- src/components/ui.tsx
-- src/pages/ActiveBlock.tsx
-- src/pages/CloseBlock.tsx
-- src/pages/Insights.tsx
-- src/pages/ItemDetail.tsx
-- src/pages/Lessons.tsx
-- src/pages/Materials.tsx
-- src/pages/PathwayDetail.tsx
-- src/pages/Repertoire.tsx
-- src/pages/RoutineRunner.tsx
-- src/pages/SessionPlan.tsx
-- src/pages/StageDetail.tsx
-- src/pages/StartBlock.tsx
-- src/pages/TeacherReport.tsx
-- src/pages/Today.tsx
-- src/styles/contrast.test.ts
-- src/styles/global.css
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, plus the
+findings that review recorded, plus the full current text of every file the
+rework touched — the same Check already bound to this head is not to be
+rerun wholesale.
+
+**Findings from the previous review:**
+
+- **r-direction-aware-text: Questions-for-next-class marker attachment, independently-authored values and rendered alignment** — The Questions-for-next-class block does not form a coherent direction-aware list item on the OWNER device. Symmetric list padding fixes clipping only. The marker can remain at the far left while an independently-authored Farsi question aligns right, and the Problem:/Last time: rows inherit the surrounding item's block alignment even though their Farsi values have inline dir="auto". The direction test proves gutter availability and source placement, but not the rendered marker side or row alignment required by ac-6.
+  _counterexample:_ In ClassQuestions.tsx the <li dir="auto"> resolves from q.title, while q.question has a separate dir="auto" block. For an RTL question, the OWNER-observed marker remains at the far left rather than sitting beside the RTL content. The sibling Problem: and Last time: blocks have no direction of their own; wrapping only q.currentProblem or q.lastObservation in an inline dir="auto" span cannot change the parent block's start edge, so a Farsi value still reads from the left-side row. Rework the whole Questions-for-next-class block so each numbered RTL entry has an attached marker inside the container and every independently-authored question/problem/observation determines the appropriate rendered alignment without allowing fixed English labels to claim its bidi base. Extend the named direction guard to cover the invariant that failed, not merely two-sided padding.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index d075276..e1a1c0c 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -779,17 +779,169 @@ bans the shape mechanically rather than by care: no
+ bug cannot resurface in any file, named here or not — one location fixed and the anti-
+ pattern deleted are two different guarantees, and only the second is durable.
+ 
+-**A NATIVE LIST MARKER FOLLOWS ITS OWN LIST ITEM'S DIRECTION, NOT THE LIST'S.** The same
+-review found `ClassQuestions.tsx`'s `<ol>` reserving gutter space with
+-`paddingInlineStart` alone while each `<li>` resolves its OWN direction via `dir="auto"`:
+-the browser positions each `<li>`'s outside `::marker` on THAT li's own start edge, so a
+-Farsi item's marker lands on the RIGHT — the side the `<ol>` reserved no room for — and
+-gets pressed against or past the content border on both Mac and iPhone. Fixed with
+-`paddingInline` (both sides) instead of `paddingInlineStart`, so the marker has room
+-whichever side it lands on; `direction.test.ts` now scans every `<ol>`/`<ul>` on the
+-recorded surfaces and fails if one contains a `dir="auto"` `<li>` without symmetric room
+-on both sides — a shape check, not a location list, so a future list with the same
+-mismatch fails on its own.
++**A NATIVE LIST MARKER'S OWN LOGICAL POSITION IS NOT SOMETHING A GUTTER MEASUREMENT CAN
++GUARANTEE.** The third rejection found `ClassQuestions.tsx`'s `<ol>` reserving gutter
++space with `paddingInlineStart` alone while each `<li>` resolves its OWN direction via
++`dir="auto"`, and fixed it with symmetric `paddingInline` instead, reasoning that a
++marker landing on either side would then have room. A SIXTH SEALED FINDING, checked on
++the owner's own iPhone, found the number still escaping the card even with that room
++reserved: an outside `::marker`'s exact position for a direction-variable list item is a
++browser implementation detail — exactly the class of thing jsdom cannot compute either,
++which is why a padding measurement was ever trusted to stand in for it — not a distance a
++gutter can be sized against. The fix stops accommodating the native marker and removes it
++instead: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a real element,
++the FIRST child of a flex `<li dir="auto">`. Flexbox's row axis is direction-aware BY
++SPECIFICATION (`flex-direction: row`'s start is the writing mode's own start, not a fixed
++physical side), so the number leads on the right for a Farsi question and on the left for
++an English one — and because it is now an ordinary flex child inside the `<li>`'s own
++content box, rather than a marker rendered in the padding area outside it, it can no
++longer escape the card on any device. It carries no `dir` of its own (a digit is
++bidi-neutral, so `dir="auto"` on the `<li>` skips it and still resolves from the title as
++before) and neither does the wrapper around title/question/details: `dir="auto"` skips a
++descendant that carries its own `dir` when hunting for a first strong character, so
++giving the wrapper one would leave the `<li>` with no resolution source at all — the same
++class of regression the `stage.title` revert and the instrument-name checks above already
++found. `direction.test.ts` now asserts the mechanism directly rather than a proxy for it:
++every `<ol>`/`<ul>` containing a `dir="auto"` `<li>` must disable the native marker
++outright, and that `<li>` must itself be a flex/grid container able to reorder its own
++content — a shape check on the fix itself, not a measurement around a browser behaviour
++nothing here can verify.
++
++Removing the native marker has an accessibility cost the visual fix alone doesn't pay
++back: WebKit drops an `<ol>`'s own list semantics from the accessibility tree once
++`list-style: none` removes its marker, so VoiceOver on the owner's own iPhone — the exact
++device this fix targets — would stop announcing "list, N items" or a question's position
++in it. `role="list"` on the `<ol>` restores that; the visible ordinal carries
++`aria-hidden` so it is not announced a second time on top of it.
++
++**A ROW'S OWN ALIGNMENT COMES FROM THE VALUE, NEVER FROM A LABEL MARKED OUT OF THE HUNT.**
++The sixth finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed
++at the time as a WRAP-alignment gap: the established shape — a fixed English label left
++bare, immediately followed by the value in its own `dir="auto"` isolate — gives the
++value's own CHARACTERS correct bidi order, but a plain inline span has no width of its own
++to align a wrapped line within, so a long value was given `display: 'inline-block'` +
++`textAlign: 'start'` to align its OWN wrapped lines independent of whatever surrounded it.
++
++A SEVENTH SEALED FINDING found that diagnosis addressed the wrong claim. Giving the value
++its own wrap-line alignment is not the same claim as giving the ROW — the element that
++actually positions "Label: value" as a unit — the right alignment in the first place. The
++row itself was left BARE in both the original and the wrap-alignment fix, so it inherited
++whichever direction the TITLE above it resolved to, regardless of what script the VALUE
++was written in. For a Farsi title with a Farsi value this looked right by coincidence
++(inherited-from-title happened to match the value); for an English-titled item with a
++Farsi problem note, the whole row stayed pinned left — the label's inherited position, not
++the value's own — with the value's internal characters shaping correctly but its overall
++POSITION wrong regardless of whether it wrapped. This is exactly the "a group carrying
++direction is not the same claim as every child in it having its own" family two sections
++up, just not yet applied to a row whose OWN direction, not merely a child's bidi base,
++needed to track an independently-authored value.
++
++The fix moves `dir="auto"` from the value to the ROW, and marks the LABEL — never the
++value — with its own `dir="ltr"`. Not because the label's text ever changes: `dir="auto"`
++skips a descendant that carries its own `dir` when hunting for a first strong character
++(the exact mechanism the eyebrow/title split above already relies on), so marking the
++label takes it OUT of that hunt and leaves the deliberately bare value as the row's only
++candidate. Marking the value too would take BOTH out, leaving the row with nothing to
++resolve from and a silent fallback to LTR no matter what the value says — confirmed to
++fail the new check when tried, alongside the opposite mutation (removing the label's
++`dir="ltr"` entirely, reverting to the original bug), which the pre-existing
++`unexemptedPhrase` check also independently catches. Verified across all four
++title/value language combinations at both a 350px (iPhone-card-width) and a 700px
++(desktop) container width: a value's own language determines its row's alignment
++independent of the title, in both directions, at both widths — and with all four lines
++(title, question, Problem, Last time) now agreeing, the block reads as one attached unit
++against the marker rather than two aligned lines and two stray ones.
++
++`direction.test.ts` replaces the two `ISOLATED_VALUE_SITES` snippet entries with a SHAPE
++check, `isLabelFirstAutoRow`: any `dir="auto"` group whose body opens with a
++`<span dir="ltr">…</span>` must have no other `dir=` anywhere else in its body. It is not
++anchored to `ClassQuestions.tsx` — it would catch the identical regression in any future
++file adopting this label-first-row pattern, the same "shape, not a location list"
++discipline the instrument-name and native-marker checks above already established. This
++is deliberately NOT generalised to `ActiveBlock`'s
++`constraint`/`problem`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
++the older bare-label-then-isolate shape: those fields sit directly under their own title
++in this app's real data (never independently mismatched), so the failure this fixes does
++not arise for them, and touching files this lane's own brief did not name would be scope
++the sealed finding never asked for.
++
++**THE MARKER/TITLE GAP AND THE RAGGED LEFT EDGE ARE TWO DIFFERENT CLAIMS, AND ONLY ONE OF
++THEM WAS EVER BROKEN.** A follow-up OWNER pass on this same finding read as a second,
++distinct complaint — the ordinal "looked" detached from a Farsi question because the
++Problem/Last-time lines sat at the opposite (left) edge while the title and question sat
++right, an asymmetry a screenshot reads as "the number is not attached" even though the
++title itself was never the problem. Measured directly against the live DOM (real seeded
++Farsi data, cloned at a 340px container width, text extents read via
++`Range.getClientRects()`, not `getBoundingClientRect()` on the boxes): the ordinal's right
++edge sits at 338px, the title/question/Problem/Last-time lines all right-align flush
++against 330px — an 8px gap matching the authored `gap: 8` on every one of the four lines,
++not just the title. The remaining LEFT edges spread across a 143px range (62px-205px),
++because the four lines are different lengths and each is right-aligned within a box whose
++own right edge is pinned to the ordinal regardless of the box's width. That spread is
++mathematically invariant to how the box is sized: left edge = box_right minus line_width,
++and box_right never moves, so switching the wrapper from `flex: 1` (this file's `.grow`)
++to shrink-to-fit was tried and measured byte-for-byte identical before and after — proof
++that no flex-sizing change can touch it, because there is nothing wrong with the sizing to
++begin with. A ragged left edge on right-aligned lines of differing length is ordinary
++typography (the same thing an address block or a right-aligned caption does), not a
++resolvable defect, and the row-direction fix above is what actually closed the gap the
++owner was reacting to for THAT screenshot: before it, Problem/Last-time sat at the FAR left
++(~25px, the opposite edge entirely) while title/question sat at ~330px — a hard
++two-line/two-line split, not mere length variance. Once all four lines agree on which edge
++they hug, the remaining spread is length variance, and no further padding or flex-sizing
++change was warranted for it specifically. **This measurement is scoped to the ragged-edge
++question alone and is NOT a claim that every marker-attachment complaint was closed** — a
++NINTH finding below, on the exact same screenshot's underlying data, found a real,
++different structural bug in how the `<li>` itself picks its resolved direction. Read that
++finding for the actual fix; do not re-derive "nothing more to do here" from this measurement
++a second time.
++
++**THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
++NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
++Seventh/Eighth findings' — used seed data where an item's title and its `teacherQuestion`
++happen to share a language. That is exactly the one condition under which the underlying
++bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
++descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
++and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
++isolates — so the hunt could only ever land on the bare TITLE. Whichever language the TITLE
++happened to be in decided which side the ordinal rendered on, regardless of the question's
++own language. An OWNER pass with a title and question in DIFFERENT languages (reproduced
++directly against the live running app — the real Teacher Report page, not a clone — by
++temporarily setting an English title on the real seeded Farsi item via the store) showed
++this concretely: the ordinal and title landed together on the English side, while the
++question — right-aligned by its own independent `dir="auto"`, correctly, on its own terms —
++sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse combination
++(Farsi title, English question) reproduced the mirror image. Neither combination is exotic:
++an item's title is free text the owner chooses for their own reasons and has no obligation
++to share a language with a teacher's question about it.
++
++The fix reverses which of the two is left bare. `questionsForNextClass` guarantees
++`q.question` is non-empty on every row this component ever renders (it filters on exactly
++that field); `q.title` carries no such guarantee and is authored completely independently.
++The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
++applied to the OTHER field this time), so it renders in its own correct direction but is
++taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
++`dir="auto"` actually finds — the marker now always tracks the question, the one field
++guaranteed present, never the optional title. Structural, not padding: this is the same
++skip mechanism this file already relies on throughout, applied to the correct field.
++Verified directly against the real, running page
++(not a synthetic clone) at both a 390px (real DOM node, width forced via the live element's
++own style, not `resize_window` — which does not affect layout in this environment — so the
++SAME component tree is exercised, just narrower) and the full desktop width: an English
++title with a Farsi question now attaches the marker to the question (right) with the title
++independently left-aligned; a Farsi title with an English question attaches the marker to
++the question (left) with the title independently right-aligned; the original matching-language
++case (both Farsi) is unaffected. `direction.test.ts` records this as a dedicated,
++mutation-tested shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the
++title's tag carries `dir="auto"` and the question's does not — confirmed to fail under both
++reverted mutations (title bare again; question marked again) before being committed.
++
++**THE LESSON THIS FILE KEEPS RELEARNING:** matching-language seed data proves a fix works
++when title and value AGREE, and says nothing about what happens when they DISAGREE — the
++Seventh finding's row-direction fix and this Ninth finding are the same shape of gap,
++found twice because the same seed data was trusted twice. Any future verification of a
++mixed-language surface in this file should deliberately construct a MISMATCHED case, not
++only the matching one already in the seed.
+ 
+ **THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
+ every `{…}` expression as fully opaque, contributing zero words — which is exactly
+diff --git a/DECISIONS.md b/DECISIONS.md
+index 223bbf0..183abdf 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -2,6 +2,163 @@
+ 
+ Durable record of non-obvious choices. Newest first.
+ 
++## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
++
++The Eighth review below concluded no further structural change was needed, using seed data
++where the item's title and its `teacherQuestion` share a language (both Farsi). An OWNER
++pass reported the marker was STILL not attached to the question on the real, current build
++— and, tested directly against the real running app (the actual Teacher Report page, not a
++synthetic clone), with a title and question set to DIFFERENT languages, this was true and
++was a genuinely different, previously undiagnosed bug: the Eighth review's own conclusion
++does not extend past the one language combination its evidence used.
++
++Root cause: `<li dir="auto">`'s hunt for a first strong character skips any descendant that
++carries its own `dir`. The question and the Problem/Last-time rows all already carried
++their own `dir="auto"` isolates, so the hunt could only ever land on the bare TITLE —
++meaning the ordinal's side was decided by the TITLE's language alone, regardless of the
++QUESTION's. With matching languages this is invisible (title and question agree on which
++side to hug); with an English title and a Farsi question (or the reverse), the ordinal and
++title land on one side while the question — correctly right- or left-aligned by its own
++independent isolate — lands on the OTHER, unattached from the marker entirely. Reproduced
++both ways by temporarily setting an English title on the real seeded Farsi item via the
++live store (`useStore.getState().updateItem(...)`) against the actual running page, at both
++a 390px-forced real DOM width and the full desktop width.
++
++Fixed by reversing which field is left bare: `questionsForNextClass` guarantees
++`q.question` is non-empty on every row this component renders (that is its filter); `q.title`
++carries no such guarantee. The title now carries its own `dir="auto"` isolate (out of the
++`<li>`'s hunt, rendering in its own correct direction independently); the question is left
++bare, so the `<li>`'s `dir="auto"` — and therefore the ordinal's side — always tracks it.
++Verified at both widths, both mismatch directions, and confirmed the original
++matching-language case is unaffected. `direction.test.ts` adds a dedicated, mutation-tested
++shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the title's tag
++carries `dir="auto"` and the question's does not; both reverting the title and re-marking
++the question were confirmed to fail it (and, independently, `GROUP_SITE_INVENTORY`'s exact
++count) before this was committed. The stale `ISOLATED_VALUE_SITES` entry for the question's
++old isolate was removed; no new entry was needed for the title's new one since it is a
++plain `GROUP_SITE_INVENTORY` site (same tag/class the old entry already tracked).
++
++The general lesson, restated because this is the second time this file has learned it: a
++verification built entirely from matching-language seed data proves a fix holds when the
++two sides AGREE and says nothing about what happens when they DISAGREE. The Seventh
++rejection's row-direction fix and this Ninth rejection are the same shape of gap, closed
++twice because the same seed data was trusted twice.
++
++## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
++
++**Scope note (superseded in part by the Ninth rejection above):** this review's conclusion
++— that no further structural change was warranted — was correct only for the ragged-edge
++question it actually measured, using seed data with a Farsi title AND a Farsi question. It
++was not, and should not have been read as, a claim that every marker-attachment complaint
++on this screenshot was closed; a real, different bug (title/question language mismatch)
++was still open and is fixed above.
++
++A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
++the "1." marker looked detached from the Farsi question because the Problem/Last-time
++lines sat at the opposite (left) edge from the title and question — a visible asymmetry a
++screenshot reads as "not attached" even where the title itself was correctly positioned.
++Rather than trust that reading, both edges were measured directly against the live DOM:
++the real seeded Farsi item, cloned into a fixed-width harness at 340px, with each line's
++actual rendered text extent read via `Range.getClientRects()` (glyph bounds, not
++`getBoundingClientRect()` on the containing boxes). Result: all four lines — title,
++question, Problem, Last time — right-align flush at 330px, an 8px gap from the ordinal's
++own right edge at 338px, matching the authored `gap: 8` exactly. The LEFT edges spread
++across 62px-205px (143px), because the four lines differ in length and each is
++right-aligned inside a box whose right edge is pinned to the ordinal regardless of the
++box's own width.
++
++A specific fix was proposed and tested before being rejected: swap the value wrapper's
++`flex: 1` (`.grow`) for shrink-to-fit sizing, on the theory that a narrower box would pull
++the ragged edges together. Patched live and re-measured, the result was byte-for-byte
++identical — same 143px spread, same individual line positions — because for right-aligned
++text, `left edge = box_right − line_width`, and `box_right` never moves: it stays flush
++against the ordinal no matter how the box itself is sized. There is no flex-sizing change
++that touches this, because the sizing was never the defect.
++
++Conclusion: a ragged left edge on right-aligned lines of differing length is ordinary
++typography (the same shape any right-aligned paragraph or an address block has), not a
++resolvable structural defect. The actual defect the owner was reacting to was fixed by the
++Seventh rejection below, before this measurement was taken: Problem/Last-time used to sit
++at the FAR left (~25px, the opposite edge entirely) while title/question sat at ~330px — a
++hard two-line/two-line split, not mere length variance. Once the row-direction fix made
++all four lines agree on which edge they hug, what's left is ordinary variance in line
++length, and no further structural or padding change is warranted. No source change
++accompanies this entry; it exists so a future review does not reopen the same screenshot
++and re-diagnose an already-closed gap as a new one.
++
++## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
++
++A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's
++`display: 'inline-block'` fix for `ClassQuestions`' `Problem:`/`Last time:` rows still
++wrong — not merely incomplete. That fix gave the VALUE its own bidi character order and
++its own wrap-line alignment, but left the ROW that positions "Label: value" as a unit
++BARE, so the row inherited whichever direction the TITLE above it resolved to — right for
++a Farsi title, left for an English one — regardless of what script the value was actually
++written in. For the common case (title and value the same language) this looked correct
++by coincidence; for an English-titled item with a Farsi problem note, the whole row
++stayed pinned left, exactly where the inherited direction put it, with the value's
++internal shaping correct but its POSITION wrong. This is the same root cause the
++"A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN"
++section already named for other files, just not yet applied to a LABEL-plus-VALUE row.
++
++Fixed by moving `dir="auto"` from the value to the ROW itself, and marking the LABEL —
++never the value — with its own `dir="ltr"`. This is not because the label's text ever
++changes; `dir="auto"` skips a descendant that carries its own `dir` when hunting for a
++first strong character, so marking the label takes it OUT of that hunt and leaves the
++(deliberately bare) value as the row's only resolution source. Marking the value too
++would take BOTH out, leaving the row with nothing to resolve from and a silent fallback
++to LTR regardless of the value's own script — confirmed to fail the new test when tried.
++Verified across all four combinations (Farsi/English title × Farsi/English value) at both
++a narrow (350px, iPhone-card-width) and a wide (700px, desktop) container: a value's own
++language now determines its row's alignment independently of the title, in both
++directions, at both widths. This also resolved the number/title "detachment" the same
++finding reported: with all four lines (title, question, Problem, Last time) correctly
++right-aligning together, the block reads as one coherent unit against the marker instead
++of two aligned lines and two stray ones.
++
++`direction.test.ts` replaces the `ISOLATED_VALUE_SITES` ledger entries for these rows
++with a shape check, `isLabelFirstAutoRow` / "a label-first auto row's value stays bare":
++any `dir="auto"` group whose body opens with a `<span dir="ltr">…</span>` must have no
++other `dir=` anywhere else in its body, or the row has nothing left to resolve from. It is
++a SHAPE check, not a ClassQuestions-specific one, so it would catch the same regression in
++any future file using this pattern. Two mutations were confirmed to fail before this was
++committed: marking the value `dir="auto"` too (caught by the new check and by
++`GROUP_SITE_INVENTORY`'s exact-order equality), and removing the label's `dir="ltr"`
++entirely — reverting to the original bug — which the PRE-EXISTING `unexemptedPhrase` check
++also catches on its own (the bare "Problem" label plus the value's opaque expression reads
++as a 2-word exposed phrase), giving this shape two independent guards.
++
++## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
++
++A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
++question number still escaping the card despite the third rejection's symmetric
++`paddingInline` fix — proof that an outside `::marker`'s exact position for a
++direction-variable `<li>` is a browser implementation detail no gutter measurement can
++guarantee (jsdom cannot compute it either, which is why a padding proxy was ever trusted
++to stand in for it). Fixed by removing the native marker mechanism entirely rather than
++reserving room for it: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a
++real element, the FIRST child of a flex `<li dir="auto">` — flexbox's row axis is
++direction-aware by specification, so the number leads on the correct side and sits inside
++the content box it can never escape. The wrapper around title/question/details carries no
++`dir` of its own, deliberately: `dir="auto"` skips a descendant that has its own `dir`
++when hunting for a first strong character, so giving the wrapper one would leave the
++`<li>` with no resolution source at all. `direction.test.ts`'s list-marker check
++(`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
++now asserts the mechanism directly — no native marker, and the `<li>` is itself a
++flex/grid container — rather than measuring a proxy for it; each half was confirmed to
++fail on its own when reverted. `role="list"` on the `<ol>` pays back the one accessibility
++cost of removing the marker: WebKit drops an `<ol>`'s list semantics from the
++accessibility tree once `list-style: none` takes its marker away, which would have gone
++unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
++surfaced.
++
++The same finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed at
++the time as a wrap-alignment gap and fixed with `display: 'inline-block'` on the value's
++own isolate. A seventh sealed finding (below) found that diagnosis incomplete — the value
++having its own bidi order was never the same claim as the ROW having the right
++alignment — and replaced it with a different fix entirely. See "Seventh rejection" above
++for what actually shipped.
++
+ ## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
+ 
+ A fifth sealed review found the fourth rejection's fix was still a negative check —
+diff --git a/src/components/ClassQuestions.tsx b/src/components/ClassQuestions.tsx
+index e68f6cb..a9f2986 100644
+--- a/src/components/ClassQuestions.tsx
++++ b/src/components/ClassQuestions.tsx
+@@ -3,12 +3,39 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
+ 
+ /**
+  * "Questions for next class" — the questions to actually ask the teacher,
+- * with Copy / Download / Print exports. The title leads each question's own
+- * group (`dir="auto"` on the `<li>`), but the question, problem and last
+- * observation are each authored independently of the title AND of each
+- * other, so each carries its OWN `dir="auto"` isolate rather than inheriting
+- * the title's resolved direction. A question is never cleared by practising;
+- * the user edits the item to remove it.
++ * with Copy / Download / Print exports. Each question is one coherent,
++ * direction-aware unit: the ordinal number is a real element inside a flex
++ * `<li dir="auto">`, never a native `::marker` — a marker's own logical
++ * position for a direction-variable list item is a browser implementation
++ * detail no gutter measurement can guarantee, so it is never relied on at
++ * all.
++ *
++ * THE QUESTION leads the li's own resolution — never the title. `dir="auto"`
++ * skips any descendant that carries its own `dir` when hunting for a first
++ * strong character, so whichever of title/question is left BARE is what the
++ * ordinal's side tracks. `questionsForNextClass` guarantees `q.question` is
++ * non-empty on every rendered row; `q.title` carries no such guarantee and is
++ * authored independently (an item's own name, which need not share the
++ * question's language) — an OWNER-observed regression found the ordinal
++ * pinned to whichever language the TITLE happened to be in (bare, leading
++ * the hunt) while the question resolved its own, different direction and
++ * landed on the opposite edge, unattached from the marker entirely. The
++ * title now carries its OWN `dir="auto"` isolate (taking it OUT of the
++ * hunt, same skip mechanism, so an English title still renders left and a
++ * Farsi one still renders right, independently); the question is left bare,
++ * so it is what the li's `dir="auto"` actually finds.
++ *
++ * Problem/Last time are each their OWN group: the ROW itself carries
++ * `dir="auto"`, so the row's alignment comes from the VALUE, not from the
++ * title above it or from whichever direction the label happens to read in.
++ * The fixed English label is marked `dir="ltr"` — not because its own text
++ * ever changes, but because `dir="auto"` skips a descendant that carries its
++ * own `dir` when hunting for a first strong character, so marking the label
++ * takes it OUT of that hunt and leaves the value as the only candidate. The
++ * value itself is bare (no `dir` of its own): were it marked too, BOTH
++ * children would be skipped and the row would have no resolution source at
++ * all, falling back to LTR regardless of what the value says. A question is
++ * never cleared by practising; the user edits the item to remove it.
+  */
+ export default function ClassQuestions({
+   instrumentName,
+@@ -67,34 +94,73 @@ export default function ClassQuestions({
+           Nothing to ask yet. Flag an item “for next class” and add a teacher question — it will collect here.
+         </div>
+       ) : (
+-        /* paddingInline (both sides), not paddingInlineStart alone: each
+-           li below resolves its OWN direction via dir="auto", and the
+-           native ::marker sits on the START edge of THAT li, not of this
+-           ol — a Farsi item's marker lands on the right, an English item's
+-           on the left. Symmetric padding leaves it room to be seen in full
+-           on whichever side it lands. */
+-        <ol className="stack-sm" style={{ margin: 0, paddingInline: 22 }}>
+-          {questions.map((q) => (
+-            <li key={q.itemId} dir="auto">
+-              <div className="small" style={{ fontWeight: 600 }}>
+-                {q.title}
+-              </div>
+-              {/* question/problem/observation are each authored independently
+-                  of the title (and of each other) — their own dir="auto"
+-                  isolates resolve from their own content, not from q.title's. */}
+-              <div className="small" dir="auto">
+-                {q.question}
+-              </div>
+-              {q.currentProblem && (
+-                <div className="tiny faint">
+-                  Problem: <span dir="auto">{q.currentProblem}</span>
++        /* No native marker: an outside ::marker's own logical position for a
++           direction-variable <li> is a browser implementation detail, not
++           something a gutter measurement can guarantee — it escaped the
++           card's own padding on the owner's iPhone even with symmetric room
++           reserved on both sides. The ordinal is a real element instead, the
++           FIRST child of a flex <li dir="auto">: flexbox's row axis is
++           direction-aware by specification, so the number leads on the
++           right for a Farsi question and on the left for an English one,
++           always inside the content box it can never escape. It carries no
++           dir of its own (a digit is bidi-neutral) and neither does the
++           wrapper around title/question/details — dir="auto" skips a
++           descendant that has its own dir when hunting for a first strong
++           character, so giving the wrapper one would leave the <li> with no
++           resolution source of its own. The QUESTION (below) is left bare
++           for the same reason, deliberately — it is what the li's hunt is
++           meant to find, since it is always present and the title is not.
++
++           role="list": WebKit drops an <ol>/<ul>'s own list semantics from
++           the accessibility tree once `list-style: none` removes its visual
++           marker — an explicit role restores VoiceOver's "list, N items" and
++           each <li>'s position announcement, which the visible ordinal
++           (aria-hidden below, so it isn't announced twice) does not carry
++           on its own. */
++        <ol
++          role="list"
++          className="stack-sm"
++          style={{ margin: 0, padding: 0, listStyle: 'none' }}
++        >
++          {questions.map((q, i) => (
++            <li key={q.itemId} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
++              <span className="tiny faint" aria-hidden="true" style={{ flexShrink: 0 }}>
++                {i + 1}.
++              </span>
++              <div className="stack-sm grow">
++                {/* The title is authored independently of the question — an
++                    item's own name, which need not share the question's
++                    language — so it carries its own dir="auto" isolate,
++                    resolving from its own content rather than anchoring the
++                    li (that would pin the ordinal to the title's language,
++                    splitting it from the question whenever the two differ). */}
++                <div className="small" dir="auto" style={{ fontWeight: 600 }}>
++                  {q.title}
+                 </div>
+-              )}
+-              {q.lastObservation && (
+-                <div className="tiny faint">
+-                  Last time: <span dir="auto">{q.lastObservation}</span>
++                {/* Bare, deliberately: q.question is guaranteed non-empty
++                    (questionsForNextClass filters on it) and is what the
++                    li's dir="auto" hunt is meant to land on, so the ordinal
++                    always tracks the question, never the optional title. */}
++                <div className="small">
++                  {q.question}
+                 </div>
+-              )}
++                {/* The ROW resolves direction from the VALUE, never the label:
++                    dir="ltr" on the label takes it out of the auto hunt, and the
++                    bare value is what's left for the row's dir="auto" to find. A
++                    Farsi value right-aligns the whole row even under an
++                    English title; an English value left-aligns it even under a
++                    Farsi one — the label never claims the direction either way. */}
++                {q.currentProblem && (
++                  <div className="tiny faint" dir="auto">
++                    <span dir="ltr">Problem:</span> {q.currentProblem}
++                  </div>
++                )}
++                {q.lastObservation && (
++                  <div className="tiny faint" dir="auto">
++                    <span dir="ltr">Last time:</span> {q.lastObservation}
++                  </div>
++                )}
++              </div>
+             </li>
+           ))}
+         </ol>
+diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
+index d93ab1d..ff06508 100644
+--- a/src/components/direction.test.ts
++++ b/src/components/direction.test.ts
+@@ -131,10 +131,10 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
+  */
+ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
+   { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
+-  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: '' },
++  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: 'row' },
+   { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'small' },
+-  { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
+-  { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
++  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
++  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
+   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'grow' },
+   { file: 'components/ItemCard.tsx', tagName: 'span', classValue: '' },
+   { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
+@@ -559,9 +559,6 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{active.constraint}</span>' },
+   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
+   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{problem}</span>' },
+-  { file: 'components/ClassQuestions.tsx', snippet: '<div className="small" dir="auto">' },
+-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.currentProblem}</span>' },
+-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.lastObservation}</span>' },
+   { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
+   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
+   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
+@@ -579,6 +576,28 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+   // own direction wherever it renders') that discovers every renderer of the
+   // name mechanically instead of requiring each one to be re-listed here —
+   // see that check for the full rationale.
++  //
++  // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
++  // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
++  // them to a different shape entirely — the ROW carries dir="auto" and the
++  // LABEL is marked dir="ltr" to take it out of the auto hunt, so the row's
++  // OWN alignment comes from the value rather than from an ancestor's
++  // resolved direction — covered by the dedicated shape check below
++  // ('a label-first auto row's value stays bare...') rather than a snippet
++  // ledger, since the point is the RELATIONSHIP between the label and the
++  // value, not either one's presence on its own.
++  //
++  // ClassQuestions' q.question used to be tracked here too, isolated with
++  // its own dir="auto" span while the title was left bare to anchor the
++  // <li>. An OWNER-observed regression found that backwards: the title is
++  // optional and independently authored, so anchoring the li on it split
++  // the ordinal from the question whenever the two differed in language.
++  // The roles are now reversed — title isolated, question bare — which
++  // makes the title's new dir="auto" a plain GROUP_SITE_INVENTORY entry
++  // (same tag/class as the old question entry, so that ledger needs no
++  // edit) rather than a value-ledger one, and adds a dedicated shape check
++  // below ('the question anchors the group's direction...') asserting the
++  // anchor is the question, not the title.
+ ];
+ 
+ /**
+@@ -637,6 +656,8 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
+   { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
+   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
+   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
++  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem:</span>' },
++  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time:</span>' },
+   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
+   { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
+@@ -683,20 +704,33 @@ function isolateSites(file: string): Site[] {
+   return sites;
+ }
+ 
+-// --- a native list marker must stay inside the card on EITHER side ---------
++// --- a native list marker is never relied on for a direction-variable item -
+ //
+ // A rejected review found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+ // space with `paddingInlineStart` alone while its `<li>`s each resolve their
+-// OWN direction via `dir="auto"`: the browser positions each `<li>`'s
+-// outside `::marker` on ITS OWN start edge, not the `<ol>`'s, so a Farsi
+-// item's marker lands on the right — the side the `<ol>` reserved no room
+-// for — and gets pressed against or past the content border. This scans
+-// every `<ol>`/`<ul>` in the recorded surfaces (not just the one known
+-// today) and requires symmetric room on both sides whenever a directionally
+-// variable `<li>` could put the marker on either one.
+-function listSites(file: string): { file: string; line: number; tag: string; hasAutoLi: boolean }[] {
++// OWN direction via `dir="auto"`, and the first fix reserved symmetric
++// `paddingInline` instead, reasoning that a marker landing on either side
++// would then have room. A SIXTH SEALED FINDING, checked on the owner's own
++// iPhone, found the number still escaping the card even with that room
++// reserved: an outside `::marker`'s exact position for a direction-variable
++// list item is a browser implementation detail — exactly the class of thing
++// jsdom cannot compute either, which is why a padding measurement was ever
++// trusted to stand in for it — not a distance a gutter can be sized against.
++// The fix stops accommodating the native marker and removes it instead
++// (`listStyle: 'none'`), rendering the ordinal as a real element: the FIRST
++// child of a flex `<li dir="auto">`, so flexbox's own direction-aware row
++// axis (a spec-mandated behaviour, unlike marker positioning) puts it on the
++// correct side and keeps it inside the content box by construction — it can
++// no longer escape a card it is now genuinely inside of. This scans every
++// `<ol>`/`<ul>` in the app (not just the one known today) and asserts the
++// mechanism directly: a list containing a `dir="auto"` `<li>` must disable
++// the native marker outright, and that `<li>` must itself be a flex/grid
++// container able to reorder its own content — a shape check on the fix
++// itself, not a measurement around a browser behaviour nothing here can
++// verify.
++function listSites(file: string): { file: string; line: number; tag: string; autoLiTags: string[] }[] {
+   const src = stripComments(SOURCES[file]);
+-  const sites: { file: string; line: number; tag: string; hasAutoLi: boolean }[] = [];
++  const sites: { file: string; line: number; tag: string; autoLiTags: string[] }[] = [];
+   for (const match of src.matchAll(/<(ol|ul)\b/g)) {
+     const at = match.index!;
+     const tag = enclosingTag(src, at);
+@@ -707,22 +741,64 @@ function listSites(file: string): { file: string; line: number; tag: string; has
+       file,
+       line: src.slice(0, at).split('\n').length,
+       tag,
+-      hasAutoLi: /<li\b[^>]*\sdir="auto"/.test(bodyText),
++      autoLiTags: [...bodyText.matchAll(/<li\b[^>]*\sdir="auto"[^>]*>/g)].map((m) => m[0]),
+     });
+   }
+   return sites;
+ }
+ 
+-/** True when the list's own inline style leaves room for a marker on either
+- *  side: explicit `paddingInline`, an equal start+end pair, or a marker that
+- *  never sits in a separate gutter at all (`listStylePosition: 'inside'`). */
+-function reservesRoomOnBothSides(tag: string): boolean {
++/** True when the list's own inline style disables the native marker outright
++ *  (`listStyle`/`listStyleType: 'none'`) — the only thing about a marker's
++ *  own rendered position a source scan can actually verify, unlike a
++ *  padding measurement around a mechanism jsdom cannot compute either. */
++function disablesNativeMarker(tag: string): boolean {
+   const style = tag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+-  if (/listStylePosition\s*:\s*['"]inside['"]/.test(style)) return true;
+-  if (/\bpaddingInline\s*:/.test(style)) return true;
+-  const hasStart = /paddingInlineStart\s*:|paddingLeft\s*:/.test(style);
+-  const hasEnd = /paddingInlineEnd\s*:|paddingRight\s*:/.test(style);
+-  return hasStart === hasEnd; // both set, or neither — never start-only
++  return /\blistStyle(?:Type)?\s*:\s*['"]none['"]/.test(style);
++}
++
++/** True when a `<li>` tag is itself a flex (or grid) container — the
++ *  mechanism that lets its own content (an ordinal, a badge) reorder with
++ *  its own resolved direction instead of depending on a static layout. */
++function isDirectionAwareContainer(liTag: string): boolean {
++  // `.row` is `display: flex` in global.css — this is a source scan trusting
++  // a fact declared in a different file; renaming or redefining that class
++  // would silently blind this check.
++  if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
++  const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
++  return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);
++}
++
++// --- a row's alignment comes from its value, never a label marked out of the hunt ---
++//
++// A SEVENTH SEALED FINDING found `ClassQuestions.tsx`'s Problem:/Last time:
++// rows still misaligned after the sixth rework: giving the VALUE its own
++// `dir="auto"` isolate (or later, `display: inline-block`) makes the value's
++// OWN characters shape correctly, but the ROW that positions "Label: value"
++// as a unit was left bare, inheriting whichever direction the TITLE above it
++// happened to resolve to — right for a Farsi title, left for an English one
++// — regardless of what script the value itself was written in. An
++// English-titled item with a Farsi problem note left the whole "Problem:
++// ..." row pinned to the left, exactly where the label's own inherited
++// direction put it, with the value's internal shaping correct but its
++// POSITION wrong.
++//
++// The fix gives the ROW itself `dir="auto"`, and marks the LABEL —
++// `Problem:`/`Last time:`, never the value — with its own `dir="ltr"`. This
++// is not because the label's text ever changes; it is because `dir="auto"`
++// skips a descendant that carries its own `dir` when hunting for a first
++// strong character (the same mechanism the group-vs-title rule above relies
++// on). Marking the label takes it OUT of that hunt, so the row's resolution
++// comes from whatever is left — the value, left deliberately BARE. Marking
++// the value too would take BOTH out, leaving the row with no candidate at
++// all and a silent fallback to LTR no matter what the value says — the
++// regression this check exists to catch. This is a SHAPE check, not a
++// ClassQuestions-specific one: it fires on any file using the same
++// label-first `dir="auto"` row pattern.
++function isLabelFirstAutoRow(file: string, site: Site): boolean {
++  const src = stripComments(SOURCES[file]);
++  const openAt = src.lastIndexOf('<', site.at);
++  const body = elementBody(src, site.text, openAt);
++  return /^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/.test(src.slice(body.start, body.end));
+ }
+ 
+ // --- an instrument name resolves its own direction, wherever it renders ----
+@@ -1250,11 +1326,74 @@ describe('direction lives on the group', () => {
+     expect(sitesSeen).toBeGreaterThan(0);
+   });
+ 
+-  it('a list containing a direction-variable item reserves marker room on both sides', () => {
+-    const violations = sourceFiles()
+-      .flatMap(listSites)
+-      .filter((s) => s.hasAutoLi && !reservesRoomOnBothSides(s.tag))
+-      .map((s) => `${s.file}:${s.line} — <ol>/<ul> reserves gutter on only one side for a marker that can land on either`);
++  it('a list with a direction-variable item never relies on the native marker, and lays that item out as a direction-aware flex container', () => {
++    const violations: string[] = [];
++    for (const site of sourceFiles().flatMap(listSites)) {
++      if (site.autoLiTags.length === 0) continue;
++      if (!disablesNativeMarker(site.tag)) {
++        violations.push(`${site.file}:${site.line} — <ol>/<ul> relies on a native marker for an li whose direction can vary`);
++      }
++      for (const liTag of site.autoLiTags) {
++        if (!isDirectionAwareContainer(liTag)) {
++          violations.push(
++            `${site.file}:${site.line} — a dir="auto" <li> isn't itself a flex/grid container, so its own content can't reorder with its direction`,
++          );
++        }
++      }
++    }
+     expect(violations).toEqual([]);
+   });
++
++  it("a label-first auto row's value stays bare, so the row still has a direction to resolve from", () => {
++    const violations: string[] = [];
++    let rowsSeen = 0;
++    for (const file of sourceFiles()) {
++      const src = stripComments(SOURCES[file]);
++      for (const site of directionSites(file).filter(isGroup)) {
++        if (!isLabelFirstAutoRow(file, site)) continue;
++        rowsSeen += 1;
++        const openAt = src.lastIndexOf('<', site.at);
++        const body = elementBody(src, site.text, openAt);
++        const bodyText = src.slice(body.start, body.end);
++        const afterLabel = bodyText.replace(/^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/, '');
++        if (/\sdir="(?:auto|ltr|rtl)"/.test(afterLabel)) {
++          violations.push(
++            `${file}:${site.line} — the value in a label-first row carries its own dir, leaving the row with nothing left to resolve from`,
++          );
++        }
++      }
++    }
++    expect(violations).toEqual([]);
++    // Same discipline as the instrument-name check above: a scanner that
++    // silently matches nothing is not proof nothing needs checking.
++    expect(rowsSeen).toBeGreaterThan(0);
++  });
++
++  // An OWNER-observed regression found ClassQuestions' <li dir="auto">
++  // anchored on the wrong candidate: the title was left bare (leading the
++  // hunt) while the question carried its own isolate — so an item whose
++  // title and question differed in language put the ordinal on the
++  // title's side while the question (the only field questionsForNextClass
++  // actually guarantees is non-empty) resolved its own, different
++  // direction and landed on the opposite edge, unattached from the
++  // marker entirely. Matching-language seed data never exposed this: the
++  // bug only shows when the two differ. Fixed by reversing which one is
++  // bare — the question anchors the <li>, the title gets its own isolate
++  // — and asserted directly here rather than trusting seed data again.
++  it("the question anchors ClassQuestions' <li>, not the independently-authored title", () => {
++    const file = 'components/ClassQuestions.tsx';
++    const src = stripComments(SOURCES[file]);
++    const liSite = directionSites(file).find((s) => s.tagName === 'li');
++    expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
++    const openAt = src.lastIndexOf('<', liSite!.at);
++    const body = elementBody(src, liSite!.text, openAt);
++    const bodyText = src.slice(body.start, body.end);
++    const smallDivs = [...bodyText.matchAll(/<div className="small"[^>]*>/g)].map((m) => m[0]);
++    expect(smallDivs.length, 'expected a title div and a question div').toBeGreaterThanOrEqual(2);
++    const [titleTag, questionTag] = smallDivs;
++    expect(titleTag, 'the title must carry its own dir="auto" isolate, out of the <li>\'s hunt').toMatch(
++      /\sdir="auto"/,
++    );
++    expect(questionTag, "the question must stay bare so the <li> resolves from it").not.toMatch(/\sdir=/);
++  });
+ });
+```
+
+**Full current text of every file the rework touched:**
+
+### AGENTS.md
+
+```
+# AGENTS.md — development rules for Practice Compass
+
+This file is the contract for anyone (human or AI) extending this app. Read it before
+adding features. The whole value of the tool comes from what it *refuses* to do.
+
+## The one rule above all
+
+Preserve the core loop: **one item · one mode · one focus · one result · one next action.**
+If a change blurs that loop or adds a second thing to think about per step, it's wrong —
+even if it's "useful".
+
+**The loop CLOSES: the next action is read, not just written.** `PracticeBlock.nextAction`
+was captured on every close and read nowhere, so the one thing deliberately decided last
+time never reached the moment it was written for. `ActiveBlock` now shows it at the top,
+before you start playing, via `lastNextAction` (`blocks.ts`, tested) — the most recent
+NON-EMPTY one, so a later block that recorded none does not blank out a decision that
+still stands. Anything the app asks you to record, it must eventually USE.
+
+## Keep admin overhead low
+
+- Starting a block must stay **under 30 seconds**; closing one **under 60 seconds**.
+  Any new field in those flows must be optional and have a smart default.
+- Never add a required field beyond an item title.
+- Rich metadata stays progressive: hidden until the user asks for it.
+
+## Prioritise the quick‑start flow
+
+- Smart defaults are a feature, not a convenience. Status → mode, item → focus,
+  10‑minute duration. If you add a concept, give it a sensible default too.
+- Inline item creation must keep working from the Start screen and from recommendations.
+- **Exactly two creation paths, both one-step.** Quick add = title only (Start's
+  inline create is also title-only, with a link to the full form that returns to Start
+  with the item preselected). The full form ("Add practice item", `/items/new`, also
+  inline edit) is KIND-FIRST: it asks what you're adding (gusheh / composed piece /
+  piece / étude / passage / technique — `src/components/itemKinds.ts`, tested) and
+  shows only that kind's identity fields, in three groups: "What are you adding? /
+  Connect it (optional) / First practice setup". Connections (study source with inline
+  create, pathway stage, lesson, parent work) are settable AT creation — no
+  create-then-edit round trips, and never a third half-detailed path. Item detail
+  shows a "Connected to" summary near the top.
+
+## Today is a session workspace, scoped to one instrument
+
+The user practises one instrument at a time ("I'm practising Setar now"). Today is
+driven by a persisted `sessionInstrumentId`: the switcher at the top picks the
+instrument, everything below it (recommendation, class work, reviews, pathway position,
+quick add, Start) is scoped to that instrument, and the primary recommendation must stay
+above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
+secondary choice — never the default. Never hard‑code a morning/evening schedule and
+never surface another instrument's work inside a session. The Session Plan and
+Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
+`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
+and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
+Plan's expanded panel read as routines being subordinate to picking a duration, so
+they were pulled out into their own doorway. Both start collapsed (~50px) so the
+primary recommendation stays above the fold; each has its own open/close state and
+its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+session instrument (`routinesForInstrument`), each row showing Edit and — when a
+segment is essential — a visible "Short on time — essentials only" button, plus "New
+routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
+unplaced routine is reachable from at all, so its rows carry the same Edit/Start/
+short-on-time affordances StageDetail's `RoutineCard`/PathwayDetail's `RoutineRow`
+give a placed one.
+
+**THE TWO DOORWAYS SIT ABOVE THE RECOMMENDATION, AND THAT IS AN OWNER JUDGEMENT, NOT A
+DERIVATION.** The 2026‑09‑11 lane BUILT the other order — Practise now directly under
+the instrument switcher, with Plan and Routines beneath it — on the argument that
+orchestrating a session is a choice you make INSTEAD of taking the suggestion. The owner
+tried it on their own iPhone and preferred the original: Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural. The order
+reverted before the lane shipped, which is a PASSING outcome of that check, not a
+failure. Both orders keep the recommendation above the fold at 390×844, so nothing here
+follows from the phone constraint — do not re-derive this ordering from first principles
+and quietly flip it back. It changes only when the owner says so.
+
+## Review actions have honest, distinct semantics
+
+Practising (closing a block) is the ONLY thing that completes a review and advances
+SM‑2. "Not now" hides a due review for the rest of today (no schedule change). Snooze
+(+2d) genuinely moves the due date on both the review and the item — never fabricate a
+result, and never leave a stale overdue item after an action. The Finish button freezes
+the clock (`pauseSession`) before the close screen; reflection time is not counted.
+
+**ANSWERING NOTHING IS NOT DECLINING.** A result is REQUIRED to save a block — the six
+options are already the first thing on the close screen, so this adds no field (r-quick-start
+holds: it makes a choice already present a required one), and "Save without a result" keeps
+`not_logged` reachable and DELIBERATE. `computeReviewOutcome` takes a tri-state
+`ReviewAnswer` (`'scheduled' | 'declined' | 'unanswered'`) and returns
+`completeOpenReviews` ALONGSIDE `nextReviewDate`, because they are ONE decision: a close
+carrying no result keeps the item's date AND leaves its open Review row OPEN, while a
+genuine decline still clears the date and completes the row. `closeSession` must never
+decide the row separately — completing every open row unconditionally, next to a
+`!scheduleReview` branch that cleared the date, is exactly how one skipped tap used to
+erase the next date, close the open review, leave SM‑2 state stale and drop the item out
+of Due reviews for good, all while the panel read "Should this come back? Yes" above an
+empty date field. The row transform is `completeOpenReviewsFor` (`scheduling.ts`, tested)
+so the array change is reachable from a Node test; `CloseBlock` states the mapping in one
+place and the escape hatch forces `'unanswered'` even when a result had already filled in
+a date. r-explainable-scheduling's "the date shown is the date saved" now includes when
+that date is deliberately left UNCHANGED.
+
+**THE CLOSE SCREEN LEADS WITH THE MUSICIAN'S WORDS, AND DERIVES THE DATE ONCE.** How it
+went, what you noticed and what to try next time are always visible and come BEFORE the
+minutes and the scheduler. The whole scheduling decision is ONE honest line — "Review in
+2 days · Repair · …" — with the date field, the review-type choice, "Why this date?" and
+the come-back Yes/No a single tap behind it. (It used to run 1689px at 390×844, with the
+engine's controls fully expanded before a result had been chosen, and a two-column grid
+whose right column stacked five review-type pills vertically.)
+
+There is exactly ONE `ReviewPlan` value in that component (`review`, a `useMemo`): the
+engine's plan for the chosen result with any manual correction folded INTO it. The
+collapsed line, the date field and the value handed to `closeSession` are three
+renderings of THAT object, so a divergent date is UNREPRESENTABLE rather than merely
+guarded against — there used to be a second `planNextReview` call seeding the field from
+a different invocation than the preview. `clampSchedulingParams(db.settings)` is threaded
+into that one derivation. The line itself comes from `reviewSummaryLine`
+(`src/components/format.ts`, tested): a pure FORMATTER that reports the plan's `dueDate`,
+`reviewType` and `rationale` and computes no date of its own. Once the owner sets their
+own date the rationale becomes "The date you chose." — quoting the engine's reason would
+explain a number it did not pick. Never reintroduce a second derivation here.
+
+**A MANUALLY CHOSEN DATE SURVIVES CHANGING THE RESULT WHEN NO AUTOMATIC PLAN EXISTS.**
+`pickResult` clears the manual `override` on every fresh result — a correction made
+earlier belonged to the date the PREVIOUS result's plan produced, so carrying it forward
+would pin a date to a judgement it was never made about. But a manual-mode item
+(`item.reviewMode === 'manual'`) has NO automatic plan for ANY result — `computeReview`
+returns `null` unconditionally in manual mode, before it even looks at `result` — so the
+owner's typed-in date was never tied to a particular judgement in the first place, and
+clearing it on every result change silently threw away a date they had just chosen. The
+restructure once did exactly that (`setOverride(null)` unconditionally), turning a
+deliberate "come back on this date" into an accidental decline the moment the musician
+changed which result they picked. `reviewOverrideSurvivesResultChange`
+(`src/components/format.ts`, tested against the real engine across all six results, both
+a manual- and an auto-mode item) reads `item.reviewMode` directly rather than calling
+`planNextReview` a second time inside `pickResult` — CloseBlock keeps its single
+derivation; this is a boolean gate on whether one exists at all, not a second value that
+could disagree with it.
+
+**THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
+243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
+one thing the row exists to identify. The text now claims a whole line whenever the three
+actions cannot sit beside it (`flex: 1 1 220px` with `flex-wrap`) and WRAPS instead of
+truncating. All three actions keep their existing, deliberately distinct meanings: this
+is layout only.
+
+## Nothing replaces an unfinished practice session
+
+`src/domain/practiceSession.ts` (pure, tested) is the sibling of `practiceSignal.ts`: that
+module owns pure decisions about a running clock's SIGNALS, this one owns pure decisions
+about the unfinished SESSION. Two INDEPENDENT questions live there and must never be
+conflated:
+
+- **PRESENCE** (`hasUnfinishedPractice`, `decideReplacement`) — does an unfinished session
+  exist? That, and ONLY that, decides whether a whole-database replacement may proceed.
+  Never `running`, so PAUSING PROTECTS A SESSION RATHER THAN EXPOSING IT; the frozen
+  `active`+`activeRoutine` pair the persist `merge` produces is unfinished practice like
+  any other.
+- **PLAUSIBILITY** (`isStaleClock`, `proposedCloseMinutes`) — does this session's elapsed
+  figure still look like time someone played? That decides the minutes `CloseBlock`
+  proposes and the ATTENTION state, and NOTHING else.
+
+**A HEURISTIC ABOUT A DURATION NEVER BECOMES AN AUTHORITY TO DESTROY PRACTICE.** A stale
+verdict must never be wired to a destructive path, and `decideReplacement` must keep
+reaching the SAME decision for a stale session as for a live one (a session paused at
+three genuine hours crosses any sensible threshold — discarding it would lose real
+practice). Staleness may never be fed into `shouldKeepAwake` or `nextSignal` either.
+
+`active` lives outside `db`, so `withRevision` never bumps `rev` while you practise: a
+mid-block device looks UNCHANGED to `decideSync`, a remote change resolves to `pull`, and
+the in-flight block is destroyed with no archive and no prompt. So: AUTOMATIC sync
+(`syncNow`) checks the predicate BEFORE attempting and reports a distinct `deferred`
+SyncPhase — a background merge waiting its turn is not an error and must not be dressed as
+one — while DELIBERATE replacement (Import, Restore archive, Keep remote) gets an explicit
+refusal naming the session. The guard for the inbound paths is the FIRST statement of
+`importFullBackup` (`backup.ts`), before the JSON is even parsed: `replaceAllBlobs` below
+it destroys every attachment blob, so a check placed after it would wipe them while
+returning "nothing was changed". Every deliberate caller already surfaces
+`{ok:false,error}`, so no `Settings.tsx` change is needed.
+
+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
+yields to the event loop, so a tap that starts a block while that transaction is in flight
+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
+second check sits in the same synchronous tick as the install, with nothing awaited in
+between, so it is genuinely the last word. It refuses honestly: the blobs are already
+written by then, so the message says so and invites re-running the import rather than
+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
+watches `deferred`, so an `error` here would stop sync until something else happened to
+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
+this — `replaceAllBlobs` is one
+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+untouched, which installing the `db` first would give up.
+
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
+
+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+labelling only the first left the same block silent after switching instrument or choosing
+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
+against, and `segmentElapsed` already clamps each segment to its authored duration.
+
+The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
+Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
+in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
+counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
+rev-watching retry resumes after a finish and waits forever after a discard. Seed the
+previous-presence ref with the CURRENT presence, or an ordinary load reads as a
+present→absent transition and fires a spurious sync.
+
+**Installing a database clears the ephemeral state that pointed at the old one.**
+`installDatabase` returns the new `db` TOGETHER WITH `active`/`activeRoutine`/`activePlan`
+nulled, `notNow` reset and a `sessionInstrumentId` that survives only if it still resolves
+(`'all'` always survives). Its SIGNATURE is the guarantee: `importDB`, `resetDemo` and
+`clearAll` are each a single `set()` of its result, so installing a database WITHOUT the
+reset is something the code cannot express — which matters because the Node environment
+cannot import `useStore.ts` (it pulls in Dexie via `./idb`), so the unit test proves the
+DECISION and the shape protects the WIRING. There are SIX whole-database replacements, not
+four: `resetDemo` and `clearAll` are called directly on the store and never touch
+`importFullBackup`, so a fix living only there would silently miss two of the three install
+points. Deliberate erasure keeps NO guard — those actions are aimed at destroying the data
+and already confirm first, so refusing them would be obstruction, not safety.
+
+## Practice totals are calendar figures, not rolling windows
+
+`practiceTotals` / `practiceTotalsByInstrument` / `startOfWeekISODate` (`selectors.ts`,
+tested) answer "how much have I practised?" — a compact minutes-and-blocks line low on
+Today (BELOW the recommendation, never above: "Practise now" stays above the fold at
+390×844) and the full today / this week / all time per-instrument view on Insights. Do NOT
+reuse `blocksInWindow`/`totalMinutesInWindow` for these: they filter on HOURS, so `days:1`
+means the last 24 hours and `days:7` the last 168 — a block from late last night is not
+today's practice. The week starts **Monday 00:00 local**.
+
+**A block belongs WHOLE to the local calendar day it BEGAN**, with none of its minutes
+apportioned across midnight or the Monday boundary. This was challenged and the code
+settles it: `durationMinutes` is the figure the owner ATTESTED to and this lane makes it
+diverge from wall clock on purpose (an abandoned block proposes its target), so
+`endedAt - startedAt` is not the authored duration; and `endedAt` is optional and ABSENT on
+routine blocks (`applyRoutineRun` passes none), so apportioning would apply to some blocks
+and not others. Splitting would overrule the owner's own correction with a number they
+never attested to. Totals stay NEUTRAL COUNTS — no goal, streak, score, bar that fills or
+colour that judges. Relatedly, `instrumentBalance` takes its denominator from only the
+blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
+a caller passes active instruments with all blocks (Today does).
+
+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
+not just the active ones, because its "All instruments" row counts every block: filtering
+to active instruments left a retired instrument's history with no row while its minutes
+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
+"one row per supplied instrument" contract is unchanged.
+
+## Hands-free practice: the screen stays awake, and the app announces the end
+
+The practice loop assumes you put the device down and play. While a practice clock —
+an ordinary block (`ActiveBlock`) or a routine run (`RoutineRunner`) — is genuinely
+RUNNING and its screen is VISIBLE, the app holds a Screen Wake Lock so the clock stays
+readable without touching anything; pausing, finishing, discarding, unmounting
+(navigating away) and the document going hidden all release it. WHETHER to hold the
+lock is a pure, tested predicate — `shouldKeepAwake({ hasClock, running, visible })`
+(`src/domain/practiceSignal.ts`) — true only when all three hold. There is exactly ONE
+owner of the lock (`useScreenAwake`, wired once per practice screen), so two can never
+be held at once. Reacquiring on `visibilitychange` back to visible is required by the
+Screen Wake Lock specification (the platform releases a held lock the moment the
+document becomes hidden) — not a browser-specific workaround. No wake-lock outcome,
+success, rejection, or unsupported, may ever influence a recorded minute: the whole
+elapsed-time family (`sessionElapsedSeconds`, `runElapsedSeconds`, `locateClock`,
+`skipCurrentSegment`, `aggregateItemMinutes`) stays exactly as it was before this
+existed.
+
+**The decision of WHEN to announce is pure and tested** (`src/domain/practiceSignal.ts`):
+`nextSignal(marker, elapsedSeconds, boundarySeconds)` announces AT MOST ONCE per call —
+if elapsed has passed more boundaries than the marker records, it announces once and
+advances the marker to the number ACTUALLY passed, never by one. This is what makes a
+background/lock catch-up correct: a phone that wakes up several boundaries later
+announces once and lands on the right one. The marker is a COUNT OF BOUNDARIES ALREADY
+ANNOUNCED, living as an optional `signalledThrough?: number` on the store's EPHEMERAL
+`active`/`activeRoutine` (useStore.ts) — never in `PracticeDB`, so no `SCHEMA_VERSION`
+bump, no migration, and it never syncs or lands in a backup. An ABSENT marker reads as
+zero (nothing announced yet) — the honest reading for a session persisted before this
+feature existed. Boundaries are the run's ordered cumulative END boundaries: an ordinary
+block passes `[targetMinutes * 60]`; a routine passes `segmentBoundaries(segs)`
+(`src/domain/routines.ts`) — the SAME numbers `locateClock` advances on, by construction,
+not a second cumulative sum recomputed in the runner. A deliberate Skip calls
+`acknowledgeThrough` instead, which advances the marker to match elapsed WITHOUT
+announcing — the user ended the segment themselves, so telling them it ended is noise —
+and clears every boundary at or before elapsed (not just one), since Skip can produce a
+zero-length or repeated boundary that is legitimate input, never malformed.
+
+**The visual state change is the guaranteed signal**, always delivered regardless of the
+wake lock or any device capability: an ordinary block reaching its target shows a
+durable "target reached" ring state and a growing overtime figure
+(`formatClock(elapsed - targetSeconds)`) for as long as the block runs — it does NOT
+auto-finish; practising past the target is ordinary, and only Finish or Discard ends a
+block. A routine segment boundary is perceptible for a defined window after arrival
+(never a single-render flash), and routine completion is already durably shown by the
+existing "Routine complete" screen. Audio and vibration (`playSignalCue`,
+`useScreenAwake.ts`) are FEATURE-DETECTED BEST-EFFORT ONLY, wrapped so any failure is
+silent, and are never part of any automated check: `navigator.vibrate` is unimplemented
+in Safari on iOS, and a WebAudio context needs a user-gesture unlock that happens on the
+page that starts the clock (Today/StageDetail/SessionPlan) — never on the practice
+screen itself, which hands-free practice, by definition, never taps. It may therefore be
+silent on the owner's own iPhone; the OWNER device checks record what was actually heard
+rather than asserting it. Widening the frame to unlock audio at the start gesture is a
+separate lane. Neutral and non-gamified throughout: a state change and a number, never a
+streak, score, or
+celebration.
+
+**The wake lock itself is one shared, port-injected coordinator**
+(`src/components/screenAwake.ts`) — no `navigator`/`window`/`document`, so its whole
+ownership state machine (at most one outstanding request and one held sentinel; a
+rejected or unsupported acquisition swallowed silently; a pending acquisition that
+resolves after being disabled released immediately rather than stranded held) is
+reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the thin
+React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
+real port, and wires `visibilitychange`.
+
+**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
+Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
+deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
+plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
+(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
+environment gap). Before drawing any conclusion about this feature (or any future
+secure-context-dependent work) from an unmerged branch, first confirm
+`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
+establish a genuine HTTPS route for it first.
+
+## Hard "do nots" (require explicit user instruction to change)
+
+- ❌ **No gamification** — no streaks, points, badges, XP, leaderboards, confetti,
+  or fake "mastery %". Progress is shown as honest status + result, nothing else.
+- ❌ **No backend, no auth server, no service of our own.** The app is local‑first:
+  **IndexedDB (Dexie) is the source of truth** on each device (app state in the `kv`
+  table, attachment blobs in the `attachments` table) and everything works offline.
+  **Amended by explicit user decision (2026‑07‑11):** device sync IS sanctioned — via
+  the **user's own GitHub repo**. The engine (`src/store/syncEngine.ts`, port-injected
+  and fully unit-tested; GitHub transport in `gitRemote.ts`; wiring in `githubSync.ts`)
+  publishes whole snapshots ATOMICALLY with the Git Data API: blobs → tree → commit →
+  fast-forward-only ref update, so a race or partial failure never leaves a broken
+  remote. A brand-new EMPTY data repo is bootstrapped first via the Contents API
+  (`RemotePort.initialize()`) — the git-data endpoints 409 on an empty repo — then the
+  first snapshot commits as a child of that bootstrap commit; init failures surface a
+  clear message with the manual README fallback and never leave a partial snapshot. Decisions are three-way CONTENT-HASH comparisons (`decideSync` +
+  `canonicalStringify`/`hashState` in `src/domain/`), never timestamps — pathway-only
+  edits and deletions sync like everything else, and a store middleware
+  (`src/store/revision.ts`) bumps a `rev` counter on every db mutation. Both-changed =
+  explicit two-button conflict ("newest" is a hint, never an auto-winner), and BOTH
+  copies are preserved before any replace: the local copy goes to an in-app restore
+  slot (idb) and an `archive/…` branch; the remote copy stays reachable as the parent
+  commit. Legacy `state.json`+`files/` remotes stay readable; the first new push
+  migrates the format with the old snapshot kept in git history. Never a silent merge,
+  never per-field magic, never a custom server. Manual export/import stays as the
+  fallback. Free tiers only; no paid services.
+- ❌ **No AI or audio analysis** in v1 — no tone scoring, pitch detection, posture
+  tracking, or "AI teacher" judgement. The app organises; it does not grade.
+- ❌ **No guilt‑driven copy.** Insights are neutral observations, never nags.
+
+## The Pathway is a trust anchor — keep it that way
+
+Pathways exist so the user can **stop deciding what's next and just practise**, at their
+own pace, on a route they trust. Protect that:
+
+- **The item is the only unit of work — pathways are a view over items.** There is no
+  separate "step" object. A `PracticeItem` may carry a `stageId` (placing it inside a
+  pathway stage), a `strand`, and a `catalogKey`. Stage progress is *derived* from the
+  mastery status of the items in it (`itemStageState` in `pathways.ts`). Never reintroduce
+  a parallel to-do list next to items.
+- **The catalog is reference data in code, not persisted.** `pathwaySeed.ts` defines
+  per-stage `CatalogEntry` suggestions (gushes, lesson areas) with `about` guidance for
+  conscious practice; `addFromCatalog` turns one into a real item with one tap. The new
+  item is honestly **"Not practised yet"** (status `new`, zero stats) with an immediate
+  Undo — adding is organisation, not progress. Label suggestions as reference aids, never
+  canonical. Improving the catalog needs no migration; keep entry keys stable per stage.
+- **Adding from the catalog is losslessly reversible.** The Undo is DURABLE (persists until
+  dismissed or the item is practised — no timeout), and a fresh catalog item shows a "Remove"
+  affordance on its row and in the item's "Connected to". `isLosslesslyRemovable`
+  (`pathways.ts`, tested) gates this: `catalogKey` set AND status `new` AND zero blocks AND
+  `timesPractised === 0`. The store's `removeCatalogItem` re-checks the predicate against
+  LIVE blocks before delegating to `deleteItem`; once anything is logged, only the ordinary
+  delete-with-confirm remains. This is the one place a stage row grows a second 44×44 action
+  (− beside ▶); it disappears the moment the item is practised.
+- **Structure, not gamification.** Show honest position (items solid / in progress /
+  suggestions remaining). No streaks, scores, or fabricated mastery %.
+- **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
+  with full CRUD. Sections are the stages' `group` string (rename via `renameSection`;
+  new stages pick their section explicitly). Deleting a stage/pathway must never delete
+  items — only detach them, and clear any stale `currentStageId` pin.
+- **Routines are ordinary editable data belonging to an instrument** (`src/domain/routines.ts`,
+  tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
+  `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
+  (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+  from the routine's current data — so a mid-run edit can never shorten or desync the
+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
+  whatever item was actually practised. Discarding that instead would silently lose real
+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
+  block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
+  ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
+  Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
+  the factory default `not_logged`: a routine records time, never a judgement, and never
+  completes a review or advances SM-2. `focusForItem` (`src/domain/defaults.ts`) is the
+  shared strong focus default — the same one `startItemSession` uses — so a routine block
+  is indistinguishable from starting that item directly; do not reintroduce a third copy of
+  that fallback expression. The run in progress lives in the store as `activeRoutine`
+  (ephemeral — never in `PracticeDB`, same shape as `active`/`activePlan`), not component
+  state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
+  bound-item practice, matching how an active block already survives navigation, and only
+  one routine can run at a time — starting a different one while another is active redirects
+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
+  guard pair in each shared function covers every caller, rather than trusting each page to
+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
+  persisted (`partialize`), so a dual state can reach a device from before this guard
+  existed, and resuming either clock without checking the other would tick both at once, the
+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
+  remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
+  in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
+  `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+  catches up across MULTIPLE segment boundaries at once rather than losing time or advancing
+  one tick at a time. Skip clamps the current segment's effective duration to whatever
+  actually elapsed (never the full authored minutes); a segment played to completion keeps
+  its full duration. Choosing "short on time" (`segmentsForRun`) drops every non-essential
+  segment, honouring the syllabus's asterisk rule. "Finish routine" (mid-run) always saves
+  whatever bound-item time has genuinely elapsed via the same `finishRoutine` path as natural
+  completion — never a separate discard — with a caption stating that plainly, since ending
+  early must never silently fabricate or silently lose practice. Today's Routines card is
+  documented in its own bullet above.
+- **The current stage is the user's choice.** Teacher-led work jumps around:
+  `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
+  fallback. Never treat linear order as truth for Setar/Tar.
+- **Pieces can have parts** (`parentItemId`): parts are ordinary items grouped under a
+  piece/étude, with a deterministic "practise this part now" pick (`pickNextPart`) and a
+  calm stall hint (`stallHint`) — smaller unit or new strategy, never quotas.
+- **"My repertoire" is a DERIVED lens, not new structure.** Repertoire has exactly
+  three views: **Pathways · My repertoire · Practice list**. A "work" is any top-level
+  item with Persian identity (dastgāh/form/composer/gusheh) or a full piece/gusheh type
+  (`isWork`/`repertoireWorks` in `src/domain/repertoire.ts`, tested). Persian works
+  group by dastgāh via `groupByDastgah` (`src/domain/persian.ts` — folds spelling
+  variants, labels with the user's own majority spelling, standard dastgāh order) with
+  radif gushehs and composed maestro pieces side by side; other instruments group by
+  study source. Parent works appear ONCE; parts stay nested (never standalone
+  duplicates). Form/composer are compact metadata + filter chips, never a deep
+  hierarchy. Dastgāh/form suggestions are datalists (reference aids), free text always
+  wins. Never invent a parallel "pieces" object or a guitar-specific model.
+- **Sources stay simple.** A Material is instrument + one clear name + kind + status +
+  note. Piece-level detail (dastgāh, gusheh, composer, teacher) belongs on items, never
+  on sources — the removed parent-title/section/teacher-source fields must not return.
+  Sources are reached from Repertoire (not More), and are creatable inline from the
+  item form.
+- **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
+  a radif/dastgāh map (teacher-driven, explicitly "reorder me"). Tar = the Honarestān
+  method. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
+  generic conscious-practice prompt (shāhed / ist / forud) — the teacher's account is the
+  authority, never invent specifics as if canonical.
+- **Calm, self-paced copy.** "Move on when it feels right, not by a deadline" is the voice.
+
+## Lessons (classes) and the deadline exception
+
+`Lesson` records (per instrument, date + free-form notes) support the user's real
+workflow: record the class, rewatch it, type up notes (often **in Farsi** — all free-text
+fields must stay direction-aware; `.input`/`.textarea` carry `unicode-bidi: plaintext`,
+which is the only place that rule is set — it is NOT global, and display text gets its
+direction from the grouping rule below), then
+create/link the concrete practice items (`lesson.itemIds` — a link, never ownership;
+unlinking keeps the item). "Originated in this lesson" (`itemIds`) is separate from
+"work on before the next class" (`assignedForLesson`), which gives a per-instrument
+priority boost that climbs as that instrument's next lesson approaches
+(`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app — a monthly
+class is a real commitment, not a manufactured streak. Keep it per-instrument and
+generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
+OR a lesson (`AttachmentMeta.ownerType/ownerId`; blobs keyed by `ownerId` in Dexie) for
+SMALL files (PDFs/photos/short audio, size-capped). **Full class videos — and score
+PDFs/docs — are NAS references, never bytes:** `Lesson.recordings` (`LessonRecording`)
+holds title + a relative NAS path (or full https URL) + size/notes + an optional `kind`
+(`LessonFileKind` = video/pdf/doc/audio; schema **v9** stamps legacy refs `kind:'video'`).
+`resolveRecording` (`src/domain/recordings.ts`, tested) returns a discriminated
+`ok|no-base|bad-base|empty` result — the scheme-less-base bug is fixed by
+`normalizeBaseUrl` (prepends `https://`, rejects non-http(s), validates via `new URL`);
+`resolveRecordingUrl`/`needsBaseUrl` are thin wrappers. It joins the ref under the
+per-device NAS base URL (Settings, localStorage) and opens only on explicit tap — never at
+startup, never in IndexedDB/sync/backups; a `bad-base` never `window.open`s. Removing a
+reference never touches the NAS file. Lessons carry an optional `number`
+(`nextLessonNumber` prefills it, editable, never required; shown as "Class N · date"); refs
+render video-first then scores/docs with kind icons. The user's Setar class history imports
+additively via `buildSetarClassLessons` (`src/domain/setarClasses.ts`, tested) →
+`importSetarClasses`, which also **backfills** missing refs (video + one per PDF/doc,
+path-deduped) onto already-imported lessons — idempotent. `SETAR_CLASS_SESSIONS` lives
+between `// [scan:begin]`/`// [scan:end]` markers and is regenerated from the real NAS
+folder by `npm run scan:setar` (`scripts/scan-setar-classes.mjs`, stdlib, dry-run by
+default; pure helpers unit-tested) — references only, never copying bytes.
+
+## Questions for next class
+
+`questionsForNextClass` (`src/domain/questions.ts`, tested) collects items where
+`assignedForLesson === true` AND `teacherQuestion` is non-empty, scoped to one
+instrument, ordered by the Persian collator. Shown on the upcoming lesson and the
+Teacher Report with Copy / Download / print-friendly export (`ClassQuestions`). A
+question is NEVER auto-cleared by practising; the user edits the item to remove it.
+
+## Persian text is canonical, and direction-aware
+
+Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
+composers, study sources, seeded items) is authored in **Farsi**; generic app UI and
+Classical Guitar stay English. STABLE ascii identifiers are decoupled from Farsi
+display: `StageSeed.slug` / `StepSeed.key` in `pathwaySeed.ts` keep stage ids and
+catalog keys byte-stable (fall back to `slug(code)`/`slug(title)` for English seeds), so
+the Farsi conversion needs no migration. `src/domain/farsi.ts` (tested) provides
+`normalizePersian` (fold Arabic↔Persian yeh/kaf, digits, ZWNJ, whitespace — preserves
+آ), `faCollator` for sorting, and Latin transliteration aliases for search
+(`persianSearchMatch`); `groupByDastgah` folds spelling variants and ranks by Farsi or
+Latin dastgāh names. Every Farsi surface resolves its direction NATIVELY, via
+`dir="auto"` — never by detecting a script in JavaScript and never by reordering text.
+Free-text FIELDS also carry `unicode-bidi: plaintext` (set on `.input`/`.textarea` in
+`global.css`, and nowhere else — this was previously described here as global, which was
+never true).
+
+**LAYOUT FOLLOWS THE DIRECTION OF THE CONTENT IT SHOWS.** A title and the details that
+belong to it sit in ONE group carrying `dir="auto"`, so a Persian item reads as one
+right-aligned block. Before 2026‑09‑11 direction sat on the TITLE alone at 47 sites and
+on no container anywhere: a Farsi title resolved RTL and hugged the right edge of its
+cell while its own "due 14 days ago" caption, carrying no direction at all, hugged the
+left — the app looked polished in English and broken on the two instruments whose seeded
+data is entirely Farsi. The rule is now mechanical, not a matter of care:
+
+- `dir="auto"` appears on GROUPS (the element holding a title together with the details
+  that belong to it) and on free-text FIELDS — **never bare on a title element**
+  (`truncate`, `title-md`, `page-title`, `stage-unit-title`).
+- The group is drawn so the TITLE is the first strong text inside it. Where an English
+  eyebrow precedes the title in the DOM — Today's Practise-now card, the close screen's
+  header, Session Plan's minutes/bucket line, ItemDetail's "practise this part now",
+  Today's Routines doorway ("Resume your routine"/"Routines" precedes the routine's own
+  name), ActiveBlock's "Last time you decided to try:"/"Working on:" — the group wraps
+  title + details and LEAVES THE EYEBROW OUT, because `dir="auto"` resolves from the
+  first strong character in the subtree. Getting this backwards doesn't just mis-align:
+  Today's Routines buttons carried `dir="auto"` on the whole button, so the fixed English
+  label — not the Farsi routine name that followed it — decided the resolved direction,
+  and the button never read the name at all.
+- **A detail that mixes languages needs its OWN nested `dir` inside the group, not the
+  group's resolved direction.** Two different cases, two different attributes:
+  - A detail that is ALWAYS ENGLISH BY CONSTRUCTION — `buildReason`/`planSegmentReason`'s
+    generated sentences (Today's recommendation reason, ItemDetail's "practise this part
+    now" reason, Session Plan's segment reason) — carries its own `dir="ltr"` isolate
+    around the whole sentence, nested inside the group. Grouped under a Farsi title, that
+    div/paragraph still resolves RTL and the detail still sits in the same right-aligned
+    block (nothing about ALIGNMENT changes) — but the isolate fixes the sentence's OWN
+    bidi base to LTR, so the title's RTL base can no longer drag the sentence's trailing
+    full stop to the visual start (FriBidi renders a trailing neutral character using the
+    surrounding base direction when nothing more specific claims it). `dir="ltr"` here is
+    a static fact about content that is never user text, not detection.
+  - A detail that is FREE TEXT the owner typed (ActiveBlock's `constraint`/`problem`,
+    the "last time you decided to try" note) sitting after a fixed English label —
+    `Constraint: `, `Working on: `, `Last time you decided to try: ` — carries its own
+    `dir="auto"` around just the value, not the label. The label would otherwise be the
+    subtree's first strong text (the same eyebrow bug as above) and pin the whole line to
+    English regardless of what the owner actually typed.
+- A group that sits under an ancestor pinning `text-align: left` OR `text-align: center`
+  must set `text-align: start` on itself, or its own direction never reaches the
+  alignment — ActiveBlock's whole screen centres its timer and buttons regardless of
+  language (that stays, it isn't text), but the title group overrides back to `start`
+  so ac-6's "English stays left, Farsi goes right" actually holds on that screen. This
+  is a deliberate LAYOUT CHANGE for English on Active specifically (centred → left) and
+  does not conflict with "English keeps its layout exactly as it is today" elsewhere in
+  this file: that non-goal protects English from being flipped to a Farsi-style
+  right-align, it was never a promise that Active's pre-existing centring was sacred —
+  ac-6 names Active as a checked surface with exactly this expectation.
+- Group HEADINGS that render Farsi (the dastgāh sections, Materials' instrument sections)
+  take direction on the SECTION, so a heading can no longer disagree with the rows
+  beneath it.
+- A lone title with no caption of its own takes the group it shares with its badge or
+  action — the row itself.
+- OUT of scope by construction: `<option>` contents (the native control owns their
+  rendering) and titles inside `confirm()`/toast template strings (plain strings, not
+  laid-out blocks). `ItemForm.tsx`, `QuickAdd.tsx` and `RoutineEdit.tsx` hold field sites
+  only and are correct as they are.
+
+`src/components/direction.test.ts` holds this closed and records the surface list, so a
+missed title FAILS and a whole skipped file FAILS — and "fixing" one by deleting the
+attribute fails too, since that would break Farsi rendering outright. Genuine exceptions
+live in that test's explicit allowlist AND here; **the allowlist is currently EMPTY**,
+because every title on every surface turned out to have a group it could join. An
+exception must always be VISIBLE, never silent.
+
+**"a whole skipped file fails" is not the same guarantee as "a deleted site fails."** A
+per-FILE check ("does this file have at least one group somewhere") stays green as long
+as one group survives anywhere in the file — so deleting the Practise-now card's own
+`dir="auto"` from Today.tsx, which carries several other unrelated groups, passed that
+check even though the one thing it was there to prove had broken. `GROUP_SITE_INVENTORY`
+in that test is the fix: every group-level site, recorded in file-then-source order,
+DUPLICATES INCLUDED (three bare `<div dir="auto">` in Today.tsx are three sites, not one
+collapsed entry, or removing one of the three would still pass a de-duplicated list), and
+asserted with `toEqual` against the live scan. Deleting any one recorded site — anywhere,
+in any file — shrinks or reorders that array and fails, regardless of what else survives
+in the same file. It carries the same visibility contract as the title allowlist: a
+legitimate new group site must be added to the recorded array (a test fails until it is),
+never inferred silently. The scanner also strips `//` and `/* */` comments before
+matching — this file's own prose repeatedly writes the literal string `dir="auto"`, and
+matching inside a comment either produces a site with no real enclosing tag or, worse,
+walks backward out of the comment and mis-attributes an unrelated tag from earlier in the
+file.
+
+**A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN.**
+A sealed review rejected the first pass at this section for exactly that gap: the
+inventory above proves a title and its details share ONE resolved direction (the fix this
+whole rule exists for), but it says nothing about a CHILD inside that group whose own
+bidi base needs to be independent of the title's — a Farsi title makes the group resolve
+RTL, and anything else in that subtree with no `dir` of its own is exposed to that same
+RTL base. That is exactly right for a caption that belongs to the title (the point of
+grouping), but wrong for two other shapes:
+
+- **Fixed English page copy or generated metadata** — a hardcoded sentence
+  (`CloseBlock`'s "A few seconds to capture what happened.", `StaleNote`'s "Running far
+  past its target…"), or a phrase built from numbers and English words
+  (`{n} segments · {m} min`, `due {relativeDay(...)}`) — is never user text and never
+  changes language, so it carries its own `dir="ltr"` isolate, nested inside the group,
+  the same shape already established for `reason` props (Today/ItemDetail/SessionPlan).
+  The counterexample the review found: `CloseBlock.tsx`'s "A few seconds…" sentence sat
+  bare in the item-title group, so a Farsi title made its trailing full stop render at
+  the visual start — the same defect this section already fixed once, reappearing one
+  level down. `TodayRoutineRow`/`PathwayDetail`'s `RoutineRow`/`StageDetail`'s
+  `RoutineCard` all render the identical "N segments · M min" phrase and all needed the
+  same isolate — a fix applied to one occurrence of a repeated pattern and not the
+  others is exactly the kind of gap this closure exists to catch.
+- **An independently-authored value** — a question, a problem, an observation, a
+  pathway's own description or note — carries its own `dir="auto"` isolate for the same
+  reason `ActiveBlock`'s `constraint`/`problem`/`previousNextAction` already do: its
+  language cannot be assumed from the title sitting next to it. The counterexample:
+  `ClassQuestions`' question/problem/last-observation sat bare in the title's `<li>`
+  group with no isolate of any kind — unlike `ActiveBlock`'s established shape (a fixed
+  English label left bare, immediately followed by the value in its own `dir="auto"`),
+  which `ClassQuestions` now matches rather than inventing a third pattern.
+
+**THIS IS DELIBERATELY NOT "no bare Latin text in a group."** A short fixed label
+immediately followed by its own isolate — `Constraint: ` before
+`<span dir="auto">{value}</span>`, `Problem: ` before the same shape in
+`ClassQuestions` — stays bare on purpose; flagging it would force a change to an
+already-correct, already-reviewed pattern. What actually breaks is a real PHRASE that
+reaches the end of a group's rendered content with nothing to isolate it — which is
+what `src/components/direction.test.ts`'s `unexemptedPhrase` scans for mechanically: it
+walks a group's body in source order, accumulating exposed literal text, and clears
+that accumulation the moment it is immediately followed by any element carrying its own
+`dir=` — regardless of the accumulated text's length, which is what keeps the
+`ActiveBlock` label shape passing. Only a run that survives to a TAG boundary (not an
+expression boundary — `{n} segments · {m} min` is one generated phrase split across two
+expressions and must not fragment into single, individually-innocent words) and reads
+as two or more words is flagged. This is the "detectable, not enumerated" half the
+rejected review asked for: a NEW hardcoded sentence dropped into a group without its own
+isolate fails this test on its own, the same way a missed title already failed the
+group-vs-title test above.
+
+What that scan cannot see from source — an independently-authored VALUE (an
+expression whose content is opaque, like `{q.currentProblem}`) needing `dir="auto"`, or
+a component like `StaleNote` whose OWN return value needs to be isolated regardless of
+which title group calls it — is a recorded ledger instead, `ISOLATED_VALUE_SITES` and
+`LTR_ISOLATE_SITES` in the same test file, carrying the identical visibility contract as
+`GROUP_SITE_INVENTORY`: a legitimate new one must be added, visibly, or the test fails
+until it is.
+
+**AN ISOLATE MUST BE INLINE. A BLOCK CARRYING ONE RESOLVES ITS OWN ALIGNMENT,
+INDEPENDENTLY OF THE GROUP.** A third rejected review found `ItemMaterial.tsx`'s NAS/
+device detail line isolated with `<div className="tiny faint" dir="ltr">…</div>` — the
+isolate correctly fixed the sentence's own bidi ordering, but moved the BUG rather than
+fixing it: `text-align: start`, inherited from the group, is a per-box COMPUTED value
+that resolves against THAT box's OWN `direction` — give the div its own `dir="ltr"` and
+its `text-align: start` resolves LEFT regardless of the group's (possibly RTL) resolved
+direction, splitting the detail from a right-aligned Farsi title exactly as before, just
+relocated one level down. An inline isolate (`<span dir="ltr">`, nested inside a block
+that carries no `dir` of its own) never has this problem: `text-align` only governs how a
+BLOCK aligns its own content, and a `<span>` is not itself a block — even where a flex
+container blockifies it into a flex item, that item sizes to its content, so there is no
+extra width for its own `text-align` to act on. Its `dir` therefore only ever isolates the
+Unicode bidi algorithm's treatment of the text inside it, never which edge anything
+visually sits on — the established shape throughout this file was always the span form,
+and the block form was a new, narrower regression in one fix. `direction.test.ts` now
+bans the shape mechanically rather than by care: no
+`dir="ltr"`/`dir="rtl"` may sit on any tag but `span`/`bdi`, full stop, so this class of
+bug cannot resurface in any file, named here or not — one location fixed and the anti-
+pattern deleted are two different guarantees, and only the second is durable.
+
+**A NATIVE LIST MARKER'S OWN LOGICAL POSITION IS NOT SOMETHING A GUTTER MEASUREMENT CAN
+GUARANTEE.** The third rejection found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+space with `paddingInlineStart` alone while each `<li>` resolves its OWN direction via
+`dir="auto"`, and fixed it with symmetric `paddingInline` instead, reasoning that a
+marker landing on either side would then have room. A SIXTH SEALED FINDING, checked on
+the owner's own iPhone, found the number still escaping the card even with that room
+reserved: an outside `::marker`'s exact position for a direction-variable list item is a
+browser implementation detail — exactly the class of thing jsdom cannot compute either,
+which is why a padding measurement was ever trusted to stand in for it — not a distance a
+gutter can be sized against. The fix stops accommodating the native marker and removes it
+instead: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a real element,
+the FIRST child of a flex `<li dir="auto">`. Flexbox's row axis is direction-aware BY
+SPECIFICATION (`flex-direction: row`'s start is the writing mode's own start, not a fixed
+physical side), so the number leads on the right for a Farsi question and on the left for
+an English one — and because it is now an ordinary flex child inside the `<li>`'s own
+content box, rather than a marker rendered in the padding area outside it, it can no
+longer escape the card on any device. It carries no `dir` of its own (a digit is
+bidi-neutral, so `dir="auto"` on the `<li>` skips it and still resolves from the title as
+before) and neither does the wrapper around title/question/details: `dir="auto"` skips a
+descendant that carries its own `dir` when hunting for a first strong character, so
+giving the wrapper one would leave the `<li>` with no resolution source at all — the same
+class of regression the `stage.title` revert and the instrument-name checks above already
+found. `direction.test.ts` now asserts the mechanism directly rather than a proxy for it:
+every `<ol>`/`<ul>` containing a `dir="auto"` `<li>` must disable the native marker
+outright, and that `<li>` must itself be a flex/grid container able to reorder its own
+content — a shape check on the fix itself, not a measurement around a browser behaviour
+nothing here can verify.
+
+Removing the native marker has an accessibility cost the visual fix alone doesn't pay
+back: WebKit drops an `<ol>`'s own list semantics from the accessibility tree once
+`list-style: none` removes its marker, so VoiceOver on the owner's own iPhone — the exact
+device this fix targets — would stop announcing "list, N items" or a question's position
+in it. `role="list"` on the `<ol>` restores that; the visible ordinal carries
+`aria-hidden` so it is not announced a second time on top of it.
+
+**A ROW'S OWN ALIGNMENT COMES FROM THE VALUE, NEVER FROM A LABEL MARKED OUT OF THE HUNT.**
+The sixth finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed
+at the time as a WRAP-alignment gap: the established shape — a fixed English label left
+bare, immediately followed by the value in its own `dir="auto"` isolate — gives the
+value's own CHARACTERS correct bidi order, but a plain inline span has no width of its own
+to align a wrapped line within, so a long value was given `display: 'inline-block'` +
+`textAlign: 'start'` to align its OWN wrapped lines independent of whatever surrounded it.
+
+A SEVENTH SEALED FINDING found that diagnosis addressed the wrong claim. Giving the value
+its own wrap-line alignment is not the same claim as giving the ROW — the element that
+actually positions "Label: value" as a unit — the right alignment in the first place. The
+row itself was left BARE in both the original and the wrap-alignment fix, so it inherited
+whichever direction the TITLE above it resolved to, regardless of what script the VALUE
+was written in. For a Farsi title with a Farsi value this looked right by coincidence
+(inherited-from-title happened to match the value); for an English-titled item with a
+Farsi problem note, the whole row stayed pinned left — the label's inherited position, not
+the value's own — with the value's internal characters shaping correctly but its overall
+POSITION wrong regardless of whether it wrapped. This is exactly the "a group carrying
+direction is not the same claim as every child in it having its own" family two sections
+up, just not yet applied to a row whose OWN direction, not merely a child's bidi base,
+needed to track an independently-authored value.
+
+The fix moves `dir="auto"` from the value to the ROW, and marks the LABEL — never the
+value — with its own `dir="ltr"`. Not because the label's text ever changes: `dir="auto"`
+skips a descendant that carries its own `dir` when hunting for a first strong character
+(the exact mechanism the eyebrow/title split above already relies on), so marking the
+label takes it OUT of that hunt and leaves the deliberately bare value as the row's only
+candidate. Marking the value too would take BOTH out, leaving the row with nothing to
+resolve from and a silent fallback to LTR no matter what the value says — confirmed to
+fail the new check when tried, alongside the opposite mutation (removing the label's
+`dir="ltr"` entirely, reverting to the original bug), which the pre-existing
+`unexemptedPhrase` check also independently catches. Verified across all four
+title/value language combinations at both a 350px (iPhone-card-width) and a 700px
+(desktop) container width: a value's own language determines its row's alignment
+independent of the title, in both directions, at both widths — and with all four lines
+(title, question, Problem, Last time) now agreeing, the block reads as one attached unit
+against the marker rather than two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the two `ISOLATED_VALUE_SITES` snippet entries with a SHAPE
+check, `isLabelFirstAutoRow`: any `dir="auto"` group whose body opens with a
+`<span dir="ltr">…</span>` must have no other `dir=` anywhere else in its body. It is not
+anchored to `ClassQuestions.tsx` — it would catch the identical regression in any future
+file adopting this label-first-row pattern, the same "shape, not a location list"
+discipline the instrument-name and native-marker checks above already established. This
+is deliberately NOT generalised to `ActiveBlock`'s
+`constraint`/`problem`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
+the older bare-label-then-isolate shape: those fields sit directly under their own title
+in this app's real data (never independently mismatched), so the failure this fixes does
+not arise for them, and touching files this lane's own brief did not name would be scope
+the sealed finding never asked for.
+
+**THE MARKER/TITLE GAP AND THE RAGGED LEFT EDGE ARE TWO DIFFERENT CLAIMS, AND ONLY ONE OF
+THEM WAS EVER BROKEN.** A follow-up OWNER pass on this same finding read as a second,
+distinct complaint — the ordinal "looked" detached from a Farsi question because the
+Problem/Last-time lines sat at the opposite (left) edge while the title and question sat
+right, an asymmetry a screenshot reads as "the number is not attached" even though the
+title itself was never the problem. Measured directly against the live DOM (real seeded
+Farsi data, cloned at a 340px container width, text extents read via
+`Range.getClientRects()`, not `getBoundingClientRect()` on the boxes): the ordinal's right
+edge sits at 338px, the title/question/Problem/Last-time lines all right-align flush
+against 330px — an 8px gap matching the authored `gap: 8` on every one of the four lines,
+not just the title. The remaining LEFT edges spread across a 143px range (62px-205px),
+because the four lines are different lengths and each is right-aligned within a box whose
+own right edge is pinned to the ordinal regardless of the box's width. That spread is
+mathematically invariant to how the box is sized: left edge = box_right minus line_width,
+and box_right never moves, so switching the wrapper from `flex: 1` (this file's `.grow`)
+to shrink-to-fit was tried and measured byte-for-byte identical before and after — proof
+that no flex-sizing change can touch it, because there is nothing wrong with the sizing to
+begin with. A ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same thing an address block or a right-aligned caption does), not a
+resolvable defect, and the row-direction fix above is what actually closed the gap the
+owner was reacting to for THAT screenshot: before it, Problem/Last-time sat at the FAR left
+(~25px, the opposite edge entirely) while title/question sat at ~330px — a hard
+two-line/two-line split, not mere length variance. Once all four lines agree on which edge
+they hug, the remaining spread is length variance, and no further padding or flex-sizing
+change was warranted for it specifically. **This measurement is scoped to the ragged-edge
+question alone and is NOT a claim that every marker-attachment complaint was closed** — a
+NINTH finding below, on the exact same screenshot's underlying data, found a real,
+different structural bug in how the `<li>` itself picks its resolved direction. Read that
+finding for the actual fix; do not re-derive "nothing more to do here" from this measurement
+a second time.
+
+**THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
+NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
+Seventh/Eighth findings' — used seed data where an item's title and its `teacherQuestion`
+happen to share a language. That is exactly the one condition under which the underlying
+bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
+descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
+and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
+isolates — so the hunt could only ever land on the bare TITLE. Whichever language the TITLE
+happened to be in decided which side the ordinal rendered on, regardless of the question's
+own language. An OWNER pass with a title and question in DIFFERENT languages (reproduced
+directly against the live running app — the real Teacher Report page, not a clone — by
+temporarily setting an English title on the real seeded Farsi item via the store) showed
+this concretely: the ordinal and title landed together on the English side, while the
+question — right-aligned by its own independent `dir="auto"`, correctly, on its own terms —
+sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse combination
+(Farsi title, English question) reproduced the mirror image. Neither combination is exotic:
+an item's title is free text the owner chooses for their own reasons and has no obligation
+to share a language with a teacher's question about it.
+
+The fix reverses which of the two is left bare. `questionsForNextClass` guarantees
+`q.question` is non-empty on every row this component ever renders (it filters on exactly
+that field); `q.title` carries no such guarantee and is authored completely independently.
+The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
+applied to the OTHER field this time), so it renders in its own correct direction but is
+taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
+`dir="auto"` actually finds — the marker now always tracks the question, the one field
+guaranteed present, never the optional title. Structural, not padding: this is the same
+skip mechanism this file already relies on throughout, applied to the correct field.
+Verified directly against the real, running page
+(not a synthetic clone) at both a 390px (real DOM node, width forced via the live element's
+own style, not `resize_window` — which does not affect layout in this environment — so the
+SAME component tree is exercised, just narrower) and the full desktop width: an English
+title with a Farsi question now attaches the marker to the question (right) with the title
+independently left-aligned; a Farsi title with an English question attaches the marker to
+the question (left) with the title independently right-aligned; the original matching-language
+case (both Farsi) is unaffected. `direction.test.ts` records this as a dedicated,
+mutation-tested shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the
+title's tag carries `dir="auto"` and the question's does not — confirmed to fail under both
+reverted mutations (title bare again; question marked again) before being committed.
+
+**THE LESSON THIS FILE KEEPS RELEARNING:** matching-language seed data proves a fix works
+when title and value AGREE, and says nothing about what happens when they DISAGREE — the
+Seventh finding's row-direction fix and this Ninth finding are the same shape of gap,
+found twice because the same seed data was trusted twice. Any future verification of a
+mixed-language surface in this file should deliberately construct a MISMATCHED case, not
+only the matching one already in the seed.
+
+**THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
+every `{…}` expression as fully opaque, contributing zero words — which is exactly
+right for a single expression like a title, but means a run built ENTIRELY from
+expressions (`{MATERIAL_SOURCE_LABELS[m.sourceType]} · {MATERIAL_STATUS_LABELS[m.status]}
+·{' '} {itemCount(m.id)} item{…}`) read as zero words to the scanner while rendering
+three always-English fragments in a row, unisolated, in a group whose title could
+resolve RTL. This is precisely why the named counterexamples (`Materials.tsx`,
+`ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx`) passed a test that
+was supposed to catch them. Fixed by counting an opaque, non-JSX-bearing expression as
+ONE token rather than zero — its actual text stays invisible from source, but its mere
+UNISOLATED PRESENCE next to other content is what the shape is; an expression whose own
+content contains nested JSX (`{cond && <div dir="auto">…</div>}`) stays fully opaque, its
+children already reachable by the outer whole-file scan. That single change, plus
+re-auditing every recorded group's body by hand, found the five named sites AND several
+more of the identical shape the review did not enumerate: `Repertoire.tsx`'s SECOND,
+near-duplicate dastgāh-count span (the non-Persian `sourceGroups` branch mirrors the
+fixed one exactly and had been missed), `ActiveBlock.tsx`'s mode/focus chips (the
+practice screen itself), `Attachments.tsx`'s and `ItemDetail.tsx`'s file kind/size line,
+`StartBlock.tsx`'s and `Today.tsx`'s item-type/status labels, `StageDetail.tsx`'s
+strand/status `meta` line, `PathwayDetail.tsx`'s "Current"/"Done"/item-count badges and
+its piece-count fallback, `Today.tsx`'s "routine running" indicator (at the time, one
+`dir="ltr"` isolate covering the whole phrase — a sealed review later found that this
+wrongly pinned the instrument name inside it too; see below) and its cross-instrument
+Overview row (a fixed sentence embedding the next item's own possibly-Farsi title —
+isolated the same way `StageDetail`'s undo banner already does, whole sentence under one
+`dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of which also
+embed an item's own title mid-sentence). One further site needed the OTHER isolate —
+`dir="auto"` for a value authored independently of its neighbour, not `dir="ltr"` for
+generated copy: `RoutineRunner.tsx`'s "Next: {label}" (the upcoming segment's own name).
+`PathwayDetail.tsx`'s pathway `source` field got the same treatment (free text beside the
+instrument name, at the time itself still wrongly isolated as `dir="ltr"` — see below),
+but its stage's own `title` was tried the same way and REVERTED: `stage.title` is not authored
+independently of `stage.code`, it is the SAME stage's own fuller name, and this file
+already settles (a few paragraphs up) that the two must AGREE on whichever direction
+the group resolves — isolating `stage.title` would have pulled it OUT of the button's
+own `dir="auto"` detection (a nested `dir` is skipped by the HTML auto algorithm),
+which can flip the group's resolved direction whenever `stage.code` itself carries no
+strong character. It stays a bare `<span>`, exactly like `stage.code`.
+
+**RE-DERIVING THE TEST'S OWN TAG TRAVERSAL FROM FIRST PRINCIPLES FOUND A DEEPER GAP
+THAN ANY SINGLE MISSED FILE.** `elementBody` (the helper both `unexemptedPhrase` and
+the isolate-skip logic use to find where an element's content ends) tracked nesting
+depth by incrementing on every opening tag and decrementing on every closing one —
+except a React Fragment shorthand, `<>`, starts with neither `/` nor a letter, so it
+matched NEITHER branch and never incremented depth, while its own close, `</>`, starts
+with `/` and DID match the closing branch, decrementing it. Every `<>…</>` pair inside
+a body therefore owed depth one MORE decrement than it was ever given an increment for
+— and this codebase's own established shape for a conditional detail
+(`{stage && (<><span>…</span><Link>…</Link></>)}`, exactly what `ItemDetail.tsx`'s
+header uses) hits that shape twice. On that header, depth reached zero several tags
+before the real `</header>`, so `unexemptedPhrase` silently stopped scanning before
+ever reaching `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a
+real, unisolated generated-English phrase that had been sitting in the group
+throughout every previous pass of this lane, invisible to a scanner whose entire claim
+is "detectable, not enumerated." Fixed by giving `<>` the same weight as any other
+opening tag. Re-running the FULL suite after the fix surfaced exactly this one
+violation — nothing else in the currently-scanned files was hiding behind the same
+bug — now closed with the same `dir="ltr"` (at the time, `instrumentName` sat in this
+same list too — a sealed review later found that wrong; see below — plus
+`ITEM_TYPE_LABELS`, "difficulty N/5", "saturated — consider resting") the rest of this
+section already established, while `stage.code` and the material label stay bare for the
+same reason `stage.title` does two paragraphs up. The lesson generalises beyond this one bug: an
+example-driven fix only ever closes the examples in front of it; only re-deriving a
+shared helper's own correctness from what it claims to do (does `<>` open or close a
+nesting level? — the answer was always "both, and this code only handled one") finds
+what a location list, however carefully audited, cannot.
+
+Two sites the stronger scanner flagged are recorded, VISIBLY, as genuine exceptions in
+`UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: `PathwayDetail.tsx`'s stage-progress
+counter (`{sp.done}/{sp.total}`, e.g. "3/5") is digits only — numbers carry no bidi risk
+the way an English WORD dropped into an RTL run does — and `ItemDetail.tsx`'s
+pathway-plus-stage breadcrumb (`` `${pathway.name} — ` `` immediately followed by
+`{stage.code}`) is one continuous compound LABEL built from two fields, not a title
+split from an unrelated caption; there is no separate "caption" here with an opinion of
+its own about direction. The allowlist carries the same visibility contract as
+`ALLOWED_TITLE_SITES` — a stale entry (naming a site that no longer exists) fails its own
+test.
+
+**THE SCANNER'S OWN COMMENT-STRIPPING HAD A LATENT BUG THAT THIS WORK EXPOSED.**
+`stripComments` treated any `'`/`"` as a real string delimiter and scanned forward,
+unbounded, for its match — correct for a real JS string, wrong for plain JSX TEXT
+containing an apostrophe (`StageDetail.tsx`: "That stage doesn't exist."). Hitting that
+apostrophe outside any real string put the scanner into a phantom "inside a string"
+state that swallowed everything after it — real comments included — until an unrelated
+quote character somewhere later happened to close it, cascading into a chain of further
+phantom strings for the rest of the file. This had been silently true all along; it only
+surfaced now because a newly added comment happened to be inside the corrupted span and
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the `dir="ltr"`/`dir="rtl"` block-isolate scan as if it were a real
+attribute. Fixed at the root rather than by rewording the comment: a `'`/`"` now only
+starts a real string if its matching quote appears before the next newline (every real
+string/attribute value in this codebase is single-line); otherwise it is passed through
+as ordinary text and scanning resumes normally right after it. Backtick template
+literals keep their original unbounded, multi-line scan. This makes EVERY check in this
+file more trustworthy, not just the new ones — the exact failure mode the file's own
+`stripComments` docstring already warned about ("worst, `enclosingTag` walking backward
+out of the comment and mis-attributing an unrelated tag") was silently possible for any
+file containing a stray apostrophe in plain prose, this codebase's Setar/Tar seed data
+included.
+
+**AN INSTRUMENT NAME IS THE OWNER'S OWN EDITABLE TEXT, NEVER GENERATED COPY — GETTING
+THIS BACKWARDS IS A CLASSIFICATION MISTAKE, NOT A MISSED LOCATION.** A sealed review
+found four sites (`ItemCard.tsx`, `ItemDetail.tsx`, `PathwayDetail.tsx`,
+`Repertoire.tsx`) pinning an item's or work's instrument name under `dir="ltr"` right
+alongside genuinely generated metadata like `ITEM_TYPE_LABELS` — Settings lets an
+instrument be renamed, Farsi included, so forcing a renamed instrument to LTR gives it
+the wrong bidi base, the exact defect every other isolate in this file exists to
+prevent. Auditing every remaining `LTR_ISOLATE_SITES` entry against its real source
+(not just the four named) found a fifth of the identical shape — `Today.tsx`'s "routine
+running" row bundled the instrument name and the fixed English suffix into ONE
+`dir="ltr"` span — and two more with no direction treatment AT ALL, invisible to that
+same audit because it can only see spans that already carry a `dir`: the Plan doorway's
+mismatched-instrument row (the exact twin of the routine row, same bundling, just
+missing the isolate rather than misusing it) and the weekly Balance row's instrument
+name, sitting bare inside a `.truncate` title span. All seven now isolate the
+instrument name on its own `dir="auto"` — nested one level in for the Balance row
+rather than on `.balance-row` itself, because that row is a CSS GRID and giving IT a
+resolved RTL direction would reverse its three columns for a Farsi instrument, flipping
+the bar and percentage to the other side. The fix generalises past these seven
+locations: `direction.test.ts` now also fails if any `dir="ltr"`/`"rtl"` isolate's body
+references `instrumentName` — a call, a bare identifier, or a property access like
+`b.instrumentName` all match, not only the call form (the widened check was itself the
+product of a caught regression: an earlier `\binstrumentName\(` version missed the
+Balance row's own property-access form) — or ItemCard's own `inst` alias for it, so a
+future regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
+happened to name.
+
+**A FIFTH REJECTION FOUND THE SHAPE-BAN STILL WASN'T ENOUGH, BECAUSE IT WAS ONLY EVER A
+NEGATIVE CHECK.** Banning `dir="ltr"`/`"rtl"` around an instrument name catches nothing
+about a name rendered with NO direction treatment at all, an alias beyond the two literal
+anchors the check happened to know (`instrumentName`, `{inst}`), or a name fused into a
+template string (`` `${instrumentName(db, x)} plan` ``) before anything could render it —
+three shapes a fourth sealed review found live in the app (Repertoire's `PathwayCard`,
+Session Plan's two page titles, wide Lessons' sidebar heading and its detail-pane header,
+Today's cross-instrument "in progress"/"plan"/"routine" rows, Today's `EmptyState` title
+and "Before your … class" heading, and ActiveBlock's/CloseBlock's own eyebrow — the last
+two mis-classifying the instrument's own name as "the English eyebrow" in their own
+comments). `direction.test.ts` now asserts the invariant itself rather than banning one
+way of getting it wrong: `instrumentNameOccurrences` DISCOVERS every current renderer
+mechanically — the `instrumentName(db, id)` call, a bare `.instrumentName` property read,
+a LOCAL ALIAS of either (a destructured, renamed prop; a `const X = instrumentName(...)`
+binding; a `const X = …instruments….find(...)?.name` binding, generalised past the literal
+spelling "instrumentName" so a differently-named local is still caught), and a per-item
+`.name` read inside an `instruments.map`/`.filter().map` callback or an inline
+`instruments.find(...)?.name` — rather than requiring each to be re-listed by hand.
+`resolvesOwnDirection` then asserts the POSITIVE invariant: the name's nearest ancestor
+`dir` must be `"auto"`, AND nothing else may render before it within that SAME ancestor's
+body — a `dir="auto"` ancestor resolves from whichever strong character comes FIRST in
+its subtree, so an item's own title (or anything else) preceding the name inside the same
+auto group claims that resolution for itself, exactly the classification mistake this
+whole family exists to catch. `isFusedIntoTemplate` separately catches the template-fusion
+shape. A declaration/binding site (the alias's own introduction) and a value forwarded as
+a JSX ATTRIBUTE (`instrumentName={x}`, prop-drilling rather than a DOM text render — the
+receiving component is checked wherever IT renders the value; `ClassQuestions` never does)
+are both excluded, visibly, in the check's own comments rather than by a silent gap.
+
+Two real sites deliberately stay BARE and must keep passing exactly as they are:
+Insights.tsx's `<th dir="auto">{r.instrumentName}</th>` and Today.tsx's cross-instrument
+`<div className="grow" dir="auto">…<div>{inst.name}</div>…` row. Both already resolve
+correctly because the name is genuinely the FIRST strong content of their own dir="auto"
+ancestor; wrapping either in a nested isolate would BREAK, not fix, them — `dir="auto"`
+skips a descendant that already carries its own `dir` when hunting for a first strong
+character, so the ancestor would lose its only resolution source and silently fall back to
+LTR for a Farsi instrument, the same reasoning this file already used once to revert
+isolating `stage.title`. The completion gate for this check was empirical, not assumed:
+each discovery shape above was mutated back to its broken form in turn and confirmed to
+fail the test before being reverted, and the check itself asserts it discovers a non-zero
+set of sites overall, so a regression that makes every pattern silently stop matching
+cannot masquerade as "nothing to report."
+
+Two gaps are named here because this lane cannot close them, not because they were missed.
+`src/components/QuickAdd.tsx`'s instrument-picker button renders `{i.name}` with no
+direction treatment at all — a real instance of this same defect — but `QuickAdd.tsx`,
+`ItemForm.tsx` and `RoutineEdit.tsx` are this lane's own contract's declared non-goal
+("their dir=\"auto\" usage is already correct and must not be touched"), so
+`direction.test.ts`'s instrument-name check explicitly excludes all three rather than
+either silently passing over a real bug or failing a check this lane cannot act on.
+Separately, `src/domain/insights.ts` (a forbidden path here) bakes
+`${r.instrumentName} ${r.percent}%` for every instrument into one generated sentence
+before Today or Insights ever renders it — the identical "fused into a string" defect,
+sitting one layer below where a presentation-only lane can reach it. Today.tsx's own
+render of that sentence (`insight.body`) was still tightened to match Insights.tsx's
+existing inline `<span dir="ltr">` isolate (it was previously a bare, undirected block),
+but the embedded instrument name inside that generated sentence stays open pending a
+domain-layer fix and its own lane.
+
+**SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
+authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
+a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard
+produces the ARABIC kaf (U+0643) and the seeded titles hold the PERSIAN kaf (U+06A9),
+and no amount of case folding bridges those. Both search boxes — Repertoire's practice
+list and Start's item picker — filter through `itemMatchesSearch` (`selectors.ts`,
+tested), the one wrapper over the existing `persianSearchMatch`. It is a WRAPPER, not
+a second matcher: `farsi.ts` keeps its behaviour exactly, and the wrapper exists so
+the WIRING is reachable from a Node test in a repo whose vitest environment is
+`'node'` and can therefore never render a screen. A new search surface calls it too.
+
+## Everything the app already knows reaches you where you are
+
+Which instrument you are practising, which piece you mean when you type it in Farsi,
+and which class files are already linked to a piece — none of that may sit one screen
+away from where you need it, and NONE of it is new stored data.
+
+**A BROWSE SCREEN OPENS ON THE INSTRUMENT YOU ARE PRACTISING, AND STILL WIDENS.**
+Repertoire (all three views — Pathways, My repertoire, Practice list) and Lessons seed
+their instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
+Add, New Item and the Session Plan already read, via `defaultInstrumentFilter`
+(`selectors.ts`, tested): a resolvable session instrument seeds the filter, the `'all'`
+sentinel seeds the every-instrument view, and a session instrument that no longer
+resolves IN THE LIST THAT SCREEN'S OWN DROPDOWN RENDERS falls back to every-instrument
+rather than seeding a value with no matching option and showing an empty screen. These
+screens SEED from that value and never WRITE it: browsing another instrument's
+repertoire must not change what Today recommends. The cross-instrument view is never
+removed — only stopped from being the default you undo on every visit.
+
+**A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
+OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
+can hold items from ANY instrument, so showing it while narrowed to Setar can still
+surface a Tar item's progress with no way to know it slipped through. `pathwaysForInstrumentFilter`
+(`selectors.ts`, tested) is the one place this is decided: a real filter keeps only
+pathways scoped to that exact instrument, and only the explicit `''` ("all") filter
+widens back to see General pathways too — the same opt-in-widen shape as everything else
+in this section, not a second rule.
+
+**AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
+(`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
+the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
+a file referenced from two of those lessons appears once, followed by the item's own
+attachments — lessons newest first, kind order within a lesson, attachments oldest
+first. Nothing is persisted to make this view work and no new field exists; these links
+were always in the data and were simply never composed. An attachment's `ownerId` is not
+an item id on its own — a lesson's attachments share the same id space, so a lesson and an
+item can collide on id — so ownership is decided by `ownerType` AND `ownerId` TOGETHER, via
+one shared `attachmentsOwnedBy(attachments, ownerType, ownerId)` predicate (`itemFiles.ts`,
+exported and tested), with `itemOwnedAttachments` as its item-scoped wrapper. EVERY surface
+that lists, counts or removes attachments reuses it rather than re-deriving the check:
+Material's composition here, ItemDetail's Files CRUD list below, the shared `Attachments`
+component (a lesson's own file list, `ownerType="lesson"`), `ItemCard`'s file-count badge, and
+`deleteItem`/`deleteLesson` (`useStore.ts`) choosing which attachment metadata AND blobs to
+destroy — so no read, count or delete can cross-contaminate the other owner type on a
+colliding id. An item with no lesson link and no attachments yields an EMPTY LIST, and the
+surfaces render nothing rather than an
+empty frame. An item with no lesson link cannot reference NAS material at all — that is
+the honest gap, and closing it needs a persisted item-level reference, therefore a
+schema change and its own lane. Both the PRACTICE screen and ItemDetail render the WHOLE
+composition — a reference and an attachment for the same piece are never split across two
+sections of the screen. ItemDetail's existing Files section stays below it, but only for
+add/remove: that is a CRUD concern, never a second, partial presentation of what
+`itemFiles` already composed. It selects its list via the SAME `itemOwnedAttachments`
+predicate rather than filtering `ownerId` alone, so it can never present or remove a
+lesson's attachment that happens to share the item's id. It is therefore its own small
+list local to `ItemDetail.tsx`
+(name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
+for a lesson's own attachments: that component's preview and Open are exactly the
+presentation Material already gives an item's files, and reusing it here would put the
+same file on screen twice.
+
+**THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
+reference resolves through the configured NAS base URL; an attachment resolves to a
+blob on this device. `ItemFile` is a discriminated union on `source`
+(`'reference' | 'attachment'`) so the compiler — not a component's care — is what stops
+a reference being opened as a blob or an attachment being pushed through the base URL
+and 404ing. They share no identity field (a reference has a `path`, an attachment a
+`name`), so they are never merged and deduplication is WITHIN a kind, never across.
+
+**WHAT MAY RENDER INLINE IS A PURE PROPERTY OF THE ENTRY, decided in `itemFiles.ts`.**
+`inline` is true only for a LOCAL IMAGE attachment; every PDF, audio file and every NAS
+reference is open-only. Written inline in a component that rule would be unreachable
+from a Node test, and it is exactly the rule that keeps the practice screen a practice
+screen and the whole feature inside the existing production CSP: `blob:` images are
+already permitted, while a NAS origin is not knowable at build time and so could never
+render under a static policy in any case. Large media stays on the NAS — files are
+OPENED, never fetched into attachments, IndexedDB, sync or a backup.
+
+**MATERIAL DURING PRACTICE IS ONE CLOSED DISCLOSURE, BELOW THE TIMER.** `ActiveBlock`
+offers it only when `itemFiles` is non-empty, renders nothing until it is opened (a
+closed disclosure does zero async work), and sits in the same shape as "About this
+piece" — not a panel, not a viewer, not a dashboard. No material or viewer concern may
+influence a recorded minute, the wake lock, or a boundary announcement: the
+elapsed-time family, `shouldKeepAwake` and `nextSignal` are untouched by any of this.
+
+**A NAS REFERENCE IS STORED RELATIVE TO THE CONFIGURED BASE, so it stays portable.**
+An absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS: it dies on a phone
+away from home, and everywhere at once if the base URL ever changes.
+`relativizeReference(base, pasted)` (`recordings.ts`, tested) rewrites a pasted URL that
+sits UNDER the configured base into the path beneath it — requiring the path BOUNDARY
+(`base + '/'`, so `…/media` never swallows `…/mediaXYZ/`) and comparing normalised URLs,
+not raw strings. It DECODES per segment because `resolveRecording` re-encodes on the way
+out; a Farsi filename copied percent-encoded from a directory listing would otherwise be
+double-escaped into a dead link. Everything else is stored EXACTLY as given, because
+guessing is worse than mangling nothing: a different origin is a deliberate external
+link, a URL carrying a query or fragment is not a plain file path, and a blank or
+unparseable base is not something to reason from. This is what makes the transport
+(LAN address today, something else later) a decision that can be CHANGED WITHOUT
+REWRITING A SINGLE STORED REFERENCE — and it is the only thing this lane writes
+differently: the TEXT of an existing `LessonRecording.path`, its type and meaning
+unchanged.
+
+**BROWSE IS OFFERED ONLY WHERE IT CAN WORK.** Settings and the lesson add-reference form
+open the NAS listing at `normalizeBaseUrl(base)`; a blank or unparseable base yields no
+target and the action is disabled with a plain explanation, never a dead link or a
+same-origin request. A missing or unreachable NAS degrades to a disabled or absent
+action — never an error state, and never anything that blocks practising. Everything
+still works fully offline; the base URL stays per-device in localStorage, out of
+exports, backups and synced data.
+
+## Review scheduling stays explainable
+
+`computeReview` (in `scheduling.ts`) is an **SM-2 spaced-repetition engine** adapted to
+music: per item it tracks `srReps` / `srEase` / `srIntervalDays`; good reviews expand the
+interval, a slip resets it, and importance/difficulty pull material a little sooner. It
+supports per-item overrides (Auto / fixed cadence / Manual) and returns a plain `rationale`.
+Keep it deterministic and explainable — don't turn it into an opaque model, and keep the
+SM-2 tests green. Item status labels are plain-language for the user — keep the enum keys
+stable and only change the display labels in `labels.ts`.
+
+**The engine is visible AND adjustable, never magic.** `SchedulingParams`
+(`src/domain/types.ts`) holds bounded knobs — the SM-2 first/second/slip-reset gaps and
+the Session Plan minute shares — persisted as an OPTIONAL `PracticeDB.settings` (schema
+**v10**; `undefined ⇒ DEFAULT_SCHEDULING_PARAMS`, so old backups import unchanged and
+`validateDB` carries the field through). `DEFAULT_SCHEDULING_PARAMS` reproduces the
+historical constants EXACTLY — `computeReview`/`planNextReview` take an optional `params`
+whose default is byte-identical to before (a snapshot test guards this). Every call site
+that shows OR persists a date must thread the SAME params (`db.settings`): the store into
+`closeSession`, `CloseBlock` into both preview calls — the date shown must equal the date
+saved. `clampSchedulingParams` enforces the bounds (never trust raw input). Settings' "How
+scheduling works" section states the real priority formula and the SM-2 rungs in plain
+English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
+review row links to it ("Why this date?").
+
+## The Session Plan is a view over real blocks, not a new to-do list
+
+The Session Plan (`src/domain/plan.ts`, pure + fully tested; `/plan` page) lays out one
+time-budgeted session for the current instrument: ordered segments in five buckets
+(`warmup · lesson · review · deep · cooldown`), each with minutes, a mode/focus, and a
+one-sentence reason. It **reuses the same `scoreItems` priority numbers** as the
+recommendation engine — no second, hidden ranking. It is organisation, never judgement:
+no scores, no "optimal" claims, no gamification.
+
+- **The invariant: segment minutes ALWAYS sum to the budget** (`buildSessionPlan`,
+  `allocateMinutes` — largest-remainder split, min 2/segment, drops the lowest-priority
+  segments when the budget can't seat them all). Keep it deterministic (explicit `now`,
+  stable score-desc-then-id tiebreaks) and keep the sum==budget tests green across
+  15/20/30/45/60 and the edge cases (0 items, 1 item, all-saturated, everything
+  practised-today → falls back and says so). `redistributePlan`/`swapSegment` are the pure
+  editors; the preview page tweaks a LOCAL copy before `startPlan`.
+- **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
+  warm-up timer) stays untouched. The runner orchestrates the existing
+  start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
+  segment (its minutes become the target). `closeSession` has a tail that, when a plan is
+  running and the closed block was the current segment, marks it `done` and advances the
+  pointer — **the plain flow (no active plan) is byte-identical to before.** Skipping logs
+  nothing. Practising is still the only thing that completes a review / advances SM-2.
+- **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
+  store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
+  never syncs/backs-up as data.**
+- **Today's plan card stays collapsed (~50px) above "Practise now"** so the primary
+  recommendation stays above the fold at 390×844 (verified). Putting it BELOW the
+  recommendation was built and tried in the 2026‑09‑11 lane and the owner preferred it
+  where it is — see "Today is a session workspace" above. It becomes "Resume your plan"
+  while one runs. The evidence behind the bucket shape (spacing, interleaving, retrieval
+  practice, end-on-stability) is cited soberly in `plan.ts` and `DECISIONS.md` — sane
+  defaults, adjustable via `SchedulingParams`, never dressed up as an optimum.
+
+## Device & infrastructure
+
+**MacBook-first in daily use** (laptop open while practising — notes, files, webcam as
+mirror), iPhone as the companion; the phone constraint still binds (primary
+recommendation above the fold at 390×844). Both run the **same installed PWA** served
+from **GitHub Pages** (`.github/workflows/deploy.yml` publishes `dist/` on every push to
+main; the repo is public by explicit user decision, 2026‑07‑11 — the user does not need
+the app or data private). Prod base `/practice-compass/` (override with `PC_BASE`)
+matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
+installed PWA works fully offline; hosting reliability only affects updates.
+`scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
+Tailscale requirement in the main flow.
+
+**Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
+30 quiet seconds following changes (rev-driven), on returning online, and manually.
+Status shows device name, last sync, current revision + short content hash, plain
+errors, and a "restore archived copy" recovery action. The UI must stay honest about
+the model: whole snapshots, hash-compared, explicit conflicts, both sides preserved.
+The PAT is scoped to the single data repo (Contents R/W) and lives only in
+localStorage — never in backups or synced data.
+
+**Attachment size policy is enforced, not claimed** (`attachmentPolicy` in
+`src/domain/files.ts`, tested): warn over 10 MB and for any video, refuse over 40 MB
+with a clear message. Class videos live on the NAS as recording references, never the app.
+
+**Hybrid storage — keep the roles distinct (Settings explains them):** LOCAL data
+(IndexedDB) is the source of truth and works offline. GITHUB SYNC is the small,
+versioned multi-device state transport — one private data repo per app that genuinely
+needs it; a phone-only app uses local + NAS backup and needs no GitHub repo. NAS BACKUP
+is the user's own independent full export — never treat sync git history as the only
+backup. NAS RECORDINGS hold the large videos the other three must never carry. Do not
+replace GitHub sync with a NAS backend, and do not fold recordings into sync/backup.
+
+**The app shell is a fixed-height flex column and only `<main>` scrolls** — nothing is
+`position: fixed/sticky`, so the nav bar cannot drift. The shell height is **`100dvh`
+(dynamic viewport) with a `100vh` fallback via `@supports`**, NOT `height: 100%`: in an
+installed iOS PWA with `viewport-fit=cover`, `100%` resolves to the layout viewport
+which stops above the home-indicator safe area, leaving the bar floating above the
+physical bottom with dead space beneath. With `100dvh` the shell reaches the true
+bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
+clear. **The iOS software keyboard must not drift the shell:** `useViewportGuard`
+(`src/components/useViewportGuard.ts`, wired once in `Layout`) listens to `visualViewport`
+and, when no editable is focused, resets any layout-viewport displacement to 0; on focus it
+scrolls the field into `<main>` instead. It is a no-op without `visualViewport` and must
+stay pure glue — never restructure the shell to "fix" the keyboard. Five EQUAL nav tabs
+(no raised centre button — Today owns the primary Start
+action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
+practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
+controls/nav/metadata are sans. Pathway catalogue rows use a stable
+`[state · minmax(0,1fr) · one 44×44 action]` grid so adding a suggestion swaps only the
+action icon (+→▶) without reflowing the text; status shows once (no duplicate badge);
+detach lives in the item's "Connected to", not the row. The service worker registers in PROMPT mode: updates show an in-app "new version
+→ Reload" banner (checked hourly and on visibilitychange) and the build stamp
+(`__APP_VERSION__`) is visible in Settings — reinstalling is never the update path.
+The public build ships a restrictive CSP meta (self + api.github.com only), injected
+at build time (`cspPlugin` in vite.config.ts). Pages deploys ONLY behind lint + tests
++ build (deploy.yml single dependency chain).
+
+**Canonical names in user-facing copy:** practice item (the only unit of work) ·
+Study source (where an item comes from: radif, method book, collection, course,
+teacher handout — nothing else) · Pathways / My repertoire / Practice list (the three
+Repertoire views) · "Add practice item" (full form) · "Based on / reference" (a
+pathway's provenance) · "Connect it (optional)" (the links group). A practice item may
+link to a study source, a stage, lessons and a parent work at once; links never
+duplicate the item.
+
+## Colour is checked by a test, not by eye
+
+`src/styles/contrast.test.ts` computes WCAG ratios from the SHIPPED stylesheet and fails
+the suite if a listed pair drops below AA for small text (4.5:1). The checked
+(foreground token, background token) pairs are written out explicitly in that test, so a
+token that is NOT covered is a visible omission rather than a silent one; the claim is
+bounded to those pairs and is not a claim about every possible combination. A
+translucent background (`--tone-*-soft` behind a `.badge`/`.chip`, `--accent-soft`
+behind a selected option) is composited over the opaque surface the pair names — badges
+are the only place `--tone-rest` renders at all, so an opaque pair for it would be a
+fiction.
+
+Every block that declares the palette is asserted, not just the first: `global.css`
+declares the light palette TWICE — at `:root[data-theme='light']` and again inside
+`@media (prefers-color-scheme: light) { :root:not([data-theme]) }` — and the duplicate is
+what an owner who has never picked a theme actually sees. **Move a light token in both
+blocks or the test fails.** Only tokens that FAIL a listed pair move; every passing token
+is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim` and
+`--accent-contrast` are unchanged), and no layout, spacing or type changes with them.
+
+## Architecture rules
+
+- **Domain logic stays pure.** Everything in `src/domain/` must be free of React and
+  side effects, and must take an explicit `now: Date` instead of calling `new Date()`
+  internally. This keeps it deterministic and unit‑testable.
+- **The recommendation engine stays deterministic and explainable.** Every recommended
+  card must produce a one‑sentence reason from the same numbers that ranked it. No
+  hidden heuristics, no models.
+- **The store is the only place that mutates app data.** UI components call store actions;
+  they never touch IndexedDB or rebuild domain objects by hand. Attachment **blobs** are the
+  one exception: they live in IndexedDB via `src/store/idb.ts` and the `attachments.ts`
+  service (too big for the reactive JSON); only their lightweight metadata sits in the store.
+- **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
+  `hydrated`. Every inbound database — rehydration, manual import, sync pull,
+  conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
+  chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
+  `SCHEMA_VERSION`. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  it belonged to — but only when that pathway names an instrument that actually resolves
+  in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
+  reference all leave the routine honestly unscoped rather than inventing one), and never
+  overwrites a routine that already has one.
+- **One file per route** under `src/pages/`. Shared UI primitives live in
+  `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
+  React Fast Refresh and the `react-refresh` lint rule happy).
+
+## Tests are not optional
+
+`npm test` must pass. The suite guards the behaviour that makes the recommendations
+trustworthy; if you change the scoring formula or scheduling intervals, update the tests
+in the same change and make sure they still describe correct behaviour.
+
+## Roadmap items are allowed (they were designed for)
+
+Audio recording attachment, PWA offline install, CSV export, calendar reminders, a
+simple audio note per block, teacher‑sharing PDF. These extend the tool without breaking
+the philosophy. Anything that contradicts the "do nots" above needs an explicit decision
+from the user, recorded here.
+```
+
+### DECISIONS.md
+
+```
+# Decisions
+
+Durable record of non-obvious choices. Newest first.
+
+## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
+
+The Eighth review below concluded no further structural change was needed, using seed data
+where the item's title and its `teacherQuestion` share a language (both Farsi). An OWNER
+pass reported the marker was STILL not attached to the question on the real, current build
+— and, tested directly against the real running app (the actual Teacher Report page, not a
+synthetic clone), with a title and question set to DIFFERENT languages, this was true and
+was a genuinely different, previously undiagnosed bug: the Eighth review's own conclusion
+does not extend past the one language combination its evidence used.
+
+Root cause: `<li dir="auto">`'s hunt for a first strong character skips any descendant that
+carries its own `dir`. The question and the Problem/Last-time rows all already carried
+their own `dir="auto"` isolates, so the hunt could only ever land on the bare TITLE —
+meaning the ordinal's side was decided by the TITLE's language alone, regardless of the
+QUESTION's. With matching languages this is invisible (title and question agree on which
+side to hug); with an English title and a Farsi question (or the reverse), the ordinal and
+title land on one side while the question — correctly right- or left-aligned by its own
+independent isolate — lands on the OTHER, unattached from the marker entirely. Reproduced
+both ways by temporarily setting an English title on the real seeded Farsi item via the
+live store (`useStore.getState().updateItem(...)`) against the actual running page, at both
+a 390px-forced real DOM width and the full desktop width.
+
+Fixed by reversing which field is left bare: `questionsForNextClass` guarantees
+`q.question` is non-empty on every row this component renders (that is its filter); `q.title`
+carries no such guarantee. The title now carries its own `dir="auto"` isolate (out of the
+`<li>`'s hunt, rendering in its own correct direction independently); the question is left
+bare, so the `<li>`'s `dir="auto"` — and therefore the ordinal's side — always tracks it.
+Verified at both widths, both mismatch directions, and confirmed the original
+matching-language case is unaffected. `direction.test.ts` adds a dedicated, mutation-tested
+shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the title's tag
+carries `dir="auto"` and the question's does not; both reverting the title and re-marking
+the question were confirmed to fail it (and, independently, `GROUP_SITE_INVENTORY`'s exact
+count) before this was committed. The stale `ISOLATED_VALUE_SITES` entry for the question's
+old isolate was removed; no new entry was needed for the title's new one since it is a
+plain `GROUP_SITE_INVENTORY` site (same tag/class the old entry already tracked).
+
+The general lesson, restated because this is the second time this file has learned it: a
+verification built entirely from matching-language seed data proves a fix holds when the
+two sides AGREE and says nothing about what happens when they DISAGREE. The Seventh
+rejection's row-direction fix and this Ninth rejection are the same shape of gap, closed
+twice because the same seed data was trusted twice.
+
+## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
+
+**Scope note (superseded in part by the Ninth rejection above):** this review's conclusion
+— that no further structural change was warranted — was correct only for the ragged-edge
+question it actually measured, using seed data with a Farsi title AND a Farsi question. It
+was not, and should not have been read as, a claim that every marker-attachment complaint
+on this screenshot was closed; a real, different bug (title/question language mismatch)
+was still open and is fixed above.
+
+A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
+the "1." marker looked detached from the Farsi question because the Problem/Last-time
+lines sat at the opposite (left) edge from the title and question — a visible asymmetry a
+screenshot reads as "not attached" even where the title itself was correctly positioned.
+Rather than trust that reading, both edges were measured directly against the live DOM:
+the real seeded Farsi item, cloned into a fixed-width harness at 340px, with each line's
+actual rendered text extent read via `Range.getClientRects()` (glyph bounds, not
+`getBoundingClientRect()` on the containing boxes). Result: all four lines — title,
+question, Problem, Last time — right-align flush at 330px, an 8px gap from the ordinal's
+own right edge at 338px, matching the authored `gap: 8` exactly. The LEFT edges spread
+across 62px-205px (143px), because the four lines differ in length and each is
+right-aligned inside a box whose right edge is pinned to the ordinal regardless of the
+box's own width.
+
+A specific fix was proposed and tested before being rejected: swap the value wrapper's
+`flex: 1` (`.grow`) for shrink-to-fit sizing, on the theory that a narrower box would pull
+the ragged edges together. Patched live and re-measured, the result was byte-for-byte
+identical — same 143px spread, same individual line positions — because for right-aligned
+text, `left edge = box_right − line_width`, and `box_right` never moves: it stays flush
+against the ordinal no matter how the box itself is sized. There is no flex-sizing change
+that touches this, because the sizing was never the defect.
+
+Conclusion: a ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same shape any right-aligned paragraph or an address block has), not a
+resolvable structural defect. The actual defect the owner was reacting to was fixed by the
+Seventh rejection below, before this measurement was taken: Problem/Last-time used to sit
+at the FAR left (~25px, the opposite edge entirely) while title/question sat at ~330px — a
+hard two-line/two-line split, not mere length variance. Once the row-direction fix made
+all four lines agree on which edge they hug, what's left is ordinary variance in line
+length, and no further structural or padding change is warranted. No source change
+accompanies this entry; it exists so a future review does not reopen the same screenshot
+and re-diagnose an already-closed gap as a new one.
+
+## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
+
+A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's
+`display: 'inline-block'` fix for `ClassQuestions`' `Problem:`/`Last time:` rows still
+wrong — not merely incomplete. That fix gave the VALUE its own bidi character order and
+its own wrap-line alignment, but left the ROW that positions "Label: value" as a unit
+BARE, so the row inherited whichever direction the TITLE above it resolved to — right for
+a Farsi title, left for an English one — regardless of what script the value was actually
+written in. For the common case (title and value the same language) this looked correct
+by coincidence; for an English-titled item with a Farsi problem note, the whole row
+stayed pinned left, exactly where the inherited direction put it, with the value's
+internal shaping correct but its POSITION wrong. This is the same root cause the
+"A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN"
+section already named for other files, just not yet applied to a LABEL-plus-VALUE row.
+
+Fixed by moving `dir="auto"` from the value to the ROW itself, and marking the LABEL —
+never the value — with its own `dir="ltr"`. This is not because the label's text ever
+changes; `dir="auto"` skips a descendant that carries its own `dir` when hunting for a
+first strong character, so marking the label takes it OUT of that hunt and leaves the
+(deliberately bare) value as the row's only resolution source. Marking the value too
+would take BOTH out, leaving the row with nothing to resolve from and a silent fallback
+to LTR regardless of the value's own script — confirmed to fail the new test when tried.
+Verified across all four combinations (Farsi/English title × Farsi/English value) at both
+a narrow (350px, iPhone-card-width) and a wide (700px, desktop) container: a value's own
+language now determines its row's alignment independently of the title, in both
+directions, at both widths. This also resolved the number/title "detachment" the same
+finding reported: with all four lines (title, question, Problem, Last time) correctly
+right-aligning together, the block reads as one coherent unit against the marker instead
+of two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the `ISOLATED_VALUE_SITES` ledger entries for these rows
+with a shape check, `isLabelFirstAutoRow` / "a label-first auto row's value stays bare":
+any `dir="auto"` group whose body opens with a `<span dir="ltr">…</span>` must have no
+other `dir=` anywhere else in its body, or the row has nothing left to resolve from. It is
+a SHAPE check, not a ClassQuestions-specific one, so it would catch the same regression in
+any future file using this pattern. Two mutations were confirmed to fail before this was
+committed: marking the value `dir="auto"` too (caught by the new check and by
+`GROUP_SITE_INVENTORY`'s exact-order equality), and removing the label's `dir="ltr"`
+entirely — reverting to the original bug — which the PRE-EXISTING `unexemptedPhrase` check
+also catches on its own (the bare "Problem" label plus the value's opaque expression reads
+as a 2-word exposed phrase), giving this shape two independent guards.
+
+## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
+
+A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
+question number still escaping the card despite the third rejection's symmetric
+`paddingInline` fix — proof that an outside `::marker`'s exact position for a
+direction-variable `<li>` is a browser implementation detail no gutter measurement can
+guarantee (jsdom cannot compute it either, which is why a padding proxy was ever trusted
+to stand in for it). Fixed by removing the native marker mechanism entirely rather than
+reserving room for it: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a
+real element, the FIRST child of a flex `<li dir="auto">` — flexbox's row axis is
+direction-aware by specification, so the number leads on the correct side and sits inside
+the content box it can never escape. The wrapper around title/question/details carries no
+`dir` of its own, deliberately: `dir="auto"` skips a descendant that has its own `dir`
+when hunting for a first strong character, so giving the wrapper one would leave the
+`<li>` with no resolution source at all. `direction.test.ts`'s list-marker check
+(`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
+now asserts the mechanism directly — no native marker, and the `<li>` is itself a
+flex/grid container — rather than measuring a proxy for it; each half was confirmed to
+fail on its own when reverted. `role="list"` on the `<ol>` pays back the one accessibility
+cost of removing the marker: WebKit drops an `<ol>`'s list semantics from the
+accessibility tree once `list-style: none` takes its marker away, which would have gone
+unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
+surfaced.
+
+The same finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed at
+the time as a wrap-alignment gap and fixed with `display: 'inline-block'` on the value's
+own isolate. A seventh sealed finding (below) found that diagnosis incomplete — the value
+having its own bidi order was never the same claim as the ROW having the right
+alignment — and replaced it with a different fix entirely. See "Seventh rejection" above
+for what actually shipped.
+
+## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
+
+A fifth sealed review found the fourth rejection's fix was still a negative check —
+banning `dir="ltr"`/`"rtl"` around an instrument name — which cannot detect a name with
+NO direction treatment at all, an alias beyond the two literal anchors the check knew
+(`instrumentName`, `{inst}`), or a name fused into a template string before anything
+renders. Real, live instances of all three: Repertoire's `PathwayCard`, Session Plan's
+two page titles, wide Lessons' sidebar heading and detail-pane header, Today's
+cross-instrument "in progress"/"plan"/"routine" rows (built as pre-joined template
+strings), Today's instrument switcher and `EmptyState` title and "Before your … class"
+heading, and ActiveBlock's/CloseBlock's own eyebrow (mis-classifying the instrument's own
+name as fixed English in their own comments). Fixed by replacing the ban with a positive,
+mechanically-discovering check in `direction.test.ts`: `instrumentNameOccurrences` finds
+every current renderer from the SHAPES this codebase uses to produce one (the helper call,
+a property read, a local alias of either via destructure-rename/const-binding/find-and-name,
+or a per-item `.name` read inside an `instruments` iteration) rather than a location list,
+and `resolvesOwnDirection` asserts the invariant itself — the nearest ancestor `dir` must
+be `"auto"` AND nothing else may render before the name within that ancestor's body, or
+the ancestor's resolution belongs to whatever precedes it, not to the name riding along
+beside it. Two sites deliberately stay bare because they are already the first strong
+content of their own dir="auto" ancestor (Insights.tsx's `<th>`, Today.tsx's
+cross-instrument `{inst.name}` row) — isolating either would break, not fix, them, the
+same reasoning that earlier reverted isolating `stage.title`. Two gaps are named rather
+than silently left: `QuickAdd.tsx`'s instrument-picker button has the identical bare-name
+defect but sits in a file this lane's own contract puts out of scope, so the check
+explicitly excludes it instead of failing on a bug this lane cannot fix; and
+`src/domain/insights.ts` fuses an instrument name into a generated sentence one layer
+below where a presentation-only lane can reach, left open for its own lane. See
+AGENTS.md's "A FIFTH REJECTION..." section for the full account.
+
+## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
+
+A sealed review found four sites (`ItemCard.tsx`, `ItemDetail.tsx`,
+`PathwayDetail.tsx`, `Repertoire.tsx`) forcing an item's or work's instrument name under
+`dir="ltr"` as if it were generated metadata like `ITEM_TYPE_LABELS` sitting next to
+it — but an instrument is renameable in Settings, Farsi included, so it is the owner's
+own editable text and needed its own `dir="auto"` isolate instead. Auditing every
+remaining `LTR_ISOLATE_SITES` entry against its real source (not just the four named)
+found a fifth of the identical shape (`Today.tsx`'s "routine running" row, bundling the
+instrument name and a fixed English suffix into one `dir="ltr"` span) and two with no
+direction treatment at all — invisible to that audit because it can only see spans that
+already carry a `dir`: the Plan doorway's mismatched-instrument row (the exact twin of
+the routine row) and the weekly Balance row's instrument name, bare inside a
+`.truncate` title span whose row is a CSS grid (isolating the row itself, rather than
+the name, would have reversed its three columns for a Farsi instrument). All seven now
+carry their own `dir="auto"`, and `direction.test.ts` bans the SHAPE going forward — any
+`dir="ltr"`/`"rtl"` isolate whose body references `instrumentName` (a call, a bare
+identifier, or a property access like `b.instrumentName`) fails — rather than
+re-closing whichever locations a reviewer happened to enumerate.
+
+## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
+
+A third sealed review of the direction lane found the SAME family — mixed-content
+groups, alignment, list markers, completeness — still open in `ItemMaterial.tsx`,
+`Materials.tsx`, `ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx` and
+`ClassQuestions.tsx`, closed as three root causes rather than as seven counterexamples.
+
+1. **A block-level isolate resolves its own alignment, independently of the group.**
+   `ItemMaterial.tsx`'s detail line carried `<div className="tiny faint" dir="ltr">…
+   </div>` — the isolate fixed the sentence's own bidi ordering but, because
+   `text-align: start` is a per-box computed value resolved against that box's OWN
+   `direction`, gave the div's `text-align` a LEFT resolution regardless of the group's
+   (possibly RTL) one — the detail split from a right-aligned Farsi title exactly as
+   before, one level down. Fixed by moving every such isolate to an inline `<span>`
+   nested inside a `dir`-less block (the shape already used everywhere else in the
+   file), and closed for good with a mechanical rule in `direction.test.ts`: no
+   `dir="ltr"`/`dir="rtl"` may sit on anything but `span`/`bdi`. One rejected review
+   found one file doing this; a structural ban is what stops a second file doing it
+   next lane.
+
+2. **A native list marker follows its OWN list item's direction, not the list's.**
+   `ClassQuestions.tsx`'s `<ol>` reserved gutter space with `paddingInlineStart` alone
+   while each `<li>` resolves its own direction via `dir="auto"` — the browser positions
+   the outside `::marker` on that li's OWN start edge, so a Farsi item's marker lands on
+   the right, the side the list reserved no room for, and gets pressed against or past
+   the content border. Fixed with symmetric `paddingInline`. `direction.test.ts` scans
+   every `<ol>`/`<ul>` for this shape now, not just this one list.
+
+3. **The scanner itself skipped every `{…}` expression as opaque, contributing zero
+   words — hiding a run built ENTIRELY from expressions.** `Materials.tsx`'s
+   `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '} {itemCount(...)}
+   item{...}` reads as zero literal words to a scanner counting only literal text, while
+   rendering three always-English fragments in a row, unisolated, next to a title that
+   could resolve RTL. `unexemptedPhrase` now counts an opaque, non-JSX-bearing
+   expression as ONE token (its content stays invisible from source, but its
+   unisolated PRESENCE next to other content is the shape being caught); an expression
+   containing its own nested JSX stays fully opaque, since its children are already
+   reachable by the outer whole-file scan. That one change, plus re-auditing every
+   recorded group by hand, surfaced the five named sites and further, unnamed ones of
+   the identical shape: `Repertoire.tsx`'s second, near-duplicate work-count span (the
+   non-Persian branch mirrors the fixed one and had simply been missed), `ActiveBlock`'s
+   own mode/focus chips, `Attachments`'/`ItemDetail`'s file kind/size line,
+   `StartBlock`'s/`Today`'s item-type/status labels, `StageDetail`'s strand/status
+   line, `PathwayDetail`'s "Current"/"Done"/item-count badges and piece-count fallback,
+   `Today`'s "routine running" indicator and its cross-instrument Overview row (a fixed
+   sentence embedding the next item's own possibly-Farsi title, isolated the way
+   `StageDetail`'s undo banner already does), and `Insights`' generated observation
+   sentences. Two sites needed `dir="auto"` rather than `dir="ltr"` — a value authored
+   independently of its neighbour, not generated copy: `RoutineRunner`'s upcoming
+   segment label and `PathwayDetail`'s pathway `source`. A stage's own `title` was
+   tried the same way and REVERTED: `stage.title` is not authored independently of
+   `stage.code` — it is the SAME stage's fuller name, rendered only when it differs
+   from the code — and a prior lane already settled that the two should AGREE on
+   whichever direction the group resolves rather than one overriding the other
+   (`PathwayDetail`'s stage rows, 2026-09-11 entry below: "even where a group DOES
+   resolve LTR from its code, that is the point"). Isolating `stage.title` in its own
+   `dir="auto"` would have pulled it OUT of the button's own auto-detection (a nested
+   `dir` attribute is skipped by the HTML algorithm), which can flip the group's OWN
+   resolved direction whenever `stage.code` itself has no strong character — the
+   opposite of "agree." It stays a bare `<span>`, exactly like `stage.code`. Two
+   flagged sites were genuine exceptions, recorded visibly in a new
+   `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: a numeric progress counter
+   (`{sp.done}/{sp.total}` — digits carry no bidi risk) and a compound "Pathway — Stage"
+   breadcrumb built from two fields (one continuous label, not a title split from a
+   foreign caption).
+
+4. **`elementBody`'s depth counter did not recognise React's Fragment shorthand as an
+   opening tag, only as a closing one — silently truncating the body several checks
+   scan.** `</>` starts with `/`, so it matched the ordinary CLOSING-tag branch and
+   decremented depth; `<>` starts with neither `/` nor a letter, so it matched nothing
+   and never incremented it. Every `<>…</>` pair inside a group's body therefore
+   decremented depth once more than it was ever incremented — and this codebase's own
+   established shape for a conditional detail (`{stage && (<><span>…</span>
+   <Link>…</Link></>)}`, `ItemDetail.tsx`'s header) uses exactly that shorthand. On
+   that header, depth hit zero several tags before the `</header>` actually closes,
+   so `unexemptedPhrase` silently stopped scanning before ever reaching
+   `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a real,
+   unisolated generated-English phrase that had been sitting in the group the whole
+   time, invisible to a scanner whose whole claim is "detectable, not enumerated."
+   Fixed by giving `<>` the same weight as any other opening tag; the fix surfaced
+   this one concrete violation across every file the suite scans (no others were
+   hiding behind it), now fixed with the same `dir="ltr"`/`dir="auto"` split as its
+   sibling `row-wrap` (`instrumentName`/`ITEM_TYPE_LABELS` generated, `stage.code`/
+   the material label left bare since both can be Farsi themselves) and its
+   importance/difficulty/saturated row. A structural bug in the TEST's own tag
+   traversal is exactly the kind of gap a purely example-driven fix cannot close —
+   only re-deriving the traversal from first principles (does this construct open or
+   close a nesting level?) finds it.
+
+**A restructure, not a pure direction-only edit, in `Repertoire.tsx`'s `WorkRow`.**
+Its metadata line was `[form, composer, gusheh, instrumentName, lastPractised]
+.filter(Boolean).join(' · ')` — a single STRING assembled from fields in two
+different authorships (Persian identity fields, genuinely Farsi; instrument name and
+the last-practised phrase, generated English). A joined string has no seam to hang a
+`dir=` on partway through, so isolating it correctly required rebuilding the array as
+JSX nodes (`<span dir="auto">`/`<span dir="ltr">` per fragment) joined with an
+explicit separator, rather than adding an attribute to existing markup. This is more
+than the "direction wiring only" the contract asks of a non-loop file, but there was
+no lighter way to give each fragment its own bidi base — flagged here rather than
+left for a reviewer to have to notice on their own.
+
+**The scanner's own comment-stripping had a latent bug this work exposed, not
+introduced.** `stripComments` treated any `'`/`"` as a real string delimiter and
+scanned forward, unbounded, for its match. Plain JSX text containing an apostrophe
+(`StageDetail.tsx`: "That stage doesn't exist.") is not a string at all; hitting that
+apostrophe put the scanner into a phantom "inside a string" state that swallowed
+everything after it — including real comments — until an unrelated quote later
+happened to close it, cascading through the rest of the file. This had been silently
+true all along and only surfaced because a new comment inside the corrupted span
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the new block-isolate scan as a phantom real attribute. Fixed at the
+root: a `'`/`"` now starts a real string only if its match appears before the next
+newline (every real string/attribute value here is single-line); otherwise it passes
+through as ordinary text. Backtick template literals keep their unbounded, multi-line
+scan. This makes every check in the file more trustworthy, not just the new ones.
+
+## The content leads: direction on the group, and a colour list that is bounded on purpose (2026-09-11)
+
+**Direction lives on the GROUP, never on the title.** `dir="auto"` was on 47 title
+elements and on no container anywhere, so a Farsi title resolved RTL and hugged the right
+edge of its cell while its own English caption hugged the left. The fix is not a new
+mechanism — it is moving the SAME native attribute up one level, to the element that
+holds a title together with the details belonging to it. Two consequences are worth
+recording because they are not obvious:
+
+1. `dir="auto"` resolves from the FIRST STRONG CHARACTER in the subtree, so where an
+   English eyebrow precedes the title in the DOM (Today's Practise-now card, the close
+   screen's header, Session Plan's minutes/bucket line) the group is drawn around
+   title + details and the eyebrow is deliberately left OUTSIDE it. Wrapping the whole
+   card would pin the group LTR and change nothing.
+2. Direction alone does not move text. Several groups sit under an ancestor pinning
+   `text-align: left` (a picker row button, the practice screen's centred column), and
+   `left` is inherited as a COMPUTED value — it does not re-resolve per element. Those
+   groups set `text-align: start` on themselves.
+
+The sweep is held closed by `src/components/direction.test.ts` rather than by care, and
+its exception allowlist came out EMPTY: every title on every surface had a group it could
+join. `PathwayDetail`'s stage rows were the candidate exception (an ascii-looking code
+like "2A" leading a Farsi title) — but the Setar and Tar seeds author stage codes in
+Farsi (`نشست`, `شور`, `ماهور`), so grouping code + title is both correct and what the
+owner actually sees. Even where a group DOES resolve LTR from its code, that is the point:
+the code and the title then agree instead of pointing at opposite edges.
+
+**The colour list is bounded, and the planner's "six failing tokens" was an undercount.**
+The plan measured each foreground token against `--bg` only. Two tokens fail there and
+were missed (`--tone-progress` 4.41, `--tone-rest` 4.26), and more importantly `--bg` is
+not where several of them RENDER: `--tone-rest` only ever appears as `.badge`/`.chip`
+text over its own translucent `--tone-rest-soft` fill. `src/styles/contrast.test.ts`
+therefore lists the pairs each token is ACTUALLY rendered on, compositing a translucent
+fill over the card it sits in, and asserts them in all three palette blocks.
+
+That honest list moves EIGHT light tokens (`--text-faint`, `--accent`, `--gold`,
+`--tone-alert`, `--tone-warn`, `--tone-progress`, `--tone-good`, `--tone-rest`) and FOUR
+dark ones (`--text-faint`, `--tone-alert`, `--tone-progress`, `--tone-rest`) rather than
+the six + one the plan predicted. The list was NOT trimmed to make that arithmetic come
+out right: an uncovered token is supposed to be a visible omission, and dropping badges
+would have left two of the five tone tokens with no coverage at all. Three of the four
+dark moves are 1–7 units and imperceptible. `--accent-contrast` (white on the primary
+Start button, 3.95 at HEAD) needed no move of its own — darkening `--accent` to clear AA
+against the page took that pair to 5.94. Every `-soft` fill, `--text`, `--text-dim` and
+`--accent-dim` are untouched, because they pass.
+
+**Both light blocks, every time.** `global.css` declares the light palette twice — at
+`:root[data-theme='light']` and again inside `@media (prefers-color-scheme: light)
+{ :root:not([data-theme]) }`. The duplicate is what an owner who never picked a theme
+sees, so the test asserts both blocks AND that they agree token for token.
+
+**Reading the stylesheet needed a workaround, not a config change.** `src` is typechecked
+by `tsconfig.app.json`, which does not enable node types, and Vitest blanks every `.css`
+module — `?raw` included — unless `test.css` is on in `vite.config.ts`. Both files are
+outside this lane's scope. So the contrast test reads the real file through a dynamic
+import whose specifier the compiler cannot resolve statically. Reading the REAL file is
+the whole point: a table of colours copied into the test would keep passing while the app
+shipped something else. The direction test needs no such trick — `import.meta.glob` with
+`?raw` works for `.tsx`, and a glob also means a NEW page is swept in automatically.
+
+**One ReviewPlan on the close screen.** The collapsed summary line and the expanded date
+field are two renderings of ONE value, with a manual correction folded into it rather
+than held beside it. The guarantee had to be structural: `CloseBlock` previously called
+`planNextReview` twice (once for the preview hint, once inside `pickResult` to seed the
+field), which is exactly the drift r-explainable-scheduling exists to prevent. A pure
+formatter (`reviewSummaryLine`) renders the line and computes nothing, so a divergent
+date is unrepresentable rather than merely remembered about.
+
+**Today's order was built the other way round, tried, and REVERTED — by design.** The
+lane built Practise now directly under the instrument switcher with Plan and Routines as
+two compact peer doorways beneath it, on the argument that orchestrating a session is a
+choice you make INSTEAD of taking the suggestion. It shipped as one ordering change with
+no data or state implication precisely so the owner's own device could settle it. It did:
+on 2026-09-11 the owner judged the original order better — Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural — so the
+order went back. That reversal is a PASSING outcome of the check, not a failure of the
+lane, and everything else the lane built stands.
+
+Worth recording for whoever reads the code next: BOTH orders keep the recommendation
+above the fold at 390×844, so nothing about this ordering follows from the phone
+constraint or from any other rule in AGENTS.md. It is a taste judgement that only the
+owner can make, and the argument for recommendation-first is genuinely available to
+re-derive — which is exactly why `Today.tsx` and AGENTS.md now say, in so many words,
+not to act on it without asking.
+
+**Rejection findings, addressed (fresh review, 2026-09-11).** A sealed fresh review of
+this lane's diff returned `request_changes` against two families, fixed comprehensively
+rather than by patching the two cited examples:
+
+1. **Mixed-content groups and completeness.** Grouping a Farsi title with an
+   ALWAYS-ENGLISH generated detail (`buildReason`, `planSegmentReason`) under one
+   `dir="auto"` fixed the ALIGNMENT but broke the detail's own bidi ordering: the Farsi
+   title's resolved RTL base became the detail's base too, and FriBidi renders a trailing
+   neutral character (the sentence's own full stop) using that base when nothing more
+   specific claims it — so it visually jumped to the start. Fixed by nesting a
+   `dir="ltr"` isolate around each such detail (Today's Practise-now card and secondary
+   recommendations, ItemDetail's "practise this part now", Session Plan's segment
+   list and runner) — grouping and alignment are unchanged, only the isolate's own
+   internal ordering is fixed. A structurally identical bug existed the other way round
+   for FREE TEXT the owner typed after a fixed English label (ActiveBlock's
+   `constraint`/`problem`, "last time you decided to try"): the label was the subtree's
+   first strong text, so `dir="auto"` on the whole line resolved from the label and never
+   saw the owner's own (possibly Farsi) words — fixed the same way the codebase already
+   excludes an eyebrow, by giving the VALUE its own nested `dir="auto"` and leaving the
+   label outside it. Today's Routines doorway had the same eyebrow-first bug at the
+   button level ("Resume your routine"/"Routines" decided the direction, not the routine's
+   own name) — fixed by moving `dir="auto"` off the button and onto a block wrapper
+   around just the name, mirroring the shape `ElsewhereSessions` already used a few lines
+   above it (an inline `<span>` there would silently break `.truncate`'s ellipsis, since
+   `overflow`/`text-overflow` do nothing on a non-replaced inline box). ActiveBlock's
+   header stayed CENTRED despite the contract requiring Farsi right / English left on that
+   screen — the page's own `text-align: center` (correct for the timer ring and buttons)
+   was never overridden for the title group; it now sets `text-align: start` on itself,
+   which is a deliberate LAYOUT CHANGE for English on that one screen and is documented in
+   AGENTS.md as not conflicting with "English keeps its layout" elsewhere (that non-goal
+   guards against a Farsi-style right-align, not against ac-6's explicit left-for-English
+   requirement on Active).
+
+   The COMPLETENESS gap: `direction.test.ts`'s "every surface has a group" check passed
+   as long as ONE group survived anywhere in the file, so deleting the Practise-now card's
+   own `dir="auto"` still passed because Today.tsx has several unrelated groups. Fixed
+   with `GROUP_SITE_INVENTORY` — every group-level site recorded in order, duplicates
+   included, asserted with `toEqual` against the live scan, so removing any ONE recorded
+   site anywhere fails regardless of what else survives in the same file. Building that
+   inventory surfaced a second, unrelated defect in the scanner itself: this file's own
+   prose repeatedly writes the literal string `dir="auto"` in comments, and the naive
+   regex scan matched those too — usually producing a site with no real enclosing tag, but
+   at least once walking backward out of a long comment and mis-attributing an unrelated
+   component tag from elsewhere in the file as if it were the match's real element. The
+   scanner now strips `//` and `/* */` comments (copying string/template literals through
+   verbatim, since that is where a REAL `dir="auto"` attribute value lives) before
+   matching.
+
+2. **CloseBlock manual-date preservation.** `pickResult` cleared the manual `override` on
+   every result change — correct when the engine actually re-plans (a fresh judgement
+   deserves a fresh plan, not a stale correction pinned to the old one), wrong when it
+   doesn't: a manual-mode item (`item.reviewMode === 'manual'`) has no automatic plan for
+   ANY result, so a date the owner had just typed in was never tied to a particular
+   judgement, and clearing it turned a deliberate "come back on this date" into an
+   accidental decline the moment they picked a different result. Fixed by gating the
+   clear on `reviewOverrideSurvivesResultChange(item.reviewMode)`
+   (`src/components/format.ts`) rather than calling `planNextReview` a second time inside
+   `pickResult` — CloseBlock's single `ReviewPlan` derivation is unchanged; this is a
+   boolean read of the item's own mode, not a second value that could disagree with it.
+   The predicate is tested against the real engine across all six results for both a
+   manual- and an auto-mode item, not asserted in prose alone.
+
+**Second rejection, closed as a family rather than as four counterexamples
+(2026-09-11).** A second sealed review found the FIRST fix's isolate pattern had not
+been applied everywhere it was needed: `CloseBlock`'s own "A few seconds to capture
+what happened." sat bare in the item-title group (the identical defect the first
+rejection fixed elsewhere in the same file's neighbours), and `ClassQuestions`'
+question/problem/last-observation carried no isolate of any kind, unlike the
+`ActiveBlock` shape the first fix established. Rather than patching just those two
+call sites, the whole surface list was re-audited for the same two shapes:
+
+- **Fixed English copy/metadata bare in a group** — beyond the two named sites, the
+  same "N segments · M min" phrase existed identically in THREE places
+  (`Today.tsx`'s `TodayRoutineRow`, `PathwayDetail.tsx`'s `RoutineRow`,
+  `StageDetail.tsx`'s `RoutineCard` — one component per surface a routine can be
+  started from, never refactored into one shared component), `StaleNote`'s "Running
+  far past its target…" (rendered inside two different title groups), Today's due-review
+  caption ("due `relativeDay(...)`"), the NAS-reference warning sentences
+  (`Lessons.tsx`, `ItemMaterial.tsx`), `ItemDetail.tsx`'s "Study source:" label and
+  `StageDetail.tsx`'s "Added "…" — not practised yet." undo banner. Every one now
+  carries the same nested `dir="ltr"` isolate as the first fix's `reason` spans.
+- **Independently-authored values bare in a group** — `PathwayDetail.tsx`'s
+  `pathway.description`/`pathway.note`, editable independently of the pathway's own
+  name, needed the same `dir="auto"` isolate `ActiveBlock`'s `constraint`/`problem`
+  already carry.
+
+**The test itself was the real gap, not just the four sites.** `direction.test.ts`
+proved a GROUP carries direction; it never proved a CHILD inside it does. A generic
+"no bare Latin text in a group" rule would have forced changes to the already-correct
+`ActiveBlock` label shape (`Constraint: ` stays bare on purpose, immediately followed
+by its own isolate), so the new check (`unexemptedPhrase`) walks a group's body in
+source order, judges an accumulated run of exposed text at each TAG boundary (never at
+an expression boundary, or `{n} segments · {m} min` fragments into single innocent
+words), and exempts a run — regardless of its length — the moment it is immediately
+followed by an element carrying its own `dir=`. Two recorded ledgers
+(`ISOLATED_VALUE_SITES`, `LTR_ISOLATE_SITES`) cover what no source scan can prove:
+an expression's own content (`{q.currentProblem}`) is opaque from source, and a
+component like `StaleNote` renders its isolate from its OWN definition, invisible from
+any of its call sites. Both carry the same visibility contract as
+`GROUP_SITE_INVENTORY` — a new site must be added, visibly, never inferred silently.
+
+## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
+
+**Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores
+live on the Synology NAS under `homes/ethan/SNDK/video-courses` (on disk:
+`/volume1/homes/ethan/SNDK/video-courses`). A lesson reference stores a *relative*
+path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a **NAS
+base URL** set in Settings. Two things must be true for playback:
+
+1. The base URL must be a real `https://` origin. (A scheme-less value like
+   `ds220plus.taild1d1f7.ts.net` was previously concatenated raw and treated as a
+   *relative* URL against the Pages origin — so every recording opened the same
+   in-app 404. Fixed in `normalizeBaseUrl` / `resolveRecording`,
+   `src/domain/recordings.ts`.)
+2. The folder must be served over HTTPS. DSM on `:5000` does **not** serve raw
+   files, and plain `http://` links are mixed content that iOS blocks.
+
+**What is ACTUALLY running (probed 2026-09-10, and this corrects what this record
+used to claim).** This file previously recorded *Tailscale Serve on the Synology* as
+the chosen mechanism, with a runbook. That is **not** what is in place, and an agent
+following that runbook would have configured the wrong thing:
+
+- There is **no Tailscale CLI and no Tailscale.app on this Mac**.
+- `https://192.168.0.20:5010/` answers **HTTP 200 from nginx** and already serves
+  **real browsable directory listings** (mod_autoindex-style "Index of /"), whose
+  document root IS the `video-courses` folder — it lists `setar-classes/`,
+  `tar-classes/` and `classical-guitar/`, and `/setar-classes/` answers 200. So the
+  existing relative references already resolve against it, and a **Browse** link
+  needs no server change whatsoever; the capability was already there and unused.
+- The certificate is Synology's own default (`CN=synology`, issuer
+  `Synology Inc. CA`) and does **not** match `192.168.0.20`. That is why this works
+  on the MacBook, where the exception has been accepted, and why **each new device
+  must accept the certificate once** before NAS links open there. A certificate
+  prompt on the iPhone is INFRASTRUCTURE, not an app defect.
+
+**Current base URL:** `https://192.168.0.20:5010` (LAN only).
+
+**The app is deliberately TRANSPORT-AGNOSTIC, and that is now enforced rather than
+hoped for.** A reference pasted from the NAS listing is stored **relative** to the
+configured base (`relativizeReference`, `recordings.ts`, tested) instead of as the
+absolute URL the browser gave you. An absolute URL would pin that reference to one
+route to the NAS — dead on a phone away from home, and dead everywhere the day the
+base URL changes. Because only the path is stored, **choosing the transport is a
+decision that can be changed later without rewriting a single stored reference.**
+
+**That choice is deliberately left OPEN.** Staying on the LAN address, moving to
+Tailscale (`ts.net` gives a valid certificate and tailnet-only access; Go's file
+server supports Range requests, so video seeking works), or putting a reverse proxy
+in front are all still available. Whichever is chosen, only the Settings base URL
+changes.
+
+**Rejected alternatives.** WebDAV (auth prompts break iOS inline video); per-file
+File Station share links (unmaintainable — one link per file). Also deliberately NOT
+built: a `scan:nas` index feeding an in-app file picker — the NAS already renders
+browsable listings, so browse → copy → paste closes most of the gap without adding a
+build script, a generated reference module, a staleness story and a Mac-only
+dependency. Revisit only if browsing and pasting proves insufficient in real use.
+
+**Never modify the recordings themselves** — the app only stores references, and
+removing a reference never touches the NAS file.
+
+---
+
+## Session Plan — algorithm & evidence (2026-07-18)
+
+The Session Plan (`src/domain/plan.ts`) lays out a time-budgeted session as ordered
+segments in five buckets (warm-up · lesson · review · deep · cool-down). It reuses the
+recommendation engine's `scoreItems` — no second ranking — and is pure and deterministic.
+
+**Decisions.**
+- **Minutes always sum to the budget.** A largest-remainder split by bucket weight, each
+  segment ≥ 2 min; when the budget can't seat every segment, the lowest-priority ones are
+  dropped before allocation. This is the one load-bearing invariant and is tested across
+  15/20/30/45/60 and the edge cases.
+- **The plan runs REAL blocks, not a countdown.** The runner drives the existing
+  start→active→close flow; `closeSession` advances the plan only when the closed block was
+  the current segment. `RoutineRunner` (the warm-up timer) is deliberately left untouched.
+- **The running plan is ephemeral** (store-only, never in `PracticeDB`) so it never syncs
+  or lands in a backup as data.
+- **Shares are sane defaults, adjustable, never "optimal".** Bucket minute shares come from
+  `SchedulingParams` (Settings) — the app makes no claim of an ideal ratio.
+
+**Evidence (used as rationale for the SHAPE, not as precise prescriptions).**
+- Spacing effect → short, spaced segments + SM-2 (Cepeda et al. 2006; Simmons 2012).
+- Contextual interference / interleaving → the no-adjacent-same-item mix and the "it feels
+  harder; that's the point" framing (Shea & Morgan 1979; Carter & Grahn 2016; Stambaugh 2011).
+- Retrieval practice → short review slots (Roediger & Karpicke 2006).
+- Deliberate, goal-directed practice → one focus per segment (Ericsson et al. 1993;
+  Duke, Simmons & Cash 2009).
+- Sleep consolidation → cool-down / end-on-stability (Simmons & Duke 2006).
+
+No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.
+```
+
+### src/components/ClassQuestions.tsx
+
+```
+import { useState } from 'react';
+import { renderClassQuestionsText, type ClassQuestion } from '../domain';
+
+/**
+ * "Questions for next class" — the questions to actually ask the teacher,
+ * with Copy / Download / Print exports. Each question is one coherent,
+ * direction-aware unit: the ordinal number is a real element inside a flex
+ * `<li dir="auto">`, never a native `::marker` — a marker's own logical
+ * position for a direction-variable list item is a browser implementation
+ * detail no gutter measurement can guarantee, so it is never relied on at
+ * all.
+ *
+ * THE QUESTION leads the li's own resolution — never the title. `dir="auto"`
+ * skips any descendant that carries its own `dir` when hunting for a first
+ * strong character, so whichever of title/question is left BARE is what the
+ * ordinal's side tracks. `questionsForNextClass` guarantees `q.question` is
+ * non-empty on every rendered row; `q.title` carries no such guarantee and is
+ * authored independently (an item's own name, which need not share the
+ * question's language) — an OWNER-observed regression found the ordinal
+ * pinned to whichever language the TITLE happened to be in (bare, leading
+ * the hunt) while the question resolved its own, different direction and
+ * landed on the opposite edge, unattached from the marker entirely. The
+ * title now carries its OWN `dir="auto"` isolate (taking it OUT of the
+ * hunt, same skip mechanism, so an English title still renders left and a
+ * Farsi one still renders right, independently); the question is left bare,
+ * so it is what the li's `dir="auto"` actually finds.
+ *
+ * Problem/Last time are each their OWN group: the ROW itself carries
+ * `dir="auto"`, so the row's alignment comes from the VALUE, not from the
+ * title above it or from whichever direction the label happens to read in.
+ * The fixed English label is marked `dir="ltr"` — not because its own text
+ * ever changes, but because `dir="auto"` skips a descendant that carries its
+ * own `dir` when hunting for a first strong character, so marking the label
+ * takes it OUT of that hunt and leaves the value as the only candidate. The
+ * value itself is bare (no `dir` of its own): were it marked too, BOTH
+ * children would be skipped and the row would have no resolution source at
+ * all, falling back to LTR regardless of what the value says. A question is
+ * never cleared by practising; the user edits the item to remove it.
+ */
+export default function ClassQuestions({
+  instrumentName,
+  dateLabel,
+  questions,
+}: {
+  instrumentName: string;
+  dateLabel: string;
+  questions: ClassQuestion[];
+}) {
+  const [copied, setCopied] = useState(false);
+  const text = renderClassQuestionsText(instrumentName, dateLabel, questions);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  function download() {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safe = `${instrumentName}-${dateLabel}`.replace(/[^\p{L}\p{N}-]+/gu, '-');
+    a.download = `questions-${safe}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <section className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Questions for next class</div>
+        {questions.length > 0 && (
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn btn-ghost btn-sm" onClick={copy}>
+              {copied ? 'Copied ✓' : 'Copy'}
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={download}>
+              Download
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => window.print()}>
+              Print
+            </button>
+          </div>
+        )}
+      </div>
+
+      {questions.length === 0 ? (
+        <div className="card card-quiet small dim">
+          Nothing to ask yet. Flag an item “for next class” and add a teacher question — it will collect here.
+        </div>
+      ) : (
+        /* No native marker: an outside ::marker's own logical position for a
+           direction-variable <li> is a browser implementation detail, not
+           something a gutter measurement can guarantee — it escaped the
+           card's own padding on the owner's iPhone even with symmetric room
+           reserved on both sides. The ordinal is a real element instead, the
+           FIRST child of a flex <li dir="auto">: flexbox's row axis is
+           direction-aware by specification, so the number leads on the
+           right for a Farsi question and on the left for an English one,
+           always inside the content box it can never escape. It carries no
+           dir of its own (a digit is bidi-neutral) and neither does the
+           wrapper around title/question/details — dir="auto" skips a
+           descendant that has its own dir when hunting for a first strong
+           character, so giving the wrapper one would leave the <li> with no
+           resolution source of its own. The QUESTION (below) is left bare
+           for the same reason, deliberately — it is what the li's hunt is
+           meant to find, since it is always present and the title is not.
+
+           role="list": WebKit drops an <ol>/<ul>'s own list semantics from
+           the accessibility tree once `list-style: none` removes its visual
+           marker — an explicit role restores VoiceOver's "list, N items" and
+           each <li>'s position announcement, which the visible ordinal
+           (aria-hidden below, so it isn't announced twice) does not carry
+           on its own. */
+        <ol
+          role="list"
+          className="stack-sm"
+          style={{ margin: 0, padding: 0, listStyle: 'none' }}
+        >
+          {questions.map((q, i) => (
+            <li key={q.itemId} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
+              <span className="tiny faint" aria-hidden="true" style={{ flexShrink: 0 }}>
+                {i + 1}.
+              </span>
+              <div className="stack-sm grow">
+                {/* The title is authored independently of the question — an
+                    item's own name, which need not share the question's
+                    language — so it carries its own dir="auto" isolate,
+                    resolving from its own content rather than anchoring the
+                    li (that would pin the ordinal to the title's language,
+                    splitting it from the question whenever the two differ). */}
+                <div className="small" dir="auto" style={{ fontWeight: 600 }}>
+                  {q.title}
+                </div>
+                {/* Bare, deliberately: q.question is guaranteed non-empty
+                    (questionsForNextClass filters on it) and is what the
+                    li's dir="auto" hunt is meant to land on, so the ordinal
+                    always tracks the question, never the optional title. */}
+                <div className="small">
+                  {q.question}
+                </div>
+                {/* The ROW resolves direction from the VALUE, never the label:
+                    dir="ltr" on the label takes it out of the auto hunt, and the
+                    bare value is what's left for the row's dir="auto" to find. A
+                    Farsi value right-aligns the whole row even under an
+                    English title; an English value left-aligns it even under a
+                    Farsi one — the label never claims the direction either way. */}
+                {q.currentProblem && (
+                  <div className="tiny faint" dir="auto">
+                    <span dir="ltr">Problem:</span> {q.currentProblem}
+                  </div>
+                )}
+                {q.lastObservation && (
+                  <div className="tiny faint" dir="auto">
+                    <span dir="ltr">Last time:</span> {q.lastObservation}
+                  </div>
+                )}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* Off-screen sheet — the only thing that prints. */}
+      {questions.length > 0 && <pre className="print-sheet">{text}</pre>}
+    </section>
+  );
+}
+```
+
+### src/components/direction.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Layout follows the direction of the content it shows.
+ *
+ * A title and the details that belong to it sit in ONE group that carries
+ * `dir="auto"`, so a Persian item reads as one right-aligned block instead of
+ * splitting across the card — the title hugging one edge while its own caption
+ * hugs the other. Direction is resolved natively by the browser from the first
+ * strong character; nothing here detects or reorders text in JavaScript.
+ *
+ * The completion boundary is mechanical, not a matter of care. After this lane
+ * `dir="auto"` appears on GROUPS and on free-text FIELDS — never bare on a
+ * title element. This test asserts BOTH halves, so a missed title fails and a
+ * whole skipped file fails; "fixing" a file by DELETING the attribute fails
+ * too, which is important because that would break Farsi rendering outright.
+ *
+ * jsdom cannot evaluate any of this — it resolves no `dir=auto` and computes no
+ * `text-align` — so this reads the source instead, and the owner's device check
+ * (ac-6) is what proves the rendering. This test proves COMPLETENESS.
+ */
+
+/**
+ * Every page and shared component, as source text. Read through Vite's raw
+ * loader rather than node:fs: `src` is compiled without node types, and a glob
+ * means a NEW file is swept in automatically rather than needing to be
+ * remembered.
+ */
+const under = (dir: string, modules: Record<string, unknown>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(modules).map(([path, source]) => [`${dir}/${path.split('/').pop()}`, source as string]),
+  );
+
+const SOURCES: Record<string, string> = {
+  ...under('pages', import.meta.glob('../pages/*.tsx', { query: '?raw', import: 'default', eager: true })),
+  ...under('components', import.meta.glob('./*.tsx', { query: '?raw', import: 'default', eager: true })),
+};
+
+/** Classes that mark an element as a TITLE — direction may not sit on these. */
+const TITLE_CLASSES = ['truncate', 'title-md', 'page-title', 'stage-unit-title'];
+
+/** Native controls own their own text; direction on them is a FIELD, not a group. */
+const FIELD_TAGS = ['input', 'textarea', 'select'];
+
+/**
+ * Every surface that renders user-authored text and must therefore carry
+ * direction on at least one group. Recorded here (and in AGENTS.md) so the next
+ * lane inherits the list rather than re-deriving it.
+ */
+const SURFACES = [
+  'pages/Today.tsx',
+  'pages/StartBlock.tsx',
+  'pages/ActiveBlock.tsx',
+  'pages/CloseBlock.tsx',
+  'pages/Repertoire.tsx',
+  'pages/ItemDetail.tsx',
+  'pages/Lessons.tsx',
+  'pages/PathwayDetail.tsx',
+  'pages/StageDetail.tsx',
+  'pages/SessionPlan.tsx',
+  'pages/RoutineRunner.tsx',
+  'pages/Materials.tsx',
+  'pages/Insights.tsx',
+  'pages/TeacherReport.tsx',
+  'components/ItemCard.tsx',
+  'components/ItemMaterial.tsx',
+  'components/ClassQuestions.tsx',
+  'components/Attachments.tsx',
+];
+
+/**
+ * Titles that genuinely have no group to join, listed so the exception is
+ * VISIBLE to a reviewer rather than silently left behind. Each entry must still
+ * match a real site — a stale entry fails the test below.
+ */
+const ALLOWED_TITLE_SITES: { file: string; snippet: string; why: string }[] = [
+  // EMPTY, and that is the finding: every title on every surface turned out to
+  // have a group it could join — the catalogue row's own text column, the row a
+  // lone title shares with its badge, or a wrapper drawn around the title and
+  // the caption beneath it. An entry here would be a title the sweep could not
+  // reach; the list is kept (and asserted below) so the next one is visible
+  // rather than silent.
+];
+
+/**
+ * Genuine exceptions to `unexemptedPhrase`'s 2+-token rule, visible for the
+ * same reason `ALLOWED_TITLE_SITES` is: a stale entry (its `tagSnippet` no
+ * longer found on the named group) fails the test below, so an exception
+ * can't quietly outlive the code it was written for. Both entries here are
+ * TWO+ opaque data expressions that read as a single compound VALUE, not a
+ * title split from a foreign caption — the shape this whole family exists to
+ * catch:
+ * - `{sp.done}/{sp.total}` (PathwayDetail's stage progress) is a numeric
+ *   counter ("3/5") — digits carry no bidi risk on their own, unlike an
+ *   English WORD dropped into an RTL run.
+ * - `` `${pathway.name} — ` `` followed by `{stage.code}` (ItemDetail's
+ *   breadcrumb) is one continuous "Pathway — Stage" label built from two
+ *   fields, exactly the same kind of compound anchor a lone title already
+ *   forms with the badge it sits next to elsewhere in this file — there is
+ *   no separate "caption" here to have its own opinion about direction.
+ */
+const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: string }[] = [
+  {
+    file: 'pages/PathwayDetail.tsx',
+    tagSnippet: '<button className="grow" dir="auto"',
+    why: '{sp.done}/{sp.total} is a numeric progress counter, not English words',
+  },
+  {
+    file: 'pages/ItemDetail.tsx',
+    tagSnippet: 'stage.pathwayId',
+    why: 'pathway name + stage code is one compound breadcrumb label, not a title plus a foreign caption',
+  },
+];
+
+/**
+ * Every group-level `dir="auto"` site, recorded in source order — duplicates
+ * included, because three bare `<div dir="auto">` in the same file (Today.tsx
+ * has several) are three separate SITES, not one collapsed entry. This is
+ * what "every listed surface has A group" (below) cannot see: a file keeps
+ * passing that check as long as ONE of its groups survives, so deleting the
+ * Practise-now card's own `dir="auto"` — the exact regression a rejected
+ * review found — left Today.tsx's other, unrelated groups to vouch for it.
+ * Comparing the WHOLE ordered inventory instead means removing any one of
+ * these sites — anywhere in any file — shrinks or reorders the array and
+ * fails here, whether or not that file has other groups left.
+ *
+ * Same visibility contract as ALLOWED_TITLE_SITES: this is a recorded ledger,
+ * not a derivation, so a legitimate new group site must be added here (the
+ * "keeps every recorded group site current" test below fails until it is),
+ * exactly as a title exception must be added to the allowlist above.
+ */
+const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
+  { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: 'row' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'small' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'tiny faint' },
+  { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/ItemCard.tsx', tagName: 'span', classValue: '' },
+  { file: 'components/ItemCard.tsx', tagName: 'div', classValue: 'small dim' },
+  { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'components/ItemMaterial.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'eyebrow' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'div', classValue: 'small dim' },
+  { file: 'pages/ActiveBlock.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/CloseBlock.tsx', tagName: 'div', classValue: 'eyebrow' },
+  { file: 'pages/CloseBlock.tsx', tagName: 'div', classValue: 'stack-sm' },
+  { file: 'pages/Insights.tsx', tagName: 'th', classValue: 'dim' },
+  { file: 'pages/Insights.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'list-row card-link' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'div', classValue: 'list-row' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'link' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'span', classValue: 'dim' },
+  { file: 'pages/ItemDetail.tsx', tagName: 'link', classValue: 'link' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'row between' },
+  { file: 'pages/Lessons.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'row between' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Lessons.tsx', tagName: 'div', classValue: 'tiny dim' },
+  { file: 'pages/Lessons.tsx', tagName: 'link', classValue: 'grow' },
+  { file: 'pages/Materials.tsx', tagName: 'section', classValue: 'stack-sm' },
+  { file: 'pages/Materials.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'header', classValue: 'stack-sm' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'p', classValue: 'page-sub' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'card card-quiet small dim' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: 'small dim' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'pages/PathwayDetail.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
+  { file: 'pages/Repertoire.tsx', tagName: 'section', classValue: 'stack-sm' },
+  { file: 'pages/Repertoire.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Repertoire.tsx', tagName: 'link', classValue: 'row between small card-link' },
+  { file: 'pages/Repertoire.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'row between' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'div', classValue: 'tiny faint' },
+  { file: 'pages/RoutineRunner.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/SessionPlan.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: 'card card-quiet row between small' },
+  { file: 'pages/StageDetail.tsx', tagName: 'button', classValue: 'stage-unit-text' },
+  { file: 'pages/StageDetail.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/StartBlock.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/TeacherReport.tsx', tagName: 'pre', classValue: 'pre' },
+  { file: 'pages/Today.tsx', tagName: 'button', classValue: "`option${!overview && selected?.id === i.id ? ' selected' : ''}`" },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'button', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'link', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: '' },
+  { file: 'pages/Today.tsx', tagName: 'link', classValue: 'list-row card-link' },
+  { file: 'pages/Today.tsx', tagName: 'div', classValue: 'grow' },
+  { file: 'pages/Today.tsx', tagName: 'span', classValue: '' },
+];
+
+// --- reading the source -----------------------------------------------------
+
+function sourceFiles(): string[] {
+  return Object.keys(SOURCES).sort();
+}
+
+interface Site {
+  file: string;
+  line: number;
+  tagName: string;
+  classValue: string;
+  text: string;
+  at: number;
+}
+
+/** The opening tag that an index sits inside, brace- and quote-aware. */
+function enclosingTag(src: string, at: number): string {
+  const start = src.lastIndexOf('<', at);
+  let depth = 0;
+  let i = start + 1;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '{') depth += 1;
+    else if (c === '}') depth -= 1;
+    else if (c === '"' || c === "'") {
+      const end = src.indexOf(c, i + 1);
+      if (end < 0) break;
+      i = end;
+    } else if (c === '>' && depth === 0) break;
+    i += 1;
+  }
+  return src.slice(start, i + 1);
+}
+
+/** The raw text of a tag's className attribute (string or expression). */
+function classNameOf(tag: string): string {
+  const at = tag.indexOf('className=');
+  if (at < 0) return '';
+  const from = at + 'className='.length;
+  const opener = tag[from];
+  if (opener === '"' || opener === "'") {
+    const end = tag.indexOf(opener, from + 1);
+    return end < 0 ? tag.slice(from + 1) : tag.slice(from + 1, end);
+  }
+  if (opener !== '{') return '';
+  let depth = 0;
+  for (let i = from; i < tag.length; i += 1) {
+    if (tag[i] === '{') depth += 1;
+    else if (tag[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return tag.slice(from + 1, i);
+    }
+  }
+  return tag.slice(from + 1);
+}
+
+/**
+ * Blank out `//` and `/* *\/` comments before scanning — a prose comment that
+ * mentions `dir="auto"` (this file is full of them, and rightly so) is not an
+ * attribute, and matching it anyway produces a phantom site: at best one with
+ * no enclosing tag, at worst `enclosingTag` walking backward out of the
+ * comment and mis-picking an unrelated real tag from earlier in the file.
+ * String and template literals are copied through verbatim — that is where a
+ * REAL `dir="auto"` attribute value lives — and every character removed is
+ * replaced with a space (newlines kept as newlines) so line numbers and
+ * offsets into the rest of the source are unaffected.
+ *
+ * A `'`/`"` is treated as a real string delimiter only if its MATCHING quote
+ * shows up before the next newline. A genuine JS string/JSX attribute value
+ * in this codebase is always single-line, so this is a safe bound — and it
+ * is a NECESSARY one: plain JSX text containing an apostrophe ("That stage
+ * doesn't exist.") is not a string at all, and treating it as one made the
+ * scanner consume every real comment and tag after it — including this
+ * file's OWN prose, once a comment happened to quote `dir="ltr"` inside that
+ * unterminated span — as literal, unstripped text. A backtick template
+ * literal has no such single-line guarantee in general (this codebase's
+ * few multi-line ones are template literals), so it keeps the unbounded
+ * scan.
+ */
+function stripComments(src: string): string {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const two = src.slice(i, i + 2);
+    if (two === '//') {
+      while (i < src.length && src[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+    } else if (two === '/*') {
+      out += '  ';
+      i += 2;
+      while (i < src.length && src.slice(i, i + 2) !== '*/') {
+        out += src[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+    } else if (src[i] === '"' || src[i] === "'") {
+      const quote = src[i];
+      const lineEnd = src.indexOf('\n', i + 1);
+      const searchEnd = lineEnd < 0 ? src.length : lineEnd;
+      const close = src.indexOf(quote, i + 1);
+      if (close < 0 || close > searchEnd) {
+        // No same-line match — an apostrophe/quote in plain text, not a
+        // real string. Pass it through and keep scanning normally right
+        // after it, so a later quote on the same or a later line gets its
+        // own fresh (and likely correct) chance to pair up.
+        out += src[i];
+        i += 1;
+        continue;
+      }
+      out += quote;
+      i += 1;
+      while (i < close) {
+        if (src[i] === '\\' && i + 1 < close) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i += 1;
+      }
+      out += src[i];
+      i += 1;
+    } else if (src[i] === '`') {
+      const quote = src[i];
+      out += quote;
+      i += 1;
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\' && i + 1 < src.length) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i += 1;
+      }
+      if (i < src.length) {
+        out += src[i];
+        i += 1;
+      }
+    } else {
+      out += src[i];
+      i += 1;
+    }
+  }
+  return out;
+}
+
+function directionSites(file: string): Site[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: Site[] = [];
+  for (const match of src.matchAll(/dir="auto"/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
+      classValue: classNameOf(tag),
+      text: tag,
+      at,
+    });
+  }
+  return sites;
+}
+
+const isTitle = (site: Site) => TITLE_CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(site.classValue));
+const isField = (site: Site) => FIELD_TAGS.includes(site.tagName);
+const isGroup = (site: Site) => !isTitle(site) && !isField(site);
+
+const allowed = (site: Site) =>
+  ALLOWED_TITLE_SITES.some((e) => e.file === site.file && site.text.includes(e.snippet));
+
+// --- mixed-content groups: a child's OWN bidi base, not just the group's ---
+//
+// A rejected review found that the inventory above proves a GROUP carries
+// direction, but nothing proved that a fixed English sentence or an
+// independently-authored value sitting INSIDE that group has a bidi base of
+// its own. A Farsi title makes the whole group resolve RTL; anything else in
+// that subtree with no `dir` of its own is exposed to that same RTL base —
+// which is exactly right for a caption that belongs to the title (that is
+// the whole point of grouping), but wrong for fixed page copy or a separately
+// authored value that could be a different script entirely.
+//
+// This can't be reduced to "no bare Latin text in a group": a short fixed
+// label immediately followed by its own isolate — `Constraint: ` before
+// `<span dir="auto">{value}</span>`, the established shape ActiveBlock set —
+// is deliberately left bare, and flagging it would force changes to an
+// already-correct, already-reviewed pattern. What actually breaks is a real
+// PHRASE (2+ words) that reaches the end of the group with nothing to isolate
+// it: `unexemptedPhrase` walks a group's body in source order, accumulating
+// exposed literal text (skipping `{…}` expressions, whose content is opaque
+// from source) into a run, and clears that run the moment it is immediately
+// followed by an element carrying its own `dir=` — the run is exempted
+// regardless of length, because whatever risk existed is now the isolate's
+// to own. Only a run that survives to the end of the group's body, and that
+// reads as a real phrase, is flagged.
+
+/**
+ * The element's body span: from just after its own opening tag's `>` to just
+ * after its matching closing tag (empty for a self-closing tag). Depth
+ * tracking is generic — any opened tag increases it, any closed tag
+ * decreases it — since well-formed JSX nests properly regardless of name.
+ *
+ * A React Fragment shorthand (`<>…</>`) is EVERY bit as much an opening/
+ * closing pair as a named tag, and must be counted as one: `</>` starts with
+ * `/` so the CLOSING branch below already matched it (correctly decrementing
+ * depth), but `<>` starts with neither `/` nor a letter, so it fell through
+ * unmatched and never incremented depth. Every `<>…</>` pair inside a body
+ * therefore decremented depth ONE MORE TIME than it was ever incremented —
+ * on a group whose conditional content used a fragment (`{cond && (<>…
+ * </>)}`, the shape `{stage && (<><span>…</span><Link>…</Link></>)}` already
+ * uses in this codebase), depth hit zero several tags before the group's
+ * REAL close, silently truncating the body `unexemptedPhrase` scans and
+ * hiding every violation after that point — exactly the kind of gap a
+ * "detectable, not enumerated" claim must not have.
+ */
+function elementBody(src: string, tag: string, openAt: number): { start: number; end: number } {
+  const start = openAt + tag.length;
+  if (tag.endsWith('/>')) return { start, end: start };
+  let depth = 1;
+  let i = start;
+  while (i < src.length && depth > 0) {
+    if (src[i] === '<') {
+      if (src[i + 1] === '/') {
+        const close = src.indexOf('>', i);
+        i = close < 0 ? src.length : close + 1;
+        depth -= 1;
+        continue;
+      }
+      if (src[i + 1] === '>') {
+        // Fragment shorthand open, <>. Its close, </>, is matched by the
+        // ordinary closing-tag branch above, so this one must increment.
+        i += 2;
+        depth += 1;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const inner = enclosingTag(src, i);
+        i += inner.length;
+        if (!inner.endsWith('/>')) depth += 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return { start, end: i };
+}
+
+/**
+ * The first exposed, unexempted 2+-token run in a group's body, or null when
+ * everything either belongs to an isolate or never accumulates a real phrase.
+ * See the block comment above for what "exempted" means.
+ *
+ * A DATA expression (`{item.title}`, `{ITEM_TYPE_LABELS[item.itemType]}`,
+ * `{formatBytes(a.size)}`) counts as ONE opaque token — its actual rendered
+ * text is invisible from source, but its mere PRESENCE, unisolated, next to
+ * other content is exactly the shape a rejected review found live in the
+ * app: `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '}
+ * {itemCount(...)} item{...}` reads as zero words to a scanner that only
+ * counts literal text, yet renders three always-English fragments in a row.
+ * Treating each such expression as a token turns that invisible run into a
+ * 3+-token hit without ever needing to know what the labels actually say.
+ * An expression that contains its own nested JSX (`{cond && <div dir="auto">
+ * …</div>}`) is left fully opaque (zero contribution) as before — its
+ * children are independent elements, already reachable by the outer scan
+ * over the whole file, and forcing them through this same linear buffer
+ * would require a real JSX parser this file deliberately doesn't have.
+ */
+function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): string | null {
+  let buffer = '';
+  // A run is judged at each TAG boundary (open or close) — two adjacent but
+  // unrelated elements (e.g. two one-word buttons, "Edit" and "Delete") must
+  // never concatenate into a false 2-word phrase. An EXPRESSION boundary does
+  // NOT judge the run: `{n} segments · {m} min` is one generated phrase split
+  // across two expressions, and judging at each `{` would fragment it into
+  // single, individually-innocent words, hiding the real violation.
+  const flush = (): string | null => {
+    const words = buffer.trim().match(/[A-Za-z]+/g) ?? [];
+    buffer = '';
+    return words.length >= 2 ? words.join(' ') : null;
+  };
+  let i = bodyStart;
+  while (i < bodyEnd) {
+    const c = src[i];
+    if (c === '{') {
+      const exprStart = i + 1;
+      let depth = 1;
+      i += 1;
+      while (i < bodyEnd && depth > 0) {
+        if (src[i] === '{') depth += 1;
+        else if (src[i] === '}') depth -= 1;
+        i += 1;
+      }
+      const exprText = src.slice(exprStart, i - 1);
+      if (!/<[A-Za-z]/.test(exprText)) buffer += ' X ';
+      continue;
+    }
+    if (c === '<') {
+      if (src[i + 1] === '/') {
+        const hit = flush();
+        if (hit) return hit;
+        const close = src.indexOf('>', i);
+        i = close < 0 ? bodyEnd : close + 1;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const hit = flush();
+        if (hit) return hit;
+        const tag = enclosingTag(src, i);
+        if (/\sdir="(auto|ltr|rtl)"/.test(tag)) {
+          const body = elementBody(src, tag, i);
+          i = body.end; // exempted: leads into its own isolate, whatever its length
+        } else {
+          i += tag.length; // transparent: its children are scanned in the same pass
+        }
+        continue;
+      }
+    }
+    buffer += c;
+    i += 1;
+  }
+  return flush();
+}
+
+/**
+ * Independently-authored values (case ii: a question, a note, an observation
+ * — content whose own language cannot be assumed from the title next to it)
+ * that carry their own `dir=` isolate, so they resolve from their OWN content
+ * rather than the group's. Unlike the fixed-copy phrases above, these are
+ * plain expressions (`{q.currentProblem}`, `{pathway.note}`) — their value is
+ * opaque from source, so completeness here is a recorded ledger, not a
+ * derivation, exactly like ALLOWED_TITLE_SITES and GROUP_SITE_INVENTORY: a
+ * legitimate new one must be added, visibly, rather than left silent.
+ */
+const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{active.constraint}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{problem}</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
+  { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
+  { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
+  { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
+  // Instrument names used to be tracked here too, one exact snippet per site.
+  // A sealed review found that shape structurally insufficient FOUR times
+  // running: each rework closed only the sites a reviewer had named, while
+  // aliases, property access and names fused into template strings kept
+  // slipping through undetected. Instrument names are now covered by a
+  // dedicated, pattern-driven check below ('an instrument name resolves its
+  // own direction wherever it renders') that discovers every renderer of the
+  // name mechanically instead of requiring each one to be re-listed here —
+  // see that check for the full rationale.
+  //
+  // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
+  // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
+  // them to a different shape entirely — the ROW carries dir="auto" and the
+  // LABEL is marked dir="ltr" to take it out of the auto hunt, so the row's
+  // OWN alignment comes from the value rather than from an ancestor's
+  // resolved direction — covered by the dedicated shape check below
+  // ('a label-first auto row's value stays bare...') rather than a snippet
+  // ledger, since the point is the RELATIONSHIP between the label and the
+  // value, not either one's presence on its own.
+  //
+  // ClassQuestions' q.question used to be tracked here too, isolated with
+  // its own dir="auto" span while the title was left bare to anchor the
+  // <li>. An OWNER-observed regression found that backwards: the title is
+  // optional and independently authored, so anchoring the li on it split
+  // the ordinal from the question whenever the two differed in language.
+  // The roles are now reversed — title isolated, question bare — which
+  // makes the title's new dir="auto" a plain GROUP_SITE_INVENTORY entry
+  // (same tag/class as the old question entry, so that ledger needs no
+  // edit) rather than a value-ledger one, and adds a dedicated shape check
+  // below ('the question anchors the group's direction...') asserting the
+  // anchor is the question, not the title.
+];
+
+/**
+ * Fixed English copy or generated metadata (case i: `buildReason`,
+ * `relativeDay`, a hardcoded sentence) that is ALWAYS English by
+ * construction, wrapped in its own `dir="ltr"` isolate so a Farsi title's RTL
+ * base can't drag its trailing punctuation to the visual start. Recorded for
+ * the same reason as ISOLATED_VALUE_SITES: a call like `StaleNote` renders
+ * from a different function than its call site, so no source scan at the
+ * call site can see whether its OWN return value is isolated.
+ */
+const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
+  { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> plan running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  {
+    file: 'pages/Today.tsx',
+    snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
+  },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">difficulty {item.difficulty}/5</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
+  { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
+  { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
+  { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },
+  { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
+  { file: 'pages/StageDetail.tsx', snippet: '<span dir="ltr">{meta.join(\' · \')}</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: "<span className=\"badge tone-progress\" dir=\"ltr\">{isPinned ? 'Current · pinned' : 'Current'}</span>" },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="badge tone-good" dir="ltr">Done</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems' },
+  { file: 'pages/PathwayDetail.tsx', snippet: "<span dir=\"ltr\">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>" },
+  { file: 'pages/Lessons.tsx', snippet: '<span className="badge tone-progress" dir="ltr">' },
+  { file: 'pages/Lessons.tsx', snippet: '<span className="tiny faint" dir="ltr">no class planned</span>' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{meta}</span>' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Set your NAS base URL in' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Your NAS base URL isn’t a valid web address' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  { file: 'pages/RoutineRunner.tsx', snippet: '<span className="tiny faint" dir="ltr">{minutes} min</span>' },
+  { file: 'pages/StartBlock.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'pages/Insights.tsx', snippet: '<span dir="ltr">{insight.body}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{BLOCK_MODE_LABELS[active.mode]}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{FOCUS_LABELS[active.focus]}</span>' },
+  {
+    file: 'pages/Repertoire.tsx',
+    snippet: '<span className="tiny faint" dir="ltr">\n              {g.works.length} work',
+  },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
+  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
+  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem:</span>' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time:</span>' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
+  { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
+  {
+    file: 'pages/Materials.tsx',
+    snippet: '<span dir="ltr">\n                          {MATERIAL_SOURCE_LABELS[m.sourceType]}',
+  },
+];
+
+// --- an isolate must be INLINE, never a block that resolves its own align --
+//
+// A rejected review found `ItemMaterial.tsx` fixing a Farsi title's detail
+// line with `<div className="tiny faint" dir="ltr">…</div>` — a BLOCK
+// carrying the isolate directly. `text-align: start`, inherited from the
+// group, is a per-BOX computed value: it resolves against that box's OWN
+// `direction`, not the group's. Give the block its own `dir="ltr"` and its
+// `text-align: start` resolves LEFT regardless of the group's (possibly RTL)
+// resolved direction — splitting the detail from a right-aligned Farsi title
+// exactly as before, just relocated. An INLINE isolate (`<span dir="ltr">`)
+// never has this problem: `text-align` is a block-level concept, so a span's
+// own `dir` only isolates the Unicode bidi algorithm's treatment of the text
+// inside it and never touches which edge the enclosing block aligns to. This
+// is therefore not a location to enumerate but a SHAPE to ban outright: no
+// `dir="ltr"`/`dir="rtl"` may ever sit on a tag other than `span`/`bdi`,
+// full stop, so this class of bug cannot come back in any file, named here
+// or not.
+const INLINE_ISOLATE_TAGS = ['span', 'bdi'];
+
+function isolateSites(file: string): Site[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: Site[] = [];
+  for (const match of src.matchAll(/dir="(?:ltr|rtl)"/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
+      classValue: classNameOf(tag),
+      text: tag,
+      at,
+    });
+  }
+  return sites;
+}
+
+// --- a native list marker is never relied on for a direction-variable item -
+//
+// A rejected review found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+// space with `paddingInlineStart` alone while its `<li>`s each resolve their
+// OWN direction via `dir="auto"`, and the first fix reserved symmetric
+// `paddingInline` instead, reasoning that a marker landing on either side
+// would then have room. A SIXTH SEALED FINDING, checked on the owner's own
+// iPhone, found the number still escaping the card even with that room
+// reserved: an outside `::marker`'s exact position for a direction-variable
+// list item is a browser implementation detail — exactly the class of thing
+// jsdom cannot compute either, which is why a padding measurement was ever
+// trusted to stand in for it — not a distance a gutter can be sized against.
+// The fix stops accommodating the native marker and removes it instead
+// (`listStyle: 'none'`), rendering the ordinal as a real element: the FIRST
+// child of a flex `<li dir="auto">`, so flexbox's own direction-aware row
+// axis (a spec-mandated behaviour, unlike marker positioning) puts it on the
+// correct side and keeps it inside the content box by construction — it can
+// no longer escape a card it is now genuinely inside of. This scans every
+// `<ol>`/`<ul>` in the app (not just the one known today) and asserts the
+// mechanism directly: a list containing a `dir="auto"` `<li>` must disable
+// the native marker outright, and that `<li>` must itself be a flex/grid
+// container able to reorder its own content — a shape check on the fix
+// itself, not a measurement around a browser behaviour nothing here can
+// verify.
+function listSites(file: string): { file: string; line: number; tag: string; autoLiTags: string[] }[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: { file: string; line: number; tag: string; autoLiTags: string[] }[] = [];
+  for (const match of src.matchAll(/<(ol|ul)\b/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    if (tag.endsWith('/>')) continue;
+    const body = elementBody(src, tag, at);
+    const bodyText = src.slice(body.start, body.end);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tag,
+      autoLiTags: [...bodyText.matchAll(/<li\b[^>]*\sdir="auto"[^>]*>/g)].map((m) => m[0]),
+    });
+  }
+  return sites;
+}
+
+/** True when the list's own inline style disables the native marker outright
+ *  (`listStyle`/`listStyleType: 'none'`) — the only thing about a marker's
+ *  own rendered position a source scan can actually verify, unlike a
+ *  padding measurement around a mechanism jsdom cannot compute either. */
+function disablesNativeMarker(tag: string): boolean {
+  const style = tag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+  return /\blistStyle(?:Type)?\s*:\s*['"]none['"]/.test(style);
+}
+
+/** True when a `<li>` tag is itself a flex (or grid) container — the
+ *  mechanism that lets its own content (an ordinal, a badge) reorder with
+ *  its own resolved direction instead of depending on a static layout. */
+function isDirectionAwareContainer(liTag: string): boolean {
+  // `.row` is `display: flex` in global.css — this is a source scan trusting
+  // a fact declared in a different file; renaming or redefining that class
+  // would silently blind this check.
+  if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
+  const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+  return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);
+}
+
+// --- a row's alignment comes from its value, never a label marked out of the hunt ---
+//
+// A SEVENTH SEALED FINDING found `ClassQuestions.tsx`'s Problem:/Last time:
+// rows still misaligned after the sixth rework: giving the VALUE its own
+// `dir="auto"` isolate (or later, `display: inline-block`) makes the value's
+// OWN characters shape correctly, but the ROW that positions "Label: value"
+// as a unit was left bare, inheriting whichever direction the TITLE above it
+// happened to resolve to — right for a Farsi title, left for an English one
+// — regardless of what script the value itself was written in. An
+// English-titled item with a Farsi problem note left the whole "Problem:
+// ..." row pinned to the left, exactly where the label's own inherited
+// direction put it, with the value's internal shaping correct but its
+// POSITION wrong.
+//
+// The fix gives the ROW itself `dir="auto"`, and marks the LABEL —
+// `Problem:`/`Last time:`, never the value — with its own `dir="ltr"`. This
+// is not because the label's text ever changes; it is because `dir="auto"`
+// skips a descendant that carries its own `dir` when hunting for a first
+// strong character (the same mechanism the group-vs-title rule above relies
+// on). Marking the label takes it OUT of that hunt, so the row's resolution
+// comes from whatever is left — the value, left deliberately BARE. Marking
+// the value too would take BOTH out, leaving the row with no candidate at
+// all and a silent fallback to LTR no matter what the value says — the
+// regression this check exists to catch. This is a SHAPE check, not a
+// ClassQuestions-specific one: it fires on any file using the same
+// label-first `dir="auto"` row pattern.
+function isLabelFirstAutoRow(file: string, site: Site): boolean {
+  const src = stripComments(SOURCES[file]);
+  const openAt = src.lastIndexOf('<', site.at);
+  const body = elementBody(src, site.text, openAt);
+  return /^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/.test(src.slice(body.start, body.end));
+}
+
+// --- an instrument name resolves its own direction, wherever it renders ----
+//
+// Four consecutive sealed reviews rejected this family for the same root
+// cause: every rework closed the handful of sites a reviewer had named by
+// file:line, while the same defect kept resurfacing in a shape the fix
+// hadn't covered — an alias, a property read, a name folded into a template
+// string before anything could render. A location list can only ever be as
+// complete as the audit that built it. This discovers every CURRENT
+// renderer of an instrument's name mechanically, from the shapes this
+// codebase actually uses to produce one, rather than requiring each to be
+// re-listed by hand:
+//   - the instrumentName(db, id) helper, called directly;
+//   - a bare `.instrumentName` property read (a selector row's own field);
+//   - a LOCAL ALIAS of either — a destructured, renamed prop
+//     (`instrumentName: name`), or a `const X = instrumentName(...)`
+//     binding — found by locating the alias's OWN declaration, then
+//     scanning the rest of the file for bare reads of it;
+//   - a direct `.name` read on an Instrument object bound by iterating
+//     `db.instruments` (a `.map`/`.filter().map` callback's own parameter,
+//     or an inline `instruments.find(...)?.name` with no variable at all).
+// An instrument is renameable in Settings, Farsi included, so every one of
+// these is the OWNER'S OWN editable text, never generated copy.
+//
+// The invariant asserted is the one BEHIND the fix, not the fix's own site
+// list: a rendered instrument name resolves its OWN direction — nothing may
+// fuse it into a plain string with other text before it renders, and its
+// nearest enclosing `dir` (searching outward through real ancestors, never
+// a neighbouring SIBLING) must be "auto", never absent and never forced to
+// "ltr"/"rtl". A declaration/binding site (the alias's own introduction) is
+// not itself a render and is excluded; so is a value forwarded as a JSX
+// ATTRIBUTE (`instrumentName={x}`) — that is prop-drilling, not a DOM text
+// render, and the component actually receiving it is checked wherever IT
+// renders the value (ClassQuestions never does — it only builds
+// clipboard/filename text with the prop, never a laid-out block).
+
+/** Index of the `)` matching the `(` at `openAt`, skipping over the contents
+ *  of any string/template so a stray bracket character inside one (none
+ *  exist in the callbacks this scans today) can never desync the count. */
+function matchingParenClose(src: string, openAt: number): number {
+  let depth = 0;
+  let i = openAt;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    } else if (c === '"' || c === "'" || c === '`') {
+      const close = src.indexOf(c, i + 1);
+      i = close < 0 ? src.length : close;
+    }
+    i += 1;
+  }
+  return src.length;
+}
+
+/** Walks back over a receiver chain (`db.instruments` → the start of `db`)
+ *  so a declaration check lands on the true start of the expression, not
+ *  wherever a matched sub-pattern happens to begin inside it. */
+function receiverChainStart(src: string, at: number): number {
+  let i = at;
+  while (i > 0 && src[i - 1] === '.') {
+    let k = i - 1;
+    while (k > 0 && /[\w$]/.test(src[k - 1] ?? '')) k -= 1;
+    if (k === i - 1) break; // a bare '.' with no identifier before it
+    i = k;
+  }
+  return i;
+}
+
+/**
+ * The tag name, dir value and own body-start offset of every element
+ * enclosing position `at`, outermost first — the ANCESTOR chain, not just
+ * the nearest opening tag. What resolves a name's direction is the nearest
+ * ancestor carrying ANY dir at all, which is not necessarily the immediate
+ * parent: ActiveBlock's/CloseBlock's eyebrow divs sit right next to (not
+ * inside) the title's own dir="auto" group, so that group must never count
+ * for them.
+ */
+function ancestorChain(src: string, at: number): { tagName: string; dir: string | null; bodyStart: number }[] {
+  const stack: { tagName: string; dir: string | null; bodyStart: number }[] = [];
+  let i = 0;
+  while (i < at) {
+    if (src[i] === '<') {
+      if (src[i + 1] === '/') {
+        const close = src.indexOf('>', i);
+        i = close < 0 ? at : close + 1;
+        stack.pop();
+        continue;
+      }
+      if (src[i + 1] === '>') {
+        stack.push({ tagName: '', dir: null, bodyStart: i + 2 }); // fragment shorthand, never carries dir
+        i += 2;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const tag = enclosingTag(src, i);
+        const tagEnd = i + tag.length;
+        i = tagEnd;
+        if (!tag.endsWith('/>')) {
+          const dirMatch = /\sdir="(auto|ltr|rtl)"/.exec(tag);
+          const nameMatch = /^<\s*([A-Za-z][\w.]*)/.exec(tag);
+          stack.push({ tagName: (nameMatch?.[1] ?? '').toLowerCase(), dir: dirMatch ? dirMatch[1] : null, bodyStart: tagEnd });
+        }
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return stack;
+}
+
+/**
+ * Whatever renders BEFORE position `at` inside a body that runs from
+ * `bodyStart` to `at` — real sibling content only, opaque-but-present
+ * markers ('X') standing in for anything whose actual text isn't visible
+ * from source. Two things are deliberately NOT "preceding content":
+ *   - A bare `{` that is the START of the very expression `at` sits inside
+ *     (`<span dir="auto">{instrumentName(...)}</span>` has no sibling
+ *     before the call, just the brace opening its own container) — this
+ *     function stops (returns what it has so far) the moment it finds the
+ *     `{…}` or `<tag>…</tag>` that CONTAINS `at`, rather than descending
+ *     through it as if it were a finished sibling.
+ *   - A ternary/logical-AND's UNTAKEN branch or its own condition text
+ *     (`{cond ? instrumentName(db, x) : 'General'}`) — these sit inside
+ *     the SAME expression as `at`, never as separate rendered siblings, so
+ *     stopping at that expression's boundary (rather than treating its
+ *     condition as literal preceding text) is what keeps this from
+ *     flagging PathwayDetail's and Repertoire's `cond ? instrumentName(...)
+ *     : 'General'` pattern as though "cond ? " had rendered first.
+ * A COMPLETE prior `{…}` expression or `<tag>…</tag>` element (one that
+ * closes before `at`) DOES count, opaquely — an item's own title rendered
+ * in an earlier sibling div is real content even though this text scan
+ * can't see what the title actually says.
+ */
+function contentBefore(src: string, bodyStart: number, at: number): string {
+  let i = bodyStart;
+  let out = '';
+  while (i < at) {
+    const c = src[i];
+    if (c === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
+      const tag = enclosingTag(src, i);
+      if (tag.endsWith('/>')) {
+        out += 'X'; // a self-closing element — opaque prior content
+        i += tag.length;
+        continue;
+      }
+      const body = elementBody(src, tag, i);
+      if (body.end <= at) {
+        out += 'X'; // this whole child closes before `at` — opaque prior content
+        i = body.end;
+      } else {
+        return out + contentBefore(src, body.start, at); // `at` is inside this child — descend, don't skip it
+      }
+      continue;
+    }
+    if (c === '{') {
+      const closeAt = matchingBraceClose(src, i);
+      if (closeAt <= at) {
+        out += 'X'; // a full sibling expression — opaque prior content
+        i = closeAt + 1;
+      } else {
+        return out; // `at` is inside THIS expression — its own condition/branches never count
+      }
+      continue;
+    }
+    if (!/\s/.test(c)) out += c; // literal JSX text
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Whether an occurrence at `at` resolves ITS OWN direction — the nearest
+ * ancestor carrying any `dir` must be "auto", AND nothing else may render
+ * before it within that SAME ancestor's body. A dir="auto" ancestor
+ * resolves from whichever strong character comes FIRST in its subtree: if
+ * an item's own title (or any other independently-authored value) precedes
+ * the name inside the same auto ancestor, the ancestor's resolution belongs
+ * to THAT value, not to the name riding along beside it — exactly the
+ * classification mistake this whole family exists to catch (ItemCard's row
+ * would silently regress this way if its instrument name ever lost its own
+ * `<span dir="auto">` and merely sat inside the row's outer auto group).
+ * Two real sites deliberately rely on being genuinely FIRST rather than
+ * carrying their own isolate — Insights.tsx's `<th dir="auto">` and
+ * Today.tsx's cross-instrument `{inst.name}` — and this still accepts both.
+ */
+function resolvesOwnDirection(src: string, at: number): { ok: boolean; dir: string | null } {
+  const chain = ancestorChain(src, at);
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const entry = chain[i];
+    if (entry.dir === null) continue;
+    if (entry.dir !== 'auto') return { ok: false, dir: entry.dir };
+    return { ok: contentBefore(src, entry.bodyStart, at).length === 0, dir: 'auto' };
+  }
+  return { ok: false, dir: null };
+}
+
+/** `<option>` contents are excluded from this whole family by the contract:
+ *  the native control owns their rendering, so no dir treatment applies. */
+function isInsideOption(src: string, at: number): boolean {
+  return ancestorChain(src, at).some((a) => a.tagName === 'option');
+}
+
+/** Index just past the matching `}` for the `{` at `openAt`. */
+function matchingBraceClose(src: string, openAt: number): number {
+  let depth = 0;
+  let i = openAt;
+  while (i < src.length) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+    i += 1;
+  }
+  return src.length;
+}
+
+/**
+ * True when `matchStart` sits inside a `${…}` template substitution whose
+ * enclosing backtick template also holds OTHER literal text — the shape
+ * that fuses a name with fixed words into one string before anything can
+ * render, so no isolate can ever wrap the name alone by the time it
+ * reaches JSX (`Nothing for ${name} yet`, `${instrumentName(db, x)} plan`).
+ * A template holding ONLY the one substitution has nothing fused into it.
+ */
+function isFusedIntoTemplate(src: string, matchStart: number): boolean {
+  if (src.slice(matchStart - 2, matchStart) !== '${') return false;
+  const subClose = matchingBraceClose(src, matchStart - 1);
+  const openBacktick = src.lastIndexOf('`', matchStart);
+  const closeBacktick = src.indexOf('`', subClose);
+  if (openBacktick < 0 || closeBacktick < 0) return true; // malformed — be conservative
+  const body = src.slice(openBacktick + 1, closeBacktick).replace(/\$\{[^{}]*\}/g, '');
+  return body.trim().length > 0;
+}
+
+/** Every current DOM-text render of an instrument's name in `file`, as
+ *  [start, end) spans into the (comment-stripped) source. See the block
+ *  comment above for the shapes discovered and excluded. */
+function instrumentNameOccurrences(file: string): { at: number; end: number }[] {
+  const src = stripComments(SOURCES[file]);
+  const occurrences: { at: number; end: number }[] = [];
+
+  const isAttributeValue = (at: number): boolean =>
+    /[A-Za-z][\w-]*=\{\s*$/.test(src.slice(Math.max(0, at - 60), at));
+  const isDeclarationRhs = (at: number): boolean =>
+    /\b(?:const|let)\s+\w+\s*=\s*$/.test(src.slice(Math.max(0, at - 80), at));
+  const record = (at: number, end: number) => {
+    if (isAttributeValue(at)) return; // prop-drilling — the callee is checked separately
+    if (isInsideOption(src, at)) return; // native control owns its own rendering
+    occurrences.push({ at, end });
+  };
+
+  // instrumentName(db, EXPR) — direct calls. A call bound to a const is an
+  // alias, not itself a render; its later bare reads are tracked below.
+  for (const m of src.matchAll(/\binstrumentName\(([^()]*)\)/g)) {
+    if (isDeclarationRhs(m.index!)) continue;
+    record(m.index!, m.index! + m[0].length);
+  }
+
+  // X.instrumentName — property reads, receiver chain included so a
+  // declaration check lands before the whole expression, not mid-chain.
+  // `m.index` is the dot itself, so first step back over the identifier
+  // immediately before it (receiverChainStart expects to start AT an
+  // identifier, not at a dot).
+  for (const m of src.matchAll(/\.\s*instrumentName\b/g)) {
+    let idStart = m.index!;
+    while (idStart > 0 && /[\w$]/.test(src[idStart - 1] ?? '')) idStart -= 1;
+    const start = receiverChainStart(src, idStart);
+    if (isDeclarationRhs(start)) continue;
+    record(start, m.index! + m[0].length);
+  }
+
+  // Local aliases: a destructured, renamed prop (excluding the type
+  // annotation `instrumentName: string`, which reads identically), a
+  // `const X = instrumentName(...)` binding, or a `const X =
+  // …instruments….find(...)?.name` binding — the last generalised past the
+  // literal spelling "instrumentName" so a differently-named local (or a
+  // future one) is still caught.
+  const aliases = new Set<string>();
+  for (const m of src.matchAll(/\binstrumentName\s*:\s*(\w+)/g)) {
+    if (m[1] !== 'string') aliases.add(m[1]);
+  }
+  for (const m of src.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*instrumentName\(/g)) {
+    aliases.add(m[1]);
+  }
+  for (const m of src.matchAll(
+    /\b(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?\binstruments\b[^;\n]*?\.find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
+  )) {
+    aliases.add(m[1]);
+  }
+  for (const alias of aliases) {
+    for (const m of src.matchAll(new RegExp(`\\b${alias}\\b`, 'g'))) {
+      const at = m.index!;
+      const end = at + alias.length;
+      const before = src.slice(Math.max(0, at - 20), at);
+      const after = src.slice(end, end + 20);
+      // A BARE alias is a standalone identifier — `.name` on some unrelated
+      // object (`routine.name`, `selected.name`) merely ENDS in the same
+      // letters and must never count just because a plain-text \b-bounded
+      // scan can't tell "name" the alias from "name" the property name.
+      if (before.endsWith('.')) continue;
+      const isBindingLhs = /\b(?:const|let)\s+$/.test(before) && /^\s*=(?!=)/.test(after);
+      const isRenameTarget = /\binstrumentName\s*:\s*$/.test(before);
+      // `<ClassQuestions instrumentName={instrumentName} />` — the KEY is
+      // this same word too (coincidentally, since the alias here happens to
+      // be spelled "instrumentName"); it is the attribute's NAME, not a
+      // value being read, and must not be confused with the VALUE right
+      // after it, which `record`'s own isAttributeValue check still catches.
+      const isAttributeName = /^\s*=\{/.test(after);
+      if (isBindingLhs || isRenameTarget || isAttributeName) continue; // the alias's own introduction, not a read
+      record(at, end);
+    }
+  }
+
+  // A per-item `.name` read inside a `db.instruments`/`instruments` iteration
+  // — `(?:\.\w+\([^()]*\))*` tolerates any number of chained hops
+  // (`.filter(...).map(...)`) before the `.map(` that actually binds a
+  // per-instrument callback parameter.
+  for (const m of src.matchAll(
+    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*map\(\s*\(?\s*(\w+)\s*\)?\s*=>/g,
+  )) {
+    const param = m[1];
+    const mapOpenParen = m.index! + m[0].lastIndexOf('map(') + 'map('.length - 1;
+    const bodyStart = m.index! + m[0].length;
+    const bodyEnd = matchingParenClose(src, mapOpenParen);
+    const scope = src.slice(bodyStart, bodyEnd);
+    for (const im of scope.matchAll(new RegExp(`\\b${param}\\.name\\b`, 'g'))) {
+      record(bodyStart + im.index!, bodyStart + im.index! + im[0].length);
+    }
+  }
+
+  // An inline `instruments.find(...)?.name` with no intermediate variable —
+  // the whole expression is the render candidate. One already bound to a
+  // `const` was tracked as an alias above instead. `(?:[^()]|\([^()]*\))*`
+  // (not the plain `[^()]*` the .map( pattern above gets away with) is
+  // needed here because .find's own callback is itself parenthesized —
+  // `.find((i) => i.id === x)` nests one paren level that a no-parens-
+  // allowed class can never get past.
+  for (const m of src.matchAll(
+    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
+  )) {
+    const start = receiverChainStart(src, m.index!);
+    if (isDeclarationRhs(start)) continue;
+    record(start, m.index! + m[0].length);
+  }
+
+  return occurrences.sort((a, b) => a.at - b.at);
+}
+
+// --- the check --------------------------------------------------------------
+
+describe('direction lives on the group', () => {
+  it('direction lives on the group: no title element carries dir="auto", and every listed surface has one', () => {
+    const all = sourceFiles().flatMap(directionSites);
+
+    // (a) A title that still carries direction is a site the sweep missed: its
+    //     own caption still aligns to the opposite edge.
+    const onTitles = all
+      .filter((s) => isTitle(s) && !allowed(s))
+      .map((s) => `${s.file}:${s.line} — dir="auto" on a title (class "${s.classValue.trim()}")`);
+    expect(onTitles).toEqual([]);
+
+    // (b) A surface with no group at all is a whole file the sweep skipped —
+    //     and deleting the attribute instead of moving it fails here too.
+    const withoutGroup = SURFACES.filter(
+      (file) => !all.some((s) => s.file === file && isGroup(s)),
+    ).map((file) => `${file} — renders user text but carries direction on no group`);
+    expect(withoutGroup).toEqual([]);
+  });
+
+  it('keeps every listed exception real, so the allowlist cannot rot', () => {
+    const all = sourceFiles().flatMap(directionSites);
+    for (const entry of ALLOWED_TITLE_SITES) {
+      const hit = all.some((s) => s.file === entry.file && s.text.includes(entry.snippet) && isTitle(s));
+      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.snippet})`).toBe(true);
+    }
+  });
+
+  it('keeps every recorded group site current — removing any ONE of them fails, even when its file has others', () => {
+    const inventory = sourceFiles()
+      .flatMap(directionSites)
+      .filter(isGroup)
+      .map(({ file, tagName, classValue }) => ({ file, tagName, classValue }));
+    expect(inventory).toEqual(GROUP_SITE_INVENTORY);
+  });
+
+  it('no fixed English phrase in a group inherits the title\'s bidi base unisolated', () => {
+    const exempt = (file: string, tagText: string) =>
+      UNEXEMPTED_PHRASE_ALLOWLIST.some((e) => e.file === file && tagText.includes(e.tagSnippet));
+    const violations: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of directionSites(file).filter(isGroup)) {
+        if (exempt(file, site.text)) continue;
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const phrase = unexemptedPhrase(src, body.start, body.end);
+        if (phrase) violations.push(`${file}:${site.line} — "${phrase}" is exposed to the group's bidi base`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps every listed unexempted-phrase exception real, so it cannot rot', () => {
+    for (const entry of UNEXEMPTED_PHRASE_ALLOWLIST) {
+      const hit = sourceFiles()
+        .filter((f) => f === entry.file)
+        .flatMap(directionSites)
+        .filter(isGroup)
+        .some((s) => s.text.includes(entry.tagSnippet));
+      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.tagSnippet})`).toBe(true);
+    }
+  });
+
+  it('keeps every independently-authored value isolated from the group it sits in', () => {
+    for (const entry of ISOLATED_VALUE_SITES) {
+      const hit = SOURCES[entry.file]?.includes(entry.snippet);
+      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
+    }
+  });
+
+  it('keeps every fixed-English / generated-metadata site isolated from the group it sits in', () => {
+    for (const entry of LTR_ISOLATE_SITES) {
+      const hit = SOURCES[entry.file]?.includes(entry.snippet);
+      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
+    }
+  });
+
+  it('a bidi isolate is always inline (span/bdi), never a block that resolves its own alignment', () => {
+    const violations = sourceFiles()
+      .flatMap(isolateSites)
+      .filter((s) => !INLINE_ISOLATE_TAGS.includes(s.tagName))
+      .map((s) => `${s.file}:${s.line} — dir="ltr"/"rtl" on a <${s.tagName}>, not an inline span`);
+    expect(violations).toEqual([]);
+  });
+
+  // A sealed review found FOUR sites forcing an instrument name — the OWNER'S
+  // OWN editable text, never generated copy — under dir="ltr" as if it were
+  // metadata like ITEM_TYPE_LABELS sitting next to it. Auditing the rest of
+  // LTR_ISOLATE_SITES by hand found three more of the identical shape. A
+  // location list closes only the sites that happened to exist today; this
+  // bans the SHAPE, so a future dir="ltr"/"rtl" wrapped around an instrument
+  // name fails here regardless of which file it turns up in. The pattern is
+  // deliberately NOT anchored to a call — `\binstrumentName\(` alone missed
+  // `{b.instrumentName}` (a property access, no call, no parenthesis) in the
+  // very same audit that added this test — so it also matches a bare
+  // `instrumentName` identifier, covering a property access and a value
+  // passed through as a prop (e.g. `TeacherReport.tsx`'s local `instrumentName`
+  // variable), not just a direct call.
+  it('no dir="ltr"/"rtl" isolate wraps an instrument name', () => {
+    const violations: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of isolateSites(file)) {
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const bodyText = src.slice(body.start, body.end);
+        if (/\binstrumentName\b|\{inst\}/.test(bodyText)) {
+          violations.push(`${file}:${site.line} — an instrument name sits inside a dir="ltr"/"rtl" isolate`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // See the block comment above `instrumentNameOccurrences` for the full
+  // rationale and the shapes discovered. This supersedes the previous
+  // approach of listing each fixed site's exact snippet in
+  // ISOLATED_VALUE_SITES: that ledger could only ever vouch for sites a
+  // human had already found, and four rounds of rejection on this exact
+  // family showed that was never enough. Two real sites deliberately keep
+  // resolving from an ANCESTOR rather than their own isolate — Insights.tsx's
+  // `<th dir="auto">` and Today.tsx's cross-instrument `{inst.name}` — and
+  // this check accepts that (it asks about the name's own resolved
+  // direction, not the shape of the markup around it); wrapping either in a
+  // nested isolate later would silently regress the GROUP's own resolution
+  // instead (dir="auto" skips a descendant that carries its own dir when
+  // hunting for a first strong character), which is caught separately by
+  // `GROUP_SITE_INVENTORY`'s exhaustive equality against any new dir="auto"
+  // site, not by this check.
+  //
+  // Excluded: ItemForm.tsx, QuickAdd.tsx and RoutineEdit.tsx, the three
+  // files this lane's own contract puts out of scope ("their dir='auto'
+  // usage is already correct and must not be touched"). That claim turned
+  // out to be wrong for one of them — QuickAdd.tsx's instrument-picker
+  // button renders `{i.name}` with no dir anywhere — but fixing it means
+  // editing a forbidden file, so it is named here and in AGENTS.md instead
+  // of silently passing OR silently failing a check this lane cannot act on.
+  const OUT_OF_SCOPE_FOR_THIS_LANE = ['components/ItemForm.tsx', 'components/QuickAdd.tsx', 'pages/RoutineEdit.tsx'];
+  it('an instrument name resolves its own direction, wherever it renders', () => {
+    const violations: string[] = [];
+    let sitesSeen = 0;
+    for (const file of sourceFiles().filter((f) => !OUT_OF_SCOPE_FOR_THIS_LANE.includes(f))) {
+      const src = stripComments(SOURCES[file]);
+      const occurrences = instrumentNameOccurrences(file);
+      sitesSeen += occurrences.length;
+      for (const { at, end } of occurrences) {
+        if (isFusedIntoTemplate(src, at)) {
+          const line = src.slice(0, at).split('\n').length;
+          violations.push(`${file}:${line} — an instrument name is fused into a template string before it renders`);
+          continue;
+        }
+        const { ok, dir } = resolvesOwnDirection(src, at);
+        if (!ok) {
+          const line = src.slice(0, at).split('\n').length;
+          const found =
+            dir === null
+              ? 'no dir="" ancestor at all'
+              : dir === 'auto'
+                ? 'a dir="auto" ancestor whose resolution is already claimed by something preceding it'
+                : `an ancestor forces dir="${dir}"`;
+          violations.push(`${file}:${line} — "${src.slice(at, end)}" resolves its direction from ${found}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // A scanner that silently finds nothing is not proof of nothing being
+    // wrong — this fails if a regression in the discovery patterns above
+    // ever made them stop matching entirely (every shape they cover is
+    // exercised by real code in this app today).
+    expect(sitesSeen).toBeGreaterThan(0);
+  });
+
+  it('a list with a direction-variable item never relies on the native marker, and lays that item out as a direction-aware flex container', () => {
+    const violations: string[] = [];
+    for (const site of sourceFiles().flatMap(listSites)) {
+      if (site.autoLiTags.length === 0) continue;
+      if (!disablesNativeMarker(site.tag)) {
+        violations.push(`${site.file}:${site.line} — <ol>/<ul> relies on a native marker for an li whose direction can vary`);
+      }
+      for (const liTag of site.autoLiTags) {
+        if (!isDirectionAwareContainer(liTag)) {
+          violations.push(
+            `${site.file}:${site.line} — a dir="auto" <li> isn't itself a flex/grid container, so its own content can't reorder with its direction`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("a label-first auto row's value stays bare, so the row still has a direction to resolve from", () => {
+    const violations: string[] = [];
+    let rowsSeen = 0;
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of directionSites(file).filter(isGroup)) {
+        if (!isLabelFirstAutoRow(file, site)) continue;
+        rowsSeen += 1;
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const bodyText = src.slice(body.start, body.end);
+        const afterLabel = bodyText.replace(/^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/, '');
+        if (/\sdir="(?:auto|ltr|rtl)"/.test(afterLabel)) {
+          violations.push(
+            `${file}:${site.line} — the value in a label-first row carries its own dir, leaving the row with nothing left to resolve from`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // Same discipline as the instrument-name check above: a scanner that
+    // silently matches nothing is not proof nothing needs checking.
+    expect(rowsSeen).toBeGreaterThan(0);
+  });
+
+  // An OWNER-observed regression found ClassQuestions' <li dir="auto">
+  // anchored on the wrong candidate: the title was left bare (leading the
+  // hunt) while the question carried its own isolate — so an item whose
+  // title and question differed in language put the ordinal on the
+  // title's side while the question (the only field questionsForNextClass
+  // actually guarantees is non-empty) resolved its own, different
+  // direction and landed on the opposite edge, unattached from the
+  // marker entirely. Matching-language seed data never exposed this: the
+  // bug only shows when the two differ. Fixed by reversing which one is
+  // bare — the question anchors the <li>, the title gets its own isolate
+  // — and asserted directly here rather than trusting seed data again.
+  it("the question anchors ClassQuestions' <li>, not the independently-authored title", () => {
+    const file = 'components/ClassQuestions.tsx';
+    const src = stripComments(SOURCES[file]);
+    const liSite = directionSites(file).find((s) => s.tagName === 'li');
+    expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
+    const openAt = src.lastIndexOf('<', liSite!.at);
+    const body = elementBody(src, liSite!.text, openAt);
+    const bodyText = src.slice(body.start, body.end);
+    const smallDivs = [...bodyText.matchAll(/<div className="small"[^>]*>/g)].map((m) => m[0]);
+    expect(smallDivs.length, 'expected a title div and a question div').toBeGreaterThanOrEqual(2);
+    const [titleTag, questionTag] = smallDivs;
+    expect(titleTag, 'the title must carry its own dir="auto" isolate, out of the <li>\'s hunt').toMatch(
+      /\sdir="auto"/,
+    );
+    expect(questionTag, "the question must stay bare so the <li> resolves from it").not.toMatch(/\sdir=/);
+  });
+});
+```
 
 ## Check against the contract
 
