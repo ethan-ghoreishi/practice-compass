@@ -1,12 +1,29 @@
 ---
 id: 20260911-lay-practice-out-for-the-content-it-hold-4c24
 contractId: 20260911-lay-practice-out-for-the-content-it-hold-4c24
-patchId: cd221498d726d4ff31247579b9a34d635ab35fe2
-reviewer: unassigned
+patchId: 90bfe93d1941bc986d529a3855d78796adaac142
+reviewer: codex
 state: sealed
 verdict: request_changes
-createdAt: 2026-09-13T11:52:54.377Z
-sealedAt: 2026-09-13T11:53:28.938Z
+findings:
+  - family: "r-direction-aware-text: complete direction-aware grouping and
+      independently directed lines"
+    summary: The direction family remains incomplete. Repertoire's PathwayCard still
+      forces left alignment while rendering its user-authored pathway title
+      without a direction-aware group, and the new multi-line renderer makes
+      distinct bullet lines inherit one shared direction. The named guard does
+      not cover either counterexample.
+    counterexample: "Use a Farsi pathway name in Repertoire: the button at
+      src/pages/Repertoire.tsx:452 has textAlign:'left', pathway.name at :456
+      has no dir ancestor, and the inline instrument isolate at :469 cannot
+      change block alignment. Separately, enter a Farsi question followed by an
+      English question on the next line: renderFreeText at
+      src/components/ClassQuestions.tsx:87-101 gives neither inner li its own
+      dir, so both bullets inherit the first line's RTL direction.
+      direction.test.ts:1170 only requires one unrelated group per file, and
+      format.test.ts checks splitting rather than rendered direction."
+createdAt: 2026-09-13T12:13:15.212Z
+sealedAt: 2026-09-13T13:56:12.952Z
 ---
 
 # Review: Lay practice out for the content it holds — Persian-aware cards, roomier rows, a calmer close screen
@@ -20,7 +37,7 @@ sealedAt: 2026-09-13T11:53:28.938Z
 - **Contract:** 20260911-lay-practice-out-for-the-content-it-hold-4c24
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/20
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `cd221498d726d4ff31247579b9a34d635ab35fe2`
+- **Diff patch-id:** `90bfe93d1941bc986d529a3855d78796adaac142`
 
 ## The Delta this change was framed from
 
@@ -67,156 +84,175 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **r-direction-aware-text: Questions-for-next-class mixed-label rows** — The OWNER check confirms the ordinal and Farsi question now form the intended coherent RTL item. The remaining issue is the presentation of the mixed English-label/Farsi-value rows for Problem and Last time. Their individual text directions are already correct, but the current visual ordering leaves the English label's colon on the outer side of the row rather than between the label and the value, so the pair does not read as one coherent label-value relationship.
-  _counterexample:_ With a Farsi Problem or Last time value, the row is correctly right-aligned, the fixed English label is LTR and the user-authored value is RTL. However, because the English label sits to the right of the Farsi value and still renders literally as "Problem:" / "Last time:", the colon appears on the far/right side of the English label and faces empty space instead of separating the label from its value. Preserve the current right-aligned question/ordinal layout and the native directions of both texts, but render each metadata row so the label and value have an obvious visual relationship and any separator sits between them rather than on the outside.
+_none recorded_
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/src/components/ClassQuestions.tsx b/src/components/ClassQuestions.tsx
-index a9f2986..f569334 100644
+index f569334..dae648d 100644
 --- a/src/components/ClassQuestions.tsx
 +++ b/src/components/ClassQuestions.tsx
-@@ -25,17 +25,33 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
-  * Farsi one still renders right, independently); the question is left bare,
-  * so it is what the li's `dir="auto"` actually finds.
-  *
-- * Problem/Last time are each their OWN group: the ROW itself carries
-- * `dir="auto"`, so the row's alignment comes from the VALUE, not from the
-- * title above it or from whichever direction the label happens to read in.
-- * The fixed English label is marked `dir="ltr"` — not because its own text
-- * ever changes, but because `dir="auto"` skips a descendant that carries its
-- * own `dir` when hunting for a first strong character, so marking the label
-- * takes it OUT of that hunt and leaves the value as the only candidate. The
-- * value itself is bare (no `dir` of its own): were it marked too, BOTH
-- * children would be skipped and the row would have no resolution source at
-- * all, falling back to LTR regardless of what the value says. A question is
-- * never cleared by practising; the user edits the item to remove it.
-+ * Problem/Last time are each STACKED, a caption above its value, rather than
-+ * one inline "Label: value" line. An OWNER-observed regression found the
-+ * previous inline shape — the row carrying `dir="auto"`, the label isolated
-+ * `dir="ltr"` to take it out of the hunt, the value left bare — put the
-+ * label at the wrong VISUAL end whenever the row resolved RTL: `dir="ltr"`
-+ * makes the label an isolated, atomic run, and the Unicode bidi algorithm
-+ * reorders that atomic run to the position its RTL neighbour's algorithm
-+ * dictates, not the position it was written in. The label's own trailing
-+ * colon ended up on the OUTER edge, pointing at nothing, with the value
-+ * sitting on the far side of it rather than beside it — correct on-value
-+ * character shaping, wrong pairing.
-+ *
-+ * Stacking removes the single inline line the two ever had to fight over.
-+ * The caption (`<span dir="ltr">`, isolated so it can never itself flip, and
-+ * inline rather than block so its isolate cannot hijack its own line's
-+ * alignment — see direction.test.ts's "a bidi isolate is always inline"
-+ * rule) sits in a plain, undirected wrapper: with no `dir` of its own that
-+ * wrapper inherits the surrounding `direction` from the `<li>` (i.e. from
-+ * the QUESTION), so the caption aligns to the same edge as the rest of the
-+ * card. The value below it keeps its own `dir="auto"` isolate, resolving
-+ * from its OWN content exactly as before — independently RTL for a Farsi
-+ * note, independently LTR for an English one, whichever the question is.
-+ * The two lines sit close together (a tighter gap than separates the
-+ * fields from each other) so they still read as one pair, without either
-+ * one's direction ever being able to drag the other out of place. A
-+ * question is never cleared by practising; the user edits the item to
-+ * remove it.
+@@ -1,5 +1,7 @@
++import type { ReactNode } from 'react';
+ import { useState } from 'react';
+ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
++import { splitLines } from './format';
+ 
+ /**
+  * "Questions for next class" — the questions to actually ask the teacher,
+@@ -53,6 +55,52 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
+  * question is never cleared by practising; the user edits the item to
+  * remove it.
   */
++
++/**
++ * Several distinct questions/problems typed for the same item have nowhere
++ * to live but ONE `<textarea>` — there is no "multiple questions" structure,
++ * and inventing one (a schema change, add/remove rows in the form) is a
++ * bigger change than the actual complaint: two lines of free text were
++ * running together as one paragraph with no visual separator, only readable
++ * as two questions if you already knew to look for a question mark.
++ *
++ * A single line renders exactly as before. Two or more render as a bulleted
++ * list, deliberately NOT a second numbered one: the item above is already
++ * numbered (1. 2. …), and re-using numbers one level down would read as
++ * "item 2, question 2" — indistinguishable at a glance from "the second
++ * item". A bullet carries no ordinal meaning, so it can never collide with
++ * the outer numbering.
++ *
++ * The bullet is a real element, the first child of a flex `.row` — the same
++ * "never rely on a native `::marker`'s own logical position" policy the
++ * outer ordinal follows — but, UNLIKE the outer `<li>`, it carries NO
++ * `dir="auto"` of its own. These lines all came out of one field the
++ * musician wrote in one sitting, not independently authored values, so they
++ * share whichever direction that field already resolves to rather than each
++ * choosing one for itself. Left bare they inherit it and are never skipped
++ * by an ancestor's own `dir="auto"` hunt — which matters specifically for
++ * the QUESTION: the outer `<li>` anchors on it being bare, and an isolate
++ * here (as `dir="auto"` on the title already is) would remove a multi-line
++ * question from that hunt entirely, silently defaulting the whole item's
++ * direction to LTR.
++ */
++function renderFreeText(text: string): ReactNode {
++  const lines = splitLines(text);
++  if (lines.length <= 1) return text;
++  return (
++    <ul role="list" style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0, listStyle: 'none' }}>
++      {lines.map((line, i) => (
++        <li key={i} className="row" style={{ alignItems: 'flex-start', gap: 6 }}>
++          <span aria-hidden="true" className="tiny faint" style={{ flexShrink: 0 }}>
++            •
++          </span>
++          <span className="grow">{line}</span>
++        </li>
++      ))}
++    </ul>
++  );
++}
++
  export default function ClassQuestions({
    instrumentName,
-@@ -144,20 +160,29 @@ export default function ClassQuestions({
+   dateLabel,
+@@ -158,7 +206,7 @@ export default function ClassQuestions({
+                     li's dir="auto" hunt is meant to land on, so the ordinal
+                     always tracks the question, never the optional title. */}
                  <div className="small">
-                   {q.question}
+-                  {q.question}
++                  {renderFreeText(q.question)}
                  </div>
--                {/* The ROW resolves direction from the VALUE, never the label:
--                    dir="ltr" on the label takes it out of the auto hunt, and the
--                    bare value is what's left for the row's dir="auto" to find. A
--                    Farsi value right-aligns the whole row even under an
--                    English title; an English value left-aligns it even under a
--                    Farsi one — the label never claims the direction either way. */}
-+                {/* Stacked, not inline: the caption's wrapper carries no dir of
-+                    its own, so it inherits the li's (question-driven) direction
-+                    and aligns with the rest of the card; the value below keeps
-+                    its own dir="auto", resolving from its own content. Neither
-+                    line's direction can drag the other out of place. */}
-                 {q.currentProblem && (
--                  <div className="tiny faint" dir="auto">
--                    <span dir="ltr">Problem:</span> {q.currentProblem}
-+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-+                    <div className="tiny faint">
-+                      <span dir="ltr">Problem</span>
-+                    </div>
-+                    <div className="tiny faint" dir="auto">
-+                      {q.currentProblem}
-+                    </div>
+                 {/* Stacked, not inline: the caption's wrapper carries no dir of
+                     its own, so it inherits the li's (question-driven) direction
+@@ -171,7 +219,7 @@ export default function ClassQuestions({
+                       <span dir="ltr">Problem</span>
+                     </div>
+                     <div className="tiny faint" dir="auto">
+-                      {q.currentProblem}
++                      {renderFreeText(q.currentProblem)}
+                     </div>
                    </div>
                  )}
-                 {q.lastObservation && (
--                  <div className="tiny faint" dir="auto">
--                    <span dir="ltr">Last time:</span> {q.lastObservation}
-+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-+                    <div className="tiny faint">
-+                      <span dir="ltr">Last time</span>
-+                    </div>
-+                    <div className="tiny faint" dir="auto">
-+                      {q.lastObservation}
-+                    </div>
+@@ -181,7 +229,7 @@ export default function ClassQuestions({
+                       <span dir="ltr">Last time</span>
+                     </div>
+                     <div className="tiny faint" dir="auto">
+-                      {q.lastObservation}
++                      {renderFreeText(q.lastObservation)}
+                     </div>
                    </div>
                  )}
-               </div>
 diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
-index ff06508..e47d9ad 100644
+index e47d9ad..5f9f9b6 100644
 --- a/src/components/direction.test.ts
 +++ b/src/components/direction.test.ts
-@@ -567,6 +567,14 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
-   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
+@@ -569,11 +569,11 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
    { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
-+  {
-+    file: 'components/ClassQuestions.tsx',
-+    snippet: '<div className="tiny faint" dir="auto">\n                      {q.currentProblem}',
-+  },
-+  {
-+    file: 'components/ClassQuestions.tsx',
-+    snippet: '<div className="tiny faint" dir="auto">\n                      {q.lastObservation}',
-+  },
+   {
+     file: 'components/ClassQuestions.tsx',
+-    snippet: '<div className="tiny faint" dir="auto">\n                      {q.currentProblem}',
++    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.currentProblem)}',
+   },
+   {
+     file: 'components/ClassQuestions.tsx',
+-    snippet: '<div className="tiny faint" dir="auto">\n                      {q.lastObservation}',
++    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.lastObservation)}',
+   },
    // Instrument names used to be tracked here too, one exact snippet per site.
    // A sealed review found that shape structurally insufficient FOUR times
-   // running: each rework closed only the sites a reviewer had named, while
-@@ -579,13 +587,17 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-   //
-   // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
-   // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
--  // them to a different shape entirely — the ROW carries dir="auto" and the
--  // LABEL is marked dir="ltr" to take it out of the auto hunt, so the row's
--  // OWN alignment comes from the value rather than from an ancestor's
--  // resolved direction — covered by the dedicated shape check below
--  // ('a label-first auto row's value stays bare...') rather than a snippet
--  // ledger, since the point is the RELATIONSHIP between the label and the
--  // value, not either one's presence on its own.
-+  // them to a "label-first auto row" shape (row carries dir="auto", label
-+  // isolated dir="ltr" to take it out of the hunt, value left bare) covered
-+  // by the dedicated shape check below instead of a snippet ledger. A TENTH
-+  // finding found THAT shape puts the label at the wrong visual end whenever
-+  // the row resolves RTL: isolating the label makes it an atomic run the
-+  // bidi algorithm is free to reorder, so its trailing colon landed on the
-+  // outer edge, detached from the value. The fix stacks caption over value
-+  // instead of one inline line, which removes the single line the two ever
-+  // had to contend a resolution source for — so the value is back to being a
-+  // plain isolated value, tracked in ISOLATED_VALUE_SITES below, and the
-+  // caption is back to being an ordinary LTR_ISOLATE_SITES entry.
-   //
-   // ClassQuestions' q.question used to be tracked here too, isolated with
-   // its own dir="auto" span while the title was left bare to anchor the
-@@ -656,8 +668,8 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
-   { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
-   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
-   { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
--  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem:</span>' },
--  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time:</span>' },
-+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Problem</span>' },
-+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last time</span>' },
-   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
-   { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
-   { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
+diff --git a/src/components/format.test.ts b/src/components/format.test.ts
+index 5e25fc2..63804af 100644
+--- a/src/components/format.test.ts
++++ b/src/components/format.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ import { type BlockResult, createItem, planNextReview, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
+-import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine } from './format';
++import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine, splitLines } from './format';
+ 
+ const NOW = new Date('2026-06-18T12:00:00.000Z');
+ 
+@@ -86,3 +86,15 @@ describe('reviewOverrideSurvivesResultChange', () => {
+     expect(reviewOverrideSurvivesResultChange(autoItem.reviewMode)).toBe(false);
+   });
+ });
++
++describe('splitLines', () => {
++  it('splits a multi-line free-text field into its trimmed, non-empty lines', () => {
++    expect(splitLines('سوال اول؟\nسوال دوم؟')).toEqual(['سوال اول؟', 'سوال دوم؟']);
++  });
++
++  it('keeps a single line as one entry, and drops blank lines and surrounding whitespace', () => {
++    expect(splitLines('one question')).toEqual(['one question']);
++    expect(splitLines('a\n\n  \nb\n')).toEqual(['a', 'b']);
++    expect(splitLines('  padded  ')).toEqual(['padded']);
++  });
++});
+diff --git a/src/components/format.ts b/src/components/format.ts
+index 6893d31..2ad3aa2 100644
+--- a/src/components/format.ts
++++ b/src/components/format.ts
+@@ -47,6 +47,21 @@ export function pluralize(n: number, word: string): string {
+   return `${n} ${word}${n === 1 ? '' : 's'}`;
+ }
+ 
++/**
++ * A free-text field's own non-empty lines. There is no data structure for
++ * "multiple questions" — `teacherQuestion`/`currentProblem`/`lastObservation`
++ * are each one `<textarea>`, so two distinct questions typed for the same
++ * item live as two lines of one string. This is how a renderer tells "one
++ * line" (plain text) from "several" (worth a bulleted breakdown) apart,
++ * without inventing a schema change for what is still one field.
++ */
++export function splitLines(text: string): string[] {
++  return text
++    .split('\n')
++    .map((line) => line.trim())
++    .filter(Boolean);
++}
++
+ /**
+  * The close screen's ONE honest line for the review decision — "Review in 2
+  * days · Repair · …" — read off the SAME ReviewPlan that seeds the date field
 ```
 
 **Full current text of every file the rework touched:**
@@ -224,8 +260,10 @@ index ff06508..e47d9ad 100644
 ### src/components/ClassQuestions.tsx
 
 ```
+import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { renderClassQuestionsText, type ClassQuestion } from '../domain';
+import { splitLines } from './format';
 
 /**
  * "Questions for next class" — the questions to actually ask the teacher,
@@ -279,6 +317,52 @@ import { renderClassQuestionsText, type ClassQuestion } from '../domain';
  * question is never cleared by practising; the user edits the item to
  * remove it.
  */
+
+/**
+ * Several distinct questions/problems typed for the same item have nowhere
+ * to live but ONE `<textarea>` — there is no "multiple questions" structure,
+ * and inventing one (a schema change, add/remove rows in the form) is a
+ * bigger change than the actual complaint: two lines of free text were
+ * running together as one paragraph with no visual separator, only readable
+ * as two questions if you already knew to look for a question mark.
+ *
+ * A single line renders exactly as before. Two or more render as a bulleted
+ * list, deliberately NOT a second numbered one: the item above is already
+ * numbered (1. 2. …), and re-using numbers one level down would read as
+ * "item 2, question 2" — indistinguishable at a glance from "the second
+ * item". A bullet carries no ordinal meaning, so it can never collide with
+ * the outer numbering.
+ *
+ * The bullet is a real element, the first child of a flex `.row` — the same
+ * "never rely on a native `::marker`'s own logical position" policy the
+ * outer ordinal follows — but, UNLIKE the outer `<li>`, it carries NO
+ * `dir="auto"` of its own. These lines all came out of one field the
+ * musician wrote in one sitting, not independently authored values, so they
+ * share whichever direction that field already resolves to rather than each
+ * choosing one for itself. Left bare they inherit it and are never skipped
+ * by an ancestor's own `dir="auto"` hunt — which matters specifically for
+ * the QUESTION: the outer `<li>` anchors on it being bare, and an isolate
+ * here (as `dir="auto"` on the title already is) would remove a multi-line
+ * question from that hunt entirely, silently defaulting the whole item's
+ * direction to LTR.
+ */
+function renderFreeText(text: string): ReactNode {
+  const lines = splitLines(text);
+  if (lines.length <= 1) return text;
+  return (
+    <ul role="list" style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: 0, padding: 0, listStyle: 'none' }}>
+      {lines.map((line, i) => (
+        <li key={i} className="row" style={{ alignItems: 'flex-start', gap: 6 }}>
+          <span aria-hidden="true" className="tiny faint" style={{ flexShrink: 0 }}>
+            •
+          </span>
+          <span className="grow">{line}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function ClassQuestions({
   instrumentName,
   dateLabel,
@@ -384,7 +468,7 @@ export default function ClassQuestions({
                     li's dir="auto" hunt is meant to land on, so the ordinal
                     always tracks the question, never the optional title. */}
                 <div className="small">
-                  {q.question}
+                  {renderFreeText(q.question)}
                 </div>
                 {/* Stacked, not inline: the caption's wrapper carries no dir of
                     its own, so it inherits the li's (question-driven) direction
@@ -397,7 +481,7 @@ export default function ClassQuestions({
                       <span dir="ltr">Problem</span>
                     </div>
                     <div className="tiny faint" dir="auto">
-                      {q.currentProblem}
+                      {renderFreeText(q.currentProblem)}
                     </div>
                   </div>
                 )}
@@ -407,7 +491,7 @@ export default function ClassQuestions({
                       <span dir="ltr">Last time</span>
                     </div>
                     <div className="tiny faint" dir="auto">
-                      {q.lastObservation}
+                      {renderFreeText(q.lastObservation)}
                     </div>
                   </div>
                 )}
@@ -998,11 +1082,11 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
   {
     file: 'components/ClassQuestions.tsx',
-    snippet: '<div className="tiny faint" dir="auto">\n                      {q.currentProblem}',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.currentProblem)}',
   },
   {
     file: 'components/ClassQuestions.tsx',
-    snippet: '<div className="tiny faint" dir="auto">\n                      {q.lastObservation}',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.lastObservation)}',
   },
   // Instrument names used to be tracked here too, one exact snippet per site.
   // A sealed review found that shape structurally insufficient FOUR times
@@ -1840,6 +1924,208 @@ describe('direction lives on the group', () => {
 });
 ```
 
+### src/components/format.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import { type BlockResult, createItem, planNextReview, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
+import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine, splitLines } from './format';
+
+const NOW = new Date('2026-06-18T12:00:00.000Z');
+
+const ALL_RESULTS: BlockResult[] = [
+  'worse',
+  'same',
+  'slightly_better',
+  'stable_alone',
+  'stable_in_context',
+  'performable',
+];
+
+/**
+ * The close screen collapses the whole scheduling decision to ONE line, with
+ * the date field, the review type and "Why this date?" a tap behind it. That is
+ * only safe if the line and the field are two renderings of the SAME value — so
+ * this asserts the formatter REPORTS a plan rather than deriving anything of its
+ * own. A formatter that recomputed a date could disagree with the field; one
+ * that can only read the three fields it is handed cannot.
+ */
+describe('reviewSummaryLine', () => {
+  it("the one-line review summary reports exactly the ReviewPlan's due date, type and rationale", () => {
+    // A REAL plan from the engine — the same call CloseBlock makes — so this is
+    // bound to the value the screen actually holds, not a hand-written stub.
+    const item = createItem({ instrumentId: 'i', title: 'درآمد شور', status: 'fragile' }, NOW);
+    const plan = planNextReview({ item, result: 'worse', now: NOW });
+    expect(plan).not.toBeNull();
+
+    const line = reviewSummaryLine(plan as ReviewPlan, NOW);
+
+    expect(line).toContain(relativeDay(plan!.dueDate, NOW));
+    expect(line).toContain(REVIEW_TYPE_LABELS[plan!.reviewType]);
+    expect(line).toContain(plan!.rationale);
+
+    // …and nothing else: the line is exactly those three fields, in order.
+    expect(line).toBe(
+      `Review ${relativeDay(plan!.dueDate, NOW)} · ${REVIEW_TYPE_LABELS[plan!.reviewType]} · ${plan!.rationale}`,
+    );
+  });
+
+  it('follows the plan it is given, so a corrected date is the date it reports', () => {
+    // The screen folds a manual correction INTO the one plan value rather than
+    // keeping a second date beside it. Whatever ends up in that value is what
+    // the line says — there is no path by which the line keeps the engine's
+    // date while the field shows another.
+    const engine: ReviewPlan = {
+      intervalDays: 2,
+      dueDate: '2026-06-20',
+      reviewType: 'repair',
+      changeStrategy: false,
+      rationale: 'A slip resets the interval to 2 days.',
+    };
+    const corrected: ReviewPlan = { ...engine, dueDate: '2026-07-01', rationale: 'The date you chose.' };
+
+    expect(reviewSummaryLine(engine, NOW)).toBe('Review in 2 days · Repair · A slip resets the interval to 2 days.');
+    expect(reviewSummaryLine(corrected, NOW)).toBe('Review in 13 days · Repair · The date you chose.');
+  });
+});
+
+/**
+ * A manually chosen review date must survive changing the result WHEN NO
+ * AUTOMATIC PLAN EXISTS — the rule the close screen used to keep before this
+ * lane restructured it around a single `ReviewPlan`, and lost. The predicate
+ * is bound to the actual engine here (not just asserted in prose): a
+ * manual-mode item has no automatic plan for any of the six results, and an
+ * auto-mode item has one for every one of them.
+ */
+describe('reviewOverrideSurvivesResultChange', () => {
+  it('a manually chosen date survives changing the result when no automatic plan exists', () => {
+    const manualItem = createItem(
+      { instrumentId: 'i', title: 'درآمد شور', status: 'fragile', reviewMode: 'manual' },
+      NOW,
+    );
+    for (const result of ALL_RESULTS) {
+      expect(planNextReview({ item: manualItem, result, now: NOW })).toBeNull();
+    }
+    expect(reviewOverrideSurvivesResultChange(manualItem.reviewMode)).toBe(true);
+
+    const autoItem = createItem({ instrumentId: 'i', title: 'Étude', status: 'fragile' }, NOW);
+    for (const result of ALL_RESULTS) {
+      expect(planNextReview({ item: autoItem, result, now: NOW })).not.toBeNull();
+    }
+    expect(reviewOverrideSurvivesResultChange(autoItem.reviewMode)).toBe(false);
+  });
+});
+
+describe('splitLines', () => {
+  it('splits a multi-line free-text field into its trimmed, non-empty lines', () => {
+    expect(splitLines('سوال اول؟\nسوال دوم؟')).toEqual(['سوال اول؟', 'سوال دوم؟']);
+  });
+
+  it('keeps a single line as one entry, and drops blank lines and surrounding whitespace', () => {
+    expect(splitLines('one question')).toEqual(['one question']);
+    expect(splitLines('a\n\n  \nb\n')).toEqual(['a', 'b']);
+    expect(splitLines('  padded  ')).toEqual(['padded']);
+  });
+});
+```
+
+### src/components/format.ts
+
+```
+import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewMode, type ReviewPlan } from '../domain';
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatClock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+export function formatMinutes(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+export function formatShortDate(d: Date): string {
+  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+export function formatDateTimeISO(iso: string): string {
+  return formatShortDate(new Date(iso));
+}
+
+/** Friendly relative day from an ISODate (calendar) string. */
+export function relativeDay(dateISO: string, now: Date = new Date()): string {
+  const diff = dayDiff(now, parseISODate(dateISO)); // +future, -past
+  if (diff === 0) return 'today';
+  if (diff === 1) return 'tomorrow';
+  if (diff === -1) return 'yesterday';
+  if (diff > 1) return `in ${diff} days`;
+  return `${-diff} days ago`;
+}
+
+/** Friendly relative day from a full ISO datetime. */
+export function relativeFromDateTime(iso: string | undefined, now: Date = new Date()): string {
+  if (!iso) return 'never';
+  const diff = dayDiff(new Date(iso), now); // days since
+  if (diff <= 0) return 'today';
+  if (diff === 1) return 'yesterday';
+  return `${diff} days ago`;
+}
+
+export function pluralize(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * A free-text field's own non-empty lines. There is no data structure for
+ * "multiple questions" — `teacherQuestion`/`currentProblem`/`lastObservation`
+ * are each one `<textarea>`, so two distinct questions typed for the same
+ * item live as two lines of one string. This is how a renderer tells "one
+ * line" (plain text) from "several" (worth a bulleted breakdown) apart,
+ * without inventing a schema change for what is still one field.
+ */
+export function splitLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The close screen's ONE honest line for the review decision — "Review in 2
+ * days · Repair · …" — read off the SAME ReviewPlan that seeds the date field
+ * behind the disclosure.
+ *
+ * It is a pure FORMATTER, never a second derivation: it reports the plan's
+ * three fields and computes no date of its own. That is what makes
+ * r-explainable-scheduling's "the date shown before saving is exactly the date
+ * saved" hold by construction on a screen where the decision is collapsed to a
+ * line — a divergent date is unrepresentable, not merely remembered about.
+ */
+export function reviewSummaryLine(plan: ReviewPlan, now: Date = new Date()): string {
+  return `Review ${relativeDay(plan.dueDate, now)} · ${REVIEW_TYPE_LABELS[plan.reviewType]} · ${plan.rationale}`;
+}
+
+/**
+ * Whether a manual date correction on the close screen should survive
+ * picking a different result. `computeReview` (and so `planNextReview`)
+ * returns `null` for every result when an item's `reviewMode` is 'manual' —
+ * there is no automatic plan for THIS judgement to replace, so a date the
+ * owner already typed in isn't pinned to the previous result and must not be
+ * cleared just because they picked a different one. `src/domain/**` is out of
+ * scope for this lane, so this reads the item's own mode rather than calling
+ * `planNextReview` a second time — CloseBlock keeps its single derivation.
+ */
+export function reviewOverrideSurvivesResultChange(reviewMode: ReviewMode | undefined): boolean {
+  return reviewMode === 'manual';
+}
+```
+
 ## Check against the contract
 
 - [ ] **ac-1** — REGRESSION GUARD, stated as such: the tri-state close decision is pure and sits in forbidden territory, so this test cannot fail from this lane's edits — it exists to prove the restructure did not reach past its scope. It discriminates 'no result chosen' (item's next review date kept) from 'review genuinely declined' (date cleared), the two states a skipped tap used to conflate. _(proof: keeps the item's review date when no result was chosen and still clears it when a review is declined)_
@@ -2020,10 +2306,22 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
 
-`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260911-lay-practice-out-for-the-content-it-hold-4c24/findings.json`
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
 
-with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260911-lay-practice-out-for-the-content-it-hold-4c24/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20260911-lay-practice-out-for-the-content-it-hold-4c24' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260911-lay-practice-out-for-the-content-it-hold-4c24/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260911-lay-practice-out-for-the-content-it-hold-4c24/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
