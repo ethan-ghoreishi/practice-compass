@@ -167,18 +167,23 @@ export default function Materials() {
           const mats = db.materials.filter((m) => m.instrumentId === inst.id);
           if (mats.length === 0) return null;
           return (
-            <section key={inst.id} className="stack-sm">
+            <section key={inst.id} className="stack-sm" dir="auto">
               <h2 className="title-md">{inst.name}</h2>
               <div className="card card-flush list">
                 {mats.map((m) => (
                   <div key={m.id} className="list-row">
-                    <div className="grow">
-                      <div className="truncate" dir="auto">
+                    <div className="grow" dir="auto">
+                      <div className="truncate">
                         {m.title}
                       </div>
+                      {/* Generated English metadata, never user text — its own
+                          dir="ltr" isolate keeps it from inheriting a Farsi
+                          source title's RTL base. */}
                       <div className="tiny faint">
-                        {MATERIAL_SOURCE_LABELS[m.sourceType]} · {MATERIAL_STATUS_LABELS[m.status]} ·{' '}
-                        {itemCount(m.id)} item{itemCount(m.id) === 1 ? '' : 's'}
+                        <span dir="ltr">
+                          {MATERIAL_SOURCE_LABELS[m.sourceType]} · {MATERIAL_STATUS_LABELS[m.status]} ·{' '}
+                          {itemCount(m.id)} item{itemCount(m.id) === 1 ? '' : 's'}
+                        </span>
                       </div>
                     </div>
                     <button className="btn btn-ghost btn-sm" onClick={() => setDraft(fromMaterial(m))}>

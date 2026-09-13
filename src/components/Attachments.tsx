@@ -136,12 +136,20 @@ function AttachmentRow({ att }: { att: AttachmentMeta }) {
       )}
       <button
         className="grow"
-        style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
+        dir="auto"
+        style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit', minWidth: 0 }}
         onClick={open}
       >
         <div className="truncate">{att.name}</div>
+        {/* Generated English metadata, never user text — its own dir="ltr"
+            isolate keeps it from inheriting a Farsi file name's RTL base.
+            Inline (span), not dir="ltr" on this block: the button's own
+            text-align:start would otherwise resolve LEFT for this div
+            specifically, splitting it from a right-aligned Farsi name. */}
         <div className="tiny faint">
-          {att.kind} · {formatBytes(att.size)}
+          <span dir="ltr">
+            {att.kind} · {formatBytes(att.size)}
+          </span>
         </div>
       </button>
       <button className="btn btn-sm" onClick={open}>

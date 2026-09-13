@@ -111,7 +111,13 @@ function PlanPreview() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
       <header className="stack-sm">
         <div className="row between">
-          <h1 className="page-title">Your {instrumentName(db, instrumentId)} session</h1>
+          {/* The instrument name is the owner's own editable text — its own
+              dir="auto" isolate, nested inside the title rather than bare, so
+              a Farsi name doesn't inherit whatever base the title's fixed
+              English words would otherwise resolve to. */}
+          <h1 className="page-title">
+            Your <span dir="auto">{instrumentName(db, instrumentId)}</span> session
+          </h1>
           <Link to="/" className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} aria-label="Back to Today">
             <XIcon />
           </Link>
@@ -133,8 +139,15 @@ function PlanPreview() {
                   <span className="tiny faint">{BUCKET_LABEL[seg.bucket]}</span>
                   {seg.core && <span className="tiny" style={{ color: 'var(--accent)' }}>core</span>}
                 </div>
-                <div className="truncate" dir="auto" style={{ fontWeight: 500 }}>{seg.title}</div>
-                <div className="tiny faint" dir="auto">{seg.reason}</div>
+                <div dir="auto">
+                  <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
+                  {/* seg.reason is always English (planSegmentReason) — its own
+                      dir="ltr" isolate keeps its bidi base fixed regardless of
+                      the title's. */}
+                  <div className="tiny faint">
+                    <span dir="ltr">{seg.reason}</span>
+                  </div>
+                </div>
               </div>
               <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
                 Swap
@@ -190,7 +203,10 @@ function PlanRunner() {
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
       <header className="stack-sm">
         <div className="row between">
-          <h1 className="page-title">{instrumentName(db, activePlan.instrumentId)} session</h1>
+          {/* Same isolate as the picker's own title above. */}
+          <h1 className="page-title">
+            <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span> session
+          </h1>
           <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={finish} aria-label="End the plan">
             <XIcon />
           </button>
@@ -226,8 +242,14 @@ function PlanRunner() {
                   {seg.status === 'done' && <span className="tiny" style={{ color: 'var(--tone-good)' }}>done</span>}
                   {seg.status === 'skipped' && <span className="tiny faint">skipped</span>}
                 </div>
-                <div className="truncate" dir="auto" style={{ fontWeight: 500 }}>{seg.title}</div>
-                {isCurrent && <div className="tiny faint" dir="auto">{seg.reason}</div>}
+                <div dir="auto">
+                  <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
+                  {isCurrent && (
+                    <div className="tiny faint">
+                      <span dir="ltr">{seg.reason}</span>
+                    </div>
+                  )}
+                </div>
               </div>
               {isCurrent && (
                 <div className="row" style={{ gap: 6, flex: 'none' }}>

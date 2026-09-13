@@ -1,4 +1,4 @@
-import { dayDiff, parseISODate } from '../domain';
+import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewMode, type ReviewPlan } from '../domain';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -45,4 +45,48 @@ export function relativeFromDateTime(iso: string | undefined, now: Date = new Da
 
 export function pluralize(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+/**
+ * A free-text field's own non-empty lines. There is no data structure for
+ * "multiple questions" — `teacherQuestion`/`currentProblem`/`lastObservation`
+ * are each one `<textarea>`, so two distinct questions typed for the same
+ * item live as two lines of one string. This is how a renderer tells "one
+ * line" (plain text) from "several" (worth a bulleted breakdown) apart,
+ * without inventing a schema change for what is still one field.
+ */
+export function splitLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/**
+ * The close screen's ONE honest line for the review decision — "Review in 2
+ * days · Repair · …" — read off the SAME ReviewPlan that seeds the date field
+ * behind the disclosure.
+ *
+ * It is a pure FORMATTER, never a second derivation: it reports the plan's
+ * three fields and computes no date of its own. That is what makes
+ * r-explainable-scheduling's "the date shown before saving is exactly the date
+ * saved" hold by construction on a screen where the decision is collapsed to a
+ * line — a divergent date is unrepresentable, not merely remembered about.
+ */
+export function reviewSummaryLine(plan: ReviewPlan, now: Date = new Date()): string {
+  return `Review ${relativeDay(plan.dueDate, now)} · ${REVIEW_TYPE_LABELS[plan.reviewType]} · ${plan.rationale}`;
+}
+
+/**
+ * Whether a manual date correction on the close screen should survive
+ * picking a different result. `computeReview` (and so `planNextReview`)
+ * returns `null` for every result when an item's `reviewMode` is 'manual' —
+ * there is no automatic plan for THIS judgement to replace, so a date the
+ * owner already typed in isn't pinned to the previous result and must not be
+ * cleared just because they picked a different one. `src/domain/**` is out of
+ * scope for this lane, so this reads the item's own mode rather than calling
+ * `planNextReview` a second time — CloseBlock keeps its single derivation.
+ */
+export function reviewOverrideSurvivesResultChange(reviewMode: ReviewMode | undefined): boolean {
+  return reviewMode === 'manual';
 }

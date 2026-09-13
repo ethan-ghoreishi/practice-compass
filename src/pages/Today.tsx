@@ -74,6 +74,7 @@ export default function Today() {
             className={`option${!overview && selected?.id === i.id ? ' selected' : ''}`}
             aria-pressed={!overview && selected?.id === i.id}
             onClick={() => setSessionInstrument(i.id)}
+            dir="auto"
           >
             {i.name}
           </button>
@@ -92,10 +93,10 @@ export default function Today() {
         <Link to="/active" className="card card-accent card-link row between">
           <div>
             <div className="eyebrow">In progress</div>
-            <div className="title-md" dir="auto">
-              {getItem(db, active.itemId)?.title ?? 'Practice block'}
+            <div dir="auto">
+              <div className="title-md">{getItem(db, active.itemId)?.title ?? 'Practice block'}</div>
+              <StaleNote active={active} now={now} />
             </div>
-            <StaleNote active={active} now={now} />
           </div>
           <span className="btn btn-primary btn-sm">
             <PlayIcon /> Resume
@@ -144,7 +145,15 @@ export default function Today() {
  */
 function StaleNote({ active, now }: { active: ActiveSession; now: Date }) {
   if (!isStaleClock(sessionElapsedSeconds(active, now), active.targetMinutes)) return null;
-  return <div className="tiny faint">Running far past its target — finish it, correct the minutes, or discard it.</div>;
+  // Fixed English page copy, rendered inside both the In-progress card's and
+  // ElsewhereSessions' title groups — its own dir="ltr" isolate keeps its
+  // bidi base fixed regardless of the item's title, so a Farsi title's RTL
+  // base can't drag its trailing full stop to the visual start.
+  return (
+    <div className="tiny faint">
+      <span dir="ltr">Running far past its target — finish it, correct the minutes, or discard it.</span>
+    </div>
+  );
 }
 
 function ElsewhereSessions({
@@ -159,13 +168,23 @@ function ElsewhereSessions({
   const activePlan = useStore((s) => s.activePlan);
   const activeRoutine = useStore((s) => s.activeRoutine);
 
-  const rows: { key: string; label: string; detail: string; to: string; note?: ReactNode }[] = [];
+  // label/detail are ReactNode, never a pre-joined string: the instrument
+  // name is the OWNER'S OWN editable text and needs its own dir="auto"
+  // isolate, distinct from the fixed English suffix's dir="ltr" one. Joining
+  // them into one string first (as this used to do) would fuse the two
+  // before render, leaving nothing left to isolate independently.
+  const rows: { key: string; label: ReactNode; detail: ReactNode; to: string; note?: ReactNode }[] = [];
 
   if (active && active.instrumentId !== selectedInstrumentId) {
     rows.push({
       key: 'active',
       label: getItem(db, active.itemId)?.title ?? 'Practice block',
-      detail: `${instrumentName(db, active.instrumentId)} · in progress`,
+      detail: (
+        <>
+          <span dir="auto">{instrumentName(db, active.instrumentId)}</span>
+          <span dir="ltr"> · in progress</span>
+        </>
+      ),
       to: '/active',
       note: <StaleNote active={active} now={now} />,
     });
@@ -174,7 +193,12 @@ function ElsewhereSessions({
     const done = activePlan.segments.filter((s) => s.status === 'done').length;
     rows.push({
       key: 'plan',
-      label: `${instrumentName(db, activePlan.instrumentId)} plan`,
+      label: (
+        <>
+          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>
+          <span dir="ltr"> plan</span>
+        </>
+      ),
       detail: `${done} of ${activePlan.segments.length} done`,
       to: '/plan',
     });
@@ -187,7 +211,12 @@ function ElsewhereSessions({
       rows.push({
         key: 'routine',
         label: routine.name,
-        detail: `${instrumentName(db, routine.instrumentId)} routine`,
+        detail: (
+          <>
+            <span dir="auto">{instrumentName(db, routine.instrumentId)}</span>
+            <span dir="ltr"> routine</span>
+          </>
+        ),
         to: `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`,
       });
     }
@@ -201,10 +230,10 @@ function ElsewhereSessions({
         <Link key={r.key} to={r.to} className="card card-quiet card-link row between">
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="tiny faint">{r.detail}</div>
-            <div className="small truncate" dir="auto">
-              {r.label}
+            <div dir="auto">
+              <div className="small truncate">{r.label}</div>
+              {r.note}
             </div>
-            {r.note}
           </div>
           <span className="tiny faint" style={{ flex: 'none' }}>
             Resume ▸
@@ -248,7 +277,14 @@ function PlanCard({ instrumentId }: { instrumentId: string }) {
     return (
       <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate('/plan')}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Plan this session</span>
-        <span className="faint small">{instrumentName(db, activePlan.instrumentId)} plan running ▸</span>
+        {/* Same split as the Routines doorway below: the instrument name is
+            the owner's own editable text (its own dir="auto" isolate, never
+            bare alongside fixed English), and "plan running ▸" keeps its own
+            dir="ltr" isolate as generated page copy. */}
+        <span className="faint small">
+          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>
+          <span dir="ltr"> plan running ▸</span>
+        </span>
       </button>
     );
   }
@@ -303,11 +339,18 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     // A legacy routine with no instrumentId isn't foreign to anything.
     const matches = !running?.instrumentId || running.instrumentId === instrumentId;
     const to = `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`;
+    // dir="auto" sits on a wrapper around the routine's OWN name, not on the
+    // whole button: with it on the button, "Resume your routine"/"Routines" —
+    // the fixed English label — is the first strong text in the subtree, so
+    // auto-detection resolved LTR from that label and never saw the Farsi
+    // name that follows.
     if (matches) {
       return (
         <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
           <span style={{ fontWeight: 600 }}>Resume your routine</span>
-          <span className="small truncate" dir="auto" style={{ minWidth: 0 }}>{running?.name ?? 'Routine'} ▸</span>
+          <div dir="auto" style={{ minWidth: 0 }}>
+            <div className="small truncate">{running?.name ?? 'Routine'} ▸</div>
+          </div>
         </button>
       );
     }
@@ -318,7 +361,20 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     return (
       <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
-        <span className="faint small truncate" dir="auto">{instrumentName(db, running?.instrumentId)} routine running ▸</span>
+        <div dir="auto" style={{ minWidth: 0 }}>
+          {/* The instrument name is the owner's own editable text (renameable
+              in Settings, Farsi included) — its own dir="auto" isolate, not
+              lumped into the fixed English suffix that follows it. "routine
+              running ▸" is page copy, never user text, so it keeps its own
+              dir="ltr" isolate. Both inline (span), not dir on this block: a
+              block isolate resolves its OWN text-align independently of the
+              group, which is the exact split a rejected review found
+              elsewhere in this lane. */}
+          <div className="faint small truncate">
+            <span dir="auto">{instrumentName(db, running?.instrumentId)}</span>
+            <span dir="ltr"> routine running ▸</span>
+          </div>
+        </div>
       </button>
     );
   }
@@ -377,9 +433,13 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div style={{ minWidth: 0 }}>
-          <div className="truncate" dir="auto">{routine.name}</div>
-          <div className="tiny faint">{routine.segments.length} segments · {total} min</div>
+        <div dir="auto" style={{ minWidth: 0 }}>
+          <div className="truncate">{routine.name}</div>
+          {/* Generated English metadata, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi routine name's RTL base. */}
+          <div className="tiny faint">
+            <span dir="ltr">{routine.segments.length} segments · {total} min</span>
+          </div>
         </div>
         <div className="row" style={{ gap: 6 }}>
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
@@ -476,7 +536,18 @@ function SessionView({
     return (
       <div className="stack">
         <div className="card">
-          <EmptyState icon={<MusicIcon />} title={`Nothing for ${name} yet`}>
+          {/* EmptyState's title is a ReactNode precisely so a fused string
+              like the old `Nothing for ${name} yet` never has to swallow the
+              instrument name's own direction — it gets its own dir="auto"
+              isolate instead of being joined into the fixed English first. */}
+          <EmptyState
+            icon={<MusicIcon />}
+            title={
+              <>
+                Nothing for <span dir="auto">{name}</span> yet
+              </>
+            }
+          >
             Add your first piece or exercise below — a title is enough.
           </EmptyState>
         </div>
@@ -491,26 +562,46 @@ function SessionView({
     <div className="stack-lg">
       {/* 0 · Two collapsed, peer doorways — a time-budgeted plan and a
              routine are separate systems, neither subordinate to the other.
-             Both start collapsed so the primary recommendation stays above
-             the fold at 390×844. */}
+             Both start collapsed (~50px) so the primary recommendation stays
+             above the fold at 390×844, and each carries its own open/close
+             state and its own resume takeover.
+
+             They sit ABOVE the recommendation by OWNER judgement. This lane
+             built the other order — recommendation first, doorways beneath —
+             and the owner tried it on their own iPhone (2026‑09‑11) and
+             preferred this one: Plan and Routines read as belonging at the top
+             of the page, and the recommendation-first version felt less
+             natural. Ordering here is the owner's call, not a derivation, so
+             do not "fix" it back without one. */}
       <PlanCard instrumentId={instrumentId} />
       <RoutinesCard instrumentId={instrumentId} />
 
-      {/* 1 · The one thing to practise now — above the fold. */}
+      {/* 1 · The one thing to practise now — above the fold. The English
+             eyebrow stays outside the direction group: dir="auto" resolves from
+             the first strong character, so a Farsi title and its own reason
+             read as one right-aligned block. `reason` is always English
+             (buildReason is a system-generated sentence, never user text), so
+             it carries its own dir="ltr" isolate: grouped with the title for
+             ALIGNMENT (the group's own resolved direction still governs where
+             the paragraph sits), but with its OWN bidi base fixed to LTR so a
+             Farsi title's RTL base can't drag the reason's trailing full stop
+             to the visual start. */}
       {recs.best && (
         <article className="card card-accent">
           <div className="row between" style={{ marginBottom: 6 }}>
             <span className="eyebrow">Practise now</span>
             <StatusBadge status={recs.best.score.item.status} />
           </div>
-          <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
-            <h2 className="title-md" dir="auto" style={{ fontSize: '1.3rem' }}>
-              {recs.best.score.item.title}
-            </h2>
-          </Link>
-          <p className="reason" style={{ marginTop: 6 }}>
-            {recs.best.reason}
-          </p>
+          <div dir="auto">
+            <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
+              <h2 className="title-md" style={{ fontSize: '1.3rem' }}>
+                {recs.best.score.item.title}
+              </h2>
+            </Link>
+            <p className="reason" style={{ marginTop: 6 }}>
+              <span dir="ltr">{recs.best.reason}</span>
+            </p>
+          </div>
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn btn-primary btn-lg grow" onClick={() => start(recs.best!.score.item)}>
               <PlayIcon /> Start · 10 min
@@ -535,13 +626,16 @@ function SessionView({
             <div key={rec.kind} className="row" style={{ gap: 10 }}>
               <button
                 className="grow"
-                style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
+                dir="auto"
+                style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
                 onClick={() => start(rec.score.item)}
               >
-                <span className="truncate" dir="auto">
-                  {rec.score.item.title}
-                </span>
-                <div className="tiny faint truncate">{rec.reason}</div>
+                <span className="truncate">{rec.score.item.title}</span>
+                {/* rec.reason is always English (buildReason) — its own dir="ltr"
+                    isolate keeps its bidi base fixed regardless of the title's. */}
+                <div className="tiny faint truncate">
+                  <span dir="ltr">{rec.reason}</span>
+                </div>
               </button>
               <button className="btn btn-sm" onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
                 <PlayIcon />
@@ -551,11 +645,14 @@ function SessionView({
         </section>
       )}
 
-      {/* 3 · Class commitments for THIS instrument only. */}
+      {/* 4 · Class commitments for THIS instrument only. */}
       {lessonDate && classWork.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">
-            Before your {name} class
+            {/* The instrument name is the owner's own editable text — its own
+                dir="auto" isolate, never fused bare into this fixed English
+                sentence. */}
+            Before your <span dir="auto">{name}</span> class
             <span className="dim" style={{ fontWeight: 400 }}>
               {' '}
               · {daysUntil(lessonDate, now) <= 0 ? 'today' : `in ${daysUntil(lessonDate, now)} day${daysUntil(lessonDate, now) === 1 ? '' : 's'}`}
@@ -564,11 +661,14 @@ function SessionView({
           <div className="card card-flush list">
             {classWork.map((item) => (
               <div key={item.id} className="list-row">
-                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" style={{ minWidth: 0 }}>
-                  <div className="truncate" dir="auto">
-                    {item.title}
+                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                  <div className="truncate">{item.title}</div>
+                  {/* Generated English metadata, never user text — its own
+                      dir="ltr" isolate keeps it from inheriting a Farsi
+                      title's RTL base. */}
+                  <div className="tiny faint">
+                    <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
                   </div>
-                  <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
                 </Link>
                 <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
                   <PlayIcon />
@@ -579,7 +679,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 4 · Due reviews, with honest actions. */}
+      {/* 5 · Due reviews, with honest actions. */}
       {reviews.length > 0 && (
         <section className="stack-sm">
           <div className="row between">
@@ -590,39 +690,50 @@ function SessionView({
             {reviews.map((r) => {
               const item = itemById.get(r.practiceItemId)!;
               return (
-                <div key={r.id} className="list-row">
-                  <div className="grow" style={{ minWidth: 0 }}>
-                    <div className="truncate" dir="auto">
-                      {item.title}
+                // The item's NAME is what this row exists to identify. Three
+                // controls used to leave it 113px of a 356px row — about 13
+                // characters of a Farsi title. Now the title claims a whole
+                // line whenever the three actions cannot sit beside it, and it
+                // wraps instead of truncating. All three keep their existing,
+                // deliberately distinct meanings: this is layout only.
+                <div key={r.id} className="list-row" style={{ flexWrap: 'wrap' }}>
+                  <div dir="auto" style={{ flex: '1 1 220px', minWidth: 0, textAlign: 'start' }}>
+                    <div>{item.title}</div>
+                    {/* relativeDay is always English ("today"/"3 days ago") —
+                        its own dir="ltr" isolate keeps it from inheriting a
+                        Farsi title's RTL base. */}
+                    <div className="tiny faint">
+                      due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>
                     </div>
-                    <div className="tiny faint">due {relativeDay(r.dueDate, now)}</div>
                   </div>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Hide for the rest of today (no schedule change)"
-                    onClick={() => notNowReview(r.id)}
-                  >
-                    Not now
-                  </button>
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    title="Move the review 2 days from today"
-                    onClick={() => snoozeReview(r.id)}
-                  >
-                    +2d
-                  </button>
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      if (active && active.itemId !== item.id) return;
-                      if (activeRoutine) return;
-                      startItemSession(item.id);
-                      navigate('/active');
-                    }}
-                    aria-label={`Review ${item.title}`}
-                  >
-                    <PlayIcon />
-                  </button>
+                  <div className="row" style={{ flex: 'none', marginInlineStart: 'auto' }}>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      title="Hide for the rest of today (no schedule change)"
+                      onClick={() => notNowReview(r.id)}
+                    >
+                      Not now
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      title="Move the review 2 days from today"
+                      onClick={() => snoozeReview(r.id)}
+                    >
+                      +2d
+                    </button>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      onClick={() => {
+                        if (active && active.itemId !== item.id) return;
+                        if (activeRoutine) return;
+                        startItemSession(item.id);
+                        navigate('/active');
+                      }}
+                      aria-label={`Review ${item.title}`}
+                    >
+                      <PlayIcon />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -631,7 +742,7 @@ function SessionView({
         </section>
       )}
 
-      {/* 5 · Where you are on this instrument's path. */}
+      {/* 6 · Where you are on this instrument's path. */}
       {pathway && stage && (
         <Link
           to={`/pathway/${pathway.id}/${stage.id}`}
@@ -659,16 +770,14 @@ function SessionView({
         </Link>
       )}
 
-      {/* 6 · Shaky material, quick capture, and the open-ended start. */}
+      {/* 7 · Shaky material, quick capture, and the open-ended start. */}
       {fragile.length > 0 && (
         <section className="stack-sm">
           <h2 className="title-md">Shaky right now</h2>
           <div className="card card-flush list">
             {fragile.slice(0, 4).map((item) => (
-              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" style={{ borderRadius: 0 }}>
-                <div className="grow truncate" dir="auto">
-                  {item.title}
-                </div>
+              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" dir="auto" style={{ borderRadius: 0 }}>
+                <div className="grow truncate">{item.title}</div>
                 <StatusBadge status={item.status} />
                 <ChevronRightIcon width={16} height={16} className="faint" />
               </Link>
@@ -762,11 +871,18 @@ function OverviewView({ now }: { now: Date }) {
                     navigate('/');
                   }}
                 >
-                  <div className="grow" style={{ minWidth: 0 }}>
+                  <div className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
                     <div>{inst.name}</div>
-                    <div className="tiny faint truncate" dir="auto">
-                      {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
-                      {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
+                    {/* Fixed English copy with the next item's own
+                        (possibly Farsi) title embedded mid-sentence — its
+                        own dir="ltr" isolate fixes the sentence's bidi base
+                        regardless of the embedded title, the same shape
+                        StageDetail's undo banner already uses. */}
+                    <div className="tiny faint truncate">
+                      <span dir="ltr">
+                        {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
+                        {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
+                      </span>
                     </div>
                   </div>
                   <ChevronRightIcon width={16} height={16} className="faint" />
@@ -784,7 +900,20 @@ function OverviewView({ now }: { now: Date }) {
               <div className="section-label" style={{ marginBottom: 4 }}>
                 Insight
               </div>
-              <div>{insight.body}</div>
+              {/* Generated English metadata, matching Insights.tsx's own
+                  treatment of the identical field — an INLINE dir="ltr"
+                  isolate (never a block: text-align is a block concept a
+                  span never participates in) keeps its bidi base fixed.
+                  NOTE: the balance insight's body is built in
+                  src/domain/insights.ts (out of this presentation-only
+                  lane's reach) by joining `${r.instrumentName} ${r.percent}%`
+                  for every instrument into one sentence — an embedded Farsi
+                  instrument name there still inherits this isolate's LTR
+                  base, same defect as the rest of this section, left open
+                  pending a domain-layer fix. See AGENTS.md. */}
+              <div>
+                <span dir="ltr">{insight.body}</span>
+              </div>
             </div>
           </div>
         </section>
@@ -798,7 +927,16 @@ function OverviewView({ now }: { now: Date }) {
           ) : (
             balance.map((b) => (
               <div key={b.instrumentId} className="balance-row">
-                <span className="small truncate">{b.instrumentName}</span>
+                {/* The instrument name is the owner's own editable text — its
+                    own dir="auto" isolate, nested inside .truncate rather than
+                    on it (a title class may never carry dir="auto" directly).
+                    Not on the row itself: .balance-row is a CSS grid and
+                    giving it a resolved RTL direction would reverse its three
+                    columns, jumping the bar and percentage to the other side
+                    for a Farsi instrument — this isolates the text only. */}
+                <span className="small truncate">
+                  <span dir="auto">{b.instrumentName}</span>
+                </span>
                 <span className="balance-track">
                   <span className="balance-fill" style={{ width: `${b.percent}%` }} />
                 </span>

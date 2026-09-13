@@ -141,11 +141,19 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
           const flagged = assignedForLesson(db.items).filter((i) => i.instrumentId === inst.id);
           return (
             <section key={inst.id} className="stack-sm">
-              <div className="row between">
+              {/* The instrument's own name leads this group (dir="auto"
+                  resolves from the first strong character), same shape as
+                  InstrumentLessons' identical row below — the badge gets its
+                  own dir="ltr" isolate so it can't inherit the name's base. */}
+              <div className="row between" dir="auto">
                 <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
                   {inst.name}
                 </h2>
-                {next && <span className="badge tone-progress">next {relativeDay(next.date, now)}</span>}
+                {next && (
+                  <span className="badge tone-progress" dir="ltr">
+                    next {relativeDay(next.date, now)}
+                  </span>
+                )}
               </div>
               {next && flagged.length > 0 && (
                 <div className="tiny dim">
@@ -224,8 +232,14 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
         {selected ? (
           <>
             <div className="row between">
+              {/* The instrument name is the owner's own editable text — its
+                  own dir="auto" isolate. lessonLabel is always digits +
+                  English by construction ("Class N · date") — its own
+                  dir="ltr" isolate keeps the two from being fused into one
+                  bare, undirected string as they used to be. */}
               <strong>
-                {instruments.find((i) => i.id === selected.instrumentId)?.name} · {lessonLabel(selected)}
+                <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
+                <span dir="ltr"> · {lessonLabel(selected)}</span>
               </strong>
               <span className="tiny faint">{relativeDay(selected.date, now)}</span>
             </div>
@@ -257,14 +271,17 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 
   return (
     <section className="stack-sm">
-      <div className="row between">
+      <div className="row between" dir="auto">
         <h2 className="title-md">{name}</h2>
+        {/* Fixed English page copy / generated metadata, never user text —
+            its own dir="ltr" isolate keeps it from inheriting the
+            instrument name's RTL base. */}
         {next ? (
-          <span className="badge tone-progress">
+          <span className="badge tone-progress" dir="ltr">
             next class {relativeDay(next.date, now)}
           </span>
         ) : (
-          <span className="tiny faint">no class planned</span>
+          <span className="tiny faint" dir="ltr">no class planned</span>
         )}
       </div>
 
@@ -514,32 +531,46 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
             <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
               <KindIcon kind={kind} />
             </span>
-            <div className="grow" style={{ minWidth: 0 }}>
-              <div className="truncate" dir="auto">
+            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+              <div className="truncate">
                 {rec.title}
               </div>
-              <div className="tiny faint">{meta}</div>
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting a Farsi title's
+                  RTL base. */}
+              <div className="tiny faint">
+                <span dir="ltr">{meta}</span>
+              </div>
               {rec.notes && (
                 <div className="tiny dim" dir="auto">
                   {rec.notes}
                 </div>
               )}
+              {/* Fixed English page copy, never user text — its own dir="ltr"
+                  isolate keeps it from inheriting a Farsi title's RTL base.
+                  Inline (span), not dir="ltr" on these blocks: a block
+                  isolate resolves its OWN text-align independently of the
+                  group, splitting it from a right-aligned Farsi title. */}
               {resolution.status === 'no-base' && (
                 <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
-                  Set your NAS base URL in{' '}
-                  <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                    Settings
-                  </button>{' '}
-                  to open this.
+                  <span dir="ltr">
+                    Set your NAS base URL in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>{' '}
+                    to open this.
+                  </span>
                 </div>
               )}
               {resolution.status === 'bad-base' && (
                 <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
-                  Your NAS base URL isn’t a valid web address — fix it in{' '}
-                  <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                    Settings
-                  </button>
-                  .
+                  <span dir="ltr">
+                    Your NAS base URL isn’t a valid web address — fix it in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>
+                    .
+                  </span>
                 </div>
               )}
             </div>
@@ -654,11 +685,16 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
         <div className="card card-flush list">
           {linked.map((item) => (
             <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
-              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" style={{ minWidth: 0 }}>
-                <div className="truncate" dir="auto">
+              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                <div className="truncate">
                   {item.title}
                 </div>
-                <div className="tiny faint">{ITEM_STATUS_LABELS[item.status]}</div>
+                {/* Generated English metadata, never user text — its own
+                    dir="ltr" isolate keeps it from inheriting a Farsi
+                    title's RTL base. */}
+                <div className="tiny faint">
+                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
+                </div>
               </Link>
               <button
                 className={`btn btn-sm${item.assignedForLesson ? ' btn-primary' : ''}`}

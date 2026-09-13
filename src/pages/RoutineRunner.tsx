@@ -174,12 +174,20 @@ export default function RoutineRunner() {
         {recorded.size > 0 ? (
           <div className="card stack-sm" style={{ textAlign: 'left' }}>
             <div className="section-label">Recorded</div>
+            {/* textAlign 'start' on the row itself: the card above pins a
+                physical 'left', so without this the row resolves a Farsi
+                item's direction but never carries it to the alignment —
+                the title shapes RTL and still hugs the English edge.
+                Identical to 'left' for an English title. */}
             {[...recorded.entries()].map(([itemId, minutes]) => (
-              <div key={itemId} className="row between">
-                <span dir="auto" className="truncate">
+              <div key={itemId} className="row between" dir="auto" style={{ textAlign: 'start' }}>
+                <span className="truncate">
                   {getItem(db, itemId)?.title ?? 'Item'}
                 </span>
-                <span className="tiny faint">{minutes} min</span>
+                {/* Generated English metadata, never user text — its own
+                    dir="ltr" isolate keeps it from inheriting a Farsi
+                    item title's RTL base. */}
+                <span className="tiny faint" dir="ltr">{minutes} min</span>
               </div>
             ))}
           </div>
@@ -246,7 +254,9 @@ export default function RoutineRunner() {
         </div>
       </div>
 
-      <div>
+      {/* The segment's own label leads, so it and the item beneath it read as
+          one block rather than pointing at opposite edges. */}
+      <div dir="auto">
         <div className="title-md" style={{ fontSize: '1.2rem' }}>
           {seg.label}
         </div>
@@ -255,7 +265,13 @@ export default function RoutineRunner() {
             {getItem(db, seg.itemId)?.title}
           </div>
         )}
-        {next && <div className="tiny faint" style={{ marginTop: 6 }}>Next: {next.label}</div>}
+        {/* next.label is authored independently of seg.label — its own
+            dir="auto" isolate resolves from its own content, not seg's. */}
+        {next && (
+          <div className="tiny faint" style={{ marginTop: 6 }}>
+            Next: <span dir="auto">{next.label}</span>
+          </div>
+        )}
       </div>
 
       <div className="row" style={{ justifyContent: 'center' }}>

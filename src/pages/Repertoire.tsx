@@ -201,12 +201,15 @@ function MyRepertoireView() {
       )}
 
       {dastgahGroups.map((g) => (
-        <section key={g.dastgah} className="stack-sm">
+        <section key={g.dastgah} className="stack-sm" dir="auto">
           <div className="row between">
-            <h2 className="title-md" dir="auto">
+            <h2 className="title-md">
               {g.dastgah === UNCLASSIFIED_DASTGAH ? 'No dastgāh yet' : g.dastgah}
             </h2>
-            <span className="tiny faint">
+            {/* Generated English metadata, never user text — its own
+                dir="ltr" isolate keeps it from inheriting the dastgāh
+                heading's RTL base. */}
+            <span className="tiny faint" dir="ltr">
               {g.works.length} work{g.works.length === 1 ? '' : 's'}
             </span>
           </div>
@@ -220,12 +223,15 @@ function MyRepertoireView() {
 
       {otherWorks.length > 0 &&
         sourceGroups.map((g) => (
-          <section key={g.label} className="stack-sm">
+          <section key={g.label} className="stack-sm" dir="auto">
             <div className="row between">
-              <h2 className="title-md" dir="auto">
+              <h2 className="title-md">
                 {g.label}
               </h2>
-              <span className="tiny faint">
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting the group
+                  heading's RTL base. */}
+              <span className="tiny faint" dir="ltr">
                 {g.works.length} work{g.works.length === 1 ? '' : 's'}
               </span>
             </div>
@@ -258,20 +264,39 @@ function WorkRow({
   return (
     <div className="list-row" style={{ flexWrap: 'wrap' }}>
       <Link to={`/items/${work.id}`} state={{ from: '/repertoire' }} className="grow row" style={{ minWidth: 0, gap: 10 }}>
-        <div className="grow" style={{ minWidth: 0 }}>
-          <div className="truncate" dir="auto">
+        <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+          <div className="truncate">
             {work.title}
           </div>
-          <div className="tiny faint truncate" dir="auto">
+          {/* form/composer/gusheh and the instrument name are all authored
+              independently of the work's own title (their own dir="auto"
+              isolates — the instrument name is the owner's own editable
+              text, renameable in Settings, Farsi included, never generated
+              copy); the last-practised phrase is generated metadata (its own
+              dir="ltr" isolate) — never one isolate speaking for all of
+              them, and never joined into one bare string that inherits
+              whichever direction the title happened to resolve. */}
+          <div className="tiny faint truncate">
             {[
-              work.persian?.form,
-              work.persian?.composer,
-              work.persian?.gusheh && `gusheh: ${work.persian.gusheh}`,
-              instrumentName(db, work.instrumentId),
-              work.lastPractisedAt ? `last ${relativeFromDateTime(work.lastPractisedAt, now)}` : 'not practised yet',
+              work.persian?.form ? <span dir="auto">{work.persian.form}</span> : null,
+              work.persian?.composer ? <span dir="auto">{work.persian.composer}</span> : null,
+              work.persian?.gusheh ? (
+                <span>
+                  gusheh: <span dir="auto">{work.persian.gusheh}</span>
+                </span>
+              ) : null,
+              <span dir="auto">{instrumentName(db, work.instrumentId)}</span>,
+              <span dir="ltr">
+                {work.lastPractisedAt ? `last ${relativeFromDateTime(work.lastPractisedAt, now)}` : 'not practised yet'}
+              </span>,
             ]
               .filter(Boolean)
-              .join(' · ')}
+              .map((node, i) => (
+                <span key={i}>
+                  {i > 0 ? ' · ' : ''}
+                  {node}
+                </span>
+              ))}
           </div>
         </div>
         <StatusBadge status={work.status} />
@@ -289,8 +314,8 @@ function WorkRow({
           {open && (
             <div className="stack-sm" style={{ width: '100%', paddingLeft: 14, marginTop: 6 }}>
               {parts.map((p) => (
-                <Link key={p.id} to={`/items/${p.id}`} state={{ from: '/repertoire' }} className="row between small card-link" style={{ minWidth: 0 }}>
-                  <span className="truncate dim" dir="auto">
+                <Link key={p.id} to={`/items/${p.id}`} state={{ from: '/repertoire' }} className="row between small card-link" dir="auto" style={{ minWidth: 0 }}>
+                  <span className="truncate dim">
                     {p.title}
                   </span>
                   <StatusBadge status={p.status} />
@@ -425,16 +450,33 @@ function PathwayCard({
 
   return (
     <button className="card card-link stack-sm" style={{ width: '100%', textAlign: 'left' }} onClick={onOpen}>
-      <div className="row between">
-        <div className="row" style={{ gap: 8, minWidth: 0 }}>
-          <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
-          <span className="title-md truncate">{pathway.name}</span>
+      {/* The pathway's own name and the line of metadata under it are ONE
+          group, carrying the direction, so a Farsi name and its own caption
+          read as one right-aligned block — the rule the rest of this app
+          already follows. The group sits INSIDE the button rather than on
+          it (the Balance-row precedent: the chevron's `row between` and the
+          progress bar below are layout, not text, and giving them a
+          resolved RTL direction would swap the bar and the counter), and it
+          re-declares textAlign:'start' because the button pins
+          textAlign:'left' — a resolved direction that never reaches the
+          alignment leaves a Persian title pinned left exactly as before.
+          The instrument name keeps its own inline dir="auto" isolate for
+          the reason PathwayDetail's identical line does: it is the owner's
+          own editable text and need not share the pathway name's language.
+          stage.code/title stay bare — it's the stage's own compound label,
+          not a foreign caption. */}
+      <div className="stack-sm" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
+        <div className="row between">
+          <div className="row" style={{ gap: 8, minWidth: 0 }}>
+            <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
+            <span className="title-md truncate">{pathway.name}</span>
+          </div>
+          <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
         </div>
-        <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
-      </div>
-      <div className="tiny faint truncate">
-        {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
-        {stage ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}` : ''}
+        <div className="tiny faint truncate">
+          <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
+          {stage ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}` : ''}
+        </div>
       </div>
       <div className="row" style={{ gap: 8 }}>
         <span className="balance-track grow">

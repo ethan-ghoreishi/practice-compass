@@ -118,7 +118,7 @@ function PractiseTotals({ now }: { now: Date }) {
             </tr>
             {rows.map((r) => (
               <tr key={r.instrumentId}>
-                <th style={CELL} scope="row" className="dim">{r.instrumentName}</th>
+                <th style={CELL} scope="row" className="dim" dir="auto">{r.instrumentName}</th>
                 <td style={NUM} className="dim">{cell(r.today)}</td>
                 <td style={NUM} className="dim">{cell(r.week)}</td>
                 <td style={NUM} className="dim">{cell(r.allTime)}</td>
@@ -134,7 +134,12 @@ function PractiseTotals({ now }: { now: Date }) {
   );
 }
 
-const CELL: CSSProperties = { textAlign: 'left', padding: '4px 8px 4px 0', whiteSpace: 'nowrap' };
+// textAlign 'start', never 'left': the instrument column's own <th> carries
+// dir="auto" (the name is the owner's editable text, Farsi included), and a
+// physical 'left' would resolve the direction without ever reaching the
+// alignment — leaving a Farsi name shaped correctly but pinned to the
+// English edge. 'start' is identical to 'left' for every English row.
+const CELL: CSSProperties = { textAlign: 'start', padding: '4px 8px 4px 0', whiteSpace: 'nowrap' };
 const NUM: CSSProperties = { textAlign: 'right', padding: '4px 0 4px 8px', whiteSpace: 'nowrap' };
 
 function cell(t: { minutes: number; blocks: number }): string {
@@ -150,10 +155,19 @@ function InsightCard({ insight }: { insight: Insight }) {
       <div className="section-label" style={{ marginBottom: 4 }}>
         {insight.category}
       </div>
-      <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
-        {insight.title}
+      <div dir="auto">
+        <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
+          {insight.title}
+        </div>
+        {/* Fixed English sentence with an item's own (possibly Farsi) title
+            sometimes embedded mid-sentence (e.g. `Most of your time went to
+            "${item.title}"…`) — its own dir="ltr" isolate fixes the
+            sentence's bidi base regardless of any embedded title, the same
+            shape StageDetail's undo banner already uses. */}
+        <div className="small dim">
+          <span dir="ltr">{insight.body}</span>
+        </div>
       </div>
-      <div className="small dim">{insight.body}</div>
     </article>
   );
 }

@@ -188,8 +188,11 @@ export default function StageDetail() {
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
         {undo && (
-          <div className="card card-quiet row between small" style={{ gap: 8 }}>
-            <span className="truncate" dir="auto">
+          <div className="card card-quiet row between small" dir="auto" style={{ gap: 8 }}>
+            {/* Fixed English page copy with the item's own (possibly Farsi)
+                title embedded mid-sentence — its own dir="ltr" isolate fixes
+                the sentence's bidi base regardless of the embedded title. */}
+            <span className="truncate" dir="ltr">
               Added “{undo.title}” — not practised yet.
             </span>
             <div className="row" style={{ gap: 6, flex: 'none' }}>
@@ -297,11 +300,16 @@ function UnitRow({
         className="stage-unit-text"
         onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : onAdd())}
         title={item ? 'Open item' : 'Add to your items'}
+        dir="auto"
       >
-        <div className="stage-unit-title" dir="auto">
+        <div className="stage-unit-title">
           {unit.title}
         </div>
-        <div className="tiny faint">{meta.join(' · ')}</div>
+        {/* Generated English metadata, never user text — its own dir="ltr"
+            isolate keeps it from inheriting a Farsi title's RTL base. */}
+        <div className="tiny faint">
+          <span dir="ltr">{meta.join(' · ')}</span>
+        </div>
         {unit.entry?.about && !item && (
           <div className="tiny dim" style={{ marginTop: 3 }}>
             {unit.entry.about}
@@ -352,12 +360,16 @@ function RoutineCard({
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div>
+        <div dir="auto">
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>
+          {/* Generated English metadata, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi routine name's RTL base. */}
           <div className="tiny faint">
-            {routine.segments.length} segments · {total} min{bound ? '' : ' · guided warm-up, not logged as practice'}
+            <span dir="ltr">
+              {routine.segments.length} segments · {total} min{bound ? '' : ' · guided warm-up, not logged as practice'}
+            </span>
           </div>
         </div>
         <div className="row" style={{ gap: 6 }}>

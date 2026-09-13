@@ -121,17 +121,28 @@ export default function ItemDetail() {
         <ArrowLeftIcon width={16} height={16} /> {fromLabel}
       </Link>
 
-      <header className="stack-sm">
+      {/* Title and the details that belong to it in ONE group, so a Farsi
+          item's name and its own metadata line align to the same edge. */}
+      <header className="stack-sm" dir="auto">
         <div className="row between" style={{ alignItems: 'flex-start' }}>
-          <h1 className="page-title" dir="auto">
+          <h1 className="page-title">
             {item.title}
           </h1>
           <StatusBadge status={item.status} />
         </div>
+        {/* ITEM_TYPE_LABELS is generated English metadata, never user text —
+            it gets its own dir="ltr" isolate. The instrument name is the
+            owner's own editable text (renameable in Settings, Farsi
+            included), so it gets dir="auto" instead of being pinned to a
+            foreign LTR base. stage.code and the material label stay bare:
+            both are user-authored and can be Farsi themselves (the Setar/Tar
+            seeds author stage codes in Farsi too), so they correctly share
+            the group's own resolved direction rather than being pinned to a
+            foreign one. */}
         <div className="row-wrap small dim">
-          <span>{instrumentName(db, item.instrumentId)}</span>
+          <span dir="auto">{instrumentName(db, item.instrumentId)}</span>
           <span className="faint">·</span>
-          <span>{ITEM_TYPE_LABELS[item.itemType]}</span>
+          <span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>
           {stage && (
             <>
               <span className="faint">·</span>
@@ -147,12 +158,16 @@ export default function ItemDetail() {
             </>
           )}
         </div>
+        {/* Generated English metadata, never user text — each gets its own
+            dir="ltr" isolate so it can't inherit the title's RTL base. */}
         <div className="row-wrap" style={{ gap: 16, marginTop: 4 }}>
           <span className="row tiny faint" style={{ gap: 6 }}>
             <Stars value={item.importance} /> importance
           </span>
-          <span className="tiny faint">difficulty {item.difficulty}/5</span>
-          {item.saturationWarning && <span className="tiny warn-flag">saturated — consider resting</span>}
+          <span className="tiny faint" dir="ltr">difficulty {item.difficulty}/5</span>
+          {item.saturationWarning && (
+            <span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>
+          )}
         </div>
       </header>
 
@@ -367,10 +382,15 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
             <div className="tiny" style={{ color: 'var(--accent)' }}>
               Practise this part now · 10 min
             </div>
-            <div className="truncate" dir="auto">
-              {next.score.item.title}
+            <div dir="auto">
+              <div className="truncate">{next.score.item.title}</div>
+              {/* next.reason is always English (buildReason) — its own
+                  dir="ltr" isolate keeps its bidi base fixed regardless of
+                  the title's. */}
+              <div className="tiny faint truncate">
+                <span dir="ltr">{next.reason}</span>
+              </div>
             </div>
-            <div className="tiny faint truncate">{next.reason}</div>
           </div>
           <button
             className="btn btn-sm btn-primary"
@@ -388,8 +408,8 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
       {parts.length > 0 && (
         <div className="card card-flush list">
           {parts.map((p) => (
-            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" style={{ borderRadius: 0 }}>
-              <div className="grow truncate" dir="auto">
+            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" dir="auto" style={{ borderRadius: 0 }}>
+              <div className="grow truncate">
                 {p.title}
               </div>
               <StatusBadge status={p.status} />
@@ -494,10 +514,15 @@ function ItemFilesCrud({ itemId }: { itemId: string }) {
       {list.length > 0 && (
         <div className="card card-flush list">
           {list.map((a) => (
-            <div key={a.id} className="list-row">
+            <div key={a.id} className="list-row" dir="auto">
               <div className="grow truncate">{a.name}</div>
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting a Farsi file
+                  name's RTL base. */}
               <div className="tiny faint">
-                {a.kind} · {formatBytes(a.size)}
+                <span dir="ltr">
+                  {a.kind} · {formatBytes(a.size)}
+                </span>
               </div>
               <button
                 className="btn btn-ghost btn-sm btn-danger"
@@ -550,7 +575,8 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
         )}
         {material && (
           <span className="dim" dir="auto">
-            Study source: <strong style={{ color: 'var(--text)' }}>{material.title}</strong>
+            <span dir="ltr">Study source: </span>
+            <strong style={{ color: 'var(--text)' }}>{material.title}</strong>
           </span>
         )}
         {stage && (

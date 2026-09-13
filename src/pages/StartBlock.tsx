@@ -192,9 +192,14 @@ export default function StartBlock() {
                     }}
                     onClick={() => pickItem(item)}
                   >
-                    <div className="grow">
+                    <div className="grow" dir="auto" style={{ textAlign: 'start' }}>
                       <div className="truncate">{item.title}</div>
-                      <div className="tiny faint">{ITEM_TYPE_LABELS[item.itemType]}</div>
+                      {/* Generated English metadata, never user text — its
+                          own dir="ltr" isolate keeps it from inheriting a
+                          Farsi title's RTL base. */}
+                      <div className="tiny faint">
+                        <span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>
+                      </div>
                     </div>
                     <StatusBadge status={item.status} />
                   </button>

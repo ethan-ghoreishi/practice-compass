@@ -83,21 +83,50 @@ export default function ActiveBlock() {
   return (
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
       <header className="stack-sm">
-        <div className="eyebrow">{instrumentName(db, active.instrumentId)}</div>
-        <h1 className="page-title" dir="auto" style={{ fontSize: '1.5rem' }}>
-          {item?.title ?? 'Practice'}
-        </h1>
-        <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-          <span className="chip">{BLOCK_MODE_LABELS[active.mode]}</span>
-          <span className="chip">{FOCUS_LABELS[active.focus]}</span>
+        {/* The eyebrow renders the INSTRUMENT'S OWN editable name (Settings
+            lets it be renamed, Farsi included) — never fixed English copy —
+            so it carries its own dir="auto" rather than being bare. It stays
+            its own group, OUTSIDE the title's: dir="auto" resolves from the
+            first strong character in a subtree, so folding it into the title
+            group would let the instrument's script decide the item title's
+            own direction instead of the title's own content deciding it. */}
+        <div className="eyebrow" dir="auto">{instrumentName(db, active.instrumentId)}</div>
+        {/* The item title and the details that belong to it are ONE group
+            carrying the direction, so a Farsi piece reads as one block.
+            The whole page centres its timer and buttons regardless of
+            language, but the title group overrides that back to `start` —
+            right for Farsi, left for English — or the page's own centring
+            would silently win over the resolved direction. */}
+        <div className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
+          <h1 className="page-title" style={{ fontSize: '1.5rem' }}>
+            {item?.title ?? 'Practice'}
+          </h1>
+          {/* Mode/focus chips are generated English metadata, never user
+              text — each gets its own dir="ltr" isolate so it can't inherit
+              a Farsi title's RTL base. */}
+          <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
+            <span className="chip" dir="ltr">{BLOCK_MODE_LABELS[active.mode]}</span>
+            <span className="chip" dir="ltr">{FOCUS_LABELS[active.focus]}</span>
+          </div>
+          {/* The constraint VALUE is free text (could be either language) and
+              sits after a fixed English label — its own dir="auto" isolate
+              resolves from its own content, not from "Constraint: " nor from
+              the title above it. */}
+          {active.constraint && (
+            <p className="reason">
+              Constraint: <span dir="auto">{active.constraint}</span>
+            </p>
+          )}
         </div>
-        {active.constraint && <p className="reason">Constraint: {active.constraint}</p>}
       </header>
 
       {previousNextAction && (
-        <div className="card card-quiet small" style={{ textAlign: 'left' }} dir="auto">
+        <div className="card card-quiet small" style={{ textAlign: 'start' }}>
           <span className="faint">Last time you decided to try: </span>
-          {previousNextAction}
+          {/* previousNextAction is free text the owner typed at a previous
+              close — its own dir="auto" resolves from ITS content, not from
+              the fixed English label before it. */}
+          <span dir="auto">{previousNextAction}</span>
         </div>
       )}
 
@@ -191,7 +220,7 @@ export default function ActiveBlock() {
 function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="card card-quiet stack-sm" style={{ textAlign: 'left' }}>
+    <div className="card card-quiet stack-sm" style={{ textAlign: 'start' }}>
       <button
         className="row between"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
@@ -208,9 +237,11 @@ function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }
             </div>
           )}
           {problem && (
-            <div className="small" dir="auto">
+            <div className="small">
               <span className="faint">Working on: </span>
-              {problem}
+              {/* problem resolves from ITS OWN content, not from the fixed
+                  English label before it. */}
+              <span dir="auto">{problem}</span>
             </div>
           )}
           <div className="tiny" style={{ color: 'var(--gold)' }}>

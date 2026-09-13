@@ -91,15 +91,33 @@ export default function PathwayDetail() {
           onCancel={() => setEditing(false)}
         />
       ) : (
-        <header className="stack-sm">
+        <header className="stack-sm" dir="auto">
           <h1 className="page-title">{pathway.name}</h1>
+          {/* The instrument name is the owner's own editable text (renameable
+              in Settings, Farsi included) — its own dir="auto" isolate, same
+              as pathway.source right after it, so neither is pinned to a
+              foreign LTR base or speaks for the other. The 'General'
+              fallback (no instrument) is plain ASCII and resolves the same
+              way under dir="auto". */}
           <div className="tiny faint">
-            {pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}
-            {pathway.source ? ` · ${pathway.source}` : ''}
+            <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
+            {pathway.source && (
+              <>
+                {' · '}
+                <span dir="auto">{pathway.source}</span>
+              </>
+            )}
           </div>
-          {pathway.description && <p className="page-sub">{pathway.description}</p>}
+          {/* description/note are authored independently of the pathway's own
+              name (a user can edit either on its own) — their own dir="auto"
+              isolates resolve from their own content, not from pathway.name's. */}
+          {pathway.description && (
+            <p className="page-sub" dir="auto">
+              {pathway.description}
+            </p>
+          )}
           {pathway.note && (
-            <div className="card card-quiet small dim" style={{ marginTop: 4 }}>
+            <div className="card card-quiet small dim" dir="auto" style={{ marginTop: 4 }}>
               {pathway.note}
             </div>
           )}
@@ -302,16 +320,34 @@ function StageRow({
       >
         {sp.complete ? <CheckIcon width={18} height={18} /> : num}
       </div>
-      <button className="grow" style={{ background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: 'inherit' }} onClick={onOpen}>
+      <button className="grow" dir="auto" style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit' }} onClick={onOpen}>
+        {/* stage.code leads (the group's own anchor); the badges after it are
+            fixed English, never user text — each gets its own dir="ltr"
+            isolate so it can't inherit stage.code's RTL base. */}
         <div className="row" style={{ gap: 8 }}>
-          <span dir="auto">{stage.code}</span>
-          {isCurrent && <span className="badge tone-progress">{isPinned ? 'Current · pinned' : 'Current'}</span>}
-          {sp.complete && <span className="badge tone-good">Done</span>}
+          <span>{stage.code}</span>
+          {isCurrent && (
+            <span className="badge tone-progress" dir="ltr">{isPinned ? 'Current · pinned' : 'Current'}</span>
+          )}
+          {sp.complete && <span className="badge tone-good" dir="ltr">Done</span>}
           {sp.addedItems > 0 && !sp.complete && (
-            <span className="tiny faint">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
+            <span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems === 1 ? '' : 's'}</span>
           )}
         </div>
-        <div className="tiny faint" dir="auto">{stage.title !== stage.code ? stage.title : `${sp.total} piece${sp.total === 1 ? '' : 's'}`}</div>
+        {/* stage.title is the SAME stage's own fuller name, not a value
+            authored independently of stage.code — it stays bare, exactly
+            like stage.code's own span above, so the two agree on whichever
+            direction the group resolves rather than one silently
+            overriding the other. The piece-count fallback (rendered only
+            when title and code are the same) is generated English and
+            gets its own dir="ltr" isolate. */}
+        <div className="tiny faint">
+          {stage.title !== stage.code ? (
+            <span>{stage.title}</span>
+          ) : (
+            <span dir="ltr">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>
+          )}
+        </div>
         <div className="row" style={{ gap: 8, marginTop: 6 }}>
           <span className="balance-track grow" style={{ maxWidth: 180 }}>
             <span className="balance-fill" style={{ width: `${sp.percent}%` }} />
@@ -348,12 +384,14 @@ function RoutineRow({
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div>
+        <div dir="auto">
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>
+          {/* Generated English metadata, never user text — its own dir="ltr"
+              isolate keeps it from inheriting a Farsi routine name's RTL base. */}
           <div className="tiny faint">
-            {routine.segments.length} segments · {total} min
+            <span dir="ltr">{routine.segments.length} segments · {total} min</span>
           </div>
         </div>
         <div className="row" style={{ gap: 6 }}>
