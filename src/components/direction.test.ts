@@ -131,7 +131,7 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
  */
 const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
   { file: 'components/Attachments.tsx', tagName: 'button', classValue: 'grow' },
-  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: '' },
+  { file: 'components/ClassQuestions.tsx', tagName: 'li', classValue: 'row' },
   { file: 'components/ClassQuestions.tsx', tagName: 'div', classValue: 'small' },
   { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
   { file: 'components/ClassQuestions.tsx', tagName: 'span', classValue: '' },
@@ -560,8 +560,14 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
   { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{problem}</span>' },
   { file: 'components/ClassQuestions.tsx', snippet: '<div className="small" dir="auto">' },
-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.currentProblem}</span>' },
-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="auto">{q.lastObservation}</span>' },
+  {
+    file: 'components/ClassQuestions.tsx',
+    snippet: "<span dir=\"auto\" style={{ display: 'inline-block', textAlign: 'start' }}>{q.currentProblem}</span>",
+  },
+  {
+    file: 'components/ClassQuestions.tsx',
+    snippet: "<span dir=\"auto\" style={{ display: 'inline-block', textAlign: 'start' }}>{q.lastObservation}</span>",
+  },
   { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
@@ -683,20 +689,33 @@ function isolateSites(file: string): Site[] {
   return sites;
 }
 
-// --- a native list marker must stay inside the card on EITHER side ---------
+// --- a native list marker is never relied on for a direction-variable item -
 //
 // A rejected review found `ClassQuestions.tsx`'s `<ol>` reserving gutter
 // space with `paddingInlineStart` alone while its `<li>`s each resolve their
-// OWN direction via `dir="auto"`: the browser positions each `<li>`'s
-// outside `::marker` on ITS OWN start edge, not the `<ol>`'s, so a Farsi
-// item's marker lands on the right — the side the `<ol>` reserved no room
-// for — and gets pressed against or past the content border. This scans
-// every `<ol>`/`<ul>` in the recorded surfaces (not just the one known
-// today) and requires symmetric room on both sides whenever a directionally
-// variable `<li>` could put the marker on either one.
-function listSites(file: string): { file: string; line: number; tag: string; hasAutoLi: boolean }[] {
+// OWN direction via `dir="auto"`, and the first fix reserved symmetric
+// `paddingInline` instead, reasoning that a marker landing on either side
+// would then have room. A SIXTH SEALED FINDING, checked on the owner's own
+// iPhone, found the number still escaping the card even with that room
+// reserved: an outside `::marker`'s exact position for a direction-variable
+// list item is a browser implementation detail — exactly the class of thing
+// jsdom cannot compute either, which is why a padding measurement was ever
+// trusted to stand in for it — not a distance a gutter can be sized against.
+// The fix stops accommodating the native marker and removes it instead
+// (`listStyle: 'none'`), rendering the ordinal as a real element: the FIRST
+// child of a flex `<li dir="auto">`, so flexbox's own direction-aware row
+// axis (a spec-mandated behaviour, unlike marker positioning) puts it on the
+// correct side and keeps it inside the content box by construction — it can
+// no longer escape a card it is now genuinely inside of. This scans every
+// `<ol>`/`<ul>` in the app (not just the one known today) and asserts the
+// mechanism directly: a list containing a `dir="auto"` `<li>` must disable
+// the native marker outright, and that `<li>` must itself be a flex/grid
+// container able to reorder its own content — a shape check on the fix
+// itself, not a measurement around a browser behaviour nothing here can
+// verify.
+function listSites(file: string): { file: string; line: number; tag: string; autoLiTags: string[] }[] {
   const src = stripComments(SOURCES[file]);
-  const sites: { file: string; line: number; tag: string; hasAutoLi: boolean }[] = [];
+  const sites: { file: string; line: number; tag: string; autoLiTags: string[] }[] = [];
   for (const match of src.matchAll(/<(ol|ul)\b/g)) {
     const at = match.index!;
     const tag = enclosingTag(src, at);
@@ -707,22 +726,28 @@ function listSites(file: string): { file: string; line: number; tag: string; has
       file,
       line: src.slice(0, at).split('\n').length,
       tag,
-      hasAutoLi: /<li\b[^>]*\sdir="auto"/.test(bodyText),
+      autoLiTags: [...bodyText.matchAll(/<li\b[^>]*\sdir="auto"[^>]*>/g)].map((m) => m[0]),
     });
   }
   return sites;
 }
 
-/** True when the list's own inline style leaves room for a marker on either
- *  side: explicit `paddingInline`, an equal start+end pair, or a marker that
- *  never sits in a separate gutter at all (`listStylePosition: 'inside'`). */
-function reservesRoomOnBothSides(tag: string): boolean {
+/** True when the list's own inline style disables the native marker outright
+ *  (`listStyle`/`listStyleType: 'none'`) — the only thing about a marker's
+ *  own rendered position a source scan can actually verify, unlike a
+ *  padding measurement around a mechanism jsdom cannot compute either. */
+function disablesNativeMarker(tag: string): boolean {
   const style = tag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
-  if (/listStylePosition\s*:\s*['"]inside['"]/.test(style)) return true;
-  if (/\bpaddingInline\s*:/.test(style)) return true;
-  const hasStart = /paddingInlineStart\s*:|paddingLeft\s*:/.test(style);
-  const hasEnd = /paddingInlineEnd\s*:|paddingRight\s*:/.test(style);
-  return hasStart === hasEnd; // both set, or neither — never start-only
+  return /\blistStyle(?:Type)?\s*:\s*['"]none['"]/.test(style);
+}
+
+/** True when a `<li>` tag is itself a flex (or grid) container — the
+ *  mechanism that lets its own content (an ordinal, a badge) reorder with
+ *  its own resolved direction instead of depending on a static layout. */
+function isDirectionAwareContainer(liTag: string): boolean {
+  if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
+  const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+  return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);
 }
 
 // --- an instrument name resolves its own direction, wherever it renders ----
@@ -1250,11 +1275,21 @@ describe('direction lives on the group', () => {
     expect(sitesSeen).toBeGreaterThan(0);
   });
 
-  it('a list containing a direction-variable item reserves marker room on both sides', () => {
-    const violations = sourceFiles()
-      .flatMap(listSites)
-      .filter((s) => s.hasAutoLi && !reservesRoomOnBothSides(s.tag))
-      .map((s) => `${s.file}:${s.line} — <ol>/<ul> reserves gutter on only one side for a marker that can land on either`);
+  it('a list with a direction-variable item never relies on the native marker, and lays that item out as a direction-aware flex container', () => {
+    const violations: string[] = [];
+    for (const site of sourceFiles().flatMap(listSites)) {
+      if (site.autoLiTags.length === 0) continue;
+      if (!disablesNativeMarker(site.tag)) {
+        violations.push(`${site.file}:${site.line} — <ol>/<ul> relies on a native marker for an li whose direction can vary`);
+      }
+      for (const liTag of site.autoLiTags) {
+        if (!isDirectionAwareContainer(liTag)) {
+          violations.push(
+            `${site.file}:${site.line} — a dir="auto" <li> isn't itself a flex/grid container, so its own content can't reorder with its direction`,
+          );
+        }
+      }
+    }
     expect(violations).toEqual([]);
   });
 });

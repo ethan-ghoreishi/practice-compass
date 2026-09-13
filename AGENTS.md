@@ -779,17 +779,59 @@ bans the shape mechanically rather than by care: no
 bug cannot resurface in any file, named here or not — one location fixed and the anti-
 pattern deleted are two different guarantees, and only the second is durable.
 
-**A NATIVE LIST MARKER FOLLOWS ITS OWN LIST ITEM'S DIRECTION, NOT THE LIST'S.** The same
-review found `ClassQuestions.tsx`'s `<ol>` reserving gutter space with
-`paddingInlineStart` alone while each `<li>` resolves its OWN direction via `dir="auto"`:
-the browser positions each `<li>`'s outside `::marker` on THAT li's own start edge, so a
-Farsi item's marker lands on the RIGHT — the side the `<ol>` reserved no room for — and
-gets pressed against or past the content border on both Mac and iPhone. Fixed with
-`paddingInline` (both sides) instead of `paddingInlineStart`, so the marker has room
-whichever side it lands on; `direction.test.ts` now scans every `<ol>`/`<ul>` on the
-recorded surfaces and fails if one contains a `dir="auto"` `<li>` without symmetric room
-on both sides — a shape check, not a location list, so a future list with the same
-mismatch fails on its own.
+**A NATIVE LIST MARKER'S OWN LOGICAL POSITION IS NOT SOMETHING A GUTTER MEASUREMENT CAN
+GUARANTEE.** The third rejection found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+space with `paddingInlineStart` alone while each `<li>` resolves its OWN direction via
+`dir="auto"`, and fixed it with symmetric `paddingInline` instead, reasoning that a
+marker landing on either side would then have room. A SIXTH SEALED FINDING, checked on
+the owner's own iPhone, found the number still escaping the card even with that room
+reserved: an outside `::marker`'s exact position for a direction-variable list item is a
+browser implementation detail — exactly the class of thing jsdom cannot compute either,
+which is why a padding measurement was ever trusted to stand in for it — not a distance a
+gutter can be sized against. The fix stops accommodating the native marker and removes it
+instead: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a real element,
+the FIRST child of a flex `<li dir="auto">`. Flexbox's row axis is direction-aware BY
+SPECIFICATION (`flex-direction: row`'s start is the writing mode's own start, not a fixed
+physical side), so the number leads on the right for a Farsi question and on the left for
+an English one — and because it is now an ordinary flex child inside the `<li>`'s own
+content box, rather than a marker rendered in the padding area outside it, it can no
+longer escape the card on any device. It carries no `dir` of its own (a digit is
+bidi-neutral, so `dir="auto"` on the `<li>` skips it and still resolves from the title as
+before) and neither does the wrapper around title/question/details: `dir="auto"` skips a
+descendant that carries its own `dir` when hunting for a first strong character, so
+giving the wrapper one would leave the `<li>` with no resolution source at all — the same
+class of regression the `stage.title` revert and the instrument-name checks above already
+found. `direction.test.ts` now asserts the mechanism directly rather than a proxy for it:
+every `<ol>`/`<ul>` containing a `dir="auto"` `<li>` must disable the native marker
+outright, and that `<li>` must itself be a flex/grid container able to reorder its own
+content — a shape check on the fix itself, not a measurement around a browser behaviour
+nothing here can verify.
+
+**A LABEL'S VALUE GETS ITS OWN ALIGNMENT WHEN IT WRAPS, NOT JUST ITS OWN BIDI ORDER.**
+The same sixth finding covered `ClassQuestions`' `Problem:`/`Last time:` lines. The
+established shape — a fixed English label left bare, immediately followed by the value in
+its own `dir="auto"` isolate — is unchanged and still correct for what it was built to
+fix: the value's own CHARACTERS shape correctly regardless of the label or the title next
+to it. What it never gave the value was its own ALIGNMENT — a plain inline
+`<span dir="auto">` has no width of its own to align within on a single line, but
+`currentProblem`/`lastObservation` are free-text notes that can wrap on a narrow phone
+card, and a wrapped span still lays its continuation lines out inside whatever block
+contains it. A long Farsi note trailing an English-titled item's "Problem: " would wrap
+its second and third lines flush against the LEFT margin, ragged right — the opposite of
+how a Farsi paragraph reads. Both value isolates now also carry
+`display: 'inline-block'` and an explicit `textAlign: 'start'`: for a short, single-line
+value this changes nothing visible (the box is exactly as wide as its one line, so
+`text-align` has nothing to act on), but a value long enough to wrap now does so inside
+its OWN block formatting context, so each wrapped line aligns to the value's OWN resolved
+direction — right for Farsi, left for English — independent of the label or the title.
+This is deliberately NOT generalised to `ActiveBlock`'s
+`constraint`/`problem`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
+the identical bare-label-then-isolate shape: those are short, single-line values in this
+app's real data today, so the wrap case this fixes does not arise for them, and touching
+files this lane's own brief did not name would be scope the sealed finding never asked
+for. If one of them is ever observed wrapping on a real device, the same
+`display: 'inline-block'` + `textAlign: 'start'` pair is the fix — applied where the
+failure actually shows up, never assembled as a location list ahead of evidence.
 
 **THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
 every `{…}` expression as fully opaque, contributing zero words — which is exactly

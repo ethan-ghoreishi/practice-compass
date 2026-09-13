@@ -2,6 +2,37 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
+
+A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
+question number still escaping the card despite the third rejection's symmetric
+`paddingInline` fix — proof that an outside `::marker`'s exact position for a
+direction-variable `<li>` is a browser implementation detail no gutter measurement can
+guarantee (jsdom cannot compute it either, which is why a padding proxy was ever trusted
+to stand in for it). Fixed by removing the native marker mechanism entirely rather than
+reserving room for it: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a
+real element, the FIRST child of a flex `<li dir="auto">` — flexbox's row axis is
+direction-aware by specification, so the number leads on the correct side and sits inside
+the content box it can never escape. The wrapper around title/question/details carries no
+`dir` of its own, deliberately: `dir="auto"` skips a descendant that has its own `dir`
+when hunting for a first strong character, so giving the wrapper one would leave the
+`<li>` with no resolution source at all. `direction.test.ts`'s list-marker check
+(`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
+now asserts the mechanism directly — no native marker, and the `<li>` is itself a
+flex/grid container — rather than measuring a proxy for it; each half was confirmed to
+fail on its own when reverted.
+
+The same finding covered `ClassQuestions`' `Problem:`/`Last time:` lines: the established
+bare-label-then-isolate shape gives the value its own bidi CHARACTER order but never its
+own ALIGNMENT, so a long Farsi note trailing an English title wraps its continuation
+lines flush left instead of right. Both value isolates now also carry
+`display: 'inline-block'` and `textAlign: 'start'` — inert for a short single-line value,
+but giving a wrapped value its own block formatting context so its wrapped lines align to
+its OWN resolved direction. Deliberately NOT generalised to ActiveBlock's or
+RoutineRunner's identical-shaped fields, none of which wrap in this app's real data today
+— see AGENTS.md's "A LABEL'S VALUE GETS ITS OWN ALIGNMENT..." section for the full
+reasoning and the boundary.
+
 ## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
 
 A fifth sealed review found the fourth rejection's fix was still a negative check —
