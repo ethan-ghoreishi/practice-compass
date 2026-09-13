@@ -54,7 +54,7 @@ export async function openPracticeApp(options: { now: Date; viewport?: { width: 
     browser = await chromium.launch();
   } catch (e) {
     await server.close();
-    throw new Error(`${INSTALL_HINT}\n\nUnderlying error: ${e instanceof Error ? e.message : String(e)}`);
+    throw new Error(INSTALL_HINT, { cause: e });
   }
 
   let context: BrowserContext;
