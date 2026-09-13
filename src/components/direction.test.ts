@@ -787,7 +787,7 @@ function isLabelFirstAutoRow(file: string, site: Site): boolean {
   const src = stripComments(SOURCES[file]);
   const openAt = src.lastIndexOf('<', site.at);
   const body = elementBody(src, site.text, openAt);
-  return /^\s*<span dir="ltr">[^<]*<\/span>/.test(src.slice(body.start, body.end));
+  return /^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/.test(src.slice(body.start, body.end));
 }
 
 // --- an instrument name resolves its own direction, wherever it renders ----
@@ -1344,7 +1344,7 @@ describe('direction lives on the group', () => {
         const openAt = src.lastIndexOf('<', site.at);
         const body = elementBody(src, site.text, openAt);
         const bodyText = src.slice(body.start, body.end);
-        const afterLabel = bodyText.replace(/^\s*<span dir="ltr">[^<]*<\/span>/, '');
+        const afterLabel = bodyText.replace(/^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/, '');
         if (/\sdir="(?:auto|ltr|rtl)"/.test(afterLabel)) {
           violations.push(
             `${file}:${site.line} — the value in a label-first row carries its own dir, leaving the row with nothing left to resolve from`,

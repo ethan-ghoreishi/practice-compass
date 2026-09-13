@@ -2,6 +2,41 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
+
+A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
+the "1." marker looked detached from the Farsi question because the Problem/Last-time
+lines sat at the opposite (left) edge from the title and question — a visible asymmetry a
+screenshot reads as "not attached" even where the title itself was correctly positioned.
+Rather than trust that reading, both edges were measured directly against the live DOM:
+the real seeded Farsi item, cloned into a fixed-width harness at 340px, with each line's
+actual rendered text extent read via `Range.getClientRects()` (glyph bounds, not
+`getBoundingClientRect()` on the containing boxes). Result: all four lines — title,
+question, Problem, Last time — right-align flush at 330px, an 8px gap from the ordinal's
+own right edge at 338px, matching the authored `gap: 8` exactly. The LEFT edges spread
+across 62px-205px (143px), because the four lines differ in length and each is
+right-aligned inside a box whose right edge is pinned to the ordinal regardless of the
+box's own width.
+
+A specific fix was proposed and tested before being rejected: swap the value wrapper's
+`flex: 1` (`.grow`) for shrink-to-fit sizing, on the theory that a narrower box would pull
+the ragged edges together. Patched live and re-measured, the result was byte-for-byte
+identical — same 143px spread, same individual line positions — because for right-aligned
+text, `left edge = box_right − line_width`, and `box_right` never moves: it stays flush
+against the ordinal no matter how the box itself is sized. There is no flex-sizing change
+that touches this, because the sizing was never the defect.
+
+Conclusion: a ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same shape any right-aligned paragraph or an address block has), not a
+resolvable structural defect. The actual defect the owner was reacting to was fixed by the
+Seventh rejection below, before this measurement was taken: Problem/Last-time used to sit
+at the FAR left (~25px, the opposite edge entirely) while title/question sat at ~330px — a
+hard two-line/two-line split, not mere length variance. Once the row-direction fix made
+all four lines agree on which edge they hug, what's left is ordinary variance in line
+length, and no further structural or padding change is warranted. No source change
+accompanies this entry; it exists so a future review does not reopen the same screenshot
+and re-diagnose an already-closed gap as a new one.
+
 ## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
 
 A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's

@@ -865,6 +865,31 @@ in this app's real data (never independently mismatched), so the failure this fi
 not arise for them, and touching files this lane's own brief did not name would be scope
 the sealed finding never asked for.
 
+**THE MARKER/TITLE GAP AND THE RAGGED LEFT EDGE ARE TWO DIFFERENT CLAIMS, AND ONLY ONE OF
+THEM WAS EVER BROKEN.** A follow-up OWNER pass on this same finding read as a second,
+distinct complaint — the ordinal "looked" detached from a Farsi question because the
+Problem/Last-time lines sat at the opposite (left) edge while the title and question sat
+right, an asymmetry a screenshot reads as "the number is not attached" even though the
+title itself was never the problem. Measured directly against the live DOM (real seeded
+Farsi data, cloned at a 340px container width, text extents read via
+`Range.getClientRects()`, not `getBoundingClientRect()` on the boxes): the ordinal's right
+edge sits at 338px, the title/question/Problem/Last-time lines all right-align flush
+against 330px — an 8px gap matching the authored `gap: 8` on every one of the four lines,
+not just the title. The remaining LEFT edges spread across a 143px range (62px-205px),
+because the four lines are different lengths and each is right-aligned within a box whose
+own right edge is pinned to the ordinal regardless of the box's width. That spread is
+mathematically invariant to how the box is sized: left edge = box_right minus line_width,
+and box_right never moves, so switching the wrapper from `flex: 1` (this file's `.grow`)
+to shrink-to-fit was tried and measured byte-for-byte identical before and after — proof
+that no flex-sizing change can touch it, because there is nothing wrong with the sizing to
+begin with. A ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same thing an address block or a right-aligned caption does), not a
+resolvable defect, and the row-direction fix above is what actually closed the gap the
+owner was reacting to: before it, Problem/Last-time sat at the FAR left (~25px, the
+opposite edge entirely) while title/question sat at ~330px — a hard two-line/two-line
+split, not mere length variance. Once all four lines agree on which edge they hug, what's
+left is length variance, and there is no further structural change this finding calls for.
+
 **THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
 every `{…}` expression as fully opaque, contributing zero words — which is exactly
 right for a single expression like a title, but means a run built ENTIRELY from
