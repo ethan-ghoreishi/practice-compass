@@ -1,46 +1,29 @@
 ---
 id: 20260913-build-a-daily-session-i-can-trust-from-l-402e
 contractId: 20260913-build-a-daily-session-i-can-trust-from-l-402e
-patchId: 1a585aafaa30d73460ef0f7f2c50f77c32bf8528
+patchId: f4880b90fda08ea18f132e583a0ee757a20d4b6c
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: C5 lossless and complete lesson-intent migration
-    summary: Current-version hydration bypasses the unconditional migration and
-      accepts incomplete conversion.
-    counterexample: "src/store/useStore.ts:1611-1618: Zustand invokes migrate only
-      when the persisted version differs. With persisted version=12, a v12
-      database containing teacherQuestion='hydration leftover' and
-      lessonAgenda=[] hydrates with the legacy field unchanged and zero agenda
-      entries. Reproduced through the actual store/Zustand using in-memory
-      storage with writes disabled. Extend 'all inbound paths preserve the new
-      model or reject before replacement' to exercise actual current-version
-      hydration, not only validateDB payload wrappers."
-  - family: A/B live decision freshness and preview-write agreement
-    summary: Start plan still accepts yesterday's preview before the next clock poll.
-    counterexample: "src/pages/SessionPlan.tsx:99-107,141-145 and
-      src/components/useDecisionNow.ts:23-32: build at 23:59:59, then click
-      Start plan at 00:00:01 without a visibility/focus event and before the
-      30-second poll. Both today and baseDay still represent yesterday, stale is
-      false, and startPlan installs the old selections/reasons without checking
-      real time. Extend 'daily practice browser journey preserves the decision
-      across close and rebuild' with this no-event Start race; its new
-      plan-midnight branch explicitly dispatches visibilitychange."
   - family: C7 new-model inbound validation
-    summary: Invalid asked calendar dates and dangling new item targets still pass
-      inbound validation.
-    counterexample: "src/domain/lessonAgenda.ts:328-329,411-431: validateDB accepts
-      a v12 question with askedAt='2026-02-30T12:00:00.000Z', because Date.parse
-      normalises it, and accepts itemId='nonexistent'. Both reproduced in
-      read-only probes. The orphan-item exemption is not supported by the actual
-      producer: src/store/useStore.ts:801-828 calls detachItem, which removes
-      preparations and converts question itemId to detachedFromItemId. Extend
-      'all inbound paths preserve the new model or reject before replacement'
-      across valid calendar components and live item references, while
-      preserving genuinely detached history and legacy restoration."
-createdAt: 2026-09-14T15:37:55.763Z
-sealedAt: 2026-09-14T15:47:05.644Z
+    summary: Hydration bypasses new-model validation and accepts newer schemas
+      instead of refusing them.
+    counterexample: At src/store/useStore.ts:1611-1635, both persist migrate and
+      merge call migrateToCurrent without validateDB or a newer-version guard. A
+      read-only probe through the actual useStore/Zustand persist.rehydrate with
+      in-memory storage and writes disabled accepted version=12 agenda questions
+      with itemId='nonexistent' and askedAt='2026-02-30T12:00:00.000Z';
+      hasHydrated() was true and both invalid values entered live db unchanged.
+      Persisted version=13 with db.schemaVersion=13 also hydrated successfully
+      as schemaVersion=12 because migrations.ts:292 stamps the current version.
+      The legacy-question conversion now succeeds, but this sibling inbound
+      boundary still fails C7/ac-15. Extend the exact named test 'all inbound
+      paths preserve the new model or reject before replacement' to exercise
+      real hydration with invalid/current/newer inputs, preserving the installed
+      state and providing actionable refusal.
+createdAt: 2026-09-14T16:38:35.568Z
+sealedAt: 2026-09-14T16:53:01.489Z
 ---
 
 # Review: Build a daily session I can trust, from lesson commitments to the next review
@@ -54,7 +37,7 @@ sealedAt: 2026-09-14T15:47:05.644Z
 - **Contract:** 20260913-build-a-daily-session-i-can-trust-from-l-402e
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/22
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `1a585aafaa30d73460ef0f7f2c50f77c32bf8528`
+- **Diff patch-id:** `f4880b90fda08ea18f132e583a0ee757a20d4b6c`
 
 ## The Delta this change was framed from
 
@@ -100,933 +83,630 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **C5 lossless and complete lesson-intent migration** — Migration treats matching generated id/kind/itemId as proof that legacy content is represented, and accepts incomplete current-schema conversions.
-  _counterexample:_ src/domain/migrations.ts:179-180,217-235: v11 item x has teacherQuestion='new distinct question', while question:x already contains 'different existing question' for x. validateDB retains only the existing text and removes teacherQuestion. A schema-12 input with teacherQuestion='left behind' and lessonAgenda=[] is also accepted with zero questions. Read-only probes reproduced both. Extend the named legacy lesson intent migration and inbound tests to cover conflicting content and incomplete current-schema data.
-- **B3/B7 shared build-swap eligibility and honest reasons** — Swap bypasses the build's practised-today filter and warm-up exclusions.
-  _counterexample:_ src/domain/plan.ts:698-725: three same-instrument usable items a/b/c have importance 5/4/3, with one minute practised on b today. A five-minute build selects a and explicitly skips b; Swap selects b even though fresh c is available, with an ordinary focus reason. A warm-up swap also permits due or lesson-committed candidates excluded from the build warm-up pool. Extend 'build swap and redistribution preserve candidate identity and honest reasons' across these sibling policies.
-- **A/B live decision freshness and preview-write agreement** — Calendar refresh does not invalidate the displayed plan, and close can save a different date before the next clock refresh.
-  _counterexample:_ src/pages/SessionPlan.tsx:82-95: leave a plan open across midnight without a database write. build changes but plan, seedKey and rev do not, so yesterday's selection/reasons remain startable. src/components/useDecisionNow.ts:24-30 and src/store/useStore.ts:1025: save a no-pending-date automatic close just after midnight before the next 30-second tick; the preview uses yesterday while closeSession recomputes with today. The named daily browser journey explicitly dispatches visibilitychange and does not cover either gap.
-- **C7 new-model inbound validation** — The validator accepts invalid new targets and calendar dates instead of rejecting before replacement.
-  _counterexample:_ Read-only validateDB probes accepted a v12 question with lessonId='nonexistent' and an item nextReviewDate='2027-99-99'. src/domain/lessonAgenda.ts:379-407 checks instrument agreement only when targets resolve and askedAt only by prefix; src/domain/scheduling.ts:756-793 checks date shape only. A dangling lesson target is neither a real lesson agenda nor an unassigned entry. Require valid new references/calendar values while preserving explicitly detached historical records, and expand 'all inbound paths preserve the new model or reject before replacement'.
+- **C5 lossless and complete lesson-intent migration** — Current-version hydration bypasses the unconditional migration and accepts incomplete conversion.
+  _counterexample:_ src/store/useStore.ts:1611-1618: Zustand invokes migrate only when the persisted version differs. With persisted version=12, a v12 database containing teacherQuestion='hydration leftover' and lessonAgenda=[] hydrates with the legacy field unchanged and zero agenda entries. Reproduced through the actual store/Zustand using in-memory storage with writes disabled. Extend 'all inbound paths preserve the new model or reject before replacement' to exercise actual current-version hydration, not only validateDB payload wrappers.
+- **A/B live decision freshness and preview-write agreement** — Start plan still accepts yesterday's preview before the next clock poll.
+  _counterexample:_ src/pages/SessionPlan.tsx:99-107,141-145 and src/components/useDecisionNow.ts:23-32: build at 23:59:59, then click Start plan at 00:00:01 without a visibility/focus event and before the 30-second poll. Both today and baseDay still represent yesterday, stale is false, and startPlan installs the old selections/reasons without checking real time. Extend 'daily practice browser journey preserves the decision across close and rebuild' with this no-event Start race; its new plan-midnight branch explicitly dispatches visibilitychange.
+- **C7 new-model inbound validation** — Invalid asked calendar dates and dangling new item targets still pass inbound validation.
+  _counterexample:_ src/domain/lessonAgenda.ts:328-329,411-431: validateDB accepts a v12 question with askedAt='2026-02-30T12:00:00.000Z', because Date.parse normalises it, and accepts itemId='nonexistent'. Both reproduced in read-only probes. The orphan-item exemption is not supported by the actual producer: src/store/useStore.ts:801-828 calls detachItem, which removes preparations and converts question itemId to detachedFromItemId. Extend 'all inbound paths preserve the new model or reject before replacement' across valid calendar components and live item references, while preserving genuinely detached history and legacy restoration.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 112f2e1..aa77d44 100644
+index aa77d44..7ee4c3a 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -654,14 +654,43 @@ already owns one), the conversion is presence-aware, and the legacy fields are r
- only once their content is represented — so it is idempotent, including over an
- already-current database whose agenda is legitimately empty.
- 
--**Inbound validation rejects invalid NEW intent and tolerates legacy debris.**
--`validateLessonAgenda` + `validateSchedulingFields` run inside `validateDB`, before
--`replaceAllBlobs` and before any install: unknown kinds, missing ids, duplicate ids, a
--missing instrument, empty question text, unreadable dates and a target that RESOLVES to
--a different instrument all refuse the import with actionable detail. A reference that no
--longer resolves at all (an item or class deleted years ago) is tolerated — every reader
--copes with it, and refusing a restore over one is the data loss this guard exists to
--prevent, not an example of it.
-+**"REPRESENTED" MEANS SAME CONTENT, NOT MERELY A MATCHING ID.** A sealed review found
-+`represented()` treated a matching generated `id`/`kind`/`itemId` alone as proof a
-+question was already there — so a legacy `teacherQuestion` whose generated id happened to
-+already name a DIFFERENT existing question (partial migration, a hand-edited file, an
-+interrupted write) was silently DROPPED, because the pre-existing entry with the same id
-+looked like "already represented". A preparation carries no content beyond the link
-+itself, so any matching entry genuinely represents it, but a question's content IS its
-+text: `represented()` now also compares that text, and a same-id/different-text match
-+falls through to `freeId` exactly like an unrelated collision, so BOTH questions survive
-+under distinct ids. This step also now runs on EVERY inbound database, not only one
-+declaring `fromVersion < 12`: a database claiming the CURRENT schema can still carry a
-+stray `assignedForLesson`/`teacherQuestion` from an incomplete conversion, and gating on
-+the declared version silently accepted that leftover with nothing to show for it. Running
-+it unconditionally costs nothing extra on genuinely current data — it is a no-op wherever
-+neither legacy field survives.
+@@ -675,22 +675,38 @@ where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSche
+ run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
+ missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
+ and a target that RESOLVES to a different instrument all refuse the import with
+-actionable detail. A DANGLING `itemId` — set, but resolving to nothing — stays tolerated:
+-the v11→v12 migration mints entries from `db.items` at the moment it runs, so an item
+-deleted afterwards leaves its own agenda entries pointing at nothing, and every reader
+-already copes with that (the docstring above already spells out the same tolerance for a
+-dangling `instrumentId`); refusing a restore over one would make the owner's own
+-documented recovery copy unrestorable — exactly the data loss this guard exists to
+-prevent, not an example of it. A DANGLING `lessonId` is different and is now REFUSED: this
+-app never leaves one dangling on its own — `deleteLesson` always converts a live
+-`lessonId` to `detachedFromLessonId` (see `detachLesson`), so a `lessonId` that is neither
+-absent nor resolving is invalid new intent, not legacy debris to wave through. A sealed
+-review reproduced `validateDB` accepting `lessonId: 'nonexistent'` before this. Calendar
+-values are also checked for REAL validity now, not merely shape:
+-`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` and a question's `askedAt` all
+-round-trip through their own components (`/^\d{4}-\d{2}-\d{2}$/` alone happily matched
+-`"2027-99-99"` and `"2026-02-30"`, which `Date.UTC` silently normalises rather than
+-rejects) — a sealed review reproduced both accepted.
++actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
++its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
++`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
++intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
++accepting `lessonId: 'nonexistent'` before this.
 +
-+**Inbound validation rejects invalid NEW intent and tolerates legacy debris — but only
-+where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSchedulingFields`
-+run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
-+missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
-+and a target that RESOLVES to a different instrument all refuse the import with
-+actionable detail. A DANGLING `itemId` — set, but resolving to nothing — stays tolerated:
-+the v11→v12 migration mints entries from `db.items` at the moment it runs, so an item
-+deleted afterwards leaves its own agenda entries pointing at nothing, and every reader
-+already copes with that (the docstring above already spells out the same tolerance for a
-+dangling `instrumentId`); refusing a restore over one would make the owner's own
-+documented recovery copy unrestorable — exactly the data loss this guard exists to
-+prevent, not an example of it. A DANGLING `lessonId` is different and is now REFUSED: this
-+app never leaves one dangling on its own — `deleteLesson` always converts a live
-+`lessonId` to `detachedFromLessonId` (see `detachLesson`), so a `lessonId` that is neither
-+absent nor resolving is invalid new intent, not legacy debris to wave through. A sealed
-+review reproduced `validateDB` accepting `lessonId: 'nonexistent'` before this. Calendar
-+values are also checked for REAL validity now, not merely shape:
-+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` and a question's `askedAt` all
-+round-trip through their own components (`/^\d{4}-\d{2}-\d{2}$/` alone happily matched
-+`"2027-99-99"` and `"2026-02-30"`, which `Date.UTC` silently normalises rather than
-+rejects) — a sealed review reproduced both accepted.
++**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
++section previously tolerated it on the theory that the v11→v12 migration mints entries
++from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
++agenda entries pointing at nothing. A sealed review found that theory does not hold
++against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
++`detachItem` in the SAME synchronous update that removes the item — a preparation naming
++it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
++so there is no in-app path that leaves a live `itemId` dangling any more than there is for
++`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
++a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
++unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
++(the same shape `detachLesson` already used for `lessonId`), so this strict check never
++sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
++not a hand-built approximation of its shape.
++
++**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
++`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
++`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
++round-trip their calendar components through `Date.UTC` rather than trusting a shape
++regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
++matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
++NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
++it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
++check had already been fixed once, but its date-TIME sibling in a different file had not.
++The two checks stay small and separately owned, one per file, rather than merged into a
++shared import.
  
  ## Persian text is canonical, and direction-aware
  
-@@ -1447,6 +1476,25 @@ scheduling works" section states the real priority formula and the SM-2 rungs in
- English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
- review row links to it ("Why this date?").
- 
-+**"THE DATE SHOWN EQUALS THE DATE SAVED" ALSO HAS TO SURVIVE THE SAVE ITSELF, NOT JUST
-+THE RENDER.** `CloseBlock`'s `now` (`useDecisionNow`) only refreshes every 30 seconds plus
-+visibility/focus, while `closeSession` used to compute its OWN fresh `new Date()` at call
-+time — so a Save clicked in the narrow window after the local day had genuinely rolled,
-+but before either the poll or a visibility event caught up, could write a decision
-+`computeReviewOutcome` recomputed for TODAY while the screen had only ever shown
-+YESTERDAY's. A sealed review named this gap explicitly. `closeSession` now takes the
-+screen's own `now` (`CloseSessionInput.now`, defaulting to `new Date()` only for the rare
-+caller with no prior decision to keep in step) instead of reading a fresh clock at module
-+scope, so once a save actually proceeds it writes EXACTLY the value just previewed —
-+never a second, independently-computed one. The day check itself lives in `CloseBlock`:
-+`handleSave` compares the true instant against `now` first, and on a mismatch sets a
-+local `nowOverride` and returns WITHOUT calling `closeSession` — refreshing the decision
-+visibly (the date field, the rationale, everything derived from `now` recomputes) while
-+the draft (result, observation, next action, body note) is untouched, so the very next
-+Save simply works. This is deliberately a small, local override rather than a change to
-+`useDecisionNow`'s shared contract — `SessionPlan.tsx` and `LessonAgenda.tsx` also read
-+that hook and neither needed this.
-+
- ## The Session Plan is a view over real blocks, not a new to-do list
- 
- The Session Plan (`src/domain/plan.ts`, pure + fully tested; `/plan` page) lays out one
-@@ -1483,6 +1531,23 @@ no scores, no "optimal" claims, no gamification.
-   regeneration, swaps and every fallback: resting material never surfaces in a
-   suggestion, and a fallback never widens to reach it. Direct, deliberate practice of a
-   resting item stays available and its review data is untouched.
-+- **A SWAP SHARES THE BUILD'S OWN CANDIDATE POOL, NOT JUST ITS ELIGIBILITY POLICY.** A
-+  sealed review found `swapSegment` filtering by `isProactiveCandidate` alone and then
-+  searching `scored` directly — bypassing the build's OWN practised-today exclusion
-+  (`candidatePool`, shared by both now) and the warm-up pool's extra due/lesson
-+  exclusions. Concretely: three same-instrument usable items scored 5/4/3 with the
-+  middle one practised one minute ago today; a five-minute build correctly stepped past
-+  it for the fresher lowest-scoring one, but Swap handed it right back because fresh
-+  work scored lower — the exact material the build had just deliberately set aside, with
-+  an ordinary "focus" reason as if nothing were off. A warm-up swap could likewise reach
-+  a candidate that was due for review or committed to a class, which the build's own
-+  warm-up pool excludes on purpose (that slot belongs to the actual need, never spent as
-+  a warm-up). `candidatePool` (`plan.ts`) is now the ONE practised-today/repeat-fallback
-+  computation both `buildSessionPlan` and `swapSegment` draw from, and swap's own
-+  eligibility switch repeats the warm-up bucket's due/lesson exclusion verbatim. Swap
-+  deliberately does NOT replay the build's diversity preference (a tie-break among
-+  segments chosen together in one pass, which a single substitution has none of) — see
-+  `swapSegment`'s own docstring for why that is a documented choice, not an oversight.
- - **Over-practice is bounded, decaying recent MINUTES**, not a block count and not a run
-   of identical results (`recentExposureMinutes`, `exposurePenalty`). Three "same" results
-   in January are a strategy hint in January, not a permanent penalty in September, and
-@@ -1494,6 +1559,17 @@ no scores, no "optimal" claims, no gamification.
-   silently starting stale work. `beginPlanSegment` revalidates the item LIVE
-   (`planSegmentStartable`): deleted or moved to another instrument ⇒ visibly skipped,
-   another clock running ⇒ refused. Skipping logs nothing.
-+- **A PLAN CAN GO STALE WITH NO DATABASE WRITE AT ALL: THE CLOCK MOVING PAST IT.**
-+  `SessionPlan.tsx` tracked staleness only via `rev` (the store's mutation counter) and a
-+  `seedKey` of `instrumentId|budget` — neither moves when a preview is simply left open
-+  across local midnight. A sealed review reproduced this: yesterday's segments, reasons
-+  and "for today's class" labels stayed on screen and startable with the Start button
-+  enabled, because `build` (the live recomputation) had quietly changed underneath while
-+  nothing told the visible `plan` state to notice. The preview now also tracks the LOCAL
-+  CALENDAR DAY it was built for (`baseDay`, set alongside `baseRev`) and is `stale`
-+  whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
-+  treatment `rev` already got, so a deliberate swap or removal survives a midnight
-+  exactly as it survives any other change underneath the plan.
+@@ -1570,6 +1586,24 @@ no scores, no "optimal" claims, no gamification.
+   whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
+   treatment `rev` already got, so a deliberate swap or removal survives a midnight
+   exactly as it survives any other change underneath the plan.
++- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
++  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
++  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
++  visibility/focus — a real device left untouched across local midnight, with no event to
++  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
++  button for up to that whole window. A sealed review reproduced this against the real
++  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
++  code installed yesterday's selections. Starting a plan is an authority boundary, so
++  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
++  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
++  `stale`'s own day comparison already applies, just evaluated against the true instant
++  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
++  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
++  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
++  banner and disabled button render — a visible refusal, never a silent no-op click. This
++  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
++  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
++  click in the first place.
  - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
    warm-up timer) stays untouched. The runner orchestrates the existing
    start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
-diff --git a/docs/product-spec.md b/docs/product-spec.md
-index 97f32ca..d38d583 100644
---- a/docs/product-spec.md
-+++ b/docs/product-spec.md
-@@ -58,6 +58,14 @@ an automatic date forward, never postpone it, and a date the musician chose them
- stands until it is due or they change it. Nothing about that is a judgement of effort: it
- is the difference between "I played this today" and "I proved I still had it."
- 
-+**The date you see is the date that gets saved, even across midnight.** A close screen —
-+or a session plan — left open while the day genuinely rolls over never silently writes a
-+decision for the day it was previewed on. It refreshes the visible date/reasons first
-+(the musician's own words survive the refresh) and only then lets Save go through; a
-+practice-session preview left open the same way marks itself as needing a rebuild rather
-+than starting a session it no longer honestly describes. Trustworthy here means the app
-+never quietly disagrees with itself about what day it is.
-+
- ## Design constraints that shaped the build
- 
- - **Start a block in < 30 seconds.** Hence smart defaults: status determines mode,
-diff --git a/docs/scheduling-evidence.md b/docs/scheduling-evidence.md
-index b100ef6..cbda51b 100644
---- a/docs/scheduling-evidence.md
-+++ b/docs/scheduling-evidence.md
-@@ -46,6 +46,14 @@ resting ("dormant") material never surfaces in a suggestion. It stays fully
- practisable by choosing it directly, keeps its review data, and comes straight
- back with a status change.
- 
-+A swap draws from the SAME candidate pool as the build, not just the same
-+eligibility test: `candidatePool` (`plan.ts`) computes the practised-today
-+exclusion (§below) and its honest repeat fallback once, and both
-+`buildSessionPlan` and `swapSegment` read it — a swap can never hand back
-+material the build itself deliberately stepped past, and a warm-up swap
-+excludes a due-for-review or lesson-committed candidate exactly as the
-+build's own warm-up pool does.
-+
- ## 2. Lesson urgency — from the commitment's own class
- 
- A `preparation` entry in the lesson agenda names ONE item and ONE class. That
+@@ -1692,7 +1726,13 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
+   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
+   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
+   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
+-  `SCHEMA_VERSION`. Schema **v12** converts legacy lesson intent into `lessonAgenda` and
++  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
++  `migrate` when the persisted version differs from the current one, `merge`
++  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
++  version already matches, which would otherwise let an already-current database carry a
++  stray legacy field forever (a sealed review reproduced exactly this; see the
++  lesson-agenda section above for the fix and why re-running the conversion a second time
++  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+   adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
+   neither is ever guessed for old data, so an existing future date keeps UNKNOWN
+   provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
 diff --git a/src/domain/io.test.ts b/src/domain/io.test.ts
-index ee2d53c..2f53eb3 100644
+index 2f53eb3..24b3803 100644
 --- a/src/domain/io.test.ts
 +++ b/src/domain/io.test.ts
-@@ -6,6 +6,7 @@ import { migrateToCurrent } from './migrations';
+@@ -6,7 +6,7 @@ import { migrateToCurrent } from './migrations';
  import { createSeedDB } from './seed';
  import { createBlock, createItem, createLesson } from './factories';
  import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-+import { createPreparation, detachLesson } from './lessonAgenda';
+-import { createPreparation, detachLesson } from './lessonAgenda';
++import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
  import { SCHEMA_VERSION, type PracticeDB } from './types';
  import { addDays, nowISO, toISODate } from './util';
  
-@@ -250,18 +251,88 @@ describe('the v12 model at every inbound door', () => {
+@@ -77,6 +77,11 @@ describe('validateDB — backward-compatible import', () => {
+       ...db,
+       schemaVersion: 4,
+       items: [item],
++      // Truncated to one item on purpose (this test is about pathwaySteps,
++      // not lesson agenda) — the seed's OWN agenda entries would otherwise
++      // dangle against every item but this one, which the strict live-itemId
++      // check now (correctly) refuses.
++      lessonAgenda: [],
+       pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
+     };
+     // migrateToV5's overwrite behaviour wins over the old "fill only when
+@@ -131,6 +136,8 @@ describe('validateDB — backward-compatible import', () => {
+       ...db,
+       schemaVersion: undefined,
+       items: [item],
++      // Truncated to one item on purpose (see the sibling test above).
++      lessonAgenda: [],
+       pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
+     });
+     const result = parseImport(legacyText);
+@@ -251,26 +258,34 @@ describe('the v12 model at every inbound door', () => {
      expect(
        bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
      ).toThrow(/unreadable asked date/);
-+    // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
-+    // a real agenda entry nor an honest unassigned one: `deleteLesson` always
-+    // converts a live reference to a detached marker, so this app never
-+    // leaves one dangling, and it is refused rather than tolerated as legacy
-+    // debris.
-+    expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
-+    // A dangling `itemId`, by contrast, stays TOLERATED — deliberately
-+    // asymmetric with `lessonId`. A genuine pre-upgrade backup can legitimately
-+    // hold one whose item was deleted on another device before that deletion
-+    // synced, and refusing it would make the owner's own documented recovery
-+    // copy unrestorable.
-+    expect(() =>
-+      validateDB({ ...v12, lessonAgenda: [{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }] }),
-+    ).not.toThrow();
-+    expect(() =>
-+      validateDB({
-+        ...v12,
-+        lessonAgenda: [{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }],
-+      }),
-+    ).not.toThrow();
-     expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
-+    // Calendar values are checked for real, not merely shape: a due date and
-+    // an item's own next-review date must both name a date that exists.
-+    expect(() =>
-+      validateDB({ ...v12, items: v12.items.map((i) => (i.id === 'i-scheduled' ? { ...i, nextReviewDate: '2027-99-99' } : i)) }),
-+    ).toThrow(/unreadable next-review date/);
-+    expect(() =>
-+      validateDB({ ...v12, reviews: v12.reviews.map((r) => ({ ...r, dueDate: '2026-02-30' })) }),
-+    ).toThrow(/unreadable due date/);
-     // An INCOMPLETE conversion — a legacy field still set with no entry to
-     // represent it — is converted rather than accepted as-is, because the
-     // chain runs on every inbound database whatever version it claims.
-+    // Declaring schema 12 (the CURRENT version, not a legacy 11) is the real
-+    // counterexample: a version-gated conversion step would skip this
-+    // database entirely and accept the leftover field with zero questions to
-+    // show for it.
-     const halfConverted = validateDB({
-       ...v12,
--      schemaVersion: 11,
-+      schemaVersion: 12,
-       items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'left behind' } : i)),
-     });
-     expect(halfConverted.lessonAgenda.some((e) => e.kind === 'question' && e.text === 'left behind')).toBe(true);
-+    // A generated id that already names a DIFFERENT existing question is not
-+    // "already represented" merely by matching id/kind/itemId — the content
-+    // has to agree too. Both survive under distinct ids.
-+    const halfConvertedConflict = validateDB({
-+      ...v12,
-+      schemaVersion: 12,
-+      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'a brand new question' } : i)),
-+      lessonAgenda: [
-+        ...v12.lessonAgenda,
-+        {
-+          id: 'question:i-flag-false',
-+          kind: 'question' as const,
-+          itemId: 'i-flag-false',
-+          instrumentId: 'setar',
-+          text: 'a completely different pre-existing question',
-+          createdAt: '2026-08-01T09:00:00.000Z',
-+          updatedAt: '2026-08-01T09:00:00.000Z',
-+        },
-+      ],
-+    });
-+    const conflictEntry = halfConvertedConflict.lessonAgenda.find((e) => e.id === 'question:i-flag-false');
-+    expect(conflictEntry?.kind === 'question' ? conflictEntry.text : undefined).toBe(
-+      'a completely different pre-existing question',
-+    );
++    // An IMPOSSIBLE calendar timestamp is refused too, not merely an
++    // unparseable one: `Date.parse` silently NORMALISES "2026-02-30" into
++    // March 2nd rather than rejecting it, so a shape check (or `Date.parse`
++    // alone) happily accepted it before this. A sealed review reproduced
++    // exactly this string passing.
 +    expect(
-+      halfConvertedConflict.lessonAgenda.some(
-+        (e) => e.kind === 'question' && e.itemId === 'i-flag-false' && e.text === 'a brand new question',
-+      ),
-+    ).toBe(true);
- 
--    // 4. LEGITIMATE unassigned and detached historical records PASS.
-+    // 4. LEGITIMATE unassigned and detached historical records PASS — proven
-+    //    against the REAL producer, not a hand-built approximation of its
-+    //    shape. `detachLesson` destructures `lessonId` OUT rather than
-+    //    setting it undefined; a JSON round-trip must still read that as
-+    //    genuinely absent, not as a lingering `null`/`undefined` key.
-+    const attached = createPreparation({ id: 'prep:real', itemId: 'i-premigrated', instrumentId: 'setar', lessonId: 'L-setar-1', now: NOW });
-+    const [reallyDetached] = JSON.parse(JSON.stringify(detachLesson([attached], 'L-setar-1', NOW))) as typeof v12.lessonAgenda;
-+    expect(reallyDetached).not.toHaveProperty('lessonId');
-+    expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
-+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
++      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: '2026-02-30T12:00:00.000Z' }]),
++    ).toThrow(/unreadable asked date/);
+     // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
+     // a real agenda entry nor an honest unassigned one: `deleteLesson` always
+     // converts a live reference to a detached marker, so this app never
+     // leaves one dangling, and it is refused rather than tolerated as legacy
+     // debris.
+     expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
+-    // A dangling `itemId`, by contrast, stays TOLERATED — deliberately
+-    // asymmetric with `lessonId`. A genuine pre-upgrade backup can legitimately
+-    // hold one whose item was deleted on another device before that deletion
+-    // synced, and refusing it would make the owner's own documented recovery
+-    // copy unrestorable.
+-    expect(() =>
+-      validateDB({ ...v12, lessonAgenda: [{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }] }),
+-    ).not.toThrow();
+-    expect(() =>
+-      validateDB({
+-        ...v12,
+-        lessonAgenda: [{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }],
+-      }),
+-    ).not.toThrow();
++    // A dangling `itemId` is REFUSED for the identical reason, not tolerated:
++    // `deleteItem` (`useStore.ts`) always calls `detachItem` in the SAME
++    // synchronous update that removes the item — a preparation naming it is
++    // removed outright, and a question's `itemId` becomes
++    // `detachedFromItemId` — so this app never leaves a LIVE `itemId`
++    // dangling any more than a `lessonId`. A sealed review found this
++    // previously tolerated on a theory the real producer above does not
++    // support.
++    expect(
++      bad([{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }]),
++    ).toThrow(/practice item that no longer exists/);
++    expect(
++      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }]),
++    ).toThrow(/practice item that no longer exists/);
+     expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
+     // Calendar values are checked for real, not merely shape: a due date and
+     // an item's own next-review date must both name a date that exists.
+@@ -333,6 +348,17 @@ describe('the v12 model at every inbound door', () => {
+     expect(reallyDetached).not.toHaveProperty('lessonId');
+     expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
+     expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
++    // The item-side equivalent, against the REAL producer `detachItem`
++    // (`deleteItem`'s own path) rather than a hand-built approximation: it
++    // destructures `itemId` OUT rather than setting it undefined, so the
++    // strict live-itemId check just proven above must never see one here.
++    const questionOnItem = createQuestion({ id: 'q:real', text: 'Real question', itemId: 'i-premigrated', instrumentId: 'setar', now: NOW });
++    const [reallyDetachedQuestion] = JSON.parse(
++      JSON.stringify(detachItem([questionOnItem], 'i-premigrated', NOW)),
++    ) as typeof v12.lessonAgenda;
++    expect(reallyDetachedQuestion).not.toHaveProperty('itemId');
++    expect(reallyDetachedQuestion).toMatchObject({ detachedFromItemId: 'i-premigrated' });
++    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetachedQuestion] })).not.toThrow();
      expect(() =>
        validateDB({
          ...v12,
 diff --git a/src/domain/lessonAgenda.ts b/src/domain/lessonAgenda.ts
-index 1430c68..31cede6 100644
+index 31cede6..9630d66 100644
 --- a/src/domain/lessonAgenda.ts
 +++ b/src/domain/lessonAgenda.ts
-@@ -318,6 +318,17 @@ export function createQuestion(args: {
+@@ -316,17 +316,30 @@ export function createQuestion(args: {
  
- const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
+ // --- Validation -------------------------------------------------------------
  
-+/**
-+ * A real ISO date-time, not merely a string shaped like the prefix of one:
-+ * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
-+ * happily as a genuine timestamp. Every `askedAt` this app itself writes
-+ * comes from `nowISO` (`new Date().toISOString()`), which `Date.parse` always
-+ * reads back losslessly, so this rejects nothing legitimate.
-+ */
-+function isValidISODateTime(s: string): boolean {
-+  return ISO_DATE_TIME.test(s) && Number.isFinite(Date.parse(s));
-+}
-+
+-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
++const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T/;
+ 
  /**
-  * Validate the agenda collection of an INBOUND database, before anything is
-  * installed. Returns a human-readable problem, or null when the collection is
-@@ -327,6 +338,18 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
-  * Legitimate unassigned and detached historical records PASS: an entry with no
+  * A real ISO date-time, not merely a string shaped like the prefix of one:
+  * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
+- * happily as a genuine timestamp. Every `askedAt` this app itself writes
+- * comes from `nowISO` (`new Date().toISOString()`), which `Date.parse` always
+- * reads back losslessly, so this rejects nothing legitimate.
++ * happily as a genuine timestamp, and `Date.parse` alone is no better — it
++ * silently NORMALISES an out-of-range day (`"2026-02-30T12:00:00.000Z"`
++ * becomes March 2nd) rather than rejecting it, so a sealed review reproduced
++ * that exact string passing. The calendar components are round-tripped
++ * through `Date.UTC` the same way `scheduling.ts`'s own `isValidISODate`
++ * checks a plain date, so an impossible day/month combination fails here
++ * too. Every `askedAt` this app itself writes comes from `nowISO`
++ * (`new Date().toISOString()`), which always round-trips losslessly, so this
++ * rejects nothing legitimate.
+  */
+ function isValidISODateTime(s: string): boolean {
+-  return ISO_DATE_TIME.test(s) && Number.isFinite(Date.parse(s));
++  const m = ISO_DATE_TIME.exec(s);
++  if (!m || !Number.isFinite(Date.parse(s))) return false;
++  const [, ys, ms, ds] = m;
++  const y = Number(ys);
++  const mo = Number(ms);
++  const d = Number(ds);
++  const dt = new Date(Date.UTC(y, mo - 1, d));
++  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+ }
+ 
+ /**
+@@ -339,17 +352,24 @@ function isValidISODateTime(s: string): boolean {
   * lesson, an asked question whose item is gone, a question with no item at all
   * are all honest states this app produces itself.
-+ *
-+ * A LIVE `lessonId` that resolves to NOTHING is different: `deleteLesson`
-+ * always converts the live reference to `detachedFromLessonId` (see
-+ * `detachLesson`), so this app never leaves one dangling — a `lessonId` that
-+ * is neither absent nor resolving is invalid new intent, not legacy debris.
-+ * A dangling `itemId` stays TOLERATED, deliberately asymmetric with
-+ * `lessonId`: the v11→v12 migration mints entries from `db.items` at the
-+ * moment it runs, so an item deleted afterwards leaves its own agenda entries
-+ * pointing at nothing — every reader already copes with that, the same way
-+ * a dangling `instrumentId` is tolerated just above — and refusing to restore
-+ * a backup over one would make the owner's own documented recovery copy
-+ * unrestorable, exactly the data loss this guard exists to prevent.
+  *
+- * A LIVE `lessonId` that resolves to NOTHING is different: `deleteLesson`
+- * always converts the live reference to `detachedFromLessonId` (see
+- * `detachLesson`), so this app never leaves one dangling — a `lessonId` that
+- * is neither absent nor resolving is invalid new intent, not legacy debris.
+- * A dangling `itemId` stays TOLERATED, deliberately asymmetric with
+- * `lessonId`: the v11→v12 migration mints entries from `db.items` at the
+- * moment it runs, so an item deleted afterwards leaves its own agenda entries
+- * pointing at nothing — every reader already copes with that, the same way
+- * a dangling `instrumentId` is tolerated just above — and refusing to restore
+- * a backup over one would make the owner's own documented recovery copy
+- * unrestorable, exactly the data loss this guard exists to prevent.
++ * A LIVE `lessonId` OR a LIVE `itemId` that resolves to NOTHING is invalid new
++ * intent, not legacy debris — this app never leaves either dangling on its
++ * own. `deleteLesson` always converts a live `lessonId` to
++ * `detachedFromLessonId` (see `detachLesson`). `deleteItem` (`useStore.ts`)
++ * always calls `detachItem` in the SAME synchronous update that removes the
++ * item: a preparation naming it is removed outright, and a question's
++ * `itemId` is converted to `detachedFromItemId` — never left as a live
++ * reference to nothing. A sealed review found this section previously
++ * tolerating a dangling `itemId` on the theory that the v11→v12 migration
++ * mints entries from `db.items` at the moment it runs, so an item deleted
++ * afterwards could leave its own agenda entries pointing at nothing — that
++ * theory does not hold against the actual producer above, which cleans up
++ * synchronously in the SAME update, so a genuinely dangling live `itemId` can
++ * only be invalid data, not a legitimate history. A GENUINELY DETACHED
++ * record — `detachedFromItemId`/`detachedFromLessonId` set, the live field
++ * absent — is unaffected either way: `detachItem`/`detachLesson` destructure
++ * the live field OUT rather than setting it `undefined`, so this check never
++ * sees one to reject.
   */
  export function validateLessonAgenda(
    db: Pick<PracticeDB, 'lessonAgenda' | 'items' | 'lessons' | 'instruments'>,
-@@ -369,21 +392,22 @@ export function validateLessonAgenda(
-       return `Lesson-agenda entry "${e.id}" is missing its instrument.`;
-     }
-     void instruments;
--    // A target that RESOLVES must agree with the entry's instrument — that is
--    // the invariant this model exists to keep, and a mismatch is invalid new
--    // intent. A target that no longer resolves is legacy debris: every reader
--    // already copes with it (a question with a missing item renders without a
--    // title; a preparation naming a missing item matches nothing), and
--    // refusing an entire restore over one is the data loss this guard is
--    // supposed to prevent, not an example of it.
-+    // A LIVE lesson target that resolves to nothing at all is refused
-+    // outright — see this function's own docstring for why that is never
-+    // legacy debris. A target that resolves must also agree with the
-+    // entry's instrument.
-     if (typeof e.lessonId === 'string') {
-       const lesson = lessonById.get(e.lessonId);
--      if (lesson && lesson.instrumentId !== e.instrumentId) {
-+      if (!lesson) return `Lesson-agenda entry "${e.id}" names a class that no longer exists.`;
-+      if (lesson.instrumentId !== e.instrumentId) {
-         return `Lesson-agenda entry "${e.id}" names a class on a different instrument.`;
-       }
+@@ -405,15 +425,17 @@ export function validateLessonAgenda(
      } else if (e.lessonId !== undefined) {
        return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
      }
-+    // An item target that no longer resolves is tolerated (see the
-+    // docstring); one that DOES resolve must agree with the entry's
-+    // instrument — a mismatch there is invalid new intent regardless.
+-    // An item target that no longer resolves is tolerated (see the
+-    // docstring); one that DOES resolve must agree with the entry's
+-    // instrument — a mismatch there is invalid new intent regardless.
++    // A LIVE item target that resolves to nothing at all is refused outright
++    // — see this function's own docstring for why that is never legacy
++    // debris. One that DOES resolve must also agree with the entry's
++    // instrument.
      if (e.kind === 'preparation') {
        if (typeof e.itemId !== 'string' || !e.itemId) {
          return `Preparation "${e.id}" names no practice item.`;
-@@ -404,7 +428,7 @@ export function validateLessonAgenda(
+       }
+       const item = itemById.get(e.itemId);
+-      if (item && item.instrumentId !== e.instrumentId) {
++      if (!item) return `Preparation "${e.id}" names a practice item that no longer exists.`;
++      if (item.instrumentId !== e.instrumentId) {
+         return `Preparation "${e.id}" names an item on a different instrument.`;
+       }
+     } else {
+@@ -422,7 +444,8 @@ export function validateLessonAgenda(
+       }
+       if (typeof e.itemId === 'string') {
+         const item = itemById.get(e.itemId);
+-        if (item && item.instrumentId !== e.instrumentId) {
++        if (!item) return `Question "${e.id}" names a practice item that no longer exists.`;
++        if (item.instrumentId !== e.instrumentId) {
+           return `Question "${e.id}" names an item on a different instrument.`;
+         }
        } else if (e.itemId !== undefined) {
-         return `Question "${e.id}" has an unreadable item reference.`;
-       }
--      if (e.askedAt !== undefined && (typeof e.askedAt !== 'string' || !ISO_DATE_TIME.test(e.askedAt))) {
-+      if (e.askedAt !== undefined && (typeof e.askedAt !== 'string' || !isValidISODateTime(e.askedAt))) {
-         return `Question "${e.id}" has an unreadable asked date.`;
-       }
-       if (e.answer !== undefined && typeof e.answer !== 'string') {
-diff --git a/src/domain/migrations.test.ts b/src/domain/migrations.test.ts
-index 72fd7a3..655d85f 100644
---- a/src/domain/migrations.test.ts
-+++ b/src/domain/migrations.test.ts
-@@ -214,6 +214,15 @@ describe('v11 → v12 · legacy lesson intent', () => {
-       itemId: 'i-collision',
-     });
- 
-+    // 6b. A generated id that already names a DIFFERENT question is not
-+    //     "already represented" just because the id/kind/itemId match — the
-+    //     content has to agree too. Both survive: the pre-existing question
-+    //     is untouched and the new one gets its own collision-safe id.
-+    const conflictExisting = agenda.find((e) => e.id === 'question:i-conflict');
-+    expect(conflictExisting).toMatchObject({ kind: 'question', itemId: 'i-conflict', text: 'different existing question' });
-+    const conflictNew = agenda.find((e) => e.id === 'question:i-conflict~2');
-+    expect(conflictNew).toMatchObject({ kind: 'question', itemId: 'i-conflict', text: 'new distinct question' });
-+
-     // 7. The legacy fields are gone only now their content is represented.
-     for (const raw of out.items as unknown as LegacyItem[]) {
-       expect('assignedForLesson' in raw, raw.id).toBe(false);
-diff --git a/src/domain/migrations.ts b/src/domain/migrations.ts
-index 301c547..fe75d06 100644
---- a/src/domain/migrations.ts
-+++ b/src/domain/migrations.ts
-@@ -170,14 +170,40 @@ function migrateToV11(db: PracticeDB): PracticeDB {
-  * which this step then removes, and it never creates an entry whose id already
-  * describes the same thing. An already-current database — including one whose
-  * agenda is legitimately EMPTY — comes through unchanged.
-+ *
-+ * This step runs on EVERY inbound database, not only one that declares itself
-+ * pre-v12: a database claiming the current schema can still carry a stray
-+ * `assignedForLesson`/`teacherQuestion` left behind by an interrupted write, a
-+ * hand-edited file, or a bug in an earlier build — an INCOMPLETE current-schema
-+ * conversion, not a genuine v11 input. Gating this on the declared version
-+ * would accept that leftover silently, with the intent it recorded gone
-+ * nowhere. Running it unconditionally is safe because it is a no-op wherever
-+ * neither legacy field is present.
-  */
- function migrateToV12(db: PracticeDB): PracticeDB {
-   type LegacyItem = PracticeItem & { assignedForLesson?: boolean; teacherQuestion?: string };
-   const existing: LegacyAgenda[] = ((db.lessonAgenda ?? []) as LegacyAgenda[]).slice();
-   const takenIds = new Set(existing.map((e) => e?.id).filter((id): id is string => typeof id === 'string'));
- 
--  const represented = (base: string, kind: 'preparation' | 'question', itemId: string): boolean =>
--    existing.some((e) => e?.id === base && e?.kind === kind && e?.itemId === itemId);
-+  // "Represented" means an entry with this id/kind/itemId already says the
-+  // SAME thing the legacy field says — not merely that one exists. A
-+  // preparation carries no content beyond the link itself, so any matching
-+  // entry represents it; a question's content IS its text, so an entry that
-+  // merely shares the generated id but holds DIFFERENT text is not a
-+  // duplicate of this question — it is a distinct one that happens to want
-+  // the same id, and `freeId` gives it a collision-safe alternative exactly
-+  // as it would for an unrelated entry. Treating a same-id/different-text
-+  // match as "already represented" would silently discard the new question's
-+  // own text — the exact incomplete-migration defect this function exists to
-+  // prevent.
-+  const represented = (base: string, kind: 'preparation' | 'question', itemId: string, text?: string): boolean =>
-+    existing.some(
-+      (e) =>
-+        e?.id === base &&
-+        e?.kind === kind &&
-+        e?.itemId === itemId &&
-+        (kind !== 'question' || (e as { text?: unknown }).text === text),
-+    );
- 
-   // A deterministic id that cannot collide with an UNRELATED entry that
-   // happens to already own the obvious one. Same input, same output, always.
-@@ -216,7 +242,7 @@ function migrateToV12(db: PracticeDB): PracticeDB {
-     }
-     if (typeof teacherQuestion === 'string' && teacherQuestion.trim().length > 0) {
-       const base = `question:${item.id}`;
--      if (!represented(base, 'question', item.id)) {
-+      if (!represented(base, 'question', item.id, teacherQuestion)) {
-         const id = freeId(base);
-         takenIds.add(id);
-         added.push({
-@@ -259,6 +285,9 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
-   if (fromVersion < 9) next = migrateToV9(next);
-   if (fromVersion < 10) next = migrateToV10(next);
-   if (fromVersion < 11) next = migrateToV11(next);
--  if (fromVersion < 12) next = migrateToV12(next);
-+  // Unconditional, not gated on `fromVersion < 12`: see migrateToV12's own
-+  // docstring for why an already-current-declared database still needs this
-+  // pass over it.
-+  next = migrateToV12(next);
-   return { ...next, schemaVersion: SCHEMA_VERSION };
- }
 diff --git a/src/domain/plan.test.ts b/src/domain/plan.test.ts
-index 85c9b68..25dce1c 100644
+index 25dce1c..ed64c2b 100644
 --- a/src/domain/plan.test.ts
 +++ b/src/domain/plan.test.ts
-@@ -333,6 +333,48 @@ describe('building, swapping and redistributing keep identity and honest reasons
-       }
-     }
- 
-+    // SWAP shares the build's OWN practised-today exclusion — it must never
-+    // hand back material the build itself set aside while a fresher, equally
-+    // eligible candidate is available. Three usable same-instrument items
-+    // ranked by importance (5/4/3); the middle one was practised one minute
-+    // ago today.
-+    const hi = it_({ id: 'hi', title: 'Hi', status: 'usable', importance: 5 });
-+    const mid = it_({ id: 'mid', title: 'Mid', status: 'usable', importance: 4 });
-+    const lo = it_({ id: 'lo', title: 'Lo', status: 'usable', importance: 3 });
-+    const practisedMid = [block('mid', NOW.toISOString())];
-+    const shortArgs = baseArgs({ items: [hi, mid, lo], blocks: practisedMid, budgetMinutes: 5 });
-+    const shortPlan = buildSessionPlan(shortArgs);
-+    expect(shortPlan.segments.map((s) => s.itemId)).toEqual(['hi']); // mid stepped aside, not chosen
-+    const shortSwap = swapSegment(shortPlan, 0, shortArgs);
-+    // Fresh 'lo' is available — the swap must reach it, never the
-+    // already-practised 'mid', even though 'mid' outranks 'lo' on score alone.
-+    expect(shortSwap.segments[0].itemId).toBe('lo');
-+    expect(shortSwap.segments[0].reason).not.toContain('Practised earlier today');
+@@ -9,6 +9,7 @@ import {
+   MAX_SEGMENT_MINUTES,
+   MIN_BUDGET_MINUTES,
+   MIN_SEGMENT_MINUTES,
++  planPreviewDayHasPassed,
+   planSegmentStartable,
+   redistributePlan,
+   skipPlanSegment,
+@@ -505,6 +506,17 @@ describe('a running plan keeps its progress and refuses stale work', () => {
+     expect(advancePlanPointer([pendingSeg, doneSeg], 1)).toBe(0); // wraps to what is still pending
+     expect(advancePlanPointer([skippedSeg], 0)).toBe(1); // a deliberate skip stays skipped
+     expect(advancePlanPointer([doneSeg], 0)).toBe(1); // finished
 +
-+    // A warm-up swap uses the SAME exclusions as the build's own warm-up
-+    // pool: a candidate that is due for review, or committed to a class,
-+    // deserves that slot — never spent as a warm-up — even though it is
-+    // otherwise `isWarmupSuitable`.
-+    const dueWarm = it_({ id: 'due-warm', title: 'DueWarm', status: 'usable', difficulty: 2, timesPractised: 5 });
-+    const freshWarm = it_({ id: 'fresh-warm', title: 'FreshWarm', status: 'usable', difficulty: 2, timesPractised: 5 });
-+    expect(isWarmupSuitable(dueWarm)).toBe(true);
-+    expect(isWarmupSuitable(freshWarm)).toBe(true);
-+    const warmupReviews = [createReview({ practiceItemId: 'due-warm', dueDate: day(-1), reviewType: 'retention' }, NOW)];
-+    const warmupPlan: SessionPlan = {
-+      instrumentId: INST,
-+      budgetMinutes: 20,
-+      segments: [
-+        { itemId: 'placeholder', title: 'placeholder', minutes: 5, bucket: 'warmup', core: false, mode: 'learn', focus: 'tone', reason: 'x' },
-+      ],
-+      summary: '',
-+      generatedAt: NOW.toISOString(),
-+    };
-+    const warmArgs = baseArgs({ items: [dueWarm, freshWarm], reviews: warmupReviews, budgetMinutes: 20 });
-+    const swappedWarm = swapSegment(warmupPlan, 0, warmArgs);
-+    expect(swappedWarm.segments[0].itemId).toBe('fresh-warm'); // never the due one
-+    const onlyDue = swapSegment(warmupPlan, 0, { ...warmArgs, items: [dueWarm] });
-+    expect(onlyDue.segments[0].itemId).toBe('placeholder'); // no eligible candidate at all: no swap
-+
-     // REGENERATE is the same function with the same inputs: same answer.
-     expect(JSON.stringify(buildSessionPlan(args).segments)).toBe(JSON.stringify(plan.segments));
++    // Starting a plan is an authority boundary: the preview's OWN calendar
++    // day is checked against the caller's `now` directly — the extracted
++    // pure transition `SessionPlan.tsx`'s click-time guard actually calls,
++    // never a screen's own polled `now` that can lag the true instant by up
++    // to its poll interval, which is the exact gap a real device left
++    // untouched across midnight experiences with no event to close it.
++    const builtFor = day(0);
++    expect(planPreviewDayHasPassed(builtFor, NOW)).toBe(false);
++    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, 1))).toBe(true);
++    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, -1))).toBe(true);
+   });
+ });
  
 diff --git a/src/domain/plan.ts b/src/domain/plan.ts
-index 97dbdc6..1f83294 100644
+index 1f83294..c241ada 100644
 --- a/src/domain/plan.ts
 +++ b/src/domain/plan.ts
-@@ -132,6 +132,29 @@ export function validateBudgetMinutes(value: unknown): number | null {
-   return n;
+@@ -823,6 +823,22 @@ export function skipPlanSegment(run: PlanRun): PlanRun {
+   return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
  }
  
 +/**
-+ * The candidate pool a build OR a swap picks from: practised-today material
-+ * steps aside — unless it is committed to a class, a commitment the day's
-+ * earlier session did not discharge — falling back to repeating today's own
-+ * work only when nothing fresh remains eligible. Shared so a swap can never
-+ * reach material the build itself deliberately set aside (§B3/B7): a swap
-+ * used to run this filter over `scored` directly, so it could hand back an
-+ * item the build had excluded as already practised while a fresher,
-+ * untouched candidate sat right behind it.
++ * Has the local calendar day moved past the day a session-plan PREVIEW was
++ * built for? Takes the caller's OWN `now` rather than reading a clock itself,
++ * but the point of this function is that the caller must pass the TRUE
++ * current instant here, never a screen's own polled `now`
++ * (`useDecisionNow` refreshes at most every 30 seconds, plus visibility/focus)
++ * — starting a plan is an authority boundary, the one place that lag must
++ * never be trusted. `SessionPlan.tsx`'s own `stale` flag already renders this
++ * same comparison against its polled `now` for the passive banner; this is
++ * the identical rule, extracted so the click-time check reads a fresh
++ * `Date` directly rather than waiting for that polled value to catch up.
 + */
-+function candidatePool(
-+  scored: ItemScore[],
-+  blocks: PracticeBlock[],
-+  now: Date,
-+): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string> } {
-+  const today = todayISODate(now);
-+  const practisedToday = new Set(
-+    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
-+  );
-+  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || s.parts.lesson > 0);
-+  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday };
++export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
++  return todayISODate(now) !== baseDay;
 +}
 +
- /**
-  * Is this item suitable as a warm-up? A role, not a label.
-  *
-@@ -256,16 +279,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
-   }
- 
-   const today = todayISODate(now);
--  const practisedToday = new Set(
--    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
--  );
--  // Practised-today material steps aside — unless it is committed to a class,
--  // which is a commitment the day's earlier session did not discharge.
--  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || s.parts.lesson > 0);
--  // The honest fallback: repeat today's work rather than invent filler, but
--  // still only from eligible material — never by widening to resting items.
--  const pool = fresh.length > 0 ? fresh : scored;
--  const isRepeatPool = fresh.length === 0;
-+  const { pool, isRepeatPool, practisedToday } = candidatePool(scored, blocks, now);
- 
-   const dueById = new Map(
-     dueReviews(args.reviews, now)
-@@ -669,9 +683,22 @@ export function redistributePlan(plan: SessionPlan, params?: SchedulingParams):
- 
- /**
-  * Swap segment `index` for the next-best alternative, keeping its minutes and
-- * its role. Uses the SAME eligibility policy as the build — a swap that could
-- * reach material the build excluded is a second, hidden policy, and it used to
-- * hand back an item the build had deliberately set aside.
-+ * its role. Uses the SAME eligibility policy, candidate pool and warm-up
-+ * exclusions as the build — a swap that could reach material the build
-+ * excluded is a second, hidden policy, and it used to hand back an item
-+ * already practised today (or a due/lesson-committed item as a "warm-up")
-+ * even while a fresher, build-eligible candidate sat right behind it.
-+ *
-+ * DELIBERATELY NOT SHARED: the build's DIVERSITY preference
-+ * (`selectedDimensions`/`recentDimensions` in `buildSessionPlan`). Diversity
-+ * is a modest, order-dependent tie-break among the OTHER segments a build is
-+ * choosing at the same time (AGENTS.md: "subordinate to real needs") — it is
-+ * not an eligibility rule like practised-today or a due/lesson exclusion, and
-+ * a swap has no OTHER segments' choices in front of it to be diverse against
-+ * (`plan.segments` here is the already-finished plan, not a selection in
-+ * progress). Reconstructing that state for one substitution would make a
-+ * swap's answer depend on an ordering it never participated in. A swap
-+ * therefore returns the single best-scoring ELIGIBLE candidate, full stop.
-  */
- export function swapSegment(
-   plan: SessionPlan,
-@@ -686,6 +713,11 @@ export function swapSegment(
-     .filter(isProactiveCandidate);
-   const blocks = args.blocks.filter((b) => b.instrumentId === plan.instrumentId);
-   const scored = scoreItems(items, groupBlocksByItem(blocks), args.now, args.preparationDates);
-+  // The SAME candidate pool the build itself drew from — practised-today
-+  // material stays excluded here too, unless nothing fresh is eligible for
-+  // this bucket, in which case the honest repeat fallback applies exactly as
-+  // it does on a build (§B3/B7).
-+  const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
- 
-   const inUse = new Set(plan.segments.map((s) => s.itemId));
-   const exclude = args.excludeIds ?? new Set<string>();
-@@ -699,7 +731,10 @@ export function swapSegment(
-     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
-     switch (target.bucket) {
-       case 'warmup':
--        return isWarmupSuitable(s.item);
-+        // Same exclusions as the build's own warm-up pool: a due review or a
-+        // class commitment deserves the slot it is actually needed for, never
-+        // spent as a warm-up.
-+        return isWarmupSuitable(s.item) && !dueById.has(s.item.id) && s.parts.lesson === 0;
-       case 'lesson':
-         return s.parts.lesson > 0;
-       case 'review':
-@@ -711,7 +746,7 @@ export function swapSegment(
-     }
-   };
- 
--  const pick = scored.find(eligible);
-+  const pick = pool.find(eligible);
-   if (!pick) return plan;
- 
-   const replacement: PlanSegment = {
-@@ -722,7 +757,7 @@ export function swapSegment(
-     core: target.core,
-     mode: defaultModeForStatus(pick.item.status),
-     focus: focusFor(pick.item),
--    reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id) }),
-+    reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id), repeat: isRepeatPool }),
-   };
-   const segments = plan.segments.map((s, i) => (i === index ? replacement : s));
-   return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };
-diff --git a/src/domain/scheduling.ts b/src/domain/scheduling.ts
-index 1376875..15501ef 100644
---- a/src/domain/scheduling.ts
-+++ b/src/domain/scheduling.ts
-@@ -757,6 +757,21 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
- const REVIEW_MODES: ReviewMode[] = ['auto', 'interval', 'manual'];
- const REVIEW_TYPES: ReviewType[] = ['retention', 'repair', 'integration', 'maintenance', 'teacher_check'];
- 
-+/**
-+ * A real calendar date, not merely a string SHAPED like one:
-+ * `/^\d{4}-\d{2}-\d{2}$/` matches "2027-99-99" and "2026-02-30" just as
-+ * happily as a genuine date. `Date.UTC` normalises an out-of-range month or
-+ * day rather than rejecting it (day 30 of February silently becomes March
-+ * 2nd), so the shape regex alone lets exactly that kind of nonsense through —
-+ * the round trip through the SAME components is what actually proves it.
-+ */
-+function isValidISODate(s: string): boolean {
-+  if (!ISO_DATE.test(s)) return false;
-+  const [y, m, d] = s.split('-').map(Number);
-+  const dt = new Date(Date.UTC(y, m - 1, d));
-+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
-+}
-+
- /**
-  * Validate the scheduling fields of an INBOUND database before it is
-  * installed. Bounded to the decision loop's own data — dates readable, enums
-@@ -767,7 +782,7 @@ const REVIEW_TYPES: ReviewType[] = ['retention', 'repair', 'integration', 'maint
-  */
- export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews'>): string | null {
-   for (const i of db.items) {
--    if (i.nextReviewDate !== undefined && !ISO_DATE.test(String(i.nextReviewDate))) {
-+    if (i.nextReviewDate !== undefined && !isValidISODate(String(i.nextReviewDate))) {
-       return `Item "${i.title ?? i.id}" has an unreadable next-review date.`;
-     }
-     if (i.reviewMode !== undefined && !REVIEW_MODES.includes(i.reviewMode)) {
-@@ -776,7 +791,7 @@ export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews
-     if (i.nextReviewSource !== undefined && i.nextReviewSource !== 'auto' && i.nextReviewSource !== 'user') {
-       return `Item "${i.title ?? i.id}" has an unknown review-date source.`;
-     }
--    if (i.srLastProgressDay !== undefined && !ISO_DATE.test(String(i.srLastProgressDay))) {
-+    if (i.srLastProgressDay !== undefined && !isValidISODate(String(i.srLastProgressDay))) {
-       return `Item "${i.title ?? i.id}" has an unreadable spacing-progress day.`;
-     }
-     for (const key of ['srReps', 'srEase', 'srIntervalDays', 'reviewIntervalDays'] as const) {
-@@ -790,7 +805,7 @@ export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews
-   for (const r of db.reviews) {
-     if (seen.has(r.id)) return `Two reviews share the id "${r.id}".`;
-     seen.add(r.id);
--    if (!ISO_DATE.test(String(r.dueDate))) return `A review for "${r.practiceItemId}" has an unreadable due date.`;
-+    if (!isValidISODate(String(r.dueDate))) return `A review for "${r.practiceItemId}" has an unreadable due date.`;
-     if (!REVIEW_TYPES.includes(r.reviewType)) return `A review for "${r.practiceItemId}" has an unknown type.`;
-     // A row pointing at an item that no longer exists is legacy debris, not
-     // invalid new intent — it is tolerated (and ignored by every reader) rather
-diff --git a/src/pages/CloseBlock.tsx b/src/pages/CloseBlock.tsx
-index 39e41ed..3e26a2f 100644
---- a/src/pages/CloseBlock.tsx
-+++ b/src/pages/CloseBlock.tsx
-@@ -6,6 +6,7 @@ import {
-   lessonLabel,
-   planNextReview,
-   proposedCloseMinutes,
-+  todayISODate,
-   type ReviewAnswer,
-   type ReviewPlan,
-   RESULT_LABELS,
-@@ -43,7 +44,17 @@ export default function CloseBlock() {
-   // when the page comes back into view. A close screen left open across
-   // midnight must not write a date derived from yesterday — and the draft in
-   // the fields above survives the refresh, because only `now` changes.
+ export type PlanStartCheck =
+   | { ok: true; item: PracticeItem }
+   | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
+diff --git a/src/pages/SessionPlan.tsx b/src/pages/SessionPlan.tsx
+index da5b0bd..f17534f 100644
+--- a/src/pages/SessionPlan.tsx
++++ b/src/pages/SessionPlan.tsx
+@@ -5,6 +5,7 @@ import {
+   currentStage,
+   MAX_BUDGET_MINUTES,
+   MIN_BUDGET_MINUTES,
++  planPreviewDayHasPassed,
+   preparationDatesByItem,
+   redistributePlan,
+   swapSegment,
+@@ -48,7 +49,19 @@ function PlanPreview() {
+   const [params] = useSearchParams();
+   // Refreshed at a local-day boundary so a preview left open overnight never
+   // plans against yesterday's due dates and lesson deadlines.
 -  const now = useDecisionNow();
 +  //
 +  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
 +  // so it can lag the true instant by up to that long. `nowOverride` closes
-+  // that gap at the one moment it actually matters — Save — without needing
-+  // the shared hook to expose a manual refresh: `handleSave` sets it the
-+  // instant it finds the real local day has moved past what `now` reflects,
-+  // forcing an immediate re-render with the CORRECTED decision instead of
-+  // silently saving one that no longer matches what is on screen.
++  // that gap at the one moment it actually matters — Start — without needing
++  // the shared hook to expose a manual refresh: the same small local-override
++  // shape CloseBlock's own Save race uses. `start()` sets it the instant it
++  // finds the real local day has moved past the day this preview was built
++  // for, forcing an immediate re-render where `today`/`stale` below already
++  // reflect it, instead of silently installing yesterday's selections under a
++  // Start button that still reads as enabled.
 +  const [nowOverride, setNowOverride] = useState<Date | null>(null);
 +  const decisionNow = useDecisionNow();
 +  const now = nowOverride ?? decisionNow;
  
-   const item = active ? getItem(db, active.itemId) : undefined;
-   // The clock was paused on Finish, so the elapsed figure is frozen —
-@@ -188,6 +199,19 @@ export default function CloseBlock() {
-    * close that deliberately recorded no judgement.
-    */
-   function handleSave(withoutResult = false) {
-+    // The local day may have rolled since `now` (and therefore `review`) was
-+    // last computed — `useDecisionNow` only checks every 30 seconds, plus
-+    // visibility/focus. Catch that HERE, at the one instant it can actually
-+    // change what gets saved, rather than letting `closeSession` silently
-+    // recompute a different day's decision than the one just shown. Refresh
-+    // and stop: the draft above is untouched, so Save simply works once the
-+    // corrected line is on screen.
+   const instrumentId = sessionInstrumentId ?? db.instruments.find((i) => i.active)?.id ?? db.instruments[0]?.id ?? '';
+   // Invalid input is rejected at the boundary, never clamped into a session
+@@ -139,6 +152,19 @@ function PlanPreview() {
+     setPlan(swapSegment(plan, i, editorArgs()));
+   }
+   function start() {
++    // Starting a plan is an authority boundary: check the TRUE current
++    // instant here, never the polled `now` above, which can still be
++    // showing yesterday for up to `useDecisionNow`'s own poll interval after
++    // local midnight has genuinely passed — the exact window a dispatched
++    // visibility/focus event papers over but a real device left untouched
++    // does not get. A mismatch refuses the start and forces the SAME visible
++    // refresh the passive banner below already shows for a data change,
++    // rather than silently installing a preview for a day that has passed.
 +    const trueNow = new Date();
-+    if (todayISODate(trueNow) !== todayISODate(now)) {
++    if (planPreviewDayHasPassed(baseDay, trueNow)) {
 +      setNowOverride(trueNow);
 +      return;
 +    }
-+
-     const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
-     const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && review ? 'scheduled' : 'declined';
-     const newStatus: ItemStatus | undefined =
-@@ -204,6 +228,10 @@ export default function CloseBlock() {
-       // ONLY a date the owner actually typed — never the date the screen is
-       // merely SHOWING, which for an early session is the item's existing one.
-       nextReviewDate: closeOverrideDate(answer, override),
-+      // The SAME `now` `review` was just computed with — never a fresh
-+      // `new Date()` inside the store, which is exactly what could disagree
-+      // with what this screen showed.
-+      now,
-       reviewType: review?.reviewType ?? 'retention',
-       newQuestion:
-         becomeTeacherQ && teacherQText.trim()
-diff --git a/src/pages/SessionPlan.tsx b/src/pages/SessionPlan.tsx
-index 183fb6c..da5b0bd 100644
---- a/src/pages/SessionPlan.tsx
-+++ b/src/pages/SessionPlan.tsx
-@@ -9,6 +9,7 @@ import {
-   redistributePlan,
-   swapSegment,
-   clampSchedulingParams,
-+  todayISODate,
-   validateBudgetMinutes,
-   type PlanBucket,
-   type SessionPlan as SessionPlanT,
-@@ -87,12 +88,23 @@ function PlanPreview() {
-   // needing regeneration, so stale work can never be started by accident.
-   const rev = useStore((s) => s.rev);
-   const [baseRev, setBaseRev] = useState(rev);
-+  // The LOCAL CALENDAR DAY the visible draft was built for. `rev` alone
-+  // cannot catch a plan left open across midnight with no database write in
-+  // between: `db.items`/`db.blocks`/`db.reviews` are identical, so `rev`
-+  // never moves, yet "today's class" and "due today" are no longer honest
-+  // once the day has actually rolled. Tracked the same way as `rev` — marking
-+  // the draft stale rather than silently rewriting it — so a deliberate swap
-+  // or removal survives the boundary exactly as it survives any other change
-+  // underneath the plan.
-+  const today = todayISODate(now);
-+  const [baseDay, setBaseDay] = useState(today);
-   if (seedKey !== seed) {
-     setSeed(seedKey);
-     setPlan(build);
-     setBaseRev(rev);
-+    setBaseDay(today);
-   }
--  const stale = rev !== baseRev;
-+  const stale = rev !== baseRev || today !== baseDay;
- 
-   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
-   const editorArgs = () => {
-@@ -117,6 +129,7 @@ function PlanPreview() {
-     setPlan(build);
-     setSeed(seedKey);
-     setBaseRev(rev);
-+    setBaseDay(today);
-   }
-   function removeAt(i: number) {
-     const segments = plan.segments.filter((_, idx) => idx !== i);
-@@ -228,7 +241,11 @@ function PlanPreview() {
- 
-       {stale && (
-         <div className="card card-quiet small" role="status" style={{ color: 'var(--tone-warn)' }}>
--          <span dir="ltr">Your practice data changed while this plan was open. Regenerate it before you start.</span>
-+          <span dir="ltr">
-+            {today !== baseDay
-+              ? 'This plan was built for a day that has passed. Regenerate it before you start.'
-+              : 'Your practice data changed while this plan was open. Regenerate it before you start.'}
-+          </span>
-         </div>
-       )}
- 
+     if (plan.segments.length === 0 || stale) return;
+     setPlanMinutes(instrumentId, plan.budgetMinutes);
+     startPlan(plan);
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index 4a92d61..26c2d3a 100644
+index 26c2d3a..02e5714 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
-@@ -207,6 +207,17 @@ export interface CloseSessionInput {
-    * work committed for a class. Targetless means honestly unassigned.
-    */
-   newQuestion?: { text: string; lessonId?: ID };
-+  /**
-+   * The `now` the close screen actually PREVIEWED its decision with — never
-+   * read from module scope inside `closeSession`. Recomputing a fresh
-+   * `new Date()` here instead would let the saved date silently diverge from
-+   * the one the screen just showed if the local day rolled between the
-+   * screen's last render and this call; the caller (`CloseBlock`) is
-+   * responsible for checking that first and refusing to call this while they
-+   * disagree. Defaults to `new Date()` for callers with no decision to keep
-+   * in step (there are none in-app; only tests omit it).
-+   */
-+  now?: Date;
- }
- 
- export interface ItemPatch {
-@@ -1023,7 +1034,7 @@ export const useStore = create<StoreState>()(
-       cancelSession: () => set({ active: null }),
- 
-       closeSession: (input) => {
--        const now = new Date();
-+        const now = input.now ?? new Date();
-         const { active, db, activePlan } = get();
-         if (!active) return;
-         const item = db.items.find((i) => i.id === active.itemId);
+@@ -1615,7 +1615,24 @@ export const useStore = create<StoreState>()(
+       },
+       merge: (persisted, current) => {
+         const p = (persisted ?? {}) as Partial<StoreState>;
+-        const merged = { ...current, ...p, db: p.db ?? current.db };
++        // Zustand only calls `migrate` above when the persisted version
++        // differs from the current one — a persisted database that ALREADY
++        // claims the current schema never reaches it, even when it carries a
++        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
++        // left behind, with `lessonAgenda` never actually completed to
++        // represent it. `merge` is the one place ALL persisted state
++        // re-enters live state regardless of whether `migrate` ran (the same
++        // reasoning the active/activeRoutine freeze below relies on), so it
++        // is where this closes for good: run the SAME idempotent, lossless
++        // conversion `migrate` would have, unconditionally. Calling it again
++        // on state `migrate` already processed is safe — `migrateToV12`'s own
++        // docstring guarantees it is a no-op wherever no legacy field
++        // survives — and calling it with `SCHEMA_VERSION` as the "from"
++        // version is correct here because every OTHER step in the chain is
++        // gated on a version strictly below what a current database could
++        // ever claim; only the unconditional tail step ever runs.
++        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
++        const merged = { ...current, ...p, db };
+         // The start/resume guards keep active/activeRoutine from BOTH being
+         // set going forward, but a device that persisted a dual-running
+         // state before those guards existed reaches this merge unchecked —
 diff --git a/tests/daily-practice.browser.test.ts b/tests/daily-practice.browser.test.ts
-index 1d0abba..6487ed2 100644
+index 6487ed2..96874ae 100644
 --- a/tests/daily-practice.browser.test.ts
 +++ b/tests/daily-practice.browser.test.ts
-@@ -209,6 +209,58 @@ describe('the daily practice loop, end to end', () => {
-       const summary = await page.locator('.page-sub').first().textContent();
-       expect(summary).toContain('already practised today');
-       expect(await page.locator('.list-row').filter({ hasText: itemTitle }).count()).toBe(0);
+@@ -227,6 +227,32 @@ describe('the daily practice loop, end to end', () => {
+       // are the thing being protected, not the stale label itself.
+       await page.getByRole('button', { name: 'Regenerate' }).click();
+       expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
 +
-+      // --- 11. A PLAN LEFT OPEN ACROSS MIDNIGHT IS MARKED STALE ------------
-+      // Still the same preview from step 10, on screen with no database
-+      // write in between. `rev` alone cannot see a day rolling over — this is
-+      // the OTHER half of "no stale preview" the review named: not data
-+      // changing beneath the plan, but the CLOCK moving past it while it sits
-+      // open, unstarted.
-+      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-+      await page.clock.setFixedTime(new Date('2027-01-16T00:15:00'));
-+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
++      // --- 11b. THE START-PLAN RACE: NO event, NO poll — the exact gap step
++      // 11's own dispatched visibilitychange never exercises, and a real
++      // device left untouched genuinely experiences. Advance the clock past
++      // midnight again and click Start IMMEDIATELY, with nothing to have told
++      // the screen the day changed: the click itself must refuse rather than
++      // silently install yesterday's selections under a button that still
++      // reads as enabled, and the refusal must be VISIBLE — the same banner,
++      // not a dead click.
++      await page.clock.setFixedTime(new Date('2027-01-17T00:20:00'));
++      await page.getByRole('button', { name: 'Start plan' }).click();
 +      await expect
 +        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
 +        .toBe(true);
 +      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
-+      // Regenerating clears it: the owner's swaps/removals up to that point
-+      // are the thing being protected, not the stale label itself.
++      // The click installed nothing: still the preview, not the runner.
++      expect(await page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
 +      await page.getByRole('button', { name: 'Regenerate' }).click();
 +      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-+      await page.clock.setFixedTime(CLOCK);
-+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-+
-+      // --- 12. THE CLOSE-SCREEN RACE: a Save clicked exactly as the day
-+      // rolls, with NO visibilitychange/focus event and before the next
-+      // 30-second poll — the exact gap step 9's own visibilitychange dispatch
-+      // does not exercise. The first Save must refresh the decision instead
-+      // of silently writing the day it was previewed on; the second — now
-+      // agreeing with the true day — writes exactly what is on screen.
-+      const RACE_ITEM = 'i-q-and-flag';
-+      await goTo(app, `/items/${RACE_ITEM}`);
-+      await page.getByRole('button', { name: 'Start a block' }).click();
-+      await finishBlock(page);
-+      const raceDraft = 'the vibrato settled once the wrist relaxed';
-+      await page.getByPlaceholder('What did you notice?').fill(raceDraft);
-+      await page.getByRole('button', { name: 'Worse' }).click();
-+      await page.getByRole('button', { name: 'Change' }).click();
-+      const previewedBeforeRace = await page.getByLabel('Next review date').inputValue();
-+
-+      await page.clock.setFixedTime(new Date('2027-01-16T00:05:00'));
-+      await page.getByRole('button', { name: 'Save block' }).click();
-+      // Still on the close screen: that click refreshed the stale decision
-+      // rather than saving it. The musician's own words survived untouched.
-+      expect(await page.getByRole('button', { name: 'Save block' }).isVisible()).toBe(true);
-+      expect(await page.getByPlaceholder('What did you notice?').inputValue()).toBe(raceDraft);
++      // Genuinely fresh now: the same click succeeds.
++      await page.getByRole('button', { name: 'Start plan' }).click();
 +      await expect
-+        .poll(() => page.getByLabel('Next review date').inputValue())
-+        .not.toBe(previewedBeforeRace);
-+      const correctedDate = await page.getByLabel('Next review date').inputValue();
-+      await page.getByRole('button', { name: 'Save block' }).click();
-+      await page.waitForTimeout(300);
++        .poll(() => page.getByRole('button', { name: 'End the plan' }).isVisible().catch(() => false))
++        .toBe(true);
++      await page.getByRole('button', { name: 'End the plan' }).click();
++
+       await page.clock.setFixedTime(CLOCK);
+       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+ 
+diff --git a/tests/lesson-agenda.browser.test.ts b/tests/lesson-agenda.browser.test.ts
+index fc3bcc0..7b82014 100644
+--- a/tests/lesson-agenda.browser.test.ts
++++ b/tests/lesson-agenda.browser.test.ts
+@@ -1,5 +1,13 @@
+ import { describe, expect, it } from 'vitest';
+-import { goTo, importBackup, importOutcome, openPracticeApp, reload } from './practiceBrowser';
++import {
++  goTo,
++  importBackup,
++  importOutcome,
++  openPracticeApp,
++  readPersistedState,
++  reload,
++  writePersistedState,
++} from './practiceBrowser';
+ import v11 from './fixtures/practice-decisions-v11.json?raw';
+ 
+ // ---------------------------------------------------------------------------
+@@ -152,6 +160,42 @@ describe('the lesson agenda, end to end', () => {
+       // Everything established above survived the refusal untouched.
+       await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
+       await expect.poll(() => classA.getByText(FARSI_QUESTION).first().isVisible()).toBe(true);
++
++      // --- 9. HYDRATION COMPLETES AN INCOMPLETE CURRENT-SCHEMA CONVERSION ---
++      // Zustand's persist middleware only calls `migrate` when the persisted
++      // version differs from the current one — a persisted v12 database that
++      // already carries a stray legacy field (an interrupted write, a bug in
++      // an earlier build) never reaches it that way. This writes directly
++      // into the app's own IndexedDB, the way an already-current device holds
++      // its state, bypassing every import door (which always runs
++      // `validateDB`, and so always runs the migration chain, regardless of
++      // the version a FILE claims).
++      const persisted = await readPersistedState(app);
++      expect(persisted.version).toBe(12);
++      const HYDRATION_ITEM = 'i-q-empty'; // has a preparation already, no question yet
++      const stateBefore = persisted.state as { db: { items: { id: string; teacherQuestion?: string }[] } };
++      const withLeftover = {
++        ...(persisted.state as Record<string, unknown>),
++        db: {
++          ...stateBefore.db,
++          items: stateBefore.db.items.map((i) =>
++            i.id === HYDRATION_ITEM ? { ...i, teacherQuestion: 'hydration leftover question' } : i,
++          ),
++        },
++      };
++      await writePersistedState(app, withLeftover, 12);
 +      await reload(app);
-+      expect(await persistedReviewDate(page, app.origin, RACE_ITEM)).toBe(correctedDate);
-+      await page.clock.setFixedTime(CLOCK);
++
++      // The leftover was completed LOSSLESSLY, not silently dropped: a real
++      // open question now exists for the item, reachable the ordinary way.
++      await goTo(app, `/items/${HYDRATION_ITEM}`);
++      await expect.poll(() => page.getByText('hydration leftover question').first().isVisible()).toBe(true);
++
++      // Idempotent: a SECOND, ordinary reload (now genuinely current, nothing
++      // left behind) creates no duplicate.
++      await reload(app);
++      await goTo(app, `/items/${HYDRATION_ITEM}`);
++      expect(await page.getByText('hydration leftover question').count()).toBe(1);
      } finally {
        await app.close();
      }
-diff --git a/tests/fixtures/practice-decisions-v11.json b/tests/fixtures/practice-decisions-v11.json
-index a198c72..f24d1cf 100644
---- a/tests/fixtures/practice-decisions-v11.json
-+++ b/tests/fixtures/practice-decisions-v11.json
-@@ -148,6 +148,21 @@
-         "updatedAt": "2026-08-01T09:00:00.000Z",
-         "assignedForLesson": true
-       },
-+      {
-+        "id": "i-conflict",
-+        "instrumentId": "setar",
-+        "title": "New question conflicts with an existing one",
-+        "itemType": "phrase",
-+        "status": "usable",
-+        "importance": 3,
-+        "difficulty": 3,
-+        "tags": [],
-+        "timesPractised": 2,
-+        "totalMinutes": 25,
-+        "createdAt": "2026-08-01T09:00:00.000Z",
-+        "updatedAt": "2026-08-01T09:00:00.000Z",
-+        "teacherQuestion": "new distinct question"
-+      },
-       {
-         "id": "i-dangling",
-         "instrumentId": "gone",
-@@ -325,6 +340,15 @@
-         "text": "An unrelated entry that already owns that id",
-         "createdAt": "2026-08-01T09:00:00.000Z",
-         "updatedAt": "2026-08-01T09:00:00.000Z"
-+      },
-+      {
-+        "id": "question:i-conflict",
-+        "kind": "question",
-+        "itemId": "i-conflict",
-+        "instrumentId": "setar",
-+        "text": "different existing question",
-+        "createdAt": "2026-08-01T09:00:00.000Z",
-+        "updatedAt": "2026-08-01T09:00:00.000Z"
-       }
-     ]
-   },
+diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
+index 9845449..32ec16c 100644
+--- a/tests/practiceBrowser.ts
++++ b/tests/practiceBrowser.ts
+@@ -132,3 +132,62 @@ export async function reload(app: PracticeApp): Promise<void> {
+   await app.page.reload();
+   await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
+ }
++
++const KV_KEY = 'practice-compass';
++
++/**
++ * Read the raw bytes the app's own persist middleware would read on the next
++ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
++ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
++ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
++ */
++export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
++  return app.page.evaluate(
++    (key) =>
++      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
++        const req = indexedDB.open('practice-compass');
++        req.onerror = () => reject(req.error);
++        req.onsuccess = () => {
++          const db = req.result;
++          const tx = db.transaction('kv', 'readonly');
++          const get = tx.objectStore('kv').get(key);
++          get.onsuccess = () => {
++            db.close();
++            resolve(JSON.parse((get.result as { value: string }).value));
++          };
++          get.onerror = () => reject(get.error);
++        };
++      }),
++    KV_KEY,
++  );
++}
++
++/**
++ * Write directly into the app's own IndexedDB `kv` store — the way an
++ * ALREADY-hydrated device holds its persisted state — bypassing every
++ * import/migration door entirely. The one way to reach the "persisted
++ * version already matches the current schema" hydration path: Zustand's
++ * persist middleware only calls `migrate` when the persisted version differs
++ * from the current one, and every JSON-import door runs `validateDB`
++ * regardless of what version a FILE claims.
++ */
++export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
++  await app.page.evaluate(
++    ({ key, state, version }) =>
++      new Promise<void>((resolve, reject) => {
++        const req = indexedDB.open('practice-compass');
++        req.onerror = () => reject(req.error);
++        req.onsuccess = () => {
++          const db = req.result;
++          const tx = db.transaction('kv', 'readwrite');
++          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
++          tx.oncomplete = () => {
++            db.close();
++            resolve();
++          };
++          tx.onerror = () => reject(tx.error);
++        };
++      }),
++    { key: KV_KEY, state, version },
++  );
++}
 ```
 
 **Full current text of every file the rework touched:**
@@ -1711,22 +1391,38 @@ where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSche
 run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
 missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
 and a target that RESOLVES to a different instrument all refuse the import with
-actionable detail. A DANGLING `itemId` — set, but resolving to nothing — stays tolerated:
-the v11→v12 migration mints entries from `db.items` at the moment it runs, so an item
-deleted afterwards leaves its own agenda entries pointing at nothing, and every reader
-already copes with that (the docstring above already spells out the same tolerance for a
-dangling `instrumentId`); refusing a restore over one would make the owner's own
-documented recovery copy unrestorable — exactly the data loss this guard exists to
-prevent, not an example of it. A DANGLING `lessonId` is different and is now REFUSED: this
-app never leaves one dangling on its own — `deleteLesson` always converts a live
-`lessonId` to `detachedFromLessonId` (see `detachLesson`), so a `lessonId` that is neither
-absent nor resolving is invalid new intent, not legacy debris to wave through. A sealed
-review reproduced `validateDB` accepting `lessonId: 'nonexistent'` before this. Calendar
-values are also checked for REAL validity now, not merely shape:
-`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` and a question's `askedAt` all
-round-trip through their own components (`/^\d{4}-\d{2}-\d{2}$/` alone happily matched
-`"2027-99-99"` and `"2026-02-30"`, which `Date.UTC` silently normalises rather than
-rejects) — a sealed review reproduced both accepted.
+actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
+its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
+`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
+intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
+accepting `lessonId: 'nonexistent'` before this.
+
+**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
+section previously tolerated it on the theory that the v11→v12 migration mints entries
+from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
+agenda entries pointing at nothing. A sealed review found that theory does not hold
+against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
+`detachItem` in the SAME synchronous update that removes the item — a preparation naming
+it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
+so there is no in-app path that leaves a live `itemId` dangling any more than there is for
+`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
+a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
+unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
+(the same shape `detachLesson` already used for `lessonId`), so this strict check never
+sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
+not a hand-built approximation of its shape.
+
+**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
+`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
+round-trip their calendar components through `Date.UTC` rather than trusting a shape
+regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
+matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
+NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
+it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
+check had already been fixed once, but its date-TIME sibling in a different file had not.
+The two checks stay small and separately owned, one per file, rather than merged into a
+shared import.
 
 ## Persian text is canonical, and direction-aware
 
@@ -2606,6 +2302,24 @@ no scores, no "optimal" claims, no gamification.
   whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
   treatment `rev` already got, so a deliberate swap or removal survives a midnight
   exactly as it survives any other change underneath the plan.
+- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
+  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
+  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
+  visibility/focus — a real device left untouched across local midnight, with no event to
+  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
+  button for up to that whole window. A sealed review reproduced this against the real
+  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
+  code installed yesterday's selections. Starting a plan is an authority boundary, so
+  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
+  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
+  `stale`'s own day comparison already applies, just evaluated against the true instant
+  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
+  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
+  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
+  banner and disabled button render — a visible refusal, never a silent no-op click. This
+  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
+  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
+  click in the first place.
 - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
   warm-up timer) stays untouched. The runner orchestrates the existing
   start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
@@ -2728,7 +2442,13 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`. Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
+  `migrate` when the persisted version differs from the current one, `merge`
+  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
+  version already matches, which would otherwise let an already-current database carry a
+  stray legacy field forever (a sealed review reproduced exactly this; see the
+  lesson-agenda section above for the fix and why re-running the conversion a second time
+  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
   adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
   neither is ever guessed for old data, so an existing future date keeps UNKNOWN
   provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
@@ -2773,412 +2493,6 @@ the philosophy. Anything that contradicts the "do nots" above needs an explicit 
 from the user, recorded here.
 ```
 
-### docs/product-spec.md
-
-```
-# Practice Compass — product specification
-
-## The problem
-
-A serious adult learner practising several demanding instruments (Persian Setar, Tar,
-Classical Guitar) accumulates more material than they can hold in their head: phrases
-that are nearly stable, a foroud that's still uncertain, a left‑hand shift that creates
-shoulder tension, an étude that's "fine" but quietly decaying. Without a system, three
-things go wrong:
-
-1. **Fragile or important material silently disappears.** It isn't forgotten on purpose;
-   it just never resurfaces.
-2. **Practice becomes undirected repetition.** Time is logged, but the *quality* of
-   attention — what was the focus, did it actually improve — is lost.
-3. **Lessons are under‑used.** The learner arrives without a clear record of what to ask.
-
-Research on effective music practice is consistent: what separates strong practisers is
-not hours logged but **planning, self‑evaluation, reflection and time management** — the
-self‑regulated learning loop. Practice Compass is a tool shaped around that loop, not
-around a timer.
-
-## The philosophy
-
-> One item. One mode. One focus. One result. One next action.
-
-Every interaction narrows attention to a single, well‑defined unit of work and captures
-a single, honest judgement of how it went. The app's job is to **choose, narrow, record,
-notice, protect and sustain** — not to teach, judge tone, or gamify effort.
-
-## Non‑goals (deliberately excluded)
-
-Gamification, streaks, fake mastery percentages, leaderboards, excessive forms, audio
-analysis, posture tracking, AI judgement, complex notation tools, backend
-authentication, and cloud sync (in v1). Each of these would add admin overhead or
-pressure, which is exactly what makes practice tools get abandoned.
-
-Also excluded, deliberately: activity quotas, required activity tags, a round‑robin
-rotation, randomness, and any claim of an optimal session ratio. The session planner has
-preferences — a warm‑up on familiar material, a little variety, a bounded discount for
-what has just been drilled — and every one of them is a published number in
-`scheduling-evidence.md` that the owner can calculate and disagree with.
-
-## The core loop, and why each step exists
-
-| Step              | What the user does                              | Why it matters |
-| ----------------- | ----------------------------------------------- | -------------- |
-| **Plan**          | Today screen recommends 3 explained options     | Removes the "what should I even do?" friction that kills sessions |
-| **Focus**         | Quick‑start picks item + mode + focus in <30s   | A block with a single focus produces a usable result; an unfocused block produces "I practised for a while" |
-| **Monitor**       | A quiet timer screen, no dashboards             | Protects the actual practising from the tracking |
-| **Evaluate**      | Close in <60s: result + observation + next action | The single most evidence‑backed habit — naming the result and the next move |
-| **Adapt**         | Suggested next review + suggested status change  | Turns one judgement into a schedule, so nothing has to be remembered manually |
-
-**Practice is exposure; only eligible retention evidence advances spacing.** A good
-session before a review is due is real practice — it records minutes, a result, an
-observation and a next action — but it is not the review it was scheduled for, so it
-leaves the date and the spacing state alone. Only a genuinely negative result may bring
-an automatic date forward, never postpone it, and a date the musician chose themselves
-stands until it is due or they change it. Nothing about that is a judgement of effort: it
-is the difference between "I played this today" and "I proved I still had it."
-
-**The date you see is the date that gets saved, even across midnight.** A close screen —
-or a session plan — left open while the day genuinely rolls over never silently writes a
-decision for the day it was previewed on. It refreshes the visible date/reasons first
-(the musician's own words survive the refresh) and only then lets Save go through; a
-practice-session preview left open the same way marks itself as needing a rebuild rather
-than starting a session it no longer honestly describes. Trustworthy here means the app
-never quietly disagrees with itself about what day it is.
-
-## Design constraints that shaped the build
-
-- **Start a block in < 30 seconds.** Hence smart defaults: status determines mode,
-  the item's `primaryFocus` determines focus, duration defaults to 10 minutes, and a
-  new item can be created inline with only a title.
-- **Close a block in < 60 seconds.** Result is a row of one‑tap buttons; review date and
-  status change are *pre‑filled suggestions* the user can accept silently.
-- **A weekly review in < 5 minutes.** Insights are generated, not assembled by the user.
-- **Daily use must not feel like admin.** No required fields beyond a title; rich
-  metadata (Persian/guitar fields, strategies, tags) is always optional and progressive.
-
-## Why these objects
-
-- **Material vs PracticeItem.** A radif section or a course lesson is a *container*;
-  the thing you actually repair is a phrase, a bar, a shift. Separating them lets the
-  recommendation engine reason about the small unit while keeping provenance.
-- **Status ladder, not a percentage.** `new → fragile → repairing → usable → integrated →
-  performable` describes *what kind of work the item needs next*, which a number can't.
-  `maintenance` and `dormant` give material an honest place to rest without being deleted.
-- **Block result scale.** "Worse / same / slightly better / stable alone / stable in
-  context / performable" maps directly onto how musicians actually talk about progress,
-  and drives both the review interval and the status suggestion.
-- **Recent exposure, not saturation.** Over‑drilling is real, but it is a fact about
-  MINUTES lately, not about a block count and not about a run of identical results. The
-  engine de‑prioritises material by bounded, decaying recent minutes and nudges a change
-  of strategy when three results in a row are "same" — the hint stays a hint, and it
-  expires, rather than hiding the item for ever.
-- **Lesson commitments and questions are separate objects with specific targets.** "Work
-  on this before my class on the 5th" and "ask this at my class on the 5th" are different
-  commitments to a NAMED class, not a single rolling flag meaning "the next one" and a
-  single box holding one question. Only the first is a reason to practise; the second is
-  a reason to write something down.
-
-## Why the recommendation engine is deterministic
-
-It must be explainable and trustworthy. Every card states its reason in one sentence,
-derived from the same numbers that ranked it. There is no model, no opacity, nothing to
-tune behind the scenes — the learner can always understand (and disagree with) the advice.
-
-## Tone of voice
-
-Calm and neutral. Insights observe ("Tar hasn't been practised for 9 days, and 2 of its
-items are still fragile") rather than scold. Progress is acknowledged plainly ("Study in
-C reached *stable alone* after 3 blocks") without confetti. The app should feel like a
-thoughtful practice diary that happens to do the bookkeeping for you.
-
-## Success criteria
-
-The tool is working if the learner *wants* to open it before and after practising —
-because before, it answers "what now?", and after, it makes the 45 seconds of reflection
-feel worth it. Everything else is in service of that.
-
-## Upgrading to schema v12, and what a rollback can and cannot do
-
-Schema v12 converts the item's old "for next class" flag and its single teacher-question
-box into one `lessonAgenda` collection, and adds two small scheduling fields
-(`nextReviewSource`, `srLastProgressDay`). The conversion is one-time, reads no clock, and
-guesses nothing: every converted commitment and question arrives **unassigned**, because
-the old data never recorded which class it was for.
-
-**Before upgrading:**
-
-1. Take a full export from Settings → **Export backup** on the device holding the newest
-   data, and keep it. This is the recovery copy.
-2. Restore that file into the app once, to verify it imports cleanly.
-3. Update **every** device before resuming cross-device sync, so no v11 build is asked to
-   read a v12 snapshot.
-
-**Rolling back is deliberately limited, and the app will not pretend otherwise.** An
-older v11 build can only restore a backup that was taken *before* the upgrade. It cannot
-read a v12 file — it refuses it by version rather than silently dropping the fields it
-does not understand — and there is no downgrade that rewrites the schema number. So any
-work done *after* the upgrade cannot be carried back to an older build: export it first
-if you need it, then forward-fix on a v12-capable build instead.
-
-The first thing to do after upgrading is to point the migrated commitments and questions
-at the classes they were actually for. They are all listed under "Unassigned on this
-instrument" on the Lessons screen, each with a "Move to this class" button.
-```
-
-### docs/scheduling-evidence.md
-
-````
-# How the scheduler decides — the numbers, written down
-
-Every figure below is a real constant in the code, named so you can find it,
-and every example is the actual output of the functions named. Nothing here is
-an "optimal" claim: these are sane, bounded defaults, chosen so a reviewer can
-calculate any answer by hand and disagree with a specific number rather than
-with a black box.
-
-Sources: `src/domain/scoring.ts`, `src/domain/plan.ts`, `src/domain/scheduling.ts`,
-`src/domain/lessonAgenda.ts`.
-
----
-
-## 1. Priority — what to practise
-
-```
-priority = importance×2 + difficulty + fragility + overdue + neglected
-         + lessonUrgency − exposurePenalty
-```
-
-| term | range | source |
-|---|---|---|
-| importance×2 | 2 – 10 | the item's own 1–5 rating |
-| difficulty | 1 – 5 | the item's own 1–5 rating |
-| fragility | 0 – 5 | `FRAGILITY_BY_STATUS` (fragile/repairing 5, usable 3, new 2, maintenance/integrated 1, performance-ready 0, resting 2) |
-| overdue | 0 – 5 | days past `nextReviewDate`: due today 1, 1–2 days 2, 3–6 days 3, 7–13 days 4, 14+ days 5 |
-| neglected | 0 – 4 | days since last touched: ≤3 → 0, ≤7 → 1, ≤14 → 2, ≤30 → 3, 31+ → 4 |
-| lessonUrgency | 0 – 8 | see §2 |
-| exposurePenalty | 0 – 8 | see §3 |
-
-Two things are deliberately **not** terms:
-
-- **A teacher question.** It used to add 3 points. A question is something to
-  ask, not evidence the item needs practice, and it quietly reordered the day
-  around a note to self.
-- **A permanent saturation penalty.** Over-practice is measured as decaying
-  recent minutes (§3), so three identical results in January stop mattering
-  long before September.
-
-Ties break on the item's own id (`scoreItems`), never on the order storage
-happened to return the rows in.
-
-**Eligibility.** `isProactiveCandidate` is the ONE policy shared by Today's
-recommendations, the initial plan, regeneration, swaps and every fallback:
-resting ("dormant") material never surfaces in a suggestion. It stays fully
-practisable by choosing it directly, keeps its review data, and comes straight
-back with a status change.
-
-A swap draws from the SAME candidate pool as the build, not just the same
-eligibility test: `candidatePool` (`plan.ts`) computes the practised-today
-exclusion (§below) and its honest repeat fallback once, and both
-`buildSessionPlan` and `swapSegment` read it — a swap can never hand back
-material the build itself deliberately stepped past, and a warm-up swap
-excludes a due-for-review or lesson-committed candidate exactly as the
-build's own warm-up pool does.
-
-## 2. Lesson urgency — from the commitment's own class
-
-A `preparation` entry in the lesson agenda names ONE item and ONE class. That
-class's own date is the only deadline it carries.
-
-| days until that class | points |
-|---:|---:|
-| today | 8 |
-| 1 – 2 | 7 |
-| 3 – 5 | 6 |
-| 6 – 10 | 5 |
-| 11 – 20 | 4 |
-| 21+ | 3 |
-| already passed / unassigned / no commitment | 0 |
-
-A commitment made for a class in March scores March's urgency, never the
-nearer class's. This is what the old rolling `assignedForLesson` boolean could
-not express: it meant "the next one", whenever that happened to be, for ever.
-
-## 3. Recent exposure — how much you have actually played it
-
-Minutes, over local calendar days, decaying to nothing across a bounded window.
-
-| constant | value | meaning |
-|---|---:|---|
-| `EXPOSURE_WINDOW_DAYS` | 7 | older practice contributes nothing |
-| weight | `(7 − daysAgo) / 7` | today 1.0, yesterday 6⁄7 … six days ago 1⁄7 |
-| `EXPOSURE_MINUTES_PER_POINT` | 10 | decayed minutes per penalty point |
-| `EXPOSURE_PENALTY_MAX` | 8 | the ceiling — equal to the largest class-deadline boost |
-| `SATURATION_EXPOSURE_MINUTES` | 60 | decayed minutes at which the item is *shown* as heavily practised |
-
-Worked example: 40 minutes yesterday, the day before and the day before that
-gives `40×(6+5+4)/7 = 85.7` decayed minutes → `floor(85.7/10) = 8` points,
-which is the cap.
-
-Why the cap equals the maximum lesson urgency: sustained heavy practice can
-**fully offset** a deadline, so maintenance work stays reachable behind a
-repeatedly drilled committed item — and it can never do **more** than offset
-it, so genuinely urgent work is never buried by having been practised.
-
-Minutes, not block counts: one 30-minute session and three 10-minute ones are
-the same amount of practice. Counting blocks made the longer session read as
-*less* exposure. Routine-bound and unlogged blocks count exactly like any
-other; a future-dated block contributes nothing to past exposure.
-
-## 4. Diversity — a modest preference, never a quota
-
-An item's musical **dimension** is its own `strand`, else its `itemType`. No new
-taxonomy, and missing metadata simply contributes no preference either way.
-
-| constant | value | applies |
-|---|---:|---|
-| `DIVERSITY_SAME_SESSION_PENALTY` | 1 | the dimension is already in this plan |
-| `DIVERSITY_RECENT_DAYS_PENALTY` | 1 | the dimension was practised in the last 2 days |
-
-Maximum 2 points, against a priority that runs to the high twenties: real needs
-always win. There are no mandatory category counts, no round-robin calendar, no
-randomness, and nothing for the owner to maintain.
-
-## 5. The session — spending the minutes
-
-| constant | value | meaning |
-|---|---:|---|
-| `MIN_BUDGET_MINUTES` / `MAX_BUDGET_MINUTES` | 5 / 120 | accepted whole-minute budgets; anything else is rejected at the boundary |
-| `SHORT_SESSION_MINUTES` | 12 | below this: ONE useful main focus, no warm-up, no cool-down |
-| `MAIN_WORK_FLOOR_MINUTES` | 5 | a warm-up may only exist if at least this much main work survives it |
-| `MIN_SEGMENT_MINUTES` | 2 | shortest segment worth starting |
-| `MAX_SEGMENT_MINUTES` | 25 | longest single block the planner will propose |
-| `warmupShare` | 0.12 (0.10–0.15) | a pinned allocation target, not a weight |
-| `deepWorkShare` | 0.33 (0.25–0.40) | nudges the deep bucket's weight |
-| `reviewSlotMinMinutes` / `Max` | 3 / 7 | a retrieval check stays a check |
-
-Order of decisions:
-
-1. **The anchor** — the highest-priority eligible item, whatever role it turns
-   out to fill. (It used to be chosen last, after a "deep work" slot had
-   already been filled, which is how a five-minute session preferred new deep
-   work to an item committed for tomorrow's class.)
-2. **Warm-up**, only if one is wanted and one is *suitable*: low demand
-   (difficulty ≤ 3) AND evidence of familiarity (a settled status or 3+ real
-   sessions). A due review or a class commitment is never spent as the warm-up;
-   with nothing suitable the warm-up is omitted honestly.
-3. **The middle**, by adjusted priority, up to a segment target by budget
-   (1 / 2 / 3 / 4 / 5 / 6 / 7 for <12 / <20 / <30 / <45 / <60 / <90 / rest).
-4. **Cool-down**, optional, from settled material only.
-
-Minutes never exceed the budget and normally use all of it. An honest remainder
-is left — and stated in the summary — when filling it would mean stretching two
-items across two hours.
-
-### Representative outputs
-
-The same five items every time: a familiar darāmad, a phrase committed to a
-class two days away, a new chahār-mezrāb, a fragile riz drill practised for
-20 minutes yesterday, and a solid tasnif whose review is two days overdue.
-
-### 5 minutes
-
-> 5 min · 1 focus block.
-
-| min | role | item | reason |
-|---:|---|---|---|
-| 5 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-
-### 10 minutes
-
-> 10 min · 1 focus block.
-
-| min | role | item | reason |
-|---:|---|---|---|
-| 10 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-
-### 20 minutes
-
-> 20 min · a warm-up, 1 focus block and a cool-down.
-
-| min | role | item | reason |
-|---:|---|---|---|
-| 2 | warmup | Darāmad (familiar) | Warm up on something you already know before the harder work. |
-| 12 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-| 6 | cooldown | Tasnif (solid, due) | End on something that already holds together. |
-
-### 45 minutes
-
-> 45 min · a warm-up, 3 focus blocks and a cool-down.
-
-| min | role | item | reason |
-|---:|---|---|---|
-| 5 | warmup | Darāmad (familiar) | Warm up on something you already know before the harder work. |
-| 9 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-| 14 | deep | Riz evenness | Focused work — it’s still shaky and needs rebuilding. |
-| 13 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
-| 4 | cooldown | Tasnif (solid, due) | End on something that already holds together. |
-
-### 60 minutes
-
-> 60 min · a warm-up, 3 focus blocks and 1 review.
-
-| min | role | item | reason |
-|---:|---|---|---|
-| 7 | warmup | Darāmad (familiar) | Warm up on something you already know before the harder work. |
-| 12 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-| 17 | deep | Riz evenness | Focused work — it’s still shaky and needs rebuilding. |
-| 17 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
-| 7 | review | Tasnif (solid, due) | Due for review (due 2027-01-13) — 2 days overdue. |
-
-Read the 5-minute answer off §1–§2 by hand: the committed phrase scores
-`8 + 3 + 3 + 0 + 0 + 7 − 0 = 21`, the new chahār-mezrāb `8 + 5 + 2 + 0 + 0 + 0 − 0 = 15`.
-The commitment is the difference, and it disappears the day after that class.
-
-## 6. The review decision — what moves a date
-
-The whole decision is one pure function, `decideReview`, and the close screen,
-the store and the preview are three renderings of its single result.
-
-| situation | date | spacing |
-|---|---|---|
-| no result logged (`not_logged`, or none) — including every routine block | unchanged | unchanged |
-| manual mode | unchanged | unchanged |
-| a **protected** future date (the owner's, a fixed cadence, or legacy-unknown provenance) | unchanged, whatever the result | unchanged |
-| an **automatic** future date, any result but `worse` | unchanged — this is extra practice, not the review | unchanged |
-| an automatic future date, `worse` | the EARLIER of the existing date and the repair proposal | reset (reps 0) |
-| due (or never scheduled), fixed cadence | today + the configured interval | untouched |
-| due, `worse` | today + `sm2SlipResetDays` × urgency modifier | reset (reps 0) |
-| due, `same` / `slightly_better` | today + the CURRENT gap again | repetitions and ease untouched |
-| due, a stable result, not yet advanced today | SM-2 expansion | reps + 1, ease updated, marker set to today |
-| due, a stable result, already advanced today | unchanged | unchanged |
-
-| constant | default | bounds |
-|---|---:|---|
-| `sm2FirstIntervalDays` | 2 | 1 – 4 |
-| `sm2SecondIntervalDays` | 6 | 3 – 10 |
-| `sm2SlipResetDays` | 1 | 1 – 3 |
-| ease | starts 2.5, floor 1.3 | SM-2's own formula |
-| urgency modifier | `(1 + (3−importance)×0.08) × (1 + (3−difficulty)×0.05)` | 0.756 – 1.276 |
-
-The rationale always reports the FINAL interval after the modifier. A three-day
-repair setting on an easy, unimportant item produces a four-day date, and says
-"back in 4 days" — it used to say three.
-
-**The three stable results** (`stable_alone`, `stable_in_context`,
-`performable`) are the only ones that count as retention evidence.
-`same` is not failed recall: no improvement is distinct from deterioration, and
-reading it as a slip (which this engine used to do) reset a schedule the
-musician had every reason to trust.
-
-**One advance per item per local calendar day**, recorded on the item as
-`srLastProgressDay`. It is an administrative eligibility marker, never a
-measured score: clearing and re-arming the date, reloading, syncing, or simply
-closing a second block cannot buy a second expansion.
-
-**Provenance.** `nextReviewSource` says whether the engine or the owner chose
-the current date. Absent means legacy-unknown, which the v12 migration never
-guesses and the engine protects exactly as carefully as the owner's own.
-````
-
 ### src/domain/io.test.ts
 
 ```
@@ -3190,7 +2504,7 @@ import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-import { createPreparation, detachLesson } from './lessonAgenda';
+import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
 import { SCHEMA_VERSION, type PracticeDB } from './types';
 import { addDays, nowISO, toISODate } from './util';
 
@@ -3261,6 +2575,11 @@ describe('validateDB — backward-compatible import', () => {
       ...db,
       schemaVersion: 4,
       items: [item],
+      // Truncated to one item on purpose (this test is about pathwaySteps,
+      // not lesson agenda) — the seed's OWN agenda entries would otherwise
+      // dangle against every item but this one, which the strict live-itemId
+      // check now (correctly) refuses.
+      lessonAgenda: [],
       pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
     };
     // migrateToV5's overwrite behaviour wins over the old "fill only when
@@ -3315,6 +2634,8 @@ describe('validateDB — backward-compatible import', () => {
       ...db,
       schemaVersion: undefined,
       items: [item],
+      // Truncated to one item on purpose (see the sibling test above).
+      lessonAgenda: [],
       pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
     });
     const result = parseImport(legacyText);
@@ -3435,26 +2756,34 @@ describe('the v12 model at every inbound door', () => {
     expect(
       bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
     ).toThrow(/unreadable asked date/);
+    // An IMPOSSIBLE calendar timestamp is refused too, not merely an
+    // unparseable one: `Date.parse` silently NORMALISES "2026-02-30" into
+    // March 2nd rather than rejecting it, so a shape check (or `Date.parse`
+    // alone) happily accepted it before this. A sealed review reproduced
+    // exactly this string passing.
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: '2026-02-30T12:00:00.000Z' }]),
+    ).toThrow(/unreadable asked date/);
     // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
     // a real agenda entry nor an honest unassigned one: `deleteLesson` always
     // converts a live reference to a detached marker, so this app never
     // leaves one dangling, and it is refused rather than tolerated as legacy
     // debris.
     expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
-    // A dangling `itemId`, by contrast, stays TOLERATED — deliberately
-    // asymmetric with `lessonId`. A genuine pre-upgrade backup can legitimately
-    // hold one whose item was deleted on another device before that deletion
-    // synced, and refusing it would make the owner's own documented recovery
-    // copy unrestorable.
-    expect(() =>
-      validateDB({ ...v12, lessonAgenda: [{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }] }),
-    ).not.toThrow();
-    expect(() =>
-      validateDB({
-        ...v12,
-        lessonAgenda: [{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }],
-      }),
-    ).not.toThrow();
+    // A dangling `itemId` is REFUSED for the identical reason, not tolerated:
+    // `deleteItem` (`useStore.ts`) always calls `detachItem` in the SAME
+    // synchronous update that removes the item — a preparation naming it is
+    // removed outright, and a question's `itemId` becomes
+    // `detachedFromItemId` — so this app never leaves a LIVE `itemId`
+    // dangling any more than a `lessonId`. A sealed review found this
+    // previously tolerated on a theory the real producer above does not
+    // support.
+    expect(
+      bad([{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }]),
+    ).toThrow(/practice item that no longer exists/);
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }]),
+    ).toThrow(/practice item that no longer exists/);
     expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
     // Calendar values are checked for real, not merely shape: a due date and
     // an item's own next-review date must both name a date that exists.
@@ -3517,6 +2846,17 @@ describe('the v12 model at every inbound door', () => {
     expect(reallyDetached).not.toHaveProperty('lessonId');
     expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
     expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
+    // The item-side equivalent, against the REAL producer `detachItem`
+    // (`deleteItem`'s own path) rather than a hand-built approximation: it
+    // destructures `itemId` OUT rather than setting it undefined, so the
+    // strict live-itemId check just proven above must never see one here.
+    const questionOnItem = createQuestion({ id: 'q:real', text: 'Real question', itemId: 'i-premigrated', instrumentId: 'setar', now: NOW });
+    const [reallyDetachedQuestion] = JSON.parse(
+      JSON.stringify(detachItem([questionOnItem], 'i-premigrated', NOW)),
+    ) as typeof v12.lessonAgenda;
+    expect(reallyDetachedQuestion).not.toHaveProperty('itemId');
+    expect(reallyDetachedQuestion).toMatchObject({ detachedFromItemId: 'i-premigrated' });
+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetachedQuestion] })).not.toThrow();
     expect(() =>
       validateDB({
         ...v12,
@@ -3924,17 +3264,30 @@ export function createQuestion(args: {
 
 // --- Validation -------------------------------------------------------------
 
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
+const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T/;
 
 /**
  * A real ISO date-time, not merely a string shaped like the prefix of one:
  * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
- * happily as a genuine timestamp. Every `askedAt` this app itself writes
- * comes from `nowISO` (`new Date().toISOString()`), which `Date.parse` always
- * reads back losslessly, so this rejects nothing legitimate.
+ * happily as a genuine timestamp, and `Date.parse` alone is no better — it
+ * silently NORMALISES an out-of-range day (`"2026-02-30T12:00:00.000Z"`
+ * becomes March 2nd) rather than rejecting it, so a sealed review reproduced
+ * that exact string passing. The calendar components are round-tripped
+ * through `Date.UTC` the same way `scheduling.ts`'s own `isValidISODate`
+ * checks a plain date, so an impossible day/month combination fails here
+ * too. Every `askedAt` this app itself writes comes from `nowISO`
+ * (`new Date().toISOString()`), which always round-trips losslessly, so this
+ * rejects nothing legitimate.
  */
 function isValidISODateTime(s: string): boolean {
-  return ISO_DATE_TIME.test(s) && Number.isFinite(Date.parse(s));
+  const m = ISO_DATE_TIME.exec(s);
+  if (!m || !Number.isFinite(Date.parse(s))) return false;
+  const [, ys, ms, ds] = m;
+  const y = Number(ys);
+  const mo = Number(ms);
+  const d = Number(ds);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
 /**
@@ -3947,17 +3300,24 @@ function isValidISODateTime(s: string): boolean {
  * lesson, an asked question whose item is gone, a question with no item at all
  * are all honest states this app produces itself.
  *
- * A LIVE `lessonId` that resolves to NOTHING is different: `deleteLesson`
- * always converts the live reference to `detachedFromLessonId` (see
- * `detachLesson`), so this app never leaves one dangling — a `lessonId` that
- * is neither absent nor resolving is invalid new intent, not legacy debris.
- * A dangling `itemId` stays TOLERATED, deliberately asymmetric with
- * `lessonId`: the v11→v12 migration mints entries from `db.items` at the
- * moment it runs, so an item deleted afterwards leaves its own agenda entries
- * pointing at nothing — every reader already copes with that, the same way
- * a dangling `instrumentId` is tolerated just above — and refusing to restore
- * a backup over one would make the owner's own documented recovery copy
- * unrestorable, exactly the data loss this guard exists to prevent.
+ * A LIVE `lessonId` OR a LIVE `itemId` that resolves to NOTHING is invalid new
+ * intent, not legacy debris — this app never leaves either dangling on its
+ * own. `deleteLesson` always converts a live `lessonId` to
+ * `detachedFromLessonId` (see `detachLesson`). `deleteItem` (`useStore.ts`)
+ * always calls `detachItem` in the SAME synchronous update that removes the
+ * item: a preparation naming it is removed outright, and a question's
+ * `itemId` is converted to `detachedFromItemId` — never left as a live
+ * reference to nothing. A sealed review found this section previously
+ * tolerating a dangling `itemId` on the theory that the v11→v12 migration
+ * mints entries from `db.items` at the moment it runs, so an item deleted
+ * afterwards could leave its own agenda entries pointing at nothing — that
+ * theory does not hold against the actual producer above, which cleans up
+ * synchronously in the SAME update, so a genuinely dangling live `itemId` can
+ * only be invalid data, not a legitimate history. A GENUINELY DETACHED
+ * record — `detachedFromItemId`/`detachedFromLessonId` set, the live field
+ * absent — is unaffected either way: `detachItem`/`detachLesson` destructure
+ * the live field OUT rather than setting it `undefined`, so this check never
+ * sees one to reject.
  */
 export function validateLessonAgenda(
   db: Pick<PracticeDB, 'lessonAgenda' | 'items' | 'lessons' | 'instruments'>,
@@ -4013,15 +3373,17 @@ export function validateLessonAgenda(
     } else if (e.lessonId !== undefined) {
       return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
     }
-    // An item target that no longer resolves is tolerated (see the
-    // docstring); one that DOES resolve must agree with the entry's
-    // instrument — a mismatch there is invalid new intent regardless.
+    // A LIVE item target that resolves to nothing at all is refused outright
+    // — see this function's own docstring for why that is never legacy
+    // debris. One that DOES resolve must also agree with the entry's
+    // instrument.
     if (e.kind === 'preparation') {
       if (typeof e.itemId !== 'string' || !e.itemId) {
         return `Preparation "${e.id}" names no practice item.`;
       }
       const item = itemById.get(e.itemId);
-      if (item && item.instrumentId !== e.instrumentId) {
+      if (!item) return `Preparation "${e.id}" names a practice item that no longer exists.`;
+      if (item.instrumentId !== e.instrumentId) {
         return `Preparation "${e.id}" names an item on a different instrument.`;
       }
     } else {
@@ -4030,7 +3392,8 @@ export function validateLessonAgenda(
       }
       if (typeof e.itemId === 'string') {
         const item = itemById.get(e.itemId);
-        if (item && item.instrumentId !== e.instrumentId) {
+        if (!item) return `Question "${e.id}" names a practice item that no longer exists.`;
+        if (item.instrumentId !== e.instrumentId) {
           return `Question "${e.id}" names an item on a different instrument.`;
         }
       } else if (e.itemId !== undefined) {
@@ -4048,566 +3411,6 @@ export function validateLessonAgenda(
 }
 ```
 
-### src/domain/migrations.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import v11FixtureText from '../../tests/fixtures/practice-decisions-v11.json?raw';
-import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
-import { createSeedDB } from './seed';
-import { SCHEMA_VERSION, type Pathway, type PracticeDB } from './types';
-
-const NOW = new Date('2026-06-18T12:00:00.000Z');
-
-/** A raw, pre-v3 shaped database: no `pathways` key at all, and the old `curriculum` field. */
-function legacyV2Fixture(): PracticeDB {
-  return {
-    schemaVersion: 2,
-    instruments: [{ id: 'i-setar', name: 'Setar', family: 'Persian', active: true, createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z' }],
-    materials: [],
-    items: [],
-    blocks: [],
-    reviews: [],
-    curriculum: {},
-  } as unknown as PracticeDB;
-}
-
-// A database that has already been through the full chain once — every
-// optional field the chain normalises (recordings, kind, ...) is filled in,
-// so re-running the whole chain over it (fromVersion held at the oldest)
-// exercises v4-v10's actual idempotency, not just their version gates being
-// skipped.
-const NORMALIZED = migrateToCurrent(createSeedDB(NOW), OLDEST_SCHEMA_VERSION);
-
-describe('migrateToCurrent', () => {
-  it('migrates an older database through to the current version instead of stamping it', () => {
-    const out = migrateToCurrent(legacyV2Fixture(), 2);
-    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
-    // Actually migrated (v3 pathway seeding ran), not merely re-stamped:
-    expect(out.pathways.length).toBeGreaterThan(0);
-    expect((out as unknown as { curriculum?: unknown }).curriculum).toBeUndefined();
-  });
-
-  it('leaves an already-current database unchanged through the chain', () => {
-    expect(migrateToCurrent(NORMALIZED, OLDEST_SCHEMA_VERSION)).toEqual(NORMALIZED);
-  });
-
-  it('applying the chain twice produces the same result as applying it once', () => {
-    const once = migrateToCurrent(legacyV2Fixture(), OLDEST_SCHEMA_VERSION);
-    const twice = migrateToCurrent(once, OLDEST_SCHEMA_VERSION);
-    expect(twice).toEqual(once);
-  });
-
-  it('does not seed pathways into an unversioned current-shaped database', () => {
-    const currentShaped: PracticeDB = { ...NORMALIZED, pathways: [] as Pathway[] };
-    const out = migrateToCurrent(currentShaped, OLDEST_SCHEMA_VERSION);
-    // The whole chain ran (fromVersion held at the oldest), yet the `pathways`
-    // key's mere presence — empty — stopped v3 from reseeding it, and v4-v10
-    // found nothing left to normalise: unchanged apart from schemaVersion.
-    expect(out).toEqual({ ...currentShaped, schemaVersion: SCHEMA_VERSION });
-  });
-
-  it('still seeds pathways for a genuine pre-v3 database with no pathways key', () => {
-    const out = migrateToCurrent(legacyV2Fixture(), OLDEST_SCHEMA_VERSION);
-    expect(out.pathways.length).toBeGreaterThan(0);
-    expect(out.pathwayStages.length).toBeGreaterThan(0);
-  });
-});
-
-// --- v11: routine instrumentId backfill --------------------------------------
-
-const TS = '2025-01-01T00:00:00.000Z';
-const guitarInstrument = { id: 'i-guitar', name: 'Guitar', family: 'Western', active: true, createdAt: TS, updatedAt: TS };
-const setarInstrument = { id: 'i-setar', name: 'Setar', family: 'Persian', active: true, createdAt: TS, updatedAt: TS };
-
-function fixturePathway(id: string, instrumentId?: string) {
-  return { id, instrumentId, name: id, order: 0, createdAt: TS, updatedAt: TS };
-}
-function fixtureRoutine(id: string, pathwayId: string) {
-  return { id, pathwayId, name: id, segments: [], order: 0, createdAt: TS, updatedAt: TS };
-}
-function v10DBWith(instruments: unknown[], pathways: unknown[], pathwayRoutines: unknown[]): PracticeDB {
-  return {
-    schemaVersion: 10,
-    instruments,
-    materials: [],
-    items: [],
-    blocks: [],
-    reviews: [],
-    pathways,
-    pathwayStages: [],
-    pathwayRoutines,
-    attachments: [],
-    lessons: [],
-  } as unknown as PracticeDB;
-}
-
-describe('v11 routine instrumentId backfill', () => {
-  it('backfills a routine instrument from its pathway on the shared chain', () => {
-    const v10 = v10DBWith(
-      [guitarInstrument],
-      [fixturePathway('p-cgs', 'i-guitar')],
-      [fixtureRoutine('r-stage1', 'p-cgs')],
-    );
-
-    const out = migrateToCurrent(v10, 10);
-    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(out.pathwayRoutines[0].instrumentId).toBe('i-guitar');
-
-    // A database already at the current version passes through unchanged.
-    expect(migrateToCurrent(out, SCHEMA_VERSION)).toEqual(out);
-  });
-
-  it('backfills only from a resolvable instrument and never invents one', () => {
-    const v10 = v10DBWith(
-      [setarInstrument],
-      [
-        fixturePathway('p-general', undefined), // General — no instrument at all
-        fixturePathway('p-legacy-empty', ''), // legacy migrateToV3's `?? ''`
-        fixturePathway('p-dangling', 'i-missing'), // resolves to nothing
-        fixturePathway('p-real', 'i-setar'), // control: the resolvable case
-      ],
-      [
-        fixtureRoutine('r-general', 'p-general'),
-        fixtureRoutine('r-legacy-empty', 'p-legacy-empty'),
-        fixtureRoutine('r-dangling', 'p-dangling'),
-        fixtureRoutine('r-real', 'p-real'),
-      ],
-    );
-
-    const out = migrateToCurrent(v10, 10);
-    const byId = new Map(out.pathwayRoutines.map((r) => [r.id, r]));
-    expect(byId.get('r-general')!.instrumentId).toBeUndefined();
-    expect(byId.get('r-legacy-empty')!.instrumentId).toBeUndefined();
-    expect(byId.get('r-dangling')!.instrumentId).toBeUndefined();
-    expect(byId.get('r-real')!.instrumentId).toBe('i-setar');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-14 — C5: the one-time conversion of legacy lesson intent
-// ---------------------------------------------------------------------------
-
-// The fixture is read through Vite's `?raw` import rather than node:fs: the
-// app's own tsconfig does not carry Node types, and the fixture has to be the
-// SAME bytes the browser journeys import through the real UI.
-const V11_FIXTURE = JSON.parse(v11FixtureText) as { data: PracticeDB };
-
-type LegacyItem = { id: string; assignedForLesson?: boolean; teacherQuestion?: string };
-
-function v11(): PracticeDB {
-  return JSON.parse(JSON.stringify(V11_FIXTURE.data)) as PracticeDB;
-}
-
-describe('v11 → v12 · legacy lesson intent', () => {
-  it('legacy lesson intent migrates unassigned exactly once without losing text', () => {
-    const source = v11();
-    const out = migrateToCurrent(v11(), 11);
-    const agenda = out.lessonAgenda;
-    const preparations = agenda.filter((e) => e.kind === 'preparation');
-    const questions = agenda.filter((e) => e.kind === 'question');
-
-    // 1. EVERY conversion is UNASSIGNED. The old data recorded no target, so
-    //    none is invented — not from today's clock, not from the nearest
-    //    class, not from a creation time.
-    expect(agenda.every((e) => e.lessonId === undefined)).toBe(true);
-    expect(agenda.every((e) => e.detachedFromLessonId === undefined)).toBe(true);
-
-    // 2. EXACTLY ONE preparation per `assignedForLesson: true` item, and none
-    //    for false or missing. (One entry the fixture already held is an
-    //    UNRELATED question, so the comparison is per item, not a raw count.)
-    const flaggedTrue = (source.items as unknown as LegacyItem[])
-      .filter((i) => i.assignedForLesson === true)
-      .map((i) => i.id)
-      .sort();
-    expect([...new Set(preparations.map((e) => e.itemId))].sort()).toEqual(flaggedTrue);
-    for (const id of flaggedTrue) {
-      expect(preparations.filter((e) => e.itemId === id), id).toHaveLength(1);
-    }
-    const notFlagged = (source.items as unknown as LegacyItem[])
-      .filter((i) => i.assignedForLesson !== true)
-      .map((i) => i.id);
-    for (const id of notFlagged) {
-      expect(preparations.some((e) => e.itemId === id), id).toBe(false);
-    }
-
-    // 3. EXACTLY ONE question per NON-EMPTY teacherQuestion, whatever the
-    //    boolean said — the old "both fields" rule silently dropped questions
-    //    on unflagged items. Whitespace-only text represents nothing.
-    const withText = (source.items as unknown as LegacyItem[])
-      .filter((i) => typeof i.teacherQuestion === 'string' && i.teacherQuestion.trim().length > 0)
-      .map((i) => i.id)
-      .sort();
-    for (const id of withText) {
-      const original = (source.items as unknown as LegacyItem[]).find((i) => i.id === id)!.teacherQuestion!;
-      expect(questions.filter((q) => q.itemId === id && q.text === original), id).toHaveLength(1);
-    }
-    expect(questions.some((q) => q.itemId === 'i-q-empty')).toBe(false);
-    expect(questions.some((q) => q.itemId === 'i-q-only')).toBe(true); // never flagged, still converted
-
-    // 4. Multiline text stays ONE question — splitting on newlines would
-    //    invent questions the owner never wrote.
-    const farsi = questions.find((q) => q.itemId === 'i-q-farsi')!;
-    expect(farsi.text.split('\n').length).toBeGreaterThan(2);
-
-    // 5. NOTHING IS INVENTED: no asked state, no answer, no target — and the
-    //    entry count grew by exactly what the legacy fields described.
-    expect(questions.every((q) => q.askedAt === undefined && q.answer === undefined)).toBe(true);
-    const preExisting = new Set(source.lessonAgenda.map((e) => e.id));
-    const added = agenda.filter((e) => !preExisting.has(e.id));
-    expect(added).toHaveLength(flaggedTrue.length + withText.length - 2); // i-premigrated's two already existed
-
-    // 6. A PARTIALLY MIGRATED database converts nothing twice, and an id that
-    //    an UNRELATED entry already owns gets a deterministic alternative
-    //    rather than colliding.
-    expect(agenda.filter((e) => e.itemId === 'i-premigrated')).toHaveLength(2);
-    expect(agenda.find((e) => e.id === 'prep:i-collision')!.kind).toBe('question'); // the pre-existing one
-    expect(agenda.find((e) => e.id === 'prep:i-collision~2')).toMatchObject({
-      kind: 'preparation',
-      itemId: 'i-collision',
-    });
-
-    // 6b. A generated id that already names a DIFFERENT question is not
-    //     "already represented" just because the id/kind/itemId match — the
-    //     content has to agree too. Both survive: the pre-existing question
-    //     is untouched and the new one gets its own collision-safe id.
-    const conflictExisting = agenda.find((e) => e.id === 'question:i-conflict');
-    expect(conflictExisting).toMatchObject({ kind: 'question', itemId: 'i-conflict', text: 'different existing question' });
-    const conflictNew = agenda.find((e) => e.id === 'question:i-conflict~2');
-    expect(conflictNew).toMatchObject({ kind: 'question', itemId: 'i-conflict', text: 'new distinct question' });
-
-    // 7. The legacy fields are gone only now their content is represented.
-    for (const raw of out.items as unknown as LegacyItem[]) {
-      expect('assignedForLesson' in raw, raw.id).toBe(false);
-      expect('teacherQuestion' in raw, raw.id).toBe(false);
-    }
-
-    // 8. IDENTICAL on any day, and on repeated application.
-    const differentDay = migrateToCurrent(v11(), 11);
-    expect(JSON.stringify(differentDay)).toBe(JSON.stringify(out));
-    const twice = migrateToCurrent(migrateToCurrent(v11(), 11), OLDEST_SCHEMA_VERSION);
-    expect(JSON.stringify(twice)).toBe(JSON.stringify(out));
-
-    // 9. Already-current EMPTY collections stay empty.
-    const current: PracticeDB = { ...out, items: [], lessonAgenda: [] };
-    expect(migrateToCurrent(current, SCHEMA_VERSION).lessonAgenda).toEqual([]);
-
-    // 10. Unrelated data and SR state come through byte-equivalent.
-    const strip = (db: PracticeDB) =>
-      JSON.stringify({
-        ...db,
-        schemaVersion: 0,
-        lessonAgenda: [],
-        items: db.items.map((i) => {
-          const copy = { ...i } as Record<string, unknown>;
-          delete copy.assignedForLesson;
-          delete copy.teacherQuestion;
-          return copy;
-        }),
-      });
-    expect(strip(out)).toBe(strip(source));
-  });
-});
-```
-
-### src/domain/migrations.ts
-
-```
-import { seedPathways } from './pathwaySeed';
-import {
-  SCHEMA_VERSION,
-  type AttachmentMeta,
-  type LessonAgendaEntry,
-  type PracticeDB,
-  type PracticeItem,
-} from './types';
-
-// ---------------------------------------------------------------------------
-// The one migration chain every inbound database runs, whatever door it came
-// in (rehydration, manual import, sync pull, conflict-keep-remote, archive
-// restore). Each migrateToVN is a pure PracticeDB → PracticeDB step;
-// migrateToCurrent gates them on the version the data actually arrived at.
-// ---------------------------------------------------------------------------
-
-/**
- * The oldest schema version this app has ever shipped (the initial commit
- * shipped v2, with `curriculum` required and no `pathways` key; no
- * migrateToV2 has ever existed). A database with no schemaVersion at all is
- * assumed to be this old, so the whole chain runs over it.
- */
-export const OLDEST_SCHEMA_VERSION = 2;
-
-/**
- * v1/v2 → v3: seed editable pathways from the db's instruments; drop old
- * `curriculum`. Keyed on the PRESENCE of the `pathways` key, not its length —
- * a current-shaped database that legitimately has zero pathways must not be
- * reseeded, but a genuinely pre-v3 database (no `pathways` key at all) still
- * gets the legacy seed.
- */
-function migrateToV3(db: PracticeDB): PracticeDB {
-  if ('pathways' in (db as unknown as Record<string, unknown>)) return db;
-  // db.instruments is a fixed part of the PracticeDB type, but this function
-  // now also runs directly on raw, untrusted import data (not just already-
-  // valid persisted state) — guard the one field it reads before validation.
-  const instruments = db.instruments ?? [];
-  const ids = {
-    guitar: instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-    setar: instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
-    tar:
-      instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
-  };
-  const seeded = seedPathways(ids);
-  const next: PracticeDB & { curriculum?: unknown } = { ...db, ...seeded };
-  delete next.curriculum;
-  return next;
-}
-
-/** v3 → v4: introduce the attachments array. */
-function migrateToV4(db: PracticeDB): PracticeDB {
-  return { ...db, attachments: db.attachments ?? [] };
-}
-
-/**
- * v4 → v5: steps are gone — items live directly in stages. Place any item
- * that a step had linked into that step's stage, then drop the pathwaySteps
- * field.
- */
-function migrateToV5(db: PracticeDB): PracticeDB {
-  const legacy = (db as unknown as { pathwaySteps?: { itemId?: string; stageId?: string }[] }).pathwaySteps;
-  let items = db.items;
-  if (Array.isArray(legacy)) {
-    const stageByItem = new Map<string, string>();
-    for (const s of legacy) if (s.itemId && s.stageId) stageByItem.set(s.itemId, s.stageId);
-    if (stageByItem.size) {
-      items = db.items.map((i) => (stageByItem.has(i.id) ? { ...i, stageId: stageByItem.get(i.id) } : i));
-    }
-  }
-  const next = { ...db, items, lessons: db.lessons ?? [], attachments: db.attachments ?? [] } as PracticeDB & {
-    pathwaySteps?: unknown;
-  };
-  delete next.pathwaySteps;
-  return next;
-}
-
-/**
- * v5 → v6: attachments can belong to an item OR a lesson. Old metadata carried
- * `itemId`; fold it into `ownerType: 'item'` + `ownerId` (lossless).
- */
-function migrateToV6(db: PracticeDB): PracticeDB {
-  const attachments = (db.attachments ?? []).map((a) => {
-    const legacy = a as AttachmentMeta & { itemId?: string };
-    if (!legacy.ownerId && legacy.itemId) {
-      const { itemId, ...rest } = legacy;
-      return { ...rest, ownerType: 'item' as const, ownerId: itemId };
-    }
-    return a;
-  });
-  return { ...db, attachments, lessons: db.lessons ?? [] };
-}
-
-// v7: lessons gained optional `recordings` (NAS references). Nothing to
-// rewrite — the field is optional — but normalise it to an array so callers
-// never guard against undefined.
-function migrateToV7(db: PracticeDB): PracticeDB {
-  return { ...db, lessons: (db.lessons ?? []).map((l) => ({ ...l, recordings: l.recordings ?? [] })) };
-}
-
-// v8: lessons gained an optional `number`. Existing lessons stay unnumbered
-// (undefined) — nothing to backfill.
-function migrateToV8(db: PracticeDB): PracticeDB {
-  return db;
-}
-
-// v9: lesson recordings gained a `kind`. Every existing reference was a class
-// video, so stamp the missing kind explicitly.
-function migrateToV9(db: PracticeDB): PracticeDB {
-  return {
-    ...db,
-    lessons: (db.lessons ?? []).map((l) => ({
-      ...l,
-      recordings: (l.recordings ?? []).map((r) => ({ ...r, kind: r.kind ?? ('video' as const) })),
-    })),
-  };
-}
-
-// v10: the DB gained optional scheduling `settings`. Existing DBs leave it
-// undefined (⇒ DEFAULT_SCHEDULING_PARAMS); nothing to backfill.
-function migrateToV10(db: PracticeDB): PracticeDB {
-  return db;
-}
-
-/**
- * v10 → v11: routines gained an optional `instrumentId`, and `pathwayId` /
- * `stageId` became placement rather than identity. Backfill a routine's
- * instrument from the pathway it belonged to — but ONLY when that pathway
- * names an instrument that actually resolves in `db.instruments`. A General
- * (no-instrument) pathway, a legacy empty-string id (migrateToV3's `?? ''`),
- * or a dangling reference all leave the routine unscoped rather than
- * fabricating an instrument for it. A routine that already has an
- * instrumentId (already-current data) is never overwritten, which is also
- * what keeps this idempotent.
- */
-function migrateToV11(db: PracticeDB): PracticeDB {
-  const instrumentIds = new Set((db.instruments ?? []).map((i) => i.id));
-  return {
-    ...db,
-    pathwayRoutines: (db.pathwayRoutines ?? []).map((r) => {
-      if (r.instrumentId !== undefined) return r;
-      const pathway = r.pathwayId ? (db.pathways ?? []).find((p) => p.id === r.pathwayId) : undefined;
-      const resolved = pathway?.instrumentId && instrumentIds.has(pathway.instrumentId) ? pathway.instrumentId : undefined;
-      return resolved ? { ...r, instrumentId: resolved } : r;
-    }),
-  };
-}
-
-/**
- * v11 → v12: the item's rolling `assignedForLesson` boolean and its single
- * mutable `teacherQuestion` string become entries in the one `lessonAgenda`
- * collection.
- *
- * Every conversion is UNASSIGNED. The old data recorded WHICH class it was for
- * nowhere at all — the boolean only ever meant "the next one", whenever that
- * happened to be — so naming a lesson here would be a guess. Deriving one from
- * today's clock would also make the same database migrate differently on two
- * devices run on different days, which is exactly what C5 forbids: this step
- * reads no clock, and its timestamps come from the ITEM's own, so the result is
- * byte-identical whenever and wherever it runs.
- *
- * A question converts whatever the boolean said: the two were always
- * independent facts, and requiring both is how the old "questions for next
- * class" list silently dropped questions on unflagged items.
- *
- * Multiline text stays ONE question. A teacher question typed as three lines in
- * one box is one thing the owner meant to ask, and splitting on newlines would
- * invent questions they never wrote.
- *
- * Idempotent by construction: the conversion is driven by the legacy fields,
- * which this step then removes, and it never creates an entry whose id already
- * describes the same thing. An already-current database — including one whose
- * agenda is legitimately EMPTY — comes through unchanged.
- *
- * This step runs on EVERY inbound database, not only one that declares itself
- * pre-v12: a database claiming the current schema can still carry a stray
- * `assignedForLesson`/`teacherQuestion` left behind by an interrupted write, a
- * hand-edited file, or a bug in an earlier build — an INCOMPLETE current-schema
- * conversion, not a genuine v11 input. Gating this on the declared version
- * would accept that leftover silently, with the intent it recorded gone
- * nowhere. Running it unconditionally is safe because it is a no-op wherever
- * neither legacy field is present.
- */
-function migrateToV12(db: PracticeDB): PracticeDB {
-  type LegacyItem = PracticeItem & { assignedForLesson?: boolean; teacherQuestion?: string };
-  const existing: LegacyAgenda[] = ((db.lessonAgenda ?? []) as LegacyAgenda[]).slice();
-  const takenIds = new Set(existing.map((e) => e?.id).filter((id): id is string => typeof id === 'string'));
-
-  // "Represented" means an entry with this id/kind/itemId already says the
-  // SAME thing the legacy field says — not merely that one exists. A
-  // preparation carries no content beyond the link itself, so any matching
-  // entry represents it; a question's content IS its text, so an entry that
-  // merely shares the generated id but holds DIFFERENT text is not a
-  // duplicate of this question — it is a distinct one that happens to want
-  // the same id, and `freeId` gives it a collision-safe alternative exactly
-  // as it would for an unrelated entry. Treating a same-id/different-text
-  // match as "already represented" would silently discard the new question's
-  // own text — the exact incomplete-migration defect this function exists to
-  // prevent.
-  const represented = (base: string, kind: 'preparation' | 'question', itemId: string, text?: string): boolean =>
-    existing.some(
-      (e) =>
-        e?.id === base &&
-        e?.kind === kind &&
-        e?.itemId === itemId &&
-        (kind !== 'question' || (e as { text?: unknown }).text === text),
-    );
-
-  // A deterministic id that cannot collide with an UNRELATED entry that
-  // happens to already own the obvious one. Same input, same output, always.
-  const freeId = (base: string): string => {
-    if (!takenIds.has(base)) return base;
-    for (let n = 2; ; n++) {
-      const candidate = `${base}~${n}`;
-      if (!takenIds.has(candidate)) return candidate;
-    }
-  };
-
-  const added: LessonAgendaEntry[] = [];
-  const items = (db.items ?? []).map((raw) => {
-    const item = raw as LegacyItem;
-    const { assignedForLesson, teacherQuestion, ...rest } = item;
-    if (assignedForLesson === undefined && teacherQuestion === undefined) return raw;
-
-    // The entry's own timestamps come from the item it was extracted from:
-    // data, never a clock.
-    const at = item.updatedAt ?? item.createdAt ?? '';
-
-    if (assignedForLesson === true) {
-      const base = `prep:${item.id}`;
-      if (!represented(base, 'preparation', item.id)) {
-        const id = freeId(base);
-        takenIds.add(id);
-        added.push({
-          id,
-          kind: 'preparation',
-          itemId: item.id,
-          instrumentId: item.instrumentId,
-          createdAt: at,
-          updatedAt: at,
-        });
-      }
-    }
-    if (typeof teacherQuestion === 'string' && teacherQuestion.trim().length > 0) {
-      const base = `question:${item.id}`;
-      if (!represented(base, 'question', item.id, teacherQuestion)) {
-        const id = freeId(base);
-        takenIds.add(id);
-        added.push({
-          id,
-          kind: 'question',
-          // Verbatim: not trimmed, not split, not re-wrapped.
-          text: teacherQuestion,
-          itemId: item.id,
-          instrumentId: item.instrumentId,
-          createdAt: at,
-          updatedAt: at,
-        });
-      }
-    }
-    // The legacy fields go only now that their content is represented.
-    return rest as PracticeItem;
-  });
-
-  return { ...db, items, lessonAgenda: [...(existing as LessonAgendaEntry[]), ...added] };
-}
-
-/** The agenda as it may arrive: possibly absent, possibly partially migrated. */
-type LegacyAgenda = { id?: string; kind?: string; itemId?: string } | undefined;
-
-/**
- * Bring a database of any known version fully to the current schema. Must
- * run BEFORE normalisation to the current shape — legacy fields the chain
- * reads (`pathwaySteps`, an attachment's `itemId`) would otherwise already be
- * gone. Idempotent: re-running it over its own output (or over already-current
- * data with `fromVersion` held at the oldest) changes nothing further.
- */
-export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeDB {
-  let next = db;
-  if (fromVersion < 3) next = migrateToV3(next);
-  if (fromVersion < 4) next = migrateToV4(next);
-  if (fromVersion < 5) next = migrateToV5(next);
-  if (fromVersion < 6) next = migrateToV6(next);
-  if (fromVersion < 7) next = migrateToV7(next);
-  if (fromVersion < 8) next = migrateToV8(next);
-  if (fromVersion < 9) next = migrateToV9(next);
-  if (fromVersion < 10) next = migrateToV10(next);
-  if (fromVersion < 11) next = migrateToV11(next);
-  // Unconditional, not gated on `fromVersion < 12`: see migrateToV12's own
-  // docstring for why an already-current-declared database still needs this
-  // pass over it.
-  next = migrateToV12(next);
-  return { ...next, schemaVersion: SCHEMA_VERSION };
-}
-```
-
 ### src/domain/plan.test.ts
 
 ```
@@ -4622,6 +3425,7 @@ import {
   MAX_SEGMENT_MINUTES,
   MIN_BUDGET_MINUTES,
   MIN_SEGMENT_MINUTES,
+  planPreviewDayHasPassed,
   planSegmentStartable,
   redistributePlan,
   skipPlanSegment,
@@ -5118,6 +3922,17 @@ describe('a running plan keeps its progress and refuses stale work', () => {
     expect(advancePlanPointer([pendingSeg, doneSeg], 1)).toBe(0); // wraps to what is still pending
     expect(advancePlanPointer([skippedSeg], 0)).toBe(1); // a deliberate skip stays skipped
     expect(advancePlanPointer([doneSeg], 0)).toBe(1); // finished
+
+    // Starting a plan is an authority boundary: the preview's OWN calendar
+    // day is checked against the caller's `now` directly — the extracted
+    // pure transition `SessionPlan.tsx`'s click-time guard actually calls,
+    // never a screen's own polled `now` that can lag the true instant by up
+    // to its poll interval, which is the exact gap a real device left
+    // untouched across midnight experiences with no event to close it.
+    const builtFor = day(0);
+    expect(planPreviewDayHasPassed(builtFor, NOW)).toBe(false);
+    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, 1))).toBe(true);
+    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, -1))).toBe(true);
   });
 });
 
@@ -6069,6 +4884,22 @@ export function skipPlanSegment(run: PlanRun): PlanRun {
   return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
 }
 
+/**
+ * Has the local calendar day moved past the day a session-plan PREVIEW was
+ * built for? Takes the caller's OWN `now` rather than reading a clock itself,
+ * but the point of this function is that the caller must pass the TRUE
+ * current instant here, never a screen's own polled `now`
+ * (`useDecisionNow` refreshes at most every 30 seconds, plus visibility/focus)
+ * — starting a plan is an authority boundary, the one place that lag must
+ * never be trusted. `SessionPlan.tsx`'s own `stale` flag already renders this
+ * same comparison against its polled `now` for the passive banner; this is
+ * the identical rule, extracted so the click-time check reads a fresh
+ * `Date` directly rather than waiting for that polled value to catch up.
+ */
+export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
+  return todayISODate(now) !== baseDay;
+}
+
 export type PlanStartCheck =
   | { ok: true; item: PracticeItem }
   | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
@@ -6098,1330 +4929,6 @@ export function planSegmentStartable(
 }
 ```
 
-### src/domain/scheduling.ts
-
-```
-import type {
-  BlockResult,
-  ID,
-  ISODate,
-  ItemStatus,
-  PracticeItem,
-  PracticeDB,
-  Review,
-  ReviewDateSource,
-  ReviewMode,
-  ReviewType,
-  SchedulingParams,
-} from './types';
-import { addDaysISODate, dayDiff, nowISO, parseISODate, todayISODate } from './util';
-import { daysSinceTouched } from './scoring';
-
-// ---------------------------------------------------------------------------
-// Review scheduling — a spaced-repetition engine (SM-2, the algorithm behind
-// SuperMemo / Anki) adapted to music practice.
-//
-// The idea (retrieval practice + expanding intervals) is well-supported for
-// long-term retention: each time a piece / gushe holds up, the gap before you
-// revisit it grows; when it slips, the gap resets so you relearn it. Per item
-// the app tracks reps, an ease factor and the current interval. Importance and
-// difficulty gently pull important/hard material sooner.
-//
-// The user can override per item: Auto (this engine), Every-N-days, or Manual.
-// Nothing here mutates state — it only proposes.
-// ---------------------------------------------------------------------------
-
-export const DEFAULT_REVIEW_INTERVAL_DAYS = 7;
-export const DEFAULT_EASE = 2.5;
-const MIN_EASE = 1.3;
-
-// --- Adjustable scheduling knobs --------------------------------------------
-//
-// These are the *defaults*: the exact intervals the engine has always used
-// (first=2, second=6, slip-reset=1). Passing no `params` reproduces the old
-// behaviour byte-for-byte — the tests assert this. A user can widen or tighten
-// them in Settings; nothing is required and every value is clamped to sane
-// bounds (`clampSchedulingParams`) rather than trusted blindly.
-
-export const DEFAULT_SCHEDULING_PARAMS: SchedulingParams = {
-  sm2FirstIntervalDays: 2,
-  sm2SecondIntervalDays: 6,
-  sm2SlipResetDays: 1,
-  warmupShare: 0.12,
-  deepWorkShare: 0.33,
-  reviewSlotMinMinutes: 3,
-  reviewSlotMaxMinutes: 7,
-};
-
-/** Inclusive bounds for each param, kept next to the defaults they guard. */
-export const SCHEDULING_BOUNDS: Record<keyof SchedulingParams, [number, number]> = {
-  sm2FirstIntervalDays: [1, 4],
-  sm2SecondIntervalDays: [3, 10],
-  sm2SlipResetDays: [1, 3],
-  warmupShare: [0.1, 0.15],
-  deepWorkShare: [0.25, 0.4],
-  reviewSlotMinMinutes: [2, 5],
-  reviewSlotMaxMinutes: [5, 12],
-};
-
-/**
- * Coerce a partial/untrusted params object into a full, in-bounds
- * SchedulingParams. Missing fields fall back to the default; out-of-range or
- * non-finite values are clamped. Integer fields are rounded; shares are not.
- */
-export function clampSchedulingParams(partial?: Partial<SchedulingParams>): SchedulingParams {
-  const out = { ...DEFAULT_SCHEDULING_PARAMS };
-  for (const key of Object.keys(DEFAULT_SCHEDULING_PARAMS) as (keyof SchedulingParams)[]) {
-    const raw = partial?.[key];
-    const [lo, hi] = SCHEDULING_BOUNDS[key];
-    if (typeof raw === 'number' && Number.isFinite(raw)) {
-      const isShare = key === 'warmupShare' || key === 'deepWorkShare';
-      out[key] = clamp(isShare ? raw : Math.round(raw), lo, hi);
-    }
-  }
-  // Keep the review slot window coherent even after independent clamping.
-  if (out.reviewSlotMaxMinutes < out.reviewSlotMinMinutes) {
-    out.reviewSlotMaxMinutes = out.reviewSlotMinMinutes;
-  }
-  return out;
-}
-
-/**
- * SM-2 quality grade for the results that are genuinely POSITIVE evidence.
- * Only these three are retention evidence at all; `same` and
- * `slightly_better` are deliberately absent, and `worse` is handled on its own
- * negative path. Reading `same` as a slip — which this engine used to do, via
- * a quality of 2 that fell into the reset branch — was the single change the
- * owner overruled: no improvement is not failed recall.
- */
-const STABLE_QUALITY: Partial<Record<BlockResult, number>> = {
-  stable_alone: 4,
-  stable_in_context: 5,
-  performable: 5,
-};
-
-/** The three results that can be eligible retention evidence. */
-export const STABLE_RESULTS: BlockResult[] = ['stable_alone', 'stable_in_context', 'performable'];
-
-export function isStableResult(result: BlockResult | undefined): boolean {
-  return !!result && STABLE_RESULTS.includes(result);
-}
-
-function reviewTypeFor(item: PracticeItem, result?: BlockResult): ReviewType {
-  if (result === 'performable' || item.status === 'maintenance') return 'maintenance';
-  if (item.status === 'performable' || item.status === 'integrated') return 'integration';
-  if (item.status === 'fragile' || item.status === 'repairing') return 'repair';
-  return 'retention';
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
-
-/** Important & difficult material is pulled a little sooner. */
-function urgencyFactor(item: PracticeItem): number {
-  const importance = 1 + (3 - item.importance) * 0.08; // imp5 → 0.84, imp1 → 1.16
-  const difficulty = 1 + (3 - item.difficulty) * 0.05; // diff5 → 0.90, diff1 → 1.10
-  return importance * difficulty;
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
-}
-
-// --- The one review decision ------------------------------------------------
-//
-// PRACTICE IS EXPOSURE; ONLY ELIGIBLE RETENTION EVIDENCE ADVANCES SPACING.
-//
-// Three questions this answers together, because they are one decision:
-//   • does the item's next-review DATE move, and to what?
-//   • does its SPACING state (reps / ease / interval) move?
-//   • what honest sentence explains the answer?
-//
-// Everything the close screen renders and everything the store persists is a
-// rendering of THIS object. A second derivation anywhere is how "the date
-// shown" and "the date saved" used to come apart.
-
-/** Whether this decision writes a date at all. */
-export type ReviewDateDisposition = 'keep' | 'set';
-
-export interface ReviewDecision {
-  /** 'keep' leaves the item's existing schedule and pending row exactly as they are. */
-  disposition: ReviewDateDisposition;
-  /** The date to WRITE — present only when `disposition === 'set'`. */
-  dueDate?: ISODate;
-  /** The date that will actually stand afterwards (the existing one when kept). */
-  effectiveDate?: ISODate;
-  /** Whole days from today to `effectiveDate`; 0 when there is no date. */
-  intervalDays: number;
-  /** Provenance to persist with a written date. */
-  source: ReviewDateSource;
-  reviewType: ReviewType;
-  changeStrategy: boolean;
-  rationale: string;
-  /** SM-2 state to persist. Omitted entirely when spacing did not move. */
-  sr?: { srReps: number; srEase: number; srIntervalDays: number; srLastProgressDay?: ISODate };
-  /** True only when this close was eligible evidence that EXPANDED spacing. */
-  advanced: boolean;
-}
-
-/**
- * Is this item's pending date one the engine may move early? A date is
- * PROTECTED when the owner chose it (`nextReviewSource === 'user'` — typed,
- * snoozed, or re-armed), when its provenance predates this field and is
- * therefore unknown, or when the item is on a fixed cadence. Only a date this
- * engine itself proposed is its own to bring forward.
- *
- * Protection is about a FUTURE date only. Once a date is due, it is the
- * review — and the engine takes over again, whoever chose it.
- */
-export function isProtectedPendingDate(item: PracticeItem, now: Date): boolean {
-  const existing = item.nextReviewDate;
-  if (!existing || existing <= todayISODate(now)) return false;
-  const mode = item.reviewMode ?? 'auto';
-  if (mode !== 'auto') return true;
-  return item.nextReviewSource !== 'auto';
-}
-
-/**
- * The whole scheduling decision behind one closed block. Pure; `now` explicit.
- *
- * The permitted and forbidden cases, in the order they are decided:
- *
- *  1. No logged result (`not_logged`, or none at all) — nothing about the
- *     schedule was judged, so nothing moves. Routine runs land here: a routine
- *     records time, never a retention judgement.
- *  2. Manual mode — the owner owns the dates. An empty automatic proposal is
- *     not an implicit "no": the existing schedule stands.
- *  3. A PROTECTED future date — kept exactly, including under `worse`.
- *  4. An AUTOMATIC future date — kept for every positive or neutral result
- *     (extra practice is not a review), and brought forward by `worse` alone,
- *     to the EARLIER of the existing date and the repair proposal. Never
- *     postponed, so repeated negative closes cannot slide tomorrow's repair
- *     into next week.
- *  5. Due, or never scheduled — the review is actually happening:
- *       • fixed cadence uses its configured interval, SM-2 untouched;
- *       • `worse` resets spacing and schedules the relearn gap;
- *       • a stable result advances spacing — but at most ONCE per item per
- *         local calendar day, enforced by `srLastProgressDay`, so clearing and
- *         re-arming the date, a reload, a sync or simply closing twice cannot
- *         buy a second expansion;
- *       • `same` / `slightly_better` REPEAT the current gap without touching
- *         repetitions or ease, and are never described as a slip.
- */
-export function decideReview(args: {
-  item: PracticeItem;
-  result: BlockResult | undefined;
-  now: Date;
-  params?: SchedulingParams;
-}): ReviewDecision {
-  const { item, result, now } = args;
-  const params = args.params ?? DEFAULT_SCHEDULING_PARAMS;
-  const today = todayISODate(now);
-  const existing = item.nextReviewDate;
-  const mode = item.reviewMode ?? 'auto';
-  const reviewType = reviewTypeFor(item, result);
-  const changeStrategy = result === 'same';
-  const mod = urgencyFactor(item);
-
-  const keep = (rationale: string): ReviewDecision => ({
-    disposition: 'keep',
-    effectiveDate: existing,
-    intervalDays: existing ? Math.max(0, dayDiff(now, parseISODate(existing))) : 0,
-    source: item.nextReviewSource ?? 'auto',
-    reviewType,
-    changeStrategy,
-    rationale,
-    advanced: false,
-  });
-
-  const set = (
-    dueDate: ISODate,
-    rationale: string,
-    extra: Partial<Pick<ReviewDecision, 'sr' | 'advanced'>> = {},
-  ): ReviewDecision => ({
-    disposition: 'set',
-    dueDate,
-    effectiveDate: dueDate,
-    intervalDays: Math.max(0, dayDiff(now, parseISODate(dueDate))),
-    source: 'auto',
-    reviewType,
-    changeStrategy,
-    rationale,
-    advanced: false,
-    ...extra,
-  });
-
-  // 1. No judgement was recorded.
-  if (!result || result === 'not_logged') {
-    return keep('No result was recorded, so the review schedule is unchanged.');
-  }
-
-  // 2. The owner sets this item's dates by hand.
-  if (mode === 'manual') {
-    return keep('You choose this item’s dates — the existing one stands.');
-  }
-
-  const reps0 = item.srReps ?? 0;
-  const ease0 = item.srEase ?? DEFAULT_EASE;
-  const base0 = item.srIntervalDays ?? 0;
-
-  // 3 & 4. A date still in the future: this close is extra practice, not the
-  // review it was scheduled for.
-  if (existing && existing > today) {
-    if (result !== 'worse' || isProtectedPendingDate(item, now)) {
-      return keep(
-        isProtectedPendingDate(item, now)
-          ? 'Your own date for this item stands — extra practice doesn’t move it.'
-          : 'Not due yet — today counts as extra practice and the date stands.',
-      );
-    }
-    // Only genuinely negative evidence may bring an automatic date forward.
-    const repairBase = clamp(params.sm2SlipResetDays, 1, 365);
-    const repairDays = clamp(Math.round(repairBase * mod), 1, 365);
-    const proposal = addDaysISODate(today, repairDays);
-    const dueDate = proposal < existing ? proposal : existing;
-    const actualDays = Math.max(0, dayDiff(now, parseISODate(dueDate)));
-    return set(
-      dueDate,
-      `Spaced repetition: it slipped — back in ${plural(actualDays, 'day')} to relearn.`,
-      { sr: { srReps: 0, srEase: ease0, srIntervalDays: repairBase } },
-    );
-  }
-
-  // 5. Due, or never scheduled — the review is happening now.
-  if (mode === 'interval') {
-    const interval = clamp(Math.round(item.reviewIntervalDays ?? DEFAULT_REVIEW_INTERVAL_DAYS), 1, 365);
-    // A fixed cadence is the owner's own rhythm: it uses its configured gap and
-    // leaves SM-2 state alone, so switching back to Auto inherits nothing.
-    return set(addDaysISODate(today, interval), `Fixed cadence: every ${plural(interval, 'day')}.`);
-  }
-
-  if (result === 'worse') {
-    const repairBase = clamp(params.sm2SlipResetDays, 1, 365);
-    const days = clamp(Math.round(repairBase * mod), 1, 365);
-    return set(
-      addDaysISODate(today, days),
-      `Spaced repetition: it slipped — back in ${plural(days, 'day')} to relearn.`,
-      { sr: { srReps: 0, srEase: ease0, srIntervalDays: repairBase } },
-    );
-  }
-
-  if (isStableResult(result)) {
-    // ONE spacing advance per item per local calendar day. This marker is
-    // administrative eligibility, never a measured retention score.
-    if (item.srLastProgressDay === today) {
-      return keep(
-        existing
-          ? 'Spacing already moved today — this session is recorded and the date stands.'
-          : 'Spacing already moved today — this session is recorded, with no new date.',
-      );
-    }
-    const q = STABLE_QUALITY[result] ?? 4;
-    const reps = reps0 + 1;
-    const base = clamp(
-      reps === 1
-        ? params.sm2FirstIntervalDays
-        : reps === 2
-          ? params.sm2SecondIntervalDays
-          : Math.round(base0 * ease0) || params.sm2SecondIntervalDays,
-      1,
-      365,
-    );
-    const ease = Math.max(MIN_EASE, ease0 + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
-    const intervalDays = clamp(Math.round(base * mod), 1, 365);
-    const sooner = mod < 0.95 ? ' — a little sooner (important / hard)' : '';
-    return set(
-      addDaysISODate(today, intervalDays),
-      `Spaced repetition: ${plural(reps, 'good review')} → ${plural(intervalDays, 'day')}${sooner}.`,
-      {
-        advanced: true,
-        sr: {
-          srReps: reps,
-          srEase: Math.round(ease * 100) / 100,
-          srIntervalDays: base,
-          srLastProgressDay: today,
-        },
-      },
-    );
-  }
-
-  // `same` / `slightly_better` at a due review: hold the current gap. Not a
-  // slip, not progress — repetitions and ease are untouched.
-  const base = clamp(base0 > 0 ? base0 : params.sm2FirstIntervalDays, 1, 365);
-  const intervalDays = clamp(Math.round(base * mod), 1, 365);
-  return set(
-    addDaysISODate(today, intervalDays),
-    `Spaced repetition: holding steady — the same ${plural(intervalDays, 'day')} gap again.`,
-    { sr: { srReps: reps0, srEase: ease0, srIntervalDays: base } },
-  );
-}
-
-export interface ReviewPlan {
-  intervalDays: number;
-  dueDate: ISODate;
-  reviewType: ReviewType;
-  changeStrategy: boolean;
-  rationale: string;
-}
-
-/**
- * Preview-only wrapper for the close screen: the date that will actually stand
- * after this close, whether the decision writes it or leaves it in place.
- * Returns `null` only when there is genuinely no date at all — nothing to show
- * and nothing to save.
- */
-export function planNextReview(args: {
-  item: PracticeItem;
-  result?: BlockResult;
-  now?: Date;
-  params?: SchedulingParams;
-}): ReviewPlan | null {
-  const d = decideReview({
-    item: args.item,
-    result: args.result,
-    now: args.now ?? new Date(),
-    params: args.params,
-  });
-  if (!d.effectiveDate) return null;
-  return {
-    intervalDays: d.intervalDays,
-    dueDate: d.effectiveDate,
-    reviewType: d.reviewType,
-    changeStrategy: d.changeStrategy,
-    rationale: d.rationale,
-  };
-}
-
-export interface StatusSuggestion {
-  suggestedStatus?: ItemStatus;
-  message?: string;
-}
-
-/** Suggest (never force) a status change after a block closes. */
-export function suggestStatusAfterBlock(args: {
-  item: PracticeItem;
-  result: BlockResult;
-  last3AllSame: boolean;
-}): StatusSuggestion {
-  const { item, result, last3AllSame } = args;
-
-  if (last3AllSame) {
-    return { message: 'Three “same” results in a row — try a different strategy rather than changing status.' };
-  }
-  if (result === 'stable_alone' && (item.status === 'fragile' || item.status === 'repairing')) {
-    return { suggestedStatus: 'usable', message: 'Holds together on its own — move it on to “Coming together”?' };
-  }
-  if (result === 'stable_in_context' && item.status === 'usable') {
-    return { suggestedStatus: 'integrated', message: 'Holds up in context — move it on to “Solid”?' };
-  }
-  if (result === 'performable' && item.status !== 'performable') {
-    return { suggestedStatus: 'performable', message: 'Ready to perform — mark it “Performance-ready”?' };
-  }
-  return {};
-}
-
-/** Suggest dormancy for long-untouched items (used by Insights). */
-export function shouldSuggestDormant(item: PracticeItem, now: Date): boolean {
-  if (item.status === 'maintenance' || item.status === 'dormant') return false;
-  return daysSinceTouched(item, now) >= 30;
-}
-
-// --- The one place a review-date write is decided ---------------------------
-//
-// An item's nextReviewDate and its Review row's dueDate must always move
-// together — that's the whole fix. `resolveReviewDate` is the single,
-// tri-state primitive every call site (closeSession, updateItem,
-// snoozeReview) routes through: absent/undefined leaves the schedule exactly
-// as it is, `null` deliberately clears it, an ISODate sets both sides to that
-// one value.
-
-export type ReviewDateInstruction = ISODate | null | undefined;
-
-export interface ReviewDateWrite {
-  /** What PracticeItem.nextReviewDate becomes. `undefined` clears it. */
-  nextReviewDate: ISODate | undefined;
-}
-
-/**
- * Resolve a tri-state review-date instruction into the write to apply.
- * Returns `undefined` when nothing should change (the caller leaves both the
- * item and any review row exactly as they are).
- */
-export function resolveReviewDate(instruction: ReviewDateInstruction): ReviewDateWrite | undefined {
-  if (instruction === undefined) return undefined;
-  return { nextReviewDate: instruction ?? undefined };
-}
-
-/**
- * Apply a tri-state review-date instruction to an item's Review rows.
- * Every OPEN row belonging to `practiceItemId` moves with the item: absent
- * leaves the array exactly as it is (returns `undefined`), null removes those
- * rows (there's nothing honest to point them at once the item has no next
- * review), an ISODate moves them to that date. This is the coupling that
- * `resolveReviewDate` alone cannot prove — the item and its review rows are
- * always the same array operation.
- */
-export function applyReviewDateToRows(args: {
-  reviews: Review[];
-  practiceItemId: ID;
-  instruction: ReviewDateInstruction;
-  now: Date;
-}): Review[] | undefined {
-  const write = resolveReviewDate(args.instruction);
-  if (!write) return undefined;
-
-  const isOpenRowForItem = (r: Review) => r.practiceItemId === args.practiceItemId && !r.completedAt;
-
-  if (write.nextReviewDate === undefined) {
-    return args.reviews.filter((r) => !isOpenRowForItem(r));
-  }
-  const dueDate = write.nextReviewDate;
-  return args.reviews.map((r) => (isOpenRowForItem(r) ? { ...r, dueDate, updatedAt: nowISO(args.now) } : r));
-}
-
-/**
- * Apply a tri-state review-date instruction to ONE Review row, selected by
- * its own id — the model `snoozeReview` needs. Unlike `applyReviewDateToRows`
- * (item-scoped: every open row moves, for when the ITEM's date is what's
- * being decided — closeSession, updateItem), this never touches a sibling
- * open row for the same item: snoozing review X must move X, not everything
- * else the item happens to have open.
- */
-export function applyReviewDateToRow(args: {
-  reviews: Review[];
-  reviewId: ID;
-  instruction: ReviewDateInstruction;
-  now: Date;
-}): Review[] | undefined {
-  const write = resolveReviewDate(args.instruction);
-  if (!write) return undefined;
-
-  if (write.nextReviewDate === undefined) {
-    return args.reviews.filter((r) => r.id !== args.reviewId);
-  }
-  const dueDate = write.nextReviewDate;
-  return args.reviews.map((r) => (r.id === args.reviewId ? { ...r, dueDate, updatedAt: nowISO(args.now) } : r));
-}
-
-/**
- * What the close screen actually answered about the item's next review. The
- * whole of §A6 is that the first two used to be indistinguishable:
- *
- *   'scheduled'  — a date to write. Sets both sides and completes the open row.
- *   'declined'   — the owner said no. Clears the item's date and completes the
- *                  open row, exactly as it has always done.
- *   'unanswered' — no result was chosen, so NOTHING about the schedule was
- *                  decided. Keeps the item's date and leaves the open row
- *                  OPEN. Answering nothing is not declining: reading it as one
- *                  silently erased the next date, closed the open review and
- *                  left SM-2 state stale, so the item never appeared under Due
- *                  reviews again — while the screen read "Should this come
- *                  back? Yes" above an empty date field.
- */
-export type ReviewAnswer = 'scheduled' | 'declined' | 'unanswered';
-
-export interface ReviewOutcome {
-  /**
-   * Ready to hand straight to `applyBlockStats`: `undefined` keeps the
-   * item's existing date, `null` clears it, an ISODate sets it.
-   */
-  nextReviewDate: ISODate | null | undefined;
-  /**
-   * Provenance to persist alongside it — `undefined` leaves the item's own
-   * unchanged, `null` clears it along with the date.
-   */
-  nextReviewSource: ReviewDateSource | null | undefined;
-  /**
-   * Whether the item's OPEN review rows should be completed by this close.
-   * Part of the SAME return value as the date on purpose: closeSession used to
-   * decide this separately and unconditionally, which is precisely how the row
-   * and the date came apart.
-   *
-   * A close that merely KEEPS an existing future date completes nothing —
-   * the review it was scheduled for has not happened yet, and extra practice
-   * before it is not that review. That pending row stays open.
-   */
-  completeOpenReviews: boolean;
-  /** The new Review row to create, when a review was genuinely scheduled. */
-  review?: { dueDate: ISODate; reviewType: ReviewType };
-  /** SM-2 state to persist — omitted entirely when spacing did not move, so
-   *  neither declining a review nor practising early ever fabricates
-   *  retention history. */
-  sr?: { srReps: number; srEase: number; srIntervalDays: number; srLastProgressDay?: ISODate };
-  /** The decision this outcome renders, for callers that want the reason. */
-  decision?: ReviewDecision;
-}
-
-/**
- * The decision behind closing a block: whether the item gets a next review at
- * all, whether its open review row is completed, and — when a review is
- * scheduled — the ONE date written to both the item and its new Review row.
- *
- * Three answers, three distinct transitions:
- *   • 'unanswered' — nothing was judged. Date, row and spacing all stand.
- *   • 'declined'   — a deliberate No. The pending date is cleared and the open
- *                    row completed, with no fabricated result and no spacing
- *                    progress. It is a decision about the PENDING REVIEW, not
- *                    a ban on ever practising the item again.
- *   • 'scheduled'  — the engine's decision applies, with the owner's own typed
- *                    date folded in as an explicit override when they set one.
- *
- * An explicit date the owner typed is authoritative in EITHER direction and is
- * recorded as theirs (`source: 'user'`), so the engine will not quietly move it
- * next time. It never fabricates spacing progress on its own: the SM-2
- * transition, if any, comes from the same decision that would have applied
- * without it.
- */
-export function computeReviewOutcome(args: {
-  item: PracticeItem;
-  result?: BlockResult;
-  answer: ReviewAnswer;
-  /** Explicit override (e.g. a user-edited date on the close screen). */
-  nextReviewDate?: ISODate;
-  reviewType?: ReviewType;
-  /** Required — this decision must never fall back to the wall clock. */
-  now: Date;
-  params?: SchedulingParams;
-}): ReviewOutcome {
-  const { item, result, answer, now, params } = args;
-
-  // Nothing was decided about the schedule, so nothing about the schedule
-  // moves — neither the item's date nor its open row. This is the one branch
-  // that produces keep-the-date AND leave-the-row-open together.
-  if (answer === 'unanswered') {
-    return { nextReviewDate: undefined, nextReviewSource: undefined, completeOpenReviews: false };
-  }
-
-  if (answer === 'declined') {
-    return { nextReviewDate: null, nextReviewSource: null, completeOpenReviews: true };
-  }
-
-  const decision = decideReview({ item, result, now, params });
-
-  // An explicit date the owner chose overrides the engine's own proposal —
-  // in either direction — and is stamped as theirs.
-  if (args.nextReviewDate) {
-    return {
-      nextReviewDate: args.nextReviewDate,
-      nextReviewSource: 'user',
-      completeOpenReviews: true,
-      review: { dueDate: args.nextReviewDate, reviewType: args.reviewType ?? decision.reviewType },
-      sr: decision.sr,
-      decision,
-    };
-  }
-
-  if (decision.disposition === 'keep') {
-    // The existing schedule stands — including its still-open pending row.
-    return {
-      nextReviewDate: undefined,
-      nextReviewSource: undefined,
-      completeOpenReviews: false,
-      sr: decision.sr,
-      decision,
-    };
-  }
-
-  const dueDate = decision.dueDate!;
-  return {
-    nextReviewDate: dueDate,
-    nextReviewSource: decision.source,
-    completeOpenReviews: true,
-    review: { dueDate, reviewType: args.reviewType ?? decision.reviewType },
-    sr: decision.sr,
-    decision,
-  };
-}
-
-/**
- * Apply a close's completion decision to an item's OPEN review rows — the
- * array transform behind `ReviewOutcome.completeOpenReviews`, living next to
- * `applyReviewDateToRows` for the same reason: the row change has to be
- * reachable from a Node test, and `closeSession` (which cannot be) is a thin
- * caller. `complete: false` returns the array untouched, so a close that
- * answered nothing genuinely leaves the due review open.
- */
-export function completeOpenReviewsFor(args: {
-  reviews: Review[];
-  practiceItemId: ID;
-  complete: boolean;
-  result?: BlockResult;
-  now: Date;
-}): Review[] {
-  if (!args.complete) return args.reviews;
-  const at = nowISO(args.now);
-  return args.reviews.map((r) =>
-    r.practiceItemId === args.practiceItemId && !r.completedAt
-      ? { ...r, completedAt: at, result: args.result, updatedAt: at }
-      : r,
-  );
-}
-
-// --- Review actions that are NOT practice ------------------------------------
-//
-// Practising (closing a block) is the only thing that *can* complete a review or
-// advance SM-2 — and `decideReview` above decides whether a given close actually
-// does: an early session on a not-yet-due item keeps the date, leaves the pending
-// row open and leaves SM-2 untouched. The other actions have deliberately small,
-// honest semantics:
-//   • snooze  — "not now": push the due date N days from today. No SM-2 change,
-//               no pretend result. The overdue nag disappears because the date
-//               genuinely moved.
-//   • (there is no "mark done without practising" — that would fabricate data.)
-
-export const SNOOZE_DAYS_DEFAULT = 2;
-
-export interface SnoozePlan {
-  dueDate: ISODate;
-}
-
-/** New due date when snoozing a review: N days from today (not from the old,
- *  possibly long-past due date). */
-export function snoozePlan(days: number, now: Date = new Date()): SnoozePlan {
-  const d = Math.max(1, Math.round(days));
-  return { dueDate: addDaysISODate(todayISODate(now), d) };
-}
-
-// --- Re-arming a pending review from the item itself -------------------------
-
-export interface ScheduleAgainPlan {
-  /** The one date both the item and its pending row end up on. */
-  dueDate: ISODate;
-  reviewType: ReviewType;
-  /** The rows after moving every OPEN row for this item onto that date. */
-  reviews: Review[];
-  /** True when the item had NO open row and one must be created. */
-  createRow: boolean;
-}
-
-/**
- * "Schedule again" / "set a date" on the item itself — an ADMINISTRATIVE
- * action, never practice. It creates no block, records no result, changes no
- * statistics and moves no SM-2 state; all it does is decide the one pending
- * date, on both sides at once.
- *
- * It has to work when there is no open row at all, which is the case the old
- * date helper could not reach: it only ever UPDATED existing rows, so an item
- * whose review had been declined could never be re-armed from its own screen.
- * A date chosen here is the owner's (`nextReviewSource: 'user'`), so the engine
- * treats it as authoritative until it comes due.
- */
-export function scheduleAgainPlan(args: {
-  item: PracticeItem;
-  reviews: Review[];
-  dueDate: ISODate;
-  reviewType?: ReviewType;
-  now: Date;
-}): ScheduleAgainPlan {
-  const { item, dueDate, now } = args;
-  const hasOpenRow = args.reviews.some((r) => r.practiceItemId === item.id && !r.completedAt);
-  const reviews =
-    applyReviewDateToRows({ reviews: args.reviews, practiceItemId: item.id, instruction: dueDate, now }) ??
-    args.reviews;
-  return {
-    dueDate,
-    reviewType: args.reviewType ?? reviewTypeFor(item),
-    reviews,
-    createRow: !hasOpenRow,
-  };
-}
-
-/**
- * Open review rows for one item that DISAGREE about when it is next due —
- * either with each other or with the item's own date. Legacy data can hold
- * these, and they are reported rather than silently rewritten: quietly
- * dropping one is a decision the owner never made about a date they once set.
- *
- * Returns null when the schedule is coherent (the ordinary case). Note that
- * every ordinary date write in this module already MOVES every open row for
- * the item together, so a conflict cannot be created going forward — this
- * describes what arrived, so the owner can resolve it deliberately.
- */
-export function pendingScheduleConflict(
-  item: PracticeItem,
-  reviews: Review[],
-): { rows: Review[]; message: string } | null {
-  const open = reviews.filter((r) => r.practiceItemId === item.id && !r.completedAt);
-  if (open.length === 0) return null;
-  const dates = new Set(open.map((r) => r.dueDate));
-  if (item.nextReviewDate) dates.add(item.nextReviewDate);
-  if (dates.size <= 1) return null;
-  const listed = [...dates].sort().join(', ');
-  return {
-    rows: open,
-    message: `This item has more than one pending review date (${listed}). Set the date you mean and they will all move together.`,
-  };
-}
-
-// --- Inbound validation ------------------------------------------------------
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const REVIEW_MODES: ReviewMode[] = ['auto', 'interval', 'manual'];
-const REVIEW_TYPES: ReviewType[] = ['retention', 'repair', 'integration', 'maintenance', 'teacher_check'];
-
-/**
- * A real calendar date, not merely a string SHAPED like one:
- * `/^\d{4}-\d{2}-\d{2}$/` matches "2027-99-99" and "2026-02-30" just as
- * happily as a genuine date. `Date.UTC` normalises an out-of-range month or
- * day rather than rejecting it (day 30 of February silently becomes March
- * 2nd), so the shape regex alone lets exactly that kind of nonsense through —
- * the round trip through the SAME components is what actually proves it.
- */
-function isValidISODate(s: string): boolean {
-  if (!ISO_DATE.test(s)) return false;
-  const [y, m, d] = s.split('-').map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
-}
-
-/**
- * Validate the scheduling fields of an INBOUND database before it is
- * installed. Bounded to the decision loop's own data — dates readable, enums
- * known, numbers finite, pending rows pointing at items that exist. It does
- * NOT reject a schedule whose open rows merely disagree about a date: that is
- * legitimate legacy state, reported to the owner by `pendingScheduleConflict`
- * rather than discarded here.
- */
-export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews'>): string | null {
-  for (const i of db.items) {
-    if (i.nextReviewDate !== undefined && !isValidISODate(String(i.nextReviewDate))) {
-      return `Item "${i.title ?? i.id}" has an unreadable next-review date.`;
-    }
-    if (i.reviewMode !== undefined && !REVIEW_MODES.includes(i.reviewMode)) {
-      return `Item "${i.title ?? i.id}" has an unknown review mode.`;
-    }
-    if (i.nextReviewSource !== undefined && i.nextReviewSource !== 'auto' && i.nextReviewSource !== 'user') {
-      return `Item "${i.title ?? i.id}" has an unknown review-date source.`;
-    }
-    if (i.srLastProgressDay !== undefined && !isValidISODate(String(i.srLastProgressDay))) {
-      return `Item "${i.title ?? i.id}" has an unreadable spacing-progress day.`;
-    }
-    for (const key of ['srReps', 'srEase', 'srIntervalDays', 'reviewIntervalDays'] as const) {
-      const v = i[key];
-      if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v))) {
-        return `Item "${i.title ?? i.id}" has an unreadable ${key}.`;
-      }
-    }
-  }
-  const seen = new Set<string>();
-  for (const r of db.reviews) {
-    if (seen.has(r.id)) return `Two reviews share the id "${r.id}".`;
-    seen.add(r.id);
-    if (!isValidISODate(String(r.dueDate))) return `A review for "${r.practiceItemId}" has an unreadable due date.`;
-    if (!REVIEW_TYPES.includes(r.reviewType)) return `A review for "${r.practiceItemId}" has an unknown type.`;
-    // A row pointing at an item that no longer exists is legacy debris, not
-    // invalid new intent — it is tolerated (and ignored by every reader) rather
-    // than used to refuse an entire restore. Repairing it belongs to the
-    // separate storage-integrity work, not to this decision loop.
-  }
-  return null;
-}
-```
-
-### src/pages/CloseBlock.tsx
-
-```
-import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import {
-  clampSchedulingParams,
-  defaultTargetLesson,
-  lessonLabel,
-  planNextReview,
-  proposedCloseMinutes,
-  todayISODate,
-  type ReviewAnswer,
-  type ReviewPlan,
-  RESULT_LABELS,
-  REVIEW_TYPE_LABELS,
-  suggestStatusAfterBlock,
-  ITEM_STATUS_LABELS,
-  type BlockResult,
-  type ItemStatus,
-  type ReviewType,
-} from '../domain';
-import { sessionElapsedSeconds, useStore } from '../store/useStore';
-import { getItem, instrumentName, itemBlocks } from '../store/lookups';
-import { Field, OptionPills } from '../components/ui';
-import { CheckIcon, PlayIcon } from '../components/icons';
-import { closeOverrideDate, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
-import { useDecisionNow } from '../components/useDecisionNow';
-
-const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
-  { value: 'worse', label: RESULT_LABELS.worse },
-  { value: 'same', label: RESULT_LABELS.same },
-  { value: 'slightly_better', label: RESULT_LABELS.slightly_better },
-  { value: 'stable_alone', label: RESULT_LABELS.stable_alone },
-  { value: 'stable_in_context', label: RESULT_LABELS.stable_in_context },
-  { value: 'performable', label: RESULT_LABELS.performable },
-];
-
-export default function CloseBlock() {
-  const db = useStore((s) => s.db);
-  const active = useStore((s) => s.active);
-  const closeSession = useStore((s) => s.closeSession);
-  const cancelSession = useStore((s) => s.cancelSession);
-  const resumeSession = useStore((s) => s.resumeSession);
-  const navigate = useNavigate();
-  // The DAY this decision is made in, refreshed at a local-day boundary or
-  // when the page comes back into view. A close screen left open across
-  // midnight must not write a date derived from yesterday — and the draft in
-  // the fields above survives the refresh, because only `now` changes.
-  //
-  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
-  // so it can lag the true instant by up to that long. `nowOverride` closes
-  // that gap at the one moment it actually matters — Save — without needing
-  // the shared hook to expose a manual refresh: `handleSave` sets it the
-  // instant it finds the real local day has moved past what `now` reflects,
-  // forcing an immediate re-render with the CORRECTED decision instead of
-  // silently saving one that no longer matches what is on screen.
-  const [nowOverride, setNowOverride] = useState<Date | null>(null);
-  const decisionNow = useDecisionNow();
-  const now = nowOverride ?? decisionNow;
-
-  const item = active ? getItem(db, active.itemId) : undefined;
-  // The clock was paused on Finish, so the elapsed figure is frozen —
-  // reflection time is not silently counted. An ABANDONED clock proposes the
-  // block's own target instead of the wall-clock gap, so a timer left running
-  // overnight can never quietly write eight hours of practice that did not
-  // happen; ordinary overtime still proposes the real elapsed time. Either way
-  // it is a proposal in an editable field — the owner's correction always wins.
-  const proposed = active
-    ? proposedCloseMinutes(sessionElapsedSeconds(active), active.targetMinutes)
-    : { minutes: 10, stale: false };
-
-  const [result, setResult] = useState<BlockResult | null>(null);
-  const [duration, setDuration] = useState(proposed.minutes);
-  const [observation, setObservation] = useState(active?.note ?? '');
-  const [nextAction, setNextAction] = useState('');
-  const [bodyNote, setBodyNote] = useState('');
-  const [showBodyNote, setShowBodyNote] = useState(false);
-  const [comeBack, setComeBack] = useState(true);
-  // A CORRECTION to the engine's plan, never a second copy of it. Held as an
-  // override so there is still exactly ONE review value on this screen (below).
-  const [override, setOverride] = useState<{ dueDate?: string; reviewType?: ReviewType } | null>(null);
-  const [showReviewControls, setShowReviewControls] = useState(false);
-  const [acceptStatus, setAcceptStatus] = useState(true);
-  const [becomeTeacherQ, setBecomeTeacherQ] = useState(false);
-  // A NEW question every time: it becomes its own agenda entry rather than
-  // overwriting whatever the item already carried, and raising one never
-  // commits the item to a class.
-  const [teacherQText, setTeacherQText] = useState('');
-
-  // Recent results including the (pending) one, for the "three same" check.
-  const recentSameStreak = useMemo(() => {
-    if (!item) return false;
-    const prior = itemBlocks(db, item.id)
-      .filter((b) => b.result !== 'not_logged')
-      .map((b) => b.result);
-    const combined = result ? [result, ...prior] : prior;
-    return combined.length >= 3 && combined.slice(0, 3).every((r) => r === 'same');
-  }, [db, item, result]);
-
-  // Use the same scheduling knobs the store will persist with, so the date
-  // previewed here is exactly the date that gets saved.
-  const params = useMemo(() => clampSchedulingParams(db.settings), [db.settings]);
-
-  // A question raised here defaults to the nearest upcoming class on this
-  // instrument, named in the caption below so the target is never a guess the
-  // owner cannot see. With no upcoming class it is saved unassigned rather
-  // than pointed at one that does not exist.
-  const questionLesson = useMemo(
-    () => (item ? defaultTargetLesson(db.lessons, item.instrumentId, now) : undefined),
-    [db.lessons, item, now],
-  );
-
-  /**
-   * THE review decision on this screen — one value, derived once.
-   *
-   * The engine's plan for the chosen result, with any correction the owner made
-   * folded INTO it. The collapsed line, the date field behind the disclosure and
-   * the date handed to `closeSession` are three renderings of THIS object, so
-   * "the date shown before saving is exactly the date saved" holds by
-   * construction: a divergent date is unrepresentable, not merely remembered
-   * about. A second `planNextReview` call anywhere in this file — there used to
-   * be one, seeding the field from a different invocation than the preview —
-   * would reintroduce exactly the drift r-explainable-scheduling forbids.
-   */
-  const review = useMemo<ReviewPlan | null>(() => {
-    const base = item && result ? planNextReview({ item, result, now, params }) : null;
-    if (!override) return base;
-    // `undefined` means NOT OVERRIDDEN (use the engine's date); `''` means the
-    // owner CLEARED the field — a deliberate "schedule nothing", which
-    // `handleSave` reads as a genuine decline exactly as it did before this
-    // screen was restructured. `??` would collapse those two into one and make
-    // the field un-clearable: it would snap back to the engine's date.
-    const dueDate = override.dueDate !== undefined ? override.dueDate : (base?.dueDate ?? '');
-    // No date is NO PLAN — whether because the item is on manual dates and none
-    // has been picked, or because the owner just cleared it. Returning the
-    // engine's plan here would schedule a date they had deleted.
-    if (!dueDate) return null;
-    return {
-      intervalDays: base?.intervalDays ?? 0,
-      changeStrategy: base?.changeStrategy ?? false,
-      dueDate,
-      reviewType: override.reviewType ?? base?.reviewType ?? 'retention',
-      // The rationale explains the DATE. Once the owner sets their own, quoting
-      // the engine's reason would explain a number it did not choose.
-      rationale: base && dueDate === base.dueDate ? base.rationale : 'The date you chose.',
-    };
-  }, [item, result, now, params, override]);
-
-  /**
-   * The one line the screen shows for that decision. Every branch is honest
-   * about what will be SAVED: the plan when there is one, the deliberate "no"
-   * when the owner declined, and plainly nothing when no result has been picked
-   * — never a date the close is not actually going to write.
-   */
-  const reviewLine = !result
-    ? 'Pick how it went and the next review appears here.'
-    : !comeBack
-      ? 'Not coming back — no review will be scheduled.'
-      : review
-        ? reviewSummaryLine(review, now)
-        : 'No date set — nothing will be scheduled.';
-
-  const statusSuggestion = useMemo(
-    () =>
-      item && result
-        ? suggestStatusAfterBlock({ item, result, last3AllSame: recentSameStreak })
-        : { suggestedStatus: undefined, message: undefined },
-    [item, result, recentSameStreak],
-  );
-
-  function pickResult(r: BlockResult) {
-    setResult(r);
-    setComeBack(true);
-    // A fresh result means a fresh plan: a correction made earlier belonged to
-    // the date the PREVIOUS result produced, and carrying it over would pin a
-    // date to a judgement it was never made about. The plan itself is derived
-    // above from `result` — nothing is computed here. But a manual-mode item
-    // has no automatic plan for ANY result (computeReview returns null
-    // unconditionally in manual mode) — the owner's typed-in date isn't tied
-    // to a judgement at all, so it must survive switching results.
-    if (item && !reviewOverrideSurvivesResultChange(item, now, params)) setOverride(null);
-  }
-
-  if (!active || !item) {
-    return (
-      <div className="stack" style={{ textAlign: 'center', paddingTop: 'var(--space-6)' }}>
-        <h1 className="page-title">Nothing to close</h1>
-        <Link to="/" className="btn btn-primary">
-          Back to Today
-        </Link>
-      </div>
-    );
-  }
-
-  /**
-   * Saving with a result answers the review question; saving WITHOUT one
-   * answers nothing about it, so the schedule must not move. Stated in one
-   * place rather than emerging from `comeBack && !!review`, and forced to
-   * 'unanswered' by the escape hatch even when a result had been picked (and
-   * so had already produced a plan) — otherwise that date would leak into a
-   * close that deliberately recorded no judgement.
-   */
-  function handleSave(withoutResult = false) {
-    // The local day may have rolled since `now` (and therefore `review`) was
-    // last computed — `useDecisionNow` only checks every 30 seconds, plus
-    // visibility/focus. Catch that HERE, at the one instant it can actually
-    // change what gets saved, rather than letting `closeSession` silently
-    // recompute a different day's decision than the one just shown. Refresh
-    // and stop: the draft above is untouched, so Save simply works once the
-    // corrected line is on screen.
-    const trueNow = new Date();
-    if (todayISODate(trueNow) !== todayISODate(now)) {
-      setNowOverride(trueNow);
-      return;
-    }
-
-    const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
-    const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && review ? 'scheduled' : 'declined';
-    const newStatus: ItemStatus | undefined =
-      !withoutResult && acceptStatus && statusSuggestion.suggestedStatus ? statusSuggestion.suggestedStatus : undefined;
-
-    closeSession({
-      result: finalResult,
-      durationMinutes: duration,
-      observation: observation.trim() || undefined,
-      nextAction: nextAction.trim() || undefined,
-      bodyNote: bodyNote.trim() || undefined,
-      newStatus,
-      answer,
-      // ONLY a date the owner actually typed — never the date the screen is
-      // merely SHOWING, which for an early session is the item's existing one.
-      nextReviewDate: closeOverrideDate(answer, override),
-      // The SAME `now` `review` was just computed with — never a fresh
-      // `new Date()` inside the store, which is exactly what could disagree
-      // with what this screen showed.
-      now,
-      reviewType: review?.reviewType ?? 'retention',
-      newQuestion:
-        becomeTeacherQ && teacherQText.trim()
-          ? { text: teacherQText.trim(), lessonId: questionLesson?.id }
-          : undefined,
-    });
-    // If a Session Plan is running, return to it (closeSession advanced it).
-    navigate(useStore.getState().activePlan ? '/plan' : '/');
-  }
-
-  return (
-    <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
-      <header className="stack-sm">
-        {/* The eyebrow renders the INSTRUMENT'S OWN editable name, never fixed
-            English copy — its own dir="auto" rather than bare. */}
-        <div className="eyebrow" dir="auto">{instrumentName(db, item.instrumentId)}</div>
-        {/* The item's own name leads its group, so a Farsi title and the line
-            beneath it read as one block. The eyebrow stays its own group,
-            outside this one: dir="auto" resolves from the first strong
-            character in a subtree, so folding the eyebrow in would let the
-            instrument's script decide the item title's own direction.
-            "A few seconds…" is fixed English page copy, never user text — its
-            own dir="ltr" isolate keeps its bidi base fixed regardless of the
-            title's, so a Farsi title's RTL base can't drag its trailing full
-            stop to the visual start. */}
-        <div className="stack-sm" dir="auto">
-          <h1 className="page-title" style={{ fontSize: '1.45rem' }}>
-            {item.title}
-          </h1>
-          <p className="page-sub">
-            <span dir="ltr">A few seconds to capture what happened.</span>
-          </p>
-        </div>
-      </header>
-
-      <Field label="How did it go?">
-        <div className="options">
-          {RESULT_BUTTON_LIST.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              className={`option${result === o.value ? ' selected' : ''}`}
-              aria-pressed={result === o.value}
-              onClick={() => pickResult(o.value)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      {recentSameStreak && (
-        <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
-          Three “same” results in a row — try a different strategy or bring it to your teacher.
-        </div>
-      )}
-
-      <Field label="One observation">
-        <textarea
-          className="textarea"
-          placeholder="What did you notice?"
-          value={observation}
-          onChange={(e) => setObservation(e.target.value)}
-        />
-      </Field>
-
-      <Field label="Next action">
-        <input
-          className="input"
-          placeholder="The one thing to try next time"
-          value={nextAction}
-          onChange={(e) => setNextAction(e.target.value)}
-        />
-      </Field>
-
-      <Field
-        label="Minutes practised"
-        hint={
-          proposed.stale
-            ? `The clock ran far past its ${active.targetMinutes}-minute target, so that target is proposed rather than the whole gap — change it to what you actually played.`
-            : undefined
-        }
-      >
-        <input
-          className="input"
-          type="number"
-          min={1}
-          aria-label="Minutes practised"
-          value={duration}
-          onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))}
-          style={{ maxWidth: 120 }}
-        />
-      </Field>
-
-      {showBodyNote ? (
-        <Field label="Body / tension note">
-          <input
-            className="input"
-            placeholder="e.g. right shoulder crept up in the riz"
-            value={bodyNote}
-            onChange={(e) => setBodyNote(e.target.value)}
-            autoFocus
-          />
-        </Field>
-      ) : (
-        <button
-          className="link small"
-          style={{ background: 'none', border: 'none', textAlign: 'left', width: 'fit-content' }}
-          onClick={() => setShowBodyNote(true)}
-        >
-          + Body / tension note
-        </button>
-      )}
-
-      {statusSuggestion.suggestedStatus && (
-        <div className="card card-quiet">
-          <div className="row between">
-            <div className="small">
-              Suggest moving to <strong>{ITEM_STATUS_LABELS[statusSuggestion.suggestedStatus]}</strong>.
-            </div>
-            <YesNo value={acceptStatus} onChange={setAcceptStatus} yes="Accept" no="Keep" />
-          </div>
-        </div>
-      )}
-
-      {/* The scheduling decision, collapsed to ONE honest line: the date and
-          type that will actually be saved, with the controls a tap behind it.
-          Same data, same defaults, same required result — less supervision of
-          the algorithm while the musician's own words are still fresh. Every
-          rendering here reads `review`; nothing computes a date. */}
-      <div className="card card-quiet stack-sm">
-        <div className="row between">
-          <div className="small" style={{ minWidth: 0 }}>{reviewLine}</div>
-          <button
-            type="button"
-            className="btn btn-sm"
-            style={{ flex: 'none' }}
-            aria-expanded={showReviewControls}
-            onClick={() => setShowReviewControls((o) => !o)}
-          >
-            {showReviewControls ? 'Done' : 'Change'}
-          </button>
-        </div>
-        {showReviewControls && (
-          <>
-            <div className="row between">
-              <div className="small">Should this come back?</div>
-              <YesNo value={comeBack} onChange={setComeBack} />
-            </div>
-            {comeBack && (
-              <>
-                <Field label="Next review">
-                  <input
-                    className="input"
-                    type="date"
-                    aria-label="Next review date"
-                    value={review?.dueDate ?? ''}
-                    onChange={(e) => setOverride((o) => ({ ...o, dueDate: e.target.value }))}
-                  />
-                </Field>
-                <Field label="Review type">
-                  <OptionPills
-                    ariaLabel="Review type"
-                    value={review?.reviewType ?? override?.reviewType ?? 'retention'}
-                    onChange={(v) => setOverride((o) => ({ ...o, reviewType: v }))}
-                    options={(Object.keys(REVIEW_TYPE_LABELS) as ReviewType[]).map((v) => ({
-                      value: v,
-                      label: REVIEW_TYPE_LABELS[v],
-                    }))}
-                  />
-                </Field>
-                <Link to="/settings#how-scheduling-works" className="tiny faint" style={{ textDecoration: 'underline' }}>
-                  Why this date?
-                </Link>
-              </>
-            )}
-          </>
-        )}
-      </div>
-
-      <div className="card card-quiet stack-sm">
-        <div className="row between">
-          <div className="small">Make this a teacher question?</div>
-          <YesNo value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
-        </div>
-        {becomeTeacherQ && (
-          <>
-            <textarea
-              className="textarea"
-              placeholder="What will you ask your teacher?"
-              aria-label="Question for your teacher"
-              value={teacherQText}
-              onChange={(e) => setTeacherQText(e.target.value)}
-            />
-            <p className="tiny faint">
-              <span dir="ltr">
-                {questionLesson
-                  ? `It will be asked at ${lessonLabel(questionLesson)}. It does not commit this item to that class.`
-                  : 'There is no upcoming class yet, so it will be saved unassigned.'}
-              </span>
-            </p>
-          </>
-        )}
-      </div>
-
-      <div className="row">
-        {/* One of the six results is required — they are already the first
-            thing on this screen, so this adds no field, it only makes a choice
-            already present a required one. */}
-        <button className="btn btn-primary btn-lg grow" onClick={() => handleSave()} disabled={!result}>
-          <CheckIcon /> Save block
-        </button>
-        <button
-          className="btn"
-          onClick={() => {
-            resumeSession();
-            navigate('/active');
-          }}
-        >
-          <PlayIcon /> Back
-        </button>
-      </div>
-      {!result && <p className="tiny faint">Pick how it went above to save, or save the minutes on their own.</p>}
-      {/* The escape hatch keeps "no result" reachable and DELIBERATE rather
-          than accidental. It records the time and leaves the schedule exactly
-          as it was — the review date and any open review row both stand. */}
-      <button className="btn btn-sm" onClick={() => handleSave(true)}>
-        Save without a result
-      </button>
-      <button
-        className="btn btn-ghost btn-sm"
-        onClick={() => {
-          cancelSession();
-          navigate(useStore.getState().activePlan ? '/plan' : '/');
-        }}
-      >
-        Discard without saving
-      </button>
-    </div>
-  );
-}
-
-function YesNo({
-  value,
-  onChange,
-  yes = 'Yes',
-  no = 'No',
-}: {
-  value: boolean;
-  onChange: (v: boolean) => void;
-  yes?: string;
-  no?: string;
-}) {
-  return (
-    <div className="options" role="group">
-      <button type="button" className={`option${value ? ' selected' : ''}`} aria-pressed={value} onClick={() => onChange(true)}>
-        {yes}
-      </button>
-      <button type="button" className={`option${!value ? ' selected' : ''}`} aria-pressed={!value} onClick={() => onChange(false)}>
-        {no}
-      </button>
-    </div>
-  );
-}
-```
-
 ### src/pages/SessionPlan.tsx
 
 ```
@@ -7432,6 +4939,7 @@ import {
   currentStage,
   MAX_BUDGET_MINUTES,
   MIN_BUDGET_MINUTES,
+  planPreviewDayHasPassed,
   preparationDatesByItem,
   redistributePlan,
   swapSegment,
@@ -7475,7 +4983,19 @@ function PlanPreview() {
   const [params] = useSearchParams();
   // Refreshed at a local-day boundary so a preview left open overnight never
   // plans against yesterday's due dates and lesson deadlines.
-  const now = useDecisionNow();
+  //
+  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
+  // so it can lag the true instant by up to that long. `nowOverride` closes
+  // that gap at the one moment it actually matters — Start — without needing
+  // the shared hook to expose a manual refresh: the same small local-override
+  // shape CloseBlock's own Save race uses. `start()` sets it the instant it
+  // finds the real local day has moved past the day this preview was built
+  // for, forcing an immediate re-render where `today`/`stale` below already
+  // reflect it, instead of silently installing yesterday's selections under a
+  // Start button that still reads as enabled.
+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  const decisionNow = useDecisionNow();
+  const now = nowOverride ?? decisionNow;
 
   const instrumentId = sessionInstrumentId ?? db.instruments.find((i) => i.active)?.id ?? db.instruments[0]?.id ?? '';
   // Invalid input is rejected at the boundary, never clamped into a session
@@ -7566,6 +5086,19 @@ function PlanPreview() {
     setPlan(swapSegment(plan, i, editorArgs()));
   }
   function start() {
+    // Starting a plan is an authority boundary: check the TRUE current
+    // instant here, never the polled `now` above, which can still be
+    // showing yesterday for up to `useDecisionNow`'s own poll interval after
+    // local midnight has genuinely passed — the exact window a dispatched
+    // visibility/focus event papers over but a real device left untouched
+    // does not get. A mismatch refuses the start and forces the SAME visible
+    // refresh the passive banner below already shows for a data change,
+    // rather than silently installing a preview for a day that has passed.
+    const trueNow = new Date();
+    if (planPreviewDayHasPassed(baseDay, trueNow)) {
+      setNowOverride(trueNow);
+      return;
+    }
     if (plan.segments.length === 0 || stale) return;
     setPlanMinutes(instrumentId, plan.budgetMinutes);
     startPlan(plan);
@@ -9406,7 +6939,24 @@ export const useStore = create<StoreState>()(
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const merged = { ...current, ...p, db: p.db ?? current.db };
+        // Zustand only calls `migrate` above when the persisted version
+        // differs from the current one — a persisted database that ALREADY
+        // claims the current schema never reaches it, even when it carries a
+        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
+        // left behind, with `lessonAgenda` never actually completed to
+        // represent it. `merge` is the one place ALL persisted state
+        // re-enters live state regardless of whether `migrate` ran (the same
+        // reasoning the active/activeRoutine freeze below relies on), so it
+        // is where this closes for good: run the SAME idempotent, lossless
+        // conversion `migrate` would have, unconditionally. Calling it again
+        // on state `migrate` already processed is safe — `migrateToV12`'s own
+        // docstring guarantees it is a no-op wherever no legacy field
+        // survives — and calling it with `SCHEMA_VERSION` as the "from"
+        // version is correct here because every OTHER step in the chain is
+        // gated on a version strictly below what a current database could
+        // ever claim; only the unconditional tail step ever runs.
+        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
+        const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running
         // state before those guards existed reaches this merge unchecked —
@@ -9690,6 +7240,32 @@ describe('the daily practice loop, end to end', () => {
       // are the thing being protected, not the stale label itself.
       await page.getByRole('button', { name: 'Regenerate' }).click();
       expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+
+      // --- 11b. THE START-PLAN RACE: NO event, NO poll — the exact gap step
+      // 11's own dispatched visibilitychange never exercises, and a real
+      // device left untouched genuinely experiences. Advance the clock past
+      // midnight again and click Start IMMEDIATELY, with nothing to have told
+      // the screen the day changed: the click itself must refuse rather than
+      // silently install yesterday's selections under a button that still
+      // reads as enabled, and the refusal must be VISIBLE — the same banner,
+      // not a dead click.
+      await page.clock.setFixedTime(new Date('2027-01-17T00:20:00'));
+      await page.getByRole('button', { name: 'Start plan' }).click();
+      await expect
+        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
+        .toBe(true);
+      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
+      // The click installed nothing: still the preview, not the runner.
+      expect(await page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
+      await page.getByRole('button', { name: 'Regenerate' }).click();
+      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      // Genuinely fresh now: the same click succeeds.
+      await page.getByRole('button', { name: 'Start plan' }).click();
+      await expect
+        .poll(() => page.getByRole('button', { name: 'End the plan' }).isVisible().catch(() => false))
+        .toBe(true);
+      await page.getByRole('button', { name: 'End the plan' }).click();
+
       await page.clock.setFixedTime(CLOCK);
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 
@@ -9798,372 +7374,437 @@ async function practiceBlockCount(page: Page, origin: string, itemId: string): P
 }
 ```
 
-### tests/fixtures/practice-decisions-v11.json
+### tests/lesson-agenda.browser.test.ts
 
 ```
-{
-  "app": "practice-compass",
-  "schemaVersion": 11,
-  "exportedAt": "2026-08-01T09:00:00.000Z",
-  "deviceName": "fixture-device",
-  "lastModified": "2026-08-01T09:00:00.000Z",
-  "data": {
-    "schemaVersion": 11,
-    "instruments": [
-      {
-        "id": "setar",
-        "name": "Setar",
-        "family": "Persian",
-        "active": true,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      },
-      {
-        "id": "guitar",
-        "name": "Classical Guitar",
-        "family": "Western",
-        "active": true,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
+import { describe, expect, it } from 'vitest';
+import {
+  goTo,
+  importBackup,
+  importOutcome,
+  openPracticeApp,
+  readPersistedState,
+  reload,
+  writePersistedState,
+} from './practiceBrowser';
+import v11 from './fixtures/practice-decisions-v11.json?raw';
+
+// ---------------------------------------------------------------------------
+// ac-18 — the lesson-agenda journey, in the real app.
+//
+// The legacy fixture goes in through the real Settings importer, and
+// everything after that is done with the controls the owner actually uses.
+// The point is the SEAM: the pure migration and the pure agenda transforms are
+// proven in `src/domain`, but only this can show that what the owner sees and
+// what the database holds are the same thing.
+// ---------------------------------------------------------------------------
+
+const CLOCK = new Date('2027-01-15T09:00:00');
+const FARSI_QUESTION = 'آیا مضرابِ ریز را سبک‌تر بگیرم؟';
+const ENGLISH_QUESTION = 'Should I keep the tempo steady through the foroud?';
+
+describe('the lesson agenda, end to end', () => {
+  it('lesson agenda browser journey retains questions after the targeted class', async () => {
+    const app = await openPracticeApp({ now: CLOCK });
+    const { page } = app;
+    try {
+      // --- 1. The legacy database arrives through the real import control ---
+      await importBackup(app, 'legacy-v11.json', v11);
+      expect(await importOutcome(app)).toContain('Imported');
+
+      // A RELOAD, so what follows is read back out of IndexedDB rather than
+      // out of whatever React happened to be holding.
+      await reload(app);
+      await goTo(app, '/lessons');
+
+      const classA = page.locator('article').filter({ hasText: 'Class 41 · 2027-03-05' }).first();
+      const classB = page.locator('article').filter({ hasText: 'Class 42 · 2027-04-02' }).first();
+      await classA.waitFor();
+
+      // --- 2. Migrated intent is VISIBLY UNASSIGNED, never guessed onto a class -
+      const unassignedA = classA.getByText('These name no class yet');
+      await expect.poll(() => unassignedA.isVisible()).toBe(true);
+      // The Farsi question came through verbatim, as ONE question.
+      await expect
+        .poll(() => classA.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).first().isVisible())
+        .toBe(true);
+      // Nothing was silently attached to either class.
+      await expect.poll(() => classA.getByText('No open questions for this class').isVisible()).toBe(true);
+      await expect.poll(() => classB.getByText('Nothing committed to this class yet').isVisible()).toBe(true);
+
+      // --- 3. Question and preparation are targeted INDEPENDENTLY -----------
+      // The question goes to class B, from the class surface.
+      const farsiRow = classB
+        .locator('div')
+        .filter({ hasText: 'آیا نقطهٔ فرودم درست است؟' })
+        .filter({ has: page.getByRole('button', { name: 'Move to this class' }) })
+        .last();
+      await farsiRow.getByRole('button', { name: 'Move to this class' }).click();
+
+      // The preparation goes to class A, from the ITEM surface — a different
+      // screen, the same one collection.
+      await goTo(app, '/repertoire');
+      await page.getByRole('button', { name: 'Practice list' }).click();
+      await page.getByRole('link', { name: /پیش‌درآمدِ افشاری/ }).first().click();
+      await page.getByRole('button', { name: /Prepare for Class 41/ }).click();
+      await expect.poll(() => page.getByText('For Class 41 · 2027-03-05').first().isVisible()).toBe(true);
+
+      await reload(app);
+      await goTo(app, '/lessons');
+
+      // Each class now shows ITS OWN commitment and nobody else's.
+      await expect
+        .poll(() => classB.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).first().isVisible())
+        .toBe(true);
+      await expect.poll(() => classA.getByText('Nothing committed to this class yet').isVisible()).toBe(false);
+      await expect.poll(() => classB.getByText('Nothing committed to this class yet').isVisible()).toBe(true);
+      await expect.poll(() => classA.getByText('No open questions for this class').isVisible()).toBe(true);
+
+      // --- 4. Asked, with an answer — and it STAYS on that class ------------
+      const questionCard = classB
+        .locator('div.card')
+        .filter({ hasText: 'آیا نقطهٔ فرودم درست است؟' })
+        .first();
+      await questionCard.getByRole('button', { name: 'Add answer' }).click();
+      await questionCard.getByLabel('Teacher answer').fill('بله، سبک‌تر.');
+      await questionCard.getByRole('button', { name: 'Save answer' }).click();
+      await questionCard.getByRole('button', { name: 'Mark asked' }).click();
+
+      await reload(app);
+      await goTo(app, '/lessons');
+
+      // It has left the OPEN list for that class…
+      await expect.poll(() => classB.getByText('Already asked at this class').isVisible()).toBe(true);
+      await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
+      // …and it was NOT carried forward to the other class.
+      await expect
+        .poll(() => classA.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).count())
+        .toBe(0);
+      // No practice was logged by any of it.
+      await goTo(app, '/');
+      await expect.poll(() => page.getByText(/Practised today: 0 min · 0 blocks/).isVisible()).toBe(true);
+
+      // --- 5. Mixed languages, checked against the REAL laid-out DOM --------
+      // A Farsi question on an ENGLISH-titled item, and an English question on
+      // a FARSI-titled item: the two combinations that only differ when the
+      // title and the question disagree, which matching-language seed data can
+      // never show.
+      await addQuestionToItem(page, /Question but never flagged/, FARSI_QUESTION);
+      await addQuestionToItem(page, /آوازِ افشاری/, ENGLISH_QUESTION);
+
+      await reload(app);
+      await goTo(app, '/lessons');
+      const sheet = classA.getByRole('list').filter({ has: page.getByText(FARSI_QUESTION) }).first();
+      await sheet.waitFor();
+
+      const farsiOnEnglish = await rowDirection(page, FARSI_QUESTION);
+      const englishOnFarsi = await rowDirection(page, ENGLISH_QUESTION);
+      // The row's direction tracks the QUESTION, which is the field that is
+      // always present — never the optional, independently-authored title.
+      expect(farsiOnEnglish).toBe('rtl');
+      expect(englishOnFarsi).toBe('ltr');
+
+      // --- 6. A refused clipboard says so, and offers something else --------
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: { writeText: () => Promise.reject(new Error('denied')) },
+        });
+      });
+      await reload(app);
+      await goTo(app, '/lessons');
+      await classA.getByRole('button', { name: 'Copy' }).first().click();
+      const status = page.getByRole('status').filter({ hasText: 'Couldn’t copy' }).first();
+      await status.waitFor();
+      expect(await status.textContent()).toContain('select it, or use Download');
+      // The fallback is a real, selectable control with an accessible name.
+      const fallback = page.getByLabel('Questions text to select and copy');
+      await fallback.waitFor();
+      expect(await fallback.inputValue()).toContain(FARSI_QUESTION);
+      expect(await page.getByRole('button', { name: 'Download' }).first().isEnabled()).toBe(true);
+
+      // --- 7. The controls this lane added are reachable by role and name ---
+      for (const name of ['Mark asked', 'Add answer', 'Remove this question']) {
+        expect(await classA.getByRole('button', { name }).first().isVisible(), name).toBe(true);
       }
-    ],
-    "materials": [],
-    "items": [
-      {
-        "id": "i-flag-true",
-        "instrumentId": "setar",
-        "title": "پیش‌درآمدِ افشاری",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true
-      },
-      {
-        "id": "i-flag-false",
-        "instrumentId": "setar",
-        "title": "Flagged false",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": false
-      },
-      {
-        "id": "i-flag-missing",
-        "instrumentId": "setar",
-        "title": "No flag key at all",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      },
-      {
-        "id": "i-q-only",
-        "instrumentId": "setar",
-        "title": "Question but never flagged",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "teacherQuestion": "Is the shift late,\nor is the tone dropping first?"
-      },
-      {
-        "id": "i-q-and-flag",
-        "instrumentId": "setar",
-        "title": "Both flagged and questioned",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true,
-        "teacherQuestion": "Should I slow the whole phrase?"
-      },
-      {
-        "id": "i-q-farsi",
-        "instrumentId": "setar",
-        "title": "آوازِ افشاری",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": false,
-        "teacherQuestion": "آیا نقطهٔ فرودم درست است؟\nیا زینت دارد فرود را می‌پوشاند؟\n\nو تمپو؟"
-      },
-      {
-        "id": "i-q-empty",
-        "instrumentId": "setar",
-        "title": "Whitespace question",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true,
-        "teacherQuestion": "   "
-      },
-      {
-        "id": "i-collision",
-        "instrumentId": "setar",
-        "title": "Collides with a generated id",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true
-      },
-      {
-        "id": "i-conflict",
-        "instrumentId": "setar",
-        "title": "New question conflicts with an existing one",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "teacherQuestion": "new distinct question"
-      },
-      {
-        "id": "i-dangling",
-        "instrumentId": "gone",
-        "title": "Item on a deleted instrument",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true,
-        "teacherQuestion": "Orphaned question"
-      },
-      {
-        "id": "i-premigrated",
-        "instrumentId": "setar",
-        "title": "Partially migrated",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true,
-        "teacherQuestion": "Already represented"
-      },
-      {
-        "id": "i-scheduled",
-        "instrumentId": "guitar",
-        "title": "Lesson 6 bars 4–5 shift",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "nextReviewDate": "2027-01-15",
-        "reviewMode": "manual",
-        "srReps": 3,
-        "srEase": 2.6,
-        "srIntervalDays": 12,
-        "lastResult": "stable_alone",
-        "lastPractisedAt": "2026-08-01T09:00:00.000Z"
-      },
-      {
-        "id": "i-guitar",
-        "instrumentId": "guitar",
-        "title": "Guitar study C",
-        "itemType": "phrase",
-        "status": "usable",
-        "importance": 3,
-        "difficulty": 3,
-        "tags": [],
-        "timesPractised": 2,
-        "totalMinutes": 25,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "assignedForLesson": true
-      }
-    ],
-    "blocks": [
-      {
-        "id": "b1",
-        "practiceItemId": "i-flag-true",
-        "instrumentId": "setar",
-        "startedAt": "2026-07-30T18:00:00.000Z",
-        "endedAt": "2026-07-30T18:12:00.000Z",
-        "durationMinutes": 12,
-        "mode": "repair",
-        "focus": "tone",
-        "result": "same",
-        "createdReview": false,
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      }
-    ],
-    "reviews": [
-      {
-        "id": "r1",
-        "practiceItemId": "i-scheduled",
-        "dueDate": "2027-01-15",
-        "reviewType": "retention",
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      }
-    ],
-    "pathways": [],
-    "pathwayStages": [],
-    "pathwayRoutines": [],
-    "attachments": [
-      {
-        "id": "att-1",
-        "ownerType": "item",
-        "ownerId": "i-scheduled",
-        "name": "score.txt",
-        "mime": "text/plain",
-        "size": 11,
-        "kind": "other",
-        "createdAt": "2026-08-01T09:00:00.000Z"
-      }
-    ],
-    "lessons": [
-      {
-        "id": "L-setar-1",
-        "instrumentId": "setar",
-        "date": "2027-03-05",
-        "itemIds": [],
-        "recordings": [],
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "number": 41
-      },
-      {
-        "id": "L-setar-2",
-        "instrumentId": "setar",
-        "date": "2027-04-02",
-        "itemIds": [],
-        "recordings": [],
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "number": 42
-      },
-      {
-        "id": "L-setar-past",
-        "instrumentId": "setar",
-        "date": "2026-01-10",
-        "itemIds": [],
-        "recordings": [],
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z",
-        "number": 37
-      },
-      {
-        "id": "L-guitar-past",
-        "instrumentId": "guitar",
-        "date": "2026-02-11",
-        "itemIds": [],
-        "recordings": [],
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      }
-    ],
-    "lessonAgenda": [
-      {
-        "id": "prep:i-premigrated",
-        "kind": "preparation",
-        "itemId": "i-premigrated",
-        "instrumentId": "setar",
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      },
-      {
-        "id": "question:i-premigrated",
-        "kind": "question",
-        "itemId": "i-premigrated",
-        "instrumentId": "setar",
-        "text": "Already represented",
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      },
-      {
-        "id": "prep:i-collision",
-        "kind": "question",
-        "itemId": "i-q-only",
-        "instrumentId": "setar",
-        "text": "An unrelated entry that already owns that id",
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      },
-      {
-        "id": "question:i-conflict",
-        "kind": "question",
-        "itemId": "i-conflict",
-        "instrumentId": "setar",
-        "text": "different existing question",
-        "createdAt": "2026-08-01T09:00:00.000Z",
-        "updatedAt": "2026-08-01T09:00:00.000Z"
-      }
-    ]
-  },
-  "files": [
-    {
-      "id": "att-1",
-      "ownerId": "i-scheduled",
-      "mime": "text/plain",
-      "name": "score.txt",
-      "data": "c2NvcmUgYnl0ZXM="
+      expect(await classA.getByLabel('New question for this class').first().isVisible()).toBe(true);
+
+      // --- 8. An INVALID new-model import is refused, old data still there --
+      const broken = JSON.parse(v11) as { data: { lessonAgenda: unknown[] } };
+      broken.data.lessonAgenda = [{ id: 'x', kind: 'reminder', instrumentId: 'setar' }];
+      await importBackup(app, 'broken.json', JSON.stringify(broken));
+      expect(await importOutcome(app)).toContain('Import failed');
+      await reload(app);
+      await goTo(app, '/lessons');
+      // Everything established above survived the refusal untouched.
+      await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
+      await expect.poll(() => classA.getByText(FARSI_QUESTION).first().isVisible()).toBe(true);
+
+      // --- 9. HYDRATION COMPLETES AN INCOMPLETE CURRENT-SCHEMA CONVERSION ---
+      // Zustand's persist middleware only calls `migrate` when the persisted
+      // version differs from the current one — a persisted v12 database that
+      // already carries a stray legacy field (an interrupted write, a bug in
+      // an earlier build) never reaches it that way. This writes directly
+      // into the app's own IndexedDB, the way an already-current device holds
+      // its state, bypassing every import door (which always runs
+      // `validateDB`, and so always runs the migration chain, regardless of
+      // the version a FILE claims).
+      const persisted = await readPersistedState(app);
+      expect(persisted.version).toBe(12);
+      const HYDRATION_ITEM = 'i-q-empty'; // has a preparation already, no question yet
+      const stateBefore = persisted.state as { db: { items: { id: string; teacherQuestion?: string }[] } };
+      const withLeftover = {
+        ...(persisted.state as Record<string, unknown>),
+        db: {
+          ...stateBefore.db,
+          items: stateBefore.db.items.map((i) =>
+            i.id === HYDRATION_ITEM ? { ...i, teacherQuestion: 'hydration leftover question' } : i,
+          ),
+        },
+      };
+      await writePersistedState(app, withLeftover, 12);
+      await reload(app);
+
+      // The leftover was completed LOSSLESSLY, not silently dropped: a real
+      // open question now exists for the item, reachable the ordinary way.
+      await goTo(app, `/items/${HYDRATION_ITEM}`);
+      await expect.poll(() => page.getByText('hydration leftover question').first().isVisible()).toBe(true);
+
+      // Idempotent: a SECOND, ordinary reload (now genuinely current, nothing
+      // left behind) creates no duplicate.
+      await reload(app);
+      await goTo(app, `/items/${HYDRATION_ITEM}`);
+      expect(await page.getByText('hydration leftover question').count()).toBe(1);
+    } finally {
+      await app.close();
     }
-  ]
+  });
+});
+
+/** Raise a question from the ITEM surface, the way the owner does. */
+async function addQuestionToItem(
+  page: import('playwright').Page,
+  title: RegExp,
+  text: string,
+): Promise<void> {
+  await page.goto(page.url().replace(/#.*$/, '') + '#/repertoire');
+  await page.getByRole('button', { name: 'Practice list' }).click();
+  await page.getByRole('link', { name: title }).first().click();
+  await page.getByRole('button', { name: '+ Ask about this' }).click();
+  await page.getByLabel('New question').fill(text);
+  await page.getByRole('button', { name: 'Add question' }).click();
+  await page.getByText(text).first().waitFor();
+}
+
+/**
+ * The direction a question's own row actually RESOLVES to in the laid-out DOM —
+ * read from the browser, not inferred from source.
+ */
+async function rowDirection(page: import('playwright').Page, question: string): Promise<string> {
+  return page.evaluate((q) => {
+    const all = [...document.querySelectorAll('li')];
+    const li = all.find((el) => (el.textContent ?? '').includes(q));
+    if (!li) return 'not-found';
+    return getComputedStyle(li).direction;
+  }, question);
+}
+```
+
+### tests/practiceBrowser.ts
+
+```
+import { createServer, type ViteDevServer } from 'vite';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+
+// ---------------------------------------------------------------------------
+// A small harness for driving the REAL app in a real browser from an ordinary
+// Vitest test.
+//
+// Deliberately a LIBRARY, not a second test runner: the installed check engine
+// traces acceptance through the Vitest report, so a standalone Playwright exit
+// code would prove nothing to it. Each journey gets its own Vite dev server and
+// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
+// localStorage — no fixture from one journey can reach the other, and neither
+// can touch the owner's real data, GitHub or NAS.
+//
+// A missing browser is a FAILURE with a setup message, never a skip: a check
+// that quietly passes because it did not run is worse than no check at all.
+// ---------------------------------------------------------------------------
+
+const INSTALL_HINT =
+  'The Playwright browser is not installed. Run `npx playwright install chromium` ' +
+  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one.';
+
+export interface PracticeApp {
+  page: Page;
+  /** The dev server origin this journey is isolated on. */
+  origin: string;
+  close(): Promise<void>;
+}
+
+/**
+ * Start the app and open it in a fresh, isolated browser context.
+ *
+ * `now` fixes the browser's clock before any script runs, so every date the
+ * app derives — due reviews, lesson deadlines, the local calendar day a block
+ * belongs to — is deterministic. `page.clock` can then move it forward within
+ * a journey (across local midnight, for instance) exactly as a real device
+ * left open overnight would experience it.
+ */
+export async function openPracticeApp(options: { now: Date; viewport?: { width: number; height: number } }): Promise<PracticeApp> {
+  const server: ViteDevServer = await createServer({
+    configFile: 'vite.config.ts',
+    logLevel: 'error',
+    server: { port: 0, strictPort: false },
+  });
+  await server.listen();
+  const origin = server.resolvedUrls?.local[0];
+  if (!origin) {
+    await server.close();
+    throw new Error('The dev server started but reported no local URL.');
+  }
+
+  let browser: Browser;
+  try {
+    browser = await chromium.launch();
+  } catch (e) {
+    await server.close();
+    throw new Error(INSTALL_HINT, { cause: e });
+  }
+
+  let context: BrowserContext;
+  let page: Page;
+  try {
+    context = await browser.newContext({
+      viewport: options.viewport ?? { width: 390, height: 844 },
+      // The owner's phone. Deliberately the constraint the product is held to.
+      deviceScaleFactor: 2,
+    });
+    page = await context.newPage();
+    // ONE handler for the whole journey. The app's destructive actions ask
+    // first with confirm(); an unanswered dialog blocks every later command,
+    // and registering a second handler makes the first one's accept() throw.
+    page.on('dialog', (d) => {
+      void d.accept().catch(() => {});
+    });
+    await page.clock.install({ time: options.now });
+    await page.goto(origin);
+    // The store hydrates from IndexedDB before anything renders.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
+  } catch (e) {
+    await browser.close();
+    await server.close();
+    throw e;
+  }
+
+  return {
+    page,
+    origin,
+    async close() {
+      await browser.close();
+      await server.close();
+    },
+  };
+}
+
+/**
+ * Import a backup through the REAL Settings control — the same path the owner
+ * uses, file picker and confirmation included. No debug hook, no direct store
+ * access: a journey that seeded itself through a back door would prove nothing
+ * about the door the owner actually walks through.
+ */
+export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
+  const { page } = app;
+  await page.getByRole('link', { name: 'More' }).click();
+  await page.getByRole('link', { name: 'Settings' }).click();
+  await page.getByLabel('Import backup file').setInputFiles({
+    name,
+    mimeType: 'application/json',
+    buffer: Buffer.from(json, 'utf8'),
+  });
+  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
+}
+
+/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
+export async function importOutcome(app: PracticeApp): Promise<string> {
+  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
+}
+
+/** Go to a route the way the owner does, then wait for the app to settle. */
+export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
+  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
+  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+}
+
+/** Reload, proving a claim survived in IndexedDB rather than in React state. */
+export async function reload(app: PracticeApp): Promise<void> {
+  // The store persists to IndexedDB asynchronously (that is the whole reason
+  // App gates render on `hydrated`), so a reload fired in the same tick as the
+  // click can outrun the write. This wait is about the storage platform, not
+  // about the app: it is real wall-clock time in Node, unaffected by the
+  // page's faked clock.
+  await app.page.waitForTimeout(400);
+  await app.page.reload();
+  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
+}
+
+const KV_KEY = 'practice-compass';
+
+/**
+ * Read the raw bytes the app's own persist middleware would read on the next
+ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
+ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
+ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
+ */
+export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
+  return app.page.evaluate(
+    (key) =>
+      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readonly');
+          const get = tx.objectStore('kv').get(key);
+          get.onsuccess = () => {
+            db.close();
+            resolve(JSON.parse((get.result as { value: string }).value));
+          };
+          get.onerror = () => reject(get.error);
+        };
+      }),
+    KV_KEY,
+  );
+}
+
+/**
+ * Write directly into the app's own IndexedDB `kv` store — the way an
+ * ALREADY-hydrated device holds its persisted state — bypassing every
+ * import/migration door entirely. The one way to reach the "persisted
+ * version already matches the current schema" hydration path: Zustand's
+ * persist middleware only calls `migrate` when the persisted version differs
+ * from the current one, and every JSON-import door runs `validateDB`
+ * regardless of what version a FILE claims.
+ */
+export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
+  await app.page.evaluate(
+    ({ key, state, version }) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    { key: KV_KEY, state, version },
+  );
 }
 ```
 
