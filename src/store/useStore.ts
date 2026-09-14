@@ -64,6 +64,7 @@ import {
   missingSessionReferences,
   SETAR_CLASS_SESSIONS,
   validateDB,
+  SchemaTooNewError,
   type BlockMode,
   type BlockResult,
   type FocusArea,
@@ -1721,9 +1722,21 @@ export const useStore = create<StoreState>()(
       // re-persist whatever `db` happens to be live, silently overwriting
       // the very data this refusal exists to protect (a genuinely newer
       // schema this build cannot read, most of all). `lastHydrationError` is
-      // therefore a plain module variable, never store state.
+      // therefore a plain module variable, never store state — but a cold
+      // start (nothing has ever hydrated successfully) needs a REACTIVE
+      // signal too, or the UI has no way to notice the refusal and stays on
+      // "Loading…" forever: `useHydrationStatus` below is a separate,
+      // unpersisted store (the same shape `useSyncStatus` already uses for
+      // sync phase), so writing to IT never touches `useStore`'s persist
+      // middleware and can never become the destructive write-back this
+      // guard exists to prevent.
       onRehydrateStorage: () => (_state, error) => {
         lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
+        useHydrationStatus.setState(
+          error
+            ? { refused: true, message: lastHydrationError, tooNew: error instanceof SchemaTooNewError }
+            : { refused: false, message: null, tooNew: false },
+        );
       },
     },
   ),
@@ -1740,6 +1753,32 @@ let lastHydrationError: string | null = null;
 export function getLastHydrationError(): string | null {
   return lastHydrationError;
 }
+
+export interface HydrationStatus {
+  /** True from the moment a hydration attempt is refused (§C7) — including
+   *  the very first one this device ever makes, so a cold start with already
+   *  invalid persisted bytes is never silently indistinguishable from an
+   *  ordinary in-flight load. */
+  refused: boolean;
+  /** The refusal's human-readable message, or null when not refused. */
+  message: string | null;
+  /** True when the refusal was specifically a newer-than-supported schema —
+   *  an app update fixes this, not a data restore. */
+  tooNew: boolean;
+}
+/**
+ * The reactive counterpart to `getLastHydrationError()`: what `App.tsx`
+ * actually subscribes to so a refused cold start can render an explanation
+ * instead of staying on "Loading…" indefinitely (`hydrated` never turns
+ * true on a refusal, and zustand's own `onFinishHydration` is wired to the
+ * success path only). Never persisted, never derived from `useStore` —
+ * see `onRehydrateStorage` above for why.
+ */
+export const useHydrationStatus = create<HydrationStatus>(() => ({
+  refused: false,
+  message: null,
+  tooNew: false,
+}));
 
 // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
 function finishHydration() {

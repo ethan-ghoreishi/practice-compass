@@ -14,7 +14,7 @@ import { addDays, nowISO, toISODate } from './util';
 // file for this contract — the same situation routines.test.ts documents for
 // the single-active-clock guard — so its regression coverage extends this
 // ac-15 test instead of being left unproven.
-import { useStore, getLastHydrationError } from '../store/useStore';
+import { useStore, getLastHydrationError, useHydrationStatus } from '../store/useStore';
 
 // The IndexedDB-backed persist storage doesn't exist in this test environment
 // (no real indexedDB global) — same stub routines.test.ts uses, except the
@@ -450,6 +450,9 @@ describe('the v12 model at every inbound door', () => {
     expect(getLastHydrationError()).toBeNull();
     expect(useStore.getState().hydrated).toBe(true);
     expect(useStore.getState().db.lessonAgenda.length).toBe(v12.lessonAgenda.length);
+    // The REACTIVE signal App.tsx actually renders from agrees — a clean
+    // hydration carries no refusal forward from any earlier attempt.
+    expect(useHydrationStatus.getState()).toEqual({ refused: false, message: null, tooNew: false });
 
     // 7b. Valid OLDER data migrates then hydrates — and, unlike the refusals
     //     below, genuinely gets written back (a real upgrade worth saving).
@@ -490,6 +493,10 @@ describe('the v12 model at every inbound door', () => {
     expect(useStore.getState().db).toBe(sentinel);
     expect(getLastHydrationError()).toMatch(/practice item that no longer exists/);
     expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeRefusal);
+    // The reactive signal flips too, and is distinguishable from "too new":
+    // this is invalid/corrupt CURRENT-version data, not an app-update case.
+    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
+    expect(useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
 
     // 7d. A NEWER-than-supported schema is refused — never passed through
     //     migrateToCurrent and relabelled as the current version, and never
@@ -501,6 +508,11 @@ describe('the v12 model at every inbound door', () => {
     expect(useStore.getState().db).toBe(sentinelNewer);
     expect(getLastHydrationError()).toMatch(/newer version/i);
     expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+    // The reactive signal distinguishes THIS refusal from 7c's: `tooNew` is
+    // true here, so the UI can say "update the app" instead of "this data
+    // looks broken" — the two are not the same recovery instruction.
+    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
+    expect(useHydrationStatus.getState().message).toMatch(/newer version/i);
 
     // 7e. REPEATED hydration stays safe: refusing the identical newer-schema
     //     data twice in a row is idempotent (same refusal, live state never
@@ -517,6 +529,49 @@ describe('the v12 model at every inbound door', () => {
     await useStore.persist.rehydrate();
     expect(JSON.stringify(useStore.getState().db)).toBe(firstHydrate);
     expect(getLastHydrationError()).toBeNull();
+
+    // 7f/7g. THE GENUINE COLD START — a sealed review found every case above
+    //     (7a-7e) runs on a store that had already hydrated successfully at
+    //     least once (module import itself reads empty storage and hydrates
+    //     fine before this test body even starts), so none of them prove
+    //     what a device experiences the very FIRST time it ever hydrates
+    //     with already-bad persisted bytes: `hydrated` never turns true,
+    //     zustand's own `onFinishHydration` is wired to the success path
+    //     only, and — before this fix — nothing reactive told the UI why,
+    //     so `App.tsx` stayed on "Loading…" forever. `vi.resetModules()`
+    //     plus a dynamic re-import gets a genuinely fresh store instance —
+    //     its own never-hydrated `hydrated`/`getLastHydrationError`/
+    //     `useHydrationStatus` — while `fakeStorage` (bound outside the
+    //     module graph via `vi.hoisted`) still feeds it through the same
+    //     mocked `idbStorage`, so this is still the REAL Zustand persistence
+    //     path, not a hand call to `migrate`/`merge`.
+    const coldStart = async (payload: unknown, version: number) => {
+      fakeStorage.set(wrap(payload, version));
+      const writesBefore = fakeStorage.setItemCalls();
+      vi.resetModules();
+      const fresh = await import('../store/useStore');
+      await fresh.useStore.persist.rehydrate();
+      expect(fresh.useStore.getState().hydrated).toBe(false);
+      expect(fakeStorage.setItemCalls()).toBe(writesBefore);
+      return fresh;
+    };
+
+    // 7f. Invalid CURRENT-version data, never successfully hydrated before:
+    //     refused, and the REACTIVE state (not just the internal
+    //     `lastHydrationError` variable) reports it as recoverable data
+    //     corruption rather than a schema mismatch.
+    const coldInvalid = await coldStart(badCurrent, SCHEMA_VERSION);
+    expect(coldInvalid.getLastHydrationError()).toMatch(/practice item that no longer exists/);
+    expect(coldInvalid.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
+    expect(coldInvalid.useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
+
+    // 7g. A newer-than-supported schema, never successfully hydrated before:
+    //     refused, and flagged distinctly as "too new" — an app update, not
+    //     a data restore, is the fix this device actually needs.
+    const coldNewer = await coldStart({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1);
+    expect(coldNewer.getLastHydrationError()).toMatch(/newer version/i);
+    expect(coldNewer.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
+    expect(coldNewer.useHydrationStatus.getState().message).toMatch(/newer version/i);
   });
 });
 

@@ -3,7 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
 import { CompassIcon } from './components/icons';
 import { hasUnfinishedPractice, deferredSyncRetry } from './domain';
-import { useStore } from './store/useStore';
+import { useStore, useHydrationStatus } from './store/useStore';
 import { getSyncConfig, syncNow, useSyncStatus } from './store/githubSync';
 // Today stays in the entry chunk (it is always the first screen); every other
 // route loads on demand — smaller initial JS, and the PWA precaches all
@@ -92,11 +92,43 @@ function useAutoSync(hydrated: boolean) {
 export default function App() {
   useThemeAttribute();
   const hydrated = useStore((s) => s.hydrated);
+  const hydrationStatus = useHydrationStatus();
   useAutoSync(hydrated);
 
   // Wait for the async IndexedDB store before rendering (avoids a flash of
-  // empty/seed data on load).
+  // empty/seed data on load) — unless hydration was REFUSED (§C7).
+  // `hydrated` never turns true on a refusal (zustand's own
+  // `onFinishHydration` is wired to the success path only), so without this
+  // branch a cold start with already-invalid persisted bytes stayed on
+  // "Loading…" forever with no way to know why. This reads `useHydrationStatus`
+  // only — it never writes to `useStore`, so rendering this screen touches
+  // neither the live nor the persisted database: the refused bytes are
+  // exactly as they were.
   if (!hydrated) {
+    if (hydrationStatus.refused) {
+      return (
+        <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 'var(--space-5)' }}>
+          <div className="stack-sm" style={{ alignItems: 'center', maxWidth: 420, textAlign: 'center' }}>
+            <CompassIcon width={30} height={30} style={{ color: 'var(--accent)' }} />
+            <p className="title-md" style={{ margin: 0 }}>Your saved data couldn’t be loaded safely</p>
+            <p className="small dim" style={{ margin: 0 }}>
+              {hydrationStatus.tooNew
+                ? 'This device holds data saved by a newer version of Practice Compass than this one understands.'
+                : 'This device’s saved data looks invalid or corrupted, so it was not opened automatically.'}
+            </p>
+            <p className="small dim" style={{ margin: 0 }}>
+              Nothing has been changed, overwritten or deleted — your saved data is exactly as it was.{' '}
+              {hydrationStatus.tooNew
+                ? 'Update the app on this device to open it again.'
+                : 'If another device still has this data, export a fresh backup there, and use Import in Settings once this device can read it again.'}
+            </p>
+            {hydrationStatus.message && (
+              <p className="tiny faint" style={{ margin: 0 }}>{hydrationStatus.message}</p>
+            )}
+          </div>
+        </div>
+      );
+    }
     return (
       <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--text-faint)' }}>
         <div className="stack-sm" style={{ alignItems: 'center' }}>

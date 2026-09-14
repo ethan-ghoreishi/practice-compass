@@ -79,6 +79,7 @@ allowedPaths:
   - docs/product-spec.md
   - docs/scheduling-evidence.md
   - src/domain/itemFiles.test.ts
+  - src/App.tsx
 forbiddenPaths:
   - src/store/gitRemote.ts
   - src/store/githubSync.ts
@@ -381,6 +382,12 @@ amendments:
       type-correct. This is a one-line fixture compatibility update only and
       does not change item-files behaviour."
     description: "allow: +src/domain/itemFiles.test.ts"
+  - at: 2026-09-14T17:53:40.379Z
+    reason: The sealed C7 finding requires a visible, actionable cold-start
+      hydration refusal instead of an endless Loading screen. src/App.tsx is the
+      render boundary that currently gates the app on hydrated, so it must be
+      allowed for this narrowly scoped UI recovery state.
+    description: "allow: +src/App.tsx"
 ---
 
 # Build a daily session I can trust, from lesson commitments to the next review
@@ -458,6 +465,7 @@ amendments:
 - docs/product-spec.md
 - docs/scheduling-evidence.md
 - src/domain/itemFiles.test.ts
+- src/App.tsx
 
 ## Never touch
 
@@ -538,4 +546,5 @@ amendments:
 ## Amendments
 
 - 2026-09-13T21:54:28.281Z — PracticeDB.lessonAgenda is now required by this lane. The existing itemFiles test fixture therefore needs lessonAgenda: [] to remain type-correct. This is a one-line fixture compatibility update only and does not change item-files behaviour.: allow: +src/domain/itemFiles.test.ts
+- 2026-09-14T17:53:40.379Z — The sealed C7 finding requires a visible, actionable cold-start hydration refusal instead of an endless Loading screen. src/App.tsx is the render boundary that currently gates the app on hydrated, so it must be allowed for this narrowly scoped UI recovery state.: allow: +src/App.tsx
 

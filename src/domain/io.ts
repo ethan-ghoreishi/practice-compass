@@ -43,6 +43,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 /**
+ * Thrown only for a schema newer than this build supports — never for
+ * invalid/corrupt current-version data. Lets a caller (the hydration
+ * boundary, in particular) tell "update the app" apart from "this data is
+ * broken" without parsing the message text.
+ */
+export class SchemaTooNewError extends Error {}
+
+/**
  * Validate and normalise an unknown object into a PracticeDB. Throws with a
  * human-readable message when the shape is unusable.
  *
@@ -67,7 +75,7 @@ export function validateDB(input: unknown): PracticeDB {
 
   const fromVersion = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : OLDEST_SCHEMA_VERSION;
   if (fromVersion > SCHEMA_VERSION) {
-    throw new Error(
+    throw new SchemaTooNewError(
       `This file is from a newer version of Practice Compass (schema ${fromVersion}) than this device supports (schema ${SCHEMA_VERSION}). Update the app before importing it.`,
     );
   }
