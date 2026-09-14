@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
 import { serializeExport, validateDB, parseImport } from './io';
@@ -9,6 +9,46 @@ import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
 import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
 import { SCHEMA_VERSION, type PracticeDB } from './types';
 import { addDays, nowISO, toISODate } from './util';
+// The Zustand persist boundary (§C7's actual enforcement point, not just
+// validateDB's own import-path callers) has no allowed dedicated store test
+// file for this contract — the same situation routines.test.ts documents for
+// the single-active-clock guard — so its regression coverage extends this
+// ac-15 test instead of being left unproven.
+import { useStore, getLastHydrationError } from '../store/useStore';
+
+// The IndexedDB-backed persist storage doesn't exist in this test environment
+// (no real indexedDB global) — same stub routines.test.ts uses, except the
+// fake storage here is CONTROLLABLE per assertion: vi.hoisted keeps its state
+// reachable from the mock factory (which Vitest hoists above these imports)
+// without a temporal-dead-zone reference.
+const fakeStorage = vi.hoisted(() => {
+  let value: string | null = null;
+  let setItemCalls = 0;
+  return {
+    get: () => value,
+    set: (v: string | null) => {
+      value = v;
+    },
+    recordSetItem: () => {
+      setItemCalls += 1;
+    },
+    setItemCalls: () => setItemCalls,
+  };
+});
+vi.mock('../store/idb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../store/idb')>();
+  return {
+    ...actual,
+    idbStorage: {
+      getItem: async () => fakeStorage.get(),
+      setItem: async (_name: string, value: string) => {
+        fakeStorage.recordSetItem();
+        fakeStorage.set(value);
+      },
+      removeItem: async () => fakeStorage.set(null),
+    },
+  };
+});
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -210,7 +250,7 @@ function doors(text: string): { label: string; payload: unknown }[] {
 }
 
 describe('the v12 model at every inbound door', () => {
-  it('all inbound paths preserve the new model or reject before replacement', () => {
+  it('all inbound paths preserve the new model or reject before replacement', async () => {
     // 1. Every door migrates identically. `importFullBackup` (manual import,
     //    sync pull, Keep remote, archive restore) and the store's own
     //    `importDB` all route through THIS function, so a door that behaved
@@ -388,6 +428,95 @@ describe('the v12 model at every inbound door', () => {
     const migrated = validateDB(JSON.parse(V11_TEXT));
     expect(migrated.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
     expect(migrated.lessonAgenda.find((e) => e.itemId === 'i-dangling')?.instrumentId).toBe('gone');
+
+    // 7. THE ACTUAL PERSISTED-HYDRATION BOUNDARY — a sealed review found that
+    //    every check above, however thorough, only ever exercised
+    //    `validateDB`'s own import-path callers. Zustand's persist
+    //    `migrate`/`merge` called `migrateToCurrent` directly, bypassing both
+    //    the newer-schema guard and every §C7 semantic check above: a
+    //    version=13 database hydrated successfully relabelled as
+    //    schemaVersion=12 (migrateToCurrent's own final line stamps the
+    //    CURRENT version unconditionally), and an already-current v12
+    //    database carrying a dangling live itemId or an impossible askedAt
+    //    entered live state unchanged. Drive the REAL store through its own
+    //    `persist.rehydrate()` — not a hand call to `migrate`/`merge` in
+    //    isolation — so the actual wiring, including zustand's own
+    //    no-write-back-on-a-thrown-migrate behaviour, is what's under test.
+    const wrap = (db: unknown, version: number) => JSON.stringify({ state: { db }, version });
+
+    // 7a. Valid CURRENT v12 data hydrates normally.
+    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    expect(getLastHydrationError()).toBeNull();
+    expect(useStore.getState().hydrated).toBe(true);
+    expect(useStore.getState().db.lessonAgenda.length).toBe(v12.lessonAgenda.length);
+
+    // 7b. Valid OLDER data migrates then hydrates — and, unlike the refusals
+    //     below, genuinely gets written back (a real upgrade worth saving).
+    const setItemsBeforeUpgrade = fakeStorage.setItemCalls();
+    fakeStorage.set(wrap((JSON.parse(V11_TEXT) as { data: unknown }).data, 11));
+    await useStore.persist.rehydrate();
+    expect(getLastHydrationError()).toBeNull();
+    expect(useStore.getState().db.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(useStore.getState().db.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
+    expect(fakeStorage.setItemCalls()).toBeGreaterThan(setItemsBeforeUpgrade);
+
+    // 7c. INVALID current-v12 data — the exact sealed counterexample, a
+    //     dangling live itemId — is refused. The previously live database is
+    //     preserved BY REFERENCE (nothing was ever `set()`), and nothing is
+    //     written back over whatever is actually on disk: refusing must not
+    //     itself become a write, or a refusal of genuinely newer data (7d)
+    //     would silently destroy it the moment this build merely NOTICES the
+    //     problem.
+    const sentinel = useStore.getState().db;
+    const setItemsBeforeRefusal = fakeStorage.setItemCalls();
+    const badCurrent: PracticeDB = {
+      ...v12,
+      lessonAgenda: [
+        ...v12.lessonAgenda,
+        {
+          kind: 'question',
+          id: 'q-hydration-refused',
+          instrumentId: 'setar',
+          text: 'x',
+          itemId: 'nonexistent',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    fakeStorage.set(wrap(badCurrent, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinel);
+    expect(getLastHydrationError()).toMatch(/practice item that no longer exists/);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeRefusal);
+
+    // 7d. A NEWER-than-supported schema is refused — never passed through
+    //     migrateToCurrent and relabelled as the current version, and never
+    //     written back over the (unreadable but genuinely newer) original.
+    const sentinelNewer = useStore.getState().db;
+    const setItemsBeforeNewer = fakeStorage.setItemCalls();
+    fakeStorage.set(wrap({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1));
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelNewer);
+    expect(getLastHydrationError()).toMatch(/newer version/i);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+
+    // 7e. REPEATED hydration stays safe: refusing the identical newer-schema
+    //     data twice in a row is idempotent (same refusal, live state never
+    //     mutated, and still no write-back the second time either)...
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelNewer);
+    expect(getLastHydrationError()).toMatch(/newer version/i);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+    // ...and re-hydrating the same valid data twice in a row produces
+    // byte-identical live state both times.
+    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    const firstHydrate = JSON.stringify(useStore.getState().db);
+    await useStore.persist.rehydrate();
+    expect(JSON.stringify(useStore.getState().db)).toBe(firstHydrate);
+    expect(getLastHydrationError()).toBeNull();
   });
 });
 

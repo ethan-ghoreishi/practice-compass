@@ -56,7 +56,6 @@ import {
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
-  migrateToCurrent,
   newId,
   nowISO,
   SCHEMA_VERSION,
@@ -1608,9 +1607,49 @@ export const useStore = create<StoreState>()(
         planMinutesByInstrument: s.planMinutesByInstrument,
         activeRoutine: s.activeRoutine,
       }),
-      migrate: (persisted, version) => {
+      // Every other inbound door — manual import, sync pull, Keep remote,
+      // archive restore — installs a database only through `validateDB`
+      // (§C7): it refuses a newer-than-supported schema outright instead of
+      // relabelling it down, runs the shared migration chain, and rejects
+      // structurally/semantically invalid data (an impossible calendar date,
+      // a dangling live reference) with actionable detail. Hydration used to
+      // call `migrateToCurrent` directly instead, which does none of that —
+      // a persisted schema newer than this build understands got silently
+      // stamped down to SCHEMA_VERSION (migrations.ts's own final line) and
+      // hydrated anyway, and already-current-but-invalid data sailed
+      // straight into live state. Routing both hooks below through
+      // `validateDB` closes that gap at the one place ALL persisted state
+      // re-enters live state, rather than teaching every UI caller to check
+      // it separately.
+      //
+      // Letting `validateDB` THROW here (never caught) is deliberate, not an
+      // oversight: zustand's own hydrate() only calls `merge` — and only
+      // persists the result back to storage — once `migrate` has RETURNED,
+      // and only calls its raw internal `set()` once `merge` has returned. A
+      // thrown validation error rejects that promise chain before either
+      // happens (see zustand's `middleware.js`), so the previously live AND
+      // the previously persisted state are both left exactly as they were:
+      // no partial hydration, no silent downgrade-and-relabel, no
+      // destructive write-back of a refused newer snapshot. This trades away
+      // opening the app's hydration gate on a refusal (zustand's own
+      // `hasHydrated`/`onFinishHydration` are wired to the success path
+      // only) — a deliberate choice, not an oversight: EVERY external call
+      // to `useStore.setState` — which is the only way to flip that gate —
+      // is itself wrapped by this same persist middleware to write straight
+      // back to storage afterwards, so forcing the gate open here would
+      // re-persist whatever `db` is currently live and silently destroy the
+      // very data a refusal (most of all a genuinely newer schema) exists to
+      // protect. `getLastHydrationError()` below still surfaces WHY, without
+      // that write.
+      migrate: (persisted) => {
         const state = persisted as { db?: PracticeDB } | undefined;
-        if (state?.db) state.db = migrateToCurrent(state.db, version);
+        // `validateDB` reads the schema version off `state.db` itself (the
+        // same source of truth every other inbound door uses) rather than
+        // the envelope-level version zustand would pass as a second
+        // argument here — the two are always kept in sync by this app's own
+        // writes, and deriving from one place avoids two version signals
+        // that could ever disagree.
+        if (state?.db) state.db = validateDB(state.db);
         return state as unknown;
       },
       merge: (persisted, current) => {
@@ -1619,19 +1658,21 @@ export const useStore = create<StoreState>()(
         // differs from the current one — a persisted database that ALREADY
         // claims the current schema never reaches it, even when it carries a
         // stray `assignedForLesson`/`teacherQuestion` an interrupted write
-        // left behind, with `lessonAgenda` never actually completed to
-        // represent it. `merge` is the one place ALL persisted state
+        // left behind, or genuinely invalid current-schema data a corrupt
+        // write produced. `merge` is the one place ALL persisted state
         // re-enters live state regardless of whether `migrate` ran (the same
         // reasoning the active/activeRoutine freeze below relies on), so it
-        // is where this closes for good: run the SAME idempotent, lossless
-        // conversion `migrate` would have, unconditionally. Calling it again
-        // on state `migrate` already processed is safe — `migrateToV12`'s own
-        // docstring guarantees it is a no-op wherever no legacy field
-        // survives — and calling it with `SCHEMA_VERSION` as the "from"
-        // version is correct here because every OTHER step in the chain is
-        // gated on a version strictly below what a current database could
-        // ever claim; only the unconditional tail step ever runs.
-        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
+        // is where both the idempotent legacy conversion AND the §C7
+        // validation close for good: run the SAME `validateDB` call
+        // `migrate` makes, unconditionally. Calling it again on state
+        // `migrate` already validated is safe and cheap — it is pure and
+        // `migrateToV12`'s own docstring guarantees its tail step is a no-op
+        // wherever no legacy field survives — and throwing here on invalid
+        // current-version data is exactly as safe as throwing in `migrate`:
+        // `set()` is never reached, and this branch never queues a persist
+        // write-back regardless (zustand only writes back after a
+        // version-mismatched `migrate` ran).
+        const db = p.db ? validateDB(p.db) : current.db;
         const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running
@@ -1668,9 +1709,37 @@ export const useStore = create<StoreState>()(
         }
         return merged;
       },
+      // A thrown `migrate`/`merge` above rejects zustand's internal hydration
+      // promise before it ever calls its OWN raw `set()` — correct, and the
+      // whole point: it's what leaves both live and persisted state
+      // untouched. Recording the reason here must not undo that: EVERY
+      // external call to `useStore.setState` (any ordinary store action
+      // included) is itself wrapped by this same persist middleware to
+      // write straight back to storage afterwards — see `setItem()` below
+      // this config and its unconditional call from `api.setState`. Calling
+      // it here to flip a "hydration failed" flag would immediately
+      // re-persist whatever `db` happens to be live, silently overwriting
+      // the very data this refusal exists to protect (a genuinely newer
+      // schema this build cannot read, most of all). `lastHydrationError` is
+      // therefore a plain module variable, never store state.
+      onRehydrateStorage: () => (_state, error) => {
+        lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
+      },
     },
   ),
 );
+
+/**
+ * The message from the most recent REFUSED hydration attempt (§C7), or null
+ * if the last attempt installed cleanly. Deliberately not store state: see
+ * `onRehydrateStorage` above for why recording it through `useStore.setState`
+ * would itself trigger the exact destructive write-back this guard exists to
+ * prevent.
+ */
+let lastHydrationError: string | null = null;
+export function getLastHydrationError(): string | null {
+  return lastHydrationError;
+}
 
 // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
 function finishHydration() {

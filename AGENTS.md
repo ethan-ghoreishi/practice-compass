@@ -708,6 +708,29 @@ check had already been fixed once, but its date-TIME sibling in a different file
 The two checks stay small and separately owned, one per file, rather than merged into a
 shared import.
 
+**THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO, NOT ONLY `validateDB`'S IMPORT-PATH
+CALLERS.** A sealed review found Zustand's own persist `migrate`/`merge` (`useStore.ts`)
+called `migrateToCurrent` directly, bypassing everything above: a persisted schema NEWER
+than this build understands got silently stamped down to `SCHEMA_VERSION` by
+`migrateToCurrent`'s own final line and hydrated anyway, and an already-current v12
+database carrying a dangling live `itemId` or an impossible `askedAt` entered live state
+unchanged — reproduced through the real Zustand `persist.rehydrate()`, not merely
+`validateDB` called by hand. Both hooks now call `validateDB` itself — the SAME function,
+not a parallel check — so hydration refuses exactly what every other inbound door already
+refuses. Letting it THROW there (never caught) is deliberate: `hydrate()` only calls its
+own raw `set()` once `migrate`/`merge` return normally, and only persists the result back
+to storage after THAT — a thrown validation error rejects the whole promise chain before
+either happens, so a refused hydration leaves BOTH the live state and whatever is actually
+on disk exactly as they were, never a downgraded-and-relabelled or partially-installed
+in-between. The gate that flips `hydrated: true` deliberately stays UNFLIPPED on a refusal
+rather than forcing it open: every external call to `useStore.setState` — the only way to
+flip it — is itself wrapped by this same persist middleware to re-persist the current
+state immediately afterwards, so forcing it open here would write the live (fallback)
+database straight back over the very data a refusal, above all a genuinely newer schema,
+exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY, as a
+plain module variable rather than store state, for the identical reason — recording it
+through `setState` would trigger that same destructive write.
+
 ## Persian text is canonical, and direction-aware
 
 Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
@@ -1724,15 +1747,18 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   service (too big for the reactive JSON); only their lightweight metadata sits in the store.
 - **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
-  conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
-  chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
-  `migrate` when the persisted version differs from the current one, `merge`
-  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
-  version already matches, which would otherwise let an already-current database carry a
-  stray legacy field forever (a sealed review reproduced exactly this; see the
-  lesson-agenda section above for the fix and why re-running the conversion a second time
-  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+  conflict-keep-remote, archive restore — runs through the one shared `validateDB`
+  (`src/domain/io.ts`), which itself runs the `migrateToCurrent` chain
+  (`src/domain/migrations.ts`) plus the newer-schema guard and the §C7 semantic checks;
+  persistence changes must keep it green and bump `SCHEMA_VERSION`. Rehydration reaches it
+  via BOTH halves of the persist middleware — `migrate` when the persisted version differs
+  from the current one, `merge` UNCONDITIONALLY otherwise — because Zustand skips `migrate`
+  entirely once the persisted version already matches, which would otherwise let an
+  already-current database carry a stray legacy field, or genuinely invalid data, forever
+  (a sealed review reproduced exactly this — see the lesson-agenda section above for the
+  legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
+  validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v12** converts legacy lesson intent into `lessonAgenda` and
   adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
   neither is ever guessed for old data, so an existing future date keeps UNKNOWN
   provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
