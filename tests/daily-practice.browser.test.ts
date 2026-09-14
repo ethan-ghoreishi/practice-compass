@@ -209,6 +209,58 @@ describe('the daily practice loop, end to end', () => {
       const summary = await page.locator('.page-sub').first().textContent();
       expect(summary).toContain('already practised today');
       expect(await page.locator('.list-row').filter({ hasText: itemTitle }).count()).toBe(0);
+
+      // --- 11. A PLAN LEFT OPEN ACROSS MIDNIGHT IS MARKED STALE ------------
+      // Still the same preview from step 10, on screen with no database
+      // write in between. `rev` alone cannot see a day rolling over — this is
+      // the OTHER half of "no stale preview" the review named: not data
+      // changing beneath the plan, but the CLOCK moving past it while it sits
+      // open, unstarted.
+      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      await page.clock.setFixedTime(new Date('2027-01-16T00:15:00'));
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await expect
+        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
+        .toBe(true);
+      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
+      // Regenerating clears it: the owner's swaps/removals up to that point
+      // are the thing being protected, not the stale label itself.
+      await page.getByRole('button', { name: 'Regenerate' }).click();
+      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      await page.clock.setFixedTime(CLOCK);
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+
+      // --- 12. THE CLOSE-SCREEN RACE: a Save clicked exactly as the day
+      // rolls, with NO visibilitychange/focus event and before the next
+      // 30-second poll — the exact gap step 9's own visibilitychange dispatch
+      // does not exercise. The first Save must refresh the decision instead
+      // of silently writing the day it was previewed on; the second — now
+      // agreeing with the true day — writes exactly what is on screen.
+      const RACE_ITEM = 'i-q-and-flag';
+      await goTo(app, `/items/${RACE_ITEM}`);
+      await page.getByRole('button', { name: 'Start a block' }).click();
+      await finishBlock(page);
+      const raceDraft = 'the vibrato settled once the wrist relaxed';
+      await page.getByPlaceholder('What did you notice?').fill(raceDraft);
+      await page.getByRole('button', { name: 'Worse' }).click();
+      await page.getByRole('button', { name: 'Change' }).click();
+      const previewedBeforeRace = await page.getByLabel('Next review date').inputValue();
+
+      await page.clock.setFixedTime(new Date('2027-01-16T00:05:00'));
+      await page.getByRole('button', { name: 'Save block' }).click();
+      // Still on the close screen: that click refreshed the stale decision
+      // rather than saving it. The musician's own words survived untouched.
+      expect(await page.getByRole('button', { name: 'Save block' }).isVisible()).toBe(true);
+      expect(await page.getByPlaceholder('What did you notice?').inputValue()).toBe(raceDraft);
+      await expect
+        .poll(() => page.getByLabel('Next review date').inputValue())
+        .not.toBe(previewedBeforeRace);
+      const correctedDate = await page.getByLabel('Next review date').inputValue();
+      await page.getByRole('button', { name: 'Save block' }).click();
+      await page.waitForTimeout(300);
+      await reload(app);
+      expect(await persistedReviewDate(page, app.origin, RACE_ITEM)).toBe(correctedDate);
+      await page.clock.setFixedTime(CLOCK);
     } finally {
       await app.close();
     }

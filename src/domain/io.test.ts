@@ -6,6 +6,7 @@ import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
+import { createPreparation, detachLesson } from './lessonAgenda';
 import { SCHEMA_VERSION, type PracticeDB } from './types';
 import { addDays, nowISO, toISODate } from './util';
 
@@ -250,18 +251,88 @@ describe('the v12 model at every inbound door', () => {
     expect(
       bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
     ).toThrow(/unreadable asked date/);
+    // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
+    // a real agenda entry nor an honest unassigned one: `deleteLesson` always
+    // converts a live reference to a detached marker, so this app never
+    // leaves one dangling, and it is refused rather than tolerated as legacy
+    // debris.
+    expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
+    // A dangling `itemId`, by contrast, stays TOLERATED — deliberately
+    // asymmetric with `lessonId`. A genuine pre-upgrade backup can legitimately
+    // hold one whose item was deleted on another device before that deletion
+    // synced, and refusing it would make the owner's own documented recovery
+    // copy unrestorable.
+    expect(() =>
+      validateDB({ ...v12, lessonAgenda: [{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }] }),
+    ).not.toThrow();
+    expect(() =>
+      validateDB({
+        ...v12,
+        lessonAgenda: [{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }],
+      }),
+    ).not.toThrow();
     expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
+    // Calendar values are checked for real, not merely shape: a due date and
+    // an item's own next-review date must both name a date that exists.
+    expect(() =>
+      validateDB({ ...v12, items: v12.items.map((i) => (i.id === 'i-scheduled' ? { ...i, nextReviewDate: '2027-99-99' } : i)) }),
+    ).toThrow(/unreadable next-review date/);
+    expect(() =>
+      validateDB({ ...v12, reviews: v12.reviews.map((r) => ({ ...r, dueDate: '2026-02-30' })) }),
+    ).toThrow(/unreadable due date/);
     // An INCOMPLETE conversion — a legacy field still set with no entry to
     // represent it — is converted rather than accepted as-is, because the
     // chain runs on every inbound database whatever version it claims.
+    // Declaring schema 12 (the CURRENT version, not a legacy 11) is the real
+    // counterexample: a version-gated conversion step would skip this
+    // database entirely and accept the leftover field with zero questions to
+    // show for it.
     const halfConverted = validateDB({
       ...v12,
-      schemaVersion: 11,
+      schemaVersion: 12,
       items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'left behind' } : i)),
     });
     expect(halfConverted.lessonAgenda.some((e) => e.kind === 'question' && e.text === 'left behind')).toBe(true);
+    // A generated id that already names a DIFFERENT existing question is not
+    // "already represented" merely by matching id/kind/itemId — the content
+    // has to agree too. Both survive under distinct ids.
+    const halfConvertedConflict = validateDB({
+      ...v12,
+      schemaVersion: 12,
+      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'a brand new question' } : i)),
+      lessonAgenda: [
+        ...v12.lessonAgenda,
+        {
+          id: 'question:i-flag-false',
+          kind: 'question' as const,
+          itemId: 'i-flag-false',
+          instrumentId: 'setar',
+          text: 'a completely different pre-existing question',
+          createdAt: '2026-08-01T09:00:00.000Z',
+          updatedAt: '2026-08-01T09:00:00.000Z',
+        },
+      ],
+    });
+    const conflictEntry = halfConvertedConflict.lessonAgenda.find((e) => e.id === 'question:i-flag-false');
+    expect(conflictEntry?.kind === 'question' ? conflictEntry.text : undefined).toBe(
+      'a completely different pre-existing question',
+    );
+    expect(
+      halfConvertedConflict.lessonAgenda.some(
+        (e) => e.kind === 'question' && e.itemId === 'i-flag-false' && e.text === 'a brand new question',
+      ),
+    ).toBe(true);
 
-    // 4. LEGITIMATE unassigned and detached historical records PASS.
+    // 4. LEGITIMATE unassigned and detached historical records PASS — proven
+    //    against the REAL producer, not a hand-built approximation of its
+    //    shape. `detachLesson` destructures `lessonId` OUT rather than
+    //    setting it undefined; a JSON round-trip must still read that as
+    //    genuinely absent, not as a lingering `null`/`undefined` key.
+    const attached = createPreparation({ id: 'prep:real', itemId: 'i-premigrated', instrumentId: 'setar', lessonId: 'L-setar-1', now: NOW });
+    const [reallyDetached] = JSON.parse(JSON.stringify(detachLesson([attached], 'L-setar-1', NOW))) as typeof v12.lessonAgenda;
+    expect(reallyDetached).not.toHaveProperty('lessonId');
+    expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
     expect(() =>
       validateDB({
         ...v12,

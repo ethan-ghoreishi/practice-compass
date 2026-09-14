@@ -654,14 +654,43 @@ already owns one), the conversion is presence-aware, and the legacy fields are r
 only once their content is represented — so it is idempotent, including over an
 already-current database whose agenda is legitimately empty.
 
-**Inbound validation rejects invalid NEW intent and tolerates legacy debris.**
-`validateLessonAgenda` + `validateSchedulingFields` run inside `validateDB`, before
-`replaceAllBlobs` and before any install: unknown kinds, missing ids, duplicate ids, a
-missing instrument, empty question text, unreadable dates and a target that RESOLVES to
-a different instrument all refuse the import with actionable detail. A reference that no
-longer resolves at all (an item or class deleted years ago) is tolerated — every reader
-copes with it, and refusing a restore over one is the data loss this guard exists to
-prevent, not an example of it.
+**"REPRESENTED" MEANS SAME CONTENT, NOT MERELY A MATCHING ID.** A sealed review found
+`represented()` treated a matching generated `id`/`kind`/`itemId` alone as proof a
+question was already there — so a legacy `teacherQuestion` whose generated id happened to
+already name a DIFFERENT existing question (partial migration, a hand-edited file, an
+interrupted write) was silently DROPPED, because the pre-existing entry with the same id
+looked like "already represented". A preparation carries no content beyond the link
+itself, so any matching entry genuinely represents it, but a question's content IS its
+text: `represented()` now also compares that text, and a same-id/different-text match
+falls through to `freeId` exactly like an unrelated collision, so BOTH questions survive
+under distinct ids. This step also now runs on EVERY inbound database, not only one
+declaring `fromVersion < 12`: a database claiming the CURRENT schema can still carry a
+stray `assignedForLesson`/`teacherQuestion` from an incomplete conversion, and gating on
+the declared version silently accepted that leftover with nothing to show for it. Running
+it unconditionally costs nothing extra on genuinely current data — it is a no-op wherever
+neither legacy field survives.
+
+**Inbound validation rejects invalid NEW intent and tolerates legacy debris — but only
+where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSchedulingFields`
+run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
+missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
+and a target that RESOLVES to a different instrument all refuse the import with
+actionable detail. A DANGLING `itemId` — set, but resolving to nothing — stays tolerated:
+the v11→v12 migration mints entries from `db.items` at the moment it runs, so an item
+deleted afterwards leaves its own agenda entries pointing at nothing, and every reader
+already copes with that (the docstring above already spells out the same tolerance for a
+dangling `instrumentId`); refusing a restore over one would make the owner's own
+documented recovery copy unrestorable — exactly the data loss this guard exists to
+prevent, not an example of it. A DANGLING `lessonId` is different and is now REFUSED: this
+app never leaves one dangling on its own — `deleteLesson` always converts a live
+`lessonId` to `detachedFromLessonId` (see `detachLesson`), so a `lessonId` that is neither
+absent nor resolving is invalid new intent, not legacy debris to wave through. A sealed
+review reproduced `validateDB` accepting `lessonId: 'nonexistent'` before this. Calendar
+values are also checked for REAL validity now, not merely shape:
+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` and a question's `askedAt` all
+round-trip through their own components (`/^\d{4}-\d{2}-\d{2}$/` alone happily matched
+`"2027-99-99"` and `"2026-02-30"`, which `Date.UTC` silently normalises rather than
+rejects) — a sealed review reproduced both accepted.
 
 ## Persian text is canonical, and direction-aware
 
@@ -1447,6 +1476,25 @@ scheduling works" section states the real priority formula and the SM-2 rungs in
 English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
 review row links to it ("Why this date?").
 
+**"THE DATE SHOWN EQUALS THE DATE SAVED" ALSO HAS TO SURVIVE THE SAVE ITSELF, NOT JUST
+THE RENDER.** `CloseBlock`'s `now` (`useDecisionNow`) only refreshes every 30 seconds plus
+visibility/focus, while `closeSession` used to compute its OWN fresh `new Date()` at call
+time — so a Save clicked in the narrow window after the local day had genuinely rolled,
+but before either the poll or a visibility event caught up, could write a decision
+`computeReviewOutcome` recomputed for TODAY while the screen had only ever shown
+YESTERDAY's. A sealed review named this gap explicitly. `closeSession` now takes the
+screen's own `now` (`CloseSessionInput.now`, defaulting to `new Date()` only for the rare
+caller with no prior decision to keep in step) instead of reading a fresh clock at module
+scope, so once a save actually proceeds it writes EXACTLY the value just previewed —
+never a second, independently-computed one. The day check itself lives in `CloseBlock`:
+`handleSave` compares the true instant against `now` first, and on a mismatch sets a
+local `nowOverride` and returns WITHOUT calling `closeSession` — refreshing the decision
+visibly (the date field, the rationale, everything derived from `now` recomputes) while
+the draft (result, observation, next action, body note) is untouched, so the very next
+Save simply works. This is deliberately a small, local override rather than a change to
+`useDecisionNow`'s shared contract — `SessionPlan.tsx` and `LessonAgenda.tsx` also read
+that hook and neither needed this.
+
 ## The Session Plan is a view over real blocks, not a new to-do list
 
 The Session Plan (`src/domain/plan.ts`, pure + fully tested; `/plan` page) lays out one
@@ -1483,6 +1531,23 @@ no scores, no "optimal" claims, no gamification.
   regeneration, swaps and every fallback: resting material never surfaces in a
   suggestion, and a fallback never widens to reach it. Direct, deliberate practice of a
   resting item stays available and its review data is untouched.
+- **A SWAP SHARES THE BUILD'S OWN CANDIDATE POOL, NOT JUST ITS ELIGIBILITY POLICY.** A
+  sealed review found `swapSegment` filtering by `isProactiveCandidate` alone and then
+  searching `scored` directly — bypassing the build's OWN practised-today exclusion
+  (`candidatePool`, shared by both now) and the warm-up pool's extra due/lesson
+  exclusions. Concretely: three same-instrument usable items scored 5/4/3 with the
+  middle one practised one minute ago today; a five-minute build correctly stepped past
+  it for the fresher lowest-scoring one, but Swap handed it right back because fresh
+  work scored lower — the exact material the build had just deliberately set aside, with
+  an ordinary "focus" reason as if nothing were off. A warm-up swap could likewise reach
+  a candidate that was due for review or committed to a class, which the build's own
+  warm-up pool excludes on purpose (that slot belongs to the actual need, never spent as
+  a warm-up). `candidatePool` (`plan.ts`) is now the ONE practised-today/repeat-fallback
+  computation both `buildSessionPlan` and `swapSegment` draw from, and swap's own
+  eligibility switch repeats the warm-up bucket's due/lesson exclusion verbatim. Swap
+  deliberately does NOT replay the build's diversity preference (a tie-break among
+  segments chosen together in one pass, which a single substitution has none of) — see
+  `swapSegment`'s own docstring for why that is a documented choice, not an oversight.
 - **Over-practice is bounded, decaying recent MINUTES**, not a block count and not a run
   of identical results (`recentExposureMinutes`, `exposurePenalty`). Three "same" results
   in January are a strategy hint in January, not a permanent penalty in September, and
@@ -1494,6 +1559,17 @@ no scores, no "optimal" claims, no gamification.
   silently starting stale work. `beginPlanSegment` revalidates the item LIVE
   (`planSegmentStartable`): deleted or moved to another instrument ⇒ visibly skipped,
   another clock running ⇒ refused. Skipping logs nothing.
+- **A PLAN CAN GO STALE WITH NO DATABASE WRITE AT ALL: THE CLOCK MOVING PAST IT.**
+  `SessionPlan.tsx` tracked staleness only via `rev` (the store's mutation counter) and a
+  `seedKey` of `instrumentId|budget` — neither moves when a preview is simply left open
+  across local midnight. A sealed review reproduced this: yesterday's segments, reasons
+  and "for today's class" labels stayed on screen and startable with the Start button
+  enabled, because `build` (the live recomputation) had quietly changed underneath while
+  nothing told the visible `plan` state to notice. The preview now also tracks the LOCAL
+  CALENDAR DAY it was built for (`baseDay`, set alongside `baseRev`) and is `stale`
+  whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
+  treatment `rev` already got, so a deliberate swap or removal survives a midnight
+  exactly as it survives any other change underneath the plan.
 - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
   warm-up timer) stays untouched. The runner orchestrates the existing
   start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the

@@ -149,6 +149,21 @@
         "assignedForLesson": true
       },
       {
+        "id": "i-conflict",
+        "instrumentId": "setar",
+        "title": "New question conflicts with an existing one",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "teacherQuestion": "new distinct question"
+      },
+      {
         "id": "i-dangling",
         "instrumentId": "gone",
         "title": "Item on a deleted instrument",
@@ -323,6 +338,15 @@
         "itemId": "i-q-only",
         "instrumentId": "setar",
         "text": "An unrelated entry that already owns that id",
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "question:i-conflict",
+        "kind": "question",
+        "itemId": "i-conflict",
+        "instrumentId": "setar",
+        "text": "different existing question",
         "createdAt": "2026-08-01T09:00:00.000Z",
         "updatedAt": "2026-08-01T09:00:00.000Z"
       }

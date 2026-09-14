@@ -133,6 +133,29 @@ export function validateBudgetMinutes(value: unknown): number | null {
 }
 
 /**
+ * The candidate pool a build OR a swap picks from: practised-today material
+ * steps aside — unless it is committed to a class, a commitment the day's
+ * earlier session did not discharge — falling back to repeating today's own
+ * work only when nothing fresh remains eligible. Shared so a swap can never
+ * reach material the build itself deliberately set aside (§B3/B7): a swap
+ * used to run this filter over `scored` directly, so it could hand back an
+ * item the build had excluded as already practised while a fresher,
+ * untouched candidate sat right behind it.
+ */
+function candidatePool(
+  scored: ItemScore[],
+  blocks: PracticeBlock[],
+  now: Date,
+): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string> } {
+  const today = todayISODate(now);
+  const practisedToday = new Set(
+    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
+  );
+  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || s.parts.lesson > 0);
+  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday };
+}
+
+/**
  * Is this item suitable as a warm-up? A role, not a label.
  *
  * Two things together: LOW DEMAND (difficulty ≤ 3) and evidence of
@@ -256,16 +279,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
   }
 
   const today = todayISODate(now);
-  const practisedToday = new Set(
-    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
-  );
-  // Practised-today material steps aside — unless it is committed to a class,
-  // which is a commitment the day's earlier session did not discharge.
-  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || s.parts.lesson > 0);
-  // The honest fallback: repeat today's work rather than invent filler, but
-  // still only from eligible material — never by widening to resting items.
-  const pool = fresh.length > 0 ? fresh : scored;
-  const isRepeatPool = fresh.length === 0;
+  const { pool, isRepeatPool, practisedToday } = candidatePool(scored, blocks, now);
 
   const dueById = new Map(
     dueReviews(args.reviews, now)
@@ -669,9 +683,22 @@ export function redistributePlan(plan: SessionPlan, params?: SchedulingParams): 
 
 /**
  * Swap segment `index` for the next-best alternative, keeping its minutes and
- * its role. Uses the SAME eligibility policy as the build — a swap that could
- * reach material the build excluded is a second, hidden policy, and it used to
- * hand back an item the build had deliberately set aside.
+ * its role. Uses the SAME eligibility policy, candidate pool and warm-up
+ * exclusions as the build — a swap that could reach material the build
+ * excluded is a second, hidden policy, and it used to hand back an item
+ * already practised today (or a due/lesson-committed item as a "warm-up")
+ * even while a fresher, build-eligible candidate sat right behind it.
+ *
+ * DELIBERATELY NOT SHARED: the build's DIVERSITY preference
+ * (`selectedDimensions`/`recentDimensions` in `buildSessionPlan`). Diversity
+ * is a modest, order-dependent tie-break among the OTHER segments a build is
+ * choosing at the same time (AGENTS.md: "subordinate to real needs") — it is
+ * not an eligibility rule like practised-today or a due/lesson exclusion, and
+ * a swap has no OTHER segments' choices in front of it to be diverse against
+ * (`plan.segments` here is the already-finished plan, not a selection in
+ * progress). Reconstructing that state for one substitution would make a
+ * swap's answer depend on an ordering it never participated in. A swap
+ * therefore returns the single best-scoring ELIGIBLE candidate, full stop.
  */
 export function swapSegment(
   plan: SessionPlan,
@@ -686,6 +713,11 @@ export function swapSegment(
     .filter(isProactiveCandidate);
   const blocks = args.blocks.filter((b) => b.instrumentId === plan.instrumentId);
   const scored = scoreItems(items, groupBlocksByItem(blocks), args.now, args.preparationDates);
+  // The SAME candidate pool the build itself drew from — practised-today
+  // material stays excluded here too, unless nothing fresh is eligible for
+  // this bucket, in which case the honest repeat fallback applies exactly as
+  // it does on a build (§B3/B7).
+  const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
 
   const inUse = new Set(plan.segments.map((s) => s.itemId));
   const exclude = args.excludeIds ?? new Set<string>();
@@ -699,7 +731,10 @@ export function swapSegment(
     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
     switch (target.bucket) {
       case 'warmup':
-        return isWarmupSuitable(s.item);
+        // Same exclusions as the build's own warm-up pool: a due review or a
+        // class commitment deserves the slot it is actually needed for, never
+        // spent as a warm-up.
+        return isWarmupSuitable(s.item) && !dueById.has(s.item.id) && s.parts.lesson === 0;
       case 'lesson':
         return s.parts.lesson > 0;
       case 'review':
@@ -711,7 +746,7 @@ export function swapSegment(
     }
   };
 
-  const pick = scored.find(eligible);
+  const pick = pool.find(eligible);
   if (!pick) return plan;
 
   const replacement: PlanSegment = {
@@ -722,7 +757,7 @@ export function swapSegment(
     core: target.core,
     mode: defaultModeForStatus(pick.item.status),
     focus: focusFor(pick.item),
-    reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id) }),
+    reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id), repeat: isRepeatPool }),
   };
   const segments = plan.segments.map((s, i) => (i === index ? replacement : s));
   return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };

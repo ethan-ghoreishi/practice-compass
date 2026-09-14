@@ -333,6 +333,48 @@ describe('building, swapping and redistributing keep identity and honest reasons
       }
     }
 
+    // SWAP shares the build's OWN practised-today exclusion — it must never
+    // hand back material the build itself set aside while a fresher, equally
+    // eligible candidate is available. Three usable same-instrument items
+    // ranked by importance (5/4/3); the middle one was practised one minute
+    // ago today.
+    const hi = it_({ id: 'hi', title: 'Hi', status: 'usable', importance: 5 });
+    const mid = it_({ id: 'mid', title: 'Mid', status: 'usable', importance: 4 });
+    const lo = it_({ id: 'lo', title: 'Lo', status: 'usable', importance: 3 });
+    const practisedMid = [block('mid', NOW.toISOString())];
+    const shortArgs = baseArgs({ items: [hi, mid, lo], blocks: practisedMid, budgetMinutes: 5 });
+    const shortPlan = buildSessionPlan(shortArgs);
+    expect(shortPlan.segments.map((s) => s.itemId)).toEqual(['hi']); // mid stepped aside, not chosen
+    const shortSwap = swapSegment(shortPlan, 0, shortArgs);
+    // Fresh 'lo' is available — the swap must reach it, never the
+    // already-practised 'mid', even though 'mid' outranks 'lo' on score alone.
+    expect(shortSwap.segments[0].itemId).toBe('lo');
+    expect(shortSwap.segments[0].reason).not.toContain('Practised earlier today');
+
+    // A warm-up swap uses the SAME exclusions as the build's own warm-up
+    // pool: a candidate that is due for review, or committed to a class,
+    // deserves that slot — never spent as a warm-up — even though it is
+    // otherwise `isWarmupSuitable`.
+    const dueWarm = it_({ id: 'due-warm', title: 'DueWarm', status: 'usable', difficulty: 2, timesPractised: 5 });
+    const freshWarm = it_({ id: 'fresh-warm', title: 'FreshWarm', status: 'usable', difficulty: 2, timesPractised: 5 });
+    expect(isWarmupSuitable(dueWarm)).toBe(true);
+    expect(isWarmupSuitable(freshWarm)).toBe(true);
+    const warmupReviews = [createReview({ practiceItemId: 'due-warm', dueDate: day(-1), reviewType: 'retention' }, NOW)];
+    const warmupPlan: SessionPlan = {
+      instrumentId: INST,
+      budgetMinutes: 20,
+      segments: [
+        { itemId: 'placeholder', title: 'placeholder', minutes: 5, bucket: 'warmup', core: false, mode: 'learn', focus: 'tone', reason: 'x' },
+      ],
+      summary: '',
+      generatedAt: NOW.toISOString(),
+    };
+    const warmArgs = baseArgs({ items: [dueWarm, freshWarm], reviews: warmupReviews, budgetMinutes: 20 });
+    const swappedWarm = swapSegment(warmupPlan, 0, warmArgs);
+    expect(swappedWarm.segments[0].itemId).toBe('fresh-warm'); // never the due one
+    const onlyDue = swapSegment(warmupPlan, 0, { ...warmArgs, items: [dueWarm] });
+    expect(onlyDue.segments[0].itemId).toBe('placeholder'); // no eligible candidate at all: no swap
+
     // REGENERATE is the same function with the same inputs: same answer.
     expect(JSON.stringify(buildSessionPlan(args).segments)).toBe(JSON.stringify(plan.segments));
 

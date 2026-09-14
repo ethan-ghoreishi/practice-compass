@@ -170,14 +170,40 @@ function migrateToV11(db: PracticeDB): PracticeDB {
  * which this step then removes, and it never creates an entry whose id already
  * describes the same thing. An already-current database — including one whose
  * agenda is legitimately EMPTY — comes through unchanged.
+ *
+ * This step runs on EVERY inbound database, not only one that declares itself
+ * pre-v12: a database claiming the current schema can still carry a stray
+ * `assignedForLesson`/`teacherQuestion` left behind by an interrupted write, a
+ * hand-edited file, or a bug in an earlier build — an INCOMPLETE current-schema
+ * conversion, not a genuine v11 input. Gating this on the declared version
+ * would accept that leftover silently, with the intent it recorded gone
+ * nowhere. Running it unconditionally is safe because it is a no-op wherever
+ * neither legacy field is present.
  */
 function migrateToV12(db: PracticeDB): PracticeDB {
   type LegacyItem = PracticeItem & { assignedForLesson?: boolean; teacherQuestion?: string };
   const existing: LegacyAgenda[] = ((db.lessonAgenda ?? []) as LegacyAgenda[]).slice();
   const takenIds = new Set(existing.map((e) => e?.id).filter((id): id is string => typeof id === 'string'));
 
-  const represented = (base: string, kind: 'preparation' | 'question', itemId: string): boolean =>
-    existing.some((e) => e?.id === base && e?.kind === kind && e?.itemId === itemId);
+  // "Represented" means an entry with this id/kind/itemId already says the
+  // SAME thing the legacy field says — not merely that one exists. A
+  // preparation carries no content beyond the link itself, so any matching
+  // entry represents it; a question's content IS its text, so an entry that
+  // merely shares the generated id but holds DIFFERENT text is not a
+  // duplicate of this question — it is a distinct one that happens to want
+  // the same id, and `freeId` gives it a collision-safe alternative exactly
+  // as it would for an unrelated entry. Treating a same-id/different-text
+  // match as "already represented" would silently discard the new question's
+  // own text — the exact incomplete-migration defect this function exists to
+  // prevent.
+  const represented = (base: string, kind: 'preparation' | 'question', itemId: string, text?: string): boolean =>
+    existing.some(
+      (e) =>
+        e?.id === base &&
+        e?.kind === kind &&
+        e?.itemId === itemId &&
+        (kind !== 'question' || (e as { text?: unknown }).text === text),
+    );
 
   // A deterministic id that cannot collide with an UNRELATED entry that
   // happens to already own the obvious one. Same input, same output, always.
@@ -216,7 +242,7 @@ function migrateToV12(db: PracticeDB): PracticeDB {
     }
     if (typeof teacherQuestion === 'string' && teacherQuestion.trim().length > 0) {
       const base = `question:${item.id}`;
-      if (!represented(base, 'question', item.id)) {
+      if (!represented(base, 'question', item.id, teacherQuestion)) {
         const id = freeId(base);
         takenIds.add(id);
         added.push({
@@ -259,6 +285,9 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   if (fromVersion < 9) next = migrateToV9(next);
   if (fromVersion < 10) next = migrateToV10(next);
   if (fromVersion < 11) next = migrateToV11(next);
-  if (fromVersion < 12) next = migrateToV12(next);
+  // Unconditional, not gated on `fromVersion < 12`: see migrateToV12's own
+  // docstring for why an already-current-declared database still needs this
+  // pass over it.
+  next = migrateToV12(next);
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

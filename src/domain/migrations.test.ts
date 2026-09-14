@@ -214,6 +214,15 @@ describe('v11 → v12 · legacy lesson intent', () => {
       itemId: 'i-collision',
     });
 
+    // 6b. A generated id that already names a DIFFERENT question is not
+    //     "already represented" just because the id/kind/itemId match — the
+    //     content has to agree too. Both survive: the pre-existing question
+    //     is untouched and the new one gets its own collision-safe id.
+    const conflictExisting = agenda.find((e) => e.id === 'question:i-conflict');
+    expect(conflictExisting).toMatchObject({ kind: 'question', itemId: 'i-conflict', text: 'different existing question' });
+    const conflictNew = agenda.find((e) => e.id === 'question:i-conflict~2');
+    expect(conflictNew).toMatchObject({ kind: 'question', itemId: 'i-conflict', text: 'new distinct question' });
+
     // 7. The legacy fields are gone only now their content is represented.
     for (const raw of out.items as unknown as LegacyItem[]) {
       expect('assignedForLesson' in raw, raw.id).toBe(false);

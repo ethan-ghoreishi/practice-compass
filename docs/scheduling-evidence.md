@@ -46,6 +46,14 @@ resting ("dormant") material never surfaces in a suggestion. It stays fully
 practisable by choosing it directly, keeps its review data, and comes straight
 back with a status change.
 
+A swap draws from the SAME candidate pool as the build, not just the same
+eligibility test: `candidatePool` (`plan.ts`) computes the practised-today
+exclusion (§below) and its honest repeat fallback once, and both
+`buildSessionPlan` and `swapSegment` read it — a swap can never hand back
+material the build itself deliberately stepped past, and a warm-up swap
+excludes a due-for-review or lesson-committed candidate exactly as the
+build's own warm-up pool does.
+
 ## 2. Lesson urgency — from the commitment's own class
 
 A `preparation` entry in the lesson agenda names ONE item and ONE class. That

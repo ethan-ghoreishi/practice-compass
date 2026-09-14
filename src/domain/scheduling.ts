@@ -758,6 +758,21 @@ const REVIEW_MODES: ReviewMode[] = ['auto', 'interval', 'manual'];
 const REVIEW_TYPES: ReviewType[] = ['retention', 'repair', 'integration', 'maintenance', 'teacher_check'];
 
 /**
+ * A real calendar date, not merely a string SHAPED like one:
+ * `/^\d{4}-\d{2}-\d{2}$/` matches "2027-99-99" and "2026-02-30" just as
+ * happily as a genuine date. `Date.UTC` normalises an out-of-range month or
+ * day rather than rejecting it (day 30 of February silently becomes March
+ * 2nd), so the shape regex alone lets exactly that kind of nonsense through —
+ * the round trip through the SAME components is what actually proves it.
+ */
+function isValidISODate(s: string): boolean {
+  if (!ISO_DATE.test(s)) return false;
+  const [y, m, d] = s.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+/**
  * Validate the scheduling fields of an INBOUND database before it is
  * installed. Bounded to the decision loop's own data — dates readable, enums
  * known, numbers finite, pending rows pointing at items that exist. It does
@@ -767,7 +782,7 @@ const REVIEW_TYPES: ReviewType[] = ['retention', 'repair', 'integration', 'maint
  */
 export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews'>): string | null {
   for (const i of db.items) {
-    if (i.nextReviewDate !== undefined && !ISO_DATE.test(String(i.nextReviewDate))) {
+    if (i.nextReviewDate !== undefined && !isValidISODate(String(i.nextReviewDate))) {
       return `Item "${i.title ?? i.id}" has an unreadable next-review date.`;
     }
     if (i.reviewMode !== undefined && !REVIEW_MODES.includes(i.reviewMode)) {
@@ -776,7 +791,7 @@ export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews
     if (i.nextReviewSource !== undefined && i.nextReviewSource !== 'auto' && i.nextReviewSource !== 'user') {
       return `Item "${i.title ?? i.id}" has an unknown review-date source.`;
     }
-    if (i.srLastProgressDay !== undefined && !ISO_DATE.test(String(i.srLastProgressDay))) {
+    if (i.srLastProgressDay !== undefined && !isValidISODate(String(i.srLastProgressDay))) {
       return `Item "${i.title ?? i.id}" has an unreadable spacing-progress day.`;
     }
     for (const key of ['srReps', 'srEase', 'srIntervalDays', 'reviewIntervalDays'] as const) {
@@ -790,7 +805,7 @@ export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews
   for (const r of db.reviews) {
     if (seen.has(r.id)) return `Two reviews share the id "${r.id}".`;
     seen.add(r.id);
-    if (!ISO_DATE.test(String(r.dueDate))) return `A review for "${r.practiceItemId}" has an unreadable due date.`;
+    if (!isValidISODate(String(r.dueDate))) return `A review for "${r.practiceItemId}" has an unreadable due date.`;
     if (!REVIEW_TYPES.includes(r.reviewType)) return `A review for "${r.practiceItemId}" has an unknown type.`;
     // A row pointing at an item that no longer exists is legacy debris, not
     // invalid new intent — it is tolerated (and ignored by every reader) rather

@@ -9,6 +9,7 @@ import {
   redistributePlan,
   swapSegment,
   clampSchedulingParams,
+  todayISODate,
   validateBudgetMinutes,
   type PlanBucket,
   type SessionPlan as SessionPlanT,
@@ -87,12 +88,23 @@ function PlanPreview() {
   // needing regeneration, so stale work can never be started by accident.
   const rev = useStore((s) => s.rev);
   const [baseRev, setBaseRev] = useState(rev);
+  // The LOCAL CALENDAR DAY the visible draft was built for. `rev` alone
+  // cannot catch a plan left open across midnight with no database write in
+  // between: `db.items`/`db.blocks`/`db.reviews` are identical, so `rev`
+  // never moves, yet "today's class" and "due today" are no longer honest
+  // once the day has actually rolled. Tracked the same way as `rev` — marking
+  // the draft stale rather than silently rewriting it — so a deliberate swap
+  // or removal survives the boundary exactly as it survives any other change
+  // underneath the plan.
+  const today = todayISODate(now);
+  const [baseDay, setBaseDay] = useState(today);
   if (seedKey !== seed) {
     setSeed(seedKey);
     setPlan(build);
     setBaseRev(rev);
+    setBaseDay(today);
   }
-  const stale = rev !== baseRev;
+  const stale = rev !== baseRev || today !== baseDay;
 
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
   const editorArgs = () => {
@@ -117,6 +129,7 @@ function PlanPreview() {
     setPlan(build);
     setSeed(seedKey);
     setBaseRev(rev);
+    setBaseDay(today);
   }
   function removeAt(i: number) {
     const segments = plan.segments.filter((_, idx) => idx !== i);
@@ -228,7 +241,11 @@ function PlanPreview() {
 
       {stale && (
         <div className="card card-quiet small" role="status" style={{ color: 'var(--tone-warn)' }}>
-          <span dir="ltr">Your practice data changed while this plan was open. Regenerate it before you start.</span>
+          <span dir="ltr">
+            {today !== baseDay
+              ? 'This plan was built for a day that has passed. Regenerate it before you start.'
+              : 'Your practice data changed while this plan was open. Regenerate it before you start.'}
+          </span>
         </div>
       )}
 

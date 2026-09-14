@@ -207,6 +207,17 @@ export interface CloseSessionInput {
    * work committed for a class. Targetless means honestly unassigned.
    */
   newQuestion?: { text: string; lessonId?: ID };
+  /**
+   * The `now` the close screen actually PREVIEWED its decision with — never
+   * read from module scope inside `closeSession`. Recomputing a fresh
+   * `new Date()` here instead would let the saved date silently diverge from
+   * the one the screen just showed if the local day rolled between the
+   * screen's last render and this call; the caller (`CloseBlock`) is
+   * responsible for checking that first and refusing to call this while they
+   * disagree. Defaults to `new Date()` for callers with no decision to keep
+   * in step (there are none in-app; only tests omit it).
+   */
+  now?: Date;
 }
 
 export interface ItemPatch {
@@ -1023,7 +1034,7 @@ export const useStore = create<StoreState>()(
       cancelSession: () => set({ active: null }),
 
       closeSession: (input) => {
-        const now = new Date();
+        const now = input.now ?? new Date();
         const { active, db, activePlan } = get();
         if (!active) return;
         const item = db.items.find((i) => i.id === active.itemId);

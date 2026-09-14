@@ -319,6 +319,17 @@ export function createQuestion(args: {
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
 
 /**
+ * A real ISO date-time, not merely a string shaped like the prefix of one:
+ * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
+ * happily as a genuine timestamp. Every `askedAt` this app itself writes
+ * comes from `nowISO` (`new Date().toISOString()`), which `Date.parse` always
+ * reads back losslessly, so this rejects nothing legitimate.
+ */
+function isValidISODateTime(s: string): boolean {
+  return ISO_DATE_TIME.test(s) && Number.isFinite(Date.parse(s));
+}
+
+/**
  * Validate the agenda collection of an INBOUND database, before anything is
  * installed. Returns a human-readable problem, or null when the collection is
  * usable. Deliberately bounded to this model plus the scheduling fields it
@@ -327,6 +338,18 @@ const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
  * Legitimate unassigned and detached historical records PASS: an entry with no
  * lesson, an asked question whose item is gone, a question with no item at all
  * are all honest states this app produces itself.
+ *
+ * A LIVE `lessonId` that resolves to NOTHING is different: `deleteLesson`
+ * always converts the live reference to `detachedFromLessonId` (see
+ * `detachLesson`), so this app never leaves one dangling — a `lessonId` that
+ * is neither absent nor resolving is invalid new intent, not legacy debris.
+ * A dangling `itemId` stays TOLERATED, deliberately asymmetric with
+ * `lessonId`: the v11→v12 migration mints entries from `db.items` at the
+ * moment it runs, so an item deleted afterwards leaves its own agenda entries
+ * pointing at nothing — every reader already copes with that, the same way
+ * a dangling `instrumentId` is tolerated just above — and refusing to restore
+ * a backup over one would make the owner's own documented recovery copy
+ * unrestorable, exactly the data loss this guard exists to prevent.
  */
 export function validateLessonAgenda(
   db: Pick<PracticeDB, 'lessonAgenda' | 'items' | 'lessons' | 'instruments'>,
@@ -369,21 +392,22 @@ export function validateLessonAgenda(
       return `Lesson-agenda entry "${e.id}" is missing its instrument.`;
     }
     void instruments;
-    // A target that RESOLVES must agree with the entry's instrument — that is
-    // the invariant this model exists to keep, and a mismatch is invalid new
-    // intent. A target that no longer resolves is legacy debris: every reader
-    // already copes with it (a question with a missing item renders without a
-    // title; a preparation naming a missing item matches nothing), and
-    // refusing an entire restore over one is the data loss this guard is
-    // supposed to prevent, not an example of it.
+    // A LIVE lesson target that resolves to nothing at all is refused
+    // outright — see this function's own docstring for why that is never
+    // legacy debris. A target that resolves must also agree with the
+    // entry's instrument.
     if (typeof e.lessonId === 'string') {
       const lesson = lessonById.get(e.lessonId);
-      if (lesson && lesson.instrumentId !== e.instrumentId) {
+      if (!lesson) return `Lesson-agenda entry "${e.id}" names a class that no longer exists.`;
+      if (lesson.instrumentId !== e.instrumentId) {
         return `Lesson-agenda entry "${e.id}" names a class on a different instrument.`;
       }
     } else if (e.lessonId !== undefined) {
       return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
     }
+    // An item target that no longer resolves is tolerated (see the
+    // docstring); one that DOES resolve must agree with the entry's
+    // instrument — a mismatch there is invalid new intent regardless.
     if (e.kind === 'preparation') {
       if (typeof e.itemId !== 'string' || !e.itemId) {
         return `Preparation "${e.id}" names no practice item.`;
@@ -404,7 +428,7 @@ export function validateLessonAgenda(
       } else if (e.itemId !== undefined) {
         return `Question "${e.id}" has an unreadable item reference.`;
       }
-      if (e.askedAt !== undefined && (typeof e.askedAt !== 'string' || !ISO_DATE_TIME.test(e.askedAt))) {
+      if (e.askedAt !== undefined && (typeof e.askedAt !== 'string' || !isValidISODateTime(e.askedAt))) {
         return `Question "${e.id}" has an unreadable asked date.`;
       }
       if (e.answer !== undefined && typeof e.answer !== 'string') {

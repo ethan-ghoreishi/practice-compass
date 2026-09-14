@@ -6,6 +6,7 @@ import {
   lessonLabel,
   planNextReview,
   proposedCloseMinutes,
+  todayISODate,
   type ReviewAnswer,
   type ReviewPlan,
   RESULT_LABELS,
@@ -43,7 +44,17 @@ export default function CloseBlock() {
   // when the page comes back into view. A close screen left open across
   // midnight must not write a date derived from yesterday — and the draft in
   // the fields above survives the refresh, because only `now` changes.
-  const now = useDecisionNow();
+  //
+  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
+  // so it can lag the true instant by up to that long. `nowOverride` closes
+  // that gap at the one moment it actually matters — Save — without needing
+  // the shared hook to expose a manual refresh: `handleSave` sets it the
+  // instant it finds the real local day has moved past what `now` reflects,
+  // forcing an immediate re-render with the CORRECTED decision instead of
+  // silently saving one that no longer matches what is on screen.
+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  const decisionNow = useDecisionNow();
+  const now = nowOverride ?? decisionNow;
 
   const item = active ? getItem(db, active.itemId) : undefined;
   // The clock was paused on Finish, so the elapsed figure is frozen —
@@ -188,6 +199,19 @@ export default function CloseBlock() {
    * close that deliberately recorded no judgement.
    */
   function handleSave(withoutResult = false) {
+    // The local day may have rolled since `now` (and therefore `review`) was
+    // last computed — `useDecisionNow` only checks every 30 seconds, plus
+    // visibility/focus. Catch that HERE, at the one instant it can actually
+    // change what gets saved, rather than letting `closeSession` silently
+    // recompute a different day's decision than the one just shown. Refresh
+    // and stop: the draft above is untouched, so Save simply works once the
+    // corrected line is on screen.
+    const trueNow = new Date();
+    if (todayISODate(trueNow) !== todayISODate(now)) {
+      setNowOverride(trueNow);
+      return;
+    }
+
     const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
     const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && review ? 'scheduled' : 'declined';
     const newStatus: ItemStatus | undefined =
@@ -204,6 +228,10 @@ export default function CloseBlock() {
       // ONLY a date the owner actually typed — never the date the screen is
       // merely SHOWING, which for an early session is the item's existing one.
       nextReviewDate: closeOverrideDate(answer, override),
+      // The SAME `now` `review` was just computed with — never a fresh
+      // `new Date()` inside the store, which is exactly what could disagree
+      // with what this screen showed.
+      now,
       reviewType: review?.reviewType ?? 'retention',
       newQuestion:
         becomeTeacherQ && teacherQText.trim()

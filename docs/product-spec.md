@@ -58,6 +58,14 @@ an automatic date forward, never postpone it, and a date the musician chose them
 stands until it is due or they change it. Nothing about that is a judgement of effort: it
 is the difference between "I played this today" and "I proved I still had it."
 
+**The date you see is the date that gets saved, even across midnight.** A close screen —
+or a session plan — left open while the day genuinely rolls over never silently writes a
+decision for the day it was previewed on. It refreshes the visible date/reasons first
+(the musician's own words survive the refresh) and only then lets Save go through; a
+practice-session preview left open the same way marks itself as needing a rebuild rather
+than starting a session it no longer honestly describes. Trustworthy here means the app
+never quietly disagrees with itself about what day it is.
+
 ## Design constraints that shaped the build
 
 - **Start a block in < 30 seconds.** Hence smart defaults: status determines mode,

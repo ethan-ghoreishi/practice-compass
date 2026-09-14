@@ -4,7 +4,7 @@ title: Build a daily session I can trust, from lesson commitments to the next re
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/22
 intent: 20260913-build-a-daily-session-i-can-trust-from-l-402e
 tier: heavy
-stage: prove
+stage: review
 baseline:
   commit: b6a4fecbad4e96af746024f7bae3df728b72f1ec
   branch: main
