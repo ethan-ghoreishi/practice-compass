@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import Layout from './components/Layout';
-import { CompassIcon } from './components/icons';
+import { CompassIcon, UploadIcon } from './components/icons';
 import { hasUnfinishedPractice, deferredSyncRetry } from './domain';
 import { useStore, useHydrationStatus } from './store/useStore';
 import { getSyncConfig, syncNow, useSyncStatus } from './store/githubSync';
+import { recoverFromRefusedHydration } from './store/backup';
 // Today stays in the entry chunk (it is always the first screen); every other
 // route loads on demand — smaller initial JS, and the PWA precaches all
 // chunks anyway so offline still has everything.
@@ -26,6 +27,63 @@ const SessionPlan = lazy(() => import('./pages/SessionPlan'));
 const TeacherReport = lazy(() => import('./pages/TeacherReport'));
 const Settings = lazy(() => import('./pages/Settings'));
 const More = lazy(() => import('./pages/More'));
+
+/**
+ * The one recovery action reachable from a refused COLD-START hydration
+ * (§C7): Settings' own Import control never mounts, since the whole routed
+ * app — Settings included — is gated behind `hydrated`, and this refusal is
+ * exactly what keeps it false. Narrowly scoped to this one screen: it reuses
+ * `recoverFromRefusedHydration` (itself a thin wrapper over the SAME
+ * `importFullBackup` validation/install path every other inbound door
+ * already uses), never a second import implementation. The caller never
+ * renders this for a too-new refusal — there is no safe import/downgrade for
+ * that case, only "update the app".
+ */
+function ColdStartRecovery() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const text = await file.text();
+      const result = await recoverFromRefusedHydration(text);
+      // A rejection leaves the refused bytes exactly as they were (§C7's own
+      // validated install path never writes on failure) — surface it and let
+      // the owner try a different file. Success needs no message here: it
+      // flips `hydrated` and this whole screen unmounts immediately.
+      if (!result.ok) setError(result.error);
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  return (
+    <div className="stack-sm" style={{ alignItems: 'center' }}>
+      <button className="btn btn-sm" onClick={() => fileRef.current?.click()} disabled={busy}>
+        <UploadIcon /> {busy ? 'Restoring…' : 'Restore from backup'}
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        aria-label="Restore backup file"
+        hidden
+        onChange={onFile}
+      />
+      {error && (
+        <p className="tiny" style={{ margin: 0, color: 'var(--tone-alert)' }}>
+          Import failed: {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function useThemeAttribute() {
   const theme = useStore((s) => s.theme);
@@ -101,9 +159,12 @@ export default function App() {
   // `onFinishHydration` is wired to the success path only), so without this
   // branch a cold start with already-invalid persisted bytes stayed on
   // "Loading…" forever with no way to know why. This reads `useHydrationStatus`
-  // only — it never writes to `useStore`, so rendering this screen touches
-  // neither the live nor the persisted database: the refused bytes are
-  // exactly as they were.
+  // only — it never writes to `useStore` on its own, so merely RENDERING this
+  // screen touches neither the live nor the persisted database: the refused
+  // bytes stay exactly as they were until the owner explicitly picks a
+  // recovery file through `ColdStartRecovery` below (invalid/corrupt-data
+  // case only — never offered for a too-new refusal, which has no safe
+  // import/downgrade).
   if (!hydrated) {
     if (hydrationStatus.refused) {
       return (
@@ -120,11 +181,12 @@ export default function App() {
               Nothing has been changed, overwritten or deleted — your saved data is exactly as it was.{' '}
               {hydrationStatus.tooNew
                 ? 'Update the app on this device to open it again.'
-                : 'If another device still has this data, export a fresh backup there, and use Import in Settings once this device can read it again.'}
+                : 'Restore a backup below, or export a fresh one from another device first if this one still has it.'}
             </p>
             {hydrationStatus.message && (
               <p className="tiny faint" style={{ margin: 0 }}>{hydrationStatus.message}</p>
             )}
+            {!hydrationStatus.tooNew && <ColdStartRecovery />}
           </div>
         </div>
       );

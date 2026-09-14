@@ -15,6 +15,13 @@ import { addDays, nowISO, toISODate } from './util';
 // the single-active-clock guard — so its regression coverage extends this
 // ac-15 test instead of being left unproven.
 import { useStore, getLastHydrationError, useHydrationStatus } from '../store/useStore';
+// The cold-start refusal screen and its recovery action are rendered UI, not
+// store wiring — reusing the SAME real-browser harness the two journey tests
+// use (never a second import implementation, never jsdom/RTL as a new
+// testing platform) is what lets this test prove the recovery action is
+// actually reachable and actually works, not merely that the store computes
+// the right flags.
+import { openPracticeApp, readPersistedState, reload, writePersistedState } from '../../tests/practiceBrowser';
 
 // The IndexedDB-backed persist storage doesn't exist in this test environment
 // (no real indexedDB global) — same stub routines.test.ts uses, except the
@@ -572,6 +579,80 @@ describe('the v12 model at every inbound door', () => {
     expect(coldNewer.getLastHydrationError()).toMatch(/newer version/i);
     expect(coldNewer.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
     expect(coldNewer.useHydrationStatus.getState().message).toMatch(/newer version/i);
+
+    // 8. THE RECOVERY ROUTE ITSELF, RENDERED — a sealed review found that
+    //    7f/7g above, however real the store wiring, never render `App`:
+    //    the corrupt-data refusal it produces tells the owner to "use Import
+    //    in Settings", but Settings — and every other route — mounts only
+    //    once `hydrated` is true, which this exact refusal prevents. Drive
+    //    the REAL App component in a real browser (the SAME Playwright
+    //    harness the two journey tests use, never a hand call to
+    //    `recoverFromRefusedHydration`), so this proves the recovery action
+    //    is actually reachable and actually works, not merely that the store
+    //    computes the right flags.
+    const app = await openPracticeApp({ now: NOW });
+    try {
+      // 8a. Seed the SAME invalid-current-version bytes 7f used, straight
+      //     into the real app's own IndexedDB, then reload — the very first
+      //     hydration attempt this real page ever makes is a refusal.
+      await writePersistedState(app, { db: badCurrent }, SCHEMA_VERSION);
+      await app.page.reload();
+      await app.page.getByText(/data couldn.t be loaded safely/).waitFor({ timeout: 20_000 });
+      await app.page.getByText(/looks invalid or corrupted/).waitFor();
+      const restoreInput = app.page.getByLabel('Restore backup file');
+      await app.page.getByRole('button', { name: /Restore from backup/ }).waitFor();
+      // Rendering the refusal screen — even once its recovery control has
+      // mounted and become interactive — writes NOTHING on its own: the
+      // refused bytes are still exactly what was seeded above.
+      const beforeRecovery = await readPersistedState(app);
+      expect(beforeRecovery).toEqual({ state: { db: badCurrent }, version: SCHEMA_VERSION });
+
+      // 8b. An INVALID recovery file is rejected through REAL §C7 validation
+      //     (the same dangling-itemId rule 7c/7f already exercise headlessly)
+      //     — and the refused bytes already on this device are NOT silently
+      //     overwritten by the failed attempt.
+      await restoreInput.setInputFiles({
+        name: 'bad.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify(badCurrent), 'utf8'),
+      });
+      await app.page.getByText(/Import failed:/).waitFor({ timeout: 20_000 });
+      await app.page.getByText(/data couldn.t be loaded safely/).waitFor();
+      expect(await readPersistedState(app)).toEqual(beforeRecovery);
+
+      // 8c. A VALID backup genuinely recovers the app — reachable BEFORE
+      //     hydration ever succeeded, installed through the real store path
+      //     (`recoverFromRefusedHydration` -> `importFullBackup` ->
+      //     `importDB`), the identical wiring every other inbound door uses.
+      await restoreInput.setInputFiles({
+        name: 'good.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(serializeExport(v12, NOW), 'utf8'),
+      });
+      await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
+
+      // 8d. The recovery is DURABLE, not a live-state patch that a reload
+      //     would lose: reloading hydrates cleanly from what was actually
+      //     written, carrying the recovered agenda with it.
+      await reload(app);
+      const after = await readPersistedState(app);
+      const afterDb = (after.state as { db: PracticeDB }).db;
+      expect(afterDb.lessonAgenda.length).toBe(v12.lessonAgenda.length);
+
+      // 8e. A NEWER-than-supported schema offers NO recovery control at
+      //     all — there is no safe import/downgrade for it, only "update the
+      //     app", so nothing here could let the owner mistake one for the
+      //     other.
+      await writePersistedState(app, { db: { ...v12, schemaVersion: SCHEMA_VERSION + 1 } }, SCHEMA_VERSION + 1);
+      const beforeNewerRefusal = await readPersistedState(app);
+      await app.page.reload();
+      await app.page.getByText(/This device holds data saved by a newer version/).waitFor({ timeout: 20_000 });
+      expect(await app.page.getByRole('button', { name: /Restore from backup/ }).count()).toBe(0);
+      expect(await app.page.getByLabel('Restore backup file').count()).toBe(0);
+      expect(await readPersistedState(app)).toEqual(beforeNewerRefusal);
+    } finally {
+      await app.close();
+    }
   });
 });
 
