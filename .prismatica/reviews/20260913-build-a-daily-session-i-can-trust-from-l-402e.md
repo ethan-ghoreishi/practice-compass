@@ -1,27 +1,12 @@
 ---
 id: 20260913-build-a-daily-session-i-can-trust-from-l-402e
 contractId: 20260913-build-a-daily-session-i-can-trust-from-l-402e
-patchId: ef11455be76b2cd5550634cfc82fa943f9f7951d
+patchId: fd6cd73ca467e1f6d07681b89a67f1faed10a396
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: C7 new-model inbound validation
-    summary: The cold-start refusal is visible but its corrupt-data recovery
-      instruction is unreachable.
-    counterexample: At src/App.tsx:107-140, every refused hydration remains behind
-      the !hydrated full-app gate. The corrupt-data branch at src/App.tsx:123
-      tells the owner to use Import in Settings, but Settings and every route
-      are rendered only after hydrated becomes true, which this refusal
-      deliberately prevents. The owner therefore still has no actionable in-app
-      recovery route. The exact named test at src/domain/io.test.ts:548-574
-      asserts only the fresh store's hydration and reactive status; it never
-      renders App or proves that the instructed recovery action is reachable.
-      Complete the sealed family with a safe reachable recovery action while
-      preserving refused bytes, and exercise the rendered cold-start refusal and
-      that action.
-createdAt: 2026-09-14T18:03:53.701Z
-sealedAt: 2026-09-14T18:09:53.543Z
+verdict: approve
+createdAt: 2026-09-14T18:42:28.135Z
+sealedAt: 2026-09-14T18:44:54.119Z
 ---
 
 # Review: Build a daily session I can trust, from lesson commitments to the next review
@@ -35,7 +20,7 @@ sealedAt: 2026-09-14T18:09:53.543Z
 - **Contract:** 20260913-build-a-daily-session-i-can-trust-from-l-402e
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/22
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `ef11455be76b2cd5550634cfc82fa943f9f7951d`
+- **Diff patch-id:** `fd6cd73ca467e1f6d07681b89a67f1faed10a396`
 
 ## The plan the owner approved
 
@@ -502,6 +487,7 @@ Demonstrate the two named real-browser journeys after the three decision familie
 - src/pages/StageDetail.tsx
 - src/pages/TeacherReport.tsx
 - src/pages/Today.tsx
+- src/store/backup.ts
 - src/store/useStore.ts
 - tests/daily-practice.browser.test.ts
 - tests/fixtures/practice-decisions-v11.json
@@ -537,13 +523,13 @@ Demonstrate the two named real-browser journeys after the three decision familie
 **Detected from the diff:**
 
 - **adjust-how-scheduling-works** — touched via src/pages/Settings.tsx, src/pages/CloseBlock.tsx, src/domain/scheduling.ts, src/domain/plan.ts, src/domain/types.ts, src/store/useStore.ts
-- **back-up-and-restore** — touched via src/domain/io.ts, src/pages/Settings.tsx, src/store/useStore.ts
+- **back-up-and-restore** — touched via src/store/backup.ts, src/domain/io.ts, src/pages/Settings.tsx, src/store/useStore.ts
 - **browse-my-repertoire** — touched via src/pages/Repertoire.tsx, src/pages/ItemDetail.tsx
 - **capture-a-practice-item** — touched via src/components/ItemForm.tsx, src/pages/ItemDetail.tsx, src/store/useStore.ts, src/domain/factories.ts
 - **clear-a-due-review** — touched via src/pages/Today.tsx, src/store/useStore.ts, src/domain/scheduling.ts, src/domain/selectors.ts
 - **install-the-app-and-keep-it-current** — touched via src/pages/Settings.tsx, vite.config.ts
 - **log-a-class** — touched via src/pages/Lessons.tsx, src/domain/selectors.ts, src/store/useStore.ts
-- **point-this-device-at-the-nas** — touched via src/pages/Settings.tsx, src/pages/Lessons.tsx
+- **point-this-device-at-the-nas** — touched via src/pages/Settings.tsx, src/pages/Lessons.tsx, src/store/backup.ts
 - **practise-todays-recommendation** — touched via src/pages/Today.tsx, src/pages/CloseBlock.tsx, src/store/useStore.ts, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/scheduling.ts
 - **prepare-for-the-next-class** — touched via src/pages/TeacherReport.tsx, src/components/ClassQuestions.tsx, src/domain/questions.ts, src/domain/report.ts, src/pages/Lessons.tsx, src/pages/CloseBlock.tsx
 - **run-a-session-plan** — touched via src/pages/SessionPlan.tsx, src/pages/Today.tsx, src/domain/plan.ts, src/store/useStore.ts
