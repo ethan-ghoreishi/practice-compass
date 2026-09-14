@@ -22,8 +22,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-11T11:40:09.736Z
-        commit: cd0baa7caf88e5eb35e5f637536c30807316b8de
+        at: 2026-09-14T23:21:22.505Z
+        commit: 1cf214c0e421e055495ce49f6f98450d4ce8a472
     - actor: The musician
       action: Practises with no network at all.
       shows: Everything works — recommendations, blocks, reviews, notes.
@@ -32,8 +32,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-11T11:40:09.736Z
-        commit: cd0baa7caf88e5eb35e5f637536c30807316b8de
+        at: 2026-09-14T23:21:22.505Z
+        commit: 1cf214c0e421e055495ce49f6f98450d4ce8a472
     - actor: Practice Compass
       action: Checks for a new build every hour and whenever the app is brought back
         to the foreground.
@@ -43,8 +43,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-11T11:40:09.736Z
-        commit: cd0baa7caf88e5eb35e5f637536c30807316b8de
+        at: 2026-09-14T23:21:22.505Z
+        commit: 1cf214c0e421e055495ce49f6f98450d4ce8a472
     - actor: The musician
       action: Taps Reload when it suits them.
       shows: The app restarts on the new version; Settings shows the build it is
@@ -53,8 +53,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-11T11:40:09.736Z
-        commit: cd0baa7caf88e5eb35e5f637536c30807316b8de
+        at: 2026-09-14T23:21:22.505Z
+        commit: 1cf214c0e421e055495ce49f6f98450d4ce8a472
   endsWith: Both devices run the current version, neither needed reinstalling, and
     neither needs a network to practise.
   variations:
