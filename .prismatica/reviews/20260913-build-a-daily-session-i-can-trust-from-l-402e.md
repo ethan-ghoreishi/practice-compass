@@ -1,29 +1,29 @@
 ---
 id: 20260913-build-a-daily-session-i-can-trust-from-l-402e
 contractId: 20260913-build-a-daily-session-i-can-trust-from-l-402e
-patchId: f4880b90fda08ea18f132e583a0ee757a20d4b6c
+patchId: 3793d32877192fc8b9a1bbd79591e115bcffe603
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: C7 new-model inbound validation
-    summary: Hydration bypasses new-model validation and accepts newer schemas
-      instead of refusing them.
-    counterexample: At src/store/useStore.ts:1611-1635, both persist migrate and
-      merge call migrateToCurrent without validateDB or a newer-version guard. A
-      read-only probe through the actual useStore/Zustand persist.rehydrate with
-      in-memory storage and writes disabled accepted version=12 agenda questions
-      with itemId='nonexistent' and askedAt='2026-02-30T12:00:00.000Z';
-      hasHydrated() was true and both invalid values entered live db unchanged.
-      Persisted version=13 with db.schemaVersion=13 also hydrated successfully
-      as schemaVersion=12 because migrations.ts:292 stamps the current version.
-      The legacy-question conversion now succeeds, but this sibling inbound
-      boundary still fails C7/ac-15. Extend the exact named test 'all inbound
-      paths preserve the new model or reject before replacement' to exercise
-      real hydration with invalid/current/newer inputs, preserving the installed
-      state and providing actionable refusal.
-createdAt: 2026-09-14T16:38:35.568Z
-sealedAt: 2026-09-14T16:53:01.489Z
+    summary: Refused cold-start hydration leaves the app permanently on Loading
+      without actionable refusal.
+    counterexample: At src/store/useStore.ts:1725-1741 the refusal is stored only in
+      lastHydrationError, whose only consumer is io.test.ts. A read-only probe
+      through the real store and Zustand persistence with in-memory storage
+      reproduced schemaVersion=13 and current-v12 dangling itemId refusals with
+      hydrated=false, hasHydrated=false and zero persistence writes.
+      App.tsx:99-106 therefore continues to render only Loading, hiding the
+      reason and all recovery guidance. The ac-15 named test first hydrates
+      valid data at io.test.ts:448-461, so its subsequent refusals miss the
+      cold-start state. Complete this family with a reactive, non-persisted
+      visible error and actionable recovery guidance while preserving stored
+      bytes; extend 'all inbound paths preserve the new model or reject before
+      replacement' to cover refusal before any successful hydration and verify
+      the rendered refusal.
+createdAt: 2026-09-14T17:26:23.788Z
+sealedAt: 2026-09-14T17:31:34.177Z
 ---
 
 # Review: Build a daily session I can trust, from lesson commitments to the next review
@@ -37,7 +37,7 @@ sealedAt: 2026-09-14T16:53:01.489Z
 - **Contract:** 20260913-build-a-daily-session-i-can-trust-from-l-402e
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/22
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `f4880b90fda08ea18f132e583a0ee757a20d4b6c`
+- **Diff patch-id:** `3793d32877192fc8b9a1bbd79591e115bcffe603`
 
 ## The Delta this change was framed from
 
@@ -83,630 +83,372 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **C5 lossless and complete lesson-intent migration** — Current-version hydration bypasses the unconditional migration and accepts incomplete conversion.
-  _counterexample:_ src/store/useStore.ts:1611-1618: Zustand invokes migrate only when the persisted version differs. With persisted version=12, a v12 database containing teacherQuestion='hydration leftover' and lessonAgenda=[] hydrates with the legacy field unchanged and zero agenda entries. Reproduced through the actual store/Zustand using in-memory storage with writes disabled. Extend 'all inbound paths preserve the new model or reject before replacement' to exercise actual current-version hydration, not only validateDB payload wrappers.
-- **A/B live decision freshness and preview-write agreement** — Start plan still accepts yesterday's preview before the next clock poll.
-  _counterexample:_ src/pages/SessionPlan.tsx:99-107,141-145 and src/components/useDecisionNow.ts:23-32: build at 23:59:59, then click Start plan at 00:00:01 without a visibility/focus event and before the 30-second poll. Both today and baseDay still represent yesterday, stale is false, and startPlan installs the old selections/reasons without checking real time. Extend 'daily practice browser journey preserves the decision across close and rebuild' with this no-event Start race; its new plan-midnight branch explicitly dispatches visibilitychange.
-- **C7 new-model inbound validation** — Invalid asked calendar dates and dangling new item targets still pass inbound validation.
-  _counterexample:_ src/domain/lessonAgenda.ts:328-329,411-431: validateDB accepts a v12 question with askedAt='2026-02-30T12:00:00.000Z', because Date.parse normalises it, and accepts itemId='nonexistent'. Both reproduced in read-only probes. The orphan-item exemption is not supported by the actual producer: src/store/useStore.ts:801-828 calls detachItem, which removes preparations and converts question itemId to detachedFromItemId. Extend 'all inbound paths preserve the new model or reject before replacement' across valid calendar components and live item references, while preserving genuinely detached history and legacy restoration.
+- **C7 new-model inbound validation** — Hydration bypasses new-model validation and accepts newer schemas instead of refusing them.
+  _counterexample:_ At src/store/useStore.ts:1611-1635, both persist migrate and merge call migrateToCurrent without validateDB or a newer-version guard. A read-only probe through the actual useStore/Zustand persist.rehydrate with in-memory storage and writes disabled accepted version=12 agenda questions with itemId='nonexistent' and askedAt='2026-02-30T12:00:00.000Z'; hasHydrated() was true and both invalid values entered live db unchanged. Persisted version=13 with db.schemaVersion=13 also hydrated successfully as schemaVersion=12 because migrations.ts:292 stamps the current version. The legacy-question conversion now succeeds, but this sibling inbound boundary still fails C7/ac-15. Extend the exact named test 'all inbound paths preserve the new model or reject before replacement' to exercise real hydration with invalid/current/newer inputs, preserving the installed state and providing actionable refusal.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index aa77d44..7ee4c3a 100644
+index 7ee4c3a..35bd928 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -675,22 +675,38 @@ where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSche
- run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
- missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
- and a target that RESOLVES to a different instrument all refuse the import with
--actionable detail. A DANGLING `itemId` — set, but resolving to nothing — stays tolerated:
--the v11→v12 migration mints entries from `db.items` at the moment it runs, so an item
--deleted afterwards leaves its own agenda entries pointing at nothing, and every reader
--already copes with that (the docstring above already spells out the same tolerance for a
--dangling `instrumentId`); refusing a restore over one would make the owner's own
--documented recovery copy unrestorable — exactly the data loss this guard exists to
--prevent, not an example of it. A DANGLING `lessonId` is different and is now REFUSED: this
--app never leaves one dangling on its own — `deleteLesson` always converts a live
--`lessonId` to `detachedFromLessonId` (see `detachLesson`), so a `lessonId` that is neither
--absent nor resolving is invalid new intent, not legacy debris to wave through. A sealed
--review reproduced `validateDB` accepting `lessonId: 'nonexistent'` before this. Calendar
--values are also checked for REAL validity now, not merely shape:
--`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` and a question's `askedAt` all
--round-trip through their own components (`/^\d{4}-\d{2}-\d{2}$/` alone happily matched
--`"2027-99-99"` and `"2026-02-30"`, which `Date.UTC` silently normalises rather than
--rejects) — a sealed review reproduced both accepted.
-+actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
-+its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
-+`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
-+intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
-+accepting `lessonId: 'nonexistent'` before this.
-+
-+**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
-+section previously tolerated it on the theory that the v11→v12 migration mints entries
-+from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
-+agenda entries pointing at nothing. A sealed review found that theory does not hold
-+against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
-+`detachItem` in the SAME synchronous update that removes the item — a preparation naming
-+it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
-+so there is no in-app path that leaves a live `itemId` dangling any more than there is for
-+`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
-+a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
-+unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
-+(the same shape `detachLesson` already used for `lessonId`), so this strict check never
-+sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
-+not a hand-built approximation of its shape.
-+
-+**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
-+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
-+`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
-+round-trip their calendar components through `Date.UTC` rather than trusting a shape
-+regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
-+matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
-+NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
-+it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
-+check had already been fixed once, but its date-TIME sibling in a different file had not.
-+The two checks stay small and separately owned, one per file, rather than merged into a
-+shared import.
+@@ -708,6 +708,29 @@ check had already been fixed once, but its date-TIME sibling in a different file
+ The two checks stay small and separately owned, one per file, rather than merged into a
+ shared import.
  
++**THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO, NOT ONLY `validateDB`'S IMPORT-PATH
++CALLERS.** A sealed review found Zustand's own persist `migrate`/`merge` (`useStore.ts`)
++called `migrateToCurrent` directly, bypassing everything above: a persisted schema NEWER
++than this build understands got silently stamped down to `SCHEMA_VERSION` by
++`migrateToCurrent`'s own final line and hydrated anyway, and an already-current v12
++database carrying a dangling live `itemId` or an impossible `askedAt` entered live state
++unchanged — reproduced through the real Zustand `persist.rehydrate()`, not merely
++`validateDB` called by hand. Both hooks now call `validateDB` itself — the SAME function,
++not a parallel check — so hydration refuses exactly what every other inbound door already
++refuses. Letting it THROW there (never caught) is deliberate: `hydrate()` only calls its
++own raw `set()` once `migrate`/`merge` return normally, and only persists the result back
++to storage after THAT — a thrown validation error rejects the whole promise chain before
++either happens, so a refused hydration leaves BOTH the live state and whatever is actually
++on disk exactly as they were, never a downgraded-and-relabelled or partially-installed
++in-between. The gate that flips `hydrated: true` deliberately stays UNFLIPPED on a refusal
++rather than forcing it open: every external call to `useStore.setState` — the only way to
++flip it — is itself wrapped by this same persist middleware to re-persist the current
++state immediately afterwards, so forcing it open here would write the live (fallback)
++database straight back over the very data a refusal, above all a genuinely newer schema,
++exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY, as a
++plain module variable rather than store state, for the identical reason — recording it
++through `setState` would trigger that same destructive write.
++
  ## Persian text is canonical, and direction-aware
  
-@@ -1570,6 +1586,24 @@ no scores, no "optimal" claims, no gamification.
-   whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
-   treatment `rev` already got, so a deliberate swap or removal survives a midnight
-   exactly as it survives any other change underneath the plan.
-+- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
-+  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
-+  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
-+  visibility/focus — a real device left untouched across local midnight, with no event to
-+  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
-+  button for up to that whole window. A sealed review reproduced this against the real
-+  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
-+  code installed yesterday's selections. Starting a plan is an authority boundary, so
-+  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
-+  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
-+  `stale`'s own day comparison already applies, just evaluated against the true instant
-+  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
-+  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
-+  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
-+  banner and disabled button render — a visible refusal, never a silent no-op click. This
-+  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
-+  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
-+  click in the first place.
- - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
-   warm-up timer) stays untouched. The runner orchestrates the existing
-   start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
-@@ -1692,7 +1726,13 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
+ Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
+@@ -1724,15 +1747,18 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
+   service (too big for the reactive JSON); only their lightweight metadata sits in the store.
+ - **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
    `hydrated`. Every inbound database — rehydration, manual import, sync pull,
-   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
-   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
--  `SCHEMA_VERSION`. Schema **v12** converts legacy lesson intent into `lessonAgenda` and
-+  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
-+  `migrate` when the persisted version differs from the current one, `merge`
-+  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
-+  version already matches, which would otherwise let an already-current database carry a
-+  stray legacy field forever (a sealed review reproduced exactly this; see the
-+  lesson-agenda section above for the fix and why re-running the conversion a second time
-+  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+-  conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
+-  chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
+-  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
+-  `migrate` when the persisted version differs from the current one, `merge`
+-  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
+-  version already matches, which would otherwise let an already-current database carry a
+-  stray legacy field forever (a sealed review reproduced exactly this; see the
+-  lesson-agenda section above for the fix and why re-running the conversion a second time
+-  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
++  conflict-keep-remote, archive restore — runs through the one shared `validateDB`
++  (`src/domain/io.ts`), which itself runs the `migrateToCurrent` chain
++  (`src/domain/migrations.ts`) plus the newer-schema guard and the §C7 semantic checks;
++  persistence changes must keep it green and bump `SCHEMA_VERSION`. Rehydration reaches it
++  via BOTH halves of the persist middleware — `migrate` when the persisted version differs
++  from the current one, `merge` UNCONDITIONALLY otherwise — because Zustand skips `migrate`
++  entirely once the persisted version already matches, which would otherwise let an
++  already-current database carry a stray legacy field, or genuinely invalid data, forever
++  (a sealed review reproduced exactly this — see the lesson-agenda section above for the
++  legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
++  validation/newer-schema fix and why re-running either a second time is safe). Schema
++  **v12** converts legacy lesson intent into `lessonAgenda` and
    adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
    neither is ever guessed for old data, so an existing future date keeps UNKNOWN
    provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
 diff --git a/src/domain/io.test.ts b/src/domain/io.test.ts
-index 2f53eb3..24b3803 100644
+index 24b3803..2f56ee8 100644
 --- a/src/domain/io.test.ts
 +++ b/src/domain/io.test.ts
-@@ -6,7 +6,7 @@ import { migrateToCurrent } from './migrations';
- import { createSeedDB } from './seed';
- import { createBlock, createItem, createLesson } from './factories';
- import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
--import { createPreparation, detachLesson } from './lessonAgenda';
-+import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
+@@ -1,4 +1,4 @@
+-import { describe, expect, it } from 'vitest';
++import { describe, expect, it, vi } from 'vitest';
+ import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
+ import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
+ import { serializeExport, validateDB, parseImport } from './io';
+@@ -9,6 +9,46 @@ import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
+ import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
  import { SCHEMA_VERSION, type PracticeDB } from './types';
  import { addDays, nowISO, toISODate } from './util';
++// The Zustand persist boundary (§C7's actual enforcement point, not just
++// validateDB's own import-path callers) has no allowed dedicated store test
++// file for this contract — the same situation routines.test.ts documents for
++// the single-active-clock guard — so its regression coverage extends this
++// ac-15 test instead of being left unproven.
++import { useStore, getLastHydrationError } from '../store/useStore';
++
++// The IndexedDB-backed persist storage doesn't exist in this test environment
++// (no real indexedDB global) — same stub routines.test.ts uses, except the
++// fake storage here is CONTROLLABLE per assertion: vi.hoisted keeps its state
++// reachable from the mock factory (which Vitest hoists above these imports)
++// without a temporal-dead-zone reference.
++const fakeStorage = vi.hoisted(() => {
++  let value: string | null = null;
++  let setItemCalls = 0;
++  return {
++    get: () => value,
++    set: (v: string | null) => {
++      value = v;
++    },
++    recordSetItem: () => {
++      setItemCalls += 1;
++    },
++    setItemCalls: () => setItemCalls,
++  };
++});
++vi.mock('../store/idb', async (importOriginal) => {
++  const actual = await importOriginal<typeof import('../store/idb')>();
++  return {
++    ...actual,
++    idbStorage: {
++      getItem: async () => fakeStorage.get(),
++      setItem: async (_name: string, value: string) => {
++        fakeStorage.recordSetItem();
++        fakeStorage.set(value);
++      },
++      removeItem: async () => fakeStorage.set(null),
++    },
++  };
++});
  
-@@ -77,6 +77,11 @@ describe('validateDB — backward-compatible import', () => {
-       ...db,
-       schemaVersion: 4,
-       items: [item],
-+      // Truncated to one item on purpose (this test is about pathwaySteps,
-+      // not lesson agenda) — the seed's OWN agenda entries would otherwise
-+      // dangle against every item but this one, which the strict live-itemId
-+      // check now (correctly) refuses.
-+      lessonAgenda: [],
-       pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
-     };
-     // migrateToV5's overwrite behaviour wins over the old "fill only when
-@@ -131,6 +136,8 @@ describe('validateDB — backward-compatible import', () => {
-       ...db,
-       schemaVersion: undefined,
-       items: [item],
-+      // Truncated to one item on purpose (see the sibling test above).
-+      lessonAgenda: [],
-       pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
-     });
-     const result = parseImport(legacyText);
-@@ -251,26 +258,34 @@ describe('the v12 model at every inbound door', () => {
-     expect(
-       bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
-     ).toThrow(/unreadable asked date/);
-+    // An IMPOSSIBLE calendar timestamp is refused too, not merely an
-+    // unparseable one: `Date.parse` silently NORMALISES "2026-02-30" into
-+    // March 2nd rather than rejecting it, so a shape check (or `Date.parse`
-+    // alone) happily accepted it before this. A sealed review reproduced
-+    // exactly this string passing.
-+    expect(
-+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: '2026-02-30T12:00:00.000Z' }]),
-+    ).toThrow(/unreadable asked date/);
-     // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
-     // a real agenda entry nor an honest unassigned one: `deleteLesson` always
-     // converts a live reference to a detached marker, so this app never
-     // leaves one dangling, and it is refused rather than tolerated as legacy
-     // debris.
-     expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
--    // A dangling `itemId`, by contrast, stays TOLERATED — deliberately
--    // asymmetric with `lessonId`. A genuine pre-upgrade backup can legitimately
--    // hold one whose item was deleted on another device before that deletion
--    // synced, and refusing it would make the owner's own documented recovery
--    // copy unrestorable.
--    expect(() =>
--      validateDB({ ...v12, lessonAgenda: [{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }] }),
--    ).not.toThrow();
--    expect(() =>
--      validateDB({
--        ...v12,
--        lessonAgenda: [{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }],
--      }),
--    ).not.toThrow();
-+    // A dangling `itemId` is REFUSED for the identical reason, not tolerated:
-+    // `deleteItem` (`useStore.ts`) always calls `detachItem` in the SAME
-+    // synchronous update that removes the item — a preparation naming it is
-+    // removed outright, and a question's `itemId` becomes
-+    // `detachedFromItemId` — so this app never leaves a LIVE `itemId`
-+    // dangling any more than a `lessonId`. A sealed review found this
-+    // previously tolerated on a theory the real producer above does not
-+    // support.
-+    expect(
-+      bad([{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }]),
-+    ).toThrow(/practice item that no longer exists/);
-+    expect(
-+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }]),
-+    ).toThrow(/practice item that no longer exists/);
-     expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
-     // Calendar values are checked for real, not merely shape: a due date and
-     // an item's own next-review date must both name a date that exists.
-@@ -333,6 +348,17 @@ describe('the v12 model at every inbound door', () => {
-     expect(reallyDetached).not.toHaveProperty('lessonId');
-     expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
-     expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
-+    // The item-side equivalent, against the REAL producer `detachItem`
-+    // (`deleteItem`'s own path) rather than a hand-built approximation: it
-+    // destructures `itemId` OUT rather than setting it undefined, so the
-+    // strict live-itemId check just proven above must never see one here.
-+    const questionOnItem = createQuestion({ id: 'q:real', text: 'Real question', itemId: 'i-premigrated', instrumentId: 'setar', now: NOW });
-+    const [reallyDetachedQuestion] = JSON.parse(
-+      JSON.stringify(detachItem([questionOnItem], 'i-premigrated', NOW)),
-+    ) as typeof v12.lessonAgenda;
-+    expect(reallyDetachedQuestion).not.toHaveProperty('itemId');
-+    expect(reallyDetachedQuestion).toMatchObject({ detachedFromItemId: 'i-premigrated' });
-+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetachedQuestion] })).not.toThrow();
-     expect(() =>
-       validateDB({
-         ...v12,
-diff --git a/src/domain/lessonAgenda.ts b/src/domain/lessonAgenda.ts
-index 31cede6..9630d66 100644
---- a/src/domain/lessonAgenda.ts
-+++ b/src/domain/lessonAgenda.ts
-@@ -316,17 +316,30 @@ export function createQuestion(args: {
+ const NOW = new Date('2026-06-18T12:00:00.000Z');
  
- // --- Validation -------------------------------------------------------------
- 
--const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
-+const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T/;
- 
- /**
-  * A real ISO date-time, not merely a string shaped like the prefix of one:
-  * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
-- * happily as a genuine timestamp. Every `askedAt` this app itself writes
-- * comes from `nowISO` (`new Date().toISOString()`), which `Date.parse` always
-- * reads back losslessly, so this rejects nothing legitimate.
-+ * happily as a genuine timestamp, and `Date.parse` alone is no better — it
-+ * silently NORMALISES an out-of-range day (`"2026-02-30T12:00:00.000Z"`
-+ * becomes March 2nd) rather than rejecting it, so a sealed review reproduced
-+ * that exact string passing. The calendar components are round-tripped
-+ * through `Date.UTC` the same way `scheduling.ts`'s own `isValidISODate`
-+ * checks a plain date, so an impossible day/month combination fails here
-+ * too. Every `askedAt` this app itself writes comes from `nowISO`
-+ * (`new Date().toISOString()`), which always round-trips losslessly, so this
-+ * rejects nothing legitimate.
-  */
- function isValidISODateTime(s: string): boolean {
--  return ISO_DATE_TIME.test(s) && Number.isFinite(Date.parse(s));
-+  const m = ISO_DATE_TIME.exec(s);
-+  if (!m || !Number.isFinite(Date.parse(s))) return false;
-+  const [, ys, ms, ds] = m;
-+  const y = Number(ys);
-+  const mo = Number(ms);
-+  const d = Number(ds);
-+  const dt = new Date(Date.UTC(y, mo - 1, d));
-+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+@@ -210,7 +250,7 @@ function doors(text: string): { label: string; payload: unknown }[] {
  }
  
- /**
-@@ -339,17 +352,24 @@ function isValidISODateTime(s: string): boolean {
-  * lesson, an asked question whose item is gone, a question with no item at all
-  * are all honest states this app produces itself.
-  *
-- * A LIVE `lessonId` that resolves to NOTHING is different: `deleteLesson`
-- * always converts the live reference to `detachedFromLessonId` (see
-- * `detachLesson`), so this app never leaves one dangling — a `lessonId` that
-- * is neither absent nor resolving is invalid new intent, not legacy debris.
-- * A dangling `itemId` stays TOLERATED, deliberately asymmetric with
-- * `lessonId`: the v11→v12 migration mints entries from `db.items` at the
-- * moment it runs, so an item deleted afterwards leaves its own agenda entries
-- * pointing at nothing — every reader already copes with that, the same way
-- * a dangling `instrumentId` is tolerated just above — and refusing to restore
-- * a backup over one would make the owner's own documented recovery copy
-- * unrestorable, exactly the data loss this guard exists to prevent.
-+ * A LIVE `lessonId` OR a LIVE `itemId` that resolves to NOTHING is invalid new
-+ * intent, not legacy debris — this app never leaves either dangling on its
-+ * own. `deleteLesson` always converts a live `lessonId` to
-+ * `detachedFromLessonId` (see `detachLesson`). `deleteItem` (`useStore.ts`)
-+ * always calls `detachItem` in the SAME synchronous update that removes the
-+ * item: a preparation naming it is removed outright, and a question's
-+ * `itemId` is converted to `detachedFromItemId` — never left as a live
-+ * reference to nothing. A sealed review found this section previously
-+ * tolerating a dangling `itemId` on the theory that the v11→v12 migration
-+ * mints entries from `db.items` at the moment it runs, so an item deleted
-+ * afterwards could leave its own agenda entries pointing at nothing — that
-+ * theory does not hold against the actual producer above, which cleans up
-+ * synchronously in the SAME update, so a genuinely dangling live `itemId` can
-+ * only be invalid data, not a legitimate history. A GENUINELY DETACHED
-+ * record — `detachedFromItemId`/`detachedFromLessonId` set, the live field
-+ * absent — is unaffected either way: `detachItem`/`detachLesson` destructure
-+ * the live field OUT rather than setting it `undefined`, so this check never
-+ * sees one to reject.
-  */
- export function validateLessonAgenda(
-   db: Pick<PracticeDB, 'lessonAgenda' | 'items' | 'lessons' | 'instruments'>,
-@@ -405,15 +425,17 @@ export function validateLessonAgenda(
-     } else if (e.lessonId !== undefined) {
-       return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
-     }
--    // An item target that no longer resolves is tolerated (see the
--    // docstring); one that DOES resolve must agree with the entry's
--    // instrument — a mismatch there is invalid new intent regardless.
-+    // A LIVE item target that resolves to nothing at all is refused outright
-+    // — see this function's own docstring for why that is never legacy
-+    // debris. One that DOES resolve must also agree with the entry's
-+    // instrument.
-     if (e.kind === 'preparation') {
-       if (typeof e.itemId !== 'string' || !e.itemId) {
-         return `Preparation "${e.id}" names no practice item.`;
-       }
-       const item = itemById.get(e.itemId);
--      if (item && item.instrumentId !== e.instrumentId) {
-+      if (!item) return `Preparation "${e.id}" names a practice item that no longer exists.`;
-+      if (item.instrumentId !== e.instrumentId) {
-         return `Preparation "${e.id}" names an item on a different instrument.`;
-       }
-     } else {
-@@ -422,7 +444,8 @@ export function validateLessonAgenda(
-       }
-       if (typeof e.itemId === 'string') {
-         const item = itemById.get(e.itemId);
--        if (item && item.instrumentId !== e.instrumentId) {
-+        if (!item) return `Question "${e.id}" names a practice item that no longer exists.`;
-+        if (item.instrumentId !== e.instrumentId) {
-           return `Question "${e.id}" names an item on a different instrument.`;
-         }
-       } else if (e.itemId !== undefined) {
-diff --git a/src/domain/plan.test.ts b/src/domain/plan.test.ts
-index 25dce1c..ed64c2b 100644
---- a/src/domain/plan.test.ts
-+++ b/src/domain/plan.test.ts
-@@ -9,6 +9,7 @@ import {
-   MAX_SEGMENT_MINUTES,
-   MIN_BUDGET_MINUTES,
-   MIN_SEGMENT_MINUTES,
-+  planPreviewDayHasPassed,
-   planSegmentStartable,
-   redistributePlan,
-   skipPlanSegment,
-@@ -505,6 +506,17 @@ describe('a running plan keeps its progress and refuses stale work', () => {
-     expect(advancePlanPointer([pendingSeg, doneSeg], 1)).toBe(0); // wraps to what is still pending
-     expect(advancePlanPointer([skippedSeg], 0)).toBe(1); // a deliberate skip stays skipped
-     expect(advancePlanPointer([doneSeg], 0)).toBe(1); // finished
+ describe('the v12 model at every inbound door', () => {
+-  it('all inbound paths preserve the new model or reject before replacement', () => {
++  it('all inbound paths preserve the new model or reject before replacement', async () => {
+     // 1. Every door migrates identically. `importFullBackup` (manual import,
+     //    sync pull, Keep remote, archive restore) and the store's own
+     //    `importDB` all route through THIS function, so a door that behaved
+@@ -388,6 +428,95 @@ describe('the v12 model at every inbound door', () => {
+     const migrated = validateDB(JSON.parse(V11_TEXT));
+     expect(migrated.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
+     expect(migrated.lessonAgenda.find((e) => e.itemId === 'i-dangling')?.instrumentId).toBe('gone');
 +
-+    // Starting a plan is an authority boundary: the preview's OWN calendar
-+    // day is checked against the caller's `now` directly — the extracted
-+    // pure transition `SessionPlan.tsx`'s click-time guard actually calls,
-+    // never a screen's own polled `now` that can lag the true instant by up
-+    // to its poll interval, which is the exact gap a real device left
-+    // untouched across midnight experiences with no event to close it.
-+    const builtFor = day(0);
-+    expect(planPreviewDayHasPassed(builtFor, NOW)).toBe(false);
-+    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, 1))).toBe(true);
-+    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, -1))).toBe(true);
++    // 7. THE ACTUAL PERSISTED-HYDRATION BOUNDARY — a sealed review found that
++    //    every check above, however thorough, only ever exercised
++    //    `validateDB`'s own import-path callers. Zustand's persist
++    //    `migrate`/`merge` called `migrateToCurrent` directly, bypassing both
++    //    the newer-schema guard and every §C7 semantic check above: a
++    //    version=13 database hydrated successfully relabelled as
++    //    schemaVersion=12 (migrateToCurrent's own final line stamps the
++    //    CURRENT version unconditionally), and an already-current v12
++    //    database carrying a dangling live itemId or an impossible askedAt
++    //    entered live state unchanged. Drive the REAL store through its own
++    //    `persist.rehydrate()` — not a hand call to `migrate`/`merge` in
++    //    isolation — so the actual wiring, including zustand's own
++    //    no-write-back-on-a-thrown-migrate behaviour, is what's under test.
++    const wrap = (db: unknown, version: number) => JSON.stringify({ state: { db }, version });
++
++    // 7a. Valid CURRENT v12 data hydrates normally.
++    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
++    await useStore.persist.rehydrate();
++    expect(getLastHydrationError()).toBeNull();
++    expect(useStore.getState().hydrated).toBe(true);
++    expect(useStore.getState().db.lessonAgenda.length).toBe(v12.lessonAgenda.length);
++
++    // 7b. Valid OLDER data migrates then hydrates — and, unlike the refusals
++    //     below, genuinely gets written back (a real upgrade worth saving).
++    const setItemsBeforeUpgrade = fakeStorage.setItemCalls();
++    fakeStorage.set(wrap((JSON.parse(V11_TEXT) as { data: unknown }).data, 11));
++    await useStore.persist.rehydrate();
++    expect(getLastHydrationError()).toBeNull();
++    expect(useStore.getState().db.schemaVersion).toBe(SCHEMA_VERSION);
++    expect(useStore.getState().db.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
++    expect(fakeStorage.setItemCalls()).toBeGreaterThan(setItemsBeforeUpgrade);
++
++    // 7c. INVALID current-v12 data — the exact sealed counterexample, a
++    //     dangling live itemId — is refused. The previously live database is
++    //     preserved BY REFERENCE (nothing was ever `set()`), and nothing is
++    //     written back over whatever is actually on disk: refusing must not
++    //     itself become a write, or a refusal of genuinely newer data (7d)
++    //     would silently destroy it the moment this build merely NOTICES the
++    //     problem.
++    const sentinel = useStore.getState().db;
++    const setItemsBeforeRefusal = fakeStorage.setItemCalls();
++    const badCurrent: PracticeDB = {
++      ...v12,
++      lessonAgenda: [
++        ...v12.lessonAgenda,
++        {
++          kind: 'question',
++          id: 'q-hydration-refused',
++          instrumentId: 'setar',
++          text: 'x',
++          itemId: 'nonexistent',
++          createdAt: '2026-01-01T00:00:00.000Z',
++          updatedAt: '2026-01-01T00:00:00.000Z',
++        },
++      ],
++    };
++    fakeStorage.set(wrap(badCurrent, SCHEMA_VERSION));
++    await useStore.persist.rehydrate();
++    expect(useStore.getState().db).toBe(sentinel);
++    expect(getLastHydrationError()).toMatch(/practice item that no longer exists/);
++    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeRefusal);
++
++    // 7d. A NEWER-than-supported schema is refused — never passed through
++    //     migrateToCurrent and relabelled as the current version, and never
++    //     written back over the (unreadable but genuinely newer) original.
++    const sentinelNewer = useStore.getState().db;
++    const setItemsBeforeNewer = fakeStorage.setItemCalls();
++    fakeStorage.set(wrap({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1));
++    await useStore.persist.rehydrate();
++    expect(useStore.getState().db).toBe(sentinelNewer);
++    expect(getLastHydrationError()).toMatch(/newer version/i);
++    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
++
++    // 7e. REPEATED hydration stays safe: refusing the identical newer-schema
++    //     data twice in a row is idempotent (same refusal, live state never
++    //     mutated, and still no write-back the second time either)...
++    await useStore.persist.rehydrate();
++    expect(useStore.getState().db).toBe(sentinelNewer);
++    expect(getLastHydrationError()).toMatch(/newer version/i);
++    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
++    // ...and re-hydrating the same valid data twice in a row produces
++    // byte-identical live state both times.
++    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
++    await useStore.persist.rehydrate();
++    const firstHydrate = JSON.stringify(useStore.getState().db);
++    await useStore.persist.rehydrate();
++    expect(JSON.stringify(useStore.getState().db)).toBe(firstHydrate);
++    expect(getLastHydrationError()).toBeNull();
    });
  });
  
-diff --git a/src/domain/plan.ts b/src/domain/plan.ts
-index 1f83294..c241ada 100644
---- a/src/domain/plan.ts
-+++ b/src/domain/plan.ts
-@@ -823,6 +823,22 @@ export function skipPlanSegment(run: PlanRun): PlanRun {
-   return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
- }
- 
-+/**
-+ * Has the local calendar day moved past the day a session-plan PREVIEW was
-+ * built for? Takes the caller's OWN `now` rather than reading a clock itself,
-+ * but the point of this function is that the caller must pass the TRUE
-+ * current instant here, never a screen's own polled `now`
-+ * (`useDecisionNow` refreshes at most every 30 seconds, plus visibility/focus)
-+ * — starting a plan is an authority boundary, the one place that lag must
-+ * never be trusted. `SessionPlan.tsx`'s own `stale` flag already renders this
-+ * same comparison against its polled `now` for the passive banner; this is
-+ * the identical rule, extracted so the click-time check reads a fresh
-+ * `Date` directly rather than waiting for that polled value to catch up.
-+ */
-+export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
-+  return todayISODate(now) !== baseDay;
-+}
-+
- export type PlanStartCheck =
-   | { ok: true; item: PracticeItem }
-   | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
-diff --git a/src/pages/SessionPlan.tsx b/src/pages/SessionPlan.tsx
-index da5b0bd..f17534f 100644
---- a/src/pages/SessionPlan.tsx
-+++ b/src/pages/SessionPlan.tsx
-@@ -5,6 +5,7 @@ import {
-   currentStage,
-   MAX_BUDGET_MINUTES,
-   MIN_BUDGET_MINUTES,
-+  planPreviewDayHasPassed,
-   preparationDatesByItem,
-   redistributePlan,
-   swapSegment,
-@@ -48,7 +49,19 @@ function PlanPreview() {
-   const [params] = useSearchParams();
-   // Refreshed at a local-day boundary so a preview left open overnight never
-   // plans against yesterday's due dates and lesson deadlines.
--  const now = useDecisionNow();
-+  //
-+  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
-+  // so it can lag the true instant by up to that long. `nowOverride` closes
-+  // that gap at the one moment it actually matters — Start — without needing
-+  // the shared hook to expose a manual refresh: the same small local-override
-+  // shape CloseBlock's own Save race uses. `start()` sets it the instant it
-+  // finds the real local day has moved past the day this preview was built
-+  // for, forcing an immediate re-render where `today`/`stale` below already
-+  // reflect it, instead of silently installing yesterday's selections under a
-+  // Start button that still reads as enabled.
-+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
-+  const decisionNow = useDecisionNow();
-+  const now = nowOverride ?? decisionNow;
- 
-   const instrumentId = sessionInstrumentId ?? db.instruments.find((i) => i.active)?.id ?? db.instruments[0]?.id ?? '';
-   // Invalid input is rejected at the boundary, never clamped into a session
-@@ -139,6 +152,19 @@ function PlanPreview() {
-     setPlan(swapSegment(plan, i, editorArgs()));
-   }
-   function start() {
-+    // Starting a plan is an authority boundary: check the TRUE current
-+    // instant here, never the polled `now` above, which can still be
-+    // showing yesterday for up to `useDecisionNow`'s own poll interval after
-+    // local midnight has genuinely passed — the exact window a dispatched
-+    // visibility/focus event papers over but a real device left untouched
-+    // does not get. A mismatch refuses the start and forces the SAME visible
-+    // refresh the passive banner below already shows for a data change,
-+    // rather than silently installing a preview for a day that has passed.
-+    const trueNow = new Date();
-+    if (planPreviewDayHasPassed(baseDay, trueNow)) {
-+      setNowOverride(trueNow);
-+      return;
-+    }
-     if (plan.segments.length === 0 || stale) return;
-     setPlanMinutes(instrumentId, plan.budgetMinutes);
-     startPlan(plan);
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index 26c2d3a..02e5714 100644
+index 02e5714..aff3539 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
-@@ -1615,7 +1615,24 @@ export const useStore = create<StoreState>()(
+@@ -56,7 +56,6 @@ import {
+   defaultModeForStatus,
+   DEFAULT_DURATION_MINUTES,
+   emptyDB,
+-  migrateToCurrent,
+   newId,
+   nowISO,
+   SCHEMA_VERSION,
+@@ -1608,9 +1607,49 @@ export const useStore = create<StoreState>()(
+         planMinutesByInstrument: s.planMinutesByInstrument,
+         activeRoutine: s.activeRoutine,
+       }),
+-      migrate: (persisted, version) => {
++      // Every other inbound door — manual import, sync pull, Keep remote,
++      // archive restore — installs a database only through `validateDB`
++      // (§C7): it refuses a newer-than-supported schema outright instead of
++      // relabelling it down, runs the shared migration chain, and rejects
++      // structurally/semantically invalid data (an impossible calendar date,
++      // a dangling live reference) with actionable detail. Hydration used to
++      // call `migrateToCurrent` directly instead, which does none of that —
++      // a persisted schema newer than this build understands got silently
++      // stamped down to SCHEMA_VERSION (migrations.ts's own final line) and
++      // hydrated anyway, and already-current-but-invalid data sailed
++      // straight into live state. Routing both hooks below through
++      // `validateDB` closes that gap at the one place ALL persisted state
++      // re-enters live state, rather than teaching every UI caller to check
++      // it separately.
++      //
++      // Letting `validateDB` THROW here (never caught) is deliberate, not an
++      // oversight: zustand's own hydrate() only calls `merge` — and only
++      // persists the result back to storage — once `migrate` has RETURNED,
++      // and only calls its raw internal `set()` once `merge` has returned. A
++      // thrown validation error rejects that promise chain before either
++      // happens (see zustand's `middleware.js`), so the previously live AND
++      // the previously persisted state are both left exactly as they were:
++      // no partial hydration, no silent downgrade-and-relabel, no
++      // destructive write-back of a refused newer snapshot. This trades away
++      // opening the app's hydration gate on a refusal (zustand's own
++      // `hasHydrated`/`onFinishHydration` are wired to the success path
++      // only) — a deliberate choice, not an oversight: EVERY external call
++      // to `useStore.setState` — which is the only way to flip that gate —
++      // is itself wrapped by this same persist middleware to write straight
++      // back to storage afterwards, so forcing the gate open here would
++      // re-persist whatever `db` is currently live and silently destroy the
++      // very data a refusal (most of all a genuinely newer schema) exists to
++      // protect. `getLastHydrationError()` below still surfaces WHY, without
++      // that write.
++      migrate: (persisted) => {
+         const state = persisted as { db?: PracticeDB } | undefined;
+-        if (state?.db) state.db = migrateToCurrent(state.db, version);
++        // `validateDB` reads the schema version off `state.db` itself (the
++        // same source of truth every other inbound door uses) rather than
++        // the envelope-level version zustand would pass as a second
++        // argument here — the two are always kept in sync by this app's own
++        // writes, and deriving from one place avoids two version signals
++        // that could ever disagree.
++        if (state?.db) state.db = validateDB(state.db);
+         return state as unknown;
        },
        merge: (persisted, current) => {
-         const p = (persisted ?? {}) as Partial<StoreState>;
--        const merged = { ...current, ...p, db: p.db ?? current.db };
-+        // Zustand only calls `migrate` above when the persisted version
-+        // differs from the current one — a persisted database that ALREADY
-+        // claims the current schema never reaches it, even when it carries a
-+        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
-+        // left behind, with `lessonAgenda` never actually completed to
-+        // represent it. `merge` is the one place ALL persisted state
-+        // re-enters live state regardless of whether `migrate` ran (the same
-+        // reasoning the active/activeRoutine freeze below relies on), so it
-+        // is where this closes for good: run the SAME idempotent, lossless
-+        // conversion `migrate` would have, unconditionally. Calling it again
-+        // on state `migrate` already processed is safe — `migrateToV12`'s own
-+        // docstring guarantees it is a no-op wherever no legacy field
-+        // survives — and calling it with `SCHEMA_VERSION` as the "from"
-+        // version is correct here because every OTHER step in the chain is
-+        // gated on a version strictly below what a current database could
-+        // ever claim; only the unconditional tail step ever runs.
-+        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
-+        const merged = { ...current, ...p, db };
+@@ -1619,19 +1658,21 @@ export const useStore = create<StoreState>()(
+         // differs from the current one — a persisted database that ALREADY
+         // claims the current schema never reaches it, even when it carries a
+         // stray `assignedForLesson`/`teacherQuestion` an interrupted write
+-        // left behind, with `lessonAgenda` never actually completed to
+-        // represent it. `merge` is the one place ALL persisted state
++        // left behind, or genuinely invalid current-schema data a corrupt
++        // write produced. `merge` is the one place ALL persisted state
+         // re-enters live state regardless of whether `migrate` ran (the same
+         // reasoning the active/activeRoutine freeze below relies on), so it
+-        // is where this closes for good: run the SAME idempotent, lossless
+-        // conversion `migrate` would have, unconditionally. Calling it again
+-        // on state `migrate` already processed is safe — `migrateToV12`'s own
+-        // docstring guarantees it is a no-op wherever no legacy field
+-        // survives — and calling it with `SCHEMA_VERSION` as the "from"
+-        // version is correct here because every OTHER step in the chain is
+-        // gated on a version strictly below what a current database could
+-        // ever claim; only the unconditional tail step ever runs.
+-        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
++        // is where both the idempotent legacy conversion AND the §C7
++        // validation close for good: run the SAME `validateDB` call
++        // `migrate` makes, unconditionally. Calling it again on state
++        // `migrate` already validated is safe and cheap — it is pure and
++        // `migrateToV12`'s own docstring guarantees its tail step is a no-op
++        // wherever no legacy field survives — and throwing here on invalid
++        // current-version data is exactly as safe as throwing in `migrate`:
++        // `set()` is never reached, and this branch never queues a persist
++        // write-back regardless (zustand only writes back after a
++        // version-mismatched `migrate` ran).
++        const db = p.db ? validateDB(p.db) : current.db;
+         const merged = { ...current, ...p, db };
          // The start/resume guards keep active/activeRoutine from BOTH being
          // set going forward, but a device that persisted a dual-running
-         // state before those guards existed reaches this merge unchecked —
-diff --git a/tests/daily-practice.browser.test.ts b/tests/daily-practice.browser.test.ts
-index 6487ed2..96874ae 100644
---- a/tests/daily-practice.browser.test.ts
-+++ b/tests/daily-practice.browser.test.ts
-@@ -227,6 +227,32 @@ describe('the daily practice loop, end to end', () => {
-       // are the thing being protected, not the stale label itself.
-       await page.getByRole('button', { name: 'Regenerate' }).click();
-       expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-+
-+      // --- 11b. THE START-PLAN RACE: NO event, NO poll — the exact gap step
-+      // 11's own dispatched visibilitychange never exercises, and a real
-+      // device left untouched genuinely experiences. Advance the clock past
-+      // midnight again and click Start IMMEDIATELY, with nothing to have told
-+      // the screen the day changed: the click itself must refuse rather than
-+      // silently install yesterday's selections under a button that still
-+      // reads as enabled, and the refusal must be VISIBLE — the same banner,
-+      // not a dead click.
-+      await page.clock.setFixedTime(new Date('2027-01-17T00:20:00'));
-+      await page.getByRole('button', { name: 'Start plan' }).click();
-+      await expect
-+        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
-+        .toBe(true);
-+      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
-+      // The click installed nothing: still the preview, not the runner.
-+      expect(await page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
-+      await page.getByRole('button', { name: 'Regenerate' }).click();
-+      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-+      // Genuinely fresh now: the same click succeeds.
-+      await page.getByRole('button', { name: 'Start plan' }).click();
-+      await expect
-+        .poll(() => page.getByRole('button', { name: 'End the plan' }).isVisible().catch(() => false))
-+        .toBe(true);
-+      await page.getByRole('button', { name: 'End the plan' }).click();
-+
-       await page.clock.setFixedTime(CLOCK);
-       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+@@ -1668,10 +1709,38 @@ export const useStore = create<StoreState>()(
+         }
+         return merged;
+       },
++      // A thrown `migrate`/`merge` above rejects zustand's internal hydration
++      // promise before it ever calls its OWN raw `set()` — correct, and the
++      // whole point: it's what leaves both live and persisted state
++      // untouched. Recording the reason here must not undo that: EVERY
++      // external call to `useStore.setState` (any ordinary store action
++      // included) is itself wrapped by this same persist middleware to
++      // write straight back to storage afterwards — see `setItem()` below
++      // this config and its unconditional call from `api.setState`. Calling
++      // it here to flip a "hydration failed" flag would immediately
++      // re-persist whatever `db` happens to be live, silently overwriting
++      // the very data this refusal exists to protect (a genuinely newer
++      // schema this build cannot read, most of all). `lastHydrationError` is
++      // therefore a plain module variable, never store state.
++      onRehydrateStorage: () => (_state, error) => {
++        lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
++      },
+     },
+   ),
+ );
  
-diff --git a/tests/lesson-agenda.browser.test.ts b/tests/lesson-agenda.browser.test.ts
-index fc3bcc0..7b82014 100644
---- a/tests/lesson-agenda.browser.test.ts
-+++ b/tests/lesson-agenda.browser.test.ts
-@@ -1,5 +1,13 @@
- import { describe, expect, it } from 'vitest';
--import { goTo, importBackup, importOutcome, openPracticeApp, reload } from './practiceBrowser';
-+import {
-+  goTo,
-+  importBackup,
-+  importOutcome,
-+  openPracticeApp,
-+  readPersistedState,
-+  reload,
-+  writePersistedState,
-+} from './practiceBrowser';
- import v11 from './fixtures/practice-decisions-v11.json?raw';
- 
- // ---------------------------------------------------------------------------
-@@ -152,6 +160,42 @@ describe('the lesson agenda, end to end', () => {
-       // Everything established above survived the refusal untouched.
-       await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
-       await expect.poll(() => classA.getByText(FARSI_QUESTION).first().isVisible()).toBe(true);
-+
-+      // --- 9. HYDRATION COMPLETES AN INCOMPLETE CURRENT-SCHEMA CONVERSION ---
-+      // Zustand's persist middleware only calls `migrate` when the persisted
-+      // version differs from the current one — a persisted v12 database that
-+      // already carries a stray legacy field (an interrupted write, a bug in
-+      // an earlier build) never reaches it that way. This writes directly
-+      // into the app's own IndexedDB, the way an already-current device holds
-+      // its state, bypassing every import door (which always runs
-+      // `validateDB`, and so always runs the migration chain, regardless of
-+      // the version a FILE claims).
-+      const persisted = await readPersistedState(app);
-+      expect(persisted.version).toBe(12);
-+      const HYDRATION_ITEM = 'i-q-empty'; // has a preparation already, no question yet
-+      const stateBefore = persisted.state as { db: { items: { id: string; teacherQuestion?: string }[] } };
-+      const withLeftover = {
-+        ...(persisted.state as Record<string, unknown>),
-+        db: {
-+          ...stateBefore.db,
-+          items: stateBefore.db.items.map((i) =>
-+            i.id === HYDRATION_ITEM ? { ...i, teacherQuestion: 'hydration leftover question' } : i,
-+          ),
-+        },
-+      };
-+      await writePersistedState(app, withLeftover, 12);
-+      await reload(app);
-+
-+      // The leftover was completed LOSSLESSLY, not silently dropped: a real
-+      // open question now exists for the item, reachable the ordinary way.
-+      await goTo(app, `/items/${HYDRATION_ITEM}`);
-+      await expect.poll(() => page.getByText('hydration leftover question').first().isVisible()).toBe(true);
-+
-+      // Idempotent: a SECOND, ordinary reload (now genuinely current, nothing
-+      // left behind) creates no duplicate.
-+      await reload(app);
-+      await goTo(app, `/items/${HYDRATION_ITEM}`);
-+      expect(await page.getByText('hydration leftover question').count()).toBe(1);
-     } finally {
-       await app.close();
-     }
-diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index 9845449..32ec16c 100644
---- a/tests/practiceBrowser.ts
-+++ b/tests/practiceBrowser.ts
-@@ -132,3 +132,62 @@ export async function reload(app: PracticeApp): Promise<void> {
-   await app.page.reload();
-   await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
- }
-+
-+const KV_KEY = 'practice-compass';
-+
 +/**
-+ * Read the raw bytes the app's own persist middleware would read on the next
-+ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
-+ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
-+ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
++ * The message from the most recent REFUSED hydration attempt (§C7), or null
++ * if the last attempt installed cleanly. Deliberately not store state: see
++ * `onRehydrateStorage` above for why recording it through `useStore.setState`
++ * would itself trigger the exact destructive write-back this guard exists to
++ * prevent.
 + */
-+export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
-+  return app.page.evaluate(
-+    (key) =>
-+      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
-+        const req = indexedDB.open('practice-compass');
-+        req.onerror = () => reject(req.error);
-+        req.onsuccess = () => {
-+          const db = req.result;
-+          const tx = db.transaction('kv', 'readonly');
-+          const get = tx.objectStore('kv').get(key);
-+          get.onsuccess = () => {
-+            db.close();
-+            resolve(JSON.parse((get.result as { value: string }).value));
-+          };
-+          get.onerror = () => reject(get.error);
-+        };
-+      }),
-+    KV_KEY,
-+  );
++let lastHydrationError: string | null = null;
++export function getLastHydrationError(): string | null {
++  return lastHydrationError;
 +}
 +
-+/**
-+ * Write directly into the app's own IndexedDB `kv` store — the way an
-+ * ALREADY-hydrated device holds its persisted state — bypassing every
-+ * import/migration door entirely. The one way to reach the "persisted
-+ * version already matches the current schema" hydration path: Zustand's
-+ * persist middleware only calls `migrate` when the persisted version differs
-+ * from the current one, and every JSON-import door runs `validateDB`
-+ * regardless of what version a FILE claims.
-+ */
-+export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
-+  await app.page.evaluate(
-+    ({ key, state, version }) =>
-+      new Promise<void>((resolve, reject) => {
-+        const req = indexedDB.open('practice-compass');
-+        req.onerror = () => reject(req.error);
-+        req.onsuccess = () => {
-+          const db = req.result;
-+          const tx = db.transaction('kv', 'readwrite');
-+          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
-+          tx.oncomplete = () => {
-+            db.close();
-+            resolve();
-+          };
-+          tx.onerror = () => reject(tx.error);
-+        };
-+      }),
-+    { key: KV_KEY, state, version },
-+  );
-+}
+ // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
+ function finishHydration() {
+   if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
 ```
 
 **Full current text of every file the rework touched:**
@@ -1423,6 +1165,29 @@ it. A sealed review reproduced `askedAt` accepting exactly that string — the d
 check had already been fixed once, but its date-TIME sibling in a different file had not.
 The two checks stay small and separately owned, one per file, rather than merged into a
 shared import.
+
+**THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO, NOT ONLY `validateDB`'S IMPORT-PATH
+CALLERS.** A sealed review found Zustand's own persist `migrate`/`merge` (`useStore.ts`)
+called `migrateToCurrent` directly, bypassing everything above: a persisted schema NEWER
+than this build understands got silently stamped down to `SCHEMA_VERSION` by
+`migrateToCurrent`'s own final line and hydrated anyway, and an already-current v12
+database carrying a dangling live `itemId` or an impossible `askedAt` entered live state
+unchanged — reproduced through the real Zustand `persist.rehydrate()`, not merely
+`validateDB` called by hand. Both hooks now call `validateDB` itself — the SAME function,
+not a parallel check — so hydration refuses exactly what every other inbound door already
+refuses. Letting it THROW there (never caught) is deliberate: `hydrate()` only calls its
+own raw `set()` once `migrate`/`merge` return normally, and only persists the result back
+to storage after THAT — a thrown validation error rejects the whole promise chain before
+either happens, so a refused hydration leaves BOTH the live state and whatever is actually
+on disk exactly as they were, never a downgraded-and-relabelled or partially-installed
+in-between. The gate that flips `hydrated: true` deliberately stays UNFLIPPED on a refusal
+rather than forcing it open: every external call to `useStore.setState` — the only way to
+flip it — is itself wrapped by this same persist middleware to re-persist the current
+state immediately afterwards, so forcing it open here would write the live (fallback)
+database straight back over the very data a refusal, above all a genuinely newer schema,
+exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY, as a
+plain module variable rather than store state, for the identical reason — recording it
+through `setState` would trigger that same destructive write.
 
 ## Persian text is canonical, and direction-aware
 
@@ -2440,15 +2205,18 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   service (too big for the reactive JSON); only their lightweight metadata sits in the store.
 - **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
-  conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
-  chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
-  `migrate` when the persisted version differs from the current one, `merge`
-  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
-  version already matches, which would otherwise let an already-current database carry a
-  stray legacy field forever (a sealed review reproduced exactly this; see the
-  lesson-agenda section above for the fix and why re-running the conversion a second time
-  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+  conflict-keep-remote, archive restore — runs through the one shared `validateDB`
+  (`src/domain/io.ts`), which itself runs the `migrateToCurrent` chain
+  (`src/domain/migrations.ts`) plus the newer-schema guard and the §C7 semantic checks;
+  persistence changes must keep it green and bump `SCHEMA_VERSION`. Rehydration reaches it
+  via BOTH halves of the persist middleware — `migrate` when the persisted version differs
+  from the current one, `merge` UNCONDITIONALLY otherwise — because Zustand skips `migrate`
+  entirely once the persisted version already matches, which would otherwise let an
+  already-current database carry a stray legacy field, or genuinely invalid data, forever
+  (a sealed review reproduced exactly this — see the lesson-agenda section above for the
+  legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
+  validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v12** converts legacy lesson intent into `lessonAgenda` and
   adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
   neither is ever guessed for old data, so an existing future date keeps UNKNOWN
   provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
@@ -2496,7 +2264,7 @@ from the user, recorded here.
 ### src/domain/io.test.ts
 
 ```
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
 import { serializeExport, validateDB, parseImport } from './io';
@@ -2507,6 +2275,46 @@ import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
 import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
 import { SCHEMA_VERSION, type PracticeDB } from './types';
 import { addDays, nowISO, toISODate } from './util';
+// The Zustand persist boundary (§C7's actual enforcement point, not just
+// validateDB's own import-path callers) has no allowed dedicated store test
+// file for this contract — the same situation routines.test.ts documents for
+// the single-active-clock guard — so its regression coverage extends this
+// ac-15 test instead of being left unproven.
+import { useStore, getLastHydrationError } from '../store/useStore';
+
+// The IndexedDB-backed persist storage doesn't exist in this test environment
+// (no real indexedDB global) — same stub routines.test.ts uses, except the
+// fake storage here is CONTROLLABLE per assertion: vi.hoisted keeps its state
+// reachable from the mock factory (which Vitest hoists above these imports)
+// without a temporal-dead-zone reference.
+const fakeStorage = vi.hoisted(() => {
+  let value: string | null = null;
+  let setItemCalls = 0;
+  return {
+    get: () => value,
+    set: (v: string | null) => {
+      value = v;
+    },
+    recordSetItem: () => {
+      setItemCalls += 1;
+    },
+    setItemCalls: () => setItemCalls,
+  };
+});
+vi.mock('../store/idb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../store/idb')>();
+  return {
+    ...actual,
+    idbStorage: {
+      getItem: async () => fakeStorage.get(),
+      setItem: async (_name: string, value: string) => {
+        fakeStorage.recordSetItem();
+        fakeStorage.set(value);
+      },
+      removeItem: async () => fakeStorage.set(null),
+    },
+  };
+});
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -2708,7 +2516,7 @@ function doors(text: string): { label: string; payload: unknown }[] {
 }
 
 describe('the v12 model at every inbound door', () => {
-  it('all inbound paths preserve the new model or reject before replacement', () => {
+  it('all inbound paths preserve the new model or reject before replacement', async () => {
     // 1. Every door migrates identically. `importFullBackup` (manual import,
     //    sync pull, Keep remote, archive restore) and the store's own
     //    `importDB` all route through THIS function, so a door that behaved
@@ -2886,6 +2694,95 @@ describe('the v12 model at every inbound door', () => {
     const migrated = validateDB(JSON.parse(V11_TEXT));
     expect(migrated.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
     expect(migrated.lessonAgenda.find((e) => e.itemId === 'i-dangling')?.instrumentId).toBe('gone');
+
+    // 7. THE ACTUAL PERSISTED-HYDRATION BOUNDARY — a sealed review found that
+    //    every check above, however thorough, only ever exercised
+    //    `validateDB`'s own import-path callers. Zustand's persist
+    //    `migrate`/`merge` called `migrateToCurrent` directly, bypassing both
+    //    the newer-schema guard and every §C7 semantic check above: a
+    //    version=13 database hydrated successfully relabelled as
+    //    schemaVersion=12 (migrateToCurrent's own final line stamps the
+    //    CURRENT version unconditionally), and an already-current v12
+    //    database carrying a dangling live itemId or an impossible askedAt
+    //    entered live state unchanged. Drive the REAL store through its own
+    //    `persist.rehydrate()` — not a hand call to `migrate`/`merge` in
+    //    isolation — so the actual wiring, including zustand's own
+    //    no-write-back-on-a-thrown-migrate behaviour, is what's under test.
+    const wrap = (db: unknown, version: number) => JSON.stringify({ state: { db }, version });
+
+    // 7a. Valid CURRENT v12 data hydrates normally.
+    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    expect(getLastHydrationError()).toBeNull();
+    expect(useStore.getState().hydrated).toBe(true);
+    expect(useStore.getState().db.lessonAgenda.length).toBe(v12.lessonAgenda.length);
+
+    // 7b. Valid OLDER data migrates then hydrates — and, unlike the refusals
+    //     below, genuinely gets written back (a real upgrade worth saving).
+    const setItemsBeforeUpgrade = fakeStorage.setItemCalls();
+    fakeStorage.set(wrap((JSON.parse(V11_TEXT) as { data: unknown }).data, 11));
+    await useStore.persist.rehydrate();
+    expect(getLastHydrationError()).toBeNull();
+    expect(useStore.getState().db.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(useStore.getState().db.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
+    expect(fakeStorage.setItemCalls()).toBeGreaterThan(setItemsBeforeUpgrade);
+
+    // 7c. INVALID current-v12 data — the exact sealed counterexample, a
+    //     dangling live itemId — is refused. The previously live database is
+    //     preserved BY REFERENCE (nothing was ever `set()`), and nothing is
+    //     written back over whatever is actually on disk: refusing must not
+    //     itself become a write, or a refusal of genuinely newer data (7d)
+    //     would silently destroy it the moment this build merely NOTICES the
+    //     problem.
+    const sentinel = useStore.getState().db;
+    const setItemsBeforeRefusal = fakeStorage.setItemCalls();
+    const badCurrent: PracticeDB = {
+      ...v12,
+      lessonAgenda: [
+        ...v12.lessonAgenda,
+        {
+          kind: 'question',
+          id: 'q-hydration-refused',
+          instrumentId: 'setar',
+          text: 'x',
+          itemId: 'nonexistent',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    fakeStorage.set(wrap(badCurrent, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinel);
+    expect(getLastHydrationError()).toMatch(/practice item that no longer exists/);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeRefusal);
+
+    // 7d. A NEWER-than-supported schema is refused — never passed through
+    //     migrateToCurrent and relabelled as the current version, and never
+    //     written back over the (unreadable but genuinely newer) original.
+    const sentinelNewer = useStore.getState().db;
+    const setItemsBeforeNewer = fakeStorage.setItemCalls();
+    fakeStorage.set(wrap({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1));
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelNewer);
+    expect(getLastHydrationError()).toMatch(/newer version/i);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+
+    // 7e. REPEATED hydration stays safe: refusing the identical newer-schema
+    //     data twice in a row is idempotent (same refusal, live state never
+    //     mutated, and still no write-back the second time either)...
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelNewer);
+    expect(getLastHydrationError()).toMatch(/newer version/i);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+    // ...and re-hydrating the same valid data twice in a row produces
+    // byte-identical live state both times.
+    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    const firstHydrate = JSON.stringify(useStore.getState().db);
+    await useStore.persist.rehydrate();
+    expect(JSON.stringify(useStore.getState().db)).toBe(firstHydrate);
+    expect(getLastHydrationError()).toBeNull();
   });
 });
 
@@ -2941,2382 +2838,6 @@ describe('the documented rollback route', () => {
     expect((JSON.parse(V11_TEXT) as { schemaVersion: number }).schemaVersion).toBe(11);
   });
 });
-```
-
-### src/domain/lessonAgenda.ts
-
-```
-import type {
-  ID,
-  ISODate,
-  ISODateTime,
-  Lesson,
-  LessonAgendaEntry,
-  LessonPreparation,
-  LessonQuestion,
-  PracticeDB,
-} from './types';
-import { nowISO, todayISODate } from './util';
-
-// ---------------------------------------------------------------------------
-// The lesson agenda — one typed collection for "prepare this for that class"
-// and "ask this at that class".
-//
-// Everything here is pure and takes an explicit `now`. Two things this module
-// exists to keep apart, because the app used to conflate them in one boolean
-// and one string on the item:
-//
-//   • A PREPARATION names a specific lesson, and that lesson's OWN date is the
-//     only deadline it carries. A later commitment can never inherit an
-//     earlier class's urgency, and an unassigned or past commitment carries
-//     none at all.
-//   • A QUESTION is not preparation. It changes no practice priority ever. It
-//     keeps its own text, so several questions never overwrite each other, and
-//     once asked it stays with the lesson it was asked at — historical, never
-//     automatically carried forward to the next class.
-// ---------------------------------------------------------------------------
-
-export function isPreparation(e: LessonAgendaEntry): e is LessonPreparation {
-  return e.kind === 'preparation';
-}
-
-export function isQuestion(e: LessonAgendaEntry): e is LessonQuestion {
-  return e.kind === 'question';
-}
-
-/** Open = not yet asked. Asked entries leave the upcoming/open lists. */
-export function isOpenQuestion(e: LessonAgendaEntry): e is LessonQuestion {
-  return isQuestion(e) && !e.askedAt;
-}
-
-/** A commitment with no named lesson — visibly unassigned, never invented. */
-export function isUnassigned(e: LessonAgendaEntry): boolean {
-  return !e.lessonId;
-}
-
-export function entriesForInstrument(agenda: LessonAgendaEntry[], instrumentId: ID): LessonAgendaEntry[] {
-  return agenda.filter((e) => e.instrumentId === instrumentId);
-}
-
-export function entriesForLesson(agenda: LessonAgendaEntry[], lessonId: ID): LessonAgendaEntry[] {
-  return agenda.filter((e) => e.lessonId === lessonId);
-}
-
-export function preparationsForLesson(agenda: LessonAgendaEntry[], lessonId: ID): LessonPreparation[] {
-  return entriesForLesson(agenda, lessonId).filter(isPreparation);
-}
-
-export function questionsForLesson(agenda: LessonAgendaEntry[], lessonId: ID): LessonQuestion[] {
-  return entriesForLesson(agenda, lessonId).filter(isQuestion);
-}
-
-/**
- * Unassigned entries for one instrument — what the owner still has to point at
- * a class. This is the honest home for everything the v12 migration converted:
- * the old data recorded no target, so none is invented for it.
- */
-export function unassignedForInstrument(agenda: LessonAgendaEntry[], instrumentId: ID): LessonAgendaEntry[] {
-  return entriesForInstrument(agenda, instrumentId).filter(isUnassigned);
-}
-
-/** Every preparation commitment naming this item, whatever its target. */
-export function preparationsForItem(agenda: LessonAgendaEntry[], itemId: ID): LessonPreparation[] {
-  return agenda.filter(isPreparation).filter((e) => e.itemId === itemId);
-}
-
-/** Every question concerning this item, open or asked. */
-export function questionsForItem(agenda: LessonAgendaEntry[], itemId: ID): LessonQuestion[] {
-  return agenda.filter(isQuestion).filter((e) => e.itemId === itemId);
-}
-
-/**
- * The lesson a NEW entry defaults to: the nearest lesson today or later on that
- * instrument. With no future lesson this is `undefined` — capture the entry
- * unassigned rather than inventing a class that does not exist (§C2).
- */
-export function defaultTargetLesson(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
-  const today = todayISODate(now);
-  return lessons
-    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))[0];
-}
-
-/**
- * Per ITEM, the nearest date it is genuinely committed to prepare for: the
- * earliest lesson that is today or later, on the entry's own instrument, that
- * an existing preparation entry actually names.
- *
- * This is the ONLY channel by which lesson intent reaches practice priority.
- * A question contributes nothing. An unassigned commitment contributes
- * nothing. A commitment whose lesson has already passed contributes nothing —
- * its deadline is gone, and reading it as "still due" is exactly how a rolling
- * boolean used to keep an item permanently urgent. A commitment naming a
- * LATER class contributes that later date, never the nearest one.
- */
-export function preparationDatesByItem(
-  agenda: LessonAgendaEntry[],
-  lessons: Lesson[],
-  now: Date,
-): Map<ID, ISODate> {
-  const today = todayISODate(now);
-  const byId = new Map(lessons.map((l) => [l.id, l]));
-  const out = new Map<ID, ISODate>();
-  for (const e of agenda) {
-    if (!isPreparation(e) || !e.lessonId) continue;
-    const lesson = byId.get(e.lessonId);
-    // A target on another instrument is not a valid commitment for this item.
-    if (!lesson || lesson.instrumentId !== e.instrumentId) continue;
-    if (lesson.date < today) continue;
-    const cur = out.get(e.itemId);
-    if (!cur || lesson.date < cur) out.set(e.itemId, lesson.date);
-  }
-  return out;
-}
-
-/** Item ids with a live (today-or-later) preparation commitment. */
-export function itemsPreparedForLesson(agenda: LessonAgendaEntry[], lessons: Lesson[], now: Date): Set<ID> {
-  return new Set(preparationDatesByItem(agenda, lessons, now).keys());
-}
-
-// --- Transforms -------------------------------------------------------------
-//
-// Every one returns a NEW array and touches only the entry it names. None of
-// them logs practice, completes a review, or moves any spacing state — an
-// agenda action is administration, never evidence.
-
-function touch<T extends LessonAgendaEntry>(e: T, now: Date): T {
-  return { ...e, updatedAt: nowISO(now) };
-}
-
-/** Mark a question asked, optionally recording the teacher's answer. */
-export function markQuestionAsked(
-  agenda: LessonAgendaEntry[],
-  id: ID,
-  now: Date,
-  answer?: string,
-): LessonAgendaEntry[] {
-  return agenda.map((e) =>
-    e.id === id && isQuestion(e)
-      ? touch({ ...e, askedAt: e.askedAt ?? nowISO(now), answer: answer?.trim() || e.answer }, now)
-      : e,
-  );
-}
-
-/** Put an asked question back on the open list — explicit and reversible. */
-export function reopenQuestion(agenda: LessonAgendaEntry[], id: ID, now: Date): LessonAgendaEntry[] {
-  return agenda.map((e) => {
-    if (e.id !== id || !isQuestion(e)) return e;
-    // Destructure the field OUT rather than setting it undefined: an
-    // `askedAt: undefined` key survives JSON round-trips as a present key in
-    // some shapes, and "open" must mean the field is genuinely absent.
-    const rest = { ...e };
-    delete rest.askedAt;
-    return touch(rest as LessonQuestion, now);
-  });
-}
-
-/** Record or replace a teacher answer without changing the asked state. */
-export function setQuestionAnswer(
-  agenda: LessonAgendaEntry[],
-  id: ID,
-  answer: string,
-  now: Date,
-): LessonAgendaEntry[] {
-  return agenda.map((e) => {
-    if (e.id !== id || !isQuestion(e)) return e;
-    const trimmed = answer.trim();
-    const rest = { ...e };
-    delete rest.answer;
-    return touch(trimmed ? ({ ...rest, answer: trimmed } as LessonQuestion) : (rest as LessonQuestion), now);
-  });
-}
-
-/**
- * Point an entry at a different lesson — the ONLY way a commitment changes
- * class. There is no automatic carry-forward: an unasked question sitting on a
- * past lesson stays on that lesson until the owner moves it here.
- *
- * A target on another instrument is refused (the array comes back unchanged)
- * rather than silently rewriting either side's instrument.
- */
-export function retargetEntry(
-  agenda: LessonAgendaEntry[],
-  id: ID,
-  lessonId: ID | undefined,
-  lessons: Lesson[],
-  now: Date,
-): LessonAgendaEntry[] {
-  const entry = agenda.find((e) => e.id === id);
-  if (!entry) return agenda;
-  if (lessonId) {
-    const lesson = lessons.find((l) => l.id === lessonId);
-    if (!lesson || lesson.instrumentId !== entry.instrumentId) return agenda;
-  }
-  return agenda.map((e) => {
-    if (e.id !== id) return e;
-    if (!lessonId) {
-      const { lessonId: previous, ...rest } = e;
-      return touch(
-        { ...rest, ...(previous ? { detachedFromLessonId: previous } : {}) } as LessonAgendaEntry,
-        now,
-      );
-    }
-    return touch({ ...e, lessonId } as LessonAgendaEntry, now);
-  });
-}
-
-/**
- * A lesson was deleted: every entry naming it becomes visibly unassigned and
- * REMEMBERS which lesson it used to name. Nothing is deleted and nothing is
- * silently reassigned to another class — an asked question stays asked, its
- * history intact.
- */
-export function detachLesson(agenda: LessonAgendaEntry[], lessonId: ID, now: Date): LessonAgendaEntry[] {
-  return agenda.map((e) => {
-    if (e.lessonId !== lessonId) return e;
-    const { lessonId: previous, ...rest } = e;
-    return touch({ ...rest, detachedFromLessonId: previous } as LessonAgendaEntry, now);
-  });
-}
-
-/**
- * An item was deleted. Its PREPARATION commitments go with it — a commitment
- * to prepare something that no longer exists means nothing — but its QUESTIONS
- * survive, detached, because the question and its answer are the owner's own
- * record of the class, not a property of the item.
- */
-export function detachItem(agenda: LessonAgendaEntry[], itemId: ID, now: Date): LessonAgendaEntry[] {
-  return agenda
-    .filter((e) => !(isPreparation(e) && e.itemId === itemId))
-    .map((e) => {
-      if (!isQuestion(e) || e.itemId !== itemId) return e;
-      const { itemId: previous, ...rest } = e;
-      return touch({ ...rest, detachedFromItemId: previous } as LessonQuestion, now);
-    });
-}
-
-/**
- * An item changed instrument. A commitment or question follows the item, and
- * any lesson target that no longer matches is cleared rather than pointing at
- * another instrument's class.
- */
-export function retargetEntriesForItemInstrument(
-  agenda: LessonAgendaEntry[],
-  itemId: ID,
-  instrumentId: ID,
-  lessons: Lesson[],
-  now: Date,
-): LessonAgendaEntry[] {
-  const byId = new Map(lessons.map((l) => [l.id, l]));
-  return agenda.map((e) => {
-    const concerns = isPreparation(e) ? e.itemId === itemId : e.itemId === itemId;
-    if (!concerns || e.instrumentId === instrumentId) return e;
-    const lesson = e.lessonId ? byId.get(e.lessonId) : undefined;
-    if (lesson && lesson.instrumentId !== instrumentId) {
-      const { lessonId: previous, ...rest } = e;
-      return touch({ ...rest, instrumentId, detachedFromLessonId: previous } as LessonAgendaEntry, now);
-    }
-    return touch({ ...e, instrumentId } as LessonAgendaEntry, now);
-  });
-}
-
-// --- Factories --------------------------------------------------------------
-
-export function createPreparation(args: {
-  id: ID;
-  itemId: ID;
-  instrumentId: ID;
-  lessonId?: ID;
-  now: Date;
-}): LessonPreparation {
-  const at: ISODateTime = nowISO(args.now);
-  return {
-    id: args.id,
-    kind: 'preparation',
-    itemId: args.itemId,
-    instrumentId: args.instrumentId,
-    ...(args.lessonId ? { lessonId: args.lessonId } : {}),
-    createdAt: at,
-    updatedAt: at,
-  };
-}
-
-export function createQuestion(args: {
-  id: ID;
-  text: string;
-  instrumentId: ID;
-  itemId?: ID;
-  lessonId?: ID;
-  now: Date;
-}): LessonQuestion {
-  const at: ISODateTime = nowISO(args.now);
-  return {
-    id: args.id,
-    kind: 'question',
-    text: args.text,
-    instrumentId: args.instrumentId,
-    ...(args.itemId ? { itemId: args.itemId } : {}),
-    ...(args.lessonId ? { lessonId: args.lessonId } : {}),
-    createdAt: at,
-    updatedAt: at,
-  };
-}
-
-// --- Validation -------------------------------------------------------------
-
-const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T/;
-
-/**
- * A real ISO date-time, not merely a string shaped like the prefix of one:
- * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
- * happily as a genuine timestamp, and `Date.parse` alone is no better — it
- * silently NORMALISES an out-of-range day (`"2026-02-30T12:00:00.000Z"`
- * becomes March 2nd) rather than rejecting it, so a sealed review reproduced
- * that exact string passing. The calendar components are round-tripped
- * through `Date.UTC` the same way `scheduling.ts`'s own `isValidISODate`
- * checks a plain date, so an impossible day/month combination fails here
- * too. Every `askedAt` this app itself writes comes from `nowISO`
- * (`new Date().toISOString()`), which always round-trips losslessly, so this
- * rejects nothing legitimate.
- */
-function isValidISODateTime(s: string): boolean {
-  const m = ISO_DATE_TIME.exec(s);
-  if (!m || !Number.isFinite(Date.parse(s))) return false;
-  const [, ys, ms, ds] = m;
-  const y = Number(ys);
-  const mo = Number(ms);
-  const d = Number(ds);
-  const dt = new Date(Date.UTC(y, mo - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
-}
-
-/**
- * Validate the agenda collection of an INBOUND database, before anything is
- * installed. Returns a human-readable problem, or null when the collection is
- * usable. Deliberately bounded to this model plus the scheduling fields it
- * shares a schema version with — it is not a general database sanitiser.
- *
- * Legitimate unassigned and detached historical records PASS: an entry with no
- * lesson, an asked question whose item is gone, a question with no item at all
- * are all honest states this app produces itself.
- *
- * A LIVE `lessonId` OR a LIVE `itemId` that resolves to NOTHING is invalid new
- * intent, not legacy debris — this app never leaves either dangling on its
- * own. `deleteLesson` always converts a live `lessonId` to
- * `detachedFromLessonId` (see `detachLesson`). `deleteItem` (`useStore.ts`)
- * always calls `detachItem` in the SAME synchronous update that removes the
- * item: a preparation naming it is removed outright, and a question's
- * `itemId` is converted to `detachedFromItemId` — never left as a live
- * reference to nothing. A sealed review found this section previously
- * tolerating a dangling `itemId` on the theory that the v11→v12 migration
- * mints entries from `db.items` at the moment it runs, so an item deleted
- * afterwards could leave its own agenda entries pointing at nothing — that
- * theory does not hold against the actual producer above, which cleans up
- * synchronously in the SAME update, so a genuinely dangling live `itemId` can
- * only be invalid data, not a legitimate history. A GENUINELY DETACHED
- * record — `detachedFromItemId`/`detachedFromLessonId` set, the live field
- * absent — is unaffected either way: `detachItem`/`detachLesson` destructure
- * the live field OUT rather than setting it `undefined`, so this check never
- * sees one to reject.
- */
-export function validateLessonAgenda(
-  db: Pick<PracticeDB, 'lessonAgenda' | 'items' | 'lessons' | 'instruments'>,
-): string | null {
-  const agenda: unknown[] = db.lessonAgenda as unknown[];
-  if (!Array.isArray(agenda)) return 'Field "lessonAgenda" must be a list.';
-
-  const seen = new Set<string>();
-  const instruments = new Set(db.instruments.map((i) => i.id));
-  const itemById = new Map(db.items.map((i) => [i.id, i]));
-  const lessonById = new Map(db.lessons.map((l) => [l.id, l]));
-
-  for (const raw of agenda) {
-    if (!raw || typeof raw !== 'object') return 'Some lesson-agenda entries are not objects.';
-    // Read the inbound row loosely: it is untrusted data that has not yet
-    // earned the union type it claims.
-    const e = raw as {
-      id?: unknown;
-      kind?: unknown;
-      instrumentId?: unknown;
-      lessonId?: unknown;
-      itemId?: unknown;
-      text?: unknown;
-      askedAt?: unknown;
-      answer?: unknown;
-    };
-    if (typeof e.id !== 'string' || !e.id) return 'Some lesson-agenda entries are missing an id.';
-    if (seen.has(e.id)) return `Two lesson-agenda entries share the id "${e.id}".`;
-    seen.add(e.id);
-    if (e.kind !== 'preparation' && e.kind !== 'question') {
-      return `Lesson-agenda entry "${e.id}" has an unknown kind.`;
-    }
-    // An instrument id is REQUIRED, but an id that no longer resolves is not
-    // grounds to refuse the whole import: the v12 migration mints entries from
-    // existing items, and an old backup can legitimately hold an item whose
-    // instrument was deleted years ago. Refusing that would make the owner's
-    // own pre-upgrade export — the documented recovery copy — unrestorable.
-    // What IS checked is that a target actually PRESENT agrees with it.
-    if (typeof e.instrumentId !== 'string' || !e.instrumentId) {
-      return `Lesson-agenda entry "${e.id}" is missing its instrument.`;
-    }
-    void instruments;
-    // A LIVE lesson target that resolves to nothing at all is refused
-    // outright — see this function's own docstring for why that is never
-    // legacy debris. A target that resolves must also agree with the
-    // entry's instrument.
-    if (typeof e.lessonId === 'string') {
-      const lesson = lessonById.get(e.lessonId);
-      if (!lesson) return `Lesson-agenda entry "${e.id}" names a class that no longer exists.`;
-      if (lesson.instrumentId !== e.instrumentId) {
-        return `Lesson-agenda entry "${e.id}" names a class on a different instrument.`;
-      }
-    } else if (e.lessonId !== undefined) {
-      return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
-    }
-    // A LIVE item target that resolves to nothing at all is refused outright
-    // — see this function's own docstring for why that is never legacy
-    // debris. One that DOES resolve must also agree with the entry's
-    // instrument.
-    if (e.kind === 'preparation') {
-      if (typeof e.itemId !== 'string' || !e.itemId) {
-        return `Preparation "${e.id}" names no practice item.`;
-      }
-      const item = itemById.get(e.itemId);
-      if (!item) return `Preparation "${e.id}" names a practice item that no longer exists.`;
-      if (item.instrumentId !== e.instrumentId) {
-        return `Preparation "${e.id}" names an item on a different instrument.`;
-      }
-    } else {
-      if (typeof e.text !== 'string' || !e.text.trim()) {
-        return `Question "${e.id}" has no text.`;
-      }
-      if (typeof e.itemId === 'string') {
-        const item = itemById.get(e.itemId);
-        if (!item) return `Question "${e.id}" names a practice item that no longer exists.`;
-        if (item.instrumentId !== e.instrumentId) {
-          return `Question "${e.id}" names an item on a different instrument.`;
-        }
-      } else if (e.itemId !== undefined) {
-        return `Question "${e.id}" has an unreadable item reference.`;
-      }
-      if (e.askedAt !== undefined && (typeof e.askedAt !== 'string' || !isValidISODateTime(e.askedAt))) {
-        return `Question "${e.id}" has an unreadable asked date.`;
-      }
-      if (e.answer !== undefined && typeof e.answer !== 'string') {
-        return `Question "${e.id}" has an unreadable answer.`;
-      }
-    }
-  }
-  return null;
-}
-```
-
-### src/domain/plan.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import {
-  advancePlanPointer,
-  allocateMinutes,
-  buildSessionPlan,
-  completePlanSegment,
-  isWarmupSuitable,
-  MAX_BUDGET_MINUTES,
-  MAX_SEGMENT_MINUTES,
-  MIN_BUDGET_MINUTES,
-  MIN_SEGMENT_MINUTES,
-  planPreviewDayHasPassed,
-  planSegmentStartable,
-  redistributePlan,
-  skipPlanSegment,
-  swapSegment,
-  validateBudgetMinutes,
-  type BuildPlanArgs,
-  type PlanRun,
-  type SessionPlan,
-} from './plan';
-import { DEFAULT_SCHEDULING_PARAMS } from './scheduling';
-import { createItem, createBlock, createReview } from './factories';
-import { addDays, toISODate } from './util';
-import type { ID, ISODate, ItemStatus, ItemType, PracticeBlock, PracticeItem, Review } from './types';
-
-const NOW = new Date('2026-07-18T09:00:00.000Z');
-const INST = 'setar';
-const day = (n: number): ISODate => toISODate(addDays(NOW, n));
-
-let seq = 0;
-function it_(o: Partial<PracticeItem> & { status?: ItemStatus; itemType?: ItemType } = {}): PracticeItem {
-  const base = createItem(
-    {
-      instrumentId: o.instrumentId ?? INST,
-      title: o.title ?? `item-${seq++}`,
-      status: o.status ?? 'new',
-      itemType: o.itemType ?? 'other',
-      importance: o.importance ?? 3,
-      difficulty: o.difficulty ?? 3,
-    },
-    NOW,
-  );
-  return { ...base, ...o };
-}
-
-function block(itemId: string, startedAt: string, durationMinutes = 10): PracticeBlock {
-  return createBlock(
-    { practiceItemId: itemId, instrumentId: INST, durationMinutes, mode: 'learn', focus: 'other', startedAt },
-    NOW,
-  );
-}
-
-function baseArgs(over: Partial<BuildPlanArgs> = {}): BuildPlanArgs {
-  return {
-    instrumentId: INST,
-    budgetMinutes: 30,
-    now: NOW,
-    items: [],
-    blocks: [],
-    reviews: [],
-    ...over,
-  };
-}
-
-const sum = (ns: number[]) => ns.reduce((a, b) => a + b, 0);
-const prep = (itemId: ID, date: ISODate) => new Map<ID, ISODate>([[itemId, date]]);
-
-// ---------------------------------------------------------------------------
-// ac-7 — B2/B4
-// ---------------------------------------------------------------------------
-
-describe('the anchor comes from real urgency, before any role decoration', () => {
-  it('short sessions choose the most useful anchor before optional roles', () => {
-    // A brand-new demanding piece scores well on its own; an ordinary usable
-    // item committed to TOMORROW's class scores higher once its commitment
-    // counts. The planner used to pre-select the deep-work one regardless.
-    const newDeep = it_({ id: 'deep', title: 'new étude', status: 'new', importance: 4, difficulty: 5 });
-    const forClass = it_({ id: 'class', title: 'gushe for class', status: 'usable', importance: 3, difficulty: 2 });
-    const dates = prep('class', day(1));
-
-    for (const budgetMinutes of [5, 10]) {
-      const plan = buildSessionPlan(
-        baseArgs({ items: [newDeep, forClass], budgetMinutes, preparationDates: dates }),
-      );
-      expect(plan.segments, `budget ${budgetMinutes}`).toHaveLength(1);
-      expect(plan.segments[0].itemId, `budget ${budgetMinutes}`).toBe('class');
-      expect(plan.segments[0].bucket, `budget ${budgetMinutes}`).toBe('lesson');
-      expect(plan.segments[0].minutes, `budget ${budgetMinutes}`).toBe(budgetMinutes);
-      expect(plan.segments[0].reason).toContain(day(1));
-    }
-
-    // Without the commitment the same two items rank the other way round —
-    // so the change is the commitment, not a hard-coded preference.
-    const noCommitment = buildSessionPlan(baseArgs({ items: [newDeep, forClass], budgetMinutes: 5 }));
-    expect(noCommitment.segments[0].itemId).toBe('deep');
-
-    // Ordinary useful material that fits no old bucket is still eligible and
-    // still gets the budget — no fabricated mastery, no category requirement.
-    for (const itemType of ['improvisation', 'other', 'technique'] as ItemType[]) {
-      const ordinary = it_({ id: `ord-${itemType}`, title: itemType, status: 'usable', itemType });
-      const plan = buildSessionPlan(baseArgs({ items: [ordinary], budgetMinutes: 10 }));
-      expect(plan.segments.map((s) => s.itemId), itemType).toEqual([`ord-${itemType}`]);
-      expect(plan.segments[0].minutes, itemType).toBe(10);
-    }
-
-    // A candidate belonging to another instrument never enters the plan.
-    const foreign = it_({ id: 'foreign', title: 'guitar work', instrumentId: 'guitar', importance: 5 });
-    const scoped = buildSessionPlan(baseArgs({ items: [foreign, forClass], budgetMinutes: 30 }));
-    expect(scoped.segments.map((s) => s.itemId)).not.toContain('foreign');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-8 — B1/B2
-// ---------------------------------------------------------------------------
-
-describe('warm-up is a role ordinary familiar material fills', () => {
-  it('warm up uses familiar existing material within the chosen budget', () => {
-    const familiarRadif = it_({
-      id: 'radif',
-      title: 'familiar darāmad',
-      status: 'usable',
-      difficulty: 2,
-      strand: 'radif',
-      timesPractised: 12,
-    });
-    const familiarTechnique = it_({
-      id: 'tech',
-      title: 'known mezrāb drill',
-      status: 'maintenance',
-      difficulty: 2,
-      itemType: 'technique',
-      timesPractised: 30,
-    });
-    const unfamiliarDemanding = it_({
-      id: 'hard',
-      title: 'new demanding exercise',
-      status: 'new',
-      difficulty: 5,
-      itemType: 'exercise',
-      timesPractised: 0,
-    });
-    const mainWork = it_({ id: 'main', title: 'the real work', status: 'fragile', importance: 5, difficulty: 4 });
-
-    // Suitability is low demand PLUS evidence of familiarity — a "technique"
-    // label is not evidence of either.
-    expect(isWarmupSuitable(familiarRadif)).toBe(true);
-    expect(isWarmupSuitable(familiarTechnique)).toBe(true);
-    expect(isWarmupSuitable(unfamiliarDemanding)).toBe(false);
-
-    const pool = [familiarRadif, familiarTechnique, unfamiliarDemanding, mainWork];
-    const share = DEFAULT_SCHEDULING_PARAMS.warmupShare;
-
-    for (const budgetMinutes of [5, 10, 12, 15, 20, 45, 60, 120]) {
-      const plan = buildSessionPlan(baseArgs({ items: pool, budgetMinutes }));
-      const total = sum(plan.segments.map((s) => s.minutes));
-      const warmups = plan.segments.filter((s) => s.bucket === 'warmup');
-      const label = `budget ${budgetMinutes}`;
-
-      expect(total, label).toBeLessThanOrEqual(budgetMinutes);
-      expect(plan.segments.every((s) => s.minutes >= MIN_SEGMENT_MINUTES), label).toBe(true);
-      expect(plan.segments.every((s) => s.minutes <= MAX_SEGMENT_MINUTES), label).toBe(true);
-      expect(new Set(plan.segments.map((s) => s.itemId)).size, label).toBe(plan.segments.length);
-
-      if (budgetMinutes < 12) {
-        // No warm-up, no cool-down: one useful main focus.
-        expect(warmups, label).toHaveLength(0);
-        expect(plan.segments, label).toHaveLength(1);
-      } else {
-        expect(warmups, label).toHaveLength(1);
-        // It is FIRST, it is a familiar candidate, and its bounded share is
-        // real minutes rather than a weight nobody can check.
-        expect(plan.segments[0].bucket, label).toBe('warmup');
-        expect(['radif', 'tech'], label).toContain(plan.segments[0].itemId);
-        // The configured share, floored at the shortest segment worth
-        // starting — at 12 minutes 12 × 0.12 rounds to 1, and a one-minute
-        // block is not a warm-up.
-        expect(plan.segments[0].minutes, label).toBe(
-          Math.max(MIN_SEGMENT_MINUTES, Math.round(budgetMinutes * share)),
-        );
-        // Useful main work survives it.
-        const main = total - plan.segments[0].minutes;
-        expect(main, label).toBeGreaterThanOrEqual(5);
-      }
-    }
-
-    // With no SUITABLE candidate the warm-up is omitted honestly rather than
-    // handed to the least-bad item.
-    const noneSuitable = buildSessionPlan(baseArgs({ items: [unfamiliarDemanding, mainWork], budgetMinutes: 45 }));
-    expect(noneSuitable.segments.some((s) => s.bucket === 'warmup')).toBe(false);
-    expect(noneSuitable.segments.length).toBeGreaterThan(0);
-
-    // Invalid budgets are rejected cleanly at the boundary.
-    for (const bad of [NaN, Infinity, 0, -10, 4, 121, '30' as unknown as number]) {
-      expect(validateBudgetMinutes(bad), String(bad)).toBeNull();
-      expect(() => buildSessionPlan(baseArgs({ items: pool, budgetMinutes: bad })), String(bad)).toThrow(
-        /whole number of minutes/,
-      );
-    }
-    expect(validateBudgetMinutes(MIN_BUDGET_MINUTES)).toBe(MIN_BUDGET_MINUTES);
-    expect(validateBudgetMinutes(MAX_BUDGET_MINUTES)).toBe(MAX_BUDGET_MINUTES);
-    expect(validateBudgetMinutes(19.6)).toBe(20);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-9 — B4/B5/B6
-// ---------------------------------------------------------------------------
-
-describe('variety follows real exposure, never a quota', () => {
-  it('session variety responds to exposure without quotas or losing urgent work', () => {
-    // A fixed multi-day fixture: lesson work, due maintenance, and material
-    // with and without musical metadata.
-    const lessonWork = it_({ id: 'lesson', title: 'committed piece', status: 'usable', strand: 'radif', importance: 4 });
-    // Deliberately as important as the committed work, and genuinely due: the
-    // question is whether sustained drilling of the committed item can bury an
-    // equally useful need indefinitely.
-    const dueMaintenance = it_({
-      id: 'maint',
-      title: 'solid piece, due',
-      status: 'maintenance',
-      strand: 'repertoire',
-      importance: 4,
-      nextReviewDate: day(-1),
-    });
-    const freshTechnique = it_({ id: 'fresh', title: 'fresh technique', status: 'usable', strand: 'mezrab', importance: 3 });
-    const noMetadata = it_({ id: 'bare', title: 'no strand at all', status: 'usable', importance: 3 });
-    const items = [lessonWork, dueMaintenance, freshTechnique, noMetadata];
-    const reviews: Review[] = [
-      createReview({ practiceItemId: 'maint', dueDate: day(-1), reviewType: 'maintenance' }, NOW),
-    ];
-    const dates = prep('lesson', day(2));
-
-    // DAY 0 — nothing practised yet: the urgent committed work is chosen.
-    const day0 = buildSessionPlan(
-      baseArgs({ items, reviews, preparationDates: dates, budgetMinutes: 30, blocks: [] }),
-    );
-    // The ANCHOR — the first segment that is real work rather than a warm-up.
-    const anchorOf = (p: SessionPlan) => p.segments.find((s) => s.bucket !== 'warmup')!.itemId;
-    expect(anchorOf(day0)).toBe('lesson');
-    expect(day0.summary).not.toContain('Skipping');
-
-    // DAYS -3..-1 — the committed item has been drilled hard every day.
-    const heavy = [
-      block('lesson', addDays(NOW, -1).toISOString(), 40),
-      block('lesson', addDays(NOW, -2).toISOString(), 40),
-      block('lesson', addDays(NOW, -3).toISOString(), 40),
-    ];
-    const afterHeavy = buildSessionPlan(
-      baseArgs({ items, reviews, preparationDates: dates, budgetMinutes: 30, blocks: heavy }),
-    );
-    // Urgent work is NOT lost — it is still in the session…
-    expect(afterHeavy.segments.map((s) => s.itemId)).toContain('lesson');
-    // …but maintenance is now reachable rather than permanently crowded out.
-    expect(afterHeavy.segments.map((s) => s.itemId)).toContain('maint');
-    // Bounded: repeated exposure eventually costs it the anchor position.
-    expect(anchorOf(afterHeavy)).not.toBe('lesson');
-
-    // Recently exposed material yields to comparably useful fresh work.
-    const exposedFresh = [...heavy, block('fresh', addDays(NOW, -1).toISOString(), 40)];
-    const yielded = buildSessionPlan(
-      baseArgs({ items, reviews, preparationDates: dates, budgetMinutes: 30, blocks: exposedFresh }),
-    );
-    const freshIdx = yielded.segments.findIndex((s) => s.itemId === 'fresh');
-    const bareIdx = yielded.segments.findIndex((s) => s.itemId === 'bare');
-    expect(bareIdx).toBeGreaterThanOrEqual(0); // missing metadata still yields a useful plan
-    if (freshIdx >= 0) expect(bareIdx).toBeLessThan(freshIdx);
-
-    // No category is filled artificially: with only two eligible items there
-    // are at most two segments, whatever the budget wants.
-    const twoOnly = buildSessionPlan(baseArgs({ items: [lessonWork, noMetadata], budgetMinutes: 60 }));
-    expect(twoOnly.segments).toHaveLength(2);
-    expect(new Set(twoOnly.segments.map((s) => s.itemId)).size).toBe(2);
-
-    // DETERMINISM: permuting the storage arrays changes nothing at all.
-    const permutations: PracticeItem[][] = [
-      items,
-      [...items].reverse(),
-      [items[2], items[0], items[3], items[1]],
-    ];
-    const reference = JSON.stringify(
-      buildSessionPlan(baseArgs({ items, reviews, preparationDates: dates, blocks: heavy })).segments,
-    );
-    for (const perm of permutations) {
-      const again = buildSessionPlan(
-        baseArgs({ items: perm, reviews, preparationDates: dates, blocks: [...heavy].reverse() }),
-      );
-      expect(JSON.stringify(again.segments)).toBe(reference);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-10 — B2/B3/B7
-// ---------------------------------------------------------------------------
-
-describe('building, swapping and redistributing keep identity and honest reasons', () => {
-  it('build swap and redistribution preserve candidate identity and honest reasons', () => {
-    const resting = it_({ id: 'resting', title: 'resting', status: 'dormant', importance: 5, difficulty: 5 });
-    const foreign = it_({ id: 'foreign', title: 'guitar', instrumentId: 'guitar', importance: 5 });
-    const a = it_({ id: 'a', title: 'A', status: 'fragile', importance: 5, strand: 'radif' });
-    const b = it_({ id: 'b', title: 'B', status: 'usable', importance: 4, strand: 'repertoire', timesPractised: 8, difficulty: 2 });
-    const c = it_({ id: 'c', title: 'C', status: 'integrated', importance: 3, strand: 'technique', timesPractised: 9, difficulty: 2 });
-    const d = it_({ id: 'd', title: 'D', status: 'usable', importance: 3, strand: 'rhythm', nextReviewDate: day(-2) });
-    const items = [resting, foreign, a, b, c, d];
-    const reviews = [createReview({ practiceItemId: 'd', dueDate: day(-2), reviewType: 'retention' }, NOW)];
-    const args = baseArgs({ items, reviews, budgetMinutes: 45 });
-
-    const plan = buildSessionPlan(args);
-    const ids = plan.segments.map((s) => s.itemId);
-    expect(ids).not.toContain('resting');
-    expect(ids).not.toContain('foreign');
-    expect(new Set(ids).size).toBe(ids.length);
-    expect(sum(plan.segments.map((s) => s.minutes))).toBeLessThanOrEqual(45);
-    expect(plan.segments.every((s) => s.minutes >= MIN_SEGMENT_MINUTES)).toBe(true);
-
-    // Reasons name the ACTUAL decisive fact.
-    const review = plan.segments.find((s) => s.bucket === 'review');
-    if (review) expect(review.reason).toContain(day(-2));
-
-    // SWAP keeps the role and the minutes, and can never reach excluded work.
-    const idx = plan.segments.findIndex((s) => s.bucket === 'deep');
-    if (idx >= 0) {
-      const swapped = swapSegment(plan, idx, { ...args, excludeIds: new Set(plan.segments.map((s) => s.itemId)) });
-      const seg = swapped.segments[idx];
-      expect(seg.minutes).toBe(plan.segments[idx].minutes);
-      expect(seg.bucket).toBe(plan.segments[idx].bucket);
-      expect(['resting', 'foreign']).not.toContain(seg.itemId);
-      expect(new Set(swapped.segments.map((s) => s.itemId)).size).toBe(swapped.segments.length);
-      // The reason travelled with the item it describes.
-      if (seg.itemId !== plan.segments[idx].itemId) {
-        expect(seg.reason).not.toBe(plan.segments[idx].reason);
-      }
-    }
-
-    // SWAP shares the build's OWN practised-today exclusion — it must never
-    // hand back material the build itself set aside while a fresher, equally
-    // eligible candidate is available. Three usable same-instrument items
-    // ranked by importance (5/4/3); the middle one was practised one minute
-    // ago today.
-    const hi = it_({ id: 'hi', title: 'Hi', status: 'usable', importance: 5 });
-    const mid = it_({ id: 'mid', title: 'Mid', status: 'usable', importance: 4 });
-    const lo = it_({ id: 'lo', title: 'Lo', status: 'usable', importance: 3 });
-    const practisedMid = [block('mid', NOW.toISOString())];
-    const shortArgs = baseArgs({ items: [hi, mid, lo], blocks: practisedMid, budgetMinutes: 5 });
-    const shortPlan = buildSessionPlan(shortArgs);
-    expect(shortPlan.segments.map((s) => s.itemId)).toEqual(['hi']); // mid stepped aside, not chosen
-    const shortSwap = swapSegment(shortPlan, 0, shortArgs);
-    // Fresh 'lo' is available — the swap must reach it, never the
-    // already-practised 'mid', even though 'mid' outranks 'lo' on score alone.
-    expect(shortSwap.segments[0].itemId).toBe('lo');
-    expect(shortSwap.segments[0].reason).not.toContain('Practised earlier today');
-
-    // A warm-up swap uses the SAME exclusions as the build's own warm-up
-    // pool: a candidate that is due for review, or committed to a class,
-    // deserves that slot — never spent as a warm-up — even though it is
-    // otherwise `isWarmupSuitable`.
-    const dueWarm = it_({ id: 'due-warm', title: 'DueWarm', status: 'usable', difficulty: 2, timesPractised: 5 });
-    const freshWarm = it_({ id: 'fresh-warm', title: 'FreshWarm', status: 'usable', difficulty: 2, timesPractised: 5 });
-    expect(isWarmupSuitable(dueWarm)).toBe(true);
-    expect(isWarmupSuitable(freshWarm)).toBe(true);
-    const warmupReviews = [createReview({ practiceItemId: 'due-warm', dueDate: day(-1), reviewType: 'retention' }, NOW)];
-    const warmupPlan: SessionPlan = {
-      instrumentId: INST,
-      budgetMinutes: 20,
-      segments: [
-        { itemId: 'placeholder', title: 'placeholder', minutes: 5, bucket: 'warmup', core: false, mode: 'learn', focus: 'tone', reason: 'x' },
-      ],
-      summary: '',
-      generatedAt: NOW.toISOString(),
-    };
-    const warmArgs = baseArgs({ items: [dueWarm, freshWarm], reviews: warmupReviews, budgetMinutes: 20 });
-    const swappedWarm = swapSegment(warmupPlan, 0, warmArgs);
-    expect(swappedWarm.segments[0].itemId).toBe('fresh-warm'); // never the due one
-    const onlyDue = swapSegment(warmupPlan, 0, { ...warmArgs, items: [dueWarm] });
-    expect(onlyDue.segments[0].itemId).toBe('placeholder'); // no eligible candidate at all: no swap
-
-    // REGENERATE is the same function with the same inputs: same answer.
-    expect(JSON.stringify(buildSessionPlan(args).segments)).toBe(JSON.stringify(plan.segments));
-
-    // REMOVE + redistribute: totals stay within budget, and no segment gains
-    // another role's reason.
-    const trimmed = redistributePlan({ ...plan, segments: plan.segments.slice(1) });
-    expect(sum(trimmed.segments.map((s) => s.minutes))).toBeLessThanOrEqual(plan.budgetMinutes);
-    trimmed.segments.forEach((seg, i) => {
-      const original = plan.segments[i + 1];
-      expect(seg.itemId).toBe(original.itemId);
-      expect(seg.bucket).toBe(original.bucket);
-      expect(seg.reason).toBe(original.reason);
-    });
-    expect(redistributePlan({ ...plan, segments: [] }).segments).toEqual([]);
-
-    // ALL-PRACTISED fallback: an item chosen is never described as skipped.
-    const practisedToday = items
-      .filter((i) => ['a', 'b', 'c', 'd'].includes(i.id))
-      .map((i) => block(i.id, NOW.toISOString()));
-    const fallback = buildSessionPlan(baseArgs({ items, reviews, blocks: practisedToday, budgetMinutes: 30 }));
-    expect(fallback.segments.length).toBeGreaterThan(0);
-    for (const seg of fallback.segments) {
-      expect(fallback.summary).not.toContain(`Skipping ${seg.title}`);
-      expect(seg.reason).toContain('Practised earlier today');
-    }
-
-    // A budget too large for the eligible work leaves an HONEST remainder.
-    const sparse = buildSessionPlan(baseArgs({ items: [a, b], budgetMinutes: 120 }));
-    expect(sum(sparse.segments.map((s) => s.minutes))).toBeLessThan(120);
-    expect(sparse.summary).toContain('unplanned');
-
-    // …and a budget the work can fill is filled.
-    const full = buildSessionPlan(baseArgs({ items, reviews, budgetMinutes: 30 }));
-    expect(sum(full.segments.map((s) => s.minutes))).toBe(30);
-  });
-});
-
-describe('allocateMinutes', () => {
-  it('never exceeds the budget and respects both segment bounds', () => {
-    for (const budget of [5, 12, 20, 30, 45, 60, 120]) {
-      for (const buckets of [
-        ['deep'] as const,
-        ['warmup', 'deep'] as const,
-        ['warmup', 'lesson', 'review', 'deep', 'cooldown'] as const,
-      ]) {
-        const alloc = allocateMinutes([...buckets], budget);
-        const label = `${budget} · ${buckets.join('/')}`;
-        expect(sum(alloc), label).toBeLessThanOrEqual(budget);
-        expect(alloc.every((m) => m >= MIN_SEGMENT_MINUTES), label).toBe(true);
-        expect(alloc.every((m) => m <= MAX_SEGMENT_MINUTES), label).toBe(true);
-      }
-    }
-  });
-
-  it('pins the warm-up to its configured share', () => {
-    for (const budget of [12, 15, 20, 45, 60]) {
-      const alloc = allocateMinutes(['warmup', 'deep', 'review'], budget);
-      expect(alloc[0], `budget ${budget}`).toBe(
-        Math.max(MIN_SEGMENT_MINUTES, Math.round(budget * DEFAULT_SCHEDULING_PARAMS.warmupShare)),
-      );
-    }
-    const wide = allocateMinutes(['warmup', 'deep'], 60, { ...DEFAULT_SCHEDULING_PARAMS, warmupShare: 0.15 });
-    expect(wide[0]).toBe(9);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-11 — B7
-// ---------------------------------------------------------------------------
-
-describe('a running plan keeps its progress and refuses stale work', () => {
-  it('plan transitions preserve progress and refuse stale cross instrument starts', () => {
-    const one = it_({ id: 'one', title: 'first' });
-    const two = it_({ id: 'two', title: 'second' });
-    const three = it_({ id: 'three', title: 'third' });
-    const plan: SessionPlan = buildSessionPlan(baseArgs({ items: [one, two, three], budgetMinutes: 45 }));
-    const run: PlanRun = {
-      instrumentId: INST,
-      budgetMinutes: plan.budgetMinutes,
-      startedAt: NOW.toISOString(),
-      pointer: 0,
-      segments: plan.segments.map((s) => ({ ...s, status: 'pending' as const })),
-    };
-
-    // Close the first segment: done, pointer advances, nothing else touched.
-    const afterFirst = completePlanSegment(run, run.segments[0].itemId);
-    expect(afterFirst.segments[0].status).toBe('done');
-    expect(afterFirst.pointer).toBe(1);
-    expect(afterFirst.segments.slice(1).every((s) => s.status === 'pending')).toBe(true);
-
-    // Closing a block for something OFF the plan changes nothing.
-    expect(completePlanSegment(afterFirst, 'not-in-plan')).toBe(afterFirst);
-
-    // Skip the second: recorded as skipped, never as practice.
-    const afterSkip = skipPlanSegment(afterFirst);
-    expect(afterSkip.segments[1].status).toBe('skipped');
-    expect(afterSkip.pointer).toBe(2);
-
-    // Rehydrating that partially-done run preserves both.
-    const rehydrated: PlanRun = JSON.parse(JSON.stringify(afterSkip));
-    expect(rehydrated.segments.map((s) => s.status)).toEqual(['done', 'skipped', 'pending']);
-    expect(planSegmentStartable(rehydrated, [one, two, three])).toMatchObject({ ok: true });
-
-    // A pending item that was DELETED or MOVED to another instrument cannot
-    // be played — it is visibly skipped instead, never under the wrong
-    // instrument.
-    const currentId = rehydrated.segments[rehydrated.pointer].itemId;
-    const deleted = [one, two, three].filter((i) => i.id !== currentId);
-    expect(planSegmentStartable(rehydrated, deleted)).toEqual({ ok: false, reason: 'deleted' });
-    const moved = [one, two, three].map((i) => (i.id === currentId ? { ...i, instrumentId: 'guitar' } : i));
-    expect(planSegmentStartable(rehydrated, moved)).toEqual({ ok: false, reason: 'moved' });
-    const afterInvalid = skipPlanSegment(rehydrated);
-    expect(afterInvalid.segments[rehydrated.pointer].status).toBe('skipped');
-    expect(afterInvalid.segments.filter((s) => s.status === 'done')).toHaveLength(1); // progress survives
-
-    // Another unfinished ordinary block or routine run refuses the start
-    // outright — replacing one would destroy real practice.
-    expect(planSegmentStartable(rehydrated, [one, two, three], true)).toEqual({ ok: false, reason: 'busy' });
-
-    // A finished run has nothing to start.
-    const finished: PlanRun = { ...afterInvalid, pointer: afterInvalid.segments.length };
-    expect(planSegmentStartable(finished, [one, two, three])).toEqual({ ok: false, reason: 'finished' });
-
-    // The pointer wraps back to a skipped segment rather than stranding it.
-    const pendingSeg = { ...run.segments[0], status: 'pending' as const };
-    const doneSeg = { ...run.segments[0], status: 'done' as const };
-    const skippedSeg = { ...run.segments[0], status: 'skipped' as const };
-    expect(advancePlanPointer([pendingSeg, doneSeg], 1)).toBe(0); // wraps to what is still pending
-    expect(advancePlanPointer([skippedSeg], 0)).toBe(1); // a deliberate skip stays skipped
-    expect(advancePlanPointer([doneSeg], 0)).toBe(1); // finished
-
-    // Starting a plan is an authority boundary: the preview's OWN calendar
-    // day is checked against the caller's `now` directly — the extracted
-    // pure transition `SessionPlan.tsx`'s click-time guard actually calls,
-    // never a screen's own polled `now` that can lag the true instant by up
-    // to its poll interval, which is the exact gap a real device left
-    // untouched across midnight experiences with no event to close it.
-    const builtFor = day(0);
-    expect(planPreviewDayHasPassed(builtFor, NOW)).toBe(false);
-    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, 1))).toBe(true);
-    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, -1))).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Regression coverage carried forward from before this lane.
-//
-// `PlanSegment.core` and the warm-up-first/cool-down-last ordering are shape
-// guarantees this lane KEPT — `core` is still derived in `buildSessionPlan`,
-// still preserved across `swapSegment`, and still rendered on the Session Plan
-// page — but the ac-named tables assert minutes, identity and reasons rather
-// than these, so both stopped being covered when the old per-function tests
-// were replaced.
-// ---------------------------------------------------------------------------
-
-describe('a review segment stays inside its configured slot window', () => {
-  // `reviewSlotMinMinutes` / `reviewSlotMaxMinutes` are live knobs — Settings
-  // exposes them, `clampSchedulingParams` bounds them to [2,5] and [5,12], and
-  // `allocateMinutes` still applies them after the weighted split (a retrieval
-  // check should not quietly take half the session, nor be squeezed to
-  // nothing). The lane's own allocation tests assert the uniform per-segment
-  // bounds and the pinned warm-up share, so this window stopped being covered.
-  // Values here are inside the documented bounds on purpose: an out-of-range
-  // knob is clamped before it is read, which would make this pass vacuously.
-  const BUCKETS = ['warmup', 'lesson', 'review', 'deep', 'cooldown'] as const;
-  const REVIEW = BUCKETS.indexOf('review');
-  const alloc = (budget: number, min: number, max: number) =>
-    allocateMinutes([...BUCKETS], budget, {
-      ...DEFAULT_SCHEDULING_PARAMS,
-      reviewSlotMinMinutes: min,
-      reviewSlotMaxMinutes: max,
-    });
-
-  it('the ceiling caps a long session’s review, and widening it gives real minutes back', () => {
-    const tight = alloc(60, 2, 5);
-    const wide = alloc(60, 5, 12);
-    expect(tight[REVIEW]).toBeLessThanOrEqual(5);
-    // Strictly more, not merely different: the knob is READ, not just stored.
-    expect(wide[REVIEW]).toBeGreaterThan(tight[REVIEW]);
-    expect(wide[REVIEW]).toBeLessThanOrEqual(12);
-    // The surplus moves to other work; the budget is never exceeded.
-    expect(sum(tight)).toBeLessThanOrEqual(60);
-    expect(sum(wide)).toBeLessThanOrEqual(60);
-  });
-
-  it('the floor lifts a short session’s review, taking the minutes from other work', () => {
-    for (const budget of [20, 30]) {
-      const low = alloc(budget, 2, 5);
-      const lifted = alloc(budget, 5, 12);
-      expect(low[REVIEW], `${budget} min`).toBeLessThan(5);
-      expect(lifted[REVIEW], `${budget} min`).toBeGreaterThanOrEqual(5);
-      // Taken from other segments, not conjured: the total does not grow.
-      expect(sum(lifted), `${budget} min`).toBeLessThanOrEqual(sum(low));
-      expect(sum(lifted), `${budget} min`).toBeLessThanOrEqual(budget);
-      expect(lifted.every((m) => m >= MIN_SEGMENT_MINUTES), `${budget} min`).toBe(true);
-    }
-  });
-});
-
-describe('a plan’s shape is as honest as its minutes', () => {
-  const richArgs = () => {
-    const warm = it_({ id: 'warm', title: 'Warm', status: 'integrated', difficulty: 2, timesPractised: 12, importance: 2 });
-    const lesson = it_({ id: 'lesson', title: 'Lesson', status: 'fragile', importance: 5 });
-    const due = it_({ id: 'due', title: 'Due', status: 'usable', importance: 4, nextReviewDate: day(-2) });
-    const deep = it_({ id: 'deep', title: 'Deep', status: 'new', importance: 4, difficulty: 5 });
-    const cool = it_({ id: 'cool', title: 'Cool', status: 'performable', importance: 2, difficulty: 1, timesPractised: 20 });
-    // Ordinary middle work, so the cool-down candidate is still unspent when
-    // the cool-down step runs — without it the middle fill takes `cool` and
-    // the ordering assertion below would pass vacuously.
-    const extra = it_({ id: 'extra', title: 'Extra', status: 'usable', importance: 3, difficulty: 3 });
-    const spare = it_({ id: 'spare', title: 'Spare', status: 'fragile', importance: 4, difficulty: 3 });
-    return baseArgs({
-      items: [warm, lesson, due, deep, cool, extra, spare],
-      reviews: [createReview({ practiceItemId: 'due', dueDate: day(-2), reviewType: 'retention' }, NOW)],
-      preparationDates: prep('lesson', day(1)),
-      budgetMinutes: 60,
-    });
-  };
-
-  it('marks the work the session is actually FOR, never more than three segments', () => {
-    const plan = buildSessionPlan(richArgs());
-    const core = plan.segments.filter((s) => s.core);
-    expect(core.length).toBeGreaterThanOrEqual(1);
-    expect(core.length).toBeLessThanOrEqual(3);
-    // The anchor — the first non-warm-up segment — is always core: it is the
-    // reason the session exists, whatever roles decorate it.
-    const anchor = plan.segments.find((s) => s.bucket !== 'warmup')!;
-    expect(anchor.core).toBe(true);
-    // A warm-up is core when there is one, because the session's own opening
-    // is part of what it is for — but it never displaces the anchor.
-    const warmup = plan.segments.find((s) => s.bucket === 'warmup');
-    if (warmup) expect(warmup.core).toBe(true);
-    // Nothing outside that set is marked: `core` is a claim about the two or
-    // three segments the session exists for, not a decoration on every row.
-    expect(plan.segments.filter((s) => !s.core).length).toBeGreaterThan(0);
-  });
-
-  it('puts a warm-up first and a cool-down last whenever it has them', () => {
-    const plan = buildSessionPlan(richArgs());
-    const buckets = plan.segments.map((s) => s.bucket);
-    // Both roles are genuinely present for this fixture — asserted, so this
-    // can never degrade into a pair of conditions that are simply never met.
-    expect(buckets).toContain('warmup');
-    expect(buckets).toContain('cooldown');
-    expect(buckets.indexOf('warmup')).toBe(0);
-    expect(buckets.lastIndexOf('cooldown')).toBe(buckets.length - 1);
-    // Neither role may appear twice — they bracket the session, not fill it.
-    expect(buckets.filter((b) => b === 'warmup').length).toBeLessThanOrEqual(1);
-    expect(buckets.filter((b) => b === 'cooldown').length).toBeLessThanOrEqual(1);
-  });
-
-  it('a swap with nothing to swap to returns the plan unchanged', () => {
-    const plan = buildSessionPlan(richArgs());
-    const args = richArgs();
-    // Everything eligible is already in the plan, so there is no alternative
-    // candidate — the editor must leave the segment exactly as it was rather
-    // than emptying it or reaching for ineligible work.
-    const exclude = new Set([...plan.segments.map((s) => s.itemId), ...args.items.map((i) => i.id)]);
-    const unchanged = swapSegment(plan, 0, { ...args, excludeIds: exclude });
-    expect(unchanged.segments[0]).toEqual(plan.segments[0]);
-  });
-});
-```
-
-### src/domain/plan.ts
-
-```
-import type {
-  BlockMode,
-  FocusArea,
-  ID,
-  ISODate,
-  PracticeBlock,
-  PracticeItem,
-  Review,
-  SchedulingParams,
-} from './types';
-import { DEFAULT_SCHEDULING_PARAMS, clampSchedulingParams } from './scheduling';
-import {
-  EXPOSURE_WINDOW_DAYS,
-  groupBlocksByItem,
-  isProactiveCandidate,
-  scoreItems,
-  type ItemScore,
-} from './scoring';
-import { dueReviews } from './selectors';
-import { defaultModeForStatus, focusForItem } from './defaults';
-import { toISODate, todayISODate } from './util';
-
-// ---------------------------------------------------------------------------
-// Session Plan — a time-budgeted programme for one practice session.
-//
-// This is organisation, not judgement: it lays out WHICH items to touch, in
-// what order, for how long, so the user can stop deciding and just practise.
-// Everything is deterministic (explicit `now`, score-desc then stable-id
-// tiebreaks, no randomness) and reuses the same priority scoring as the
-// recommendation engine — no second, hidden set of numbers, and the same
-// eligibility policy (`isProactiveCandidate`) as Today, regeneration and swaps.
-//
-// The shape follows well-supported ideas from the practice-science literature,
-// used as sane defaults (never as a claim of an "optimal" ratio):
-//   • warm-up first, cool-down last (end on something stable) — sleep
-//     consolidation favours finishing on a secure rep (Simmons & Duke 2006).
-//   • short, spaced, goal-directed blocks — spacing + retrieval practice
-//     (Cepeda 2006; Roediger & Karpicke 2006; Ericsson 1993).
-//   • a mix of buckets rather than one item drilled — contextual interference
-//     (Shea & Morgan 1979). It can feel harder; that's the point.
-// The minute shares are adjustable via SchedulingParams (Settings). Every
-// number this module uses is published in docs/scheduling-evidence.md.
-//
-// WHAT CHANGED, AND WHY: the main anchor is now chosen from actual urgency
-// BEFORE any role decoration. A five-minute session used to pre-select new
-// deep work and only then consider a higher-priority item committed for
-// tomorrow's class. Warm-up is a ROLE an ordinary familiar item fills, not a
-// type/strand label — an unfamiliar demanding exercise is not a warm-up just
-// because it is tagged "technique". And the minutes may leave an honest
-// remainder rather than stretch two items across two hours.
-// ---------------------------------------------------------------------------
-
-export type PlanBucket = 'warmup' | 'lesson' | 'review' | 'deep' | 'cooldown';
-
-export interface PlanSegment {
-  itemId: string;
-  title: string;
-  minutes: number;
-  bucket: PlanBucket;
-  /** Essential to the session (warm-up, the main anchor, the top lesson/review). */
-  core: boolean;
-  mode: BlockMode;
-  focus: FocusArea;
-  reason: string;
-}
-
-export interface SessionPlan {
-  instrumentId: string;
-  budgetMinutes: number;
-  segments: PlanSegment[];
-  summary: string;
-  generatedAt: string;
-}
-
-export interface BuildPlanArgs {
-  instrumentId: string;
-  budgetMinutes: number;
-  now: Date;
-  items: PracticeItem[];
-  blocks: PracticeBlock[];
-  reviews: Review[];
-  /** itemId → the date of the class it is committed to (`preparationDatesByItem`). */
-  preparationDates?: Map<ID, ISODate>;
-  /** Ids of items sitting in the current pathway stage — a tie-break only. */
-  stageItemIds?: Set<string>;
-  params?: SchedulingParams;
-}
-
-/** Shortest segment worth starting. */
-export const MIN_SEGMENT_MINUTES = 2;
-/** Longest single block the planner will ever propose. */
-export const MAX_SEGMENT_MINUTES = 25;
-/** Under this, the session is ONE useful main focus and nothing else. */
-export const SHORT_SESSION_MINUTES = 12;
-/** A warm-up may only exist if at least this much main work survives it. */
-export const MAIN_WORK_FLOOR_MINUTES = 5;
-/** The budgets this planner accepts. */
-export const MIN_BUDGET_MINUTES = 5;
-export const MAX_BUDGET_MINUTES = 120;
-
-// Statuses that read as "settled" — the only ones a cool-down draws from.
-const COOLDOWN_STATUSES = new Set(['integrated', 'performable', 'maintenance']);
-/** Statuses that are themselves evidence the material is familiar. */
-const FAMILIAR_STATUSES = new Set(['usable', 'integrated', 'performable', 'maintenance']);
-
-/** Priority for handing out spare minutes and for trimming when too many. */
-const BUCKET_PRIORITY: PlanBucket[] = ['deep', 'lesson', 'review', 'warmup', 'cooldown'];
-/** Relative minute weight per bucket (deep gets the most; cool-down the least). */
-const BUCKET_WEIGHT: Record<PlanBucket, number> = {
-  warmup: 1,
-  review: 1.2,
-  lesson: 1.8,
-  deep: 2.6,
-  cooldown: 0.9,
-};
-
-/** Points subtracted when a candidate repeats a dimension already selected. */
-export const DIVERSITY_SAME_SESSION_PENALTY = 1;
-/** Points subtracted when it repeats a dimension practised in the last 2 days. */
-export const DIVERSITY_RECENT_DAYS_PENALTY = 1;
-const DIVERSITY_RECENT_WINDOW_DAYS = 2;
-
-/**
- * Accept a whole-minute budget, or reject it. Non-finite, fractional-only
- * rubbish, zero and out-of-range values are refused AT THE BOUNDARY rather
- * than clamped into something the owner did not ask for or looped over.
- */
-export function validateBudgetMinutes(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  const n = Math.round(value);
-  if (n < MIN_BUDGET_MINUTES || n > MAX_BUDGET_MINUTES) return null;
-  return n;
-}
-
-/**
- * The candidate pool a build OR a swap picks from: practised-today material
- * steps aside — unless it is committed to a class, a commitment the day's
- * earlier session did not discharge — falling back to repeating today's own
- * work only when nothing fresh remains eligible. Shared so a swap can never
- * reach material the build itself deliberately set aside (§B3/B7): a swap
- * used to run this filter over `scored` directly, so it could hand back an
- * item the build had excluded as already practised while a fresher,
- * untouched candidate sat right behind it.
- */
-function candidatePool(
-  scored: ItemScore[],
-  blocks: PracticeBlock[],
-  now: Date,
-): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string> } {
-  const today = todayISODate(now);
-  const practisedToday = new Set(
-    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
-  );
-  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || s.parts.lesson > 0);
-  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday };
-}
-
-/**
- * Is this item suitable as a warm-up? A role, not a label.
- *
- * Two things together: LOW DEMAND (difficulty ≤ 3) and evidence of
- * FAMILIARITY — either a settled status or a real practice history. A brand
- * new, demanding étude tagged "technique" is exactly what a warm-up is not,
- * however the old type/strand test read it. With nothing suitable the planner
- * omits the warm-up honestly rather than promoting the least-bad candidate.
- */
-export function isWarmupSuitable(item: PracticeItem): boolean {
-  if (item.difficulty >= 4) return false;
-  if (item.status === 'new' || item.status === 'dormant') return false;
-  return item.timesPractised >= 3 || FAMILIAR_STATUSES.has(item.status);
-}
-
-/**
- * The musical dimension a diversity preference works on: the item's own
- * strand, else its type. Existing metadata only — no new taxonomy, and a
- * missing one simply contributes no preference either way.
- */
-export function itemDimension(item: PracticeItem): string {
-  return item.strand ?? item.itemType;
-}
-
-interface Candidate {
-  score: ItemScore;
-  bucket: PlanBucket;
-  reason: string;
-}
-
-function focusFor(item: PracticeItem): FocusArea {
-  return focusForItem(item);
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
-}
-
-/**
- * A one-sentence reason built from the SAME record that selected the item:
- * its own score parts, its own committed lesson, its own review date. Extra
- * context (a repeat, a diversity trade-off) is passed in from the selection
- * step that actually made that trade, never re-derived here.
- */
-export function planSegmentReason(
-  bucket: PlanBucket,
-  score: ItemScore,
-  context: { repeat?: boolean; yieldedTo?: string; dueDate?: ISODate } = {},
-): string {
-  if (context.repeat) {
-    return 'Practised earlier today — chosen again because nothing else eligible is waiting.';
-  }
-  switch (bucket) {
-    case 'warmup':
-      return 'Warm up on something you already know before the harder work.';
-    case 'lesson':
-      return score.daysToLesson === 0
-        ? `For today’s class (${score.lessonDate}).`
-        : `For your class on ${score.lessonDate} — ${plural(score.daysToLesson ?? 0, 'day')} away.`;
-    case 'review': {
-      const when = context.dueDate ? ` (due ${context.dueDate})` : '';
-      return score.overdueDays != null && score.overdueDays > 0
-        ? `Due for review${when} — ${plural(score.overdueDays, 'day')} overdue.`
-        : `Due for review today${when} — retrieve it from memory.`;
-    }
-    case 'cooldown':
-      return 'End on something that already holds together.';
-    case 'deep': {
-      const p = score.parts;
-      if (context.yieldedTo) {
-        return `Fresh work — you have already spent time on ${context.yieldedTo} lately.`;
-      }
-      if (p.fragility >= 4) return 'Focused work — it’s still shaky and needs rebuilding.';
-      if (score.overdueDays && score.overdueDays > 0) return 'Focused work — its review is overdue.';
-      if (p.neglected >= 3) return 'Focused work — it’s been a while since you touched it.';
-      if (p.importance >= 8) return 'Focused work — it matters most right now.';
-      if (p.exposurePenalty > 0) {
-        return `Focused work — ${Math.round(score.exposureMinutes)} minutes on it this week already.`;
-      }
-      return 'Focused work on what needs the most attention.';
-    }
-  }
-}
-
-/**
- * Build a time-budgeted plan for one instrument. Pure and deterministic.
- * Minutes are whole and never exceed `budgetMinutes`.
- *
- * Throws on an invalid budget: a plan built from a NaN or a two-day session
- * length is not a plan, and silently repairing one hides the caller's bug.
- */
-export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
-  const B = validateBudgetMinutes(args.budgetMinutes);
-  if (B === null) {
-    throw new Error(
-      `Session length must be a whole number of minutes between ${MIN_BUDGET_MINUTES} and ${MAX_BUDGET_MINUTES}.`,
-    );
-  }
-  const params = clampSchedulingParams(args.params ?? DEFAULT_SCHEDULING_PARAMS);
-  const now = args.now;
-  const generatedAt = now.toISOString();
-  const empty = (summary: string): SessionPlan => ({
-    instrumentId: args.instrumentId,
-    budgetMinutes: B,
-    segments: [],
-    summary,
-    generatedAt,
-  });
-
-  // ---- eligibility: one policy, no widening fallback -----------------------
-  const items = args.items.filter((i) => i.instrumentId === args.instrumentId).filter(isProactiveCandidate);
-  const blocks = args.blocks.filter((b) => b.instrumentId === args.instrumentId);
-  const blocksByItem = groupBlocksByItem(blocks);
-  const scored = scoreItems(items, blocksByItem, now, args.preparationDates);
-
-  if (scored.length === 0) {
-    return empty(
-      args.items.some((i) => i.instrumentId === args.instrumentId)
-        ? 'Everything for this instrument is resting — change an item’s status to bring it back.'
-        : 'No items for this instrument yet — add one and the plan fills in.',
-    );
-  }
-
-  const today = todayISODate(now);
-  const { pool, isRepeatPool, practisedToday } = candidatePool(scored, blocks, now);
-
-  const dueById = new Map(
-    dueReviews(args.reviews, now)
-      .filter((r) => items.some((i) => i.id === r.practiceItemId))
-      .map((r) => [r.practiceItemId, r.dueDate] as const),
-  );
-
-  const bucketFor = (s: ItemScore): PlanBucket => {
-    if (s.parts.lesson > 0) return 'lesson';
-    if (dueById.has(s.item.id)) return 'review';
-    return 'deep';
-  };
-
-  // Dimensions touched in the last couple of days — a modest freshness
-  // preference, subordinate to every real need above it in the score.
-  const recentDimensions = new Set<string>();
-  for (const b of blocks) {
-    const day = toISODate(new Date(b.startedAt));
-    if (day > today) continue;
-    const ageOk = day >= addDaysBack(today, DIVERSITY_RECENT_WINDOW_DAYS);
-    if (!ageOk) continue;
-    const item = items.find((i) => i.id === b.practiceItemId);
-    if (item) recentDimensions.add(itemDimension(item));
-  }
-
-  const stageIds = args.stageItemIds ?? new Set<string>();
-  const used = new Set<string>();
-  const selectedDimensions = new Set<string>();
-  const selected: Candidate[] = [];
-
-  /**
-   * Pick the best remaining candidate from `from`, applying the bounded
-   * diversity preference. Returns the candidate AND the dimension it beat, so
-   * the reason can say so rather than inventing an explanation later.
-   */
-  const pick = (
-    from: ItemScore[],
-    applyDiversity: boolean,
-  ): { score: ItemScore; yieldedTo?: string } | undefined => {
-    const open = from.filter((s) => !used.has(s.item.id));
-    if (open.length === 0) return undefined;
-    const adjusted = open.map((s) => {
-      const dim = itemDimension(s.item);
-      let penalty = 0;
-      if (applyDiversity) {
-        if (selectedDimensions.has(dim)) penalty += DIVERSITY_SAME_SESSION_PENALTY;
-        if (recentDimensions.has(dim)) penalty += DIVERSITY_RECENT_DAYS_PENALTY;
-      }
-      return { s, adjusted: s.total - penalty, penalty };
-    });
-    adjusted.sort(
-      (a, b) =>
-        b.adjusted - a.adjusted ||
-        b.s.total - a.s.total ||
-        Number(stageIds.has(b.s.item.id)) - Number(stageIds.has(a.s.item.id)) ||
-        a.s.item.id.localeCompare(b.s.item.id),
-    );
-    const best = adjusted[0];
-    // Name the trade only when diversity ACTUALLY changed the order.
-    const top = open.slice().sort((a, b) => b.total - a.total || a.item.id.localeCompare(b.item.id))[0];
-    const yieldedTo = top && top.item.id !== best.s.item.id ? top.item.title : undefined;
-    return { score: best.s, yieldedTo };
-  };
-
-  const add = (
-    chosen: { score: ItemScore; yieldedTo?: string } | undefined,
-    bucket: PlanBucket,
-    extra: { repeat?: boolean } = {},
-  ): Candidate | undefined => {
-    if (!chosen) return undefined;
-    used.add(chosen.score.item.id);
-    selectedDimensions.add(itemDimension(chosen.score.item));
-    const candidate: Candidate = {
-      score: chosen.score,
-      bucket,
-      reason: planSegmentReason(bucket, chosen.score, {
-        repeat: extra.repeat,
-        yieldedTo: bucket === 'deep' ? chosen.yieldedTo : undefined,
-        dueDate: dueById.get(chosen.score.item.id),
-      }),
-    };
-    selected.push(candidate);
-    return candidate;
-  };
-
-  // ---- 1. the anchor: the most useful work, before any role decoration ----
-  const anchorPick = pick(pool, false);
-  const anchor = add(anchorPick, anchorPick ? bucketFor(anchorPick.score) : 'deep', { repeat: isRepeatPool });
-  if (!anchor) return empty('Nothing eligible to practise right now.');
-
-  if (B >= SHORT_SESSION_MINUTES) {
-    // ---- 2. warm-up: optional, real minutes, never at the cost of the work --
-    const warmupMinutes = Math.max(MIN_SEGMENT_MINUTES, Math.round(B * params.warmupShare));
-    if (B - warmupMinutes >= MAIN_WORK_FLOOR_MINUTES) {
-      // A warm-up never consumes work that is WANTED for itself: an item
-      // whose review is due deserves the retrieval slot, and one committed to
-      // a class deserves real practice. Spending either as the warm-up would
-      // quietly drop the need that made it urgent.
-      const warmupPool = pool.filter(
-        (s) => isWarmupSuitable(s.item) && !dueById.has(s.item.id) && s.parts.lesson === 0,
-      );
-      add(pick(warmupPool, false), 'warmup', { repeat: isRepeatPool });
-    }
-
-    // ---- 3. fill the middle with further useful work ------------------------
-    const target = segmentTarget(B);
-    const wantCooldown = B >= 20;
-    const middleTarget = target - (wantCooldown ? 1 : 0);
-    while (selected.length < middleTarget) {
-      const next = pick(pool, true);
-      if (!next) break;
-      add(next, bucketFor(next.score), { repeat: isRepeatPool });
-    }
-
-    // ---- 4. cool-down: optional familiar work, never a slot to fill ---------
-    if (wantCooldown && selected.length < target) {
-      add(pick(pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status)), false), 'cooldown', {
-        repeat: isRepeatPool,
-      });
-    }
-  }
-
-  // ---- order: warm-up first, cool-down last, work by priority between -------
-  const rank = (c: Candidate): number => (c.bucket === 'warmup' ? 0 : c.bucket === 'cooldown' ? 2 : 1);
-  const ordered = selected
-    .map((c, i) => ({ c, i }))
-    .sort((a, b) => {
-      const ra = rank(a.c);
-      const rb = rank(b.c);
-      if (ra !== rb) return ra - rb;
-      if (ra === 1) return b.c.score.total - a.c.score.total || a.c.score.item.id.localeCompare(b.c.score.item.id);
-      return a.i - b.i;
-    })
-    .map(({ c }) => c);
-
-  const minutes = allocateMinutes(ordered.map((c) => c.bucket), B, params);
-  const kept = ordered.slice(0, minutes.length);
-
-  const coreIds = new Set<string>([anchor.score.item.id]);
-  const warmupSeg = kept.find((c) => c.bucket === 'warmup');
-  if (warmupSeg) coreIds.add(warmupSeg.score.item.id);
-  const topWork = kept.find((c) => c.bucket === 'lesson' || c.bucket === 'review');
-  if (topWork && coreIds.size < 3) coreIds.add(topWork.score.item.id);
-
-  const segments: PlanSegment[] = kept.map((c, i) => ({
-    itemId: c.score.item.id,
-    title: c.score.item.title,
-    minutes: minutes[i],
-    bucket: c.bucket,
-    core: coreIds.has(c.score.item.id),
-    mode: defaultModeForStatus(c.score.item.status),
-    focus: focusFor(c.score.item),
-    reason: c.reason,
-  }));
-
-  // "Skipping X" is decided from what was ACTUALLY left out. Deriving it
-  // before selection is how the fallback used to name an item it went on to
-  // choose — a plan describing its own segment as skipped.
-  const chosen = new Set(segments.map((s) => s.itemId));
-  const skippedTitles = scored
-    .filter((s) => practisedToday.has(s.item.id) && !chosen.has(s.item.id))
-    .map((s) => s.item.title);
-
-  return {
-    instrumentId: args.instrumentId,
-    budgetMinutes: B,
-    segments,
-    summary: buildSummary(segments, B, skippedTitles),
-    generatedAt,
-  };
-}
-
-/** Local calendar date `days` before `date`. */
-function addDaysBack(date: ISODate, days: number): ISODate {
-  const [y, m, d] = date.split('-').map(Number);
-  const back = new Date(y, (m ?? 1) - 1, (d ?? 1) - days);
-  return toISODate(back);
-}
-
-/** How many segments a budget can sensibly seat. */
-function segmentTarget(B: number): number {
-  if (B < SHORT_SESSION_MINUTES) return 1;
-  if (B < 20) return 2;
-  if (B < 30) return 3;
-  if (B < 45) return 4;
-  if (B < 60) return 5;
-  if (B < 90) return 6;
-  return 7;
-}
-
-/**
- * Apportion whole minutes across the given buckets, never exceeding `budget`
- * and normally using all of it. Every segment gets at least
- * MIN_SEGMENT_MINUTES and at most MAX_SEGMENT_MINUTES.
- *
- * That ceiling is what makes an honest remainder possible: two items and two
- * hours is not a reason to propose a sixty-minute block on each. When the
- * ceiling binds, the leftover minutes are simply not allocated, and the
- * summary says so — inventing filler or stretching work beyond a sensible
- * allocation would be a worse answer than a short plan.
- *
- * Deterministic largest-remainder split by bucket weight, a priority-ordered
- * ±1 fix, then review segments are clamped into
- * `[reviewSlotMinMinutes, reviewSlotMaxMinutes]`.
- */
-export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: SchedulingParams): number[] {
-  const B = Math.max(MIN_SEGMENT_MINUTES, Math.round(budget));
-  let list = buckets.slice();
-  if (list.length === 0) return [];
-
-  // Too many segments to give each ≥ MIN_SEGMENT_MINUTES? Drop lowest-priority.
-  const maxSegments = Math.max(1, Math.floor(B / MIN_SEGMENT_MINUTES));
-  if (list.length > maxSegments) {
-    const keepOrder = list
-      .map((bucket, i) => ({ bucket, i }))
-      .sort((a, b) => BUCKET_PRIORITY.indexOf(a.bucket) - BUCKET_PRIORITY.indexOf(b.bucket) || a.i - b.i)
-      .slice(0, maxSegments)
-      .map((x) => x.i)
-      .sort((a, b) => a - b);
-    list = keepOrder.map((i) => buckets[i]);
-  }
-
-  if (list.length === 1) return [Math.min(B, MAX_SEGMENT_MINUTES)];
-
-  const p = clampSchedulingParams(params);
-  const alloc: number[] = new Array(list.length).fill(0);
-
-  // The warm-up's share is a REAL ALLOCATION TARGET, not a weight nudge: it is
-  // pinned to `round(B × warmupShare)` and then left alone. Bounded by
-  // feasibility — never below the floor, never above the ceiling, and never so
-  // large that another segment cannot reach the floor. Everything else splits
-  // what remains, so the published share is the number the owner actually
-  // sees on the screen rather than an input to a weighting they cannot check.
-  const warmupIdx = list.indexOf('warmup');
-  const rest = list.map((_, i) => i).filter((i) => i !== warmupIdx);
-  let pool = B;
-  if (warmupIdx >= 0) {
-    const headroom = B - rest.length * MIN_SEGMENT_MINUTES;
-    const target = Math.round(B * p.warmupShare);
-    alloc[warmupIdx] = Math.max(
-      MIN_SEGMENT_MINUTES,
-      Math.min(target, MAX_SEGMENT_MINUTES, Math.max(MIN_SEGMENT_MINUTES, headroom)),
-    );
-    pool = B - alloc[warmupIdx];
-  }
-
-  const weights = rest.map((i) => weightFor(list[i], p));
-  const sumW = weights.reduce((a, w) => a + w, 0) || 1;
-  rest.forEach((i, k) => {
-    alloc[i] = Math.min(
-      MAX_SEGMENT_MINUTES,
-      Math.max(MIN_SEGMENT_MINUTES, Math.floor((pool * weights[k]) / sumW)),
-    );
-  });
-
-  let total = alloc.reduce((a, m) => a + m, 0);
-  const byPriority = rest
-    .map((i) => ({ b: list[i], i }))
-    .sort((a, z) => BUCKET_PRIORITY.indexOf(a.b) - BUCKET_PRIORITY.indexOf(z.b) || a.i - z.i)
-    .map((x) => x.i);
-
-  // Hand out the shortfall to the highest-priority segments that still have
-  // room under the ceiling. When none has room, the remainder stays unspent —
-  // an honest short plan beats stretching two items across two hours.
-  let guard = 0;
-  while (total < B && guard++ < 10000) {
-    let changed = false;
-    for (const i of byPriority) {
-      if (total >= B) break;
-      if (alloc[i] < MAX_SEGMENT_MINUTES) {
-        alloc[i] += 1;
-        total += 1;
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-  // Trim any overflow from the lowest-priority segments that stay at the floor.
-  const lowestFirst = byPriority.slice().reverse();
-  guard = 0;
-  while (total > B && guard++ < 10000) {
-    let changed = false;
-    for (const i of lowestFirst) {
-      if (total <= B) break;
-      if (alloc[i] > MIN_SEGMENT_MINUTES) {
-        alloc[i] -= 1;
-        total -= 1;
-        changed = true;
-      }
-    }
-    if (!changed) break;
-  }
-
-  // Keep review segments within the configured slot window — a retrieval check
-  // should not quietly take half the session. Minutes move only among the
-  // non-warm-up segments, so the warm-up's pinned share survives this step.
-  const reviewIdx = rest.filter((i) => list[i] === 'review');
-  if (reviewIdx.length > 0) {
-    const others = byPriority.filter((i) => list[i] !== 'review');
-    const othersLowestFirst = others.slice().reverse();
-    for (const i of reviewIdx) {
-      const original = alloc[i];
-      const desired = Math.min(Math.max(original, p.reviewSlotMinMinutes), p.reviewSlotMaxMinutes);
-      const diff = original - desired;
-      if (diff > 0 && others.length > 0) {
-        let give = diff;
-        let g = 0;
-        while (give > 0 && g++ < 10000) {
-          let changed = false;
-          for (const j of others) {
-            if (give <= 0) break;
-            if (alloc[j] < MAX_SEGMENT_MINUTES) {
-              alloc[j] += 1;
-              give -= 1;
-              changed = true;
-            }
-          }
-          if (!changed) break;
-        }
-        // Only give away what someone could actually take: the rest stays on
-        // the review rather than vanishing from the budget.
-        alloc[i] = original - (diff - give);
-      } else if (diff < 0) {
-        const need = -diff;
-        let taken = 0;
-        let g = 0;
-        while (taken < need && g++ < 10000) {
-          let changed = false;
-          for (const j of othersLowestFirst) {
-            if (taken >= need) break;
-            if (alloc[j] > MIN_SEGMENT_MINUTES) {
-              alloc[j] -= 1;
-              taken += 1;
-              changed = true;
-            }
-          }
-          if (!changed) break;
-        }
-        alloc[i] = Math.min(MAX_SEGMENT_MINUTES, original + taken);
-      }
-    }
-  }
-
-  return alloc;
-}
-
-function weightFor(bucket: PlanBucket, params: SchedulingParams): number {
-  // Warm-up is deliberately absent: its share is a pinned allocation target
-  // above, not a weight. Having both was two half-mechanisms for one number,
-  // and meant the published share was never the minutes anyone actually got.
-  if (bucket === 'deep') return BUCKET_WEIGHT.deep * (params.deepWorkShare / DEFAULT_SCHEDULING_PARAMS.deepWorkShare);
-  return BUCKET_WEIGHT[bucket];
-}
-
-function buildSummary(segments: PlanSegment[], B: number, skippedTitles: string[]): string {
-  if (segments.length === 0) return `${B} min free — add an item and the plan fills in.`;
-  const counts = new Map<PlanBucket, number>();
-  for (const s of segments) counts.set(s.bucket, (counts.get(s.bucket) ?? 0) + 1);
-  const parts: string[] = [];
-  if (counts.get('warmup')) parts.push('a warm-up');
-  const focus = (counts.get('deep') ?? 0) + (counts.get('lesson') ?? 0);
-  if (focus) parts.push(`${focus} focus block${focus === 1 ? '' : 's'}`);
-  if (counts.get('review')) parts.push(`${counts.get('review')} review${counts.get('review') === 1 ? '' : 's'}`);
-  if (counts.get('cooldown')) parts.push('a cool-down');
-  const planned = segments.reduce((a, s) => a + s.minutes, 0);
-  let out = `${planned} min · ${joinList(parts)}.`;
-  if (planned < B) {
-    out += ` ${B - planned} of your ${B} minutes are unplanned — there isn’t more useful work waiting.`;
-  }
-  if (skippedTitles.length > 0) {
-    const shown = skippedTitles.slice(0, 2).join(', ');
-    const more = skippedTitles.length > 2 ? ` +${skippedTitles.length - 2} more` : '';
-    out += ` Skipping ${shown}${more} — already practised today.`;
-  }
-  return out;
-}
-
-function joinList(parts: string[]): string {
-  if (parts.length === 0) return 'a focused block';
-  if (parts.length === 1) return parts[0];
-  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-}
-
-/**
- * Re-spread minutes across the remaining segments after one was removed. Item
- * identity, bucket and reason are untouched — redistribution moves minutes,
- * never work: attaching one role's minutes and reason to another item is the
- * failure this preserves against.
- */
-export function redistributePlan(plan: SessionPlan, params?: SchedulingParams): SessionPlan {
-  if (plan.segments.length === 0) {
-    return { ...plan, summary: buildSummary([], plan.budgetMinutes, []) };
-  }
-  const minutes = allocateMinutes(plan.segments.map((s) => s.bucket), plan.budgetMinutes, params);
-  // allocateMinutes may drop segments if there are too many for the budget;
-  // keep only the ones it kept, in order.
-  const kept = plan.segments.slice(0, minutes.length);
-  const segments = kept.map((s, i) => ({ ...s, minutes: minutes[i] }));
-  return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };
-}
-
-/**
- * Swap segment `index` for the next-best alternative, keeping its minutes and
- * its role. Uses the SAME eligibility policy, candidate pool and warm-up
- * exclusions as the build — a swap that could reach material the build
- * excluded is a second, hidden policy, and it used to hand back an item
- * already practised today (or a due/lesson-committed item as a "warm-up")
- * even while a fresher, build-eligible candidate sat right behind it.
- *
- * DELIBERATELY NOT SHARED: the build's DIVERSITY preference
- * (`selectedDimensions`/`recentDimensions` in `buildSessionPlan`). Diversity
- * is a modest, order-dependent tie-break among the OTHER segments a build is
- * choosing at the same time (AGENTS.md: "subordinate to real needs") — it is
- * not an eligibility rule like practised-today or a due/lesson exclusion, and
- * a swap has no OTHER segments' choices in front of it to be diverse against
- * (`plan.segments` here is the already-finished plan, not a selection in
- * progress). Reconstructing that state for one substitution would make a
- * swap's answer depend on an ordering it never participated in. A swap
- * therefore returns the single best-scoring ELIGIBLE candidate, full stop.
- */
-export function swapSegment(
-  plan: SessionPlan,
-  index: number,
-  args: Omit<BuildPlanArgs, 'budgetMinutes'> & { excludeIds?: Set<string> },
-): SessionPlan {
-  const target = plan.segments[index];
-  if (!target) return plan;
-
-  const items = args.items
-    .filter((i) => i.instrumentId === plan.instrumentId)
-    .filter(isProactiveCandidate);
-  const blocks = args.blocks.filter((b) => b.instrumentId === plan.instrumentId);
-  const scored = scoreItems(items, groupBlocksByItem(blocks), args.now, args.preparationDates);
-  // The SAME candidate pool the build itself drew from — practised-today
-  // material stays excluded here too, unless nothing fresh is eligible for
-  // this bucket, in which case the honest repeat fallback applies exactly as
-  // it does on a build (§B3/B7).
-  const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
-
-  const inUse = new Set(plan.segments.map((s) => s.itemId));
-  const exclude = args.excludeIds ?? new Set<string>();
-  const dueById = new Map(
-    dueReviews(args.reviews, args.now)
-      .filter((r) => items.some((i) => i.id === r.practiceItemId))
-      .map((r) => [r.practiceItemId, r.dueDate] as const),
-  );
-
-  const eligible = (s: ItemScore): boolean => {
-    if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
-    switch (target.bucket) {
-      case 'warmup':
-        // Same exclusions as the build's own warm-up pool: a due review or a
-        // class commitment deserves the slot it is actually needed for, never
-        // spent as a warm-up.
-        return isWarmupSuitable(s.item) && !dueById.has(s.item.id) && s.parts.lesson === 0;
-      case 'lesson':
-        return s.parts.lesson > 0;
-      case 'review':
-        return dueById.has(s.item.id);
-      case 'cooldown':
-        return COOLDOWN_STATUSES.has(s.item.status);
-      case 'deep':
-        return true;
-    }
-  };
-
-  const pick = pool.find(eligible);
-  if (!pick) return plan;
-
-  const replacement: PlanSegment = {
-    itemId: pick.item.id,
-    title: pick.item.title,
-    minutes: target.minutes,
-    bucket: target.bucket,
-    core: target.core,
-    mode: defaultModeForStatus(pick.item.status),
-    focus: focusFor(pick.item),
-    reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id), repeat: isRepeatPool }),
-  };
-  const segments = plan.segments.map((s, i) => (i === index ? replacement : s));
-  return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };
-}
-
-/** Exposure window this planner reasons over, re-exported for the docs table. */
-export { EXPOSURE_WINDOW_DAYS };
-
-// --- Running a plan ----------------------------------------------------------
-//
-// The pointer transitions live here, pure, for the same reason every other
-// decision does: the store cannot be imported in a Node test (it pulls in
-// Dexie), so a transition written inline there would be provable only through
-// a browser. These are the transitions; `useStore` is the thin caller.
-
-export type PlanSegmentStatus = 'pending' | 'done' | 'skipped';
-
-export interface PlanRunSegment extends PlanSegment {
-  status: PlanSegmentStatus;
-}
-
-export interface PlanRun {
-  instrumentId: string;
-  budgetMinutes: number;
-  startedAt: string;
-  /** Index of the next segment to practise; === segments.length when finished. */
-  pointer: number;
-  segments: PlanRunSegment[];
-}
-
-/**
- * The next still-PENDING segment. It wraps once to the start, so a pending
- * segment the pointer has already jumped past is not stranded; a segment the
- * owner deliberately skipped stays skipped. `segments.length` means finished.
- */
-export function advancePlanPointer(segments: PlanRunSegment[], from: number): number {
-  for (let i = from + 1; i < segments.length; i++) {
-    if (segments[i].status === 'pending') return i;
-  }
-  for (let i = 0; i < segments.length; i++) {
-    if (segments[i].status === 'pending') return i;
-  }
-  return segments.length;
-}
-
-/**
- * A block just closed. When it was the CURRENT segment's item, that segment is
- * done and the pointer moves on; anything else leaves the run untouched —
- * practising something off-plan is ordinary, not plan progress.
- */
-export function completePlanSegment(run: PlanRun, itemId: string): PlanRun {
-  const seg = run.segments[run.pointer];
-  if (!seg || seg.itemId !== itemId || seg.status !== 'pending') return run;
-  const segments = run.segments.map((s, i) => (i === run.pointer ? { ...s, status: 'done' as const } : s));
-  return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
-}
-
-/** Skip the current segment. Records nothing: a skipped segment is not practice. */
-export function skipPlanSegment(run: PlanRun): PlanRun {
-  const seg = run.segments[run.pointer];
-  if (!seg || seg.status !== 'pending') return run;
-  const segments = run.segments.map((s, i) => (i === run.pointer ? { ...s, status: 'skipped' as const } : s));
-  return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
-}
-
-/**
- * Has the local calendar day moved past the day a session-plan PREVIEW was
- * built for? Takes the caller's OWN `now` rather than reading a clock itself,
- * but the point of this function is that the caller must pass the TRUE
- * current instant here, never a screen's own polled `now`
- * (`useDecisionNow` refreshes at most every 30 seconds, plus visibility/focus)
- * — starting a plan is an authority boundary, the one place that lag must
- * never be trusted. `SessionPlan.tsx`'s own `stale` flag already renders this
- * same comparison against its polled `now` for the passive banner; this is
- * the identical rule, extracted so the click-time check reads a fresh
- * `Date` directly rather than waiting for that polled value to catch up.
- */
-export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
-  return todayISODate(now) !== baseDay;
-}
-
-export type PlanStartCheck =
-  | { ok: true; item: PracticeItem }
-  | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
-
-/**
- * May the current segment be started right now? Revalidated against LIVE data
- * every time, never trusted from the plan: between building a plan and reaching
- * a segment the item can be deleted or moved to another instrument, and another
- * clock can have been started.
- *
- * A `deleted`/`moved` segment is visibly skipped by the caller rather than
- * played under the wrong instrument; a `busy` verdict refuses outright, because
- * replacing an unfinished block or routine run would destroy real practice.
- */
-export function planSegmentStartable(
-  run: PlanRun,
-  items: PracticeItem[],
-  busy = false,
-): PlanStartCheck {
-  if (busy) return { ok: false, reason: 'busy' };
-  const seg = run.segments[run.pointer];
-  if (!seg) return { ok: false, reason: 'finished' };
-  const item = items.find((i) => i.id === seg.itemId);
-  if (!item) return { ok: false, reason: 'deleted' };
-  if (item.instrumentId !== run.instrumentId) return { ok: false, reason: 'moved' };
-  return { ok: true, item };
-}
-```
-
-### src/pages/SessionPlan.tsx
-
-```
-import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  buildSessionPlan,
-  currentStage,
-  MAX_BUDGET_MINUTES,
-  MIN_BUDGET_MINUTES,
-  planPreviewDayHasPassed,
-  preparationDatesByItem,
-  redistributePlan,
-  swapSegment,
-  clampSchedulingParams,
-  todayISODate,
-  validateBudgetMinutes,
-  type PlanBucket,
-  type SessionPlan as SessionPlanT,
-} from '../domain';
-import { useStore } from '../store/useStore';
-import { instrumentName } from '../store/lookups';
-import { CheckIcon, MinusIcon, PlayIcon, XIcon } from '../components/icons';
-import { useDecisionNow } from '../components/useDecisionNow';
-
-/** The presets the picker offers; any whole minute in range is still accepted. */
-const BUDGET_PRESETS = [5, 10, 15, 20, 30, 45, 60] as const;
-
-const BUCKET_LABEL: Record<PlanBucket, string> = {
-  warmup: 'Warm-up',
-  lesson: 'For class',
-  review: 'Review',
-  deep: 'Focus',
-  cooldown: 'Cool-down',
-};
-
-export default function SessionPlan() {
-  const activePlan = useStore((s) => s.activePlan);
-  // A running plan takes over the whole page; otherwise show the preview.
-  return activePlan ? <PlanRunner /> : <PlanPreview />;
-}
-
-// --- Preview: build, tweak, and start ---------------------------------------
-
-function PlanPreview() {
-  const db = useStore((s) => s.db);
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const planMinutes = useStore((s) => s.planMinutesByInstrument);
-  const setPlanMinutes = useStore((s) => s.setPlanMinutes);
-  const startPlan = useStore((s) => s.startPlan);
-  const navigate = useNavigate();
-  const [params] = useSearchParams();
-  // Refreshed at a local-day boundary so a preview left open overnight never
-  // plans against yesterday's due dates and lesson deadlines.
-  //
-  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
-  // so it can lag the true instant by up to that long. `nowOverride` closes
-  // that gap at the one moment it actually matters — Start — without needing
-  // the shared hook to expose a manual refresh: the same small local-override
-  // shape CloseBlock's own Save race uses. `start()` sets it the instant it
-  // finds the real local day has moved past the day this preview was built
-  // for, forcing an immediate re-render where `today`/`stale` below already
-  // reflect it, instead of silently installing yesterday's selections under a
-  // Start button that still reads as enabled.
-  const [nowOverride, setNowOverride] = useState<Date | null>(null);
-  const decisionNow = useDecisionNow();
-  const now = nowOverride ?? decisionNow;
-
-  const instrumentId = sessionInstrumentId ?? db.instruments.find((i) => i.active)?.id ?? db.instruments[0]?.id ?? '';
-  // Invalid input is rejected at the boundary, never clamped into a session
-  // length the owner did not choose or looped over.
-  const queryMinutes = validateBudgetMinutes(Number(params.get('minutes')));
-  const [chosen, setChosen] = useState<number | null>(null);
-  const budget = chosen ?? queryMinutes ?? validateBudgetMinutes(planMinutes[instrumentId]) ?? 20;
-
-  const build = useMemo(() => {
-    const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
-    const pathway = db.pathways.find((p) => p.instrumentId === instrumentId);
-    const stage = pathway ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId) : null;
-    const stageItemIds = stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
-    return buildSessionPlan({
-      instrumentId,
-      budgetMinutes: budget,
-      now,
-      items: db.items,
-      blocks: db.blocks,
-      reviews: db.reviews,
-      preparationDates,
-      stageItemIds,
-      params: clampSchedulingParams(db.settings),
-    });
-  }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.lessonAgenda, db.pathways, db.pathwayStages, db.settings, now]);
-
-  const [plan, setPlan] = useState<SessionPlanT>(build);
-  // WHAT the plan was built FOR. `generatedAt` used to be the re-seed key, and
-  // it never changed within a mount (the page froze `now`), so changing the
-  // budget or the instrument left the previous plan on screen — a preview of a
-  // session the owner was no longer asking for.
-  const seedKey = `${instrumentId}|${budget}`;
-  const [seed, setSeed] = useState(seedKey);
-  // The data revision the visible draft was built from. A change to the items,
-  // blocks or reviews underneath it does NOT silently rewrite the draft (that
-  // would throw away deliberate swaps and removals) — it marks the draft as
-  // needing regeneration, so stale work can never be started by accident.
-  const rev = useStore((s) => s.rev);
-  const [baseRev, setBaseRev] = useState(rev);
-  // The LOCAL CALENDAR DAY the visible draft was built for. `rev` alone
-  // cannot catch a plan left open across midnight with no database write in
-  // between: `db.items`/`db.blocks`/`db.reviews` are identical, so `rev`
-  // never moves, yet "today's class" and "due today" are no longer honest
-  // once the day has actually rolled. Tracked the same way as `rev` — marking
-  // the draft stale rather than silently rewriting it — so a deliberate swap
-  // or removal survives the boundary exactly as it survives any other change
-  // underneath the plan.
-  const today = todayISODate(now);
-  const [baseDay, setBaseDay] = useState(today);
-  if (seedKey !== seed) {
-    setSeed(seedKey);
-    setPlan(build);
-    setBaseRev(rev);
-    setBaseDay(today);
-  }
-  const stale = rev !== baseRev || today !== baseDay;
-
-  const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
-  const editorArgs = () => {
-    const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
-    const pathway = db.pathways.find((p) => p.instrumentId === instrumentId);
-    const stage = pathway ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId) : null;
-    const stageItemIds = stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
-    return {
-      instrumentId,
-      now,
-      items: db.items,
-      blocks: db.blocks,
-      reviews: db.reviews,
-      preparationDates,
-      stageItemIds,
-      params: clampSchedulingParams(db.settings),
-      excludeIds: new Set(plan.segments.map((s) => s.itemId)),
-    };
-  };
-
-  function regenerate() {
-    setPlan(build);
-    setSeed(seedKey);
-    setBaseRev(rev);
-    setBaseDay(today);
-  }
-  function removeAt(i: number) {
-    const segments = plan.segments.filter((_, idx) => idx !== i);
-    setPlan(redistributePlan({ ...plan, segments }, clampSchedulingParams(db.settings)));
-  }
-  function swapAt(i: number) {
-    setPlan(swapSegment(plan, i, editorArgs()));
-  }
-  function start() {
-    // Starting a plan is an authority boundary: check the TRUE current
-    // instant here, never the polled `now` above, which can still be
-    // showing yesterday for up to `useDecisionNow`'s own poll interval after
-    // local midnight has genuinely passed — the exact window a dispatched
-    // visibility/focus event papers over but a real device left untouched
-    // does not get. A mismatch refuses the start and forces the SAME visible
-    // refresh the passive banner below already shows for a data change,
-    // rather than silently installing a preview for a day that has passed.
-    const trueNow = new Date();
-    if (planPreviewDayHasPassed(baseDay, trueNow)) {
-      setNowOverride(trueNow);
-      return;
-    }
-    if (plan.segments.length === 0 || stale) return;
-    setPlanMinutes(instrumentId, plan.budgetMinutes);
-    startPlan(plan);
-    navigate('/plan');
-  }
-
-  return (
-    <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
-      <header className="stack-sm">
-        <div className="row between">
-          {/* The instrument name is the owner's own editable text — its own
-              dir="auto" isolate, nested inside the title rather than bare, so
-              a Farsi name doesn't inherit whatever base the title's fixed
-              English words would otherwise resolve to. */}
-          <h1 className="page-title">
-            Your <span dir="auto">{instrumentName(db, instrumentId)}</span> session
-          </h1>
-          <Link to="/" className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} aria-label="Back to Today">
-            <XIcon />
-          </Link>
-        </div>
-        <p className="page-sub">{plan.summary}</p>
-      </header>
-
-      {/* How long have you got? The presets cover the ordinary answers
-          (5 and 10 included — a five-minute session is a real session, and
-          used to have no preset at all), and the number entry covers every
-          other whole minute in range. An out-of-range or unreadable value is
-          simply not accepted, rather than quietly becoming something else. */}
-      <fieldset className="stack-sm" style={{ border: 0, padding: 0, margin: 0 }}>
-        <legend className="section-label">How long have you got?</legend>
-        <div className="options">
-          {BUDGET_PRESETS.map((m) => (
-            <button
-              key={m}
-              type="button"
-              className={`option${budget === m ? ' selected' : ''}`}
-              aria-pressed={budget === m}
-              onClick={() => setChosen(m)}
-            >
-              {m} min
-            </button>
-          ))}
-        </div>
-        <input
-          className="input"
-          type="number"
-          inputMode="numeric"
-          min={MIN_BUDGET_MINUTES}
-          max={MAX_BUDGET_MINUTES}
-          step={1}
-          aria-label="Session length in minutes"
-          value={budget}
-          onChange={(e) => {
-            const v = validateBudgetMinutes(Number(e.target.value));
-            if (v !== null) setChosen(v);
-          }}
-          style={{ maxWidth: 120 }}
-        />
-      </fieldset>
-
-      {plan.segments.length === 0 ? (
-        <div className="card">
-          <p className="dim">Nothing to plan yet — add a piece or exercise and come back.</p>
-        </div>
-      ) : (
-        <div className="card card-flush list">
-          {plan.segments.map((seg, i) => (
-            <div key={`${seg.itemId}-${i}`} className="list-row" style={{ alignItems: 'flex-start' }}>
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
-                  <span className="mono-num" style={{ fontWeight: 600, minWidth: 44 }}>{seg.minutes} min</span>
-                  <span className="tiny faint">{BUCKET_LABEL[seg.bucket]}</span>
-                  {seg.core && <span className="tiny" style={{ color: 'var(--accent)' }}>core</span>}
-                </div>
-                <div dir="auto">
-                  <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
-                  {/* seg.reason is always English (planSegmentReason) — its own
-                      dir="ltr" isolate keeps its bidi base fixed regardless of
-                      the title's. */}
-                  <div className="tiny faint">
-                    <span dir="ltr">{seg.reason}</span>
-                  </div>
-                </div>
-              </div>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
-                Swap
-              </button>
-              <button className="btn btn-ghost" style={{ flex: 'none', minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
-                <MinusIcon />
-              </button>
-            </div>
-          ))}
-          <div className="list-row">
-            <span className="grow tiny faint">Total</span>
-            <span className="mono-num" style={{ fontWeight: 600 }}>{total} min</span>
-          </div>
-        </div>
-      )}
-
-      {stale && (
-        <div className="card card-quiet small" role="status" style={{ color: 'var(--tone-warn)' }}>
-          <span dir="ltr">
-            {today !== baseDay
-              ? 'This plan was built for a day that has passed. Regenerate it before you start.'
-              : 'Your practice data changed while this plan was open. Regenerate it before you start.'}
-          </span>
-        </div>
-      )}
-
-      <div className="row" style={{ gap: 10 }}>
-        <button
-          className="btn btn-primary btn-lg grow"
-          onClick={start}
-          disabled={plan.segments.length === 0 || stale}
-        >
-          <PlayIcon /> Start plan
-        </button>
-        <button className="btn btn-lg" onClick={regenerate}>Regenerate</button>
-      </div>
-      <p className="tiny faint">
-        Each block is real practice — start it, close it, and the plan moves on. Swap or remove anything before you begin.
-      </p>
-    </div>
-  );
-}
-
-// --- Runner: walk the segments through real blocks --------------------------
-
-function PlanRunner() {
-  const activePlan = useStore((s) => s.activePlan)!;
-  const db = useStore((s) => s.db);
-  const beginPlanSegment = useStore((s) => s.beginPlanSegment);
-  const skipPlanSegment = useStore((s) => s.skipPlanSegment);
-  const endPlan = useStore((s) => s.endPlan);
-  const navigate = useNavigate();
-
-  const done = activePlan.segments.filter((s) => s.status === 'done').length;
-  const finished = activePlan.pointer >= activePlan.segments.length;
-
-  function begin() {
-    beginPlanSegment();
-    navigate('/active');
-  }
-  function finish() {
-    endPlan();
-    navigate('/');
-  }
-
-  return (
-    <div className="stack-lg" style={{ paddingTop: 'var(--space-4)' }}>
-      <header className="stack-sm">
-        <div className="row between">
-          {/* Same isolate as the picker's own title above. */}
-          <h1 className="page-title">
-            <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span> session
-          </h1>
-          <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={finish} aria-label="End the plan">
-            <XIcon />
-          </button>
-        </div>
-        <p className="page-sub">
-          {done} of {activePlan.segments.length} done · {activePlan.budgetMinutes} min planned
-        </p>
-      </header>
-
-      {finished ? (
-        <div className="card card-accent stack-sm">
-          <h2 className="title-md">Session complete</h2>
-          <p className="dim">You worked through the plan. End on that — rest is where it consolidates.</p>
-          <button className="btn btn-primary btn-lg" onClick={finish}>
-            <CheckIcon /> Done
-          </button>
-        </div>
-      ) : null}
-
-      <div className="card card-flush list">
-        {activePlan.segments.map((seg, i) => {
-          const isCurrent = i === activePlan.pointer && !finished;
-          return (
-            <div
-              key={`${seg.itemId}-${i}`}
-              className={`list-row${isCurrent ? ' card-accent' : ''}`}
-              style={{ alignItems: 'flex-start', opacity: seg.status === 'pending' ? 1 : 0.55 }}
-            >
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
-                  <span className="mono-num" style={{ fontWeight: 600, minWidth: 44 }}>{seg.minutes} min</span>
-                  <span className="tiny faint">{BUCKET_LABEL[seg.bucket]}</span>
-                  {seg.status === 'done' && <span className="tiny" style={{ color: 'var(--tone-good)' }}>done</span>}
-                  {seg.status === 'skipped' && <span className="tiny faint">skipped</span>}
-                </div>
-                <div dir="auto">
-                  <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
-                  {isCurrent && (
-                    <div className="tiny faint">
-                      <span dir="ltr">{seg.reason}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              {isCurrent && (
-                <div className="row" style={{ gap: 6, flex: 'none' }}>
-                  <button className="btn btn-primary btn-sm" onClick={begin} aria-label={`Start ${seg.title}`}>
-                    <PlayIcon /> Start
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={skipPlanSegment} aria-label={`Skip ${seg.title}`}>
-                    Skip
-                  </button>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 ```
 
 ### src/store/useStore.ts
@@ -5380,7 +2901,6 @@ import {
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
-  migrateToCurrent,
   newId,
   nowISO,
   SCHEMA_VERSION,
@@ -6932,9 +4452,49 @@ export const useStore = create<StoreState>()(
         planMinutesByInstrument: s.planMinutesByInstrument,
         activeRoutine: s.activeRoutine,
       }),
-      migrate: (persisted, version) => {
+      // Every other inbound door — manual import, sync pull, Keep remote,
+      // archive restore — installs a database only through `validateDB`
+      // (§C7): it refuses a newer-than-supported schema outright instead of
+      // relabelling it down, runs the shared migration chain, and rejects
+      // structurally/semantically invalid data (an impossible calendar date,
+      // a dangling live reference) with actionable detail. Hydration used to
+      // call `migrateToCurrent` directly instead, which does none of that —
+      // a persisted schema newer than this build understands got silently
+      // stamped down to SCHEMA_VERSION (migrations.ts's own final line) and
+      // hydrated anyway, and already-current-but-invalid data sailed
+      // straight into live state. Routing both hooks below through
+      // `validateDB` closes that gap at the one place ALL persisted state
+      // re-enters live state, rather than teaching every UI caller to check
+      // it separately.
+      //
+      // Letting `validateDB` THROW here (never caught) is deliberate, not an
+      // oversight: zustand's own hydrate() only calls `merge` — and only
+      // persists the result back to storage — once `migrate` has RETURNED,
+      // and only calls its raw internal `set()` once `merge` has returned. A
+      // thrown validation error rejects that promise chain before either
+      // happens (see zustand's `middleware.js`), so the previously live AND
+      // the previously persisted state are both left exactly as they were:
+      // no partial hydration, no silent downgrade-and-relabel, no
+      // destructive write-back of a refused newer snapshot. This trades away
+      // opening the app's hydration gate on a refusal (zustand's own
+      // `hasHydrated`/`onFinishHydration` are wired to the success path
+      // only) — a deliberate choice, not an oversight: EVERY external call
+      // to `useStore.setState` — which is the only way to flip that gate —
+      // is itself wrapped by this same persist middleware to write straight
+      // back to storage afterwards, so forcing the gate open here would
+      // re-persist whatever `db` is currently live and silently destroy the
+      // very data a refusal (most of all a genuinely newer schema) exists to
+      // protect. `getLastHydrationError()` below still surfaces WHY, without
+      // that write.
+      migrate: (persisted) => {
         const state = persisted as { db?: PracticeDB } | undefined;
-        if (state?.db) state.db = migrateToCurrent(state.db, version);
+        // `validateDB` reads the schema version off `state.db` itself (the
+        // same source of truth every other inbound door uses) rather than
+        // the envelope-level version zustand would pass as a second
+        // argument here — the two are always kept in sync by this app's own
+        // writes, and deriving from one place avoids two version signals
+        // that could ever disagree.
+        if (state?.db) state.db = validateDB(state.db);
         return state as unknown;
       },
       merge: (persisted, current) => {
@@ -6943,19 +4503,21 @@ export const useStore = create<StoreState>()(
         // differs from the current one — a persisted database that ALREADY
         // claims the current schema never reaches it, even when it carries a
         // stray `assignedForLesson`/`teacherQuestion` an interrupted write
-        // left behind, with `lessonAgenda` never actually completed to
-        // represent it. `merge` is the one place ALL persisted state
+        // left behind, or genuinely invalid current-schema data a corrupt
+        // write produced. `merge` is the one place ALL persisted state
         // re-enters live state regardless of whether `migrate` ran (the same
         // reasoning the active/activeRoutine freeze below relies on), so it
-        // is where this closes for good: run the SAME idempotent, lossless
-        // conversion `migrate` would have, unconditionally. Calling it again
-        // on state `migrate` already processed is safe — `migrateToV12`'s own
-        // docstring guarantees it is a no-op wherever no legacy field
-        // survives — and calling it with `SCHEMA_VERSION` as the "from"
-        // version is correct here because every OTHER step in the chain is
-        // gated on a version strictly below what a current database could
-        // ever claim; only the unconditional tail step ever runs.
-        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
+        // is where both the idempotent legacy conversion AND the §C7
+        // validation close for good: run the SAME `validateDB` call
+        // `migrate` makes, unconditionally. Calling it again on state
+        // `migrate` already validated is safe and cheap — it is pure and
+        // `migrateToV12`'s own docstring guarantees its tail step is a no-op
+        // wherever no legacy field survives — and throwing here on invalid
+        // current-version data is exactly as safe as throwing in `migrate`:
+        // `set()` is never reached, and this branch never queues a persist
+        // write-back regardless (zustand only writes back after a
+        // version-mismatched `migrate` ran).
+        const db = p.db ? validateDB(p.db) : current.db;
         const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running
@@ -6992,9 +4554,37 @@ export const useStore = create<StoreState>()(
         }
         return merged;
       },
+      // A thrown `migrate`/`merge` above rejects zustand's internal hydration
+      // promise before it ever calls its OWN raw `set()` — correct, and the
+      // whole point: it's what leaves both live and persisted state
+      // untouched. Recording the reason here must not undo that: EVERY
+      // external call to `useStore.setState` (any ordinary store action
+      // included) is itself wrapped by this same persist middleware to
+      // write straight back to storage afterwards — see `setItem()` below
+      // this config and its unconditional call from `api.setState`. Calling
+      // it here to flip a "hydration failed" flag would immediately
+      // re-persist whatever `db` happens to be live, silently overwriting
+      // the very data this refusal exists to protect (a genuinely newer
+      // schema this build cannot read, most of all). `lastHydrationError` is
+      // therefore a plain module variable, never store state.
+      onRehydrateStorage: () => (_state, error) => {
+        lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
+      },
     },
   ),
 );
+
+/**
+ * The message from the most recent REFUSED hydration attempt (§C7), or null
+ * if the last attempt installed cleanly. Deliberately not store state: see
+ * `onRehydrateStorage` above for why recording it through `useStore.setState`
+ * would itself trigger the exact destructive write-back this guard exists to
+ * prevent.
+ */
+let lastHydrationError: string | null = null;
+export function getLastHydrationError(): string | null {
+  return lastHydrationError;
+}
 
 // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
 function finishHydration() {
@@ -7006,806 +4596,6 @@ function finishHydration() {
 }
 if (useStore.persist.hasHydrated()) finishHydration();
 else useStore.persist.onFinishHydration(finishHydration);
-```
-
-### tests/daily-practice.browser.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import type { Page } from 'playwright';
-import { goTo, importBackup, importOutcome, openPracticeApp, reload } from './practiceBrowser';
-import v12 from './fixtures/practice-decisions-v12.json?raw';
-
-// ---------------------------------------------------------------------------
-// ac-17 — the daily decision loop, in the real app.
-//
-// The pure engine is proven in `src/domain/scheduling.test.ts`. What only this
-// can show is the SEAM: that the date the close screen SHOWS is the date the
-// store WRITES, that the written date survives a reload, and that the same
-// screen driven a second time on the same day does not quietly advance
-// spacing again.
-// ---------------------------------------------------------------------------
-
-const CLOCK = new Date('2027-01-15T09:00:00');
-/** A Setar item from the fixture, reached by its own detail screen. */
-const ITEM = 'i-collision';
-
-describe('the daily practice loop, end to end', () => {
-  it('daily practice browser journey preserves the decision across close and rebuild', async () => {
-    const app = await openPracticeApp({ now: CLOCK });
-    const { page } = app;
-    try {
-      await importBackup(app, 'v12.json', v12);
-      expect(await importOutcome(app)).toContain('Imported');
-      await reload(app);
-
-      // --- 1. Five minutes, then thirty -----------------------------------
-      await goTo(app, '/plan');
-      await page.getByRole('button', { name: '5 min', exact: true }).click();
-      await expect.poll(() => segmentCount(page)).toBe(1);
-      expect(await totalMinutes(page)).toBe(5);
-      // Under twelve minutes there is ONE useful main focus and no warm-up.
-      expect(await page.locator('.list-row').filter({ hasText: 'Warm-up' }).count()).toBe(0);
-      expect(await page.getByText(/min ·/).first().textContent()).toContain('5 min');
-
-      // Changing the budget REBUILDS the preview. It used to key its re-seed
-      // on a timestamp that never changed within a mount, so a longer session
-      // showed the shorter session's plan.
-      await page.getByRole('button', { name: '30 min', exact: true }).click();
-      await expect.poll(() => totalMinutes(page)).toBe(30);
-      expect(await segmentCount(page)).toBeGreaterThan(1);
-      // A warm-up appears, and it is FIRST and familiar — not the demanding
-      // new material, whatever it is labelled.
-      expect(await page.locator('.list-row').filter({ hasText: 'Warm-up' }).count()).toBe(1);
-      const firstRow = page.locator('.list-row').first();
-      expect(await firstRow.textContent()).toContain('Warm-up');
-      expect(await firstRow.textContent()).toContain('Warm up on something you already know');
-
-      // --- 2. A real block from the plan, and progress that survives -------
-      const planned = await segmentCount(page);
-      await page.getByRole('button', { name: 'Start plan' }).click();
-      await page.getByRole('button', { name: /^Start / }).first().click();
-      await finishBlock(page);
-      await page.getByRole('button', { name: 'Stable alone' }).click();
-      await page.getByRole('button', { name: 'Save block' }).click();
-      await reload(app);
-      await goTo(app, '/plan');
-      // The plan is still running, one segment done, the rest still pending —
-      // and it came back out of storage, not out of React state.
-      await expect
-        .poll(() => page.locator('main').innerText().then((t) => t.includes(`1 of ${planned} done`)))
-        .toBe(true);
-      await page.getByRole('button', { name: 'End the plan' }).click();
-
-      // --- 3. THE DATE SHOWN IS THE DATE SAVED, after a reload -------------
-      let savedDate = '';
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Stable alone' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        savedDate = await page.getByLabel('Next review date').inputValue();
-        expect(savedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        expect(savedDate > isoOf(CLOCK)).toBe(true);
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(savedDate);
-
-      // …and the item's PENDING ROW agrees: at that date the item appears
-      // under Due reviews, which reads the ROW, not the item.
-      const itemTitle = await itemTitleOf(page, app.origin, ITEM);
-      await page.clock.setFixedTime(new Date(`${savedDate}T09:00:00`));
-      await goTo(app, '/');
-      await expect.poll(() => page.getByRole('heading', { name: 'Due reviews' }).isVisible()).toBe(true);
-      await expect
-        .poll(() => page.locator('main').innerText().then((t) => t.includes(itemTitle)))
-        .toBe(true);
-      await page.clock.setFixedTime(CLOCK);
-
-      // --- 4. A SECOND successful close the same day does NOT advance again -
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Performable' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(savedDate);
-
-      // --- 5. `same` keeps it too; only `worse` brings it forward ----------
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Same' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(savedDate);
-
-      let repairedDate = '';
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Worse' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        repairedDate = await page.getByLabel('Next review date').inputValue();
-        expect(repairedDate < savedDate).toBe(true);
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(repairedDate);
-
-      // --- 6. A date the owner types wins, in either direction -------------
-      const chosen = '2027-05-09';
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Slightly better' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        await page.getByLabel('Next review date').fill(chosen);
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(chosen);
-
-      // …and once it is the owner's, successful practice leaves it alone.
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Stable in context' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        expect(await page.getByLabel('Next review date').inputValue()).toBe(chosen);
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(chosen);
-
-      // --- 7. Explicit No, then Schedule again from the item ---------------
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Stable alone' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
-        await page.getByRole('group', { name: '' }).first().waitFor().catch(() => {});
-        await page.getByRole('button', { name: 'No', exact: true }).first().click();
-        await page.getByRole('button', { name: 'Save block' }).click();
-      });
-      await reload(app);
-      await goTo(app, `/items/${ITEM}`);
-      await expect.poll(() => page.getByRole('button', { name: 'Schedule again' }).isVisible()).toBe(true);
-
-      const rearmed = '2027-06-20';
-      const blocksBeforeRearm = await practiceBlockCount(page, app.origin, ITEM);
-      await goTo(app, `/items/${ITEM}`);
-      await page.getByRole('button', { name: 'Schedule again' }).click();
-      await page.getByLabel('Next review date').fill(rearmed);
-      await page.getByRole('button', { name: 'Save date' }).click();
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(rearmed);
-      // Re-arming is administration: it logged no practice.
-      expect(await practiceBlockCount(page, app.origin, ITEM)).toBe(blocksBeforeRearm);
-      const blocksBefore = await practiceBlockCount(page, app.origin, ITEM);
-
-      // --- 8. Saving without a result answers nothing about the schedule ---
-      await practise(page, app.origin, ITEM, async () => {
-        await page.getByRole('button', { name: 'Save without a result' }).click();
-      });
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(rearmed);
-      expect(await practiceBlockCount(page, app.origin, ITEM)).toBe(blocksBefore + 1);
-
-      // --- 9. Across local midnight, with the draft intact -----------------
-      // A DIFFERENT item, with no pending date at all, so the proposal is
-      // derived from TODAY and a day boundary must visibly move it. (ITEM's
-      // own date is the owner's by now, and is protected on purpose.)
-      const FRESH = 'i-flag-missing';
-      await goTo(app, `/items/${FRESH}`);
-      await page.getByRole('button', { name: 'Start a block' }).click();
-      await finishBlock(page);
-      const draft = 'the riz evened out after slowing right down';
-      await page.getByPlaceholder('What did you notice?').fill(draft);
-      await page.getByRole('button', { name: 'Worse' }).click();
-      await page.getByRole('button', { name: 'Change' }).click();
-      const beforeMidnight = await page.getByLabel('Next review date').inputValue();
-
-      await page.clock.setFixedTime(new Date('2027-01-16T00:30:00'));
-      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      await expect
-        .poll(() => page.getByLabel('Next review date').inputValue())
-        .not.toBe(beforeMidnight);
-      // The musician's own words survived the refresh.
-      expect(await page.getByPlaceholder('What did you notice?').inputValue()).toBe(draft);
-      const afterMidnight = await page.getByLabel('Next review date').inputValue();
-      await page.getByRole('button', { name: 'Save block' }).click();
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, FRESH)).toBe(afterMidnight);
-
-      // --- 10. The preview reflects the practice that has actually happened -
-      // Everything above really was practised today, so a freshly built plan
-      // must say so rather than proposing the same work again as if nothing
-      // had been done. This is the live-data half of "no stale preview": the
-      // budget half is step 1, the local-day half is step 9.
-      await page.clock.setFixedTime(CLOCK);
-      await goTo(app, '/plan');
-      await page.getByRole('button', { name: '30 min', exact: true }).click();
-      const summary = await page.locator('.page-sub').first().textContent();
-      expect(summary).toContain('already practised today');
-      expect(await page.locator('.list-row').filter({ hasText: itemTitle }).count()).toBe(0);
-
-      // --- 11. A PLAN LEFT OPEN ACROSS MIDNIGHT IS MARKED STALE ------------
-      // Still the same preview from step 10, on screen with no database
-      // write in between. `rev` alone cannot see a day rolling over — this is
-      // the OTHER half of "no stale preview" the review named: not data
-      // changing beneath the plan, but the CLOCK moving past it while it sits
-      // open, unstarted.
-      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-      await page.clock.setFixedTime(new Date('2027-01-16T00:15:00'));
-      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      await expect
-        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
-        .toBe(true);
-      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
-      // Regenerating clears it: the owner's swaps/removals up to that point
-      // are the thing being protected, not the stale label itself.
-      await page.getByRole('button', { name: 'Regenerate' }).click();
-      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-
-      // --- 11b. THE START-PLAN RACE: NO event, NO poll — the exact gap step
-      // 11's own dispatched visibilitychange never exercises, and a real
-      // device left untouched genuinely experiences. Advance the clock past
-      // midnight again and click Start IMMEDIATELY, with nothing to have told
-      // the screen the day changed: the click itself must refuse rather than
-      // silently install yesterday's selections under a button that still
-      // reads as enabled, and the refusal must be VISIBLE — the same banner,
-      // not a dead click.
-      await page.clock.setFixedTime(new Date('2027-01-17T00:20:00'));
-      await page.getByRole('button', { name: 'Start plan' }).click();
-      await expect
-        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
-        .toBe(true);
-      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
-      // The click installed nothing: still the preview, not the runner.
-      expect(await page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
-      await page.getByRole('button', { name: 'Regenerate' }).click();
-      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
-      // Genuinely fresh now: the same click succeeds.
-      await page.getByRole('button', { name: 'Start plan' }).click();
-      await expect
-        .poll(() => page.getByRole('button', { name: 'End the plan' }).isVisible().catch(() => false))
-        .toBe(true);
-      await page.getByRole('button', { name: 'End the plan' }).click();
-
-      await page.clock.setFixedTime(CLOCK);
-      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-
-      // --- 12. THE CLOSE-SCREEN RACE: a Save clicked exactly as the day
-      // rolls, with NO visibilitychange/focus event and before the next
-      // 30-second poll — the exact gap step 9's own visibilitychange dispatch
-      // does not exercise. The first Save must refresh the decision instead
-      // of silently writing the day it was previewed on; the second — now
-      // agreeing with the true day — writes exactly what is on screen.
-      const RACE_ITEM = 'i-q-and-flag';
-      await goTo(app, `/items/${RACE_ITEM}`);
-      await page.getByRole('button', { name: 'Start a block' }).click();
-      await finishBlock(page);
-      const raceDraft = 'the vibrato settled once the wrist relaxed';
-      await page.getByPlaceholder('What did you notice?').fill(raceDraft);
-      await page.getByRole('button', { name: 'Worse' }).click();
-      await page.getByRole('button', { name: 'Change' }).click();
-      const previewedBeforeRace = await page.getByLabel('Next review date').inputValue();
-
-      await page.clock.setFixedTime(new Date('2027-01-16T00:05:00'));
-      await page.getByRole('button', { name: 'Save block' }).click();
-      // Still on the close screen: that click refreshed the stale decision
-      // rather than saving it. The musician's own words survived untouched.
-      expect(await page.getByRole('button', { name: 'Save block' }).isVisible()).toBe(true);
-      expect(await page.getByPlaceholder('What did you notice?').inputValue()).toBe(raceDraft);
-      await expect
-        .poll(() => page.getByLabel('Next review date').inputValue())
-        .not.toBe(previewedBeforeRace);
-      const correctedDate = await page.getByLabel('Next review date').inputValue();
-      await page.getByRole('button', { name: 'Save block' }).click();
-      await page.waitForTimeout(300);
-      await reload(app);
-      expect(await persistedReviewDate(page, app.origin, RACE_ITEM)).toBe(correctedDate);
-      await page.clock.setFixedTime(CLOCK);
-    } finally {
-      await app.close();
-    }
-  });
-});
-
-// --- helpers ---------------------------------------------------------------
-
-function isoOf(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-async function segmentCount(page: Page): Promise<number> {
-  // Every segment row carries a Swap button; the Total row does not.
-  return page.getByRole('button', { name: /^Swap / }).count();
-}
-
-async function totalMinutes(page: Page): Promise<number> {
-  const rows = page.locator('.list-row');
-  const last = await rows.last().textContent();
-  return Number((last ?? '').replace(/[^0-9]/g, ''));
-}
-
-/** The item's own title, read from its detail screen. */
-async function itemTitleOf(page: Page, origin: string, itemId: string): Promise<string> {
-  await page.goto(`${origin}#/items/${itemId}`);
-  await page.locator('h1.page-title').first().waitFor();
-  return ((await page.locator('h1.page-title').first().textContent()) ?? '').trim();
-}
-
-/** Run one ordinary block on an item and close it however `close` says. */
-async function practise(page: Page, origin: string, itemId: string, close: () => Promise<void>): Promise<void> {
-  await page.goto(`${origin}#/items/${itemId}`);
-  await page.getByRole('button', { name: 'Start a block' }).click();
-  await finishBlock(page);
-  await close();
-  await page.waitForTimeout(300);
-}
-
-async function finishBlock(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Finish' }).click();
-  await page.getByRole('button', { name: 'Stable alone' }).waitFor();
-}
-
-/**
- * The date the DATABASE holds for this item, read back through the item's own
- * "change review date" control — a real control showing the persisted value,
- * never a debug hook.
- */
-async function persistedReviewDate(page: Page, origin: string, itemId: string): Promise<string> {
-  await page.goto(`${origin}#/items/${itemId}`);
-  const open = page.getByRole('button', { name: /Change review date|Schedule again/ });
-  await open.waitFor();
-  const label = await open.textContent();
-  if (label?.includes('Schedule again')) return '';
-  await open.click();
-  const value = await page.getByLabel('Next review date').inputValue();
-  await page.getByRole('button', { name: 'Cancel' }).click();
-  return value;
-}
-
-/**
- * How many blocks this item has recorded, read from its own Blocks stat — the
- * honest count of practice, and the thing an administrative action must never
- * move.
- */
-async function practiceBlockCount(page: Page, origin: string, itemId: string): Promise<number> {
-  await page.goto(`${origin}#/items/${itemId}`);
-  const stat = page.locator('.stat').filter({ hasText: 'Blocks' }).first();
-  await stat.waitFor();
-  return Number(((await stat.locator('.stat-value').textContent()) ?? '').trim());
-}
-```
-
-### tests/lesson-agenda.browser.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import {
-  goTo,
-  importBackup,
-  importOutcome,
-  openPracticeApp,
-  readPersistedState,
-  reload,
-  writePersistedState,
-} from './practiceBrowser';
-import v11 from './fixtures/practice-decisions-v11.json?raw';
-
-// ---------------------------------------------------------------------------
-// ac-18 — the lesson-agenda journey, in the real app.
-//
-// The legacy fixture goes in through the real Settings importer, and
-// everything after that is done with the controls the owner actually uses.
-// The point is the SEAM: the pure migration and the pure agenda transforms are
-// proven in `src/domain`, but only this can show that what the owner sees and
-// what the database holds are the same thing.
-// ---------------------------------------------------------------------------
-
-const CLOCK = new Date('2027-01-15T09:00:00');
-const FARSI_QUESTION = 'آیا مضرابِ ریز را سبک‌تر بگیرم؟';
-const ENGLISH_QUESTION = 'Should I keep the tempo steady through the foroud?';
-
-describe('the lesson agenda, end to end', () => {
-  it('lesson agenda browser journey retains questions after the targeted class', async () => {
-    const app = await openPracticeApp({ now: CLOCK });
-    const { page } = app;
-    try {
-      // --- 1. The legacy database arrives through the real import control ---
-      await importBackup(app, 'legacy-v11.json', v11);
-      expect(await importOutcome(app)).toContain('Imported');
-
-      // A RELOAD, so what follows is read back out of IndexedDB rather than
-      // out of whatever React happened to be holding.
-      await reload(app);
-      await goTo(app, '/lessons');
-
-      const classA = page.locator('article').filter({ hasText: 'Class 41 · 2027-03-05' }).first();
-      const classB = page.locator('article').filter({ hasText: 'Class 42 · 2027-04-02' }).first();
-      await classA.waitFor();
-
-      // --- 2. Migrated intent is VISIBLY UNASSIGNED, never guessed onto a class -
-      const unassignedA = classA.getByText('These name no class yet');
-      await expect.poll(() => unassignedA.isVisible()).toBe(true);
-      // The Farsi question came through verbatim, as ONE question.
-      await expect
-        .poll(() => classA.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).first().isVisible())
-        .toBe(true);
-      // Nothing was silently attached to either class.
-      await expect.poll(() => classA.getByText('No open questions for this class').isVisible()).toBe(true);
-      await expect.poll(() => classB.getByText('Nothing committed to this class yet').isVisible()).toBe(true);
-
-      // --- 3. Question and preparation are targeted INDEPENDENTLY -----------
-      // The question goes to class B, from the class surface.
-      const farsiRow = classB
-        .locator('div')
-        .filter({ hasText: 'آیا نقطهٔ فرودم درست است؟' })
-        .filter({ has: page.getByRole('button', { name: 'Move to this class' }) })
-        .last();
-      await farsiRow.getByRole('button', { name: 'Move to this class' }).click();
-
-      // The preparation goes to class A, from the ITEM surface — a different
-      // screen, the same one collection.
-      await goTo(app, '/repertoire');
-      await page.getByRole('button', { name: 'Practice list' }).click();
-      await page.getByRole('link', { name: /پیش‌درآمدِ افشاری/ }).first().click();
-      await page.getByRole('button', { name: /Prepare for Class 41/ }).click();
-      await expect.poll(() => page.getByText('For Class 41 · 2027-03-05').first().isVisible()).toBe(true);
-
-      await reload(app);
-      await goTo(app, '/lessons');
-
-      // Each class now shows ITS OWN commitment and nobody else's.
-      await expect
-        .poll(() => classB.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).first().isVisible())
-        .toBe(true);
-      await expect.poll(() => classA.getByText('Nothing committed to this class yet').isVisible()).toBe(false);
-      await expect.poll(() => classB.getByText('Nothing committed to this class yet').isVisible()).toBe(true);
-      await expect.poll(() => classA.getByText('No open questions for this class').isVisible()).toBe(true);
-
-      // --- 4. Asked, with an answer — and it STAYS on that class ------------
-      const questionCard = classB
-        .locator('div.card')
-        .filter({ hasText: 'آیا نقطهٔ فرودم درست است؟' })
-        .first();
-      await questionCard.getByRole('button', { name: 'Add answer' }).click();
-      await questionCard.getByLabel('Teacher answer').fill('بله، سبک‌تر.');
-      await questionCard.getByRole('button', { name: 'Save answer' }).click();
-      await questionCard.getByRole('button', { name: 'Mark asked' }).click();
-
-      await reload(app);
-      await goTo(app, '/lessons');
-
-      // It has left the OPEN list for that class…
-      await expect.poll(() => classB.getByText('Already asked at this class').isVisible()).toBe(true);
-      await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
-      // …and it was NOT carried forward to the other class.
-      await expect
-        .poll(() => classA.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).count())
-        .toBe(0);
-      // No practice was logged by any of it.
-      await goTo(app, '/');
-      await expect.poll(() => page.getByText(/Practised today: 0 min · 0 blocks/).isVisible()).toBe(true);
-
-      // --- 5. Mixed languages, checked against the REAL laid-out DOM --------
-      // A Farsi question on an ENGLISH-titled item, and an English question on
-      // a FARSI-titled item: the two combinations that only differ when the
-      // title and the question disagree, which matching-language seed data can
-      // never show.
-      await addQuestionToItem(page, /Question but never flagged/, FARSI_QUESTION);
-      await addQuestionToItem(page, /آوازِ افشاری/, ENGLISH_QUESTION);
-
-      await reload(app);
-      await goTo(app, '/lessons');
-      const sheet = classA.getByRole('list').filter({ has: page.getByText(FARSI_QUESTION) }).first();
-      await sheet.waitFor();
-
-      const farsiOnEnglish = await rowDirection(page, FARSI_QUESTION);
-      const englishOnFarsi = await rowDirection(page, ENGLISH_QUESTION);
-      // The row's direction tracks the QUESTION, which is the field that is
-      // always present — never the optional, independently-authored title.
-      expect(farsiOnEnglish).toBe('rtl');
-      expect(englishOnFarsi).toBe('ltr');
-
-      // --- 6. A refused clipboard says so, and offers something else --------
-      await page.addInitScript(() => {
-        Object.defineProperty(navigator, 'clipboard', {
-          configurable: true,
-          value: { writeText: () => Promise.reject(new Error('denied')) },
-        });
-      });
-      await reload(app);
-      await goTo(app, '/lessons');
-      await classA.getByRole('button', { name: 'Copy' }).first().click();
-      const status = page.getByRole('status').filter({ hasText: 'Couldn’t copy' }).first();
-      await status.waitFor();
-      expect(await status.textContent()).toContain('select it, or use Download');
-      // The fallback is a real, selectable control with an accessible name.
-      const fallback = page.getByLabel('Questions text to select and copy');
-      await fallback.waitFor();
-      expect(await fallback.inputValue()).toContain(FARSI_QUESTION);
-      expect(await page.getByRole('button', { name: 'Download' }).first().isEnabled()).toBe(true);
-
-      // --- 7. The controls this lane added are reachable by role and name ---
-      for (const name of ['Mark asked', 'Add answer', 'Remove this question']) {
-        expect(await classA.getByRole('button', { name }).first().isVisible(), name).toBe(true);
-      }
-      expect(await classA.getByLabel('New question for this class').first().isVisible()).toBe(true);
-
-      // --- 8. An INVALID new-model import is refused, old data still there --
-      const broken = JSON.parse(v11) as { data: { lessonAgenda: unknown[] } };
-      broken.data.lessonAgenda = [{ id: 'x', kind: 'reminder', instrumentId: 'setar' }];
-      await importBackup(app, 'broken.json', JSON.stringify(broken));
-      expect(await importOutcome(app)).toContain('Import failed');
-      await reload(app);
-      await goTo(app, '/lessons');
-      // Everything established above survived the refusal untouched.
-      await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
-      await expect.poll(() => classA.getByText(FARSI_QUESTION).first().isVisible()).toBe(true);
-
-      // --- 9. HYDRATION COMPLETES AN INCOMPLETE CURRENT-SCHEMA CONVERSION ---
-      // Zustand's persist middleware only calls `migrate` when the persisted
-      // version differs from the current one — a persisted v12 database that
-      // already carries a stray legacy field (an interrupted write, a bug in
-      // an earlier build) never reaches it that way. This writes directly
-      // into the app's own IndexedDB, the way an already-current device holds
-      // its state, bypassing every import door (which always runs
-      // `validateDB`, and so always runs the migration chain, regardless of
-      // the version a FILE claims).
-      const persisted = await readPersistedState(app);
-      expect(persisted.version).toBe(12);
-      const HYDRATION_ITEM = 'i-q-empty'; // has a preparation already, no question yet
-      const stateBefore = persisted.state as { db: { items: { id: string; teacherQuestion?: string }[] } };
-      const withLeftover = {
-        ...(persisted.state as Record<string, unknown>),
-        db: {
-          ...stateBefore.db,
-          items: stateBefore.db.items.map((i) =>
-            i.id === HYDRATION_ITEM ? { ...i, teacherQuestion: 'hydration leftover question' } : i,
-          ),
-        },
-      };
-      await writePersistedState(app, withLeftover, 12);
-      await reload(app);
-
-      // The leftover was completed LOSSLESSLY, not silently dropped: a real
-      // open question now exists for the item, reachable the ordinary way.
-      await goTo(app, `/items/${HYDRATION_ITEM}`);
-      await expect.poll(() => page.getByText('hydration leftover question').first().isVisible()).toBe(true);
-
-      // Idempotent: a SECOND, ordinary reload (now genuinely current, nothing
-      // left behind) creates no duplicate.
-      await reload(app);
-      await goTo(app, `/items/${HYDRATION_ITEM}`);
-      expect(await page.getByText('hydration leftover question').count()).toBe(1);
-    } finally {
-      await app.close();
-    }
-  });
-});
-
-/** Raise a question from the ITEM surface, the way the owner does. */
-async function addQuestionToItem(
-  page: import('playwright').Page,
-  title: RegExp,
-  text: string,
-): Promise<void> {
-  await page.goto(page.url().replace(/#.*$/, '') + '#/repertoire');
-  await page.getByRole('button', { name: 'Practice list' }).click();
-  await page.getByRole('link', { name: title }).first().click();
-  await page.getByRole('button', { name: '+ Ask about this' }).click();
-  await page.getByLabel('New question').fill(text);
-  await page.getByRole('button', { name: 'Add question' }).click();
-  await page.getByText(text).first().waitFor();
-}
-
-/**
- * The direction a question's own row actually RESOLVES to in the laid-out DOM —
- * read from the browser, not inferred from source.
- */
-async function rowDirection(page: import('playwright').Page, question: string): Promise<string> {
-  return page.evaluate((q) => {
-    const all = [...document.querySelectorAll('li')];
-    const li = all.find((el) => (el.textContent ?? '').includes(q));
-    if (!li) return 'not-found';
-    return getComputedStyle(li).direction;
-  }, question);
-}
-```
-
-### tests/practiceBrowser.ts
-
-```
-import { createServer, type ViteDevServer } from 'vite';
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-
-// ---------------------------------------------------------------------------
-// A small harness for driving the REAL app in a real browser from an ordinary
-// Vitest test.
-//
-// Deliberately a LIBRARY, not a second test runner: the installed check engine
-// traces acceptance through the Vitest report, so a standalone Playwright exit
-// code would prove nothing to it. Each journey gets its own Vite dev server and
-// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
-// localStorage — no fixture from one journey can reach the other, and neither
-// can touch the owner's real data, GitHub or NAS.
-//
-// A missing browser is a FAILURE with a setup message, never a skip: a check
-// that quietly passes because it did not run is worse than no check at all.
-// ---------------------------------------------------------------------------
-
-const INSTALL_HINT =
-  'The Playwright browser is not installed. Run `npx playwright install chromium` ' +
-  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one.';
-
-export interface PracticeApp {
-  page: Page;
-  /** The dev server origin this journey is isolated on. */
-  origin: string;
-  close(): Promise<void>;
-}
-
-/**
- * Start the app and open it in a fresh, isolated browser context.
- *
- * `now` fixes the browser's clock before any script runs, so every date the
- * app derives — due reviews, lesson deadlines, the local calendar day a block
- * belongs to — is deterministic. `page.clock` can then move it forward within
- * a journey (across local midnight, for instance) exactly as a real device
- * left open overnight would experience it.
- */
-export async function openPracticeApp(options: { now: Date; viewport?: { width: number; height: number } }): Promise<PracticeApp> {
-  const server: ViteDevServer = await createServer({
-    configFile: 'vite.config.ts',
-    logLevel: 'error',
-    server: { port: 0, strictPort: false },
-  });
-  await server.listen();
-  const origin = server.resolvedUrls?.local[0];
-  if (!origin) {
-    await server.close();
-    throw new Error('The dev server started but reported no local URL.');
-  }
-
-  let browser: Browser;
-  try {
-    browser = await chromium.launch();
-  } catch (e) {
-    await server.close();
-    throw new Error(INSTALL_HINT, { cause: e });
-  }
-
-  let context: BrowserContext;
-  let page: Page;
-  try {
-    context = await browser.newContext({
-      viewport: options.viewport ?? { width: 390, height: 844 },
-      // The owner's phone. Deliberately the constraint the product is held to.
-      deviceScaleFactor: 2,
-    });
-    page = await context.newPage();
-    // ONE handler for the whole journey. The app's destructive actions ask
-    // first with confirm(); an unanswered dialog blocks every later command,
-    // and registering a second handler makes the first one's accept() throw.
-    page.on('dialog', (d) => {
-      void d.accept().catch(() => {});
-    });
-    await page.clock.install({ time: options.now });
-    await page.goto(origin);
-    // The store hydrates from IndexedDB before anything renders.
-    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
-  } catch (e) {
-    await browser.close();
-    await server.close();
-    throw e;
-  }
-
-  return {
-    page,
-    origin,
-    async close() {
-      await browser.close();
-      await server.close();
-    },
-  };
-}
-
-/**
- * Import a backup through the REAL Settings control — the same path the owner
- * uses, file picker and confirmation included. No debug hook, no direct store
- * access: a journey that seeded itself through a back door would prove nothing
- * about the door the owner actually walks through.
- */
-export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
-  const { page } = app;
-  await page.getByRole('link', { name: 'More' }).click();
-  await page.getByRole('link', { name: 'Settings' }).click();
-  await page.getByLabel('Import backup file').setInputFiles({
-    name,
-    mimeType: 'application/json',
-    buffer: Buffer.from(json, 'utf8'),
-  });
-  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
-}
-
-/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
-export async function importOutcome(app: PracticeApp): Promise<string> {
-  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
-}
-
-/** Go to a route the way the owner does, then wait for the app to settle. */
-export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
-  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
-  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
-}
-
-/** Reload, proving a claim survived in IndexedDB rather than in React state. */
-export async function reload(app: PracticeApp): Promise<void> {
-  // The store persists to IndexedDB asynchronously (that is the whole reason
-  // App gates render on `hydrated`), so a reload fired in the same tick as the
-  // click can outrun the write. This wait is about the storage platform, not
-  // about the app: it is real wall-clock time in Node, unaffected by the
-  // page's faked clock.
-  await app.page.waitForTimeout(400);
-  await app.page.reload();
-  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
-}
-
-const KV_KEY = 'practice-compass';
-
-/**
- * Read the raw bytes the app's own persist middleware would read on the next
- * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
- * the Settings importer. `{ state, version }` is exactly the shape Zustand's
- * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
- */
-export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
-  return app.page.evaluate(
-    (key) =>
-      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
-        const req = indexedDB.open('practice-compass');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('kv', 'readonly');
-          const get = tx.objectStore('kv').get(key);
-          get.onsuccess = () => {
-            db.close();
-            resolve(JSON.parse((get.result as { value: string }).value));
-          };
-          get.onerror = () => reject(get.error);
-        };
-      }),
-    KV_KEY,
-  );
-}
-
-/**
- * Write directly into the app's own IndexedDB `kv` store — the way an
- * ALREADY-hydrated device holds its persisted state — bypassing every
- * import/migration door entirely. The one way to reach the "persisted
- * version already matches the current schema" hydration path: Zustand's
- * persist middleware only calls `migrate` when the persisted version differs
- * from the current one, and every JSON-import door runs `validateDB`
- * regardless of what version a FILE claims.
- */
-export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
-  await app.page.evaluate(
-    ({ key, state, version }) =>
-      new Promise<void>((resolve, reject) => {
-        const req = indexedDB.open('practice-compass');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('kv', 'readwrite');
-          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
-          tx.oncomplete = () => {
-            db.close();
-            resolve();
-          };
-          tx.onerror = () => reject(tx.error);
-        };
-      }),
-    { key: KV_KEY, state, version },
-  );
-}
 ```
 
 ## Check against the contract
