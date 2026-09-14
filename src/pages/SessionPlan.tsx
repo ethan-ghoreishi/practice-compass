@@ -5,6 +5,7 @@ import {
   currentStage,
   MAX_BUDGET_MINUTES,
   MIN_BUDGET_MINUTES,
+  planPreviewDayHasPassed,
   preparationDatesByItem,
   redistributePlan,
   swapSegment,
@@ -48,7 +49,19 @@ function PlanPreview() {
   const [params] = useSearchParams();
   // Refreshed at a local-day boundary so a preview left open overnight never
   // plans against yesterday's due dates and lesson deadlines.
-  const now = useDecisionNow();
+  //
+  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
+  // so it can lag the true instant by up to that long. `nowOverride` closes
+  // that gap at the one moment it actually matters — Start — without needing
+  // the shared hook to expose a manual refresh: the same small local-override
+  // shape CloseBlock's own Save race uses. `start()` sets it the instant it
+  // finds the real local day has moved past the day this preview was built
+  // for, forcing an immediate re-render where `today`/`stale` below already
+  // reflect it, instead of silently installing yesterday's selections under a
+  // Start button that still reads as enabled.
+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  const decisionNow = useDecisionNow();
+  const now = nowOverride ?? decisionNow;
 
   const instrumentId = sessionInstrumentId ?? db.instruments.find((i) => i.active)?.id ?? db.instruments[0]?.id ?? '';
   // Invalid input is rejected at the boundary, never clamped into a session
@@ -139,6 +152,19 @@ function PlanPreview() {
     setPlan(swapSegment(plan, i, editorArgs()));
   }
   function start() {
+    // Starting a plan is an authority boundary: check the TRUE current
+    // instant here, never the polled `now` above, which can still be
+    // showing yesterday for up to `useDecisionNow`'s own poll interval after
+    // local midnight has genuinely passed — the exact window a dispatched
+    // visibility/focus event papers over but a real device left untouched
+    // does not get. A mismatch refuses the start and forces the SAME visible
+    // refresh the passive banner below already shows for a data change,
+    // rather than silently installing a preview for a day that has passed.
+    const trueNow = new Date();
+    if (planPreviewDayHasPassed(baseDay, trueNow)) {
+      setNowOverride(trueNow);
+      return;
+    }
     if (plan.segments.length === 0 || stale) return;
     setPlanMinutes(instrumentId, plan.budgetMinutes);
     startPlan(plan);

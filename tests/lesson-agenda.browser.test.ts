@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { goTo, importBackup, importOutcome, openPracticeApp, reload } from './practiceBrowser';
+import {
+  goTo,
+  importBackup,
+  importOutcome,
+  openPracticeApp,
+  readPersistedState,
+  reload,
+  writePersistedState,
+} from './practiceBrowser';
 import v11 from './fixtures/practice-decisions-v11.json?raw';
 
 // ---------------------------------------------------------------------------
@@ -152,6 +160,42 @@ describe('the lesson agenda, end to end', () => {
       // Everything established above survived the refusal untouched.
       await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
       await expect.poll(() => classA.getByText(FARSI_QUESTION).first().isVisible()).toBe(true);
+
+      // --- 9. HYDRATION COMPLETES AN INCOMPLETE CURRENT-SCHEMA CONVERSION ---
+      // Zustand's persist middleware only calls `migrate` when the persisted
+      // version differs from the current one — a persisted v12 database that
+      // already carries a stray legacy field (an interrupted write, a bug in
+      // an earlier build) never reaches it that way. This writes directly
+      // into the app's own IndexedDB, the way an already-current device holds
+      // its state, bypassing every import door (which always runs
+      // `validateDB`, and so always runs the migration chain, regardless of
+      // the version a FILE claims).
+      const persisted = await readPersistedState(app);
+      expect(persisted.version).toBe(12);
+      const HYDRATION_ITEM = 'i-q-empty'; // has a preparation already, no question yet
+      const stateBefore = persisted.state as { db: { items: { id: string; teacherQuestion?: string }[] } };
+      const withLeftover = {
+        ...(persisted.state as Record<string, unknown>),
+        db: {
+          ...stateBefore.db,
+          items: stateBefore.db.items.map((i) =>
+            i.id === HYDRATION_ITEM ? { ...i, teacherQuestion: 'hydration leftover question' } : i,
+          ),
+        },
+      };
+      await writePersistedState(app, withLeftover, 12);
+      await reload(app);
+
+      // The leftover was completed LOSSLESSLY, not silently dropped: a real
+      // open question now exists for the item, reachable the ordinary way.
+      await goTo(app, `/items/${HYDRATION_ITEM}`);
+      await expect.poll(() => page.getByText('hydration leftover question').first().isVisible()).toBe(true);
+
+      // Idempotent: a SECOND, ordinary reload (now genuinely current, nothing
+      // left behind) creates no duplicate.
+      await reload(app);
+      await goTo(app, `/items/${HYDRATION_ITEM}`);
+      expect(await page.getByText('hydration leftover question').count()).toBe(1);
     } finally {
       await app.close();
     }

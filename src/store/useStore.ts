@@ -1615,7 +1615,24 @@ export const useStore = create<StoreState>()(
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const merged = { ...current, ...p, db: p.db ?? current.db };
+        // Zustand only calls `migrate` above when the persisted version
+        // differs from the current one — a persisted database that ALREADY
+        // claims the current schema never reaches it, even when it carries a
+        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
+        // left behind, with `lessonAgenda` never actually completed to
+        // represent it. `merge` is the one place ALL persisted state
+        // re-enters live state regardless of whether `migrate` ran (the same
+        // reasoning the active/activeRoutine freeze below relies on), so it
+        // is where this closes for good: run the SAME idempotent, lossless
+        // conversion `migrate` would have, unconditionally. Calling it again
+        // on state `migrate` already processed is safe — `migrateToV12`'s own
+        // docstring guarantees it is a no-op wherever no legacy field
+        // survives — and calling it with `SCHEMA_VERSION` as the "from"
+        // version is correct here because every OTHER step in the chain is
+        // gated on a version strictly below what a current database could
+        // ever claim; only the unconditional tail step ever runs.
+        const db = p.db ? migrateToCurrent(p.db, SCHEMA_VERSION) : current.db;
+        const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running
         // state before those guards existed reaches this merge unchecked —

@@ -6,7 +6,7 @@ import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-import { createPreparation, detachLesson } from './lessonAgenda';
+import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
 import { SCHEMA_VERSION, type PracticeDB } from './types';
 import { addDays, nowISO, toISODate } from './util';
 
@@ -77,6 +77,11 @@ describe('validateDB — backward-compatible import', () => {
       ...db,
       schemaVersion: 4,
       items: [item],
+      // Truncated to one item on purpose (this test is about pathwaySteps,
+      // not lesson agenda) — the seed's OWN agenda entries would otherwise
+      // dangle against every item but this one, which the strict live-itemId
+      // check now (correctly) refuses.
+      lessonAgenda: [],
       pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
     };
     // migrateToV5's overwrite behaviour wins over the old "fill only when
@@ -131,6 +136,8 @@ describe('validateDB — backward-compatible import', () => {
       ...db,
       schemaVersion: undefined,
       items: [item],
+      // Truncated to one item on purpose (see the sibling test above).
+      lessonAgenda: [],
       pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
     });
     const result = parseImport(legacyText);
@@ -251,26 +258,34 @@ describe('the v12 model at every inbound door', () => {
     expect(
       bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
     ).toThrow(/unreadable asked date/);
+    // An IMPOSSIBLE calendar timestamp is refused too, not merely an
+    // unparseable one: `Date.parse` silently NORMALISES "2026-02-30" into
+    // March 2nd rather than rejecting it, so a shape check (or `Date.parse`
+    // alone) happily accepted it before this. A sealed review reproduced
+    // exactly this string passing.
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: '2026-02-30T12:00:00.000Z' }]),
+    ).toThrow(/unreadable asked date/);
     // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
     // a real agenda entry nor an honest unassigned one: `deleteLesson` always
     // converts a live reference to a detached marker, so this app never
     // leaves one dangling, and it is refused rather than tolerated as legacy
     // debris.
     expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
-    // A dangling `itemId`, by contrast, stays TOLERATED — deliberately
-    // asymmetric with `lessonId`. A genuine pre-upgrade backup can legitimately
-    // hold one whose item was deleted on another device before that deletion
-    // synced, and refusing it would make the owner's own documented recovery
-    // copy unrestorable.
-    expect(() =>
-      validateDB({ ...v12, lessonAgenda: [{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }] }),
-    ).not.toThrow();
-    expect(() =>
-      validateDB({
-        ...v12,
-        lessonAgenda: [{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }],
-      }),
-    ).not.toThrow();
+    // A dangling `itemId` is REFUSED for the identical reason, not tolerated:
+    // `deleteItem` (`useStore.ts`) always calls `detachItem` in the SAME
+    // synchronous update that removes the item — a preparation naming it is
+    // removed outright, and a question's `itemId` becomes
+    // `detachedFromItemId` — so this app never leaves a LIVE `itemId`
+    // dangling any more than a `lessonId`. A sealed review found this
+    // previously tolerated on a theory the real producer above does not
+    // support.
+    expect(
+      bad([{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }]),
+    ).toThrow(/practice item that no longer exists/);
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }]),
+    ).toThrow(/practice item that no longer exists/);
     expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
     // Calendar values are checked for real, not merely shape: a due date and
     // an item's own next-review date must both name a date that exists.
@@ -333,6 +348,17 @@ describe('the v12 model at every inbound door', () => {
     expect(reallyDetached).not.toHaveProperty('lessonId');
     expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
     expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
+    // The item-side equivalent, against the REAL producer `detachItem`
+    // (`deleteItem`'s own path) rather than a hand-built approximation: it
+    // destructures `itemId` OUT rather than setting it undefined, so the
+    // strict live-itemId check just proven above must never see one here.
+    const questionOnItem = createQuestion({ id: 'q:real', text: 'Real question', itemId: 'i-premigrated', instrumentId: 'setar', now: NOW });
+    const [reallyDetachedQuestion] = JSON.parse(
+      JSON.stringify(detachItem([questionOnItem], 'i-premigrated', NOW)),
+    ) as typeof v12.lessonAgenda;
+    expect(reallyDetachedQuestion).not.toHaveProperty('itemId');
+    expect(reallyDetachedQuestion).toMatchObject({ detachedFromItemId: 'i-premigrated' });
+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetachedQuestion] })).not.toThrow();
     expect(() =>
       validateDB({
         ...v12,

@@ -9,6 +9,7 @@ import {
   MAX_SEGMENT_MINUTES,
   MIN_BUDGET_MINUTES,
   MIN_SEGMENT_MINUTES,
+  planPreviewDayHasPassed,
   planSegmentStartable,
   redistributePlan,
   skipPlanSegment,
@@ -505,6 +506,17 @@ describe('a running plan keeps its progress and refuses stale work', () => {
     expect(advancePlanPointer([pendingSeg, doneSeg], 1)).toBe(0); // wraps to what is still pending
     expect(advancePlanPointer([skippedSeg], 0)).toBe(1); // a deliberate skip stays skipped
     expect(advancePlanPointer([doneSeg], 0)).toBe(1); // finished
+
+    // Starting a plan is an authority boundary: the preview's OWN calendar
+    // day is checked against the caller's `now` directly — the extracted
+    // pure transition `SessionPlan.tsx`'s click-time guard actually calls,
+    // never a screen's own polled `now` that can lag the true instant by up
+    // to its poll interval, which is the exact gap a real device left
+    // untouched across midnight experiences with no event to close it.
+    const builtFor = day(0);
+    expect(planPreviewDayHasPassed(builtFor, NOW)).toBe(false);
+    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, 1))).toBe(true);
+    expect(planPreviewDayHasPassed(builtFor, addDays(NOW, -1))).toBe(true);
   });
 });
 

@@ -316,17 +316,30 @@ export function createQuestion(args: {
 
 // --- Validation -------------------------------------------------------------
 
-const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T/;
+const ISO_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T/;
 
 /**
  * A real ISO date-time, not merely a string shaped like the prefix of one:
  * `/^\d{4}-\d{2}-\d{2}T/` alone matches "2027-13-40T99:99:99.000Z" just as
- * happily as a genuine timestamp. Every `askedAt` this app itself writes
- * comes from `nowISO` (`new Date().toISOString()`), which `Date.parse` always
- * reads back losslessly, so this rejects nothing legitimate.
+ * happily as a genuine timestamp, and `Date.parse` alone is no better — it
+ * silently NORMALISES an out-of-range day (`"2026-02-30T12:00:00.000Z"`
+ * becomes March 2nd) rather than rejecting it, so a sealed review reproduced
+ * that exact string passing. The calendar components are round-tripped
+ * through `Date.UTC` the same way `scheduling.ts`'s own `isValidISODate`
+ * checks a plain date, so an impossible day/month combination fails here
+ * too. Every `askedAt` this app itself writes comes from `nowISO`
+ * (`new Date().toISOString()`), which always round-trips losslessly, so this
+ * rejects nothing legitimate.
  */
 function isValidISODateTime(s: string): boolean {
-  return ISO_DATE_TIME.test(s) && Number.isFinite(Date.parse(s));
+  const m = ISO_DATE_TIME.exec(s);
+  if (!m || !Number.isFinite(Date.parse(s))) return false;
+  const [, ys, ms, ds] = m;
+  const y = Number(ys);
+  const mo = Number(ms);
+  const d = Number(ds);
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
 }
 
 /**
@@ -339,17 +352,24 @@ function isValidISODateTime(s: string): boolean {
  * lesson, an asked question whose item is gone, a question with no item at all
  * are all honest states this app produces itself.
  *
- * A LIVE `lessonId` that resolves to NOTHING is different: `deleteLesson`
- * always converts the live reference to `detachedFromLessonId` (see
- * `detachLesson`), so this app never leaves one dangling — a `lessonId` that
- * is neither absent nor resolving is invalid new intent, not legacy debris.
- * A dangling `itemId` stays TOLERATED, deliberately asymmetric with
- * `lessonId`: the v11→v12 migration mints entries from `db.items` at the
- * moment it runs, so an item deleted afterwards leaves its own agenda entries
- * pointing at nothing — every reader already copes with that, the same way
- * a dangling `instrumentId` is tolerated just above — and refusing to restore
- * a backup over one would make the owner's own documented recovery copy
- * unrestorable, exactly the data loss this guard exists to prevent.
+ * A LIVE `lessonId` OR a LIVE `itemId` that resolves to NOTHING is invalid new
+ * intent, not legacy debris — this app never leaves either dangling on its
+ * own. `deleteLesson` always converts a live `lessonId` to
+ * `detachedFromLessonId` (see `detachLesson`). `deleteItem` (`useStore.ts`)
+ * always calls `detachItem` in the SAME synchronous update that removes the
+ * item: a preparation naming it is removed outright, and a question's
+ * `itemId` is converted to `detachedFromItemId` — never left as a live
+ * reference to nothing. A sealed review found this section previously
+ * tolerating a dangling `itemId` on the theory that the v11→v12 migration
+ * mints entries from `db.items` at the moment it runs, so an item deleted
+ * afterwards could leave its own agenda entries pointing at nothing — that
+ * theory does not hold against the actual producer above, which cleans up
+ * synchronously in the SAME update, so a genuinely dangling live `itemId` can
+ * only be invalid data, not a legitimate history. A GENUINELY DETACHED
+ * record — `detachedFromItemId`/`detachedFromLessonId` set, the live field
+ * absent — is unaffected either way: `detachItem`/`detachLesson` destructure
+ * the live field OUT rather than setting it `undefined`, so this check never
+ * sees one to reject.
  */
 export function validateLessonAgenda(
   db: Pick<PracticeDB, 'lessonAgenda' | 'items' | 'lessons' | 'instruments'>,
@@ -405,15 +425,17 @@ export function validateLessonAgenda(
     } else if (e.lessonId !== undefined) {
       return `Lesson-agenda entry "${e.id}" has an unreadable class reference.`;
     }
-    // An item target that no longer resolves is tolerated (see the
-    // docstring); one that DOES resolve must agree with the entry's
-    // instrument — a mismatch there is invalid new intent regardless.
+    // A LIVE item target that resolves to nothing at all is refused outright
+    // — see this function's own docstring for why that is never legacy
+    // debris. One that DOES resolve must also agree with the entry's
+    // instrument.
     if (e.kind === 'preparation') {
       if (typeof e.itemId !== 'string' || !e.itemId) {
         return `Preparation "${e.id}" names no practice item.`;
       }
       const item = itemById.get(e.itemId);
-      if (item && item.instrumentId !== e.instrumentId) {
+      if (!item) return `Preparation "${e.id}" names a practice item that no longer exists.`;
+      if (item.instrumentId !== e.instrumentId) {
         return `Preparation "${e.id}" names an item on a different instrument.`;
       }
     } else {
@@ -422,7 +444,8 @@ export function validateLessonAgenda(
       }
       if (typeof e.itemId === 'string') {
         const item = itemById.get(e.itemId);
-        if (item && item.instrumentId !== e.instrumentId) {
+        if (!item) return `Question "${e.id}" names a practice item that no longer exists.`;
+        if (item.instrumentId !== e.instrumentId) {
           return `Question "${e.id}" names an item on a different instrument.`;
         }
       } else if (e.itemId !== undefined) {

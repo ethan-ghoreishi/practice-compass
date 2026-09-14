@@ -823,6 +823,22 @@ export function skipPlanSegment(run: PlanRun): PlanRun {
   return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
 }
 
+/**
+ * Has the local calendar day moved past the day a session-plan PREVIEW was
+ * built for? Takes the caller's OWN `now` rather than reading a clock itself,
+ * but the point of this function is that the caller must pass the TRUE
+ * current instant here, never a screen's own polled `now`
+ * (`useDecisionNow` refreshes at most every 30 seconds, plus visibility/focus)
+ * — starting a plan is an authority boundary, the one place that lag must
+ * never be trusted. `SessionPlan.tsx`'s own `stale` flag already renders this
+ * same comparison against its polled `now` for the passive banner; this is
+ * the identical rule, extracted so the click-time check reads a fresh
+ * `Date` directly rather than waiting for that polled value to catch up.
+ */
+export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
+  return todayISODate(now) !== baseDay;
+}
+
 export type PlanStartCheck =
   | { ok: true; item: PracticeItem }
   | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };

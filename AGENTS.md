@@ -675,22 +675,38 @@ where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSche
 run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
 missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
 and a target that RESOLVES to a different instrument all refuse the import with
-actionable detail. A DANGLING `itemId` — set, but resolving to nothing — stays tolerated:
-the v11→v12 migration mints entries from `db.items` at the moment it runs, so an item
-deleted afterwards leaves its own agenda entries pointing at nothing, and every reader
-already copes with that (the docstring above already spells out the same tolerance for a
-dangling `instrumentId`); refusing a restore over one would make the owner's own
-documented recovery copy unrestorable — exactly the data loss this guard exists to
-prevent, not an example of it. A DANGLING `lessonId` is different and is now REFUSED: this
-app never leaves one dangling on its own — `deleteLesson` always converts a live
-`lessonId` to `detachedFromLessonId` (see `detachLesson`), so a `lessonId` that is neither
-absent nor resolving is invalid new intent, not legacy debris to wave through. A sealed
-review reproduced `validateDB` accepting `lessonId: 'nonexistent'` before this. Calendar
-values are also checked for REAL validity now, not merely shape:
-`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` and a question's `askedAt` all
-round-trip through their own components (`/^\d{4}-\d{2}-\d{2}$/` alone happily matched
-`"2027-99-99"` and `"2026-02-30"`, which `Date.UTC` silently normalises rather than
-rejects) — a sealed review reproduced both accepted.
+actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
+its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
+`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
+intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
+accepting `lessonId: 'nonexistent'` before this.
+
+**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
+section previously tolerated it on the theory that the v11→v12 migration mints entries
+from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
+agenda entries pointing at nothing. A sealed review found that theory does not hold
+against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
+`detachItem` in the SAME synchronous update that removes the item — a preparation naming
+it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
+so there is no in-app path that leaves a live `itemId` dangling any more than there is for
+`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
+a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
+unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
+(the same shape `detachLesson` already used for `lessonId`), so this strict check never
+sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
+not a hand-built approximation of its shape.
+
+**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
+`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
+round-trip their calendar components through `Date.UTC` rather than trusting a shape
+regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
+matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
+NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
+it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
+check had already been fixed once, but its date-TIME sibling in a different file had not.
+The two checks stay small and separately owned, one per file, rather than merged into a
+shared import.
 
 ## Persian text is canonical, and direction-aware
 
@@ -1570,6 +1586,24 @@ no scores, no "optimal" claims, no gamification.
   whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
   treatment `rev` already got, so a deliberate swap or removal survives a midnight
   exactly as it survives any other change underneath the plan.
+- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
+  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
+  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
+  visibility/focus — a real device left untouched across local midnight, with no event to
+  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
+  button for up to that whole window. A sealed review reproduced this against the real
+  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
+  code installed yesterday's selections. Starting a plan is an authority boundary, so
+  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
+  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
+  `stale`'s own day comparison already applies, just evaluated against the true instant
+  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
+  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
+  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
+  banner and disabled button render — a visible refusal, never a silent no-op click. This
+  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
+  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
+  click in the first place.
 - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
   warm-up timer) stays untouched. The runner orchestrates the existing
   start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
@@ -1692,7 +1726,13 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
   conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
   chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`. Schema **v12** converts legacy lesson intent into `lessonAgenda` and
+  `SCHEMA_VERSION`. Rehydration reaches it via BOTH halves of the persist middleware —
+  `migrate` when the persisted version differs from the current one, `merge`
+  UNCONDITIONALLY otherwise — because Zustand skips `migrate` entirely once the persisted
+  version already matches, which would otherwise let an already-current database carry a
+  stray legacy field forever (a sealed review reproduced exactly this; see the
+  lesson-agenda section above for the fix and why re-running the conversion a second time
+  is safe). Schema **v12** converts legacy lesson intent into `lessonAgenda` and
   adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
   neither is ever guessed for old data, so an existing future date keeps UNKNOWN
   provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway

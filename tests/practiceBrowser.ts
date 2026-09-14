@@ -132,3 +132,62 @@ export async function reload(app: PracticeApp): Promise<void> {
   await app.page.reload();
   await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
 }
+
+const KV_KEY = 'practice-compass';
+
+/**
+ * Read the raw bytes the app's own persist middleware would read on the next
+ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
+ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
+ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
+ */
+export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
+  return app.page.evaluate(
+    (key) =>
+      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readonly');
+          const get = tx.objectStore('kv').get(key);
+          get.onsuccess = () => {
+            db.close();
+            resolve(JSON.parse((get.result as { value: string }).value));
+          };
+          get.onerror = () => reject(get.error);
+        };
+      }),
+    KV_KEY,
+  );
+}
+
+/**
+ * Write directly into the app's own IndexedDB `kv` store — the way an
+ * ALREADY-hydrated device holds its persisted state — bypassing every
+ * import/migration door entirely. The one way to reach the "persisted
+ * version already matches the current schema" hydration path: Zustand's
+ * persist middleware only calls `migrate` when the persisted version differs
+ * from the current one, and every JSON-import door runs `validateDB`
+ * regardless of what version a FILE claims.
+ */
+export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
+  await app.page.evaluate(
+    ({ key, state, version }) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    { key: KV_KEY, state, version },
+  );
+}

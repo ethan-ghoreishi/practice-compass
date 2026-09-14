@@ -227,6 +227,32 @@ describe('the daily practice loop, end to end', () => {
       // are the thing being protected, not the stale label itself.
       await page.getByRole('button', { name: 'Regenerate' }).click();
       expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+
+      // --- 11b. THE START-PLAN RACE: NO event, NO poll — the exact gap step
+      // 11's own dispatched visibilitychange never exercises, and a real
+      // device left untouched genuinely experiences. Advance the clock past
+      // midnight again and click Start IMMEDIATELY, with nothing to have told
+      // the screen the day changed: the click itself must refuse rather than
+      // silently install yesterday's selections under a button that still
+      // reads as enabled, and the refusal must be VISIBLE — the same banner,
+      // not a dead click.
+      await page.clock.setFixedTime(new Date('2027-01-17T00:20:00'));
+      await page.getByRole('button', { name: 'Start plan' }).click();
+      await expect
+        .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
+        .toBe(true);
+      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
+      // The click installed nothing: still the preview, not the runner.
+      expect(await page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
+      await page.getByRole('button', { name: 'Regenerate' }).click();
+      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      // Genuinely fresh now: the same click succeeds.
+      await page.getByRole('button', { name: 'Start plan' }).click();
+      await expect
+        .poll(() => page.getByRole('button', { name: 'End the plan' }).isVisible().catch(() => false))
+        .toBe(true);
+      await page.getByRole('button', { name: 'End the plan' }).click();
+
       await page.clock.setFixedTime(CLOCK);
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
 
