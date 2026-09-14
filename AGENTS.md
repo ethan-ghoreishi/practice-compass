@@ -731,6 +731,32 @@ exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY,
 plain module variable rather than store state, for the identical reason — recording it
 through `setState` would trigger that same destructive write.
 
+**A REFUSED HYDRATION IS SURFACED TO THE UI, AND THE OWNER HAS A REAL WAY BACK IN.**
+`hydrated` never turns true on a refusal (zustand's own `onFinishHydration` fires only on
+the success path), so without a separate signal `App.tsx` stayed on "Loading…" forever
+with no visible reason. `onRehydrateStorage` also writes to `useHydrationStatus`
+(`useStore.ts`) — a second, UNPERSISTED store (the same shape `useSyncStatus` already
+uses) — distinguishing a genuinely newer schema (`tooNew`, an app-update problem) from
+invalid/corrupt current-version data (an owner-fixable one). `App.tsx` renders an
+explanation instead of the spinner whenever `!hydrated && hydrationStatus.refused`, reading
+`useHydrationStatus` only and never writing to `useStore` on its own, so simply SHOWING
+this screen touches neither the live nor the persisted database.
+
+A sealed review found the first version of this screen actionable in wording only: it told
+the owner to "use Import in Settings", but Settings — like every other route — mounts only
+once `hydrated` is true, which this exact refusal prevents. There was no way back in.
+`ColdStartRecovery` (`App.tsx`) closes that: a file control rendered directly on the
+refusal screen, shown ONLY for the invalid/corrupt-data case — never for `tooNew`, which
+has no safe import/downgrade and keeps the plain "update the app" guidance. It calls
+`recoverFromRefusedHydration` (`store/backup.ts`), a thin wrapper over `importFullBackup`
+rather than a second import implementation, so an invalid recovery file is rejected through
+the SAME §C7 validation every other inbound door already uses, with nothing written. On
+success it additionally flips `hydrated` true and clears the reactive refusal flag —
+`importFullBackup`/`importDB` install a valid `db` but have no reason to know about a gate
+that exists only before this device's very first successful hydration. The bytes already on
+disk are never touched by anything except that explicit, validated recovery: rendering the
+screen, and a rejected recovery attempt, both leave them exactly as they were.
+
 ## Persian text is canonical, and direction-aware
 
 Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
