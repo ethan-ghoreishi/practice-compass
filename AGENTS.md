@@ -75,8 +75,15 @@ and quietly flip it back. It changes only when the owner says so.
 
 ## Review actions have honest, distinct semantics
 
-Practising (closing a block) is the ONLY thing that completes a review and advances
-SM‑2. "Not now" hides a due review for the rest of today (no schedule change). Snooze
+Practising (closing a block) is the ONLY thing that can complete a review or advance
+SM‑2 — but it does not always do either. **Practice is exposure; only eligible retention
+evidence advances spacing.** A good session on an item whose review is not yet due is real
+practice (minutes, result, observation, next action all recorded) and is not the review it
+was scheduled for: `decideReview` KEEPS the date, leaves `srReps`/`srEase`/`srIntervalDays`
+untouched and leaves the pending row OPEN. `srLastProgressDay` holds that to at most one
+advance per local calendar day, so re-arming a date or reloading cannot buy a second.
+Nothing else may complete a review at all. "Not now" hides a due review for the rest of
+today (no schedule change). Snooze
 (+2d) genuinely moves the due date on both the review and the item — never fabricate a
 result, and never leave a stale overdue item after an action. The Finish button freezes
 the clock (`pauseSession`) before the close screen; reflection time is not counted.
@@ -131,10 +138,16 @@ restructure once did exactly that (`setOverride(null)` unconditionally), turning
 deliberate "come back on this date" into an accidental decline the moment the musician
 changed which result they picked. `reviewOverrideSurvivesResultChange`
 (`src/components/format.ts`, tested against the real engine across all six results, both
-a manual- and an auto-mode item) reads `item.reviewMode` directly rather than calling
-`planNextReview` a second time inside `pickResult` — CloseBlock keeps its single
-derivation; this is a boolean gate on whether one exists at all, not a second value that
-could disagree with it.
+a manual- and an auto-mode item) asks the ENGINE whether its answer depends on the
+judgement at all: it calls `planNextReview` once per result and returns true when all six
+produce the same date. Reading `item.reviewMode === 'manual'` directly — which is what it
+used to do — was a PROXY for that question, correct only while manual mode was the sole
+way an item could have no per-result plan. It is not any more: a protected pending date
+(one the owner chose, or a snooze) is kept for every result too, so a mode check would
+clear a just-typed date on an auto-mode item whose date was never tied to a judgement
+either. Calling the engine is still a boolean GATE on whether a per-result plan exists at
+all, never a second value CloseBlock could render — CloseBlock keeps its single
+derivation, and this function returns no date.
 
 **THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
 243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
@@ -566,8 +579,8 @@ which is the only place that rule is set — it is NOT global, and display text 
 direction from the grouping rule below), then
 create/link the concrete practice items (`lesson.itemIds` — a link, never ownership;
 unlinking keeps the item). "Originated in this lesson" (`itemIds`) is separate from
-"work on before the next class" (`assignedForLesson`), which gives a per-instrument
-priority boost that climbs as that instrument's next lesson approaches
+"prepare this FOR that class" — a `preparation` entry in the lesson agenda (see below),
+which gives a priority boost climbing towards ITS OWN class's date
 (`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app — a monthly
 class is a real commitment, not a manufactured streak. Keep it per-instrument and
 generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
@@ -592,13 +605,157 @@ between `// [scan:begin]`/`// [scan:end]` markers and is regenerated from the re
 folder by `npm run scan:setar` (`scripts/scan-setar-classes.mjs`, stdlib, dry-run by
 default; pure helpers unit-tested) — references only, never copying bytes.
 
-## Questions for next class
+## Lesson commitments and questions are ONE typed collection (schema v12)
 
-`questionsForNextClass` (`src/domain/questions.ts`, tested) collects items where
-`assignedForLesson === true` AND `teacherQuestion` is non-empty, scoped to one
-instrument, ordered by the Persian collator. Shown on the upcoming lesson and the
-Teacher Report with Copy / Download / print-friendly export (`ClassQuestions`). A
-question is NEVER auto-cleared by practising; the user edits the item to remove it.
+`PracticeDB.lessonAgenda` is the single home for "prepare this before that class" and
+"ask this at that class" (`src/domain/lessonAgenda.ts`, pure and tested; queries in
+`questions.ts`; UI in `src/components/LessonAgenda.tsx`). It replaced the item's rolling
+`assignedForLesson` boolean and its single mutable `teacherQuestion` string, neither of
+which could name WHICH class it meant or hold more than one answer.
+
+- **Two kinds, one discriminated union.** `preparation` links an item to a lesson;
+  `question` carries its own text, an OPTIONAL item, a lesson target and an open → asked
+  lifecycle with an optional answer. Never separate independently toggleable booleans
+  for next-class / asked / archived / completed.
+- **A commitment names ITS OWN class, and that class's date is its only deadline.**
+  `preparationDatesByItem` is the ONLY channel by which lesson intent reaches practice
+  priority. A commitment for March never inherits January's deadline, a past commitment
+  carries none, and an unassigned one carries none.
+- **A QUESTION CHANGES NO PRACTICE PRIORITY, EVER.** It used to add three points and
+  quietly reorder the day around a note to self.
+- **An entry with no lesson is visibly UNASSIGNED, never guessed onto a class.** New
+  entries default to the nearest upcoming lesson on that instrument with the date named
+  on screen; with no future lesson they are captured unassigned.
+- **Questions are selected BY LESSON ID** (`questionsForLessonId` /
+  `openQuestionsForLessonId`), not by instrument — every future class used to show the
+  identical list. `ClassQuestions` still exports them (Copy / Download / print), and a
+  refused clipboard now says so in a live region and offers a selectable textarea.
+- **Asked is explicit and reversible, and stays HISTORY.** Marking asked logs no
+  practice and changes no urgency; the entry leaves the open lists, stays with the class
+  it was asked at, and is never copied forward. An unasked question on a past class
+  stays there until the owner explicitly moves it (`retargetEntry`).
+- **Detaching preserves identity.** Deleting a lesson leaves its entries unassigned with
+  `detachedFromLessonId` set; deleting an item removes its preparations (a commitment to
+  prepare something that no longer exists means nothing) but KEEPS its questions with
+  `detachedFromItemId` — a question and the teacher's answer are the owner's record of a
+  class, not a property of the item. Nothing here deletes an item or its practice.
+- **A question is never cleared by practising.** `CloseBlock` can raise one; it becomes
+  its OWN entry and never overwrites another, and raising it does not commit the item to
+  a class.
+
+**The v11 → v12 migration converts legacy intent exactly once, and guesses nothing.**
+`migrateToV12` turns each `assignedForLesson === true` into ONE unassigned preparation
+and each non-empty `teacherQuestion` into ONE unassigned question — whatever the boolean
+said, because the two were always independent facts. It reads NO clock (its timestamps
+come from the item's own), so the same database migrates identically on two devices run
+on different days. Multiline text stays ONE question. Ids are deterministic
+(`prep:<itemId>` / `question:<itemId>`, with a `~2` suffix only when an unrelated entry
+already owns one), the conversion is presence-aware, and the legacy fields are removed
+only once their content is represented — so it is idempotent, including over an
+already-current database whose agenda is legitimately empty.
+
+**"REPRESENTED" MEANS SAME CONTENT, NOT MERELY A MATCHING ID.** A sealed review found
+`represented()` treated a matching generated `id`/`kind`/`itemId` alone as proof a
+question was already there — so a legacy `teacherQuestion` whose generated id happened to
+already name a DIFFERENT existing question (partial migration, a hand-edited file, an
+interrupted write) was silently DROPPED, because the pre-existing entry with the same id
+looked like "already represented". A preparation carries no content beyond the link
+itself, so any matching entry genuinely represents it, but a question's content IS its
+text: `represented()` now also compares that text, and a same-id/different-text match
+falls through to `freeId` exactly like an unrelated collision, so BOTH questions survive
+under distinct ids. This step also now runs on EVERY inbound database, not only one
+declaring `fromVersion < 12`: a database claiming the CURRENT schema can still carry a
+stray `assignedForLesson`/`teacherQuestion` from an incomplete conversion, and gating on
+the declared version silently accepted that leftover with nothing to show for it. Running
+it unconditionally costs nothing extra on genuinely current data — it is a no-op wherever
+neither legacy field survives.
+
+**Inbound validation rejects invalid NEW intent and tolerates legacy debris — but only
+where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSchedulingFields`
+run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
+missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
+and a target that RESOLVES to a different instrument all refuse the import with
+actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
+its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
+`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
+intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
+accepting `lessonId: 'nonexistent'` before this.
+
+**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
+section previously tolerated it on the theory that the v11→v12 migration mints entries
+from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
+agenda entries pointing at nothing. A sealed review found that theory does not hold
+against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
+`detachItem` in the SAME synchronous update that removes the item — a preparation naming
+it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
+so there is no in-app path that leaves a live `itemId` dangling any more than there is for
+`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
+a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
+unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
+(the same shape `detachLesson` already used for `lessonId`), so this strict check never
+sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
+not a hand-built approximation of its shape.
+
+**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
+`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
+round-trip their calendar components through `Date.UTC` rather than trusting a shape
+regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
+matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
+NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
+it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
+check had already been fixed once, but its date-TIME sibling in a different file had not.
+The two checks stay small and separately owned, one per file, rather than merged into a
+shared import.
+
+**THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO, NOT ONLY `validateDB`'S IMPORT-PATH
+CALLERS.** A sealed review found Zustand's own persist `migrate`/`merge` (`useStore.ts`)
+called `migrateToCurrent` directly, bypassing everything above: a persisted schema NEWER
+than this build understands got silently stamped down to `SCHEMA_VERSION` by
+`migrateToCurrent`'s own final line and hydrated anyway, and an already-current v12
+database carrying a dangling live `itemId` or an impossible `askedAt` entered live state
+unchanged — reproduced through the real Zustand `persist.rehydrate()`, not merely
+`validateDB` called by hand. Both hooks now call `validateDB` itself — the SAME function,
+not a parallel check — so hydration refuses exactly what every other inbound door already
+refuses. Letting it THROW there (never caught) is deliberate: `hydrate()` only calls its
+own raw `set()` once `migrate`/`merge` return normally, and only persists the result back
+to storage after THAT — a thrown validation error rejects the whole promise chain before
+either happens, so a refused hydration leaves BOTH the live state and whatever is actually
+on disk exactly as they were, never a downgraded-and-relabelled or partially-installed
+in-between. The gate that flips `hydrated: true` deliberately stays UNFLIPPED on a refusal
+rather than forcing it open: every external call to `useStore.setState` — the only way to
+flip it — is itself wrapped by this same persist middleware to re-persist the current
+state immediately afterwards, so forcing it open here would write the live (fallback)
+database straight back over the very data a refusal, above all a genuinely newer schema,
+exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY, as a
+plain module variable rather than store state, for the identical reason — recording it
+through `setState` would trigger that same destructive write.
+
+**A REFUSED HYDRATION IS SURFACED TO THE UI, AND THE OWNER HAS A REAL WAY BACK IN.**
+`hydrated` never turns true on a refusal (zustand's own `onFinishHydration` fires only on
+the success path), so without a separate signal `App.tsx` stayed on "Loading…" forever
+with no visible reason. `onRehydrateStorage` also writes to `useHydrationStatus`
+(`useStore.ts`) — a second, UNPERSISTED store (the same shape `useSyncStatus` already
+uses) — distinguishing a genuinely newer schema (`tooNew`, an app-update problem) from
+invalid/corrupt current-version data (an owner-fixable one). `App.tsx` renders an
+explanation instead of the spinner whenever `!hydrated && hydrationStatus.refused`, reading
+`useHydrationStatus` only and never writing to `useStore` on its own, so simply SHOWING
+this screen touches neither the live nor the persisted database.
+
+A sealed review found the first version of this screen actionable in wording only: it told
+the owner to "use Import in Settings", but Settings — like every other route — mounts only
+once `hydrated` is true, which this exact refusal prevents. There was no way back in.
+`ColdStartRecovery` (`App.tsx`) closes that: a file control rendered directly on the
+refusal screen, shown ONLY for the invalid/corrupt-data case — never for `tooNew`, which
+has no safe import/downgrade and keeps the plain "update the app" guidance. It calls
+`recoverFromRefusedHydration` (`store/backup.ts`), a thin wrapper over `importFullBackup`
+rather than a second import implementation, so an invalid recovery file is rejected through
+the SAME §C7 validation every other inbound door already uses, with nothing written. On
+success it additionally flips `hydrated` true and clears the reactive refusal flag —
+`importFullBackup`/`importDB` install a valid `db` but have no reason to know about a gate
+that exists only before this device's very first successful hydration. The bytes already on
+disk are never touched by anything except that explicit, validated recovery: rendering the
+screen, and a rejected recovery attempt, both leave them exactly as they were.
 
 ## Persian text is canonical, and direction-aware
 
@@ -898,8 +1055,8 @@ a second time.
 
 **THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
 NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
-Seventh/Eighth findings' — used seed data where an item's title and its `teacherQuestion`
-happen to share a language. That is exactly the one condition under which the underlying
+Seventh/Eighth findings' — used seed data where an item's title and its teacher question
+(then an item field, now a `lessonAgenda` entry) happen to share a language. That is exactly the one condition under which the underlying
 bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
 descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
 and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
@@ -915,9 +1072,10 @@ sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse c
 an item's title is free text the owner chooses for their own reasons and has no obligation
 to share a language with a teacher's question about it.
 
-The fix reverses which of the two is left bare. `questionsForNextClass` guarantees
-`q.question` is non-empty on every row this component ever renders (it filters on exactly
-that field); `q.title` carries no such guarantee and is authored completely independently.
+The fix reverses which of the two is left bare. The lesson-agenda query behind this list
+(`openQuestionsForLessonId`, formerly `questionsForNextClass`) guarantees `q.question` is
+non-empty on every row this component ever renders — a question entry has no meaning
+without its text; `q.title` carries no such guarantee and is authored completely independently.
 The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
 applied to the OTHER field this time), so it renders in its own correct direction but is
 taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
@@ -1152,8 +1310,8 @@ RTL run, and excluding it is also what keeps this rule from demanding an unreque
 change on the deliberately centred practice screens.
 
 **EVERY LINE OF A MULTI-LINE FREE-TEXT FIELD RESOLVES ITS OWN DIRECTION — EXCEPT THE ONE
-THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for
-`teacherQuestion`/`currentProblem`/`lastObservation` (one `<textarea>` each, so several
+THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for the question text and
+`currentProblem`/`lastObservation` (one `<textarea>` each, so several
 distinct questions live as several lines of one string; `splitLines` in `format.ts`, tested)
 first shipped with every bullet bare, on the argument that lines typed into one box in one
 sitting share one direction. They do not — a Farsi question and an English one go into the
@@ -1306,20 +1464,75 @@ exports, backups and synced data.
 
 ## Review scheduling stays explainable
 
-`computeReview` (in `scheduling.ts`) is an **SM-2 spaced-repetition engine** adapted to
-music: per item it tracks `srReps` / `srEase` / `srIntervalDays`; good reviews expand the
-interval, a slip resets it, and importance/difficulty pull material a little sooner. It
-supports per-item overrides (Auto / fixed cadence / Manual) and returns a plain `rationale`.
-Keep it deterministic and explainable — don't turn it into an opaque model, and keep the
-SM-2 tests green. Item status labels are plain-language for the user — keep the enum keys
-stable and only change the display labels in `labels.ts`.
+`decideReview` (in `scheduling.ts`) is the ONE pure decision behind closing a block: the
+date disposition, the SM-2 transition and the sentence that explains them, together.
+`planNextReview` previews it, `computeReviewOutcome` turns it into the write, and the
+close screen renders it — three renderings of one value, never three derivations. Per
+item it tracks `srReps` / `srEase` / `srIntervalDays`, plus `nextReviewSource` (who chose
+the current date) and `srLastProgressDay` (the one-advance-per-day marker). Every number
+is published in `docs/scheduling-evidence.md`.
+
+**PRACTICE IS EXPOSURE; ONLY ELIGIBLE RETENTION EVIDENCE ADVANCES SPACING.** Eligible
+means ALL THREE of: a logged `stable_alone` / `stable_in_context` / `performable`; at or
+after the pending due date (or the first opportunity, when no date exists); and spacing
+not already advanced today. Each of those independently blocks an advance. A missing,
+`undefined` or `not_logged` result never advances — which is exactly what a routine block
+is, so routine exposure can never become a retention judgement.
+
+**`same` IS NOT FAILED RECALL.** This engine used to map it to a quality of 2, which fell
+into the slip branch and reset a schedule the musician had every reason to trust. No
+improvement is distinct from deterioration. Before a due date, `same` and
+`slightly_better` change nothing; AT a due automatic review they REPEAT the current gap
+(the configured first gap if there is none) without touching repetitions or ease, and
+neither is ever described as a slip.
+
+**ONLY `worse` MAY BRING AN AUTOMATIC DATE FORWARD**, to the EARLIER of the existing date
+and the repair proposal — never later, so a repeated negative close cannot slide
+tomorrow's repair into next week. Nothing else is read as failure: not duration, not
+mode, not difficulty, not a teacher question, not a stale clock.
+
+**A DATE THE OWNER OWNS IS NOT THE ENGINE'S TO MOVE.** A FUTURE date is PROTECTED when
+the owner chose it (typed, snoozed, or re-armed — `nextReviewSource: 'user'`), when the
+item is on a fixed cadence, or when its provenance predates this field and is therefore
+unknown. Early practice, `worse` included, leaves it exactly where it is. Protection ends
+when the date comes due: it is then the review, whoever chose it. Manual mode with no
+newly chosen date preserves the pending schedule — an empty automatic proposal is not an
+implicit "no".
+
+**ONE ADVANCE PER ITEM PER LOCAL CALENDAR DAY**, recorded as `srLastProgressDay`. It is
+an administrative eligibility marker, never a measured retention score: clearing and
+re-arming the date, a reload, a sync, or simply closing a second block cannot buy a
+second expansion.
+
+**THE RATIONALE REPORTS THE FINAL SAVED DATE.** It used to quote the raw setting: a
+three-day repair gap on an easy, unimportant item produced a four-day date and said
+"three days".
+
+**A CLOSE THAT ONLY KEEPS A DATE COMPLETES NOTHING.** `ReviewOutcome.completeOpenReviews`
+is false for a `keep`, so extra practice before a review leaves that pending row OPEN —
+it is not the review it was scheduled for. `closeOverrideDate` (`format.ts`, tested) is
+the seam that makes this hold: the close screen SHOWS the date that will stand, which for
+an early session is the item's existing one, and passing that back as an explicit
+override would both stamp every engine-proposed date as the owner's and turn every keep
+into a write. Only a date actually typed into the field is an override.
+
+**"Schedule again" is administration, not practice.** `scheduleAgainPlan` sets ONE date on
+the item and its pending row, CREATING the row when none is open (the case the old date
+helper could not reach, which left a declined review unreachable from the item's own
+screen). No block, no result, no statistics, no SM-2 movement.
+`pendingScheduleConflict` REPORTS legacy open rows that disagree rather than silently
+discarding one.
+
+Keep it deterministic and explainable — don't turn it into an opaque model. Item status
+labels are plain-language for the user — keep the enum keys stable and only change the
+display labels in `labels.ts`.
 
 **The engine is visible AND adjustable, never magic.** `SchedulingParams`
 (`src/domain/types.ts`) holds bounded knobs — the SM-2 first/second/slip-reset gaps and
 the Session Plan minute shares — persisted as an OPTIONAL `PracticeDB.settings` (schema
 **v10**; `undefined ⇒ DEFAULT_SCHEDULING_PARAMS`, so old backups import unchanged and
 `validateDB` carries the field through). `DEFAULT_SCHEDULING_PARAMS` reproduces the
-historical constants EXACTLY — `computeReview`/`planNextReview` take an optional `params`
+historical constants EXACTLY — `decideReview`/`planNextReview` take an optional `params`
 whose default is byte-identical to before (a snapshot test guards this). Every call site
 that shows OR persists a date must thread the SAME params (`db.settings`): the store into
 `closeSession`, `CloseBlock` into both preview calls — the date shown must equal the date
@@ -1327,6 +1540,25 @@ saved. `clampSchedulingParams` enforces the bounds (never trust raw input). Sett
 scheduling works" section states the real priority formula and the SM-2 rungs in plain
 English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
 review row links to it ("Why this date?").
+
+**"THE DATE SHOWN EQUALS THE DATE SAVED" ALSO HAS TO SURVIVE THE SAVE ITSELF, NOT JUST
+THE RENDER.** `CloseBlock`'s `now` (`useDecisionNow`) only refreshes every 30 seconds plus
+visibility/focus, while `closeSession` used to compute its OWN fresh `new Date()` at call
+time — so a Save clicked in the narrow window after the local day had genuinely rolled,
+but before either the poll or a visibility event caught up, could write a decision
+`computeReviewOutcome` recomputed for TODAY while the screen had only ever shown
+YESTERDAY's. A sealed review named this gap explicitly. `closeSession` now takes the
+screen's own `now` (`CloseSessionInput.now`, defaulting to `new Date()` only for the rare
+caller with no prior decision to keep in step) instead of reading a fresh clock at module
+scope, so once a save actually proceeds it writes EXACTLY the value just previewed —
+never a second, independently-computed one. The day check itself lives in `CloseBlock`:
+`handleSave` compares the true instant against `now` first, and on a mismatch sets a
+local `nowOverride` and returns WITHOUT calling `closeSession` — refreshing the decision
+visibly (the date field, the rationale, everything derived from `now` recomputes) while
+the draft (result, observation, next action, body note) is untouched, so the very next
+Save simply works. This is deliberately a small, local override rather than a change to
+`useDecisionNow`'s shared contract — `SessionPlan.tsx` and `LessonAgenda.tsx` also read
+that hook and neither needed this.
 
 ## The Session Plan is a view over real blocks, not a new to-do list
 
@@ -1337,20 +1569,99 @@ one-sentence reason. It **reuses the same `scoreItems` priority numbers** as the
 recommendation engine — no second, hidden ranking. It is organisation, never judgement:
 no scores, no "optimal" claims, no gamification.
 
-- **The invariant: segment minutes ALWAYS sum to the budget** (`buildSessionPlan`,
-  `allocateMinutes` — largest-remainder split, min 2/segment, drops the lowest-priority
-  segments when the budget can't seat them all). Keep it deterministic (explicit `now`,
-  stable score-desc-then-id tiebreaks) and keep the sum==budget tests green across
-  15/20/30/45/60 and the edge cases (0 items, 1 item, all-saturated, everything
-  practised-today → falls back and says so). `redistributePlan`/`swapSegment` are the pure
-  editors; the preview page tweaks a LOCAL copy before `startPlan`.
+- **The invariant: minutes NEVER exceed the budget, and normally use all of it**
+  (`buildSessionPlan`, `allocateMinutes` — weighted split, min 2 and max 25 per segment,
+  drops the lowest-priority segments when the budget can't seat them all). An HONEST
+  REMAINDER is allowed and stated in the summary: two items and two hours is not a reason
+  to propose a sixty-minute block on each. Budgets are whole minutes from 5 to 120;
+  anything else (non-finite, zero, out of range) is REJECTED at the boundary
+  (`validateBudgetMinutes`) rather than clamped into a session the owner never chose.
+  Keep it deterministic (explicit `now`, stable score-desc-then-id tiebreaks) and keep
+  the edge cases green (0 items, 1 item, resting-only, everything practised-today →
+  repeats honestly and says so). `redistributePlan`/`swapSegment` are the pure editors and
+  preserve each segment's identity, role and reason; the preview page tweaks a LOCAL copy
+  before `startPlan`.
+- **THE ANCHOR COMES FROM REAL URGENCY, BEFORE ANY ROLE DECORATION.** A five-minute
+  session used to pre-select new deep work and only then consider an item committed for
+  tomorrow's class. Under 12 minutes the session is ONE useful main focus, no warm-up and
+  no cool-down. Usable material, improvisation, rhythm and theory are ordinary useful
+  work even though they fit none of the old buckets.
+- **Warm-up is a ROLE an ordinary familiar item fills, never a tag.** `isWarmupSuitable`
+  wants low demand (difficulty ≤ 3) AND evidence of familiarity (a settled status or 3+
+  real sessions) — an unfamiliar demanding étude is not a warm-up because it is labelled
+  "technique". It never consumes a due review or a class commitment, its share
+  (`warmupShare`) is a PINNED allocation target rather than a weight, and with nothing
+  suitable it is omitted honestly.
+- **ONE eligibility policy** (`isProactiveCandidate`) across Today, the initial build,
+  regeneration, swaps and every fallback: resting material never surfaces in a
+  suggestion, and a fallback never widens to reach it. Direct, deliberate practice of a
+  resting item stays available and its review data is untouched.
+- **A SWAP SHARES THE BUILD'S OWN CANDIDATE POOL, NOT JUST ITS ELIGIBILITY POLICY.** A
+  sealed review found `swapSegment` filtering by `isProactiveCandidate` alone and then
+  searching `scored` directly — bypassing the build's OWN practised-today exclusion
+  (`candidatePool`, shared by both now) and the warm-up pool's extra due/lesson
+  exclusions. Concretely: three same-instrument usable items scored 5/4/3 with the
+  middle one practised one minute ago today; a five-minute build correctly stepped past
+  it for the fresher lowest-scoring one, but Swap handed it right back because fresh
+  work scored lower — the exact material the build had just deliberately set aside, with
+  an ordinary "focus" reason as if nothing were off. A warm-up swap could likewise reach
+  a candidate that was due for review or committed to a class, which the build's own
+  warm-up pool excludes on purpose (that slot belongs to the actual need, never spent as
+  a warm-up). `candidatePool` (`plan.ts`) is now the ONE practised-today/repeat-fallback
+  computation both `buildSessionPlan` and `swapSegment` draw from, and swap's own
+  eligibility switch repeats the warm-up bucket's due/lesson exclusion verbatim. Swap
+  deliberately does NOT replay the build's diversity preference (a tie-break among
+  segments chosen together in one pass, which a single substitution has none of) — see
+  `swapSegment`'s own docstring for why that is a documented choice, not an oversight.
+- **Over-practice is bounded, decaying recent MINUTES**, not a block count and not a run
+  of identical results (`recentExposureMinutes`, `exposurePenalty`). Three "same" results
+  in January are a strategy hint in January, not a permanent penalty in September, and
+  one 30-minute session is the same exposure as three 10-minute ones. A modest diversity
+  preference (≤ 2 points, from the item's existing strand/type) is subordinate to every
+  real need.
+- **A preview is rebuilt for what it is FOR** — instrument and budget — and is marked as
+  needing regeneration when the underlying practice data changes beneath it, rather than
+  silently starting stale work. `beginPlanSegment` revalidates the item LIVE
+  (`planSegmentStartable`): deleted or moved to another instrument ⇒ visibly skipped,
+  another clock running ⇒ refused. Skipping logs nothing.
+- **A PLAN CAN GO STALE WITH NO DATABASE WRITE AT ALL: THE CLOCK MOVING PAST IT.**
+  `SessionPlan.tsx` tracked staleness only via `rev` (the store's mutation counter) and a
+  `seedKey` of `instrumentId|budget` — neither moves when a preview is simply left open
+  across local midnight. A sealed review reproduced this: yesterday's segments, reasons
+  and "for today's class" labels stayed on screen and startable with the Start button
+  enabled, because `build` (the live recomputation) had quietly changed underneath while
+  nothing told the visible `plan` state to notice. The preview now also tracks the LOCAL
+  CALENDAR DAY it was built for (`baseDay`, set alongside `baseRev`) and is `stale`
+  whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
+  treatment `rev` already got, so a deliberate swap or removal survives a midnight
+  exactly as it survives any other change underneath the plan.
+- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
+  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
+  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
+  visibility/focus — a real device left untouched across local midnight, with no event to
+  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
+  button for up to that whole window. A sealed review reproduced this against the real
+  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
+  code installed yesterday's selections. Starting a plan is an authority boundary, so
+  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
+  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
+  `stale`'s own day comparison already applies, just evaluated against the true instant
+  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
+  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
+  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
+  banner and disabled button render — a visible refusal, never a silent no-op click. This
+  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
+  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
+  click in the first place.
 - **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
   warm-up timer) stays untouched. The runner orchestrates the existing
   start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
   segment (its minutes become the target). `closeSession` has a tail that, when a plan is
   running and the closed block was the current segment, marks it `done` and advances the
   pointer — **the plain flow (no active plan) is byte-identical to before.** Skipping logs
-  nothing. Practising is still the only thing that completes a review / advances SM-2.
+  nothing. Practising is still the only thing that CAN complete a review or advance SM-2,
+  and a plan segment closed before that item's review is due keeps the date and the
+  spacing state exactly as an ordinary early session does.
 - **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
   store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
   never syncs/backs-up as data.**
@@ -1462,9 +1773,21 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   service (too big for the reactive JSON); only their lightweight metadata sits in the store.
 - **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
   `hydrated`. Every inbound database — rehydration, manual import, sync pull,
-  conflict-keep-remote, archive restore — runs through the one shared `migrateToCurrent`
-  chain (`src/domain/migrations.ts`); persistence changes must keep it green and bump
-  `SCHEMA_VERSION`. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  conflict-keep-remote, archive restore — runs through the one shared `validateDB`
+  (`src/domain/io.ts`), which itself runs the `migrateToCurrent` chain
+  (`src/domain/migrations.ts`) plus the newer-schema guard and the §C7 semantic checks;
+  persistence changes must keep it green and bump `SCHEMA_VERSION`. Rehydration reaches it
+  via BOTH halves of the persist middleware — `migrate` when the persisted version differs
+  from the current one, `merge` UNCONDITIONALLY otherwise — because Zustand skips `migrate`
+  entirely once the persisted version already matches, which would otherwise let an
+  already-current database carry a stray legacy field, or genuinely invalid data, forever
+  (a sealed review reproduced exactly this — see the lesson-agenda section above for the
+  legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
+  validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v12** converts legacy lesson intent into `lessonAgenda` and
+  adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
+  neither is ever guessed for old data, so an existing future date keeps UNKNOWN
+  provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
   it belonged to — but only when that pathway names an instrument that actually resolves
   in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
   reference all leave the routine honestly unscoped rather than inventing one), and never
@@ -1478,6 +1801,25 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
 `npm test` must pass. The suite guards the behaviour that makes the recommendations
 trustworthy; if you change the scoring formula or scheduling intervals, update the tests
 in the same change and make sure they still describe correct behaviour.
+
+**Two of them drive the REAL app in a real browser.**
+`tests/daily-practice.browser.test.ts` and `tests/lesson-agenda.browser.test.ts` are
+ordinary Vitest tests using Playwright as a LIBRARY through `tests/practiceBrowser.ts`,
+so their results land in the same report everything else does — a standalone Playwright
+run would prove nothing to the check engine. Each starts its own Vite dev server and its
+own browser CONTEXT (its own IndexedDB, its own localStorage, no GitHub and no NAS), at a
+390×844 viewport, with the clock fixed so every derived date is deterministic. They seed
+themselves by importing a fixture through the real Settings control and drive rendered
+controls by role and name — never a debug hook, never a source regex.
+
+Local setup, once: `npx playwright install chromium`. **A missing browser FAILS these
+tests with that instruction; it never skips them** — a check that quietly passes because
+it did not run is worse than no check at all. All three CI workflows install the browser
+before `npm test` for the same reason.
+
+`tests/fixtures/practice-decisions-v11.json` is the legacy (pre-agenda) database; the
+v12 one is its migrated output plus the scheduling state a v12 build writes. The unit
+tests read the SAME bytes the journeys import, through Vite's `?raw`.
 
 ## Roadmap items are allowed (they were designed for)
 

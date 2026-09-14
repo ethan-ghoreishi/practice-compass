@@ -8,7 +8,6 @@ import {
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
   isLosslesslyRemovable,
-  nextLessonFor,
   partsOf,
   pickNextPart,
   RESULT_LABELS,
@@ -19,18 +18,24 @@ import {
   type GuitarFields,
   type PersianFields,
   type PracticeItem,
+  pendingScheduleConflict,
+  todayISODate,
+  type ISODate,
+  type PracticeItem as PracticeItemT,
+  type Review,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store/lookups';
 import { defaultStartInput } from '../store/sessionHelpers';
 import { addAttachment, formatBytes, removeAttachment } from '../store/attachments';
 import ItemForm from '../components/ItemForm';
+import { ItemAgenda } from '../components/LessonAgenda';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
 import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
-import { OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
-import { ArrowLeftIcon, FlagIcon, PlayIcon, PlusIcon } from '../components/icons';
+import { Field, OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
+import { ArrowLeftIcon, PlayIcon, PlusIcon } from '../components/icons';
 import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
 
 const RESULT_TONE: Record<BlockResult, string> = {
@@ -60,7 +65,7 @@ export default function ItemDetail() {
   const setItemStatus = useStore((s) => s.setItemStatus);
   const updateItem = useStore((s) => s.updateItem);
   const deleteItem = useStore((s) => s.deleteItem);
-  const toggleAssignedForLesson = useStore((s) => s.toggleAssignedForLesson);
+  const scheduleReviewAgain = useStore((s) => s.scheduleReviewAgain);
   const navigate = useNavigate();
   const location = useLocation();
   // Explicit, safe return context: back to where the item was opened from.
@@ -86,7 +91,6 @@ export default function ItemDetail() {
 
   const material = getMaterial(db, item.materialId);
   const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
-  const nextLesson = nextLessonFor(db.lessons, item.instrumentId, now);
   const persianEntries = PERSIAN_FIELDS.filter((f) => item.persian?.[f.key as keyof PersianFields]);
   const guitarEntries = GUITAR_FIELDS.filter((f) => item.guitar?.[f.key as keyof GuitarFields]);
   const trend = [...blocks].reverse(); // chronological
@@ -180,21 +184,10 @@ export default function ItemDetail() {
         </button>
       </div>
 
-      <button
-        className={`btn btn-sm${item.assignedForLesson ? ' btn-primary' : ''}`}
-        style={{ width: 'fit-content' }}
-        onClick={() => toggleAssignedForLesson(item.id)}
-        title="Prioritise this to be ready before your next class"
-      >
-        <FlagIcon width={14} height={14} />
-        {item.assignedForLesson
-          ? nextLesson
-            ? `For class ${relativeDay(nextLesson.date, now)} ✓`
-            : 'For next class ✓'
-          : 'Complete before next class?'}
-      </button>
-
       <ConnectedTo item={item} />
+
+      {/* Commitments and questions, each naming its own class. */}
+      <ItemAgenda itemId={item.id} />
 
       <div className="card grid-stats">
         <Stat value={item.timesPractised} label="Blocks" />
@@ -212,6 +205,13 @@ export default function ItemDetail() {
               : 'Reviews: spaced repetition (auto).'}
       </div>
 
+      <ScheduleAgain
+        item={item}
+        now={now}
+        conflict={pendingScheduleConflict(item, db.reviews)}
+        onSchedule={(date) => scheduleReviewAgain(item.id, date)}
+      />
+
       <section className="stack-sm">
         <div className="section-label">Status</div>
         <OptionPills
@@ -222,11 +222,10 @@ export default function ItemDetail() {
         />
       </section>
 
-      {(item.currentProblem || item.bestStrategy || item.teacherQuestion || item.lastObservation) && (
+      {(item.currentProblem || item.bestStrategy || item.lastObservation) && (
         <div className="stack-sm">
           {item.currentProblem && <DetailNote label="Current problem" text={item.currentProblem} />}
           {item.bestStrategy && <DetailNote label="Best strategy" text={item.bestStrategy} />}
-          {item.teacherQuestion && <DetailNote label="Teacher question" text={item.teacherQuestion} tone="warn" />}
           {item.lastObservation && <DetailNote label="Last observation" text={item.lastObservation} />}
         </div>
       )}
@@ -724,6 +723,75 @@ function FieldRow({ label, value }: { label: string; value: string }) {
     <div className="stack" style={{ gap: 2 }}>
       <span className="tiny faint">{label}</span>
       <span className="small">{value}</span>
+    </div>
+  );
+}
+
+/**
+ * Re-arm the pending review from the item itself. Deliberately administrative:
+ * it writes ONE date onto the item and its review row (creating that row when
+ * none is open — the case the old date helper could not reach, which left a
+ * declined review unreachable from here) and does nothing else. No block, no
+ * result, no statistics, no spacing progress.
+ *
+ * A date chosen here is the OWNER's, so the engine protects it until it comes
+ * due rather than quietly moving it on the next successful session.
+ */
+function ScheduleAgain({
+  item,
+  now,
+  conflict,
+  onSchedule,
+}: {
+  item: PracticeItemT;
+  now: Date;
+  conflict: { rows: Review[]; message: string } | null;
+  onSchedule: (date: ISODate) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [date, setDate] = useState<string>(item.nextReviewDate ?? todayISODate(now));
+
+  return (
+    <div className="stack-sm">
+      {conflict && (
+        <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
+          <span dir="ltr">{conflict.message}</span>
+        </div>
+      )}
+      {open ? (
+        <Field label="Next review">
+          <input
+            className="input"
+            type="date"
+            aria-label="Next review date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            style={{ maxWidth: 200 }}
+          />
+          <div className="row" style={{ gap: 6 }}>
+            <button
+              className="btn btn-sm btn-primary"
+              disabled={!date}
+              onClick={() => {
+                onSchedule(date);
+                setOpen(false);
+              }}
+            >
+              Save date
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+              Cancel
+            </button>
+          </div>
+          <p className="tiny faint">
+            <span dir="ltr">Setting a date records no practice and changes no spaced-repetition state.</span>
+          </p>
+        </Field>
+      ) : (
+        <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={() => setOpen(true)}>
+          {item.nextReviewDate ? 'Change review date' : 'Schedule again'}
+        </button>
+      )}
     </div>
   );
 }

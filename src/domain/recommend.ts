@@ -1,6 +1,7 @@
-import type { ItemStatus, PracticeBlock, PracticeItem } from './types';
+import type { ID, ISODate, ItemStatus, PracticeBlock, PracticeItem } from './types';
 import {
   groupBlocksByItem,
+  isProactiveCandidate,
   lastResultsAllSame,
   neglectedScore,
   overdueScore,
@@ -30,12 +31,10 @@ export interface Recommendations {
 }
 
 const QUICK_WIN_STATUSES: ItemStatus[] = ['usable', 'fragile', 'repairing'];
-const MAINTENANCE_STATUSES: ItemStatus[] = [
-  'maintenance',
-  'integrated',
-  'performable',
-  'dormant',
-];
+// Resting material is deliberately absent: it is excluded from every
+// proactive pool by `isProactiveCandidate`, so listing it here would only
+// describe a state that can no longer be reached.
+const MAINTENANCE_STATUSES: ItemStatus[] = ['maintenance', 'integrated', 'performable'];
 
 const STATUS_PHRASE: Partial<Record<ItemStatus, string>> = {
   new: 'still new',
@@ -55,7 +54,9 @@ export function buildReason(score: ItemScore, kind: RecommendationKind): string 
 
   if (parts.lesson > 0 && daysToLesson != null) {
     drivers.push(
-      daysToLesson <= 0 ? 'you committed it for your class' : `committed for your class in ${daysToLesson} day${daysToLesson === 1 ? '' : 's'}`,
+      daysToLesson <= 0
+        ? `you committed it for today’s class (${score.lessonDate})`
+        : `you committed it for your class on ${score.lessonDate}, ${daysToLesson} day${daysToLesson === 1 ? '' : 's'} away`,
     );
   }
   if (overdueDays === 0) drivers.push('its review is due today');
@@ -67,11 +68,13 @@ export function buildReason(score: ItemScore, kind: RecommendationKind): string 
   }
   if (item.importance >= 4) drivers.push('you marked it important');
   if (item.difficulty >= 4) drivers.push('it is demanding, so little-and-often helps');
-  if (parts.teacher > 0) drivers.push('it carries a question for your teacher');
   if (parts.neglected >= 2 && daysSincePractised != null) {
     drivers.push(`it's been ${daysSincePractised} days since you touched it`);
   } else if (parts.neglected >= 2) {
-    drivers.push('it has been resting a while');
+    drivers.push('it has been untouched a while');
+  }
+  if (parts.exposurePenalty > 0 && drivers.length === 0) {
+    drivers.push(`you have already given it ${Math.round(score.exposureMinutes)} minutes this week`);
   }
 
   const lead =
@@ -101,10 +104,13 @@ export function recommend(
   items: PracticeItem[],
   blocks: PracticeBlock[],
   now: Date,
-  lessonDates?: Map<string, string>,
+  preparationDates?: Map<ID, ISODate>,
 ): Recommendations {
   const blocksByItem = groupBlocksByItem(blocks);
-  const scored = scoreItems(items, blocksByItem, now, lessonDates); // already sorted desc
+  // ONE eligibility policy, shared with the planner and its swaps. Resting
+  // material never surfaces in a suggestion — including through a "nothing
+  // else left" fallback, which is exactly where it used to reappear.
+  const scored = scoreItems(items.filter(isProactiveCandidate), blocksByItem, now, preparationDates);
   const used = new Set<string>();
 
   const take = (s: ItemScore | undefined, kind: RecommendationKind): Recommendation | null => {
@@ -113,10 +119,10 @@ export function recommend(
     return { kind, score: s, reason: buildReason(s, kind) };
   };
 
-  // 1. Best Next Focus — highest score, prefer non-saturated.
-  const best =
-    scored.find((s) => !s.saturated && !used.has(s.item.id)) ??
-    scored.find((s) => !used.has(s.item.id));
+  // 1. Best Next Focus — simply the highest score. Recent exposure is already
+  // a bounded, decaying term IN that score, so skipping a "saturated" item
+  // here would penalise it twice and could hide genuinely urgent work.
+  const best = scored.find((s) => !used.has(s.item.id));
 
   const bestRec = take(best, 'best');
 
@@ -124,7 +130,6 @@ export function recommend(
   const quickWin = scored.find(
     (s) =>
       !used.has(s.item.id) &&
-      !s.saturated &&
       s.item.difficulty <= 3 &&
       s.item.importance >= 3 &&
       QUICK_WIN_STATUSES.includes(s.item.status),
@@ -152,13 +157,13 @@ export function recommendForInstrument(
   items: PracticeItem[],
   blocks: PracticeBlock[],
   now: Date,
-  lessonDates?: Map<string, string>,
+  preparationDates?: Map<ID, ISODate>,
 ): Recommendations {
   return recommend(
     items.filter((i) => i.instrumentId === instrumentId),
     blocks.filter((b) => b.instrumentId === instrumentId),
     now,
-    lessonDates,
+    preparationDates,
   );
 }
 
@@ -184,10 +189,10 @@ export function pickNextPart(
   blocks: PracticeBlock[],
   now: Date,
 ): Recommendation | null {
-  const parts = partsOf(parentId, items);
+  const parts = partsOf(parentId, items).filter(isProactiveCandidate);
   if (parts.length === 0) return null;
   const scored = scoreItems(parts, groupBlocksByItem(blocks), now);
-  const pick = scored.find((s) => !s.saturated) ?? scored[0];
+  const pick = scored[0];
   return pick ? { kind: 'best', score: pick, reason: buildReason(pick, 'best') } : null;
 }
 

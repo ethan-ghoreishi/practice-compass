@@ -91,6 +91,13 @@ export default defineConfig(({ command, isPreview }) => ({
   ],
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // `tests/` holds the two real-browser journeys. They are ordinary Vitest
+    // tests driving Playwright as a LIBRARY, so their results land in the same
+    // report the check engine reads — a standalone Playwright run would not.
+    include: ['src/**/*.test.ts', 'tests/**/*.test.ts'],
+    // A journey starts a dev server, launches a browser and walks several
+    // screens; the unit tests are unaffected by a generous ceiling.
+    testTimeout: 180_000,
+    hookTimeout: 180_000,
   },
 }));

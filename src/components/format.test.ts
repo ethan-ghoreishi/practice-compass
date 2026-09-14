@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { type BlockResult, createItem, planNextReview, REVIEW_TYPE_LABELS, type ReviewPlan } from '../domain';
-import { relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine, splitLines } from './format';
+import {
+  addDays,
+  type BlockResult,
+  createItem,
+  planNextReview,
+  REVIEW_TYPE_LABELS,
+  type ReviewPlan,
+  toISODate,
+} from '../domain';
+import {
+  closeOverrideDate,
+  relativeDay,
+  reviewOverrideSurvivesResultChange,
+  reviewSummaryLine,
+  splitLines,
+} from './format';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -61,15 +75,14 @@ describe('reviewSummaryLine', () => {
 });
 
 /**
- * A manually chosen review date must survive changing the result WHEN NO
- * AUTOMATIC PLAN EXISTS — the rule the close screen used to keep before this
- * lane restructured it around a single `ReviewPlan`, and lost. The predicate
- * is bound to the actual engine here (not just asserted in prose): a
- * manual-mode item has no automatic plan for any of the six results, and an
- * auto-mode item has one for every one of them.
+ * A manually chosen review date must survive changing the result WHENEVER THE
+ * ENGINE'S ANSWER DOES NOT DEPEND ON THE RESULT. The predicate is bound to the
+ * actual engine here, not asserted in prose: it asks the engine for all six
+ * results and compares the dates it gets back.
  */
 describe('reviewOverrideSurvivesResultChange', () => {
-  it('a manually chosen date survives changing the result when no automatic plan exists', () => {
+  it('a manually chosen date survives changing the result when no automatic plan depends on it', () => {
+    // Manual mode: no automatic plan for ANY result, ever.
     const manualItem = createItem(
       { instrumentId: 'i', title: 'درآمد شور', status: 'fragile', reviewMode: 'manual' },
       NOW,
@@ -77,13 +90,50 @@ describe('reviewOverrideSurvivesResultChange', () => {
     for (const result of ALL_RESULTS) {
       expect(planNextReview({ item: manualItem, result, now: NOW })).toBeNull();
     }
-    expect(reviewOverrideSurvivesResultChange(manualItem.reviewMode)).toBe(true);
+    expect(reviewOverrideSurvivesResultChange(manualItem, NOW)).toBe(true);
 
-    const autoItem = createItem({ instrumentId: 'i', title: 'Étude', status: 'fragile' }, NOW);
+    // A PROTECTED future date: the answer is "the existing one" whatever the
+    // judgement, so a date the owner typed was never tied to a result either.
+    const protectedItem = {
+      ...createItem({ instrumentId: 'i', title: 'Protected', status: 'fragile' }, NOW),
+      nextReviewDate: toISODate(addDays(NOW, 6)),
+    };
+    expect(reviewOverrideSurvivesResultChange(protectedItem, NOW)).toBe(true);
+
+    // A DUE automatic item: the engine answers differently per result, so a
+    // correction made for one judgement must not be carried to another.
+    const dueItem = {
+      ...createItem({ instrumentId: 'i', title: 'Étude', status: 'fragile' }, NOW),
+      nextReviewDate: toISODate(NOW),
+      nextReviewSource: 'auto' as const,
+    };
     for (const result of ALL_RESULTS) {
-      expect(planNextReview({ item: autoItem, result, now: NOW })).not.toBeNull();
+      expect(planNextReview({ item: dueItem, result, now: NOW })).not.toBeNull();
     }
-    expect(reviewOverrideSurvivesResultChange(autoItem.reviewMode)).toBe(false);
+    expect(reviewOverrideSurvivesResultChange(dueItem, NOW)).toBe(false);
+  });
+});
+
+/**
+ * THE SEAM between the close screen and the store. The screen shows the date
+ * that will STAND — which, for a session before a review is due, is the item's
+ * existing date. Handing that back as an explicit override would stamp every
+ * engine-proposed date as the owner's (so nothing could ever bring it forward
+ * again) and turn every "keep" into a write that completes the pending row.
+ * Only a date actually typed into the field is an override.
+ */
+describe('closeOverrideDate', () => {
+  it('passes on only a date the owner typed, never the date merely displayed', () => {
+    expect(closeOverrideDate('scheduled', null)).toBeUndefined();
+    expect(closeOverrideDate('scheduled', {})).toBeUndefined();
+    // Changing only the review-type pills sets an override with no date.
+    expect(closeOverrideDate('scheduled', { dueDate: undefined })).toBeUndefined();
+    // A cleared field is a decline, handled by the answer — not a date.
+    expect(closeOverrideDate('scheduled', { dueDate: '' })).toBeUndefined();
+    expect(closeOverrideDate('scheduled', { dueDate: '2026-07-04' })).toBe('2026-07-04');
+    // The other two answers never carry a date at all.
+    expect(closeOverrideDate('declined', { dueDate: '2026-07-04' })).toBeUndefined();
+    expect(closeOverrideDate('unanswered', { dueDate: '2026-07-04' })).toBeUndefined();
   });
 });
 

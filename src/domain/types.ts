@@ -39,8 +39,8 @@ export interface Lesson {
   notes?: string;
   /**
    * Practice items worked on / created in this lesson. A link, not ownership:
-   * unlinking never deletes the item, and this is separate from the item's
-   * `assignedForLesson` flag (work *for the next* class).
+   * unlinking never deletes the item, and this is separate from a
+   * `LessonAgendaEntry` of kind 'preparation' (work committed *for* a class).
    */
   itemIds?: ID[];
   /**
@@ -136,6 +136,13 @@ export type ItemType =
 /** How the next-review date is decided for an item. */
 export type ReviewMode = 'auto' | 'interval' | 'manual';
 
+/**
+ * Where an item's CURRENT `nextReviewDate` came from. The field is optional on
+ * the item: an ABSENT source is legacy-unknown, which the migration never
+ * guesses and the engine treats as conservatively as a user-chosen one.
+ */
+export type ReviewDateSource = 'auto' | 'user';
+
 export type ItemStatus =
   | 'new'
   | 'fragile'
@@ -189,8 +196,6 @@ export interface PracticeItem {
   strand?: StepStrand;
   /** Reference-catalog entry this item was created from (dedupes suggestions). */
   catalogKey?: string;
-  /** Flagged to complete before the instrument's next lesson/class. */
-  assignedForLesson?: boolean;
   /**
    * Parent piece/étude when this item is one of its parts (a phrase, bars, a
    * section, a technical problem). Parts are ordinary items; this only groups
@@ -205,7 +210,6 @@ export interface PracticeItem {
   currentProblem?: string;
   primaryFocus?: FocusArea;
   bestStrategy?: string;
-  teacherQuestion?: string;
   /** Free-form running notes / annotations (your "notebook" for this item). */
   notes?: string;
   tags: string[];
@@ -221,6 +225,21 @@ export interface PracticeItem {
   srEase?: number;
   /** The interval (days) that produced the current nextReviewDate. */
   srIntervalDays?: number;
+  /**
+   * How the CURRENT `nextReviewDate` was chosen. `'auto'` = this engine
+   * proposed it; `'user'` = the owner typed/snoozed/re-armed it. ABSENT means
+   * legacy-unknown — a date that predates this field, whose provenance the
+   * migration must never guess. Unknown and user-chosen future dates are both
+   * protected from automatic early changes (§C6).
+   */
+  nextReviewSource?: ReviewDateSource;
+  /**
+   * The local calendar day spacing last ADVANCED for this item. An
+   * administrative eligibility marker — never a retention score — so a second
+   * close on the same day (including after clearing and re-arming the date, or
+   * after a reload or sync) cannot advance spacing twice (§A2).
+   */
+  srLastProgressDay?: ISODate;
   lastPractisedAt?: ISODateTime;
   timesPractised: number;
   totalMinutes: number;
@@ -438,6 +457,67 @@ export interface PathwayRoutine {
   updatedAt: ISODateTime;
 }
 
+// --- Lesson agenda ----------------------------------------------------------
+//
+// The ONE collection behind "what I committed to prepare for a class" and
+// "what I want to ask my teacher". It replaces the item's rolling
+// `assignedForLesson` boolean and its single mutable `teacherQuestion`
+// string, both of which could only ever describe the NEXT class and could
+// only ever hold one question.
+//
+// Two kinds, one discriminated union — never separate independently
+// toggleable booleans for next-class / asked / archived / completed:
+//
+//   preparation — "work on this item before THAT class". Names one item and
+//                 one lesson. This is what supplies practice urgency.
+//   question    — "ask THIS at THAT class". Carries its own text (so several
+//                 questions never overwrite each other), an optional item it
+//                 concerns, and an open → asked lifecycle with an optional
+//                 answer. A question alone NEVER changes practice priority.
+//
+// `lessonId` absent means deliberately UNASSIGNED — the honest state for a
+// migrated legacy commitment (whose target was never recorded) and for a new
+// one captured when the instrument has no upcoming lesson. It is a
+// relationship/question collection, not a second practice task system.
+
+export type LessonAgendaKind = 'preparation' | 'question';
+
+interface LessonAgendaCommon {
+  id: ID;
+  instrumentId: ID;
+  /** The lesson this names. ABSENT = deliberately unassigned. */
+  lessonId?: ID;
+  /**
+   * The lesson this used to name, kept when that lesson was deleted or the
+   * entry was detached — so history stays identifiable rather than silently
+   * losing which class it belonged to.
+   */
+  detachedFromLessonId?: ID;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+export interface LessonPreparation extends LessonAgendaCommon {
+  kind: 'preparation';
+  itemId: ID;
+}
+
+export interface LessonQuestion extends LessonAgendaCommon {
+  kind: 'question';
+  /** The question itself, verbatim. Multiline text stays ONE question. */
+  text: string;
+  /** The item it concerns, if any. A question can stand on its own. */
+  itemId?: ID;
+  /** When it was actually asked. Absent = still open. Reversible. */
+  askedAt?: ISODateTime;
+  /** What the teacher said. Optional; only meaningful once asked. */
+  answer?: string;
+  /** The item this used to concern, kept when that item was deleted. */
+  detachedFromItemId?: ID;
+}
+
+export type LessonAgendaEntry = LessonPreparation | LessonQuestion;
+
 // --- Attachments ------------------------------------------------------------
 //
 // File metadata is persisted in the main DB (small, reactive); the actual file
@@ -487,7 +567,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -501,6 +581,8 @@ export interface PracticeDB {
   pathwayRoutines: PathwayRoutine[];
   attachments: AttachmentMeta[];
   lessons: Lesson[];
+  /** Lesson commitments and teacher questions (schema v12). */
+  lessonAgenda: LessonAgendaEntry[];
   /** Optional scheduling knobs; undefined ⇒ DEFAULT_SCHEDULING_PARAMS. */
   settings?: SchedulingParams;
 }

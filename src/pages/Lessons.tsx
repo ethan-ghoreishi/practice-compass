@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  assignedForLesson,
+  itemsCommittedForLesson,
+  type PracticeItem,
   cleanFileTitle,
   daysUntil,
   defaultInstrumentFilter,
@@ -12,7 +13,7 @@ import {
   nextLessonFor,
   nextLessonNumber,
   normalizeBaseUrl,
-  questionsForNextClass,
+  openQuestionsForLessonId,
   relativizeReference,
   resolveRecording,
   todayISODate,
@@ -27,6 +28,7 @@ import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/
 import { relativeDay } from '../components/format';
 import Attachments from '../components/Attachments';
 import ClassQuestions from '../components/ClassQuestions';
+import { LessonAgendaPanel } from '../components/LessonAgenda';
 import QuickAdd from '../components/QuickAdd';
 
 /** "Class 37 · 2026-07-09" when numbered, else just the date. */
@@ -138,7 +140,9 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
         {instruments.map((inst) => {
           const lessons = lessonsForInstrument(db.lessons, inst.id);
           const next = nextLessonFor(db.lessons, inst.id, now);
-          const flagged = assignedForLesson(db.items).filter((i) => i.instrumentId === inst.id);
+          const flagged = itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
+            (i: PracticeItem) => i.instrumentId === inst.id,
+          );
           return (
             <section key={inst.id} className="stack-sm">
               {/* The instrument's own name leads this group (dir="auto"
@@ -261,8 +265,11 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
   const lessons = useMemo(() => lessonsForInstrument(db.lessons, instrumentId), [db.lessons, instrumentId]);
   const next = nextLessonFor(db.lessons, instrumentId, now);
   const flagged = useMemo(
-    () => assignedForLesson(db.items).filter((i) => i.instrumentId === instrumentId),
-    [db.items, instrumentId],
+    () =>
+      itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
+        (i: PracticeItem) => i.instrumentId === instrumentId,
+      ),
+    [db.items, db.lessonAgenda, db.lessons, now, instrumentId],
   );
 
   const [adding, setAdding] = useState(false);
@@ -395,9 +402,11 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
   }
 
   const upcoming = lesson.date >= todayISODate(now);
+  // BY LESSON ID, never by instrument: every future class used to show the
+  // identical list, so a question meant for one class appeared on all of them.
   const questions = useMemo(
-    () => questionsForNextClass(db.items, lesson.instrumentId),
-    [db.items, lesson.instrumentId],
+    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id),
+    [db.lessonAgenda, db.items, lesson.id],
   );
   const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
 
@@ -415,8 +424,23 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
 
       <LessonItems lesson={lesson} />
 
-      {/* Questions belong to the class ahead — show them on the upcoming lesson. */}
-      {upcoming && <ClassQuestions instrumentName={instrumentName} dateLabel={lessonLabel(lesson)} questions={questions} />}
+      {/* This class's OWN agenda: what is committed to it, what is still to
+          ask at it, and what was already asked — history that stays here
+          rather than being carried forward to the next class by itself. */}
+      <LessonAgendaPanel lessonId={lesson.id} />
+
+      {/* The take-into-the-room list: only this class's still-open questions,
+          selected by its id. A past class keeps its unasked questions on its
+          own page (above) rather than showing an export sheet for a class
+          that has already happened. */}
+      {upcoming && (
+        <ClassQuestions
+          title="Questions for this class"
+          instrumentName={instrumentName}
+          dateLabel={lessonLabel(lesson)}
+          questions={questions}
+        />
+      )}
 
       <LessonRecordings lesson={lesson} />
 
@@ -639,8 +663,18 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
   const db = useStore((s) => s.db);
   const linkItemToLesson = useStore((s) => s.linkItemToLesson);
   const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
-  const toggleAssignedForLesson = useStore((s) => s.toggleAssignedForLesson);
+  const addLessonPreparation = useStore((s) => s.addLessonPreparation);
+  const removeAgendaEntry = useStore((s) => s.removeAgendaEntry);
   const [linking, setLinking] = useState(false);
+
+  // "Worked on in this class" (lesson.itemIds) and "prepare this FOR this
+  // class" (a preparation entry) are separate facts, exactly as they always
+  // were — the button below toggles the second without touching the first.
+  const committedHere = new Map(
+    db.lessonAgenda
+      .filter((e) => e.kind === 'preparation' && e.lessonId === lesson.id)
+      .map((e) => [(e as { itemId: string }).itemId, e.id] as const),
+  );
 
   const linked = (lesson.itemIds ?? [])
     .map((id) => db.items.find((i) => i.id === id))
@@ -697,12 +731,16 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
                 </div>
               </Link>
               <button
-                className={`btn btn-sm${item.assignedForLesson ? ' btn-primary' : ''}`}
-                aria-pressed={!!item.assignedForLesson}
-                title="Work on this before the next class"
-                onClick={() => toggleAssignedForLesson(item.id)}
+                className={`btn btn-sm${committedHere.has(item.id) ? ' btn-primary' : ''}`}
+                aria-pressed={committedHere.has(item.id)}
+                title="Commit to preparing this before this class"
+                onClick={() => {
+                  const existing = committedHere.get(item.id);
+                  if (existing) removeAgendaEntry(existing);
+                  else addLessonPreparation(item.id, lesson.id);
+                }}
               >
-                {item.assignedForLesson ? 'Next class ✓' : 'For next class'}
+                {committedHere.has(item.id) ? 'For this class ✓' : 'Prepare for this class'}
               </button>
               <button
                 className="btn btn-ghost btn-sm"

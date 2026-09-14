@@ -9,6 +9,7 @@ import {
   createMaterial,
   createReview,
 } from './factories';
+import { createPreparation, createQuestion } from './lessonAgenda';
 import { isSaturated } from './scoring';
 import { addDays, newId, nowISO, toISODate } from './util';
 
@@ -77,7 +78,6 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
       strand: 'radif',
       catalogKey: 'iraq',
-      assignedForLesson: true,
       title: 'پایان‌بندیِ عبارتِ ۴ (عراق)',
       itemType: 'phrase',
       status: 'repairing',
@@ -85,7 +85,6 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       difficulty: 4,
       currentProblem: 'فرود هنگام اتصال به عبارتِ پیشین روشن نیست.',
       primaryFocus: 'phrase_direction',
-      teacherQuestion: 'آیا نقطهٔ فرودم درست است، یا زینت دارد فرود را می‌پوشاند؟',
       persian: {
         dastgahAvaz: 'افشاری',
         gusheh: 'عراق',
@@ -124,7 +123,6 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       difficulty: 3,
       currentProblem: 'Left-hand shift causes shoulder tension.',
       primaryFocus: 'left_hand',
-      teacherQuestion: 'Should I prioritise tone or releasing shoulder tension on this shift?',
       guitar: {
         lessonNumber: '6',
         barRange: '4–5',
@@ -284,9 +282,30 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       createdAt: nowISO(now),
     },
   ];
-  const lessons = [
-    pastLesson,
-    createLesson({ instrumentId: setar.id, date: agoDate(now, 14) }, now),
+  const nextSetarLesson = createLesson({ instrumentId: setar.id, date: agoDate(now, 14) }, now);
+  const lessons = [pastLesson, nextSetarLesson];
+
+  // The current model directly — no legacy boolean, no single mutable string.
+  // The Setar commitment names the class it is FOR; the Guitar question has no
+  // class to name yet (there are no Guitar lessons in the demo), so it is
+  // honestly unassigned rather than pointing at somebody else's lesson.
+  const lessonAgenda = [
+    createPreparation({ id: newId(), itemId: iraq.id, instrumentId: setar.id, lessonId: nextSetarLesson.id, now }),
+    createQuestion({
+      id: newId(),
+      text: 'آیا نقطهٔ فرودم درست است، یا زینت دارد فرود را می‌پوشاند؟',
+      instrumentId: setar.id,
+      itemId: iraq.id,
+      lessonId: nextSetarLesson.id,
+      now,
+    }),
+    createQuestion({
+      id: newId(),
+      text: 'Should I prioritise tone or releasing shoulder tension on this shift?',
+      instrumentId: guitar.id,
+      itemId: shift.id,
+      now,
+    }),
   ];
 
   return {
@@ -299,6 +318,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     ...pathways,
     attachments: [],
     lessons,
+    lessonAgenda,
   };
 }
 
@@ -315,5 +335,6 @@ export function emptyDB(): PracticeDB {
     pathwayRoutines: [],
     attachments: [],
     lessons: [],
+    lessonAgenda: [],
   };
 }

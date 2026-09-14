@@ -1,6 +1,6 @@
 import { decideReplacement, nowISO, parseImport, SCHEMA_VERSION } from '../domain';
 import { allBlobs, replaceAllBlobs, type AttachmentBlob } from './idb';
-import { useStore } from './useStore';
+import { useHydrationStatus, useStore } from './useStore';
 
 // ---------------------------------------------------------------------------
 // Full backup = the JSON data PLUS the attachment file bytes (base64), so a
@@ -317,4 +317,35 @@ export async function importFullBackup(
 
   useStore.getState().importDB(parsed);
   return { ok: true, fileCount: rows.length };
+}
+
+/**
+ * Recover from a refused COLD-START hydration (§C7). Every other inbound door
+ * (Settings' own Import, sync, Keep remote, archive restore) is reachable
+ * only once `hydrated` is true — but a refused cold start is exactly the case
+ * where it never becomes true, so `App.tsx`'s corrupt-data refusal screen
+ * needs its own way in. This is a thin wrapper, not a second import
+ * implementation: `importFullBackup` above is the SAME validated
+ * install path every other door already uses, so invalid data is rejected
+ * here with nothing written, exactly as it already is everywhere else.
+ * `importFullBackup`'s presence/revision guard reads `useStore.getState()`,
+ * which — hydration never having succeeded — is still this store's plain
+ * initial state (`emptyDB()`, no active session, `rev: 0`), so there is no
+ * in-progress practice a cold start could ever be protecting and the default
+ * `intent`/`decidedFromRev` are already correct.
+ *
+ * On success it ALSO flips `hydrated` true and clears the reactive refusal
+ * flag: `importFullBackup`/`importDB` install a valid `db` but have no
+ * reason to know about a gate that exists only before this device's very
+ * first successful hydration. `App.tsx` renders the ordinary app the moment
+ * both flip — this call is the only place that needs to know about the gate
+ * at all.
+ */
+export async function recoverFromRefusedHydration(text: string): Promise<ImportOutcome> {
+  const result = await importFullBackup(text);
+  if (result.ok) {
+    useStore.setState({ hydrated: true });
+    useHydrationStatus.setState({ refused: false, message: null, tooNew: false });
+  }
+  return result;
 }

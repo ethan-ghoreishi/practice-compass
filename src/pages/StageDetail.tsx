@@ -9,6 +9,7 @@ import {
   STRAND_LABELS,
   type PathwayRoutine,
   type StageUnit,
+  itemsPreparedForLesson,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
@@ -32,6 +33,12 @@ export default function StageDetail() {
   const units = useMemo(() => (stage ? stageUnits(stage, db.items) : []), [stage, db.items]);
   const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
   const blocksOf = (itemId: string) => db.blocks.filter((b) => b.practiceItemId === itemId);
+  // "for class" is a commitment to a NAMED class in the lesson agenda, not a
+  // rolling flag on the item.
+  const committedItemIds = useMemo(
+    () => itemsPreparedForLesson(db.lessonAgenda, db.lessons, new Date()),
+    [db.lessonAgenda, db.lessons],
+  );
 
   const [editing, setEditing] = useState(false);
   const [editCode, setEditCode] = useState('');
@@ -225,6 +232,7 @@ export default function StageDetail() {
               unit={u}
               returnTo={here}
               removable={!!u.item && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
+              committedItemIds={committedItemIds}
               onPractise={() => practise(u)}
               onAdd={() => addSuggestion(u)}
               onRemove={() => {
@@ -257,6 +265,7 @@ function UnitRow({
   unit,
   returnTo,
   removable,
+  committedItemIds,
   onPractise,
   onAdd,
   onRemove,
@@ -264,6 +273,8 @@ function UnitRow({
   unit: StageUnit;
   returnTo: string;
   removable: boolean;
+  /** Items with a live commitment to a specific class (the lesson agenda). */
+  committedItemIds: Set<string>;
   onPractise: () => void;
   onAdd: () => void;
   onRemove: () => void;
@@ -278,7 +289,7 @@ function UnitRow({
   const meta = [
     unit.strand ? STRAND_LABELS[unit.strand] : null,
     item ? ITEM_STATUS_LABELS[item.status] : 'reference suggestion — tap to add',
-    item?.assignedForLesson ? 'for class' : null,
+    item && committedItemIds.has(item.id) ? 'for class' : null,
   ].filter(Boolean);
 
   return (

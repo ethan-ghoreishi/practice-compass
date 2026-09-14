@@ -11,6 +11,19 @@ import {
   completeOpenReviewsFor,
   computeReviewOutcome,
   installDatabase,
+  createPreparation,
+  createQuestion,
+  detachItem as detachAgendaItem,
+  detachLesson as detachAgendaLesson,
+  markQuestionAsked as markAgendaQuestionAsked,
+  reopenQuestion as reopenAgendaQuestion,
+  retargetEntriesForItemInstrument,
+  retargetEntry as retargetAgendaEntry,
+  completePlanSegment,
+  planSegmentStartable,
+  scheduleAgainPlan,
+  skipPlanSegment as skipPlanSegmentRun,
+  setQuestionAnswer as setAgendaQuestionAnswer,
   resolveReviewDate,
   applyReviewDateToRows,
   applyReviewDateToRow,
@@ -43,7 +56,6 @@ import {
   defaultModeForStatus,
   DEFAULT_DURATION_MINUTES,
   emptyDB,
-  migrateToCurrent,
   newId,
   nowISO,
   SCHEMA_VERSION,
@@ -52,6 +64,7 @@ import {
   missingSessionReferences,
   SETAR_CLASS_SESSIONS,
   validateDB,
+  SchemaTooNewError,
   type BlockMode,
   type BlockResult,
   type FocusArea,
@@ -78,8 +91,8 @@ import {
   type ReviewType,
   type RoutineSegment,
   type RunSegment,
+  type PlanRunSegment,
   type SchedulingParams,
-  type PlanSegment,
   type SessionPlan,
 } from '../domain';
 import type { CreateItemInput } from '../domain/factories';
@@ -119,10 +132,8 @@ export function sessionElapsedSeconds(s: ActiveSession, now: Date = new Date()):
   return Math.max(0, Math.floor(s.accumulatedSeconds + live));
 }
 
-/** A plan segment plus its live run status. */
-export interface PlanSegmentState extends PlanSegment {
-  status: 'pending' | 'done' | 'skipped';
-}
+/** A plan segment plus its live run status (the domain's own run shape). */
+export type PlanSegmentState = PlanRunSegment;
 
 /** The Session Plan currently being run (ephemeral — never in PracticeDB). */
 export interface ActivePlan {
@@ -165,17 +176,6 @@ export interface ActiveRoutine {
 }
 
 /** Advance the pointer to the next still-pending segment (or one past the end). */
-function advancePointer(segments: PlanSegmentState[], from: number): number {
-  for (let i = from + 1; i < segments.length; i++) {
-    if (segments[i].status === 'pending') return i;
-  }
-  // Nothing pending after `from`; look from the start (skips may have been jumped).
-  for (let i = 0; i < segments.length; i++) {
-    if (segments[i].status === 'pending') return i;
-  }
-  return segments.length;
-}
-
 export interface StartSessionInput {
   itemId: ID;
   instrumentId: ID;
@@ -201,8 +201,23 @@ export interface CloseSessionInput {
   answer: ReviewAnswer;
   nextReviewDate?: ISODate;
   reviewType?: ReviewType;
-  /** When set, written onto the item as its teacher question. */
-  teacherQuestion?: string;
+  /**
+   * A question raised during this close. It becomes its OWN agenda entry —
+   * it never overwrites an existing question, and it never marks the item as
+   * work committed for a class. Targetless means honestly unassigned.
+   */
+  newQuestion?: { text: string; lessonId?: ID };
+  /**
+   * The `now` the close screen actually PREVIEWED its decision with — never
+   * read from module scope inside `closeSession`. Recomputing a fresh
+   * `new Date()` here instead would let the saved date silently diverge from
+   * the one the screen just showed if the local day rolled between the
+   * screen's last render and this call; the caller (`CloseBlock`) is
+   * responsible for checking that first and refusing to call this while they
+   * disagree. Defaults to `new Date()` for callers with no decision to keep
+   * in step (there are none in-app; only tests omit it).
+   */
+  now?: Date;
 }
 
 export interface ItemPatch {
@@ -216,7 +231,6 @@ export interface ItemPatch {
   currentProblem?: string;
   primaryFocus?: FocusArea;
   bestStrategy?: string;
-  teacherQuestion?: string;
   notes?: string;
   tags?: string[];
   /** `undefined` (key absent) keeps the schedule; `null` clears it; an ISODate moves it — and its open review row with it (§1.5). */
@@ -321,7 +335,24 @@ interface StoreState {
   /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
   removeCatalogItem: (id: ID) => boolean;
   placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
-  toggleAssignedForLesson: (itemId: ID) => void;
+
+  // Lesson agenda — commitments and questions, each naming its own class
+  /** Commit an item to a specific class (or capture it unassigned). Returns the entry id. */
+  addLessonPreparation: (itemId: ID, lessonId?: ID) => ID | null;
+  /** Raise a question. It is its own entry; nothing else is overwritten. */
+  addLessonQuestion: (input: { text: string; instrumentId: ID; itemId?: ID; lessonId?: ID }) => ID | null;
+  /** Edit a question's text. Never touches its asked state or answer. */
+  updateLessonQuestion: (id: ID, text: string) => void;
+  /** Point an entry at a different class, or at none. The only carry-forward. */
+  setAgendaTarget: (id: ID, lessonId: ID | undefined) => void;
+  /** Mark asked (optionally with the teacher's answer). Logs no practice. */
+  markQuestionAsked: (id: ID, answer?: string) => void;
+  /** Put an asked question back on the open list. */
+  reopenQuestion: (id: ID) => void;
+  /** Record or replace a teacher answer without changing the asked state. */
+  setQuestionAnswer: (id: ID, answer: string) => void;
+  /** Remove an entry. Never deletes the item or its practice. */
+  removeAgendaEntry: (id: ID) => void;
   /** Create a practice item from a stage's reference catalog entry; returns its id. */
   addFromCatalog: (stageId: ID, entryKey: string) => ID;
   /** Begin a session on an existing item (with smart defaults). */
@@ -343,6 +374,12 @@ interface StoreState {
   notNowReview: (id: ID) => void;
   /** Snooze: honestly move the due date N days from today (no SM-2 change). */
   snoozeReview: (id: ID, days?: number) => void;
+  /**
+   * "Schedule again" from the item itself: set the one pending date on both
+   * the item and its review row, creating the row when none is open. Purely
+   * administrative — no block, no result, no SM-2 progress.
+   */
+  scheduleReviewAgain: (itemId: ID, dueDate: ISODate, reviewType?: ReviewType) => void;
 
   // Pathways
   addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
@@ -448,16 +485,21 @@ export const useStore = create<StoreState>()(
         }),
 
       beginPlanSegment: () => {
-        const { activePlan, db } = get();
+        const { activePlan, db, active, activeRoutine } = get();
         if (!activePlan) return;
         const seg = activePlan.segments[activePlan.pointer];
-        if (!seg) return;
-        const item = db.items.find((i) => i.id === seg.itemId);
-        if (!item) {
-          // The item was deleted since the plan was built — skip past it.
-          get().skipPlanSegment();
+        // Revalidated LIVE against the same pure check a test can reach, never
+        // trusted from the plan: an item can be deleted or moved to another
+        // instrument between building the plan and reaching this segment.
+        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
+        if (!check.ok) {
+          // A deleted or moved item is visibly skipped (and skipping logs
+          // nothing); a busy clock is refused outright rather than replaced.
+          if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
           return;
         }
+        const item = check.item;
+        if (!seg) return;
         get().startSession({
           itemId: item.id,
           instrumentId: item.instrumentId,
@@ -469,13 +511,7 @@ export const useStore = create<StoreState>()(
       },
 
       skipPlanSegment: () =>
-        set((s) => {
-          if (!s.activePlan) return {};
-          const segments = s.activePlan.segments.map((seg, i) =>
-            i === s.activePlan!.pointer && seg.status === 'pending' ? { ...seg, status: 'skipped' as const } : seg,
-          );
-          return { activePlan: { ...s.activePlan, segments, pointer: advancePointer(segments, s.activePlan.pointer) } };
-        }),
+        set((s) => (s.activePlan ? { activePlan: skipPlanSegmentRun(s.activePlan) } : {})),
 
       endPlan: () => set({ activePlan: null }),
 
@@ -527,6 +563,7 @@ export const useStore = create<StoreState>()(
       },
 
       deleteLesson: (id) => {
+        const detachNow = new Date();
         // The lesson owns its attachments; linked items are never touched.
         // ownerId alone is not a lesson id — an item can share it — so only
         // an attachment whose ownerType is ALSO 'lesson' is this lesson's own.
@@ -537,6 +574,10 @@ export const useStore = create<StoreState>()(
             ...s.db,
             lessons: s.db.lessons.filter((l) => l.id !== id),
             attachments: s.db.attachments.filter((a) => !(a.ownerType === 'lesson' && a.ownerId === id)),
+            // Entries that named it become visibly unassigned and REMEMBER
+            // which class they were for. Nothing is deleted and nothing is
+            // silently reassigned to another class.
+            lessonAgenda: detachAgendaLesson(s.db.lessonAgenda, id, detachNow),
           },
         }));
       },
@@ -716,7 +757,17 @@ export const useStore = create<StoreState>()(
             items: s.db.items.map((i) => {
               if (i.id !== id) return i;
               const next = { ...i, ...rest };
-              if (write) next.nextReviewDate = write.nextReviewDate;
+              if (write) {
+                next.nextReviewDate = write.nextReviewDate;
+                // A date arriving through an explicit item patch is the
+                // OWNER'S, never the engine's — stamp the provenance here so
+                // this cannot become a fourth path that writes a date without
+                // one (closeSession, snoozeReview and scheduleReviewAgain all
+                // stamp their own). Without it an owner-edited date on an
+                // auto-source item would stay 'auto' and lose the protection
+                // A4/A5 promise it. Clearing the date clears the provenance.
+                next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
+              }
               return touch(next, now);
             }),
             reviews:
@@ -727,6 +778,12 @@ export const useStore = create<StoreState>()(
             pathwayRoutines: newInstrumentId
               ? unbindItemWhereInstrumentMismatch(s.db.pathwayRoutines, id, newInstrumentId, now)
               : s.db.pathwayRoutines,
+            // Its commitments and questions follow it; a class target that no
+            // longer matches is cleared rather than pointing at another
+            // instrument's lesson.
+            lessonAgenda: newInstrumentId
+              ? retargetEntriesForItemInstrument(s.db.lessonAgenda, id, newInstrumentId, s.db.lessons, now)
+              : s.db.lessonAgenda,
           },
         }));
       },
@@ -764,6 +821,10 @@ export const useStore = create<StoreState>()(
             ),
             // The segment survives as an unbound countdown — never removed.
             pathwayRoutines: unbindItemFromRoutines(s.db.pathwayRoutines, id, now),
+            // Commitments to prepare a deleted item go with it; QUESTIONS
+            // survive, detached, because a question and its answer are the
+            // owner's record of a class, not a property of the item.
+            lessonAgenda: detachAgendaItem(s.db.lessonAgenda, id, now),
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -791,16 +852,90 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      toggleAssignedForLesson: (itemId) => {
+      addLessonPreparation: (itemId, lessonId) => {
         const now = new Date();
+        const { db } = get();
+        const item = db.items.find((i) => i.id === itemId);
+        if (!item) return null;
+        // A class on another instrument is never a valid target — refuse
+        // rather than silently rewriting either side.
+        if (lessonId) {
+          const lesson = db.lessons.find((l) => l.id === lessonId);
+          if (!lesson || lesson.instrumentId !== item.instrumentId) return null;
+        }
+        // One commitment per item per class: committing twice is the same
+        // commitment, not two.
+        const existing = db.lessonAgenda.find(
+          (e) => e.kind === 'preparation' && e.itemId === itemId && e.lessonId === lessonId,
+        );
+        if (existing) return existing.id;
+        const entry = createPreparation({
+          id: newId(),
+          itemId,
+          instrumentId: item.instrumentId,
+          lessonId,
+          now,
+        });
+        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
+        return entry.id;
+      },
+
+      addLessonQuestion: (input) => {
+        const now = new Date();
+        const text = input.text.trim();
+        if (!text) return null;
+        const { db } = get();
+        if (input.itemId) {
+          const item = db.items.find((i) => i.id === input.itemId);
+          if (!item || item.instrumentId !== input.instrumentId) return null;
+        }
+        if (input.lessonId) {
+          const lesson = db.lessons.find((l) => l.id === input.lessonId);
+          if (!lesson || lesson.instrumentId !== input.instrumentId) return null;
+        }
+        const entry = createQuestion({ id: newId(), ...input, text, now });
+        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
+        return entry.id;
+      },
+
+      updateLessonQuestion: (id, text) => {
+        const now = new Date();
+        const trimmed = text.trim();
+        if (!trimmed) return;
         set((s) => ({
           db: {
             ...s.db,
-            items: s.db.items.map((i) =>
-              i.id === itemId ? touch({ ...i, assignedForLesson: !i.assignedForLesson }, now) : i,
+            lessonAgenda: s.db.lessonAgenda.map((e) =>
+              e.id === id && e.kind === 'question' ? touch({ ...e, text: trimmed }, now) : e,
             ),
           },
         }));
+      },
+
+      setAgendaTarget: (id, lessonId) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, lessonAgenda: retargetAgendaEntry(s.db.lessonAgenda, id, lessonId, s.db.lessons, now) },
+        }));
+      },
+
+      markQuestionAsked: (id, answer) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: markAgendaQuestionAsked(s.db.lessonAgenda, id, now, answer) } }));
+      },
+
+      reopenQuestion: (id) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: reopenAgendaQuestion(s.db.lessonAgenda, id, now) } }));
+      },
+
+      setQuestionAnswer: (id, answer) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: setAgendaQuestionAnswer(s.db.lessonAgenda, id, answer, now) } }));
+      },
+
+      removeAgendaEntry: (id) => {
+        set((s) => ({ db: { ...s.db, lessonAgenda: s.db.lessonAgenda.filter((e) => e.id !== id) } }));
       },
 
       addFromCatalog: (stageId, entryKey) => {
@@ -899,7 +1034,7 @@ export const useStore = create<StoreState>()(
       cancelSession: () => set({ active: null }),
 
       closeSession: (input) => {
-        const now = new Date();
+        const now = input.now ?? new Date();
         const { active, db, activePlan } = get();
         if (!active) return;
         const item = db.items.find((i) => i.id === active.itemId);
@@ -954,11 +1089,39 @@ export const useStore = create<StoreState>()(
             srReps: outcome.sr.srReps,
             srEase: outcome.sr.srEase,
             srIntervalDays: outcome.sr.srIntervalDays,
+            // The one-advance-per-day marker only moves when the decision
+            // actually advanced spacing; every other close leaves it alone.
+            ...(outcome.sr.srLastProgressDay ? { srLastProgressDay: outcome.sr.srLastProgressDay } : {}),
           };
         }
-        if (input.teacherQuestion !== undefined) {
-          updatedItem = { ...updatedItem, teacherQuestion: input.teacherQuestion.trim() || undefined };
+        // Provenance travels with the date, from the same decision: an
+        // engine-proposed date is the engine's to move again, a typed one is
+        // the owner's and is protected until it comes due.
+        if (outcome.nextReviewSource !== undefined) {
+          updatedItem = {
+            ...updatedItem,
+            nextReviewSource: outcome.nextReviewSource ?? undefined,
+          };
         }
+
+        // A question raised here becomes its own agenda entry. It never
+        // overwrites another question and never commits the item to a class.
+        const questionText = input.newQuestion?.text.trim();
+        // The same target validation the guarded action applies: a class on
+        // another instrument is never a valid target, so the question is saved
+        // honestly unassigned rather than pointed at somebody else's lesson.
+        const questionLessonId = input.newQuestion?.lessonId;
+        const questionLesson = questionLessonId ? db.lessons.find((l) => l.id === questionLessonId) : undefined;
+        const newQuestion = questionText
+          ? createQuestion({
+              id: newId(),
+              text: questionText,
+              instrumentId: item.instrumentId,
+              itemId: item.id,
+              lessonId: questionLesson?.instrumentId === item.instrumentId ? questionLesson.id : undefined,
+              now,
+            })
+          : undefined;
 
         // Complete this item's open reviews only when the SAME decision that
         // set the date says so, and schedule the next from that one date
@@ -987,16 +1150,7 @@ export const useStore = create<StoreState>()(
         // If a Session Plan is running and this block closed its current
         // segment's item, mark that segment done and advance. The plain flow
         // (no active plan) is byte-identical to before.
-        let nextPlan = activePlan;
-        if (activePlan) {
-          const seg = activePlan.segments[activePlan.pointer];
-          if (seg && seg.itemId === item.id && seg.status === 'pending') {
-            const segments = activePlan.segments.map((s, i) =>
-              i === activePlan.pointer ? { ...s, status: 'done' as const } : s,
-            );
-            nextPlan = { ...activePlan, segments, pointer: advancePointer(segments, activePlan.pointer) };
-          }
-        }
+        const nextPlan = activePlan ? completePlanSegment(activePlan, item.id) : activePlan;
 
         set({
           db: {
@@ -1004,6 +1158,7 @@ export const useStore = create<StoreState>()(
             blocks: [...db.blocks, block],
             items: db.items.map((i) => (i.id === item.id ? updatedItem : i)),
             reviews,
+            lessonAgenda: newQuestion ? [...db.lessonAgenda, newQuestion] : db.lessonAgenda,
           },
           active: null,
           activePlan: nextPlan,
@@ -1051,8 +1206,12 @@ export const useStore = create<StoreState>()(
                 applyReviewDateToRow({ reviews: s.db.reviews, reviewId: id, instruction: dueDate, now }) ??
                 s.db.reviews,
               // Keep the item's own schedule in step so nothing shows overdue.
+              // A snooze is the owner's own choice of date, so it is stamped
+              // as theirs: extra practice before it must not quietly undo it.
               items: s.db.items.map((i) =>
-                i.id === review.practiceItemId ? touch({ ...i, nextReviewDate: write.nextReviewDate }, now) : i,
+                i.id === review.practiceItemId
+                  ? touch({ ...i, nextReviewDate: write.nextReviewDate, nextReviewSource: 'user' as const }, now)
+                  : i,
               ),
             },
           };
@@ -1060,6 +1219,35 @@ export const useStore = create<StoreState>()(
       },
 
       // --- Pathways --------------------------------------------------------
+
+      scheduleReviewAgain: (itemId, dueDate, reviewType) => {
+        const now = new Date();
+        set((s) => {
+          const item = s.db.items.find((i) => i.id === itemId);
+          if (!item) return s;
+          const plan = scheduleAgainPlan({ item, reviews: s.db.reviews, dueDate, reviewType, now });
+          const reviews = plan.createRow
+            ? [
+                ...plan.reviews,
+                createReview({ practiceItemId: itemId, dueDate: plan.dueDate, reviewType: plan.reviewType }, now),
+              ]
+            : plan.reviews;
+          return {
+            db: {
+              ...s.db,
+              // The owner chose this date, so the engine treats it as
+              // authoritative until it comes due. No block, no result, no
+              // statistics and no SM-2 movement: this is administration.
+              items: s.db.items.map((i) =>
+                i.id === itemId
+                  ? touch({ ...i, nextReviewDate: plan.dueDate, nextReviewSource: 'user' as const }, now)
+                  : i,
+              ),
+              reviews,
+            },
+          };
+        });
+      },
 
       addPathway: (input) => {
         const now = new Date();
@@ -1420,14 +1608,73 @@ export const useStore = create<StoreState>()(
         planMinutesByInstrument: s.planMinutesByInstrument,
         activeRoutine: s.activeRoutine,
       }),
-      migrate: (persisted, version) => {
+      // Every other inbound door — manual import, sync pull, Keep remote,
+      // archive restore — installs a database only through `validateDB`
+      // (§C7): it refuses a newer-than-supported schema outright instead of
+      // relabelling it down, runs the shared migration chain, and rejects
+      // structurally/semantically invalid data (an impossible calendar date,
+      // a dangling live reference) with actionable detail. Hydration used to
+      // call `migrateToCurrent` directly instead, which does none of that —
+      // a persisted schema newer than this build understands got silently
+      // stamped down to SCHEMA_VERSION (migrations.ts's own final line) and
+      // hydrated anyway, and already-current-but-invalid data sailed
+      // straight into live state. Routing both hooks below through
+      // `validateDB` closes that gap at the one place ALL persisted state
+      // re-enters live state, rather than teaching every UI caller to check
+      // it separately.
+      //
+      // Letting `validateDB` THROW here (never caught) is deliberate, not an
+      // oversight: zustand's own hydrate() only calls `merge` — and only
+      // persists the result back to storage — once `migrate` has RETURNED,
+      // and only calls its raw internal `set()` once `merge` has returned. A
+      // thrown validation error rejects that promise chain before either
+      // happens (see zustand's `middleware.js`), so the previously live AND
+      // the previously persisted state are both left exactly as they were:
+      // no partial hydration, no silent downgrade-and-relabel, no
+      // destructive write-back of a refused newer snapshot. This trades away
+      // opening the app's hydration gate on a refusal (zustand's own
+      // `hasHydrated`/`onFinishHydration` are wired to the success path
+      // only) — a deliberate choice, not an oversight: EVERY external call
+      // to `useStore.setState` — which is the only way to flip that gate —
+      // is itself wrapped by this same persist middleware to write straight
+      // back to storage afterwards, so forcing the gate open here would
+      // re-persist whatever `db` is currently live and silently destroy the
+      // very data a refusal (most of all a genuinely newer schema) exists to
+      // protect. `getLastHydrationError()` below still surfaces WHY, without
+      // that write.
+      migrate: (persisted) => {
         const state = persisted as { db?: PracticeDB } | undefined;
-        if (state?.db) state.db = migrateToCurrent(state.db, version);
+        // `validateDB` reads the schema version off `state.db` itself (the
+        // same source of truth every other inbound door uses) rather than
+        // the envelope-level version zustand would pass as a second
+        // argument here — the two are always kept in sync by this app's own
+        // writes, and deriving from one place avoids two version signals
+        // that could ever disagree.
+        if (state?.db) state.db = validateDB(state.db);
         return state as unknown;
       },
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
-        const merged = { ...current, ...p, db: p.db ?? current.db };
+        // Zustand only calls `migrate` above when the persisted version
+        // differs from the current one — a persisted database that ALREADY
+        // claims the current schema never reaches it, even when it carries a
+        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
+        // left behind, or genuinely invalid current-schema data a corrupt
+        // write produced. `merge` is the one place ALL persisted state
+        // re-enters live state regardless of whether `migrate` ran (the same
+        // reasoning the active/activeRoutine freeze below relies on), so it
+        // is where both the idempotent legacy conversion AND the §C7
+        // validation close for good: run the SAME `validateDB` call
+        // `migrate` makes, unconditionally. Calling it again on state
+        // `migrate` already validated is safe and cheap — it is pure and
+        // `migrateToV12`'s own docstring guarantees its tail step is a no-op
+        // wherever no legacy field survives — and throwing here on invalid
+        // current-version data is exactly as safe as throwing in `migrate`:
+        // `set()` is never reached, and this branch never queues a persist
+        // write-back regardless (zustand only writes back after a
+        // version-mismatched `migrate` ran).
+        const db = p.db ? validateDB(p.db) : current.db;
+        const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running
         // state before those guards existed reaches this merge unchecked —
@@ -1463,9 +1710,75 @@ export const useStore = create<StoreState>()(
         }
         return merged;
       },
+      // A thrown `migrate`/`merge` above rejects zustand's internal hydration
+      // promise before it ever calls its OWN raw `set()` — correct, and the
+      // whole point: it's what leaves both live and persisted state
+      // untouched. Recording the reason here must not undo that: EVERY
+      // external call to `useStore.setState` (any ordinary store action
+      // included) is itself wrapped by this same persist middleware to
+      // write straight back to storage afterwards — see `setItem()` below
+      // this config and its unconditional call from `api.setState`. Calling
+      // it here to flip a "hydration failed" flag would immediately
+      // re-persist whatever `db` happens to be live, silently overwriting
+      // the very data this refusal exists to protect (a genuinely newer
+      // schema this build cannot read, most of all). `lastHydrationError` is
+      // therefore a plain module variable, never store state — but a cold
+      // start (nothing has ever hydrated successfully) needs a REACTIVE
+      // signal too, or the UI has no way to notice the refusal and stays on
+      // "Loading…" forever: `useHydrationStatus` below is a separate,
+      // unpersisted store (the same shape `useSyncStatus` already uses for
+      // sync phase), so writing to IT never touches `useStore`'s persist
+      // middleware and can never become the destructive write-back this
+      // guard exists to prevent.
+      onRehydrateStorage: () => (_state, error) => {
+        lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
+        useHydrationStatus.setState(
+          error
+            ? { refused: true, message: lastHydrationError, tooNew: error instanceof SchemaTooNewError }
+            : { refused: false, message: null, tooNew: false },
+        );
+      },
     },
   ),
 );
+
+/**
+ * The message from the most recent REFUSED hydration attempt (§C7), or null
+ * if the last attempt installed cleanly. Deliberately not store state: see
+ * `onRehydrateStorage` above for why recording it through `useStore.setState`
+ * would itself trigger the exact destructive write-back this guard exists to
+ * prevent.
+ */
+let lastHydrationError: string | null = null;
+export function getLastHydrationError(): string | null {
+  return lastHydrationError;
+}
+
+export interface HydrationStatus {
+  /** True from the moment a hydration attempt is refused (§C7) — including
+   *  the very first one this device ever makes, so a cold start with already
+   *  invalid persisted bytes is never silently indistinguishable from an
+   *  ordinary in-flight load. */
+  refused: boolean;
+  /** The refusal's human-readable message, or null when not refused. */
+  message: string | null;
+  /** True when the refusal was specifically a newer-than-supported schema —
+   *  an app update fixes this, not a data restore. */
+  tooNew: boolean;
+}
+/**
+ * The reactive counterpart to `getLastHydrationError()`: what `App.tsx`
+ * actually subscribes to so a refused cold start can render an explanation
+ * instead of staying on "Loading…" indefinitely (`hydrated` never turns
+ * true on a refusal, and zustand's own `onFinishHydration` is wired to the
+ * success path only). Never persisted, never derived from `useStore` —
+ * see `onRehydrateStorage` above for why.
+ */
+export const useHydrationStatus = create<HydrationStatus>(() => ({
+  refused: false,
+  message: null,
+  tooNew: false,
+}));
 
 // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
 function finishHydration() {

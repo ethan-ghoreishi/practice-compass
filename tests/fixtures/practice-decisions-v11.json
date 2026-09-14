@@ -1,0 +1,364 @@
+{
+  "app": "practice-compass",
+  "schemaVersion": 11,
+  "exportedAt": "2026-08-01T09:00:00.000Z",
+  "deviceName": "fixture-device",
+  "lastModified": "2026-08-01T09:00:00.000Z",
+  "data": {
+    "schemaVersion": 11,
+    "instruments": [
+      {
+        "id": "setar",
+        "name": "Setar",
+        "family": "Persian",
+        "active": true,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "guitar",
+        "name": "Classical Guitar",
+        "family": "Western",
+        "active": true,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      }
+    ],
+    "materials": [],
+    "items": [
+      {
+        "id": "i-flag-true",
+        "instrumentId": "setar",
+        "title": "پیش‌درآمدِ افشاری",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true
+      },
+      {
+        "id": "i-flag-false",
+        "instrumentId": "setar",
+        "title": "Flagged false",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": false
+      },
+      {
+        "id": "i-flag-missing",
+        "instrumentId": "setar",
+        "title": "No flag key at all",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "i-q-only",
+        "instrumentId": "setar",
+        "title": "Question but never flagged",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "teacherQuestion": "Is the shift late,\nor is the tone dropping first?"
+      },
+      {
+        "id": "i-q-and-flag",
+        "instrumentId": "setar",
+        "title": "Both flagged and questioned",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true,
+        "teacherQuestion": "Should I slow the whole phrase?"
+      },
+      {
+        "id": "i-q-farsi",
+        "instrumentId": "setar",
+        "title": "آوازِ افشاری",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": false,
+        "teacherQuestion": "آیا نقطهٔ فرودم درست است؟\nیا زینت دارد فرود را می‌پوشاند؟\n\nو تمپو؟"
+      },
+      {
+        "id": "i-q-empty",
+        "instrumentId": "setar",
+        "title": "Whitespace question",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true,
+        "teacherQuestion": "   "
+      },
+      {
+        "id": "i-collision",
+        "instrumentId": "setar",
+        "title": "Collides with a generated id",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true
+      },
+      {
+        "id": "i-conflict",
+        "instrumentId": "setar",
+        "title": "New question conflicts with an existing one",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "teacherQuestion": "new distinct question"
+      },
+      {
+        "id": "i-dangling",
+        "instrumentId": "gone",
+        "title": "Item on a deleted instrument",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true,
+        "teacherQuestion": "Orphaned question"
+      },
+      {
+        "id": "i-premigrated",
+        "instrumentId": "setar",
+        "title": "Partially migrated",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true,
+        "teacherQuestion": "Already represented"
+      },
+      {
+        "id": "i-scheduled",
+        "instrumentId": "guitar",
+        "title": "Lesson 6 bars 4–5 shift",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "nextReviewDate": "2027-01-15",
+        "reviewMode": "manual",
+        "srReps": 3,
+        "srEase": 2.6,
+        "srIntervalDays": 12,
+        "lastResult": "stable_alone",
+        "lastPractisedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "i-guitar",
+        "instrumentId": "guitar",
+        "title": "Guitar study C",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "tags": [],
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "assignedForLesson": true
+      }
+    ],
+    "blocks": [
+      {
+        "id": "b1",
+        "practiceItemId": "i-flag-true",
+        "instrumentId": "setar",
+        "startedAt": "2026-07-30T18:00:00.000Z",
+        "endedAt": "2026-07-30T18:12:00.000Z",
+        "durationMinutes": 12,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "same",
+        "createdReview": false,
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": "r1",
+        "practiceItemId": "i-scheduled",
+        "dueDate": "2027-01-15",
+        "reviewType": "retention",
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      }
+    ],
+    "pathways": [],
+    "pathwayStages": [],
+    "pathwayRoutines": [],
+    "attachments": [
+      {
+        "id": "att-1",
+        "ownerType": "item",
+        "ownerId": "i-scheduled",
+        "name": "score.txt",
+        "mime": "text/plain",
+        "size": 11,
+        "kind": "other",
+        "createdAt": "2026-08-01T09:00:00.000Z"
+      }
+    ],
+    "lessons": [
+      {
+        "id": "L-setar-1",
+        "instrumentId": "setar",
+        "date": "2027-03-05",
+        "itemIds": [],
+        "recordings": [],
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "number": 41
+      },
+      {
+        "id": "L-setar-2",
+        "instrumentId": "setar",
+        "date": "2027-04-02",
+        "itemIds": [],
+        "recordings": [],
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "number": 42
+      },
+      {
+        "id": "L-setar-past",
+        "instrumentId": "setar",
+        "date": "2026-01-10",
+        "itemIds": [],
+        "recordings": [],
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z",
+        "number": 37
+      },
+      {
+        "id": "L-guitar-past",
+        "instrumentId": "guitar",
+        "date": "2026-02-11",
+        "itemIds": [],
+        "recordings": [],
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      }
+    ],
+    "lessonAgenda": [
+      {
+        "id": "prep:i-premigrated",
+        "kind": "preparation",
+        "itemId": "i-premigrated",
+        "instrumentId": "setar",
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "question:i-premigrated",
+        "kind": "question",
+        "itemId": "i-premigrated",
+        "instrumentId": "setar",
+        "text": "Already represented",
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "prep:i-collision",
+        "kind": "question",
+        "itemId": "i-q-only",
+        "instrumentId": "setar",
+        "text": "An unrelated entry that already owns that id",
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      {
+        "id": "question:i-conflict",
+        "kind": "question",
+        "itemId": "i-conflict",
+        "instrumentId": "setar",
+        "text": "different existing question",
+        "createdAt": "2026-08-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      }
+    ]
+  },
+  "files": [
+    {
+      "id": "att-1",
+      "ownerId": "i-scheduled",
+      "mime": "text/plain",
+      "name": "score.txt",
+      "data": "c2NvcmUgYnl0ZXM="
+    }
+  ]
+}

@@ -1,4 +1,14 @@
-import { dayDiff, parseISODate, REVIEW_TYPE_LABELS, type ReviewMode, type ReviewPlan } from '../domain';
+import {
+  dayDiff,
+  parseISODate,
+  planNextReview,
+  REVIEW_TYPE_LABELS,
+  type BlockResult,
+  type PracticeItem,
+  type ReviewAnswer,
+  type ReviewPlan,
+  type SchedulingParams,
+} from '../domain';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -49,7 +59,8 @@ export function pluralize(n: number, word: string): string {
 
 /**
  * A free-text field's own non-empty lines. There is no data structure for
- * "multiple questions" — `teacherQuestion`/`currentProblem`/`lastObservation`
+ * "multiple questions" — a lesson-agenda question's text, `currentProblem` and
+ * `lastObservation`
  * are each one `<textarea>`, so two distinct questions typed for the same
  * item live as two lines of one string. This is how a renderer tells "one
  * line" (plain text) from "several" (worth a bulleted breakdown) apart,
@@ -78,15 +89,62 @@ export function reviewSummaryLine(plan: ReviewPlan, now: Date = new Date()): str
 }
 
 /**
- * Whether a manual date correction on the close screen should survive
- * picking a different result. `computeReview` (and so `planNextReview`)
- * returns `null` for every result when an item's `reviewMode` is 'manual' —
- * there is no automatic plan for THIS judgement to replace, so a date the
- * owner already typed in isn't pinned to the previous result and must not be
- * cleared just because they picked a different one. `src/domain/**` is out of
- * scope for this lane, so this reads the item's own mode rather than calling
- * `planNextReview` a second time — CloseBlock keeps its single derivation.
+ * Whether a manual date correction on the close screen should survive picking
+ * a different result.
+ *
+ * A correction the owner made earlier belongs to the date the PREVIOUS result
+ * produced, so carrying it forward would pin a date to a judgement it was
+ * never made about — unless the engine's answer does not depend on the
+ * judgement at all. That is now true in several more cases than "manual mode":
+ * a fixed cadence, a date the owner chose, a legacy date of unknown
+ * provenance, and an ordinary automatic date that is simply not due yet all
+ * produce the SAME answer for every result, so a typed-in date was never tied
+ * to one of them.
+ *
+ * So this asks the real engine instead of naming the cases: does the plan
+ * differ across the six results? It is a BOOLEAN GATE on whether an automatic
+ * plan that depends on the result exists at all — not a second value that
+ * could disagree with CloseBlock's single derivation.
  */
-export function reviewOverrideSurvivesResultChange(reviewMode: ReviewMode | undefined): boolean {
-  return reviewMode === 'manual';
+export function reviewOverrideSurvivesResultChange(
+  item: PracticeItem,
+  now: Date,
+  params?: SchedulingParams,
+): boolean {
+  const dates = RESULTS_FOR_OVERRIDE_CHECK.map(
+    (result) => planNextReview({ item, result, now, params })?.dueDate ?? null,
+  );
+  return new Set(dates).size === 1;
+}
+
+const RESULTS_FOR_OVERRIDE_CHECK: BlockResult[] = [
+  'worse',
+  'same',
+  'slightly_better',
+  'stable_alone',
+  'stable_in_context',
+  'performable',
+];
+
+/**
+ * The date a close hands to the store as an EXPLICIT OWNER OVERRIDE.
+ *
+ * ONLY a date the owner actually typed into the field. The close screen shows
+ * the date that will stand, which for an early session is the item's EXISTING
+ * date — passing that back as an override would be catastrophically wrong in
+ * two ways at once: it would stamp every engine-proposed date as user-chosen
+ * (so `worse` could never bring it forward again), and it would turn every
+ * "keep" decision into a write, completing the pending review row and
+ * replacing it on a session that was only extra practice.
+ *
+ * The discriminator is `override.dueDate` specifically, not `override` itself:
+ * changing only the review-type pills sets an override with no date, and that
+ * is not the owner choosing a date.
+ */
+export function closeOverrideDate(
+  answer: ReviewAnswer,
+  override: { dueDate?: string } | null,
+): string | undefined {
+  if (answer !== 'scheduled') return undefined;
+  return override?.dueDate ? override.dueDate : undefined;
 }

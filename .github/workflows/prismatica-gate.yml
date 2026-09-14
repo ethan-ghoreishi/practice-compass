@@ -38,5 +38,15 @@ jobs:
           else
             echo "no npm lock file at the repository root — nothing to install"
           fi
+      - name: install the pinned browser the repository's own checks need
+        # The gate runs this repository's checks, which include two
+        # real-browser journeys. They fail with a setup message rather than
+        # skipping, so the browser has to be here before the gate runs.
+        run: >
+          if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
+            npx --yes playwright install --with-deps chromium
+          else
+            echo "no npm lock file at the repository root — no browser checks to prepare"
+          fi
       - name: prismatica gate
         run: npx --yes prismatica@0.7.2 gate

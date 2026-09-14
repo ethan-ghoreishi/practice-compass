@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   clampSchedulingParams,
+  defaultTargetLesson,
+  lessonLabel,
   planNextReview,
   proposedCloseMinutes,
+  todayISODate,
   type ReviewAnswer,
   type ReviewPlan,
   RESULT_LABELS,
@@ -18,7 +21,8 @@ import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { Field, OptionPills } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
-import { reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
+import { closeOverrideDate, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
+import { useDecisionNow } from '../components/useDecisionNow';
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
   { value: 'worse', label: RESULT_LABELS.worse },
@@ -36,7 +40,21 @@ export default function CloseBlock() {
   const cancelSession = useStore((s) => s.cancelSession);
   const resumeSession = useStore((s) => s.resumeSession);
   const navigate = useNavigate();
-  const now = useMemo(() => new Date(), []);
+  // The DAY this decision is made in, refreshed at a local-day boundary or
+  // when the page comes back into view. A close screen left open across
+  // midnight must not write a date derived from yesterday — and the draft in
+  // the fields above survives the refresh, because only `now` changes.
+  //
+  // `useDecisionNow` polls at most every 30 seconds (plus visibility/focus),
+  // so it can lag the true instant by up to that long. `nowOverride` closes
+  // that gap at the one moment it actually matters — Save — without needing
+  // the shared hook to expose a manual refresh: `handleSave` sets it the
+  // instant it finds the real local day has moved past what `now` reflects,
+  // forcing an immediate re-render with the CORRECTED decision instead of
+  // silently saving one that no longer matches what is on screen.
+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  const decisionNow = useDecisionNow();
+  const now = nowOverride ?? decisionNow;
 
   const item = active ? getItem(db, active.itemId) : undefined;
   // The clock was paused on Finish, so the elapsed figure is frozen —
@@ -62,7 +80,10 @@ export default function CloseBlock() {
   const [showReviewControls, setShowReviewControls] = useState(false);
   const [acceptStatus, setAcceptStatus] = useState(true);
   const [becomeTeacherQ, setBecomeTeacherQ] = useState(false);
-  const [teacherQText, setTeacherQText] = useState(item?.teacherQuestion ?? '');
+  // A NEW question every time: it becomes its own agenda entry rather than
+  // overwriting whatever the item already carried, and raising one never
+  // commits the item to a class.
+  const [teacherQText, setTeacherQText] = useState('');
 
   // Recent results including the (pending) one, for the "three same" check.
   const recentSameStreak = useMemo(() => {
@@ -77,6 +98,15 @@ export default function CloseBlock() {
   // Use the same scheduling knobs the store will persist with, so the date
   // previewed here is exactly the date that gets saved.
   const params = useMemo(() => clampSchedulingParams(db.settings), [db.settings]);
+
+  // A question raised here defaults to the nearest upcoming class on this
+  // instrument, named in the caption below so the target is never a guess the
+  // owner cannot see. With no upcoming class it is saved unassigned rather
+  // than pointed at one that does not exist.
+  const questionLesson = useMemo(
+    () => (item ? defaultTargetLesson(db.lessons, item.instrumentId, now) : undefined),
+    [db.lessons, item, now],
+  );
 
   /**
    * THE review decision on this screen — one value, derived once.
@@ -146,7 +176,7 @@ export default function CloseBlock() {
     // has no automatic plan for ANY result (computeReview returns null
     // unconditionally in manual mode) — the owner's typed-in date isn't tied
     // to a judgement at all, so it must survive switching results.
-    if (!reviewOverrideSurvivesResultChange(item?.reviewMode)) setOverride(null);
+    if (item && !reviewOverrideSurvivesResultChange(item, now, params)) setOverride(null);
   }
 
   if (!active || !item) {
@@ -169,6 +199,19 @@ export default function CloseBlock() {
    * close that deliberately recorded no judgement.
    */
   function handleSave(withoutResult = false) {
+    // The local day may have rolled since `now` (and therefore `review`) was
+    // last computed — `useDecisionNow` only checks every 30 seconds, plus
+    // visibility/focus. Catch that HERE, at the one instant it can actually
+    // change what gets saved, rather than letting `closeSession` silently
+    // recompute a different day's decision than the one just shown. Refresh
+    // and stop: the draft above is untouched, so Save simply works once the
+    // corrected line is on screen.
+    const trueNow = new Date();
+    if (todayISODate(trueNow) !== todayISODate(now)) {
+      setNowOverride(trueNow);
+      return;
+    }
+
     const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
     const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && review ? 'scheduled' : 'declined';
     const newStatus: ItemStatus | undefined =
@@ -182,9 +225,18 @@ export default function CloseBlock() {
       bodyNote: bodyNote.trim() || undefined,
       newStatus,
       answer,
-      nextReviewDate: answer === 'scheduled' ? review?.dueDate : undefined,
+      // ONLY a date the owner actually typed — never the date the screen is
+      // merely SHOWING, which for an early session is the item's existing one.
+      nextReviewDate: closeOverrideDate(answer, override),
+      // The SAME `now` `review` was just computed with — never a fresh
+      // `new Date()` inside the store, which is exactly what could disagree
+      // with what this screen showed.
+      now,
       reviewType: review?.reviewType ?? 'retention',
-      teacherQuestion: becomeTeacherQ ? teacherQText.trim() : undefined,
+      newQuestion:
+        becomeTeacherQ && teacherQText.trim()
+          ? { text: teacherQText.trim(), lessonId: questionLesson?.id }
+          : undefined,
     });
     // If a Session Plan is running, return to it (closeSession advanced it).
     navigate(useStore.getState().activePlan ? '/plan' : '/');
@@ -267,6 +319,7 @@ export default function CloseBlock() {
           className="input"
           type="number"
           min={1}
+          aria-label="Minutes practised"
           value={duration}
           onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))}
           style={{ maxWidth: 120 }}
@@ -334,6 +387,7 @@ export default function CloseBlock() {
                   <input
                     className="input"
                     type="date"
+                    aria-label="Next review date"
                     value={review?.dueDate ?? ''}
                     onChange={(e) => setOverride((o) => ({ ...o, dueDate: e.target.value }))}
                   />
@@ -364,12 +418,22 @@ export default function CloseBlock() {
           <YesNo value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
         </div>
         {becomeTeacherQ && (
-          <textarea
-            className="textarea"
-            placeholder="What will you ask your teacher?"
-            value={teacherQText}
-            onChange={(e) => setTeacherQText(e.target.value)}
-          />
+          <>
+            <textarea
+              className="textarea"
+              placeholder="What will you ask your teacher?"
+              aria-label="Question for your teacher"
+              value={teacherQText}
+              onChange={(e) => setTeacherQText(e.target.value)}
+            />
+            <p className="tiny faint">
+              <span dir="ltr">
+                {questionLesson
+                  ? `It will be asked at ${lessonLabel(questionLesson)}. It does not commit this item to that class.`
+                  : 'There is no upcoming class yet, so it will be saved unassigned.'}
+              </span>
+            </p>
+          </>
         )}
       </div>
 
