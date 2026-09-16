@@ -1,34 +1,35 @@
 ---
 id: 20260916-keep-useful-practice-information-clear-f-2e1e
 contractId: 20260916-keep-useful-practice-information-clear-f-2e1e
-patchId: c8a2a408ba2b4a2dc5904052e3b69db2167204a9
+patchId: c6ffd91370cab9baacf59baa148c7aaee2f0cb77
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Working-note draft durability across asynchronous saves
-    summary: "P1: ItemNotes clears newer typing when an earlier save completes and
-      falsely presents the current editor as saved."
-    counterexample: Save first edit, keep typing while storageSettled is pending,
-      then acknowledge the write. Only first edit was written, but the newer
-      draft is cleared and Saved appears. Cover delayed writes and draft changes
-      in the exact ac-6 test.
   - family: Attachment consistency across state-only import, full export and restore
-    summary: "P1: An accepted state-only import can leave preserved blobs that the
-      full exporter emits without metadata, making its own backup unrestorable."
-    counterexample: With att-1 stored locally, import valid state-only data with
-      attachments empty and files absent. Import succeeds and preserves att-1.
-      Full export contains att-1 but no attachment metadata; reimport is refused
-      as orphan bytes. Cover this round-trip in the exact ac-4 test without
-      deleting bytes that state-only import must preserve.
+    summary: "P1: State-only import bypasses duplicate attachment-metadata
+      validation and can leave the app producing a backup its own importer
+      refuses."
+    counterexample: Store one blob for att-1, then state-only import data containing
+      two attachment metadata rows with id att-1 and no files property.
+      decodeBackupFiles returns before its duplicate-metadata check, and the
+      held-blob check succeeds for both rows. Full export emits two files with
+      id att-1; reimport refuses the duplicate metadata or duplicate file id.
+      Validate attachment metadata consistency for state-only imports too, and
+      cover the real state-only import to export to reimport round-trip in the
+      exact ac-4 test.
   - family: Review-date draft identity and freshness across live item changes
-    summary: "P2: ScheduleAgain retains an open date draft across item changes and
-      saves it through the new item's callback."
-    counterexample: Open A with date 2027-02-10, switch the mounted item to B with
-      date 2027-05-05, then Save date. B receives 2027-02-10. Cover open-panel
-      route changes and external updates in the exact ac-12 test.
-createdAt: 2026-09-16T02:19:50.823Z
-sealedAt: 2026-09-16T15:08:08.985Z
+    summary: "P2: An untouched open date draft remains stale when a live update
+      clears the item's pending date, so Save date can resurrect a date the
+      current item no longer has."
+    counterexample: Open item A's Change review date editor while A has 2027-02-10.
+      Before typing, apply a legitimate live update that clears
+      A.nextReviewDate. reviewDateDraftFor returns the old draft because current
+      is empty; pressing Save date writes 2027-02-10 back. Reconcile date
+      removal while preserving a genuinely typed draft, and cover this
+      live-update case in the exact ac-12 test.
+createdAt: 2026-09-16T16:59:45.157Z
+sealedAt: 2026-09-16T17:05:48.469Z
 ---
 
 # Review: Keep useful practice information clear from capture to next time
@@ -42,7 +43,7 @@ sealedAt: 2026-09-16T15:08:08.985Z
 - **Contract:** 20260916-keep-useful-practice-information-clear-f-2e1e
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/24
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `c8a2a408ba2b4a2dc5904052e3b69db2167204a9`
+- **Diff patch-id:** `c6ffd91370cab9baacf59baa148c7aaee2f0cb77`
 
 ## The plan the owner approved
 
@@ -474,6 +475,8 @@ Open an item, read and edit Working notes while its timer continues, add a separ
 - src/components/ItemForm.tsx
 - src/components/ItemNotes.tsx
 - src/components/direction.test.ts
+- src/components/format.test.ts
+- src/components/format.ts
 - src/components/itemFields.ts
 - src/components/itemFormValues.ts
 - src/components/ui.tsx
