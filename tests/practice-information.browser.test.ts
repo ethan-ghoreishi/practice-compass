@@ -12,6 +12,25 @@ import {
   type PracticeApp,
 } from './practiceBrowser';
 import v12Text from './fixtures/practice-information-v12.json?raw';
+import { buildReportData, renderReportText } from '../src/domain/report';
+import { validateDB } from '../src/domain/io';
+import type { PracticeDB, PracticeItem } from '../src/domain/types';
+import { createItem } from '../src/domain/factories';
+import { scoreItems } from '../src/domain/scoring';
+import { isWarmupSuitable } from '../src/domain/plan';
+import { decideReview } from '../src/domain/scheduling';
+import { defaultModeForStatus } from '../src/domain/defaults';
+import {
+  BLOCK_MODE_LABELS,
+  FOCUS_LABELS,
+  ITEM_STATUS_DESCRIPTIONS,
+  ITEM_STATUS_LABELS,
+  ITEM_STATUS_ORDER,
+  RATING_ANCHORS,
+  RATING_LABELS,
+  RESULT_BUTTONS,
+  RESULT_DESCRIPTIONS,
+} from '../src/domain/labels';
 
 // ---------------------------------------------------------------------------
 // ac-6 … ac-10 — the information itself, in the real app.
@@ -460,6 +479,312 @@ describe('reflection at the close of a block', () => {
       expect(midnightBlock.observation).toBe('typed just before midnight');
       expect(midnightBlock.nextAction).toBe('decided just before midnight');
       expect(db.items.find((i) => i.id === ENGLISH_ITEM)!.nextReviewDate).toBe(refreshedDate);
+
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  }, 300_000);
+});
+
+describe('what a summary may claim about a period it did not watch', () => {
+  it('practice summaries separate recorded period evidence from current context', async () => {
+    // --- Pure consumer cases, against the real engine --------------------
+    const base = (JSON.parse(v12Text) as { data: PracticeDB }).data;
+    const db = validateDB(base);
+    const NOV = { from: '2026-11-01', to: '2026-11-30' };
+    const opts = { instrumentId: 'setar', ...NOV, now: CLOCK };
+
+    const nov = buildReportData(db, opts);
+    const farsiRow = nov.periodResults.find((r) => r.item.id === FARSI_ITEM)!;
+    // November recorded `worse` then `same`. The item's CURRENT lastResult is
+    // `stable_alone` from a December block — reporting that as November's
+    // outcome is the false statement this whole section exists to end.
+    expect(db.items.find((i) => i.id === FARSI_ITEM)!.lastResult).toBe('stable_alone');
+    expect(farsiRow.best).toBe('same');
+    expect(farsiRow.last).toBe('same');
+    let text = renderReportText(nov);
+    expect(text).toContain('Results recorded in this period:');
+    expect(text).not.toMatch(/is now .*stable/i);
+    expect(text).not.toContain('Improved:');
+
+    // Later practice changes the CURRENT sections, never the period's results.
+    const withLater = validateDB({
+      ...base,
+      blocks: [
+        ...(base.blocks as unknown[]),
+        {
+          id: 'b-later',
+          practiceItemId: FARSI_ITEM,
+          instrumentId: 'setar',
+          startedAt: '2027-01-14T10:00:00.000Z',
+          durationMinutes: 20,
+          mode: 'perform',
+          focus: 'tone',
+          result: 'performable',
+          observation: 'a much later observation',
+          createdReview: false,
+          createdAt: '2027-01-14T10:00:00.000Z',
+          updatedAt: '2027-01-14T10:00:00.000Z',
+        },
+      ],
+    } as unknown);
+    const novAgain = buildReportData(withLater, opts);
+    expect(novAgain.periodResults.find((r) => r.item.id === FARSI_ITEM)!.best).toBe('same');
+    expect(novAgain.worked.map((w) => w.item.id).sort()).toEqual(nov.worked.map((w) => w.item.id).sort());
+
+    // An UNLOGGED block is time, not evidence: it appears in "worked on" and
+    // contributes no result at all.
+    const english = buildReportData(db, { instrumentId: 'guitar', ...NOV, now: CLOCK });
+    expect(english.worked.find((w) => w.item.id === ENGLISH_ITEM)!.blocks).toBe(2);
+    expect(english.periodResults.find((r) => r.item.id === ENGLISH_ITEM)!.best).toBe('slightly_better');
+
+    // A period with NO blocks says so rather than borrowing current state.
+    const empty = buildReportData(db, { instrumentId: 'setar', from: '2026-01-01', to: '2026-01-31', now: CLOCK });
+    expect(empty.worked).toEqual([]);
+    expect(empty.periodResults).toEqual([]);
+    text = renderReportText(empty);
+    expect(text).toContain('(no logged practice in this range)');
+    expect(text).toContain('(no results recorded in this range)');
+    // Everything drawn from TODAY is labelled as current, not as the period's.
+    expect(text).toContain('current status, not this period');
+    expect(text).toContain('Suggested lesson focus (current)');
+    expect(text).toContain('current, not part of the period above');
+    // The personal notebook never appears on a teacher's sheet.
+    expect(text).not.toContain(FARSI_NOTES);
+
+    // --- Local day boundaries, ORDINARY and across a DST change ----------
+    const dayBlock = (id: string, at: Date) => ({
+      id,
+      practiceItemId: FARSI_ITEM,
+      instrumentId: 'setar',
+      startedAt: at.toISOString(),
+      durationMinutes: 5,
+      mode: 'repair' as const,
+      focus: 'tone' as const,
+      result: 'same' as const,
+      createdReview: false,
+      createdAt: at.toISOString(),
+      updatedAt: at.toISOString(),
+    });
+    const local = (y: number, m: number, d: number, h = 0, min = 0, s = 0, ms = 0) => new Date(y, m - 1, d, h, min, s, ms);
+    const boundary = validateDB({
+      ...base,
+      blocks: [
+        dayBlock('b-first-instant', local(2026, 11, 1, 0, 0, 0, 0)),
+        dayBlock('b-last-instant', local(2026, 11, 30, 23, 59, 59, 999)),
+        dayBlock('b-just-before', local(2026, 10, 31, 23, 59, 59, 999)),
+        dayBlock('b-just-after', local(2026, 12, 1, 0, 0, 0, 0)),
+      ],
+    } as unknown);
+    const edges = buildReportData(boundary, opts);
+    expect(edges.worked.find((w) => w.item.id === FARSI_ITEM)!.blocks).toBe(2);
+
+    // A day on which this machine's own UTC offset changes — whatever zone it
+    // runs in. The range is one local day wide, and the block inside it counts.
+    const dstDay = findOffsetChangeDay(2026);
+    if (dstDay) {
+      const iso = `${dstDay.getFullYear()}-${String(dstDay.getMonth() + 1).padStart(2, '0')}-${String(dstDay.getDate()).padStart(2, '0')}`;
+      const across = validateDB({
+        ...base,
+        blocks: [
+          dayBlock('b-dst-morning', local(dstDay.getFullYear(), dstDay.getMonth() + 1, dstDay.getDate(), 9)),
+          dayBlock('b-dst-evening', local(dstDay.getFullYear(), dstDay.getMonth() + 1, dstDay.getDate(), 22)),
+        ],
+      } as unknown);
+      const dstReport = buildReportData(across, { instrumentId: 'setar', from: iso, to: iso, now: CLOCK });
+      expect(dstReport.worked.find((w) => w.item.id === FARSI_ITEM)!.blocks, `DST day ${iso}`).toBe(2);
+    }
+
+    // --- The rendered and exported sheet ---------------------------------
+    const app = await seeded();
+    const { page } = app;
+    try {
+      // Give the item a notebook that must NOT reach the teacher's sheet.
+      await goTo(app, `/items/${FARSI_ITEM}`);
+      await editNotes(page, 'private notebook — never a line on a teacher sheet');
+      await goTo(app, '/report');
+      // The Field wrapper is itself a role="group" named "Instrument", so take
+      // the control, not the group around it.
+      await page.getByRole('combobox', { name: 'Instrument' }).selectOption({ label: 'Setar' });
+      await page.getByRole('group', { name: 'From' }).locator('input').fill(NOV.from);
+      await page.getByRole('group', { name: 'To' }).locator('input').fill(NOV.to);
+      await expect.poll(() => page.locator('pre.pre').innerText()).toContain('Results recorded in this period:');
+      const sheet = await page.locator('pre.pre').innerText();
+      expect(sheet).not.toContain('private notebook');
+      expect(sheet).not.toMatch(/is now .*stable/i);
+
+      // The question list carries its targets, its asked answers, and the
+      // item's latest observation WITH the day it was written.
+      const shown = await page.locator('main').innerText();
+      expect(shown).toContain('آیا فرودم درست است؟');
+      expect(shown).toMatch(/Last observed 2026-12-20/);
+      expect(shown).toContain('بهتر');
+      expect(shown).not.toContain('Problem');
+      expect(shown).not.toContain('private notebook');
+
+      // A past class's asked question keeps its own answer, unrewritten.
+      await page.getByRole('combobox', { name: 'Class this report is for' }).selectOption('L-setar-past');
+      await expect.poll(() => page.locator('pre.pre').innerText()).toContain('Already asked at that class:');
+      expect(await page.locator('pre.pre').innerText()).toContain('Ornament after the rest.');
+
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  }, 300_000);
+});
+
+/**
+ * The first day of `year` on which this machine's LOCAL UTC offset differs
+ * from the day before — a real daylight-saving transition in whatever zone the
+ * suite happens to run in, or null in a zone that has none.
+ */
+function findOffsetChangeDay(year: number): Date | null {
+  let prev = new Date(year, 0, 1).getTimezoneOffset();
+  for (let d = 1; d < 366; d++) {
+    const day = new Date(year, 0, 1 + d);
+    if (day.getFullYear() !== year) break;
+    const offset = day.getTimezoneOffset();
+    if (offset !== prev) return day;
+    prev = offset;
+  }
+  return null;
+}
+
+describe('clearer wording, identical decisions', () => {
+  it('clarified practice choices preserve existing defaults and decision inputs', async () => {
+    // --- The numbers a label change may never move ----------------------
+    // Pinned against the real engine, per rating and per result, so a wording
+    // change that quietly shifted a weight fails here rather than in a lane
+    // six months from now.
+    const item = (o: Partial<PracticeItem>): PracticeItem => ({
+      ...createItem({ instrumentId: 'setar', title: 'pinned', status: 'usable' }, CLOCK),
+      id: 'pinned',
+      ...o,
+    });
+    // The two estimates' OWN contribution, isolated from fragility/overdue/
+    // neglect so a wording change is checked against the weights themselves.
+    const scored = (i: PracticeItem) => {
+      const parts = scoreItems([i], new Map(), CLOCK, new Map())[0].parts;
+      return parts.importance + parts.difficulty;
+    };
+    // importance×2 + difficulty, with 1 / 3 / 5 all represented.
+    expect(scored(item({ importance: 1, difficulty: 1 }))).toBe(3);
+    expect(scored(item({ importance: 3, difficulty: 3 }))).toBe(9);
+    expect(scored(item({ importance: 5, difficulty: 5 }))).toBe(15);
+    expect(scored(item({ importance: 5, difficulty: 1 }))).toBe(11);
+    expect(scored(item({ importance: 1, difficulty: 5 }))).toBe(7);
+    // High effort keeps an item out of an easy warm-up; the wording of the
+    // label has no bearing on it.
+    expect(isWarmupSuitable(item({ difficulty: 3, status: 'integrated', timesPractised: 5 }))).toBe(true);
+    expect(isWarmupSuitable(item({ difficulty: 4, status: 'integrated', timesPractised: 5 }))).toBe(false);
+    // Same versus Worse, at the same due date, still decide differently — and
+    // `same` is still not a slip.
+    const due = item({ nextReviewDate: '2027-01-15', nextReviewSource: 'auto', srReps: 2, srEase: 2.5, srIntervalDays: 6 });
+    const sameOutcome = decideReview({ item: due, result: 'same', now: CLOCK });
+    const worseOutcome = decideReview({ item: due, result: 'worse', now: CLOCK });
+    expect(sameOutcome.sr?.srReps).toBe(2);
+    expect(sameOutcome.rationale).not.toMatch(/slip/i);
+    expect(worseOutcome.sr?.srReps).toBe(0);
+    expect(worseOutcome.dueDate! < sameOutcome.dueDate!).toBe(true);
+    // Every retained enum still has a label AND a distinct description.
+    const statusDescriptions = ITEM_STATUS_ORDER.map((s) => ITEM_STATUS_DESCRIPTIONS[s]);
+    expect(new Set(statusDescriptions).size).toBe(ITEM_STATUS_ORDER.length);
+    expect(new Set(ITEM_STATUS_ORDER.map((s) => ITEM_STATUS_LABELS[s])).size).toBe(ITEM_STATUS_ORDER.length);
+    const resultDescriptions = RESULT_BUTTONS.map((r) => RESULT_DESCRIPTIONS[r]);
+    expect(new Set(resultDescriptions).size).toBe(RESULT_BUTTONS.length);
+    expect(RESULT_BUTTONS).toHaveLength(6);
+    expect(Object.keys(BLOCK_MODE_LABELS)).toHaveLength(7);
+    expect(Object.keys(FOCUS_LABELS)).toHaveLength(18);
+
+    const app = await seeded();
+    const { page } = app;
+    try {
+      // --- Creating an item: title only is still enough -------------------
+      await goTo(app, '/start');
+      await page.getByRole('button', { name: 'Quick add' }).click();
+      await page.getByRole('group', { name: 'Title' }).locator('input').fill('title-only quick add');
+      await page.getByRole('button', { name: 'Begin practice' }).click();
+      await goTo(app, '/active');
+      await page.getByRole('button', { name: 'Discard block' }).click();
+      let db = await persistedDb(app);
+      const quick = db.items.find((i) => i.title === 'title-only quick add') as Record<string, unknown>;
+      expect(quick).toBeTruthy();
+      // The shipped defaults, unchanged by any relabelling.
+      expect(quick.importance).toBe(3);
+      expect(quick.difficulty).toBe(3);
+      expect(quick.status).toBe('new');
+
+      // --- Start leads with a readable default, options behind it ---------
+      await goTo(app, '/start');
+      await page.getByRole('group', { name: 'Instrument' }).getByRole('button', { name: 'Setar' }).click();
+      await page.locator('.list-row').filter({ hasText: 'Auto and due' }).click();
+      const startText = await page.locator('main').innerText();
+      // ONE readable line stands in for the two choices already made from the
+      // item's own status and focus — the defaults themselves are unchanged.
+      expect(startText).toContain(BLOCK_MODE_LABELS[defaultModeForStatus('usable')]);
+      expect(startText).toMatch(/attending to/);
+      // The seven modes and eighteen focus values are one tap away, never gone.
+      await page.getByRole('button', { name: 'Change practice approach' }).click();
+      expect(await page.getByRole('group', { name: 'Mode' }).getByRole('button').count()).toBe(7);
+      expect(await page.getByRole('group', { name: 'Focus' }).getByRole('button').count()).toBe(18);
+
+      // --- The full form: every retained choice, with its own name --------
+      await goTo(app, `/items/${ENGLISH_ITEM}`);
+      await page.getByRole('button', { name: 'Edit', exact: true }).click();
+      expect(await page.getByRole('group', { name: 'Status' }).getByRole('combobox').count()).toBe(1);
+      expect(await page.getByRole('combobox', { name: 'Status' }).locator('option').count()).toBe(8);
+      // The two estimates are named for what they are, with anchored levels…
+      const form = await page.locator('main').innerText();
+      expect(form).toContain(RATING_LABELS.importance);
+      expect(form).toContain(RATING_LABELS.difficulty);
+      expect(form).toContain(RATING_ANCHORS.difficulty[3]);
+      expect(form).toContain('not measurements');
+      // …and each star carries its OWN accessible name and selected state.
+      for (const n of [1, 2, 3, 4, 5]) {
+        expect(await page.getByRole('button', { name: `${RATING_LABELS.importance} ${n}` }).count(), `star ${n}`).toBe(1);
+      }
+      const chosenStar = page.getByRole('button', { name: `${RATING_LABELS.difficulty} 3` });
+      expect(await chosenStar.getAttribute('aria-pressed')).toBe('true');
+      // Changing a label does not change a stored code: set 5 and read it back.
+      await page.getByRole('button', { name: `${RATING_LABELS.importance} 5` }).click();
+      await page.getByRole('button', { name: 'Save changes' }).click();
+      await reload(app);
+      db = await persistedDb(app);
+      expect(db.items.find((i) => i.id === ENGLISH_ITEM)!.importance).toBe(5);
+      expect(db.items.find((i) => i.id === ENGLISH_ITEM)!.status).toBe('usable');
+
+      // --- "Not practised yet" is honest in BOTH directions ---------------
+      // An item whose status is `new` but which HAS real blocks must not be
+      // described as untouched…
+      await goTo(app, `/items/${FARSI_ITEM}`);
+      await page.getByRole('button', { name: 'Edit', exact: true }).click();
+      await page.getByRole('combobox', { name: 'Status' }).selectOption('new');
+      await page.getByRole('button', { name: 'Save changes' }).click();
+      await reload(app);
+      await goTo(app, `/items/${FARSI_ITEM}`);
+      const newWithHistory = await page.locator('main').innerText();
+      // The status label is shown for what it is, with the real history right
+      // there beside it — the wording never stands in as evidence that nothing
+      // has been practised.
+      expect(newWithHistory).toContain(ITEM_STATUS_LABELS.new);
+      expect(newWithHistory.toLowerCase()).toContain('practice history');
+      expect(newWithHistory).toContain('فرود بهتر شد');
+      expect(newWithHistory).not.toContain('No blocks yet.');
+      // …and the status change recorded no practice and moved no history.
+      db = await persistedDb(app);
+      expect(db.blocks.filter((b) => b.practiceItemId === FARSI_ITEM)).toHaveLength(3);
+      expect(db.items.find((i) => i.id === FARSI_ITEM)!.timesPractised).toBe(4);
+
+      // A GENUINELY untouched item says so honestly, from its own evidence —
+      // no blocks at all — rather than from the enum alone.
+      const untouchedId = String(db.items.find((i) => i.title === 'title-only quick add')!.id);
+      await goTo(app, `/items/${untouchedId}`);
+      const untouched = await page.locator('main').innerText();
+      expect(untouched).toContain(ITEM_STATUS_LABELS.new);
+      expect(untouched).toContain('No blocks yet.');
+      expect(db.blocks.filter((b) => b.practiceItemId === untouchedId)).toHaveLength(0);
 
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
     } finally {

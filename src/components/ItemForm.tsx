@@ -101,6 +101,7 @@ export default function ItemForm({
         <Field label="Instrument">
           <select
             className="select"
+            aria-label="Instrument"
             value={v.instrumentId}
             onChange={(e) => set({ instrumentId: e.target.value, materialId: '', stageId: '', lessonId: '', parentItemId: '' })}
           >
@@ -121,7 +122,7 @@ export default function ItemForm({
       />
 
       <Field label="Title">
-        <input className="input" dir="auto" value={v.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
+        <input className="input" dir="auto" aria-label="Title" value={v.title} onChange={(e) => set({ title: e.target.value })} autoFocus />
       </Field>
 
       {(fields.dastgah || fields.form || fields.composer || fields.gushehName) && (
@@ -206,7 +207,7 @@ export default function ItemForm({
 
       {fields.parent && (
         <Field label="Part of" hint="The work or étude this passage belongs to.">
-          <select className="select" value={v.parentItemId} onChange={(e) => set({ parentItemId: e.target.value })}>
+          <select className="select" aria-label="Part of" value={v.parentItemId} onChange={(e) => set({ parentItemId: e.target.value })}>
             <option value="">No parent work</option>
             {parentOptions.map((i) => (
               <option key={i.id} value={i.id}>
@@ -219,7 +220,7 @@ export default function ItemForm({
 
       <div className="grid-2">
         <Field label="Study source" hint="The radif, book, course or handout it comes from.">
-          <select className="select" value={v.materialId} onChange={(e) => set({ materialId: e.target.value })}>
+          <select className="select" aria-label="Study source" value={v.materialId} onChange={(e) => set({ materialId: e.target.value })}>
             <option value="">No study source</option>
             {materials.map((m) => (
               <option key={m.id} value={m.id}>
@@ -230,7 +231,7 @@ export default function ItemForm({
           </select>
         </Field>
         <Field label="Pathway stage" hint="Its place on your route.">
-          <select className="select" value={v.stageId} onChange={(e) => set({ stageId: e.target.value })}>
+          <select className="select" aria-label="Pathway stage" value={v.stageId} onChange={(e) => set({ stageId: e.target.value })}>
             <option value="">Not in a pathway</option>
             {stageOptions.map((s) => (
               <option key={s.id} value={s.id}>
@@ -260,7 +261,7 @@ export default function ItemForm({
 
       {showLessonLink && lessonOptions.length > 0 && (
         <Field label="From a lesson" hint="Links it to the class it came from.">
-          <select className="select" value={v.lessonId} onChange={(e) => set({ lessonId: e.target.value })}>
+          <select className="select" aria-label="From a lesson" value={v.lessonId} onChange={(e) => set({ lessonId: e.target.value })}>
             <option value="">Not from a lesson</option>
             {lessonOptions.map((l) => (
               <option key={l.id} value={l.id}>
@@ -277,7 +278,7 @@ export default function ItemForm({
       </div>
       <div className="grid-2">
         <Field label="Status" hint={ITEM_STATUS_DESCRIPTIONS[v.status]}>
-          <select className="select" value={v.status} onChange={(e) => set({ status: e.target.value as ItemStatus })}>
+          <select className="select" aria-label="Status" value={v.status} onChange={(e) => set({ status: e.target.value as ItemStatus })}>
             {ITEM_STATUS_ORDER.map((s) => (
               <option key={s} value={s}>
                 {ITEM_STATUS_LABELS[s]}
@@ -288,6 +289,7 @@ export default function ItemForm({
         <Field label="Primary focus">
           <select
             className="select"
+            aria-label="Primary focus"
             value={v.primaryFocus}
             onChange={(e) => set({ primaryFocus: e.target.value as FocusArea | '' })}
           >
@@ -336,6 +338,7 @@ export default function ItemForm({
             className="input"
             type="number"
             min={1}
+            aria-label="Every how many days?"
             value={v.reviewIntervalDays}
             placeholder="7"
             onChange={(e) => set({ reviewIntervalDays: e.target.value })}

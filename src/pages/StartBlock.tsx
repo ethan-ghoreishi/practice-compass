@@ -122,7 +122,7 @@ export default function StartBlock() {
     <div className="stack-lg">
       <header className="stack-sm">
         <h1 className="page-title">Start a block</h1>
-        <p className="page-sub">Three quick choices: what, how, how long.</p>
+        <p className="page-sub">Pick the item and how long. The approach is already chosen for you.</p>
       </header>
 
       {/* Step 1 — instrument */}
