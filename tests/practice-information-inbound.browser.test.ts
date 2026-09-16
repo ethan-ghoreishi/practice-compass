@@ -3,19 +3,23 @@ import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import type { Page } from 'playwright';
 import {
+  connectSync,
   exportBackup,
   goTo,
   importBackup,
   importOutcome,
+  installFakeGitHub,
+  newFakeRemote,
   openPracticeApp,
   persistedDb,
   persistedUntil,
+  publishRemote,
   readPersistedState,
   reload,
+  remoteStateText,
+  syncMessage,
   writePersistedState,
-  type PracticeApp,
 } from './practiceBrowser';
 import v12Text from './fixtures/practice-information-v12.json?raw';
 import { SCHEMA_VERSION } from '../src/domain/types';
@@ -34,138 +38,6 @@ import { hashState } from '../src/domain/canonical';
 
 const CLOCK = new Date('2027-01-15T09:00:00');
 const v12Db = () => (JSON.parse(v12Text) as { data: Record<string, unknown> }).data;
-
-// ---------------------------------------------------------------------------
-// A GitHub data repo that lives in this test process.
-//
-// It is installed at the REAL transport boundary — the `fetch` calls
-// `gitRemote.ts` makes to api.github.com — so everything above it runs for
-// real: `syncNow`, `resolveConflict`, `runSync`, `decideSync`, the pre-sync
-// archive, and `importFullBackup`'s own guards. Nothing in the app is stubbed
-// or bypassed, and no request ever leaves the machine.
-// ---------------------------------------------------------------------------
-
-interface FakeRemote {
-  /** The snapshot the repo currently holds, or null for an empty repo. */
-  snapshot: { stateText: string; hash: string; rev: number; deviceName?: string; savedAt: string } | null;
-  /** Every ref this repo has, so an archive branch is observable. */
-  refs: string[];
-  /** How many times each endpoint was called, so "it really went there" is checkable. */
-  calls: string[];
-}
-
-function newFakeRemote(): FakeRemote {
-  return { snapshot: null, refs: [], calls: [] };
-}
-
-/** Put a snapshot in the repo as if another device had pushed it. */
-function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
-  remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
-  if (!remote.refs.includes('main')) remote.refs.push('main');
-}
-
-async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
-  let headCounter = 0;
-  const blobs = new Map<string, string>();
-
-  await page.route('https://api.github.com/**', async (route) => {
-    const req = route.request();
-    const url = new URL(req.url());
-    // /repos/<owner>/<name>/<rest…>
-    const rest = url.pathname.split('/').slice(4).join('/');
-    const method = req.method();
-    remote.calls.push(`${method} ${rest}`);
-    const json = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', body });
-    const head = () => `head-${headCounter}`;
-
-    if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
-      return json({ object: { sha: head() } });
-    }
-    if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
-      return raw(
-        JSON.stringify({
-          formatVersion: 2,
-          hash: remote.snapshot.hash,
-          rev: remote.snapshot.rev,
-          deviceName: remote.snapshot.deviceName,
-          savedAt: remote.snapshot.savedAt,
-          attachments: [],
-        }),
-      );
-    }
-    if (method === 'GET' && rest.startsWith('contents/state.json')) {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
-      return raw(remote.snapshot.stateText);
-    }
-    if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
-    if (method === 'GET' && rest.startsWith('git/blobs/')) {
-      return json({ content: blobs.get(rest.slice('git/blobs/'.length)) ?? '' });
-    }
-    if (method === 'PUT' && rest.startsWith('contents/README.md')) {
-      headCounter += 1;
-      if (!remote.refs.includes('main')) remote.refs.push('main');
-      return json({ commit: { sha: head() } });
-    }
-    if (method === 'POST' && rest === 'git/blobs') {
-      const body = req.postDataJSON() as { content: string };
-      const sha = `blob-${blobs.size}`;
-      blobs.set(sha, body.content);
-      return json({ sha });
-    }
-    if (method === 'POST' && rest === 'git/trees') return json({ sha: 'tree-1' });
-    if (method === 'POST' && rest === 'git/commits') {
-      headCounter += 1;
-      return json({ sha: head() });
-    }
-    if (method === 'POST' && rest === 'git/refs') {
-      const body = req.postDataJSON() as { ref: string };
-      remote.refs.push(body.ref.replace('refs/heads/', ''));
-      return json({});
-    }
-    if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
-    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"message":"not routed"}' });
-  });
-}
-
-/**
- * Wrap a database in the shape `state.json` holds: a full backup with NO file
- * payloads (attachments travel as separate git blobs).
- */
-function remoteStateText(db: unknown, deviceName = 'the other device'): string {
-  return JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: (db as { schemaVersion?: number }).schemaVersion ?? 13,
-    exportedAt: new Date().toISOString(),
-    deviceName,
-    data: db,
-    files: [],
-  });
-}
-
-// --- shared helpers ---------------------------------------------------------
-
-/** Connect sync through the REAL Settings form and run the first sync. */
-async function connectSync(app: PracticeApp): Promise<void> {
-  const { page } = app;
-  await goTo(app, '/settings');
-  // The sync form's fields sit inside a labelled group rather than carrying
-  // their own accessible names. That is pre-existing Settings markup this lane
-  // is explicitly not reshaping, so this reaches them the way they actually
-  // are rather than pretending otherwise.
-  await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
-  await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
-  await page.getByRole('button', { name: 'Connect & sync' }).click();
-  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
-}
-
-/** The sync section's own status line, whatever it currently says. */
-async function syncMessage(page: Page): Promise<string> {
-  return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
-}
 
 /** The one item the fixture's Farsi notebook belongs to. */
 const FARSI_ITEM = 'i-farsi';
@@ -380,7 +252,23 @@ describe('a replacement door never installs what it has not checked', () => {
             { ...db, attachments: [...(db.attachments as unknown[]), (db.attachments as unknown[])[0]] },
             [validFile],
           ),
-          says: /attachments in the backup share the id/,
+          says: /attachments share the id/,
+        },
+        {
+          // THE SAME REFUSAL WITH NO `files` KEY AT ALL. This check used to
+          // live inside the full-backup decoder, which returns on its first
+          // line for a state-only file — so this door installed two
+          // attachments claiming one id, and the device's own next export
+          // then carried two files sharing an id and was refused by its own
+          // importer, here and on every device a sync published it to. It is
+          // refused BEFORE the state-only door's held-bytes check, because
+          // both now sit behind the one validated model.
+          name: 'duplicate attachment METADATA ids in a STATE-ONLY file',
+          text: wrap(
+            { ...db, attachments: [...(db.attachments as unknown[]), (db.attachments as unknown[])[0]] },
+            undefined,
+          ),
+          says: /attachments share the id/,
         },
         {
           name: 'invalid canonical text in the data',
@@ -406,6 +294,19 @@ describe('a replacement door never installs what it has not checked', () => {
       expect(await importOutcome(app)).toContain('Imported');
       await persistedUntil(app, (s) => ((s.state as { db: { items: { id: string; title: string }[] } }).db.items.find((i) => i.id === FARSI_ITEM)?.title), (t) => t === 'state-only import');
       expect(await attachmentText()).toBe(goodAttachment);
+
+      // …and what that door installed is a database this app can still back
+      // up: export it and restore the export. This is the round trip the
+      // state-only door used to be able to poison — one metadata row per
+      // attachment means one file per attachment, with ids that are unique
+      // because the model that describes them is.
+      await reload(app);
+      const afterStateOnly = await exportBackup(app);
+      const stateOnlyFiles = (JSON.parse(afterStateOnly) as { files: { id: string }[] }).files;
+      expect(stateOnlyFiles.map((f) => f.id)).toEqual(['att-1']);
+      await importBackup(app, 'state-only-roundtrip.json', afterStateOnly);
+      expect(await importOutcome(app)).toContain('Imported');
+      await expect.poll(() => attachmentText()).toBe(goodAttachment);
 
       // `files: []` on data that describes NO attachments IS a real full
       // backup with nothing in it, and does replace.
@@ -558,6 +459,17 @@ describe('a replacement door never installs what it has not checked', () => {
       await expect.poll(() => syncMessage(page)).toMatch(/notes should be text/i);
       expect(JSON.stringify(await persistedDb(app))).toBe(beforeBadPull);
 
+      // …and a remote snapshot is a bare database with no `files` of its own —
+      // the same shape as the state-only file above, arriving through a
+      // different door. Duplicate attachment metadata is refused here too,
+      // rather than being installed by the one door nobody was watching.
+      const attachmentRow = { id: 'att-1', ownerType: 'item', ownerId: FARSI_ITEM, mime: 'text/plain', name: 'score.txt', createdAt: CLOCK.toISOString(), size: 12 };
+      const dupDb = { ...pulledDb, attachments: [attachmentRow, { ...attachmentRow }] };
+      publishRemote(remote, remoteStateText(dupDb), await hashState(dupDb), 102);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect.poll(() => syncMessage(page)).toMatch(/attachments share the id/i);
+      expect(JSON.stringify(await persistedDb(app))).toBe(beforeBadPull);
+
       // --- BOTH sides changed: an explicit choice, and both copies kept ----
       const localEdit = {
         ...pulledDb,
@@ -569,7 +481,7 @@ describe('a replacement door never installs what it has not checked', () => {
         ...pulledDb,
         items: pulledDb.items.map((i) => (i.id === FARSI_ITEM ? { ...i, notes: 'edited on the other device' } : i)),
       };
-      publishRemote(remote, remoteStateText(otherEdit), await hashState(otherEdit), 101);
+      publishRemote(remote, remoteStateText(otherEdit), await hashState(otherEdit), 103);
       await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await page.getByRole('button', { name: 'Take the GitHub copy' }).waitFor({ timeout: 20_000 });

@@ -151,57 +151,122 @@ describe('splitLines', () => {
 });
 
 describe('reviewDateDraftFor', () => {
+  const TODAY = '2026-06-18';
   const A = { id: 'a', nextReviewDate: '2027-02-10' };
   const B = { id: 'b', nextReviewDate: '2027-05-05' };
-  const openOnA = { forItem: 'a', seeded: '2027-02-10', text: '2027-02-10' };
+  const openOnA = { forItem: 'a', seeded: '2027-02-10', offered: '2027-02-10', text: '2027-02-10' };
+  // What ScheduleAgain seeds on an item with NO date: the item's own date is
+  // empty, and the box is offered today.
+  const openOnDateless = { forItem: 'a', seeded: '', offered: TODAY, text: TODAY };
 
   it('keeps an untouched draft while its item and date are unchanged', () => {
-    expect(reviewDateDraftFor(openOnA, A)).toEqual(openOnA);
+    expect(reviewDateDraftFor(openOnA, A, TODAY)).toEqual(openOnA);
   });
 
   it('keeps text the owner typed for its own item', () => {
     const typed = { ...openOnA, text: '2027-03-01' };
-    expect(reviewDateDraftFor(typed, A)).toEqual(typed);
+    expect(reviewDateDraftFor(typed, A, TODAY)).toEqual(typed);
   });
 
   it('DROPS a draft belonging to another item, so A\'s date cannot be saved onto B', () => {
-    expect(reviewDateDraftFor(openOnA, B)).toBeNull();
-    expect(reviewDateDraftFor({ ...openOnA, text: '2027-03-01' }, B)).toBeNull();
+    expect(reviewDateDraftFor(openOnA, B, TODAY)).toBeNull();
+    expect(reviewDateDraftFor({ ...openOnA, text: '2027-03-01' }, B, TODAY)).toBeNull();
   });
+
+  // --- The item's own date moving beneath the box: ONE rule, every direction -
+  // present→different, present→absent and absent→present are the same
+  // question ("is this box still offering what the item says?") and must not
+  // be three cases with three answers. `seeded` records the item's own date
+  // (empty when it has none) and `offered` what the box was filled with, so
+  // "untouched" is decidable without exempting any transition.
 
   it('re-seeds an UNTOUCHED box when the item\'s own date moved beneath it', () => {
     // A sync pull, another tab, or a close screen moved the date. Saving the
     // captured one would silently revert a change the owner never saw.
     const moved = { ...A, nextReviewDate: '2027-04-20' };
-    expect(reviewDateDraftFor(openOnA, moved)).toEqual({
+    expect(reviewDateDraftFor(openOnA, moved, TODAY)).toEqual({
       forItem: 'a',
       seeded: '2027-04-20',
+      offered: '2027-04-20',
       text: '2027-04-20',
     });
   });
 
-  it('keeps TYPED text when the item\'s date moved, and stops re-deciding it', () => {
-    const typed = { ...openOnA, text: '2027-03-01' };
-    const moved = { ...A, nextReviewDate: '2027-04-20' };
-    const once = reviewDateDraftFor(typed, moved);
-    expect(once).toEqual({ forItem: 'a', seeded: '2027-04-20', text: '2027-03-01' });
-    // The baseline caught up, so a later render leaves it exactly alone.
-    expect(reviewDateDraftFor(once, moved)).toEqual(once);
+  it('re-seeds an UNTOUCHED box when the item\'s date was CLEARED beneath it', () => {
+    // The sealed counterexample. A live update (a sync pull, a declined review
+    // closed elsewhere) removes A's pending date while the panel sits open.
+    // The old rule skipped the comparison entirely whenever the item had no
+    // date, so the box went on showing 2027-02-10 and "Save date" wrote it
+    // back — resurrecting a schedule the item no longer had. It is the same
+    // "the item's date moved" case as every other, and re-seeds to what a
+    // fresh open would offer: today.
+    const cleared = { id: 'a' };
+    expect(reviewDateDraftFor(openOnA, cleared, TODAY)).toEqual({
+      forItem: 'a',
+      seeded: '',
+      offered: TODAY,
+      text: TODAY,
+    });
+    // …and it stays settled: the baseline caught up, so a later render with
+    // the same (dateless) item leaves it exactly alone rather than re-deciding.
+    const once = reviewDateDraftFor(openOnA, cleared, TODAY)!;
+    expect(reviewDateDraftFor(once, cleared, TODAY)).toEqual(once);
   });
 
-  it('leaves a box seeded with today alone on an item that has no date', () => {
-    // The seed is deliberately NOT the item's date there (it has none), so the
-    // "moved" comparison must not fire and empty the box.
-    const seededToday = { forItem: 'a', seeded: '2026-06-18', text: '2026-06-18' };
+  it('re-seeds an UNTOUCHED today-box when the item GAINED a date beneath it', () => {
+    // The mirror image, and the reason "the item has no date" cannot simply be
+    // spelled as an empty `seeded` on the text as well: the box was offered
+    // today, today is not the item's date, and the box must still follow the
+    // item when one arrives.
+    const gained = { id: 'a', nextReviewDate: '2027-04-20' };
+    expect(reviewDateDraftFor(openOnDateless, gained, TODAY)).toEqual({
+      forItem: 'a',
+      seeded: '2027-04-20',
+      offered: '2027-04-20',
+      text: '2027-04-20',
+    });
+  });
+
+  it('keeps TYPED text through every move of the item\'s own date', () => {
+    // The owner's intent outranks the item's date in all three directions, and
+    // the baseline catches up each time so it is not re-decided every render.
+    const typed = { ...openOnA, text: '2027-03-01' };
+    const moved = { ...A, nextReviewDate: '2027-04-20' };
+    const once = reviewDateDraftFor(typed, moved, TODAY);
+    expect(once).toEqual({ forItem: 'a', seeded: '2027-04-20', offered: '2027-02-10', text: '2027-03-01' });
+    expect(reviewDateDraftFor(once, moved, TODAY)).toEqual(once);
+
+    // Cleared beneath TYPED text: the text is theirs and stands.
+    expect(reviewDateDraftFor(typed, { id: 'a' }, TODAY)).toEqual({
+      forItem: 'a',
+      seeded: '',
+      offered: '2027-02-10',
+      text: '2027-03-01',
+    });
+    // Gained beneath a typed today-box: likewise.
+    const typedOnDateless = { ...openOnDateless, text: '2027-01-01' };
+    expect(reviewDateDraftFor(typedOnDateless, { id: 'a', nextReviewDate: '2027-04-20' }, TODAY)).toEqual({
+      forItem: 'a',
+      seeded: '2027-04-20',
+      offered: TODAY,
+      text: '2027-01-01',
+    });
+  });
+
+  it('leaves a box seeded with today alone on an item that still has no date', () => {
+    // The item's date has not moved — it is absent and stays absent — so
+    // nothing here re-seeds, including across a later day: the comparison is
+    // against the ITEM, never against `today`.
     const noDate = { id: 'a' };
-    expect(reviewDateDraftFor(seededToday, noDate)).toEqual(seededToday);
-    expect(reviewDateDraftFor({ ...seededToday, text: '2027-01-01' }, noDate)).toEqual({
-      ...seededToday,
+    expect(reviewDateDraftFor(openOnDateless, noDate, TODAY)).toEqual(openOnDateless);
+    expect(reviewDateDraftFor(openOnDateless, noDate, '2026-06-19')).toEqual(openOnDateless);
+    expect(reviewDateDraftFor({ ...openOnDateless, text: '2027-01-01' }, noDate, TODAY)).toEqual({
+      ...openOnDateless,
       text: '2027-01-01',
     });
   });
 
   it('has nothing to reconcile when no draft is open', () => {
-    expect(reviewDateDraftFor(null, A)).toBeNull();
+    expect(reviewDateDraftFor(null, A, TODAY)).toBeNull();
   });
 });

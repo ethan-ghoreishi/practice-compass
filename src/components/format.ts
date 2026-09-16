@@ -162,28 +162,47 @@ export function closeOverrideDate(
  * then writes it through the CURRENT item's callback. A's 2027-02-10 lands on
  * B.
  *
- * So the draft carries the item it was opened for and the item's own date at
- * that moment, and this decides what it still means. It is the same rule
- * `ItemNotes` applies to the notebook — a draft is bound to what it was typed
- * for — expressed once, purely, where a Node test can reach it:
+ * So the draft carries the item it was opened for, the item's own date at that
+ * moment, and the value the box was actually OFFERED — and this decides what it
+ * still means. It is the same rule `ItemNotes` applies to the notebook — a
+ * draft is bound to what it was typed for — expressed once, purely, where a
+ * Node test can reach it:
  *
  *   • a DIFFERENT item  → dropped. Never re-pointed, never saved onto B.
- *   • the item's date MOVED beneath an untouched seed → re-seeded, so the
- *     panel offers what the item now says rather than a value the owner never
- *     chose and would silently revert.
+ *   • the item's own date UNCHANGED → the draft stands, whatever is in it.
+ *   • the item's date MOVED beneath an untouched box → re-seeded, so the panel
+ *     offers what the item now says rather than a value the owner never chose
+ *     and would silently revert.
  *   • the item's date moved beneath TYPED text → the text stands. It is the
  *     owner's own intent, not a stale capture; only the baseline catches up so
  *     this decision is not re-made on every later render.
  *
- * A seeded box on an item with NO date offers today, which is deliberately not
- * the item's date; that case is excluded from the "moved" comparison rather
- * than being re-seeded to empty.
+ * THREE FACTS, THREE FIELDS — and conflating two of them was a real defect.
+ * `seeded` used to hold "the item's date, or today when it had none", which
+ * made "the item has no date" indistinguishable from "the item's date happens
+ * to be today", so the only way to stop a dateless item's today-box being
+ * re-seeded to empty was to skip the comparison entirely whenever the item had
+ * no date (`if (!current) return draft`). That exemption is what a live update
+ * CLEARING the date then fell into: the box went on showing — and Save date
+ * went on writing — a date the item no longer had, a schedule the owner had
+ * every reason to believe was gone. There is no exemption now. `seeded` is the
+ * item's own date and is EMPTY when it has none, `offered` is what the box was
+ * filled with (the date, or today), and "untouched" is `text === offered`. The
+ * absent→present, present→absent and present→different transitions are then
+ * one rule rather than three cases, and a cleared date re-seeds the box to
+ * today exactly as opening it fresh on that item would.
+ *
+ * `today` is passed in rather than read from a clock here: this module is
+ * pure, and the caller already has the day the rest of its screen is rendered
+ * against.
  */
 export interface ReviewDateDraft {
   /** The item this draft was opened for. */
   forItem: string;
-  /** The item's own pending date when the box was last (re-)seeded. */
+  /** The item's OWN pending date when the box was last (re-)seeded; '' for none. */
   seeded: string;
+  /** What the box was filled with then — the item's date, or today. */
+  offered: string;
   /** What is in the box now. */
   text: string;
 }
@@ -191,12 +210,14 @@ export interface ReviewDateDraft {
 export function reviewDateDraftFor(
   draft: ReviewDateDraft | null,
   item: { id: string; nextReviewDate?: string },
+  today: string,
 ): ReviewDateDraft | null {
   if (!draft) return null;
   if (draft.forItem !== item.id) return null;
   const current = item.nextReviewDate ?? '';
-  if (!current || current === draft.seeded) return draft;
-  return draft.text === draft.seeded
-    ? { forItem: draft.forItem, seeded: current, text: current }
+  if (current === draft.seeded) return draft;
+  const offered = current || today;
+  return draft.text === draft.offered
+    ? { forItem: draft.forItem, seeded: current, offered, text: offered }
     : { ...draft, seeded: current };
 }

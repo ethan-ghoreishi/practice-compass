@@ -1,15 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import {
+  connectSync,
   goTo,
   importBackup,
   importOutcome,
+  installFakeGitHub,
+  newFakeRemote,
   openPracticeApp,
   persistedDb,
+  publishRemote,
   reload,
+  remoteStateText,
+  syncMessage,
   type PracticeApp,
 } from './practiceBrowser';
 import v12Text from './fixtures/practice-information-v12.json?raw';
+import { hashState } from '../src/domain/canonical';
 
 // ---------------------------------------------------------------------------
 // ac-12 / ac-13 — who manages a review date, and what happens after it changes
@@ -219,19 +226,12 @@ describe('handing a review date back to the app', () => {
       expect((await facts(app, ROWLESS)).nextReviewDate).toBe(rowlessOpen.nextReviewDate);
       expect((await facts(app, FARSI_ITEM)).nextReviewDate).toBe(farsiOpen.nextReviewDate);
 
-      // ONE BRANCH IS NAMED HERE BECAUSE THIS JOURNEY CANNOT REACH IT, NOT
-      // BECAUSE IT WAS MISSED. The third case `reviewDateDraftFor` decides —
-      // the item's own date MOVING beneath an UNTOUCHED box, which must
-      // re-seed rather than save a captured date — needs a control that
-      // changes `nextReviewDate` while `ScheduleAgain` stays MOUNTED. There
-      // isn't one: an import or a sync pull leaves the page (`openSettings`
-      // navigates), and "Review today" is offered only when the item has no
-      // date, where the seed already equals what it writes. It is covered by
-      // the pure case "re-seeds an UNTOUCHED box when the item's own date
-      // moved beneath it" (`src/components/format.test.ts`), which is where
-      // the decision lives; installing this journey's own fake GitHub
-      // transport to reach it in a browser is the inbound journey's job, not
-      // this one's.
+      // The remaining branch — the item's own date MOVING beneath an
+      // UNTOUCHED box — needs something that changes `nextReviewDate` while
+      // `ScheduleAgain` stays MOUNTED, which no control on this page does:
+      // an import leaves the page and "Review today" is offered only when the
+      // item has no date. A SYNC PULL is the one that does, and section 7c
+      // below drives it.
 
       // --- 7b. A LIVE UPDATE TO THE ITEM DOES NOT DISCARD TYPED TEXT ------
       // The other half of the same rule: the draft is bound to the item, not
@@ -276,6 +276,76 @@ describe('handing a review date back to the app', () => {
       await transferButton(page).click();
       await reload(app);
       expect((await facts(app, ROWLESS)).nextReviewDate).toBe('2027-05-05');
+
+      // --- 7c. A LIVE UPDATE THAT CLEARS THE DATE UNDER AN OPEN BOX -------
+      // The sealed counterexample, driven end to end: a sync pull is the one
+      // thing that replaces the item's own date while this panel stays
+      // MOUNTED, so it is what proves the reconciliation rather than a
+      // description of it. The transport is the real one — `syncNow`,
+      // `decideSync` and `importFullBackup` all run; only api.github.com is
+      // answered in-process — and the trigger is the app's own `online`
+      // listener, not a test hook reaching into the store.
+      //
+      // The old rule exempted "the item has no date" from the comparison
+      // entirely, so a CLEARED date left the box showing — and "Save date"
+      // writing — a schedule the item no longer had.
+      const remote = newFakeRemote();
+      await installFakeGitHub(page, remote);
+      await connectSync(app);
+      await expect.poll(() => syncMessage(page)).toMatch(/pushed|in sync/i);
+      /** Commits this fake repo has actually received — the push, observed. */
+      const pushes = () => remote.calls.filter((c) => c.startsWith('POST git/commits')).length;
+      const pushesAtConnect = pushes();
+
+      /** Publish the local database with ROWLESS's pending date removed. */
+      const publishCleared = async (rev: number): Promise<void> => {
+        const live = await persistedDb(app);
+        const cleared = {
+          ...live,
+          // A snapshot carries attachment bytes as separate git blobs; this
+          // fake repo has none, so the snapshot must describe none either.
+          attachments: [],
+          items: live.items.map((i) => {
+            if (i.id !== ROWLESS) return i;
+            const { nextReviewDate: _d, nextReviewSource: _s, ...rest } = i;
+            return rest;
+          }),
+        };
+        publishRemote(remote, remoteStateText(cleared), await hashState(cleared), rev);
+        await goTo(app, `/items/${ROWLESS}`);
+      };
+
+      // (i) UNTOUCHED: the box follows the item, and offers what opening it
+      //     fresh on a dateless item would — today.
+      await goTo(app, `/items/${ROWLESS}`);
+      await page.getByRole('button', { name: 'Change review date' }).click();
+      expect(await page.getByLabel('Next review date').inputValue()).toBe('2027-05-05');
+      await publishCleared(201);
+      await page.evaluate(() => window.dispatchEvent(new Event('online')));
+      await expect.poll(() => page.getByLabel('Next review date').inputValue(), { timeout: 30_000 }).toBe('2027-01-15');
+      // The panel never closed — this is the same open editor, reconciled.
+      await page.getByRole('button', { name: 'Save date' }).click();
+      await reload(app);
+      expect((await facts(app, ROWLESS)).nextReviewDate).toBe('2027-01-15');
+
+      // (ii) TYPED: the owner's own intent outranks the update. The reload
+      //      above already triggered the app's own on-open sync, which pushes
+      //      the date just saved and re-baselines against it — so the next
+      //      published snapshot is a clean pull rather than a both-changed
+      //      conflict. Wait for that commit to have actually landed.
+      await expect.poll(pushes, { timeout: 30_000 }).toBeGreaterThan(pushesAtConnect);
+      await goTo(app, `/items/${ROWLESS}`);
+      await page.getByRole('button', { name: 'Change review date' }).click();
+      await page.getByLabel('Next review date').fill('2027-09-09');
+      await publishCleared(202);
+      await page.evaluate(() => window.dispatchEvent(new Event('online')));
+      await expect
+        .poll(async () => (await facts(app, ROWLESS)).nextReviewDate, { timeout: 30_000 })
+        .toBeUndefined();
+      expect(await page.getByLabel('Next review date').inputValue()).toBe('2027-09-09');
+      await page.getByRole('button', { name: 'Save date' }).click();
+      await reload(app);
+      expect((await facts(app, ROWLESS)).nextReviewDate).toBe('2027-09-09');
 
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
     } finally {

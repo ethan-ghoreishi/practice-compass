@@ -231,6 +231,7 @@ export default function ItemDetail() {
 
       <ScheduleAgain
         item={item}
+        today={todayISODate(now)}
         conflict={pendingScheduleConflict(item, db.reviews)}
         onSchedule={(date) => scheduleReviewAgain(item.id, date)}
       />
@@ -900,10 +901,18 @@ function FieldRow({ label, value }: { label: string; value: string }) {
  */
 function ScheduleAgain({
   item,
+  today,
   conflict,
   onSchedule,
 }: {
   item: PracticeItemT;
+  /**
+   * What a box would be OFFERED for an item with no date — the same day the
+   * rest of this screen is rendered against. Only consulted when the item's
+   * own date moved to absent beneath an open box; the seed below takes the
+   * true instant instead, because opening the panel is an action, not a paint.
+   */
+  today: ISODate;
   conflict: { rows: Review[]; message: string } | null;
   onSchedule: (date: ISODate) => void;
 }) {
@@ -914,7 +923,7 @@ function ScheduleAgain({
   // saves the reconciled value, so there is no paint in which the box shows
   // A's date while the Save button points at B.
   const [draft, setDraft] = useState<ReviewDateDraft | null>(null);
-  const open = reviewDateDraftFor(draft, item);
+  const open = reviewDateDraftFor(draft, item, today);
 
   return (
     <div className="stack-sm">
@@ -963,10 +972,14 @@ function ScheduleAgain({
             // Seeded when it OPENS, from the live item and the real day —
             // never once at mount, which would offer a date that has since
             // been changed elsewhere or a "today" that has since rolled over.
+            const offered = item.nextReviewDate ?? todayISODate(new Date());
             setDraft({
               forItem: item.id,
-              seeded: item.nextReviewDate ?? todayISODate(new Date()),
-              text: item.nextReviewDate ?? todayISODate(new Date()),
+              // The item's OWN date — empty when it has none, so "no date" and
+              // "a date that happens to be today" stay distinguishable.
+              seeded: item.nextReviewDate ?? '',
+              offered,
+              text: offered,
             });
           }}
         >

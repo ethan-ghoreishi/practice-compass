@@ -73,6 +73,21 @@ metadata for absent bytes exports a backup it then refuses, and publishes a snap
 other device refuses too, permanently. Dropping the dangling metadata instead would be
 silent loss of the owner's own record. Both refusals name the file and change nothing.
 
+**AND AN ATTACHMENT'S IDENTITY IS CHECKED AT EVERY DOOR, NOT AT THE ONE THE CHECK HAPPENED
+TO LIVE IN.** The rule that two attachments may not share an id sat inside
+`decodeBackupFiles`, which returns on its FIRST line for a file with no `files` key — so it
+ran for a full backup and for nothing else. A sealed review reproduced the consequence: a
+state-only import (and equally a sync pull, an archive restore, or either half of
+hydration) installed two metadata rows claiming one id, and because the export emits one
+file per describing row, the device's own next full backup carried two files sharing an id
+and was refused by its own importer — the same permanent one-way trap as the two mismatches
+above, arriving through the door nobody was watching. An id is what an attachment's bytes
+are KEYED by, so two rows claiming one id are two rows claiming one file. The check is in
+`validateDB` now — the one function every inbound door already runs — and
+`decodeBackupFiles` keeps none of its own: one place, six doors, rather than six chances to
+miss it. It is deliberately bounded to attachment ids and is NOT a general duplicate-id
+sweep across every collection, which the contract's own non-goals rule out.
+
 **AND THE EXPORT IS DERIVED FROM THE CANONICAL METADATA, SO THE APP CANNOT WRITE A BACKUP
 ITS OWN IMPORTER REFUSES.** The trap has a second mouth, and closing only the inbound one
 left it open: `buildFullBackupWithRev` used to derive `files` from the blobs actually
@@ -1687,10 +1702,31 @@ reset from an effect, so there is no paint in which the box shows A's date while
 points at B. A different item DROPS it; the item's own date moving beneath an UNTOUCHED
 seed re-seeds the box, because saving a captured date would silently revert a change the
 owner never saw; the item's date moving beneath TYPED text leaves the text alone (it is
-their intent, not a stale capture) and only catches the baseline up. A box seeded with
-today on an item that has NO date is excluded from that comparison — its seed was never
-the item's date. `ReviewOwnership`'s refusal message carries the same tag, for the same
+their intent, not a stale capture) and only catches the baseline up.
+`ReviewOwnership`'s refusal message carries the same tag, for the same
 reason: a refusal about A's schedule shown under B is a statement about the wrong item.
+
+**THREE FACTS NEED THREE FIELDS, AND CONFLATING TWO OF THEM EXEMPTED A WHOLE TRANSITION.**
+`seeded` used to hold "the item's date, or today when it had none", which made "this item
+has no date" indistinguishable from "this item's date happens to be today". The only way to
+stop a dateless item's today-box being re-seeded to empty was therefore to skip the
+comparison ENTIRELY whenever the item had no date — and a sealed review reproduced what
+that exemption let through: a live update (a sync pull, a review declined elsewhere) that
+CLEARS the item's pending date left the box showing, and "Save date" writing, a date the
+item no longer had. There is no exemption now. `seeded` is the item's OWN date and is empty
+when it has none, `offered` is what the box was actually filled with (that date, or today),
+and "untouched" is `text === offered`. present→different, present→absent and absent→present
+are then ONE rule instead of three cases with three answers, and a cleared date re-seeds the
+box to exactly what opening it fresh on that item would offer. `today` is passed in, because
+`format.ts` is pure and the screen already has the day it is rendered against.
+
+The browser proof is a REAL SYNC PULL (`review-ownership.browser.test.ts`, ac-12), not a
+description of one: a pull is the only thing that replaces an item's date while
+`ScheduleAgain` stays MOUNTED — an import leaves the page, and "Review today" is offered
+only when the item has no date — so the journey installs the same fake GitHub transport the
+inbound journey uses (now shared, in `tests/practiceBrowser.ts`) and triggers the app's own
+`online` listener. Both halves are checked there: an untouched box follows the item, typed
+text stands.
 
 **"Schedule again" is administration, not practice.** `scheduleAgainPlan` sets ONE date on
 the item and its pending row, CREATING the row when none is open (the case the old date

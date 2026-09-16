@@ -377,8 +377,9 @@ export async function importFullBackup(
  *   • a non-empty set — every entry must be sound, or nothing is written.
  *
  * "Sound" means: an object with a non-empty string `id`, no duplicate id, a
- * string `data` that actually base64-decodes, an owner that resolves through
- * the canonical metadata, and metadata whose own ids are unique. Bytes with no
+ * string `data` that actually base64-decodes, and an owner that resolves
+ * through the canonical metadata (whose own ids `validateDB` has already
+ * proved unique, at every door rather than this one). Bytes with no
  * matching metadata (orphans) and metadata with no bytes (omissions) are both
  * refused rather than half-installed. Legacy `itemId` ownership is still
  * accepted — normalised through the same v6 semantics the migration uses — but
@@ -395,13 +396,11 @@ function decodeBackupFiles(
     return { ok: false, error: 'The backup\'s "files" entry is not a list of files — nothing was changed.' };
   }
 
-  const metaIds = new Set<string>();
-  for (const a of attachments) {
-    if (metaIds.has(a.id)) {
-      return { ok: false, error: `Two attachments in the backup share the id "${a.id}" — nothing was changed.` };
-    }
-    metaIds.add(a.id);
-  }
+  // Metadata identity is NOT checked here. It used to be, and that was the bug:
+  // this function returns above for a state-only file, so the check ran on one
+  // door out of six. It lives in `validateDB` now — which `parseImport` has
+  // already run on this very database before this call — so every inbound door
+  // refuses two attachments sharing an id, not just a full backup.
   const metaById = new Map(attachments.map((a) => [a.id, a]));
 
   const rows: AttachmentBlob[] = [];

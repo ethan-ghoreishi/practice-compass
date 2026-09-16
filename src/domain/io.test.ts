@@ -426,6 +426,51 @@ describe('the v12 model at every inbound door', () => {
       }),
     ).not.toThrow();
 
+    // 4c. ATTACHMENT IDENTITY, at EVERY door rather than the full-backup one.
+    //     A sealed review found the duplicate-metadata check living inside
+    //     `decodeBackupFiles`, which returns on its FIRST line for a file with
+    //     no `files` key — so a state-only import (and a sync pull, an archive
+    //     restore, and hydration) installed two attachments claiming one id
+    //     unchecked. That is a one-way trap, not an untidiness: the export
+    //     emits one file per describing row, so the device's very next full
+    //     backup carries two files sharing an id and is refused by its own
+    //     importer. The check is in `validateDB` now, so it is the same
+    //     refusal at every door — including a bare database, which is the
+    //     shape a state-only file and a sync snapshot both arrive in.
+    const withAttachment = validateDB(JSON.parse(V12_TEXT));
+    expect(withAttachment.attachments.length).toBeGreaterThan(0);
+    const duplicated = {
+      ...withAttachment,
+      attachments: [...withAttachment.attachments, { ...withAttachment.attachments[0] }],
+    };
+    expect(() => validateDB(duplicated)).toThrow(/Two attachments share the id "att-1"/);
+    // Two rows sharing an id but disagreeing about their owner is the same
+    // refusal — the id IS the identity, and the blob is keyed by it.
+    expect(() =>
+      validateDB({
+        ...withAttachment,
+        attachments: [
+          ...withAttachment.attachments,
+          { ...withAttachment.attachments[0], ownerId: 'someone-else' },
+        ],
+      }),
+    ).toThrow(/Two attachments share the id/);
+    for (const { label, payload } of [
+      { label: 'wrapped export', payload: { app: 'practice-compass', schemaVersion: SCHEMA_VERSION, data: duplicated } },
+      { label: 'bare database (state-only import, sync pull, archive restore)', payload: duplicated },
+    ]) {
+      expect(() => validateDB(payload), label).toThrow(/Two attachments share the id/);
+    }
+    // Distinct ids are untouched, and so is a database with no attachments at
+    // all — this refuses a collision, it does not police attachments.
+    expect(() =>
+      validateDB({
+        ...withAttachment,
+        attachments: [...withAttachment.attachments, { ...withAttachment.attachments[0], id: 'att-2' }],
+      }),
+    ).not.toThrow();
+    expect(() => validateDB({ ...withAttachment, attachments: [] })).not.toThrow();
+
     // 5. A NEWER schema is still refused outright rather than silently
     //    downgraded and stripped of whatever it added.
     expect(() => validateDB({ ...v12, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
@@ -504,6 +549,22 @@ describe('the v12 model at every inbound door', () => {
     // this is invalid/corrupt CURRENT-version data, not an app-update case.
     expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
     expect(useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
+
+    // 7c-ii. THE SAME hydration door refuses duplicate attachment metadata.
+    //     This is the door the state-only counterexample actually ends at: an
+    //     import that installed the duplicates would hand them straight back
+    //     to `merge` on the next load. The previously live database is
+    //     preserved by reference and nothing is written back, exactly as 7c.
+    const sentinelDup = useStore.getState().db;
+    const setItemsBeforeDup = fakeStorage.setItemCalls();
+    fakeStorage.set(
+      wrap({ ...v12, attachments: [...v12.attachments, { ...v12.attachments[0] }] }, SCHEMA_VERSION),
+    );
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelDup);
+    expect(getLastHydrationError()).toMatch(/Two attachments share the id/);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeDup);
+    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
 
     // 7d. A NEWER-than-supported schema is refused — never passed through
     //     migrateToCurrent and relabelled as the current version, and never

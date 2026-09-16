@@ -2,6 +2,33 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## A check that lives in one door is a check with five doors missing (2026-09-16)
+
+Two more sealed findings, and the same shape underneath both: a rule that was genuinely
+correct, sitting somewhere only one caller reaches.
+
+**Attachment identity.** "Two attachments may not share an id" lived in
+`decodeBackupFiles` — which returns on its FIRST line when a file carries no `files` key.
+So it ran for a full backup and for nothing else: a state-only import, a sync pull, an
+archive restore and both halves of hydration all installed duplicates unchecked. Not
+cosmetic, because the export emits one file per describing row: the device's own next
+backup then carried two files sharing an id and was refused by its own importer, here and
+on every device a sync published it to. The check moved to `validateDB`, the one function
+every inbound door already runs, and `decodeBackupFiles` keeps none of its own. Bounded to
+attachment ids on purpose — an id is what the bytes are KEYED by — and not widened into a
+duplicate-id sweep over every collection, which this change's own non-goals rule out.
+
+**The review-date draft.** `seeded` held "the item's date, or today when it had none", so
+"no date" and "a date that is today" were the same value. That forced an exemption —
+skip the whole comparison when the item has no date — and the exemption is what a live
+update CLEARING the date fell into: the box went on showing, and Save date went on
+writing, a schedule the item no longer had. Fixed by separating the two facts rather than
+special-casing the symptom: `seeded` is the item's own date (empty when absent), `offered`
+is what the box was filled with, and untouched is `text === offered`. All three
+transitions — to a different date, to none, from none — are now one rule. Proved in the
+browser through a real sync pull, the only thing that changes an item's date while that
+panel stays mounted.
+
 ## A draft belongs to what it was typed for, not to whatever is on screen (2026-09-16)
 
 Two sealed findings, one rule, in two editors.
