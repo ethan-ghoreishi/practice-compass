@@ -1,7 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   clampSchedulingParams,
+  ITEM_STATUS_DESCRIPTIONS,
+  ITEM_STATUS_LABELS,
+  ITEM_STATUS_ORDER,
   normalizeBaseUrl,
+  RATING_ANCHORS,
+  RATING_EFFECT_NOTE,
+  RATING_HINTS,
+  RATING_LABELS,
+  RESULT_BUTTONS,
+  RESULT_DESCRIPTIONS,
+  RESULT_LABELS,
   resolveRecording,
   SCHEDULING_BOUNDS,
   SETAR_CLASS_SESSIONS,
@@ -669,6 +679,59 @@ function SchedulingSection() {
             {p.sm2SlipResetDays === 1 ? 'the next day' : `${p.sm2SlipResetDays} days`} — and never pushes it back.
             Important or hard material is pulled a little sooner. A date you chose yourself stands until it is due.
             You can override any item to a fixed cadence or manual.
+          </div>
+        </div>
+
+        <div id="what-the-choices-mean">
+          <div style={{ fontWeight: 600 }}>What each choice means</div>
+          <div className="dim">
+            <strong>Status</strong> says how the item currently stands and how you are working on it — not how the
+            last ten minutes went. The eight are not rungs of a ladder you must climb: neighbours overlap on purpose,
+            you can move backwards, and “{ITEM_STATUS_LABELS.new}” means new material still being established, not
+            that you have never practised it.
+            <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
+              {ITEM_STATUS_ORDER.map((st) => (
+                <li key={st}>
+                  <strong>{ITEM_STATUS_LABELS[st]}</strong> — {ITEM_STATUS_DESCRIPTIONS[st]}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="dim" style={{ marginTop: 6 }}>
+            <strong>Result</strong>, at the close of a block, is the most concrete thing that block actually showed.
+            The last three are evidence of stability at a named scope; the first three describe change short of such a
+            claim.
+            <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
+              {RESULT_BUTTONS.map((r) => (
+                <li key={r}>
+                  <strong>{RESULT_LABELS[r]}</strong> — {RESULT_DESCRIPTIONS[r]}
+                </li>
+              ))}
+            </ul>
+            “{RESULT_LABELS.same}” is never read as failed recall, and neither fatigue, a blank field nor a missing
+            rating becomes one. “Save without a result” records the minutes and changes no schedule.
+          </div>
+          <div className="dim" style={{ marginTop: 6 }}>
+            <strong>{RATING_LABELS.importance}</strong> ({RATING_HINTS.importance.toLowerCase()})
+            — 1 “{RATING_ANCHORS.importance[1]}”, 3 “{RATING_ANCHORS.importance[3]}”, 5 “
+            {RATING_ANCHORS.importance[5]}”. <strong>{RATING_LABELS.difficulty}</strong> (
+            {RATING_HINTS.difficulty.toLowerCase()}) — 1 “{RATING_ANCHORS.difficulty[1]}”, 3 “
+            {RATING_ANCHORS.difficulty[3]}”, 5 “{RATING_ANCHORS.difficulty[5]}”. Both default to 3.{' '}
+            {RATING_EFFECT_NOTE} They are stored as <code>importance</code> and <code>difficulty</code>, and every
+            number above uses them exactly as it always has.
+          </div>
+        </div>
+
+        <div id="review-ownership">
+          <div style={{ fontWeight: 600 }}>Who manages a review date</div>
+          <div className="dim">
+            A date you typed, snoozed or re-armed is YOURS: the app leaves it alone until it comes due. “Use automatic
+            scheduling” on an item hands that management back — it KEEPS the date exactly as it is, records no
+            practice and calculates no new date. Automatic means the app has authority over the date from then on, not
+            that the date shown was worked out by the engine or that a review happened. If the item and its pending
+            review disagree about the date, the transfer is refused and asks you which one you meant rather than
+            guessing. With no date at all, automatic simply leaves it unscheduled; “Review today” puts it on today&apos;s
+            list — administration, not evidence.
           </div>
         </div>
 
