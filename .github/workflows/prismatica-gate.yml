@@ -38,13 +38,16 @@ jobs:
           else
             echo "no npm lock file at the repository root — nothing to install"
           fi
-      - name: install the pinned browser the repository's own checks need
-        # The gate runs this repository's checks, which include two
-        # real-browser journeys. They fail with a setup message rather than
-        # skipping, so the browser has to be here before the gate runs.
+      - name: install the pinned browsers the repository's own checks need
+        # The gate runs this repository's checks, which drive real browsers.
+        # They fail with a setup message rather than skipping, so every engine
+        # the suite can drive has to be here before the gate runs. Unversioned
+        # on purpose: it resolves the Playwright `npm ci` just installed, so
+        # package-lock.json keeps pinning the browser revisions. Removing an
+        # engine reopens a CI-only failure, not a local one.
         run: >
           if [ -f package-lock.json ] || [ -f npm-shrinkwrap.json ]; then
-            npx --yes playwright install --with-deps chromium
+            npx --yes playwright install --with-deps chromium webkit
           else
             echo "no npm lock file at the repository root — no browser checks to prepare"
           fi

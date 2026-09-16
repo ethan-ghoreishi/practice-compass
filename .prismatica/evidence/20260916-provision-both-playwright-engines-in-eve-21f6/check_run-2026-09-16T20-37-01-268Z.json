@@ -1,0 +1,80 @@
+{
+  "contractId": "20260916-provision-both-playwright-engines-in-eve-21f6",
+  "event": "check_run",
+  "at": "2026-09-16T20:37:01.268Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "not configured at init — reported, never silently skipped"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "4 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "3 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "no docs delta required"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "no mapped flow overlaps this change"
+    }
+  ],
+  "changedFiles": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/deploy.yml",
+    ".github/workflows/prismatica-gate.yml",
+    "tests/ci-browser-setup.test.ts"
+  ],
+  "prismaticaVersion": "0.7.2"
+}
