@@ -4,7 +4,7 @@ title: Provision both Playwright engines in every CI path that runs the suite
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/26
 intent: 20260916-provision-both-playwright-engines-in-eve-21f6
 tier: normal
-stage: build
+stage: prove
 baseline:
   commit: d014293c205958f45e4393ebf6ae56901db83a1c
   branch: main
