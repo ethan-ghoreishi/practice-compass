@@ -347,7 +347,7 @@ export default function CloseBlock() {
             <div className="small">
               Suggest moving to <strong>{ITEM_STATUS_LABELS[statusSuggestion.suggestedStatus]}</strong>.
             </div>
-            <YesNo value={acceptStatus} onChange={setAcceptStatus} yes="Accept" no="Keep" />
+            <YesNo label="Accept the suggested status" value={acceptStatus} onChange={setAcceptStatus} yes="Accept" no="Keep" />
           </div>
         </div>
       )}
@@ -374,7 +374,7 @@ export default function CloseBlock() {
           <>
             <div className="row between">
               <div className="small">Should this come back?</div>
-              <YesNo value={comeBack} onChange={setComeBack} />
+              <YesNo label="Should this come back?" value={comeBack} onChange={setComeBack} />
             </div>
             {comeBack && (
               <>
@@ -410,7 +410,7 @@ export default function CloseBlock() {
       <div className="card card-quiet stack-sm">
         <div className="row between">
           <div className="small">Make this a teacher question?</div>
-          <YesNo value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
+          <YesNo label="Make this a teacher question?" value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
         </div>
         {becomeTeacherQ && (
           <>
@@ -472,16 +472,19 @@ export default function CloseBlock() {
 function YesNo({
   value,
   onChange,
+  label,
   yes = 'Yes',
   no = 'No',
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
+  /** What this yes/no is ABOUT — three of them sit on this one screen. */
+  label: string;
   yes?: string;
   no?: string;
 }) {
   return (
-    <div className="options" role="group">
+    <div className="options" role="group" aria-label={label}>
       <button type="button" className={`option${value ? ' selected' : ''}`} aria-pressed={value} onClick={() => onChange(true)}>
         {yes}
       </button>

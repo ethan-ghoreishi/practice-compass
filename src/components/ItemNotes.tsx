@@ -86,7 +86,13 @@ export default function ItemNotes({
     const next = text.trim() || undefined;
     // Emptying the notebook is deliberate and must persist — `undefined` IS a
     // saved value here, never a reason to keep what was there.
-    if ((item.notes ?? undefined) === next) {
+    //
+    // The store already holds the new text after a FAILED attempt (the write
+    // that failed was to storage, not to memory), so this "nothing changed"
+    // short-circuit would make Try again a silent no-op: the person would see
+    // the failure clear with their words still only in RAM. A retry therefore
+    // always re-issues the write.
+    if (state.phase !== 'failed' && (item.notes ?? undefined) === next) {
       setDraft(null);
       setState({ phase: 'idle' });
       return;
