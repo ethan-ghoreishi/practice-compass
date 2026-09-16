@@ -57,6 +57,28 @@ export const idb = new PracticeCompassDB();
 /** Set true (once) by the storage adapter when there was nothing to restore. */
 export let storageWasEmpty = false;
 
+let pendingWrite: Promise<void> = Promise.resolve();
+
+/**
+ * Resolves when the most recent persisted write has actually landed in
+ * IndexedDB — and REJECTS with the storage error when it did not. The store's
+ * persist middleware writes through `idbStorage.setItem` below on every state
+ * change, so awaiting this immediately after a store action is a real
+ * acknowledgement of that action's durability, never a timeout standing in
+ * for one.
+ *
+ * "Immediately" is load-bearing and is genuinely enough: zustand's persist
+ * middleware wraps `setState` and calls `setItem` SYNCHRONOUSLY inside it, and
+ * `setItem` assigns `pendingWrite` before its own first await — so a caller
+ * that does `action(); storageSettled().then(...)` as two adjacent statements
+ * has already captured ITS OWN write's promise, with no point at which another
+ * store write (a boundary signal during a running clock, say) could interleave
+ * and hand it somebody else's outcome.
+ */
+export function storageSettled(): Promise<void> {
+  return pendingWrite;
+}
+
 const PERSIST_KEY = 'practice-compass';
 
 /**
@@ -82,7 +104,20 @@ export const idbStorage: StateStorage = {
     return null;
   },
   setItem: async (name, value) => {
-    await idb.kv.put({ key: name, value });
+    // Track the write so a caller can wait for DURABILITY rather than guess at
+    // it. Nothing in the app may claim "saved" before this settles, and a
+    // rejected write has to reach the person who typed the text — the whole
+    // point of a local-first notebook is that what you wrote is still there.
+    const write = idb.kv.put({ key: name, value }).then(() => undefined);
+    pendingWrite = write;
+    // Zustand's persist middleware calls this and ignores the result
+    // (`void setItem()`), so a rejection reaching the outer promise would
+    // surface only as an unhandled rejection in the page — noise that hides
+    // real errors. The failure is NOT swallowed: `storageSettled()` above
+    // hands it to the one caller that can act on it. This `catch` also marks
+    // `write` itself handled, so the ordinary writes nobody is waiting on
+    // cannot raise one either.
+    await write.catch(() => undefined);
   },
   removeItem: async (name) => {
     await idb.kv.delete(name);
@@ -125,6 +160,15 @@ export async function replaceAllBlobs(rows: AttachmentBlob[]): Promise<void> {
 
 export async function allBlobs(): Promise<AttachmentBlob[]> {
   return idb.attachments.toArray();
+}
+
+/**
+ * Which attachment blobs this device actually holds — ids only, no bytes read.
+ * Answering "are these files here?" must not load every file into memory to do
+ * it, which is what `allBlobs()` above would cost for the same question.
+ */
+export async function heldBlobIds(): Promise<Set<string>> {
+  return new Set((await idb.attachments.toCollection().primaryKeys()) as string[]);
 }
 
 // --- Pre-sync archive slot ---------------------------------------------------

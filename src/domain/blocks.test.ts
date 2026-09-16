@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyBlockStats, lastNextAction } from './blocks';
+import { applyBlockStats, lastNextAction, latestObservation } from './blocks';
 import { createBlock, createItem } from './factories';
 import { addDays, toISODate } from './util';
 import type { BlockResult } from './types';
@@ -47,7 +47,9 @@ describe('applyBlockStats', () => {
     expect(updated.timesPractised).toBe(3);
     expect(updated.totalMinutes).toBe(35);
     expect(updated.lastResult).toBe('slightly_better');
-    expect(updated.lastObservation).toBe('Felt a bit smoother.');
+    // The item no longer caches an observation: it is DERIVED from the blocks
+    // that actually recorded one, with the day it was written.
+    expect(latestObservation([b])?.text).toBe('Felt a bit smoother.');
     expect(updated.lastPractisedAt).toBe(b.endedAt);
     expect(updated.nextReviewDate).toBe(nextReviewDate);
     expect(updated.saturationWarning).toBe(false);

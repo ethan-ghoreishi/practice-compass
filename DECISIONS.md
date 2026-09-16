@@ -2,6 +2,236 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## A check that lives in one door is a check with five doors missing (2026-09-16)
+
+Two more sealed findings, and the same shape underneath both: a rule that was genuinely
+correct, sitting somewhere only one caller reaches.
+
+**Attachment identity.** "Two attachments may not share an id" lived in
+`decodeBackupFiles` — which returns on its FIRST line when a file carries no `files` key.
+So it ran for a full backup and for nothing else: a state-only import, a sync pull, an
+archive restore and both halves of hydration all installed duplicates unchecked. Not
+cosmetic, because the export emits one file per describing row: the device's own next
+backup then carried two files sharing an id and was refused by its own importer, here and
+on every device a sync published it to. The check moved to `validateDB`, the one function
+every inbound door already runs, and `decodeBackupFiles` keeps none of its own. Bounded to
+attachment ids on purpose — an id is what the bytes are KEYED by — and not widened into a
+duplicate-id sweep over every collection, which this change's own non-goals rule out.
+
+**The review-date draft.** `seeded` held "the item's date, or today when it had none", so
+"no date" and "a date that is today" were the same value. That forced an exemption —
+skip the whole comparison when the item has no date — and the exemption is what a live
+update CLEARING the date fell into: the box went on showing, and Save date went on
+writing, a schedule the item no longer had. Fixed by separating the two facts rather than
+special-casing the symptom: `seeded` is the item's own date (empty when absent), `offered`
+is what the box was filled with, and untouched is `text === offered`. All three
+transitions — to a different date, to none, from none — are now one rule. Proved in the
+browser through a real sync pull, the only thing that changes an item's date while that
+panel stays mounted.
+
+## A draft belongs to what it was typed for, not to whatever is on screen (2026-09-16)
+
+Two sealed findings, one rule, in two editors.
+
+**Working notes.** `ItemNotes` cleared its draft and showed "Saved." whenever the
+IndexedDB write it had issued settled — but the textarea stays live while that write is
+acknowledged, so anything typed in that window is NEWER than what was written. Pressing
+Done, typing one more word, and letting the write land threw that word away and put a
+success message over the older text. A settling write now speaks only for the text it
+actually CARRIED: same text ⇒ clear the draft and say saved; different ⇒ re-issue the
+write for what is on screen, which is what pressing Done asked for and is what keeps the
+words when the screen is LEFT mid-write. Switching ITEM is the opposite case and stays as
+it was: `saveSeq` is bumped, the write says nothing, and the draft is abandoned — those
+words were typed for a notebook that is no longer on screen. Try again does the same as
+Done on the failure path.
+Only the latest save may act (`saveSeq`, bumped by a retry and by switching item), and the
+draft is read through a ref: `storageSettled()` resolves in a microtask that can land
+between a keystroke and React's next render, so neither the issuing closure nor an
+effect-mirrored ref is sound.
+
+**The review date.** `ScheduleAgain` kept `open`/`date` in plain state, and `/items/A` →
+`/items/B` is a route PARAMETER change — same component instance, new props — so an open
+draft survived it and "Save date" wrote A's date through B's callback. The draft now
+carries the item it was opened for and that item's own pending date, and
+`reviewDateDraftFor` (pure, tested) reconciles it on every render: another item drops it;
+an untouched seed follows a date that moved beneath it, rather than silently reverting a
+change the owner never saw; text the owner typed survives, because that is intent, not a
+stale capture. Deliberately NOT an effect that resets state — a derivation cannot leave a
+paint in which the box shows one item's date while Save points at another.
+
+Both are the same sentence: an editor's draft is bound to what it was typed for, and
+neither time nor a route change may re-point it.
+
+## The export is derived from the metadata, so the app cannot write a backup it refuses (2026-09-16)
+
+Amends "A strict “metadata without bytes” refusal needs the same rule at the other door" below, which closed one mouth of that trap and left the other open. A
+sealed review found the mirror case: with a blob stored locally, a valid STATE-ONLY import
+whose `data` describes no attachments is accepted and — correctly, by that door's own
+contract — preserves the bytes. The database now names nothing, but
+`buildFullBackupWithRev` derived `files` from the blobs actually STORED, so the next full
+export carried orphan bytes and `decodeBackupFiles` refused its own device's backup
+("belongs to nothing this file describes"). Not exotic either: `deleteItem`,
+`deleteLesson` and `resetDemo` remove metadata synchronously while their
+`void deleteBlob(...)` cleanup can fail on its own.
+
+`files` is now built from `db.attachments` ∩ the blobs held, carrying the METADATA's
+`ownerId` — the field the importer validates against and writes back onto the blob row, so
+the round trip is idempotent rather than a second opinion about ownership. Unreferenced
+bytes stay on the device UNTOUCHED; deleting them to make the two agree is exactly what the
+state-only contract forbids, and they are simply not part of the database the backup is OF.
+
+Fixing it at the export rather than at the state-only door was the point: the door must
+preserve those bytes, so the inconsistency is legitimate and it is the EXPORT that has to
+be honest about which of them the backup is for.
+
+## One canonical home per kind of practice information — schema v13 (2026-09-16)
+
+Four things the musician writes, four homes: **Working notes** (`item.notes`) belong to the
+item and last as long as it does; an **observation** and a **next action** belong to one
+recorded block; a **question** belongs to a class, in the lesson agenda. Nothing copies one
+into another automatically. The problem was never that any of these were missing — it was
+that nineteen other persisted fields competed with them, so the same fact could be written
+in two places and disagree, and the notebook that should have been in front of you while
+practising was not reachable from the practice screen at all.
+
+**The waiver, stated exactly.** `currentProblem`, `bestStrategy`, `tags`, the item's cached
+`lastObservation`, the block's `bodyNote`, and fourteen Persian/Guitar WORKING-DETAIL
+fields (`shahed`, `ist`, `foroud`, `phraseLabel`, `importantNote`, `ornamentIssue`,
+`mezrabIssue`, `rightHandIssue`, `leftHandIssue`, `toneIssue`, `fingering`, `tempo`,
+`stringNoiseIssue`, `bodyTensionNote`) are REMOVED by the v12 → v13 migration, not merged
+into `notes`. The owner established that their current content is dummy test data and
+waived lossless preservation for these enumerated fields only. Merging dummy text into the
+one real notebook is the failure mode, not the fix — and this app's own rule is that
+nothing silently loses meaningful practice, which is why the exception had to be named,
+bounded and signed rather than assumed. The Persian/Guitar IDENTITY fields (`dastgahAvaz`,
+`gusheh`, `form`, `composer`, `lessonNumber`, `barRange`) are kept: they say what the piece
+IS and they group the repertoire.
+
+**What makes it safe to re-run.** `retirePracticeText` is DELETION ONLY — it never writes a
+value — so a second pass over its own output is a no-op and it is structurally incapable of
+resetting canonical text. It reads no clock, so two devices migrate the same database
+identically on different days. It runs on EVERY inbound database rather than only one
+declaring `fromVersion < 13`, for the reason `migrateToV12` already records: a database
+claiming the current schema can still carry a stray retired key from a partial conversion
+or a hand-edited file.
+
+**`lastObservation` was deleted rather than replaced** because the fact is derivable:
+`latestObservation(blocks)` reads the most recent block observation and returns its DATE
+with it, so the teacher sheet and the question list say *when* the observation was made
+instead of presenting a stale line as current. A cached copy of a derivable fact is two
+facts that can disagree.
+
+**The surviving text is checked, never coerced.** `validatePracticeText` (the four homes'
+own string fields — the block's legacy `constraint` included — and nothing else) joins
+`validateDB`, so every inbound door refuses the same
+thing. `null` reads as ABSENT — it is what a serialiser writes for "no value" and every
+reader already treats it as missing — and empty is legitimate, because emptying a notebook
+is a deliberate act. A present value of the wrong type is refused with the record named:
+`String({})` is how a note becomes the literal text "[object Object]". The unfinished
+block's scratch observation lives outside `PracticeDB`, on the store's ephemeral `active`,
+so it gets the same rule from `validateUnfinishedText` at the same hydration boundary.
+
+**Rollback is by restoring the backup you kept, never by a down-migration**, and the check
+proves it against the app that actually wrote the file: a disposable `git worktree` at the
+baseline commit, served by its own Vite server, refuses the v13 export by version with its
+stored bytes unchanged, and then restores the retained v12 export with its attachment
+intact and readable. A block recorded after the upgrade exists only in the v13 export —
+that limitation is stated rather than papered over.
+
+## A strict "metadata without bytes" refusal needs the same rule at the other door (2026-09-16)
+
+`decodeBackupFiles` now refuses a full backup that describes an attachment it does not
+carry (it used to `continue` past unreadable entries and install metadata for bytes that
+never arrived, reporting "Imported (3 files)"). Tightening that alone creates a ONE-WAY
+TRAP, which is the part worth recording: an export can only carry bytes it actually holds,
+so a device holding metadata for a blob it does not have exports a file it will then refuse
+on import — and publishes a sync snapshot every other device refuses too. Permanent, with
+no owner-visible way out.
+
+The state-only import (`files` absent) was the one door that could create it. So the same
+invariant is enforced there: **after any install, every attachment the database describes
+has bytes on this device.** A state-only file naming an attachment this device does not
+hold is refused, naming the file, with the local bytes and the local database untouched —
+at the one moment the owner can still do something about it. `heldBlobIds()` answers that
+question from the key index rather than loading every blob to ask it.
+
+The alternative — dropping the metadata for absent bytes — was rejected: that is silent
+loss of the owner's own record, which is exactly what the refusal exists to prevent.
+
+## Handing a review date back to the engine is administration, not evidence (2026-09-16)
+
+`transferToAutomaticReview` moves an item to `reviewMode: 'auto'` with
+`nextReviewSource: 'auto'` and KEEPS the pending date byte-for-byte. Together those two
+fields mean the engine now has AUTHORITY over that date — not that the date was calculated
+and not that a review happened. `srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`,
+every statistic, every status and every completed row are untouched, so the next eligible
+close resumes from the rung the item was already on. The button's explanation must never
+call the retained date a new engine calculation; that sentence is the whole point.
+
+It REFUSES rather than guesses on an ambiguous schedule — open rows disagreeing with the
+item or with each other, or rows pending with no item date — because that is a decision the
+owner makes with "Change review date". `updateItem` refuses such a save WHOLE rather than
+applying the other fields and dropping the transfer. An ordinary save never releases a
+protected date: only this explicit control transfers ownership, and only an explicit date
+change, a snooze or "Schedule again" re-establishes the owner's.
+
+Building the rendered control surfaced a real defect: "Review today" wrote the day the
+panel had been RENDERED with (`useDecisionNow` polls every 30s), so a device left open
+across local midnight saved yesterday. It now resolves the day at the moment of the tap —
+the same action-time guard `CloseBlock`'s Save already uses.
+
+## `text-align: start` is not portable, and Chromium cannot show you that (2026-09-16)
+
+The owner had reported a Safari-only question-alignment symptom that nine rounds of
+Chromium checking never reproduced, and the source left several plausible causes. Driving
+the same page in WebKit reproduced it immediately and it was none of them: `ClassQuestions`'
+`<li dir="auto">` inherits `text-align` from an LTR ancestor, and **WebKit inherits the
+RESOLVED PHYSICAL value (`left`) where Chromium inherits the LOGICAL keyword (`start`)** and
+re-resolves it against the `<li>`'s own direction. Identical DOM, identical CSS, two
+different pictures: a Farsi question rendered hard against the English edge while its
+ordinal — a direction-aware flex child, correct on its own terms — sat on the right.
+
+The fix is one declaration: a block whose own direction is resolved by its content must
+RE-DECLARE `textAlign: 'start'` on itself. An inherited `start` is not the same thing as an
+own `start`. This generalises past `ClassQuestions` and past this lane.
+
+The durable lesson is the other half: **a direction fix verified in one engine is verified
+in one engine.** `tests/practice-information-layout.browser.test.ts` now drives the changed
+surfaces in Chromium AND WebKit, at 390×844 and desktop, asserting measured bounding
+positions. A missing WebKit binary fails with the install command; it never skips. Two
+WebKit-only environment facts encountered on the way, neither an app bug: it cannot store a
+`Blob` in IndexedDB under the automation driver (so that journey seeds state-only), and it
+reports `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was
+aborted.
+
+## Two deliberate limits recorded rather than quietly worked around (2026-09-16)
+
+**The iPhone keyboard/shell symptom stays an OWNER diagnostic, with zero code.** The
+reported displacement is a device-and-shell interaction the browser checks above cannot
+reproduce, and `useViewportGuard.ts`, the shell height, `visualViewport` scrolling and nav
+positioning are all deliberately untouched here. Guessing a timeout to make a symptom go
+away is exactly the change this repo's own rules forbid, and no timeout increase is
+authorised. The Farsi half of that report WAS reproduced and fixed (the WebKit entry
+above); the keyboard half needs the specified capture first, on the deployed revision:
+
+- device / iOS / app version, and standalone PWA versus Safari;
+- repeat focus, keyboard dismissed with the field still focused, blur, field-to-field
+  focus, route exit and orientation change — on item notes, Close, and lesson questions;
+- at each transition (before / during / after), timestamped: `innerHeight`,
+  `visualViewport.height` / `offsetTop` / `pageTop` / `scale`, `window.scrollY`,
+  `document`/`body`/`main` `scrollTop`, `document.activeElement`'s tag, and the rectangles
+  of the app shell, `main`, the tab bar and the focused field.
+
+That set is what distinguishes layout scrolling from visual-viewport displacement from
+residual internal scrolling from keyboard timing from focus scroll — five different fixes.
+Prescribing one before the capture would be guessing.
+
+**A DST assertion that only runs in some timezones is not an assertion.** The report's
+local-day boundary check originally ran `if (the machine's offset changes this year)`,
+which never executes on a UTC CI runner and would have reported as passing having proved
+nothing. It now forces `TZ=Europe/London` around that one assertion (Node re-reads `TZ` per
+call) and restores it immediately, so the case genuinely runs everywhere.
+
 ## Tenth rejection: a resolved direction that never reaches the alignment, and lines that share one (2026-09-13)
 
 Two counterexamples, one family — and both were invisible to the guard, which is the third

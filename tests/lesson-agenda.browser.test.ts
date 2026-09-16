@@ -9,6 +9,7 @@ import {
   writePersistedState,
 } from './practiceBrowser';
 import v11 from './fixtures/practice-decisions-v11.json?raw';
+import { SCHEMA_VERSION } from '../src/domain/types';
 
 // ---------------------------------------------------------------------------
 // ac-18 — the lesson-agenda journey, in the real app.
@@ -171,7 +172,10 @@ describe('the lesson agenda, end to end', () => {
       // `validateDB`, and so always runs the migration chain, regardless of
       // the version a FILE claims).
       const persisted = await readPersistedState(app);
-      expect(persisted.version).toBe(12);
+      // Whatever this build persists TODAY — the point of the step below is
+      // the already-current path, so it must track SCHEMA_VERSION rather than
+      // pin the number this was first written at.
+      expect(persisted.version).toBe(SCHEMA_VERSION);
       const HYDRATION_ITEM = 'i-q-empty'; // has a preparation already, no question yet
       const stateBefore = persisted.state as { db: { items: { id: string; teacherQuestion?: string }[] } };
       const withLeftover = {
@@ -183,7 +187,7 @@ describe('the lesson agenda, end to end', () => {
           ),
         },
       };
-      await writePersistedState(app, withLeftover, 12);
+      await writePersistedState(app, withLeftover, SCHEMA_VERSION);
       await reload(app);
 
       // The leftover was completed LOSSLESSLY, not silently dropped: a real

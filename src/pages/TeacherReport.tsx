@@ -12,10 +12,14 @@ import {
 import { useStore } from '../store/useStore';
 import { Field } from '../components/ui';
 import ClassQuestions from '../components/ClassQuestions';
+import { useDecisionNow } from '../components/useDecisionNow';
 
 export default function TeacherReport() {
   const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
+  // The report's own PERIOD is the owner's choice and never moves on its own;
+  // the "current" sections below (suggested focus, open questions) are today's,
+  // so the page needs a live day rather than one frozen when it was opened.
+  const now = useDecisionNow();
 
   const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
   const [from, setFrom] = useState(toISODate(addDays(now, -14)));
@@ -50,10 +54,13 @@ export default function TeacherReport() {
 
   const questions = useMemo(() => {
     if (!instrumentId) return [];
+    // `db.blocks` is what supplies each question's CURRENT context — the
+    // item's latest recorded observation, with the day it was written. It is
+    // derived, never a cached field, so it cannot drift from the history.
     return chosen
-      ? openQuestionsForLessonId(db.lessonAgenda, db.items, chosen.id)
-      : openQuestionsForInstrument(db.lessonAgenda, db.items, instrumentId);
-  }, [db.lessonAgenda, db.items, instrumentId, chosen]);
+      ? openQuestionsForLessonId(db.lessonAgenda, db.items, chosen.id, db.blocks)
+      : openQuestionsForInstrument(db.lessonAgenda, db.items, instrumentId, db.blocks);
+  }, [db.lessonAgenda, db.items, db.blocks, instrumentId, chosen]);
   const instrumentName = db.instruments.find((i) => i.id === instrumentId)?.name ?? 'Instrument';
 
   async function copy() {

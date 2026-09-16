@@ -83,14 +83,11 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       status: 'repairing',
       importance: 5,
       difficulty: 4,
-      currentProblem: 'فرود هنگام اتصال به عبارتِ پیشین روشن نیست.',
       primaryFocus: 'phrase_direction',
+      notes: 'فرود هنگام اتصال به عبارتِ پیشین روشن نیست.\nزینت ممکن است فرود را بپوشاند.',
       persian: {
         dastgahAvaz: 'افشاری',
         gusheh: 'عراق',
-        phraseLabel: 'عبارت ۴',
-        foroud: 'فرودِ نامطمئن',
-        ornamentIssue: 'زینت ممکن است فرود را بپوشاند',
       },
     },
     now,
@@ -106,9 +103,8 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       status: 'fragile',
       importance: 4,
       difficulty: 4,
-      currentProblem: 'حمله ناهموار است — برخی مضراب‌ها می‌افتند.',
       primaryFocus: 'right_hand',
-      persian: { mezrabIssue: 'ریزِ ناهموار روی سیمِ باز' },
+      notes: 'حمله ناهموار است — برخی مضراب‌ها می‌افتند.\nریزِ ناهموار روی سیمِ باز.',
     },
     now,
   );
@@ -121,14 +117,12 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       status: 'repairing',
       importance: 4,
       difficulty: 3,
-      currentProblem: 'Left-hand shift causes shoulder tension.',
       primaryFocus: 'left_hand',
+      notes:
+        'Left-hand shift causes shoulder tension.\nShift arrives late; the note drops out just after it.\nRight shoulder lifts on the shift.',
       guitar: {
         lessonNumber: '6',
         barRange: '4–5',
-        leftHandIssue: 'Shift arrives late',
-        bodyTensionNote: 'Right shoulder lifts on the shift',
-        toneIssue: 'Note drops out just after the shift',
       },
     },
     now,
@@ -142,9 +136,8 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
       status: 'usable',
       importance: 3,
       difficulty: 3,
-      currentProblem: 'Rushes through the middle section.',
       primaryFocus: 'tempo',
-      guitar: { tempo: '~80 bpm', fingering: 'Settled' },
+      notes: 'Rushes through the middle section. Settled fingering; aim around 80 bpm.',
     },
     now,
   );
@@ -235,7 +228,6 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     item.totalMinutes = own.reduce((s, x) => s + x.durationMinutes, 0);
     item.lastPractisedAt = last.startedAt;
     item.lastResult = last.result;
-    item.lastObservation = [...own].reverse().find((x) => x.observation)?.observation;
     item.nextReviewDate = reviewDates[item.id];
     item.saturationWarning = isSaturated(own, now);
   }

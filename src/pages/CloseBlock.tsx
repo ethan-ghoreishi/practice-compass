@@ -9,6 +9,7 @@ import {
   todayISODate,
   type ReviewAnswer,
   type ReviewPlan,
+  RESULT_DESCRIPTIONS,
   RESULT_LABELS,
   REVIEW_TYPE_LABELS,
   suggestStatusAfterBlock,
@@ -71,8 +72,6 @@ export default function CloseBlock() {
   const [duration, setDuration] = useState(proposed.minutes);
   const [observation, setObservation] = useState(active?.note ?? '');
   const [nextAction, setNextAction] = useState('');
-  const [bodyNote, setBodyNote] = useState('');
-  const [showBodyNote, setShowBodyNote] = useState(false);
   const [comeBack, setComeBack] = useState(true);
   // A CORRECTION to the engine's plan, never a second copy of it. Held as an
   // override so there is still exactly ONE review value on this screen (below).
@@ -222,7 +221,6 @@ export default function CloseBlock() {
       durationMinutes: duration,
       observation: observation.trim() || undefined,
       nextAction: nextAction.trim() || undefined,
-      bodyNote: bodyNote.trim() || undefined,
       newStatus,
       answer,
       // ONLY a date the owner actually typed — never the date the screen is
@@ -267,7 +265,10 @@ export default function CloseBlock() {
         </div>
       </header>
 
-      <Field label="How did it go?">
+      {/* The most concrete thing you actually demonstrated. Each option says
+          what it CLAIMS, so "same" is never mistaken for failed recall and a
+          stability claim always names its scope. */}
+      <Field label="What did this block actually show?">
         <div className="options">
           {RESULT_BUTTON_LIST.map((o) => (
             <button
@@ -275,13 +276,27 @@ export default function CloseBlock() {
               type="button"
               className={`option${result === o.value ? ' selected' : ''}`}
               aria-pressed={result === o.value}
+              // The NAME stays the label; the sentence is a DESCRIPTION, so it
+              // is announced after it rather than becoming part of it.
+              aria-describedby={`pc-result-desc-${o.value}`}
+              title={RESULT_DESCRIPTIONS[o.value]}
               onClick={() => pickResult(o.value)}
             >
               {o.label}
             </button>
           ))}
         </div>
+        {RESULT_BUTTON_LIST.map((o) => (
+          <span key={o.value} id={`pc-result-desc-${o.value}`} className="sr-only">
+            {RESULT_DESCRIPTIONS[o.value]}
+          </span>
+        ))}
       </Field>
+      {result && (
+        <p className="tiny faint" style={{ marginTop: -8 }}>
+          <span dir="ltr">{RESULT_DESCRIPTIONS[result]}</span>
+        </p>
+      )}
 
       {recentSameStreak && (
         <div className="card card-quiet small" style={{ color: 'var(--tone-warn)' }}>
@@ -326,33 +341,13 @@ export default function CloseBlock() {
         />
       </Field>
 
-      {showBodyNote ? (
-        <Field label="Body / tension note">
-          <input
-            className="input"
-            placeholder="e.g. right shoulder crept up in the riz"
-            value={bodyNote}
-            onChange={(e) => setBodyNote(e.target.value)}
-            autoFocus
-          />
-        </Field>
-      ) : (
-        <button
-          className="link small"
-          style={{ background: 'none', border: 'none', textAlign: 'left', width: 'fit-content' }}
-          onClick={() => setShowBodyNote(true)}
-        >
-          + Body / tension note
-        </button>
-      )}
-
       {statusSuggestion.suggestedStatus && (
         <div className="card card-quiet">
           <div className="row between">
             <div className="small">
               Suggest moving to <strong>{ITEM_STATUS_LABELS[statusSuggestion.suggestedStatus]}</strong>.
             </div>
-            <YesNo value={acceptStatus} onChange={setAcceptStatus} yes="Accept" no="Keep" />
+            <YesNo label="Accept the suggested status" value={acceptStatus} onChange={setAcceptStatus} yes="Accept" no="Keep" />
           </div>
         </div>
       )}
@@ -379,7 +374,7 @@ export default function CloseBlock() {
           <>
             <div className="row between">
               <div className="small">Should this come back?</div>
-              <YesNo value={comeBack} onChange={setComeBack} />
+              <YesNo label="Should this come back?" value={comeBack} onChange={setComeBack} />
             </div>
             {comeBack && (
               <>
@@ -415,7 +410,7 @@ export default function CloseBlock() {
       <div className="card card-quiet stack-sm">
         <div className="row between">
           <div className="small">Make this a teacher question?</div>
-          <YesNo value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
+          <YesNo label="Make this a teacher question?" value={becomeTeacherQ} onChange={setBecomeTeacherQ} />
         </div>
         {becomeTeacherQ && (
           <>
@@ -477,16 +472,19 @@ export default function CloseBlock() {
 function YesNo({
   value,
   onChange,
+  label,
   yes = 'Yes',
   no = 'No',
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
+  /** What this yes/no is ABOUT — three of them sit on this one screen. */
+  label: string;
   yes?: string;
   no?: string;
 }) {
   return (
-    <div className="options" role="group">
+    <div className="options" role="group" aria-label={label}>
       <button type="button" className={`option${value ? ' selected' : ''}`} aria-pressed={value} onClick={() => onChange(true)}>
         {yes}
       </button>

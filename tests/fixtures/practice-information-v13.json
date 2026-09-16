@@ -1,0 +1,434 @@
+{
+  "app": "practice-compass",
+  "schemaVersion": 13,
+  "exportedAt": "2026-12-01T09:00:00.000Z",
+  "deviceName": "fixture",
+  "data": {
+    "schemaVersion": 13,
+    "instruments": [
+      {
+        "id": "setar",
+        "name": "Setar",
+        "family": "Persian",
+        "active": true,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "guitar",
+        "name": "Classical Guitar",
+        "family": "Western",
+        "active": true,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      }
+    ],
+    "materials": [
+      {
+        "id": "m-radif",
+        "instrumentId": "setar",
+        "title": "ردیف میرزا عبدالله",
+        "sourceType": "radif",
+        "status": "active",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      }
+    ],
+    "items": [
+      {
+        "id": "i-farsi",
+        "instrumentId": "setar",
+        "title": "آوازِ افشاری — عبارتِ ۴",
+        "itemType": "phrase",
+        "status": "repairing",
+        "importance": 5,
+        "difficulty": 4,
+        "timesPractised": 4,
+        "totalMinutes": 48,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "primaryFocus": "phrase_direction",
+        "notes": "یادداشتِ کاری: فرود را آهسته بگیر.",
+        "persian": {
+          "dastgahAvaz": "افشاری",
+          "gusheh": "عراق"
+        },
+        "nextReviewDate": "2027-02-10",
+        "nextReviewSource": "user",
+        "reviewMode": "manual",
+        "srReps": 3,
+        "srEase": 2.6,
+        "srIntervalDays": 12,
+        "srLastProgressDay": "2026-11-20",
+        "lastResult": "stable_alone",
+        "lastPractisedAt": "2026-11-20T10:00:00.000Z"
+      },
+      {
+        "id": "i-english",
+        "instrumentId": "guitar",
+        "title": "Lesson 6 bars 4–5 shift",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 2,
+        "totalMinutes": 20,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "notes": "",
+        "guitar": {
+          "lessonNumber": "6",
+          "barRange": "4–5"
+        },
+        "reviewMode": "interval",
+        "reviewIntervalDays": 7,
+        "nextReviewDate": "2027-01-20",
+        "lastResult": "same"
+      },
+      {
+        "id": "i-bare",
+        "instrumentId": "guitar",
+        "title": "Bare item",
+        "itemType": "phrase",
+        "status": "new",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "i-partial",
+        "instrumentId": "setar",
+        "title": "Partially retired",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "persian": {
+          "dastgahAvaz": "ماهور"
+        }
+      },
+      {
+        "id": "i-auto-due",
+        "instrumentId": "setar",
+        "title": "Auto and due",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 3,
+        "totalMinutes": 30,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "nextReviewDate": "2027-01-15",
+        "nextReviewSource": "auto",
+        "reviewMode": "auto",
+        "srReps": 2,
+        "srEase": 2.5,
+        "srIntervalDays": 6,
+        "lastResult": "stable_alone",
+        "lastPractisedAt": "2027-01-09T10:00:00.000Z"
+      },
+      {
+        "id": "i-conflict",
+        "instrumentId": "setar",
+        "title": "Disagreeing schedule",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "nextReviewDate": "2027-03-01",
+        "nextReviewSource": "user",
+        "reviewMode": "manual"
+      },
+      {
+        "id": "i-nodate",
+        "instrumentId": "setar",
+        "title": "Nothing scheduled",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "reviewMode": "auto"
+      },
+      {
+        "id": "i-rowless",
+        "instrumentId": "setar",
+        "title": "Date without a reminder",
+        "itemType": "phrase",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "nextReviewDate": "2027-02-20",
+        "nextReviewSource": "user",
+        "reviewMode": "manual"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "b-farsi-1",
+        "practiceItemId": "i-farsi",
+        "instrumentId": "setar",
+        "startedAt": "2026-11-10T10:00:00.000Z",
+        "endedAt": "2026-11-10T10:00:00.000Z",
+        "durationMinutes": 12,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "worse",
+        "createdReview": false,
+        "createdAt": "2026-11-10T10:00:00.000Z",
+        "updatedAt": "2026-11-10T10:00:00.000Z",
+        "observation": "فرود افتاد",
+        "nextAction": "آهسته‌تر",
+        "constraint": "بدون زینت"
+      },
+      {
+        "id": "b-farsi-2",
+        "practiceItemId": "i-farsi",
+        "instrumentId": "setar",
+        "startedAt": "2026-11-20T10:00:00.000Z",
+        "endedAt": "2026-11-20T10:00:00.000Z",
+        "durationMinutes": 12,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "same",
+        "createdReview": false,
+        "createdAt": "2026-11-20T10:00:00.000Z",
+        "updatedAt": "2026-11-20T10:00:00.000Z",
+        "observation": "فرود بهتر شد",
+        "nextAction": ""
+      },
+      {
+        "id": "b-farsi-3",
+        "practiceItemId": "i-farsi",
+        "instrumentId": "setar",
+        "startedAt": "2026-12-20T10:00:00.000Z",
+        "endedAt": "2026-12-20T10:00:00.000Z",
+        "durationMinutes": 24,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "stable_alone",
+        "createdReview": false,
+        "createdAt": "2026-12-20T10:00:00.000Z",
+        "updatedAt": "2026-12-20T10:00:00.000Z",
+        "observation": "بهتر",
+        "nextAction": "با زینت"
+      },
+      {
+        "id": "b-english-1",
+        "practiceItemId": "i-english",
+        "instrumentId": "guitar",
+        "startedAt": "2026-11-12T10:00:00.000Z",
+        "endedAt": "2026-11-12T10:00:00.000Z",
+        "durationMinutes": 10,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "slightly_better",
+        "createdReview": false,
+        "createdAt": "2026-11-12T10:00:00.000Z",
+        "updatedAt": "2026-11-12T10:00:00.000Z",
+        "observation": "Shoulder quieter today",
+        "nextAction": "Keep the stop"
+      },
+      {
+        "id": "b-english-2",
+        "practiceItemId": "i-english",
+        "instrumentId": "guitar",
+        "startedAt": "2026-11-15T10:00:00.000Z",
+        "endedAt": "2026-11-15T10:00:00.000Z",
+        "durationMinutes": 10,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "not_logged",
+        "createdReview": false,
+        "createdAt": "2026-11-15T10:00:00.000Z",
+        "updatedAt": "2026-11-15T10:00:00.000Z"
+      },
+      {
+        "id": "b-auto-1",
+        "practiceItemId": "i-auto-due",
+        "instrumentId": "setar",
+        "startedAt": "2027-01-09T10:00:00.000Z",
+        "endedAt": "2027-01-09T10:00:00.000Z",
+        "durationMinutes": 10,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "stable_alone",
+        "createdReview": false,
+        "createdAt": "2027-01-09T10:00:00.000Z",
+        "updatedAt": "2027-01-09T10:00:00.000Z",
+        "observation": "Held together alone",
+        "nextAction": "Join it up"
+      }
+    ],
+    "reviews": [
+      {
+        "id": "r-farsi",
+        "practiceItemId": "i-farsi",
+        "dueDate": "2027-02-10",
+        "reviewType": "retention",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "r-english",
+        "practiceItemId": "i-english",
+        "dueDate": "2027-01-20",
+        "reviewType": "retention",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "r-auto",
+        "practiceItemId": "i-auto-due",
+        "dueDate": "2027-01-15",
+        "reviewType": "retention",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "r-conflict-a",
+        "practiceItemId": "i-conflict",
+        "dueDate": "2027-03-01",
+        "reviewType": "retention",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "r-conflict-b",
+        "practiceItemId": "i-conflict",
+        "dueDate": "2027-03-08",
+        "reviewType": "retention",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "r-done",
+        "practiceItemId": "i-farsi",
+        "dueDate": "2026-10-01",
+        "reviewType": "retention",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z",
+        "completedAt": "2026-10-01T11:00:00.000Z",
+        "result": "stable_alone"
+      }
+    ],
+    "pathways": [],
+    "pathwayStages": [],
+    "pathwayRoutines": [],
+    "attachments": [
+      {
+        "id": "att-1",
+        "ownerType": "item",
+        "ownerId": "i-farsi",
+        "name": "score.txt",
+        "mime": "text/plain",
+        "size": 35,
+        "kind": "other",
+        "createdAt": "2026-12-01T09:00:00.000Z"
+      }
+    ],
+    "lessons": [
+      {
+        "id": "L-setar-next",
+        "instrumentId": "setar",
+        "date": "2027-02-05",
+        "number": 42,
+        "itemIds": [
+          "i-farsi"
+        ],
+        "recordings": [],
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "L-setar-past",
+        "instrumentId": "setar",
+        "date": "2026-11-06",
+        "number": 41,
+        "itemIds": [],
+        "recordings": [],
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "L-guitar",
+        "instrumentId": "guitar",
+        "date": "2027-02-12",
+        "itemIds": [],
+        "recordings": [],
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      }
+    ],
+    "lessonAgenda": [
+      {
+        "id": "prep-farsi",
+        "kind": "preparation",
+        "instrumentId": "setar",
+        "itemId": "i-farsi",
+        "lessonId": "L-setar-next",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "q-open",
+        "kind": "question",
+        "instrumentId": "setar",
+        "itemId": "i-farsi",
+        "lessonId": "L-setar-next",
+        "text": "آیا فرودم درست است؟",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "q-asked",
+        "kind": "question",
+        "instrumentId": "setar",
+        "itemId": "i-farsi",
+        "lessonId": "L-setar-past",
+        "text": "Should the ornament come first?",
+        "askedAt": "2026-11-06T12:00:00.000Z",
+        "answer": "Ornament after the rest.",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      },
+      {
+        "id": "q-english",
+        "kind": "question",
+        "instrumentId": "guitar",
+        "itemId": "i-english",
+        "text": "How slow is slow enough?",
+        "createdAt": "2026-12-01T09:00:00.000Z",
+        "updatedAt": "2026-12-01T09:00:00.000Z"
+      }
+    ]
+  },
+  "files": [
+    {
+      "id": "att-1",
+      "ownerId": "i-farsi",
+      "mime": "text/plain",
+      "name": "score.txt",
+      "data": "cHJhY3RpY2UtY29tcGFzcyBmaXh0dXJlIGF0dGFjaG1lbnQ="
+    }
+  ]
+}

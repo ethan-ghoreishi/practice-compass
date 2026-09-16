@@ -88,11 +88,8 @@ export interface CreateItemInput {
   status?: ItemStatus;
   importance?: Rating;
   difficulty?: Rating;
-  currentProblem?: string;
   primaryFocus?: FocusArea;
-  bestStrategy?: string;
   notes?: string;
-  tags?: string[];
   nextReviewDate?: ISODate;
   reviewMode?: ReviewMode;
   reviewIntervalDays?: number;
@@ -115,11 +112,8 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     status: input.status ?? 'new',
     importance: input.importance ?? 3,
     difficulty: input.difficulty ?? 3,
-    currentProblem: input.currentProblem?.trim() || undefined,
     primaryFocus: input.primaryFocus,
-    bestStrategy: input.bestStrategy?.trim() || undefined,
     notes: input.notes?.trim() || undefined,
-    tags: input.tags ?? [],
     nextReviewDate: input.nextReviewDate,
     reviewMode: input.reviewMode,
     reviewIntervalDays: input.reviewIntervalDays,
@@ -127,7 +121,6 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     timesPractised: 0,
     totalMinutes: 0,
     lastResult: undefined,
-    lastObservation: undefined,
     saturationWarning: false,
     persian: input.persian,
     guitar: input.guitar,
@@ -149,7 +142,6 @@ export interface CreateBlockInput {
   result?: BlockResult;
   observation?: string;
   nextAction?: string;
-  bodyNote?: string;
   createdReview?: boolean;
 }
 
@@ -169,7 +161,6 @@ export function createBlock(input: CreateBlockInput, now: Date = new Date()): Pr
     result: input.result ?? 'not_logged',
     observation: input.observation?.trim() || undefined,
     nextAction: input.nextAction?.trim() || undefined,
-    bodyNote: input.bodyNote?.trim() || undefined,
     createdReview: input.createdReview ?? false,
     createdAt: ts,
     updatedAt: ts,
@@ -235,8 +226,12 @@ export function itemFromCatalogEntry(
       catalogKey: entry.key,
       itemType: STRAND_TO_ITEM_TYPE[entry.strand],
       primaryFocus: STRAND_TO_FOCUS[entry.strand],
-      currentProblem: entry.notes,
-      notes: entry.about,
+      // BOTH kinds of catalogue guidance land in the ONE notebook: `about`
+      // ("what it is / what to notice") and `notes` (practice guidance) used
+      // to go to two different fields, and moving off `currentProblem` without
+      // this would silently drop half of what a fresh catalogue item arrives
+      // knowing.
+      notes: [entry.about?.trim(), entry.notes?.trim()].filter(Boolean).join('\n\n') || undefined,
       persian: entry.persian,
       guitar: entry.guitar,
       status: 'new',

@@ -5,6 +5,7 @@ import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { formatClock } from '../components/format';
 import ItemMaterial from '../components/ItemMaterial';
+import ItemNotes from '../components/ItemNotes';
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
 
@@ -130,8 +131,16 @@ export default function ActiveBlock() {
         </div>
       )}
 
-      {item && (item.notes || item.currentProblem) && (
-        <AboutThisPiece notes={item.notes} problem={item.currentProblem} />
+      {/* Working notes — the ITEM's own notebook, readable and editable while
+          the timer runs. Collapsed by default so the clock stays the screen.
+          Nothing here touches the clock, the elapsed figure or the block. */}
+      {item && (
+        <div className="card card-quiet" style={{ textAlign: 'start' }}>
+          <ItemNotes itemId={item.id} startExpanded={false} />
+          <div className="tiny" style={{ color: 'var(--gold)', marginTop: 6 }}>
+            <span dir="ltr">Keep asking: what is going on here — where does it rest, and where is it headed?</span>
+          </div>
+        </div>
       )}
 
       <div
@@ -183,17 +192,30 @@ export default function ActiveBlock() {
 
       {hasMaterial && <MaterialDuringPractice itemId={active.itemId} />}
 
+      {/* Scratch OBSERVATION for THIS block — it seeds the close screen and
+          belongs to the block, not to the item. Editing the Working notes
+          above never touches it, and it never touches them. */}
       {showNote ? (
-        <textarea
-          className="textarea"
-          placeholder="A passing thought to remember…"
-          value={active.note ?? ''}
-          onChange={(e) => setSessionNote(e.target.value)}
-          autoFocus
-        />
+        <div className="stack-sm" style={{ textAlign: 'start' }}>
+          <label className="field-label" htmlFor="pc-block-observation">
+            Observation for this block
+          </label>
+          <textarea
+            id="pc-block-observation"
+            className="textarea"
+            aria-label="Observation for this block"
+            placeholder="What are you noticing right now?"
+            value={active.note ?? ''}
+            onChange={(e) => setSessionNote(e.target.value)}
+            autoFocus
+          />
+          <div className="tiny faint">
+            <span dir="ltr">Carried to the close screen as this block's observation.</span>
+          </div>
+        </div>
       ) : (
         <button className="link small" onClick={() => setShowNote(true)} style={{ background: 'none', border: 'none' }}>
-          + Add a quick note
+          + Note an observation for this block
         </button>
       )}
 
@@ -213,50 +235,9 @@ export default function ActiveBlock() {
 }
 
 /**
- * Conscious practice: keep "what this piece is and what to notice" one tap
- * away during the block, with the standing question that turns repetition
- * into awareness.
- */
-function AboutThisPiece({ notes, problem }: { notes?: string; problem?: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="card card-quiet stack-sm" style={{ textAlign: 'start' }}>
-      <button
-        className="row between"
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="section-label">About this piece</span>
-        <span className="tiny faint">{open ? 'hide' : 'show'}</span>
-      </button>
-      {open && (
-        <>
-          {notes && (
-            <div className="small dim" dir="auto" style={{ whiteSpace: 'pre-wrap' }}>
-              {notes}
-            </div>
-          )}
-          {problem && (
-            <div className="small">
-              <span className="faint">Working on: </span>
-              {/* problem resolves from ITS OWN content, not from the fixed
-                  English label before it. */}
-              <span dir="auto">{problem}</span>
-            </div>
-          )}
-          <div className="tiny" style={{ color: 'var(--gold)' }}>
-            Keep asking: what is going on here — where does it rest, and where is it headed?
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
  * The score, the class video, the photo of the page — one CLOSED disclosure,
  * below the timer AND below Pause/Finish (the buttons you reach for with the
- * instrument in your hands), in the same shape as "About this piece". Nothing loads until
+ * instrument in your hands), in the same shape as the Working notes above it. Nothing loads until
  * it is opened, and nothing here touches the clock, the wake lock or the
  * boundary signal: a photo renders inline, everything else opens in a tab.
  */

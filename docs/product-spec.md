@@ -75,7 +75,9 @@ never quietly disagrees with itself about what day it is.
   status change are *pre‑filled suggestions* the user can accept silently.
 - **A weekly review in < 5 minutes.** Insights are generated, not assembled by the user.
 - **Daily use must not feel like admin.** No required fields beyond a title; rich
-  metadata (Persian/guitar fields, strategies, tags) is always optional and progressive.
+  metadata (the Persian/guitar identity fields) is always optional and progressive, and
+  everything you write in your own words lives in ONE place per kind — Working notes on
+  the item, an observation and a next action on the block, a question on the class.
 
 ## Why these objects
 
@@ -99,6 +101,68 @@ never quietly disagrees with itself about what day it is.
   single box holding one question. Only the first is a reason to practise; the second is
   a reason to write something down.
 
+## What each word means (the definition table)
+
+Every enum the app asks you to choose from, with the wording it shows. The stored codes
+never change when the wording does — a label is display, not data.
+
+**Status** — how the item CURRENTLY STANDS and what kind of work it needs next. Never how
+the last ten minutes went. These are not eight rungs of a compulsory ladder: neighbouring
+statuses overlap on purpose, you may move backwards whenever the material does, and
+`new` means "still being established", NOT "never practised" — an item can carry recorded
+blocks and still honestly be new material.
+
+| Shown | Stored | Means |
+| ----- | ------ | ----- |
+| Not practised yet | `new` | New material, still being established. |
+| Shaky | `fragile` | Unreliable — falls apart easily. |
+| Fixing problems | `repairing` | Actively working on a known problem. |
+| Coming together | `usable` | Holds together, but not reliably in context. |
+| Solid | `integrated` | Reliable in context. |
+| Performance-ready | `performable` | Ready to play for someone. |
+| Keeping fresh | `maintenance` | Learned — deliberately keeping it fresh. |
+| Resting | `dormant` | Deliberately set aside for now. |
+
+**Result** — what ONE closed block actually demonstrated. The last three are evidence of
+stability at a named scope; the first three describe change short of such a claim. `same`
+is not failed recall and never becomes one: no improvement is distinct from deterioration,
+and only `worse` is ever read as a slip. Fatigue, a blank field and a missing rating are
+none of these — that is what "Save without a result" is for.
+
+| Shown | Stored | Means |
+| ----- | ------ | ----- |
+| Worse | `worse` | Genuine deterioration, or you struggled to recall it. |
+| Same | `same` | No meaningful change either way. |
+| Slightly better | `slightly_better` | Some improvement, short of holding together. |
+| Stable alone | `stable_alone` | The passage held together on its own, in isolation. |
+| Stable in context | `stable_in_context` | It held together joined to the music around it. |
+| Performable | `performable` | Ready to play for someone. |
+| Not logged | `not_logged` | Time recorded, no judgement made. |
+
+**Mode** — the kind of attention this block is for: Learn · Repair · Integrate · Maintain
+· Perform · Explore · Diagnose. **Focus** — the one thing you are attending to inside it
+(pitch, rhythm, tone, fingering, right/left hand, mezrāb, relaxation, memory, phrase
+direction, ornament, tahrir, transition, musical meaning, dynamics, tempo, body, other).
+Both are pre-filled from the item, and Start leads with that default pairing in one
+sentence so the common case is a single tap.
+
+**The two 1–5 estimates** are yours, not measurements, and nothing needs keeping up to
+date on a schedule:
+
+| Shown | Stored | 1 | 3 | 5 |
+| ----- | ------ | - | - | - |
+| Personal priority | `importance` | Barely — happy to leave it aside | Ordinary — part of the mix | Front of the queue right now |
+| Current effort | `difficulty` | Easy — comes out without much thought | Ordinary — needs attention | Very demanding at the level I want |
+
+They help order what to practise and how soon reviews come round; high effort also keeps
+an item out of easy warm-ups. The wording changed; the weights, defaults and stored codes
+did not.
+
+**Review mode** — Auto (the engine has authority), Every N days (a fixed cadence you
+choose), Manual (you set each date yourself). Handing an item to Auto is an
+ADMINISTRATIVE transfer: it KEEPS the date you already had, records no practice and
+invents no result. The engine simply owns that date from then on.
+
 ## Why the recommendation engine is deterministic
 
 It must be explainable and trustworthy. Every card states its reason in one sentence,
@@ -118,7 +182,34 @@ The tool is working if the learner *wants* to open it before and after practisin
 because before, it answers "what now?", and after, it makes the 45 seconds of reflection
 feel worth it. Everything else is in service of that.
 
-## Upgrading to schema v12, and what a rollback can and cannot do
+## Upgrading, and what a rollback can and cannot do
+
+### Schema v13 — one home per kind of information
+
+v13 retires the practice-text fields that competed with the four homes above:
+`currentProblem`, `bestStrategy`, `tags`, the item's cached `lastObservation`, the block's
+`bodyNote`, and fourteen Persian/Guitar working-detail fields (shāhed, ist, forud,
+ornament/mezrāb/right-hand/left-hand/tone/fingering/tempo/string-noise/body-tension notes,
+phrase label, important note). They are REMOVED, not merged into Working notes: the owner
+established that their content was dummy test data, and folding dummy text into the one
+real notebook is the failure mode, not the fix. **This waiver is enumerated and one-way.**
+The identity fields that say what a piece IS — dastgāh/āvāz, gusheh, form, composer, lesson
+number, bar range — are kept, and nothing else about practice history, ratings, reviews or
+commitments is touched.
+
+The conversion is deletion-only, reads no clock and is idempotent, so two devices migrate
+the same database identically on different days and a second run changes nothing. From v13
+on, the text that survives is type-checked at every inbound door — import, sync pull, Keep
+remote, archive restore, cold-start recovery and both halves of rehydration — and a value
+of the wrong type is refused with the record named rather than coerced into the literal
+string "[object Object]".
+
+Take a full export before upgrading, and keep it: **rollback is by restoring that backup,
+never by a down-migration.** A v12 build refuses a v13 file by version rather than
+silently dropping the fields it does not understand, so work done after the upgrade cannot
+be carried back — export it first if you need it, then forward-fix on a v13-capable build.
+
+### Schema v12 — lesson commitments and questions
 
 Schema v12 converts the item's old "for next class" flag and its single teacher-question
 box into one `lessonAgenda` collection, and adds two small scheduling fields

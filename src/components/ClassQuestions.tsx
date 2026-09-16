@@ -85,9 +85,9 @@ import { splitLines } from './format';
  *
  * The catch the first pass was right about is real, though: `dir="auto"`
  * skips any descendant carrying its own `dir` when hunting for a first
- * strong character, and the outer `<li dir="auto">` (and the Problem /
- * Last time value wrapper) has nothing else left to hunt — the title is
- * already isolated. Isolating EVERY line would leave the whole item with no
+ * strong character, and the outer `<li dir="auto">` (and the dated
+ * last-observation value wrapper) has nothing else left to hunt — the title
+ * is already isolated. Isolating EVERY line would leave the whole item with no
  * resolution source and a silent LTR fallback, regressing the ninth
  * finding's "the ordinal always tracks the question".
  *
@@ -251,8 +251,21 @@ export default function ClassQuestions({
           className="stack-sm"
           style={{ margin: 0, padding: 0, listStyle: 'none' }}
         >
+          {/* `textAlign: 'start'` on each row below is NOT redundant. It is the
+              initial value in Chromium, but WebKit resolves `start` against the
+              element it is declared on and inherits the PHYSICAL result — so
+              under an LTR page these rows inherited a computed `left`, and a
+              Farsi question rendered hard against the English edge while the
+              ordinal, laid out by the direction-aware flex axis, sat correctly
+              on the right. Measured in both engines (ac-14); this re-resolves
+              the alignment against the row's OWN direction. */}
           {questions.map((q, i) => (
-            <li key={q.id} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
+            <li
+              key={q.id}
+              dir="auto"
+              className="row"
+              style={{ alignItems: 'flex-start', gap: 8, textAlign: 'start' }}
+            >
               <span className="tiny faint" aria-hidden="true" style={{ flexShrink: 0 }}>
                 {i + 1}.
               </span>
@@ -275,28 +288,24 @@ export default function ClassQuestions({
                 <div className="small">
                   {renderFreeText(q.question)}
                 </div>
-                {/* Stacked, not inline: the caption's wrapper carries no dir of
+                {/* CURRENT context, labelled and DATED — the item's most recent
+                    recorded observation, derived from its blocks. It is not an
+                    answer to the question above it and not evidence the
+                    question was asked, and the item's own Working notes are
+                    deliberately never dumped here.
+
+                    Stacked, not inline: the caption's wrapper carries no dir of
                     its own, so it inherits the li's (question-driven) direction
                     and aligns with the rest of the card; the value below keeps
                     its own dir="auto", resolving from its own content. Neither
                     line's direction can drag the other out of place. */}
-                {q.currentProblem && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div className="tiny faint">
-                      <span dir="ltr">Problem</span>
-                    </div>
-                    <div className="tiny faint" dir="auto">
-                      {renderFreeText(q.currentProblem)}
-                    </div>
-                  </div>
-                )}
                 {q.lastObservation && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div className="tiny faint">
-                      <span dir="ltr">Last time</span>
+                      <span dir="ltr">Last observed {q.lastObservation.at.slice(0, 10)}</span>
                     </div>
                     <div className="tiny faint" dir="auto">
-                      {renderFreeText(q.lastObservation)}
+                      {renderFreeText(q.lastObservation.text)}
                     </div>
                   </div>
                 )}

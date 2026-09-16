@@ -4,6 +4,7 @@ import { nowISO } from './util';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
 import { validateLessonAgenda } from './lessonAgenda';
 import { validateSchedulingFields } from './scheduling';
+import { validatePracticeText } from './practiceInformation';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -108,6 +109,26 @@ export function validateDB(input: unknown): PracticeDB {
     }
   }
 
+  // ATTACHMENT IDENTITY, at EVERY door rather than at one of them.
+  //
+  // `decodeBackupFiles` already refused two metadata rows sharing an id — but
+  // only ever reached that check for a FULL backup, because a `files` key that
+  // is absent returns from its first line. So the state-only door, a sync pull,
+  // an archive restore and both halves of hydration all installed duplicate
+  // attachment metadata unchecked, and the trap is the same one-way shape the
+  // held-bytes invariant exists to prevent: `buildFullBackupWithRev` emits one
+  // file per describing row, so two rows sharing an id produce two files
+  // sharing an id, and the device's own next export is a backup its own
+  // importer refuses ("Two files in the backup share the id") — on this device
+  // and on every device a sync publishes it to. An attachment's id is what its
+  // bytes are keyed by, so two records claiming one id are two records claiming
+  // the same file. Refusing here names the id and changes nothing.
+  const attachmentIds = new Set<string>();
+  for (const a of db.attachments) {
+    if (attachmentIds.has(a.id)) throw new Error(`Two attachments share the id "${a.id}".`);
+    attachmentIds.add(a.id);
+  }
+
   // The v12 model, checked BEFORE anything installs this database (§C7). This
   // is deliberately bounded to the lesson agenda and the scheduling fields it
   // shares a schema version with — the decision loop's own inputs and
@@ -118,6 +139,12 @@ export function validateDB(input: unknown): PracticeDB {
   if (agendaProblem) throw new Error(agendaProblem);
   const schedulingProblem = validateSchedulingFields(db);
   if (schedulingProblem) throw new Error(schedulingProblem);
+  // The practice text that SURVIVES the v13 retirement — the item's notebook
+  // and a block's own observation/next action/constraint. Checked AFTER the
+  // migration chain has already removed the retired keys, so a malformed
+  // retired field can never be mistaken for a malformed canonical one.
+  const textProblem = validatePracticeText(db);
+  if (textProblem) throw new Error(textProblem);
 
   return db;
 }

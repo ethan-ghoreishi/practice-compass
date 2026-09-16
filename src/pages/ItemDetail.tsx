@@ -7,6 +7,8 @@ import {
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
+  RATING_LABELS,
+  REVIEW_MODE_LABELS,
   isLosslesslyRemovable,
   partsOf,
   pickNextPart,
@@ -36,7 +38,15 @@ import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
 import { Field, OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
 import { ArrowLeftIcon, PlayIcon, PlusIcon } from '../components/icons';
-import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
+import {
+  formatMinutes,
+  relativeDay,
+  relativeFromDateTime,
+  formatDateTimeISO,
+  reviewDateDraftFor,
+  type ReviewDateDraft,
+} from '../components/format';
+import { useDecisionNow } from '../components/useDecisionNow';
 
 const RESULT_TONE: Record<BlockResult, string> = {
   worse: 'var(--tone-alert)',
@@ -71,9 +81,15 @@ export default function ItemDetail() {
   // Explicit, safe return context: back to where the item was opened from.
   const from = (location.state as { from?: string } | null)?.from ?? '/repertoire';
   const fromLabel = from === '/' ? 'Today' : from.startsWith('/lessons') ? 'Lessons' : from.startsWith('/pathway') ? 'Stage' : from.startsWith('/items/') ? 'Piece' : 'Repertoire';
-  const now = useMemo(() => new Date(), []);
+  // The date controls below decide against TODAY, so this page cannot freeze
+  // its clock at mount: a tab left open across local midnight would otherwise
+  // offer (and write) yesterday's "today".
+  const now = useDecisionNow();
   // Arriving via "add details" (QuickAdd) opens the form straight away.
   const [editing, setEditing] = useState(Boolean((location.state as { edit?: boolean } | null)?.edit));
+  // A save the store REFUSED (an ambiguous pending schedule it will not guess
+  // at) has to be visible where the save happened, not swallowed.
+  const [saveRefusal, setSaveRefusal] = useState<string | null>(null);
 
   const item = db.items.find((i) => i.id === id);
   const blocks = useMemo(() => (item ? itemBlocks(db, item.id) : []), [db, item]);
@@ -103,8 +119,9 @@ export default function ItemDetail() {
 
   function handleEdit(values: ItemFormValues) {
     if (!item) return;
-    updateItem(item.id, valuesToCreateInput(values));
-    setEditing(false);
+    const refusal = updateItem(item.id, valuesToCreateInput(values));
+    setSaveRefusal(refusal);
+    if (!refusal) setEditing(false);
   }
 
   if (editing) {
@@ -114,6 +131,11 @@ export default function ItemDetail() {
           <ArrowLeftIcon width={16} height={16} /> Cancel edit
         </button>
         <h1 className="page-title">Edit item</h1>
+        {saveRefusal && (
+          <div className="card card-quiet small" role="alert" style={{ color: 'var(--tone-warn)' }}>
+            <span dir="ltr">{saveRefusal}</span>
+          </div>
+        )}
         <ItemForm initial={itemToValues(item)} submitLabel="Save changes" onSubmit={handleEdit} onCancel={() => setEditing(false)} />
       </div>
     );
@@ -166,9 +188,11 @@ export default function ItemDetail() {
             dir="ltr" isolate so it can't inherit the title's RTL base. */}
         <div className="row-wrap" style={{ gap: 16, marginTop: 4 }}>
           <span className="row tiny faint" style={{ gap: 6 }}>
-            <Stars value={item.importance} /> importance
+            <Stars value={item.importance} /> {RATING_LABELS.importance.toLowerCase()}
           </span>
-          <span className="tiny faint" dir="ltr">difficulty {item.difficulty}/5</span>
+          <span className="tiny faint" dir="ltr">
+            {RATING_LABELS.difficulty.toLowerCase()} {item.difficulty}/5
+          </span>
           {item.saturationWarning && (
             <span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>
           )}
@@ -207,10 +231,12 @@ export default function ItemDetail() {
 
       <ScheduleAgain
         item={item}
-        now={now}
+        today={todayISODate(now)}
         conflict={pendingScheduleConflict(item, db.reviews)}
         onSchedule={(date) => scheduleReviewAgain(item.id, date)}
       />
+
+      <ReviewOwnership item={item} now={now} />
 
       <section className="stack-sm">
         <div className="section-label">Status</div>
@@ -221,24 +247,6 @@ export default function ItemDetail() {
           options={ITEM_STATUS_ORDER.map((s) => ({ value: s, label: ITEM_STATUS_LABELS[s] }))}
         />
       </section>
-
-      {(item.currentProblem || item.bestStrategy || item.lastObservation) && (
-        <div className="stack-sm">
-          {item.currentProblem && <DetailNote label="Current problem" text={item.currentProblem} />}
-          {item.bestStrategy && <DetailNote label="Best strategy" text={item.bestStrategy} />}
-          {item.lastObservation && <DetailNote label="Last observation" text={item.lastObservation} />}
-        </div>
-      )}
-
-      {item.tags.length > 0 && (
-        <div className="row-wrap">
-          {item.tags.map((t) => (
-            <span key={t} className="chip">
-              #{t}
-            </span>
-          ))}
-        </div>
-      )}
 
       <PartsSection item={item} now={now} />
 
@@ -287,33 +295,7 @@ export default function ItemDetail() {
         </section>
       )}
 
-      <section className="stack-sm">
-        <div className="section-label">Recent blocks</div>
-        {blocks.length === 0 ? (
-          <div className="card card-quiet small dim">No blocks yet.</div>
-        ) : (
-          <div className="card card-flush list">
-            {blocks.slice(0, 10).map((b) => (
-              <div key={b.id} className="list-row">
-                <div className="grow">
-                  <div className="small">
-                    {BLOCK_MODE_LABELS[b.mode]} · {FOCUS_LABELS[b.focus]}
-                  </div>
-                  {b.observation && <div className="tiny faint">{b.observation}</div>}
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="tiny" style={{ color: RESULT_TONE[b.result] }}>
-                    {RESULT_LABELS[b.result]}
-                  </div>
-                  <div className="tiny faint">
-                    {formatDateTimeISO(b.startedAt)} · {b.durationMinutes}m
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <BlockHistory blocks={blocks} />
 
       <button
         className="btn btn-danger btn-sm"
@@ -618,6 +600,197 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
   );
 }
 
+/**
+ * Who manages this item's next review — and the one explicit way to hand that
+ * back to the app.
+ *
+ * The transfer KEEPS the pending date. The button says so, and deliberately
+ * never calls the retained date a fresh calculation: `auto` means "the app has
+ * authority over this date from now on", not "the app worked this date out"
+ * and not "a review happened". Nothing here records practice.
+ *
+ * It reads the LIVE item out of the store on every render (never a value
+ * captured when the panel mounted), so reopening it, switching to another item
+ * or an update arriving from elsewhere can never act on a stale date.
+ */
+function ReviewOwnership({ item, now: polledNow }: { item: PracticeItem; now: Date }) {
+  const transfer = useStore((s) => s.useAutomaticReviewDates);
+  const scheduleAgain = useStore((s) => s.scheduleReviewAgain);
+  // Tagged with the item it was raised for, for the same reason the date draft
+  // is: this panel survives a route parameter change, and a refusal about A
+  // shown under B is a statement about the wrong item's schedule.
+  const [refusal, setRefusal] = useState<{ forItem: string; message: string } | null>(null);
+  // `useDecisionNow` polls at most every 30 seconds, so on a screen left open
+  // across local midnight it can lag the real day — and "Review today" writes
+  // a DATE. Catch that at the one instant it matters, exactly as the close
+  // screen's Save does: refresh what is shown and stop, so the second tap
+  // writes the day it actually is rather than the day this page was opened on.
+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  const now = nowOverride ?? polledNow;
+  const today = todayISODate(now);
+  const mode = item.reviewMode ?? 'auto';
+  const engineOwnsDate = mode === 'auto' && (!item.nextReviewDate || item.nextReviewSource === 'auto');
+
+  return (
+    <div className="stack-sm">
+      <div className="section-label">Review scheduling</div>
+      <div className="card card-quiet stack-sm">
+        <div className="small">
+          <span dir="ltr">
+            {mode === 'auto'
+              ? item.nextReviewDate
+                ? item.nextReviewSource === 'auto'
+                  ? `The app manages this: next on ${item.nextReviewDate}.`
+                  : `You chose ${item.nextReviewDate}; it is protected until it comes due.`
+                : 'The app manages this. Nothing is scheduled.'
+              : mode === 'interval'
+                ? `Fixed cadence: every ${item.reviewIntervalDays ?? 7} days.`
+                : 'You set each date yourself.'}
+          </span>
+        </div>
+        {!engineOwnsDate && (
+          <button
+            className="btn btn-sm"
+            style={{ width: 'fit-content' }}
+            onClick={() => {
+              const message = transfer(item.id);
+              setRefusal(message ? { forItem: item.id, message } : null);
+            }}
+          >
+            Use automatic scheduling
+          </button>
+        )}
+        {!engineOwnsDate && (
+          <p className="tiny faint">
+            <span dir="ltr">
+              {item.nextReviewDate
+                ? `Keeps ${item.nextReviewDate} exactly as it is and lets the app manage it from there. It records no practice and calculates no new date — real practice from here decides what changes.`
+                : `Hands scheduling to the app. Nothing is scheduled yet and nothing is invented; use “${item.nextReviewDate ? 'Change review date' : 'Schedule again'}” or Review today when you want a date.`}
+            </span>
+          </p>
+        )}
+        {engineOwnsDate && !item.nextReviewDate && (
+          <>
+            <button
+              className="btn btn-sm"
+              style={{ width: 'fit-content' }}
+              onClick={() => {
+                const trueNow = new Date();
+                if (todayISODate(trueNow) !== today) {
+                  setNowOverride(trueNow);
+                  return;
+                }
+                scheduleAgain(item.id, today);
+              }}
+            >
+              Review today ({today})
+            </button>
+            <p className="tiny faint">
+              <span dir="ltr">
+                Puts it on today&apos;s list. Administrative only: it records no practice and no result.
+              </span>
+            </p>
+          </>
+        )}
+        {refusal?.forItem === item.id && (
+          <div className="small" role="alert" style={{ color: 'var(--tone-warn)' }}>
+            <span dir="ltr">{refusal.message}</span>
+          </div>
+        )}
+        <p className="tiny faint">
+          <span dir="ltr">Current mode: {REVIEW_MODE_LABELS[mode]}.</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Everything a recorded block actually holds — what you noticed, what you
+ * decided to try next, and any constraint the block was played under, next to
+ * its date, mode, focus, result and minutes.
+ *
+ * `nextAction` used to be written at every close and read only at the START of
+ * the next block; `observation` reached the history but `constraint` never did
+ * at all. Older entries sit behind one plain disclosure rather than being
+ * unreachable past the tenth block.
+ */
+function BlockHistory({ blocks }: { blocks: PracticeItemBlocks }) {
+  const [showAll, setShowAll] = useState(false);
+  const RECENT = 10;
+  const shown = showAll ? blocks : blocks.slice(0, RECENT);
+
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Practice history</div>
+      {blocks.length === 0 ? (
+        <div className="card card-quiet small dim">
+          <span dir="ltr">No blocks yet.</span>
+        </div>
+      ) : (
+        <>
+          <div className="card card-flush list">
+            {shown.map((b) => (
+              <div key={b.id} className="list-row" style={{ alignItems: 'flex-start' }}>
+                <div className="grow" style={{ minWidth: 0 }}>
+                  {/* Mode/focus/date/minutes are generated English metadata —
+                      one dir="ltr" isolate each so a Farsi observation below
+                      cannot drag them around. */}
+                  <div className="small">
+                    <span dir="ltr">
+                      {BLOCK_MODE_LABELS[b.mode]} · {FOCUS_LABELS[b.focus]}
+                    </span>
+                  </div>
+                  {b.observation && (
+                    <div className="tiny faint" style={{ whiteSpace: 'pre-wrap' }}>
+                      <span dir="ltr">Noticed: </span>
+                      <span dir="auto">{b.observation}</span>
+                    </div>
+                  )}
+                  {b.nextAction && (
+                    <div className="tiny faint" style={{ whiteSpace: 'pre-wrap' }}>
+                      <span dir="ltr">Decided to try next: </span>
+                      <span dir="auto">{b.nextAction}</span>
+                    </div>
+                  )}
+                  {b.constraint && (
+                    <div className="tiny faint" style={{ whiteSpace: 'pre-wrap' }}>
+                      <span dir="ltr">Constraint: </span>
+                      <span dir="auto">{b.constraint}</span>
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: 'right', flex: 'none' }}>
+                  <div className="tiny" style={{ color: RESULT_TONE[b.result] }}>
+                    <span dir="ltr">{RESULT_LABELS[b.result]}</span>
+                  </div>
+                  <div className="tiny faint">
+                    <span dir="ltr">
+                      {formatDateTimeISO(b.startedAt)} · {b.durationMinutes}m
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {blocks.length > RECENT && (
+            <button
+              className="btn btn-sm"
+              style={{ width: 'fit-content' }}
+              aria-expanded={showAll}
+              onClick={() => setShowAll((o) => !o)}
+            >
+              {showAll ? 'Show recent only' : `Show all ${blocks.length} blocks`}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+type PracticeItemBlocks = ReturnType<typeof itemBlocks>;
+
 /** Where this item lives: its pathway stage and the lessons it appeared in. */
 function ConnectionsSection({ item }: { item: PracticeItem }) {
   const db = useStore((s) => s.db);
@@ -707,17 +880,6 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
   );
 }
 
-function DetailNote({ label, text, tone }: { label: string; text: string; tone?: 'warn' }) {
-  return (
-    <div className="card card-quiet">
-      <div className="section-label" style={{ marginBottom: 4, color: tone === 'warn' ? 'var(--tone-warn)' : undefined }}>
-        {label}
-      </div>
-      <div className="small">{text}</div>
-    </div>
-  );
-}
-
 function FieldRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="stack" style={{ gap: 2 }}>
@@ -739,17 +901,29 @@ function FieldRow({ label, value }: { label: string; value: string }) {
  */
 function ScheduleAgain({
   item,
-  now,
+  today,
   conflict,
   onSchedule,
 }: {
   item: PracticeItemT;
-  now: Date;
+  /**
+   * What a box would be OFFERED for an item with no date — the same day the
+   * rest of this screen is rendered against. Only consulted when the item's
+   * own date moved to absent beneath an open box; the seed below takes the
+   * true instant instead, because opening the panel is an action, not a paint.
+   */
+  today: ISODate;
   conflict: { rows: Review[]; message: string } | null;
   onSchedule: (date: ISODate) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [date, setDate] = useState<string>(item.nextReviewDate ?? todayISODate(now));
+  // The draft carries the item it was opened for and that item's own date at
+  // the time, and `reviewDateDraftFor` decides on EVERY render what it still
+  // means. Deriving it here rather than resetting it from an effect is what
+  // makes a stale date unrepresentable: the panel below only ever renders and
+  // saves the reconciled value, so there is no paint in which the box shows
+  // A's date while the Save button points at B.
+  const [draft, setDraft] = useState<ReviewDateDraft | null>(null);
+  const open = reviewDateDraftFor(draft, item, today);
 
   return (
     <div className="stack-sm">
@@ -764,22 +938,25 @@ function ScheduleAgain({
             className="input"
             type="date"
             aria-label="Next review date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={open.text}
+            onChange={(e) => setDraft({ ...open, text: e.target.value })}
             style={{ maxWidth: 200 }}
           />
           <div className="row" style={{ gap: 6 }}>
             <button
               className="btn btn-sm btn-primary"
-              disabled={!date}
+              disabled={!open.text}
               onClick={() => {
-                onSchedule(date);
-                setOpen(false);
+                // `open` is the reconciled draft for the item rendered in this
+                // very pass, and `onSchedule` closes over that same item — so
+                // the date saved is always the one this panel is showing.
+                onSchedule(open.text);
+                setDraft(null);
               }}
             >
               Save date
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>
               Cancel
             </button>
           </div>
@@ -788,7 +965,24 @@ function ScheduleAgain({
           </p>
         </Field>
       ) : (
-        <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={() => setOpen(true)}>
+        <button
+          className="btn btn-sm"
+          style={{ width: 'fit-content' }}
+          onClick={() => {
+            // Seeded when it OPENS, from the live item and the real day —
+            // never once at mount, which would offer a date that has since
+            // been changed elsewhere or a "today" that has since rolled over.
+            const offered = item.nextReviewDate ?? todayISODate(new Date());
+            setDraft({
+              forItem: item.id,
+              // The item's OWN date — empty when it has none, so "no date" and
+              // "a date that happens to be today" stay distinguishable.
+              seeded: item.nextReviewDate ?? '',
+              offered,
+              text: offered,
+            });
+          }}
+        >
           {item.nextReviewDate ? 'Change review date' : 'Schedule again'}
         </button>
       )}

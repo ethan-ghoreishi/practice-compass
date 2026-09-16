@@ -1,5 +1,5 @@
-import type { ISODate, PracticeBlock, PracticeDB, PracticeItem } from './types';
-import { RESULT_RANK } from './labels';
+import type { BlockResult, ISODate, PracticeBlock, PracticeDB, PracticeItem } from './types';
+import { RESULT_LABELS, RESULT_RANK } from './labels';
 import { groupBlocksByItem, lastResultsAllSame, scoreItems } from './scoring';
 import { preparationDatesByItem } from './lessonAgenda';
 import { openQuestionsForInstrument, openQuestionsForLessonId, questionsForLessonId, type ClassQuestion } from './questions';
@@ -34,7 +34,14 @@ function inRange(block: PracticeBlock, from: ISODate, to: ISODate): boolean {
 export interface ReportData {
   instrumentName: string;
   worked: { item: PracticeItem; blocks: number; minutes: number }[];
-  improved: PracticeItem[];
+  /**
+   * What the blocks INSIDE the selected period actually recorded, per item —
+   * the best result reached in range, and the final one recorded in range.
+   * The item's own `lastResult` is CURRENT state and may have moved on since;
+   * attributing it to an earlier period is how this report used to announce an
+   * improvement that the period's own blocks never showed.
+   */
+  periodResults: { item: PracticeItem; best: BlockResult; last: BlockResult }[];
   fragile: PracticeItem[];
   /** Still-open questions on this instrument, whatever class they name. */
   openQuestions: ClassQuestion[];
@@ -71,22 +78,30 @@ export function buildReportData(db: PracticeDB, opts: ReportOptions): ReportData
     .filter((w) => w.item)
     .sort((a, b) => b.minutes - a.minutes);
 
-  const workedIds = new Set(worked.map((w) => w.item.id));
-
-  const improved = items
-    .filter((i) => workedIds.has(i.id))
-    .filter((i) => i.lastResult && RESULT_RANK[i.lastResult] >= RESULT_RANK.stable_alone);
+  // Everything below reads the IN-RANGE blocks. `RESULT_RANK` orders them; a
+  // `not_logged` block is time recorded with no judgement, so it is not
+  // evidence of anything and is excluded from both figures.
+  const periodResults = worked
+    .map((w) => {
+      const judged = rangeBlocks
+        .filter((b) => b.practiceItemId === w.item.id && b.result !== 'not_logged')
+        .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      if (judged.length === 0) return null;
+      const best = judged.reduce((acc, b) => (RESULT_RANK[b.result] > RESULT_RANK[acc] ? b.result : acc), judged[0].result);
+      return { item: w.item, best, last: judged[judged.length - 1].result };
+    })
+    .filter((r): r is { item: PracticeItem; best: BlockResult; last: BlockResult } => r !== null);
 
   const fragile = items.filter((i) => i.status === 'fragile' || i.status === 'repairing');
 
   // Open questions are CURRENT state, not events inside the range — they are
   // labelled that way rather than presented as part of the period's history.
-  const openQuestions = openQuestionsForInstrument(db.lessonAgenda, items, instrumentId);
+  const openQuestions = openQuestionsForInstrument(db.lessonAgenda, items, instrumentId, db.blocks);
   const lessonQuestions = opts.lessonId
-    ? openQuestionsForLessonId(db.lessonAgenda, items, opts.lessonId)
+    ? openQuestionsForLessonId(db.lessonAgenda, items, opts.lessonId, db.blocks)
     : [];
   const lessonHistory = opts.lessonId
-    ? questionsForLessonId(db.lessonAgenda, items, opts.lessonId).filter((q) => !!q.askedAt)
+    ? questionsForLessonId(db.lessonAgenda, items, opts.lessonId, db.blocks).filter((q) => !!q.askedAt)
     : [];
 
   const byItem = groupBlocksByItem(db.blocks);
@@ -99,7 +114,7 @@ export function buildReportData(db: PracticeDB, opts: ReportOptions): ReportData
   return {
     instrumentName,
     worked,
-    improved,
+    periodResults,
     fragile,
     openQuestions,
     lessonQuestions,
@@ -126,18 +141,22 @@ export function renderReportText(data: ReportData): string {
   }
   push();
 
-  push('Improved:');
-  if (data.improved.length === 0) push('- (nothing marked as improved yet)');
-  for (const i of data.improved) {
-    push(`- ${i.title} is now ${labelResult(i)}.`);
+  // What the period's OWN blocks recorded. Never "is now X" — that would be
+  // the item's current state, which later practice may already have changed —
+  // and never "improved" merely because an absolute result ranks highly.
+  push('Results recorded in this period:');
+  if (data.periodResults.length === 0) push('- (no results recorded in this range)');
+  for (const r of data.periodResults) {
+    const best = RESULT_LABELS[r.best].toLowerCase();
+    const ended = RESULT_LABELS[r.last].toLowerCase();
+    push(`- ${r.item.title}: best ${best}; last recorded ${ended}.`);
   }
   push();
 
-  push('Still fragile:');
-  if (data.fragile.length === 0) push('- (nothing currently fragile)');
+  push('Currently shaky or being repaired (current status, not this period):');
+  if (data.fragile.length === 0) push('- (nothing currently shaky)');
   for (const i of data.fragile) {
-    const problem = i.currentProblem ? ` — ${i.currentProblem}` : '';
-    push(`- ${i.title}${problem}`);
+    push(`- ${i.title}`);
   }
   push();
 
@@ -181,33 +200,20 @@ export function renderReportText(data: ReportData): string {
   }
 
   if (data.repeated.length > 0) {
-    push('Repeated problems (same result several times):');
+    push('Currently repeating the same result (current pattern, not this period):');
     for (const i of data.repeated) {
-      push(`- ${i.title}${i.currentProblem ? ` — ${i.currentProblem}` : ''}`);
+      push(`- ${i.title}`);
     }
     push();
   }
 
-  push('Suggested lesson focus:');
+  push('Suggested lesson focus (current):');
   if (data.suggestedFocus.length === 0) push('- (no items yet)');
   data.suggestedFocus.forEach((i, idx) => {
-    push(`${idx + 1}. ${i.title}${i.currentProblem ? ` — ${i.currentProblem}` : ''}`);
+    push(`${idx + 1}. ${i.title}`);
   });
 
   return lines.join('\n');
-}
-
-function labelResult(item: PracticeItem): string {
-  switch (item.lastResult) {
-    case 'stable_alone':
-      return 'stable on its own';
-    case 'stable_in_context':
-      return 'stable in context';
-    case 'performable':
-      return 'performance-ready';
-    default:
-      return 'improving';
-  }
 }
 
 export function buildTeacherReport(db: PracticeDB, opts: ReportOptions): string {

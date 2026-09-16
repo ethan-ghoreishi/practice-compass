@@ -405,8 +405,10 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
   // BY LESSON ID, never by instrument: every future class used to show the
   // identical list, so a question meant for one class appeared on all of them.
   const questions = useMemo(
-    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id),
-    [db.lessonAgenda, db.items, lesson.id],
+    // `db.blocks` supplies each question's latest recorded observation, so the
+    // list has to recompute when a block is added.
+    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id, db.blocks),
+    [db.lessonAgenda, db.items, db.blocks, lesson.id],
   );
   const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
 
