@@ -8,7 +8,7 @@ Four things the musician writes, four homes: **Working notes** (`item.notes`) be
 item and last as long as it does; an **observation** and a **next action** belong to one
 recorded block; a **question** belongs to a class, in the lesson agenda. Nothing copies one
 into another automatically. The problem was never that any of these were missing — it was
-that eighteen other persisted fields competed with them, so the same fact could be written
+that nineteen other persisted fields competed with them, so the same fact could be written
 in two places and disagree, and the notebook that should have been in front of you while
 practising was not reachable from the practice screen at all.
 
@@ -40,7 +40,8 @@ instead of presenting a stale line as current. A cached copy of a derivable fact
 facts that can disagree.
 
 **The surviving text is checked, never coerced.** `validatePracticeText` (the four homes'
-own string fields, nothing else) joins `validateDB`, so every inbound door refuses the same
+own string fields — the block's legacy `constraint` included — and nothing else) joins
+`validateDB`, so every inbound door refuses the same
 thing. `null` reads as ABSENT — it is what a serialiser writes for "no value" and every
 reader already treats it as missing — and empty is legitimate, because emptying a notebook
 is a deliberate act. A present value of the wrong type is refused with the record named:

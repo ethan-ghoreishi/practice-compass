@@ -27,7 +27,10 @@ and tested; the list of retired keys lives there, not in prose):
   it reaches you at the moment it was written for.
 - **`PracticeBlock.observation`** — what happened in ONE recorded block.
 - **`PracticeBlock.nextAction`** — the one thing to try next time, decided at that
-  block's close and read at the next one.
+  block's close and read at the next one. (`PracticeBlock.constraint` — a legacy,
+  optional authored condition shown on the practice screen and in block history — belongs
+  to the block too, and is validated with the other two. Ordinary Start supplies none;
+  existing values are kept and displayed, never a new capture control.)
 - **`lessonAgenda`** — questions for a teacher and commitments to a class (its own
   section below).
 
@@ -60,8 +63,19 @@ runs on EVERY inbound database rather than only one declaring `fromVersion < 13`
 reason `migrateToV12` already records for itself: a database claiming the current schema
 can still carry a stray retired key from a partial conversion or a hand-edited file.
 
+**AFTER ANY INSTALL, EVERY ATTACHMENT THE DATABASE DESCRIBES HAS BYTES ON THIS DEVICE.**
+One invariant, enforced at both doors: `decodeBackupFiles` refuses a FULL backup that
+describes a file it does not carry, and `importFullBackup` refuses a STATE-ONLY file
+(`files` absent) that names an attachment whose blob is not already here. Refusing only the
+first is a one-way trap — a full export derives `files` from the blobs actually stored
+while `data` carries the metadata, so a device left holding metadata for absent bytes
+exports a backup it then refuses, and publishes a snapshot every other device refuses too,
+permanently. Dropping the dangling metadata instead would be silent loss of the owner's own
+record. Both refusals name the file and change nothing.
+
 **THE SURVIVING TEXT IS VALIDATED AT EVERY INBOUND DOOR, AND NEVER COERCED.**
-`validatePracticeText` (the four homes' own string fields, nothing else) runs inside
+`validatePracticeText` (the four homes' own string fields — the block's `constraint`
+included — and nothing else) runs inside
 `validateDB`, so every door — import, sync pull, Keep remote, archive restore, cold-start
 recovery, and BOTH halves of the persist middleware — refuses the same thing. Absent and
 EMPTY are both legitimate (emptying a notebook is a deliberate act); `null` reads as
@@ -1964,7 +1978,9 @@ every retired field, and `practice-information-v13.json` is its `validateDB` out
 the retirement is asserted against real bytes rather than a hand-written expectation. The
 unit tests read the SAME bytes the journeys import, through Vite's `?raw`.
 
-**Five journeys now, not two**, all through the same harness: the two above plus
+**Six journeys now, not two**, all through the same harness — plus the rendered
+cold-start recovery inside `src/domain/io.test.ts`, which drives the real `App` in the
+same way. The two named above, plus
 `practice-information.browser.test.ts`, `practice-information-inbound.browser.test.ts`,
 `review-ownership.browser.test.ts` and `practice-information-layout.browser.test.ts` (the
 two-engine one). The inbound journey drives the REAL sync orchestrators against a fake
