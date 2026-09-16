@@ -120,7 +120,7 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
     // descendant carrying its own dir. Isolating either would put the ordinal
     // back on the title's side — the exact bug this shape exists to fix.
     file: 'components/ClassQuestions.tsx',
-    tagSnippet: '<li key={q.id} dir="auto"',
+    tagSnippet: 'key={q.id}',
     why: 'a neutral ordinal digit plus the question that anchors the row — both bare on purpose',
   },
 ];

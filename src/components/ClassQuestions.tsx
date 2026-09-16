@@ -251,8 +251,21 @@ export default function ClassQuestions({
           className="stack-sm"
           style={{ margin: 0, padding: 0, listStyle: 'none' }}
         >
+          {/* `textAlign: 'start'` on each row below is NOT redundant. It is the
+              initial value in Chromium, but WebKit resolves `start` against the
+              element it is declared on and inherits the PHYSICAL result — so
+              under an LTR page these rows inherited a computed `left`, and a
+              Farsi question rendered hard against the English edge while the
+              ordinal, laid out by the direction-aware flex axis, sat correctly
+              on the right. Measured in both engines (ac-14); this re-resolves
+              the alignment against the row's OWN direction. */}
           {questions.map((q, i) => (
-            <li key={q.id} dir="auto" className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
+            <li
+              key={q.id}
+              dir="auto"
+              className="row"
+              style={{ alignItems: 'flex-start', gap: 8, textAlign: 'start' }}
+            >
               <span className="tiny faint" aria-hidden="true" style={{ flexShrink: 0 }}>
                 {i + 1}.
               </span>
