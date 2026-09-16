@@ -13,7 +13,10 @@ Done, typing one more word, and letting the write land threw that word away and 
 success message over the older text. A settling write now speaks only for the text it
 actually CARRIED: same text ⇒ clear the draft and say saved; different ⇒ re-issue the
 write for what is on screen, which is what pressing Done asked for and is what keeps the
-words even if the screen is left mid-write. Try again does the same on the failure path.
+words when the screen is LEFT mid-write. Switching ITEM is the opposite case and stays as
+it was: `saveSeq` is bumped, the write says nothing, and the draft is abandoned — those
+words were typed for a notebook that is no longer on screen. Try again does the same as
+Done on the failure path.
 Only the latest save may act (`saveSeq`, bumped by a retry and by switching item), and the
 draft is read through a ref: `storageSettled()` resolves in a microtask that can land
 between a keystroke and React's next render, so neither the issuing closure nor an

@@ -219,6 +219,20 @@ describe('handing a review date back to the app', () => {
       expect((await facts(app, ROWLESS)).nextReviewDate).toBe(rowlessOpen.nextReviewDate);
       expect((await facts(app, FARSI_ITEM)).nextReviewDate).toBe(farsiOpen.nextReviewDate);
 
+      // ONE BRANCH IS NAMED HERE BECAUSE THIS JOURNEY CANNOT REACH IT, NOT
+      // BECAUSE IT WAS MISSED. The third case `reviewDateDraftFor` decides —
+      // the item's own date MOVING beneath an UNTOUCHED box, which must
+      // re-seed rather than save a captured date — needs a control that
+      // changes `nextReviewDate` while `ScheduleAgain` stays MOUNTED. There
+      // isn't one: an import or a sync pull leaves the page (`openSettings`
+      // navigates), and "Review today" is offered only when the item has no
+      // date, where the seed already equals what it writes. It is covered by
+      // the pure case "re-seeds an UNTOUCHED box when the item's own date
+      // moved beneath it" (`src/components/format.test.ts`), which is where
+      // the decision lives; installing this journey's own fake GitHub
+      // transport to reach it in a browser is the inbound journey's job, not
+      // this one's.
+
       // --- 7b. A LIVE UPDATE TO THE ITEM DOES NOT DISCARD TYPED TEXT ------
       // The other half of the same rule: the draft is bound to the item, not
       // frozen against every change to it. A status change re-renders this

@@ -74,8 +74,11 @@ export default function ItemNotes({
    * the closure the write was issued in nor a ref mirrored by an effect is
    * sound here: both can be a keystroke behind the textarea. Every write of
    * `draft` goes through `applyDraft`, so the two cannot drift apart — and the
-   * unmount cleanup deliberately does NOT clear it, because words typed during
-   * a write are owed their save even if the screen is left before it settles.
+   * unmount cleanup deliberately does NOT clear it, so leaving the screen
+   * ENTIRELY (a different route) still saves words typed while the write was
+   * settling. Switching ITEM is the opposite case and is disowned instead: the
+   * effect below bumps `saveSeq`, because those words were typed for a
+   * notebook that is no longer the one on screen.
    */
   const draftRef = useRef<Draft | null>(null);
   /**

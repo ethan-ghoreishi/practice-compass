@@ -327,6 +327,27 @@ describe('the item notebook, while you are playing', () => {
         expect(await page.getByText('Saved.').count(), where).toBe(0);
         expect(await savedNotes(app, FARSI_ITEM), where).toBe(farsiNotesBefore);
 
+        // LEAVING THE SCREEN ENTIRELY IS NOT THE SAME AS SWITCHING ITEM.
+        // Switching item disowns the write above — that is the pre-existing
+        // rule, and the words were typed for a notebook no longer on screen.
+        // Unmounting leaves the notebook alone: the write is still this item's
+        // own, so the words typed while it was settling are saved rather than
+        // silently dropped on the way out of the room.
+        await goTo(app, `/items/${ENGLISH_ITEM}`);
+        await page.getByRole('button', { name: 'Edit Working notes' }).click();
+        await notesBox(page).fill('typed before walking away');
+        await blockStorage(page);
+        await doneButton(page).click();
+        await expect.poll(() => doneButton(page).isDisabled(), { timeout: 10_000 }).toBe(true);
+        await notesBox(page).fill('typed before walking away — and one more line after');
+        await goTo(app, '/repertoire');
+        await releaseStorage(page);
+        await persistedUntil(
+          app,
+          (s) => (s.state as { db: { items: { id: string; notes?: string }[] } }).db.items.find((i) => i.id === ENGLISH_ITEM)?.notes,
+          (n) => n === 'typed before walking away — and one more line after',
+        );
+
         // None of that touched the clock, a block, a review or SM-2 state.
         expect(await practiceFacts(app, ENGLISH_ITEM), where).toEqual(englishBefore);
 

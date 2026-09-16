@@ -130,11 +130,16 @@ never a second copy of the text or a second way to write it:
   it did — dropped those words and put a success message over the older ones, and letting
   the newer text simply sit there unsaved would lose it the moment the screen was left. The
   same rule holds on the failure path: Try again writes what is on screen NOW, not the text
-  that failed. Only the LATEST save may act at all (`saveSeq`, bumped by a retry AND by
-  switching item — ONE ownership test, not a second `forItem` comparison nothing could ever
-  make disagree with it), and the draft is read through a REF, never the closure the write
-  was issued in nor a ref mirrored by an effect: `storageSettled()` resolves in a microtask
-  that can land between a keystroke and React's next render.
+  that failed. Only the LATEST save may act at all (`saveSeq` — ONE ownership test, not a
+  second `forItem` comparison nothing could ever make disagree with it), and the draft is
+  read through a REF, never the closure the write was issued in nor a ref mirrored by an
+  effect: `storageSettled()` resolves in a microtask that can land between a keystroke and
+  React's next render. LEAVING THE SCREEN AND SWITCHING ITEM ARE OPPOSITE CASES, and both
+  are checked: unmounting (a different route) keeps the ref alive through the write's own
+  closure, so words typed while it settled are saved on the way out; switching ITEM bumps
+  `saveSeq` and the write says nothing at all, because those words were typed for a
+  notebook that is no longer the one on screen — the pre-existing tag rule above, not a
+  new exception to it.
 - **Editing notes changes nothing else.** Not the clock, the elapsed figure, the running
   state, a block, a result, a review or any SM‑2 value.
 
