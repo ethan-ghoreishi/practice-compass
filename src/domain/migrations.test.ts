@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import v11FixtureText from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
-import { RETIRED_ITEM_KEYS } from './practiceInformation';
+import { RETIRED_GUITAR_KEYS, RETIRED_ITEM_KEYS, RETIRED_PERSIAN_KEYS } from './practiceInformation';
+import { itemFromCatalogEntry } from './factories';
+import v12FixtureText from '../../tests/fixtures/practice-information-v12.json?raw';
 import { createSeedDB } from './seed';
-import { SCHEMA_VERSION, type Pathway, type PracticeDB } from './types';
+import { SCHEMA_VERSION, type Pathway, type PracticeDB, type PracticeItem } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -258,5 +260,141 @@ describe('v11 → v12 · legacy lesson intent', () => {
         }),
       });
     expect(strip(out)).toBe(strip(source));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-1 — A1 / C1
+// ---------------------------------------------------------------------------
+
+/**
+ * The v12 fixture's DATABASE, as a fresh object every time — the chain must
+ * never mutate its input, and each case below has to start from the same bytes.
+ * (The file is a wrapped full backup; the browser journeys import the whole
+ * thing, these unit cases take the `data` it carries.)
+ */
+function v12(): PracticeDB {
+  return (JSON.parse(v12FixtureText) as { data: PracticeDB }).data;
+}
+
+const RETIRED_PERSIAN = RETIRED_PERSIAN_KEYS as readonly string[];
+const RETIRED_GUITAR = RETIRED_GUITAR_KEYS as readonly string[];
+
+describe('v12 → v13 · retiring the practice text that competed with the canonical homes', () => {
+  it('practice text retirement removes only authorised legacy fields and is idempotent', () => {
+    const source = v12();
+    const sourceItems = new Map(source.items.map((i) => [i.id, i as unknown as Record<string, unknown>]));
+
+    // The five inputs this must behave identically on: a genuine v12, the
+    // OLDEST supported version run through the whole chain, a database that
+    // already declares the CURRENT schema, a partially-retired one, and the
+    // migration's own output fed back in.
+    const cases: { name: string; out: PracticeDB }[] = [
+      { name: 'declared v12', out: migrateToCurrent(v12(), 12) },
+      { name: 'oldest supported, whole chain', out: migrateToCurrent(v12(), OLDEST_SCHEMA_VERSION) },
+      { name: 'already current', out: migrateToCurrent({ ...v12(), schemaVersion: SCHEMA_VERSION }, SCHEMA_VERSION) },
+      { name: 'run twice', out: migrateToCurrent(migrateToCurrent(v12(), 12), SCHEMA_VERSION) },
+    ];
+
+    for (const { name, out } of cases) {
+      expect(out.schemaVersion, name).toBe(SCHEMA_VERSION);
+
+      for (const raw of out.items) {
+        const row = raw as unknown as Record<string, unknown>;
+        // 1. EXACT retired-key absence, at every level.
+        for (const key of RETIRED_ITEM_KEYS) expect(key in row, `${name}/${row.id}/${key}`).toBe(false);
+        const persian = row.persian as Record<string, unknown> | undefined;
+        if (persian) for (const key of RETIRED_PERSIAN) expect(key in persian, `${name}/${row.id}/${key}`).toBe(false);
+        const guitar = row.guitar as Record<string, unknown> | undefined;
+        if (guitar) for (const key of RETIRED_GUITAR) expect(key in guitar, `${name}/${row.id}/${key}`).toBe(false);
+
+        // 2. EXACT preservation of everything else on the item, byte for byte.
+        const before = sourceItems.get(String(row.id))!;
+        for (const [key, value] of Object.entries(before)) {
+          if ((RETIRED_ITEM_KEYS as readonly string[]).includes(key)) continue;
+          if (key === 'persian' || key === 'guitar') continue;
+          expect(row[key], `${name}/${row.id}/${key}`).toEqual(value);
+        }
+      }
+
+      // 3. Canonical text, including an EMPTY string and Farsi, survives
+      //    untouched — and is never reset by a second pass.
+      const byId = new Map(out.items.map((i) => [i.id, i]));
+      expect(byId.get('i-farsi')!.notes, name).toBe('یادداشتِ کاری: فرود را آهسته بگیر.');
+      expect(byId.get('i-english')!.notes, name).toBe('');
+      expect('notes' in (byId.get('i-bare') as object), name).toBe(false);
+
+      // 4. Identity metadata stays; the family container survives when it still
+      //    holds identity, and is dropped only when stripping empties it.
+      expect(byId.get('i-farsi')!.persian, name).toEqual({ dastgahAvaz: 'افشاری', gusheh: 'عراق' });
+      expect(byId.get('i-english')!.guitar, name).toEqual({ lessonNumber: '6', barRange: '4–5' });
+      expect('persian' in (byId.get('i-bare') as object), name).toBe(false);
+      // Already partially retired: the leftover goes, the identity stays.
+      expect(byId.get('i-partial')!.persian, name).toEqual({ dastgahAvaz: 'ماهور' });
+
+      // 5. Blocks: `bodyNote` gone, every other fact — including the three
+      //    canonical text fields — exactly as it was.
+      const sourceBlocks = new Map(source.blocks.map((b) => [b.id, b as unknown as Record<string, unknown>]));
+      for (const raw of out.blocks) {
+        const row = raw as unknown as Record<string, unknown>;
+        expect('bodyNote' in row, `${name}/${row.id}`).toBe(false);
+        const before = sourceBlocks.get(String(row.id))!;
+        for (const [key, value] of Object.entries(before)) {
+          if (key === 'bodyNote') continue;
+          expect(row[key], `${name}/${row.id}/${key}`).toEqual(value);
+        }
+      }
+
+      // 6. Nothing else in the database moves at all.
+      for (const key of ['reviews', 'lessons', 'lessonAgenda', 'pathwayRoutines', 'attachments', 'materials', 'instruments'] as const) {
+        expect(out[key], `${name}/${key}`).toEqual(source[key]);
+      }
+      expect(out.settings, name).toEqual(source.settings);
+    }
+
+    // 7. Byte-identical across the four routes — the same database migrates the
+    //    same way whichever door it came in and however many times it ran.
+    const [first, ...rest] = cases;
+    for (const c of rest) expect(JSON.stringify(c.out), c.name).toBe(JSON.stringify(first.out));
+
+    // 8. The OPPOSITE case: canonical text edited AFTER migrating is never
+    //    reset by running the chain again. The pass only ever deletes keys.
+    const edited: PracticeDB = {
+      ...first.out,
+      items: first.out.items.map((i) => (i.id === 'i-farsi' ? { ...i, notes: 'new words, typed today' } : i)),
+      blocks: first.out.blocks.map((b) =>
+        b.id === 'b-farsi-2' ? { ...b, observation: 'a fresh observation', nextAction: 'a fresh decision' } : b,
+      ),
+    };
+    const reRun = migrateToCurrent(edited, SCHEMA_VERSION);
+    expect(reRun.items.find((i) => i.id === 'i-farsi')!.notes).toBe('new words, typed today');
+    expect(reRun.blocks.find((b) => b.id === 'b-farsi-2')!.observation).toBe('a fresh observation');
+    expect(reRun.blocks.find((b) => b.id === 'b-farsi-2')!.nextAction).toBe('a fresh decision');
+
+    // 9. The v12 lesson-intent conversion is still in the chain: retiring text
+    //    does not authorise ripping out already-shipped history machinery.
+    const legacy = migrateToCurrent(
+      {
+        ...v12(),
+        schemaVersion: 11,
+        lessonAgenda: [],
+        items: v12().items.map((i) =>
+          i.id === 'i-bare' ? ({ ...i, teacherQuestion: 'a legacy question' } as PracticeItem) : i,
+        ),
+      },
+      11,
+    );
+    expect(legacy.lessonAgenda.map((e) => (e as { text?: string }).text)).toContain('a legacy question');
+
+    // 10. A NEW catalogue item keeps BOTH kinds of guidance in the one notes
+    //     field — moving off `currentProblem` must not drop half of what a
+    //     fresh suggestion arrives knowing.
+    const created = itemFromCatalogEntry(
+      { key: 'k', stageId: 's', title: 'Catalogue piece', strand: 'radif', kind: 'piece', about: 'what it is', notes: 'how to practise it' },
+      'setar',
+      NOW,
+    );
+    expect(created.notes).toContain('what it is');
+    expect(created.notes).toContain('how to practise it');
   });
 });

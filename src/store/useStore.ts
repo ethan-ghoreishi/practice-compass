@@ -1296,11 +1296,14 @@ export const useStore = create<StoreState>()(
       useAutomaticReviewDates: (itemId) => {
         const now = new Date();
         const state = get();
-        const item = state.db.items.find((i) => i.id === itemId);
-        if (!item) return 'That item no longer exists.';
         // Decided against the LIVE item and rows, never against whatever a
-        // panel captured when it mounted.
-        const transfer = transferToAutomaticReview({ item, reviews: state.db.reviews, now });
+        // panel captured when it mounted — including whether the item is
+        // still there at all.
+        const transfer = transferToAutomaticReview({
+          item: state.db.items.find((i) => i.id === itemId),
+          reviews: state.db.reviews,
+          now,
+        });
         if (!transfer.ok) return transfer.reason;
         const reviews = transfer.createRow
           ? [

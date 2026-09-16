@@ -765,11 +765,17 @@ export type AutomaticReviewTransfer =
  * mode and the same source, and returns the same answer.
  */
 export function transferToAutomaticReview(args: {
-  item: PracticeItem;
+  /** Undefined when the item has been deleted since the screen was drawn. */
+  item: PracticeItem | undefined;
   reviews: Review[];
   now: Date;
 }): AutomaticReviewTransfer {
   const { item, reviews, now } = args;
+  // Resolved LIVE by the caller, so it can genuinely be gone by now (deleted
+  // in another tab, or removed by a sync pull while this panel was open).
+  // Answered here rather than in the store, so the case is reachable from an
+  // ordinary unit test instead of only through a rendered screen.
+  if (!item) return { ok: false, reason: 'That item no longer exists.' };
   const open = reviews.filter((r) => r.practiceItemId === item.id && !r.completedAt);
   const rowDates = new Set(open.map((r) => r.dueDate));
 

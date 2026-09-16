@@ -16,6 +16,8 @@ import {
   shouldSuggestDormant,
   snoozePlan,
   suggestStatusAfterBlock,
+  transferToAutomaticReview,
+  AUTOMATIC_TRANSFER_REASON,
   validateSchedulingFields,
 } from './scheduling';
 import type { BlockResult, ISODate, PracticeItem, Review, SchedulingParams } from './types';
@@ -645,6 +647,178 @@ describe('the engine never reads the wall clock, and its defaults are the defaul
       expect(planNextReview({ item: c.it, result: c.r, now: NOW, params: DEFAULT_SCHEDULING_PARAMS })).toEqual(
         planNextReview({ item: c.it, result: c.r, now: NOW }),
       );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-11 — D1/D2
+// ---------------------------------------------------------------------------
+
+describe('handing a review date back to the engine', () => {
+  it('automatic review ownership transfer preserves dates without inventing evidence', () => {
+    /** Every fact a transfer must leave byte-for-byte alone. */
+    const untouched = (i: PracticeItem) => ({
+      srReps: i.srReps,
+      srEase: i.srEase,
+      srIntervalDays: i.srIntervalDays,
+      srLastProgressDay: i.srLastProgressDay,
+      timesPractised: i.timesPractised,
+      totalMinutes: i.totalMinutes,
+      lastResult: i.lastResult,
+      lastPractisedAt: i.lastPractisedAt,
+      status: i.status,
+      importance: i.importance,
+      difficulty: i.difficulty,
+      nextReviewDate: i.nextReviewDate,
+      notes: i.notes,
+    });
+
+    const spaced = {
+      srReps: 3,
+      srEase: 2.6,
+      srIntervalDays: 12,
+      srLastProgressDay: day(-2),
+      timesPractised: 7,
+      totalMinutes: 84,
+      lastResult: 'stable_alone' as const,
+      lastPractisedAt: NOW.toISOString(),
+      notes: 'the notebook, which this never touches',
+    };
+
+    // --- The matrix: provenance × mode × date × pending rows ---------------
+    const dates: { name: string; date?: ISODate }[] = [
+      { name: 'future', date: day(9) },
+      { name: 'due today', date: TODAY },
+      { name: 'past', date: day(-4) },
+      { name: 'none', date: undefined },
+    ];
+    const modes: PracticeItem['reviewMode'][] = ['auto', 'interval', 'manual'];
+    const sources: (PracticeItem['nextReviewSource'] | undefined)[] = ['auto', 'user', undefined];
+
+    for (const { name, date } of dates) {
+      for (const mode of modes) {
+        for (const source of sources) {
+          const subject = item({
+            ...spaced,
+            nextReviewDate: date,
+            reviewMode: mode,
+            ...(source ? { nextReviewSource: source } : {}),
+            reviewIntervalDays: mode === 'interval' ? 9 : undefined,
+          });
+          const label = `${name}/${mode}/${source ?? 'unknown'}`;
+          // Rows that AGREE: zero, one, and several.
+          for (const rowCount of [0, 1, 3]) {
+            const rows = date
+              ? Array.from({ length: rowCount }, () =>
+                  createReview({ practiceItemId: subject.id, dueDate: date, reviewType: 'retention' }, NOW),
+                ).map((r, n) => ({ ...r, id: `row-${n}` }))
+              : [];
+            const out = transferToAutomaticReview({ item: subject, reviews: rows, now: NOW });
+            expect(out.ok, `${label}/${rowCount}`).toBe(true);
+            if (!out.ok) continue;
+
+            // 1. THE DATE IS KEPT. Always, in every cell of the matrix.
+            expect(out.item.nextReviewDate, `${label}/${rowCount}`).toBe(date);
+            // 2. Authority normalises; nothing else about the item moves.
+            expect(out.item.reviewMode, `${label}/${rowCount}`).toBe('auto');
+            expect(out.item.nextReviewSource, `${label}/${rowCount}`).toBe(date ? 'auto' : undefined);
+            expect(untouched(out.item), `${label}/${rowCount}`).toEqual({ ...untouched(subject), nextReviewDate: date });
+            // 3. Open rows keep their DATE; only a reason that could falsely
+            //    claim protection or a computed interval is corrected.
+            expect(out.reviews.map((r) => r.dueDate), `${label}/${rowCount}`).toEqual(rows.map((r) => r.dueDate));
+            for (const r of out.reviews) expect(r.reason, `${label}/${rowCount}`).toBe(AUTOMATIC_TRANSFER_REASON);
+            // 4. A pending date with NO open row is owed exactly one
+            //    administrative reminder — and a no-date item is owed none.
+            expect(out.createRow, `${label}/${rowCount}`).toBe(!!date && rowCount === 0);
+            // 5. Idempotent: the second run answers the same, including the
+            //    reminder it has by then been given.
+            const again = transferToAutomaticReview({
+              item: out.item,
+              reviews: out.createRow
+                ? [...out.reviews, createReview({ practiceItemId: subject.id, dueDate: date!, reviewType: out.reviewType }, NOW)]
+                : out.reviews,
+              now: NOW,
+            });
+            expect(again.ok, `${label}/${rowCount} again`).toBe(true);
+            if (again.ok) {
+              expect(again.item, `${label}/${rowCount} again`).toEqual(out.item);
+              expect(again.createRow, `${label}/${rowCount} again`).toBe(false);
+            }
+          }
+        }
+      }
+    }
+
+    // --- Completed history is never rewritten ------------------------------
+    const done = { ...createReview({ practiceItemId: 'item-1', dueDate: day(-30), reviewType: 'retention' }, NOW), id: 'done', completedAt: NOW.toISOString(), result: 'stable_alone' as const };
+    const withHistory = transferToAutomaticReview({
+      item: item({ ...spaced, nextReviewDate: day(4), reviewMode: 'manual', nextReviewSource: 'user' }),
+      reviews: [done],
+      now: NOW,
+    });
+    expect(withHistory.ok).toBe(true);
+    if (withHistory.ok) expect(withHistory.reviews.find((r) => r.id === 'done')).toEqual(done);
+
+    // --- AMBIGUOUS schedules are REFUSED, never guessed --------------------
+    const rowA = { ...createReview({ practiceItemId: 'item-1', dueDate: day(3), reviewType: 'retention' }, NOW), id: 'a' };
+    const rowB = { ...createReview({ practiceItemId: 'item-1', dueDate: day(8), reviewType: 'retention' }, NOW), id: 'b' };
+    const refusals: { name: string; item: PracticeItem; reviews: Review[]; says: RegExp }[] = [
+      {
+        name: 'open rows disagree with each other',
+        item: item({ nextReviewDate: day(3), reviewMode: 'manual' }),
+        reviews: [rowA, rowB],
+        says: /more than one pending review date/,
+      },
+      {
+        name: 'a row disagrees with the item',
+        item: item({ nextReviewDate: day(5), reviewMode: 'manual' }),
+        reviews: [rowA],
+        says: /but its pending review says/,
+      },
+      {
+        name: 'a row pending with no item date at all',
+        item: item({ nextReviewDate: undefined, reviewMode: 'manual' }),
+        reviews: [rowA],
+        says: /has no next-review date/,
+      },
+    ];
+    for (const r of refusals) {
+      const out = transferToAutomaticReview({ item: r.item, reviews: r.reviews, now: NOW });
+      expect(out.ok, r.name).toBe(false);
+      if (!out.ok) {
+        expect(out.reason, r.name).toMatch(r.says);
+        // Actionable: it names the existing dates and how to resolve them.
+        expect(out.reason, r.name).toMatch(/Change review date/);
+      }
+    }
+    // A COMPLETED row that disagrees is history, not ambiguity.
+    const historic = { ...rowB, id: 'b-done', completedAt: NOW.toISOString() };
+    expect(
+      transferToAutomaticReview({ item: item({ nextReviewDate: day(3), reviewMode: 'manual' }), reviews: [rowA, historic], now: NOW }).ok,
+    ).toBe(true);
+
+    // --- An item that is GONE refuses, rather than acting on nothing ------
+    const missing = transferToAutomaticReview({ item: undefined, reviews: [rowA], now: NOW });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.reason).toMatch(/no longer exists/);
+
+    // --- "Review today" is a SEPARATE operation ----------------------------
+    // Administrative scheduling with today's date and USER source; it preserves
+    // the current mode and manufactures no retention evidence.
+    const unscheduled = item({ ...spaced, nextReviewDate: undefined, reviewMode: 'auto' });
+    const today = scheduleAgainPlan({ item: unscheduled, reviews: [], dueDate: TODAY, now: NOW });
+    expect(today.dueDate).toBe(TODAY);
+    expect(today.createRow).toBe(true);
+    // It records nothing about how practice went.
+    expect(today.reviews.every((r) => r.result === undefined)).toBe(true);
+    // And the transfer alone never does it: no date in, no date out.
+    const stillNone = transferToAutomaticReview({ item: unscheduled, reviews: [], now: NOW });
+    expect(stillNone.ok).toBe(true);
+    if (stillNone.ok) {
+      expect(stillNone.item.nextReviewDate).toBeUndefined();
+      expect(stillNone.item.nextReviewSource).toBeUndefined();
+      expect(stillNone.createRow).toBe(false);
     }
   });
 });

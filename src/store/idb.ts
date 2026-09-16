@@ -66,6 +66,14 @@ let pendingWrite: Promise<void> = Promise.resolve();
  * change, so awaiting this immediately after a store action is a real
  * acknowledgement of that action's durability, never a timeout standing in
  * for one.
+ *
+ * "Immediately" is load-bearing and is genuinely enough: zustand's persist
+ * middleware wraps `setState` and calls `setItem` SYNCHRONOUSLY inside it, and
+ * `setItem` assigns `pendingWrite` before its own first await — so a caller
+ * that does `action(); storageSettled().then(...)` as two adjacent statements
+ * has already captured ITS OWN write's promise, with no point at which another
+ * store write (a boundary signal during a running clock, say) could interleave
+ * and hand it somebody else's outcome.
  */
 export function storageSettled(): Promise<void> {
   return pendingWrite;
@@ -102,7 +110,14 @@ export const idbStorage: StateStorage = {
     // point of a local-first notebook is that what you wrote is still there.
     const write = idb.kv.put({ key: name, value }).then(() => undefined);
     pendingWrite = write;
-    await write;
+    // Zustand's persist middleware calls this and ignores the result
+    // (`void setItem()`), so a rejection reaching the outer promise would
+    // surface only as an unhandled rejection in the page — noise that hides
+    // real errors. The failure is NOT swallowed: `storageSettled()` above
+    // hands it to the one caller that can act on it. This `catch` also marks
+    // `write` itself handled, so the ordinary writes nobody is waiting on
+    // cannot raise one either.
+    await write.catch(() => undefined);
   },
   removeItem: async (name) => {
     await idb.kv.delete(name);

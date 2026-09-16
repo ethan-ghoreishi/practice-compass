@@ -146,7 +146,15 @@ export function retirePracticeText(db: PracticeDB): PracticeDB {
   return { ...db, items, blocks };
 }
 
-/** An optional free-text field: absent, or a real string (empty is fine). */
+/**
+ * An optional free-text field: absent, or a real string. EMPTY is fine —
+ * emptying a notebook is a deliberate act, not a defect. `null` is read as
+ * ABSENT rather than rejected: it is what a JSON serialiser or a hand-edited
+ * file produces for "no value", every reader in the app already treats it as
+ * missing (`item.notes ?? ''`), and nothing coerces it into text. What IS
+ * rejected is a value that would silently become "[object Object]" or "3" if
+ * anything ever did coerce it.
+ */
 function textProblem(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value === 'string') return null;
