@@ -224,7 +224,6 @@ export default function ItemDetail() {
 
       <ScheduleAgain
         item={item}
-        now={now}
         conflict={pendingScheduleConflict(item, db.reviews)}
         onSchedule={(date) => scheduleReviewAgain(item.id, date)}
       />
@@ -606,10 +605,18 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
  * captured when the panel mounted), so reopening it, switching to another item
  * or an update arriving from elsewhere can never act on a stale date.
  */
-function ReviewOwnership({ item, now }: { item: PracticeItem; now: Date }) {
+function ReviewOwnership({ item, now: polledNow }: { item: PracticeItem; now: Date }) {
   const transfer = useStore((s) => s.useAutomaticReviewDates);
   const scheduleAgain = useStore((s) => s.scheduleReviewAgain);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // `useDecisionNow` polls at most every 30 seconds, so on a screen left open
+  // across local midnight it can lag the real day — and "Review today" writes
+  // a DATE. Catch that at the one instant it matters, exactly as the close
+  // screen's Save does: refresh what is shown and stop, so the second tap
+  // writes the day it actually is rather than the day this page was opened on.
+  const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  const now = nowOverride ?? polledNow;
+  const today = todayISODate(now);
   const mode = item.reviewMode ?? 'auto';
   const engineOwnsDate = mode === 'auto' && (!item.nextReviewDate || item.nextReviewSource === 'auto');
 
@@ -653,9 +660,16 @@ function ReviewOwnership({ item, now }: { item: PracticeItem; now: Date }) {
             <button
               className="btn btn-sm"
               style={{ width: 'fit-content' }}
-              onClick={() => scheduleAgain(item.id, todayISODate(now))}
+              onClick={() => {
+                const trueNow = new Date();
+                if (todayISODate(trueNow) !== today) {
+                  setNowOverride(trueNow);
+                  return;
+                }
+                scheduleAgain(item.id, today);
+              }}
             >
-              Review today
+              Review today ({today})
             </button>
             <p className="tiny faint">
               <span dir="ltr">
@@ -873,17 +887,15 @@ function FieldRow({ label, value }: { label: string; value: string }) {
  */
 function ScheduleAgain({
   item,
-  now,
   conflict,
   onSchedule,
 }: {
   item: PracticeItemT;
-  now: Date;
   conflict: { rows: Review[]; message: string } | null;
   onSchedule: (date: ISODate) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [date, setDate] = useState<string>(item.nextReviewDate ?? todayISODate(now));
+  const [date, setDate] = useState<string>('');
 
   return (
     <div className="stack-sm">
@@ -922,7 +934,17 @@ function ScheduleAgain({
           </p>
         </Field>
       ) : (
-        <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={() => setOpen(true)}>
+        <button
+          className="btn btn-sm"
+          style={{ width: 'fit-content' }}
+          onClick={() => {
+            // Seeded when it OPENS, from the live item and the real day —
+            // never once at mount, which would offer a date that has since
+            // been changed elsewhere or a "today" that has since rolled over.
+            setDate(item.nextReviewDate ?? todayISODate(new Date()));
+            setOpen(true);
+          }}
+        >
           {item.nextReviewDate ? 'Change review date' : 'Schedule again'}
         </button>
       )}

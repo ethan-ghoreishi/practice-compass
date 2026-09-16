@@ -118,9 +118,9 @@ describe('the item notebook, while you are playing', () => {
         await editNotes(page, 'یادداشتِ تازه روی صفحهٔ قطعه\nنوشته‌شده هنگام نواختن');
         expect(await savedNotes(app, FARSI_ITEM), where).toContain('نوشته‌شده هنگام نواختن');
         // The clock is untouched by the edit: same block, still running.
-        let state = (await readPersistedState(app)).state as { active: { itemId: string; running: boolean } };
-        expect(state.active.itemId, where).toBe(FARSI_ITEM);
-        expect(state.active.running, where).toBe(true);
+        const running = (await readPersistedState(app)).state as { active: { itemId: string; running: boolean } };
+        expect(running.active.itemId, where).toBe(FARSI_ITEM);
+        expect(running.active.running, where).toBe(true);
 
         // --- While PAUSED, and offline -----------------------------------
         await page.getByRole('button', { name: 'Pause' }).click();
@@ -128,8 +128,8 @@ describe('the item notebook, while you are playing', () => {
         await editNotes(page, 'یادداشتِ تازه روی صفحهٔ قطعه\nنوشته‌شده هنگام نواختن\nedited offline');
         await page.context().setOffline(false);
         expect(await savedNotes(app, FARSI_ITEM), where).toContain('edited offline');
-        state = (await readPersistedState(app)).state as { active: { itemId: string; running: boolean } };
-        expect(state.active.running, where).toBe(false);
+        const paused = (await readPersistedState(app)).state as { active: { itemId: string; running: boolean } };
+        expect(paused.active.running, where).toBe(false);
 
         // --- Navigating away and back ------------------------------------
         await goTo(app, `/items/${FARSI_ITEM}`);
@@ -265,7 +265,7 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       expect(await savedNotes(app, FARSI_ITEM)).toBe(FARSI_NOTES);
       expect(await savedNotes(app, 'i-auto-due')).toBeUndefined();
       // And the run itself is unharmed: still one routine, no extra blocks.
-      let state = (await readPersistedState(app)).state as { activeRoutine: { routineId: string } | null };
+      const state = (await readPersistedState(app)).state as { activeRoutine: { routineId: string } | null };
       expect(state.activeRoutine?.routineId).toBe(routineId);
       expect((await persistedDb(app)).blocks).toHaveLength(6);
 
