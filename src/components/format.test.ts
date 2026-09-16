@@ -11,6 +11,7 @@ import {
 import {
   closeOverrideDate,
   relativeDay,
+  reviewDateDraftFor,
   reviewOverrideSurvivesResultChange,
   reviewSummaryLine,
   splitLines,
@@ -146,5 +147,61 @@ describe('splitLines', () => {
     expect(splitLines('one question')).toEqual(['one question']);
     expect(splitLines('a\n\n  \nb\n')).toEqual(['a', 'b']);
     expect(splitLines('  padded  ')).toEqual(['padded']);
+  });
+});
+
+describe('reviewDateDraftFor', () => {
+  const A = { id: 'a', nextReviewDate: '2027-02-10' };
+  const B = { id: 'b', nextReviewDate: '2027-05-05' };
+  const openOnA = { forItem: 'a', seeded: '2027-02-10', text: '2027-02-10' };
+
+  it('keeps an untouched draft while its item and date are unchanged', () => {
+    expect(reviewDateDraftFor(openOnA, A)).toEqual(openOnA);
+  });
+
+  it('keeps text the owner typed for its own item', () => {
+    const typed = { ...openOnA, text: '2027-03-01' };
+    expect(reviewDateDraftFor(typed, A)).toEqual(typed);
+  });
+
+  it('DROPS a draft belonging to another item, so A\'s date cannot be saved onto B', () => {
+    expect(reviewDateDraftFor(openOnA, B)).toBeNull();
+    expect(reviewDateDraftFor({ ...openOnA, text: '2027-03-01' }, B)).toBeNull();
+  });
+
+  it('re-seeds an UNTOUCHED box when the item\'s own date moved beneath it', () => {
+    // A sync pull, another tab, or a close screen moved the date. Saving the
+    // captured one would silently revert a change the owner never saw.
+    const moved = { ...A, nextReviewDate: '2027-04-20' };
+    expect(reviewDateDraftFor(openOnA, moved)).toEqual({
+      forItem: 'a',
+      seeded: '2027-04-20',
+      text: '2027-04-20',
+    });
+  });
+
+  it('keeps TYPED text when the item\'s date moved, and stops re-deciding it', () => {
+    const typed = { ...openOnA, text: '2027-03-01' };
+    const moved = { ...A, nextReviewDate: '2027-04-20' };
+    const once = reviewDateDraftFor(typed, moved);
+    expect(once).toEqual({ forItem: 'a', seeded: '2027-04-20', text: '2027-03-01' });
+    // The baseline caught up, so a later render leaves it exactly alone.
+    expect(reviewDateDraftFor(once, moved)).toEqual(once);
+  });
+
+  it('leaves a box seeded with today alone on an item that has no date', () => {
+    // The seed is deliberately NOT the item's date there (it has none), so the
+    // "moved" comparison must not fire and empty the box.
+    const seededToday = { forItem: 'a', seeded: '2026-06-18', text: '2026-06-18' };
+    const noDate = { id: 'a' };
+    expect(reviewDateDraftFor(seededToday, noDate)).toEqual(seededToday);
+    expect(reviewDateDraftFor({ ...seededToday, text: '2027-01-01' }, noDate)).toEqual({
+      ...seededToday,
+      text: '2027-01-01',
+    });
+  });
+
+  it('has nothing to reconcile when no draft is open', () => {
+    expect(reviewDateDraftFor(null, A)).toBeNull();
   });
 });

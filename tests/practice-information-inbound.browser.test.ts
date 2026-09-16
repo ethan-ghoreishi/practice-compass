@@ -423,10 +423,12 @@ describe('a replacement door never installs what it has not checked', () => {
       // …and with no blob on this device, a STATE-ONLY file that DESCRIBES one
       // is refused at the one door that could install it. That state is a
       // one-way trap, not a cosmetic flaw: the device's own next full export
-      // derives `files` from the blobs it holds while `data` carries the
-      // metadata, so it would describe a file it does not contain — refused by
-      // its own import above ("metadata whose bytes were omitted") and by every
-      // device a sync published it to, permanently. Local bytes and the local
+      // carries bytes for exactly the attachments `data` describes and can only
+      // OMIT one whose blob it cannot find, so it would describe a file it does
+      // not contain — refused by its own import above ("metadata whose bytes
+      // were omitted") and by every device a sync published it to, permanently.
+      // (The OPPOSITE mismatch — bytes nothing describes — is closed at the
+      // export itself; see the orphan round trip further down.) Local bytes and the local
       // database are both left exactly as they were.
       await importBackup(app, 'state-only-dangling.json', wrap(db, undefined));
       expect(await importOutcome(app)).toMatch(/Import failed/);
@@ -444,6 +446,45 @@ describe('a replacement door never installs what it has not checked', () => {
       await importBackup(app, 'legacy.json', wrap(db, [{ id: 'att-1', itemId: FARSI_ITEM, mime: 'text/plain', name: 'score.txt', data: 'bGVnYWN5' }]));
       expect(await importOutcome(app)).toContain('Imported');
       await expect.poll(() => attachmentText()).toBe('legacy');
+
+      // --- BYTES THE DATABASE NO LONGER DESCRIBES ------------------------
+      // A state-only file must PRESERVE local blobs — that is its contract —
+      // even when the database it installs describes none of them. So this
+      // device is deliberately left holding bytes nothing names, and the whole
+      // round trip has to survive it: the app's own full export used to derive
+      // `files` from the blobs actually stored, so it emitted those orphans and
+      // produced a backup its OWN importer then refused ("belongs to nothing
+      // this file describes") — unrestorable here and on every device a sync
+      // published it to.
+      await importBackup(
+        app,
+        'state-only-no-attachments.json',
+        wrap({ ...db, attachments: [], items: (db.items as Record<string, unknown>[]).map((i) => (i.id === FARSI_ITEM ? { ...i, title: 'orphan bytes left behind' } : i)) }, undefined),
+      );
+      expect(await importOutcome(app)).toContain('Imported');
+      await persistedUntil(
+        app,
+        (s) => (s.state as { db: { attachments: unknown[] } }).db.attachments.length,
+        (n) => n === 0,
+      );
+      // The contract held: the bytes are still here, undeleted.
+      expect(await attachmentText()).toBe('legacy');
+
+      await reload(app);
+      const orphanExport = await exportBackup(app);
+      // The export describes exactly what the database describes — nothing.
+      expect((JSON.parse(orphanExport) as { files: unknown[] }).files).toEqual([]);
+      await importBackup(app, 'orphan-roundtrip.json', orphanExport);
+      expect(await importOutcome(app)).toContain('Imported');
+      // …and restoring it leaves the device consistent: no metadata, and no
+      // bytes for a file nothing names still sitting there pretending.
+      await expect.poll(() => attachmentText()).toBe(null);
+      expect((await persistedDb(app)).items.find((i) => i.id === FARSI_ITEM)!.title).toBe('orphan bytes left behind');
+
+      // Put the fixture's attachment back for what follows.
+      await importBackup(app, 'restore-attachment.json', wrap(db, [validFile]));
+      expect(await importOutcome(app)).toContain('Imported');
+      await expect.poll(() => attachmentText()).toBe('replaced');
 
       // --- A valid round trip keeps the canonical model -------------------
       await reload(app);

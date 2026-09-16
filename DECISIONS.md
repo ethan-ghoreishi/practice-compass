@@ -2,6 +2,58 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## A draft belongs to what it was typed for, not to whatever is on screen (2026-09-16)
+
+Two sealed findings, one rule, in two editors.
+
+**Working notes.** `ItemNotes` cleared its draft and showed "Saved." whenever the
+IndexedDB write it had issued settled — but the textarea stays live while that write is
+acknowledged, so anything typed in that window is NEWER than what was written. Pressing
+Done, typing one more word, and letting the write land threw that word away and put a
+success message over the older text. A settling write now speaks only for the text it
+actually CARRIED: same text ⇒ clear the draft and say saved; different ⇒ re-issue the
+write for what is on screen, which is what pressing Done asked for and is what keeps the
+words even if the screen is left mid-write. Try again does the same on the failure path.
+Only the latest save may act (`saveSeq`, bumped by a retry and by switching item), and the
+draft is read through a ref: `storageSettled()` resolves in a microtask that can land
+between a keystroke and React's next render, so neither the issuing closure nor an
+effect-mirrored ref is sound.
+
+**The review date.** `ScheduleAgain` kept `open`/`date` in plain state, and `/items/A` →
+`/items/B` is a route PARAMETER change — same component instance, new props — so an open
+draft survived it and "Save date" wrote A's date through B's callback. The draft now
+carries the item it was opened for and that item's own pending date, and
+`reviewDateDraftFor` (pure, tested) reconciles it on every render: another item drops it;
+an untouched seed follows a date that moved beneath it, rather than silently reverting a
+change the owner never saw; text the owner typed survives, because that is intent, not a
+stale capture. Deliberately NOT an effect that resets state — a derivation cannot leave a
+paint in which the box shows one item's date while Save points at another.
+
+Both are the same sentence: an editor's draft is bound to what it was typed for, and
+neither time nor a route change may re-point it.
+
+## The export is derived from the metadata, so the app cannot write a backup it refuses (2026-09-16)
+
+Amends "A strict “metadata without bytes” refusal needs the same rule at the other door" below, which closed one mouth of that trap and left the other open. A
+sealed review found the mirror case: with a blob stored locally, a valid STATE-ONLY import
+whose `data` describes no attachments is accepted and — correctly, by that door's own
+contract — preserves the bytes. The database now names nothing, but
+`buildFullBackupWithRev` derived `files` from the blobs actually STORED, so the next full
+export carried orphan bytes and `decodeBackupFiles` refused its own device's backup
+("belongs to nothing this file describes"). Not exotic either: `deleteItem`,
+`deleteLesson` and `resetDemo` remove metadata synchronously while their
+`void deleteBlob(...)` cleanup can fail on its own.
+
+`files` is now built from `db.attachments` ∩ the blobs held, carrying the METADATA's
+`ownerId` — the field the importer validates against and writes back onto the blob row, so
+the round trip is idempotent rather than a second opinion about ownership. Unreferenced
+bytes stay on the device UNTOUCHED; deleting them to make the two agree is exactly what the
+state-only contract forbids, and they are simply not part of the database the backup is OF.
+
+Fixing it at the export rather than at the state-only door was the point: the door must
+preserve those bytes, so the inconsistency is legitimate and it is the EXPORT that has to
+be honest about which of them the backup is for.
+
 ## One canonical home per kind of practice information — schema v13 (2026-09-16)
 
 Four things the musician writes, four homes: **Working notes** (`item.notes`) belong to the
@@ -61,10 +113,10 @@ that limitation is stated rather than papered over.
 `decodeBackupFiles` now refuses a full backup that describes an attachment it does not
 carry (it used to `continue` past unreadable entries and install metadata for bytes that
 never arrived, reporting "Imported (3 files)"). Tightening that alone creates a ONE-WAY
-TRAP, which is the part worth recording: `buildFullBackupWithRev` derives `files` from the
-blobs actually stored while `data` carries the metadata, so a device holding metadata for a
-blob it does not have exports a file it will then refuse on import — and publishes a sync
-snapshot every other device refuses too. Permanent, with no owner-visible way out.
+TRAP, which is the part worth recording: an export can only carry bytes it actually holds,
+so a device holding metadata for a blob it does not have exports a file it will then refuse
+on import — and publishes a sync snapshot every other device refuses too. Permanent, with
+no owner-visible way out.
 
 The state-only import (`files` absent) was the one door that could create it. So the same
 invariant is enforced there: **after any install, every attachment the database describes

@@ -195,6 +195,43 @@ describe('handing a review date back to the app', () => {
       await goTo(app, `/items/${FARSI_ITEM}`);
       await goTo(app, `/items/${ROWLESS}`);
       expect(await page.locator('main').innerText()).toContain('2027-04-01');
+
+      // --- 7a. AN OPEN DATE EDITOR BELONGS TO THE ITEM IT WAS OPENED FOR ---
+      // `/items/A` → `/items/B` is a route PARAMETER change: React keeps the
+      // same component and only moves the props, so a draft that survived it
+      // would be saved through the NEW item's callback. A's date used to land
+      // on B that way, silently replacing a schedule B's owner never touched.
+      const farsiOpen = await facts(app, FARSI_ITEM);
+      const rowlessOpen = await facts(app, ROWLESS);
+      expect(farsiOpen.nextReviewDate).not.toBe(rowlessOpen.nextReviewDate);
+      await goTo(app, `/items/${FARSI_ITEM}`);
+      await page.getByRole('button', { name: 'Change review date' }).click();
+      await page.getByLabel('Next review date').fill('2027-02-10');
+      await goTo(app, `/items/${ROWLESS}`);
+      // The editor did not come with it — there is nothing to press Save on.
+      expect(await page.getByLabel('Next review date').count()).toBe(0);
+      expect(await page.getByRole('button', { name: 'Save date' }).count()).toBe(0);
+      // Opening B's own editor offers B's own date, never the one carried over.
+      await page.getByRole('button', { name: 'Change review date' }).click();
+      expect(await page.getByLabel('Next review date').inputValue()).toBe(rowlessOpen.nextReviewDate);
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await reload(app);
+      expect((await facts(app, ROWLESS)).nextReviewDate).toBe(rowlessOpen.nextReviewDate);
+      expect((await facts(app, FARSI_ITEM)).nextReviewDate).toBe(farsiOpen.nextReviewDate);
+
+      // --- 7b. A LIVE UPDATE TO THE ITEM DOES NOT DISCARD TYPED TEXT ------
+      // The other half of the same rule: the draft is bound to the item, not
+      // frozen against every change to it. A status change re-renders this
+      // page with a new item object; the date the owner typed is theirs and
+      // stands, and saving writes exactly it.
+      await goTo(app, `/items/${ROWLESS}`);
+      await page.getByRole('button', { name: 'Change review date' }).click();
+      await page.getByLabel('Next review date').fill('2027-07-07');
+      await page.getByRole('group', { name: 'Set status' }).getByRole('button', { name: 'Fixing problems' }).click();
+      expect(await page.getByLabel('Next review date').inputValue()).toBe('2027-07-07');
+      await page.getByRole('button', { name: 'Save date' }).click();
+      await reload(app);
+      expect((await facts(app, ROWLESS)).nextReviewDate).toBe('2027-07-07');
       // An update arriving from elsewhere (an import — what a sync pull is)
       // while the screen is open is reflected, not overwritten by it.
       const live = await persistedDb(app);
@@ -217,6 +254,11 @@ describe('handing a review date back to the app', () => {
       expect(await importOutcome(app)).toContain('Imported');
       await goTo(app, `/items/${ROWLESS}`);
       expect(await page.locator('main').innerText()).toContain('2027-05-05');
+      // An editor opened AFTER that update offers the new date, not the one
+      // this screen was showing before it arrived.
+      await page.getByRole('button', { name: 'Change review date' }).click();
+      expect(await page.getByLabel('Next review date').inputValue()).toBe('2027-05-05');
+      await page.getByRole('button', { name: 'Cancel' }).click();
       await transferButton(page).click();
       await reload(app);
       expect((await facts(app, ROWLESS)).nextReviewDate).toBe('2027-05-05');

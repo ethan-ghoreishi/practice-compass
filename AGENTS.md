@@ -67,11 +67,30 @@ can still carry a stray retired key from a partial conversion or a hand-edited f
 One invariant, enforced at both doors: `decodeBackupFiles` refuses a FULL backup that
 describes a file it does not carry, and `importFullBackup` refuses a STATE-ONLY file
 (`files` absent) that names an attachment whose blob is not already here. Refusing only the
-first is a one-way trap — a full export derives `files` from the blobs actually stored
-while `data` carries the metadata, so a device left holding metadata for absent bytes
-exports a backup it then refuses, and publishes a snapshot every other device refuses too,
-permanently. Dropping the dangling metadata instead would be silent loss of the owner's own
-record. Both refusals name the file and change nothing.
+first is a one-way trap — a full export carries bytes for exactly the attachments `data`
+describes and can only OMIT one whose blob it cannot find, so a device left holding
+metadata for absent bytes exports a backup it then refuses, and publishes a snapshot every
+other device refuses too, permanently. Dropping the dangling metadata instead would be
+silent loss of the owner's own record. Both refusals name the file and change nothing.
+
+**AND THE EXPORT IS DERIVED FROM THE CANONICAL METADATA, SO THE APP CANNOT WRITE A BACKUP
+ITS OWN IMPORTER REFUSES.** The trap has a second mouth, and closing only the inbound one
+left it open: `buildFullBackupWithRev` used to derive `files` from the blobs actually
+STORED, which is the opposite mismatch — bytes the database describes nowhere.
+`decodeBackupFiles` refuses those as orphans ("belongs to nothing this file describes"), so
+the export was unrestorable here and on every device a sync published it to. They are not
+exotic: a state-only import MUST preserve local blobs (that is its own contract) while
+replacing the database that named them, and `deleteItem`/`deleteLesson`/`resetDemo` drop
+metadata synchronously while their `void deleteBlob(...)` cleanup can fail on its own. So
+`files` is built from `db.attachments` ∩ the blobs held, carrying the METADATA's `ownerId`
+— the one the importer validates against and writes back onto the blob row, so an
+export→import round trip is idempotent rather than a second opinion about ownership.
+Unreferenced bytes are not part of the database the backup is OF; they stay on the device
+UNTOUCHED, never deleted to make the two agree, because deleting them is exactly what the
+state-only contract forbids. The opposite mismatch is not fixable at export — dropping the
+metadata is silent loss, refusing to export leaves a device unable to back up at all — and
+is instead prevented at the two doors above, `addAttachment` writing the blob BEFORE its
+metadata.
 
 **THE SURVIVING TEXT IS VALIDATED AT EVERY INBOUND DOOR, AND NEVER COERCED.**
 `validatePracticeText` (the four homes' own string fields — the block's `constraint`
@@ -103,6 +122,19 @@ never a second copy of the text or a second way to write it:
   when that changes. A timer tick, a store update from elsewhere, or a routine crossing
   into the next bound segment re-renders this component constantly; without the tag, a
   stale editor can commit A's words onto B.
+- **AN IN-FLIGHT WRITE NEVER OWNS THE EDITOR.** The textarea stays live while IndexedDB
+  acknowledges, so words typed in that window are NEWER than the ones being written. A
+  settling write may only speak for the text it actually CARRIED: it clears the draft and
+  says "Saved." when the draft is still exactly that text, and otherwise re-issues the
+  write for what is on screen now. Clearing the draft on whatever settles — which is what
+  it did — dropped those words and put a success message over the older ones, and letting
+  the newer text simply sit there unsaved would lose it the moment the screen was left. The
+  same rule holds on the failure path: Try again writes what is on screen NOW, not the text
+  that failed. Only the LATEST save may act at all (`saveSeq`, bumped by a retry AND by
+  switching item — ONE ownership test, not a second `forItem` comparison nothing could ever
+  make disagree with it), and the draft is read through a REF, never the closure the write
+  was issued in nor a ref mirrored by an effect: `storageSettled()` resolves in a microtask
+  that can land between a keystroke and React's next render.
 - **Editing notes changes nothing else.** Not the clock, the elapsed figure, the running
   state, a block, a result, a review or any SM‑2 value.
 
@@ -1637,6 +1669,23 @@ the seam that makes this hold: the close screen SHOWS the date that will stand, 
 an early session is the item's existing one, and passing that back as an explicit
 override would both stamp every engine-proposed date as the owner's and turn every keep
 into a write. Only a date actually typed into the field is an override.
+
+**AN OPEN DATE EDITOR IS BOUND TO THE ITEM AND THE DATE IT WAS OPENED FOR.** The same rule
+as the notebook's draft tag, on the panel that edits a review date
+(`reviewDateDraftFor`, `format.ts`, tested; used by `ScheduleAgain` in `ItemDetail.tsx`).
+`/items/A` → `/items/B` is a route PARAMETER change: React keeps the same component
+instance and only moves the props, so an open draft survived it and "Save date" wrote it
+through the NEW item's callback — A's 2027‑02‑10 landing on B, silently replacing a
+schedule B's owner never touched. The draft therefore carries `forItem` AND the item's own
+pending date at the moment it was seeded, and is reconciled on EVERY render rather than
+reset from an effect, so there is no paint in which the box shows A's date while Save
+points at B. A different item DROPS it; the item's own date moving beneath an UNTOUCHED
+seed re-seeds the box, because saving a captured date would silently revert a change the
+owner never saw; the item's date moving beneath TYPED text leaves the text alone (it is
+their intent, not a stale capture) and only catches the baseline up. A box seeded with
+today on an item that has NO date is excluded from that comparison — its seed was never
+the item's date. `ReviewOwnership`'s refusal message carries the same tag, for the same
+reason: a refusal about A's schedule shown under B is a statement about the wrong item.
 
 **"Schedule again" is administration, not practice.** `scheduleAgainPlan` sets ONE date on
 the item and its pending row, CREATING the row when none is open (the case the old date

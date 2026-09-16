@@ -38,7 +38,14 @@ import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
 import { Field, OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
 import { ArrowLeftIcon, PlayIcon, PlusIcon } from '../components/icons';
-import { formatMinutes, relativeDay, relativeFromDateTime, formatDateTimeISO } from '../components/format';
+import {
+  formatMinutes,
+  relativeDay,
+  relativeFromDateTime,
+  formatDateTimeISO,
+  reviewDateDraftFor,
+  type ReviewDateDraft,
+} from '../components/format';
 import { useDecisionNow } from '../components/useDecisionNow';
 
 const RESULT_TONE: Record<BlockResult, string> = {
@@ -608,7 +615,10 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
 function ReviewOwnership({ item, now: polledNow }: { item: PracticeItem; now: Date }) {
   const transfer = useStore((s) => s.useAutomaticReviewDates);
   const scheduleAgain = useStore((s) => s.scheduleReviewAgain);
-  const [refusal, setRefusal] = useState<string | null>(null);
+  // Tagged with the item it was raised for, for the same reason the date draft
+  // is: this panel survives a route parameter change, and a refusal about A
+  // shown under B is a statement about the wrong item's schedule.
+  const [refusal, setRefusal] = useState<{ forItem: string; message: string } | null>(null);
   // `useDecisionNow` polls at most every 30 seconds, so on a screen left open
   // across local midnight it can lag the real day — and "Review today" writes
   // a DATE. Catch that at the one instant it matters, exactly as the close
@@ -641,7 +651,10 @@ function ReviewOwnership({ item, now: polledNow }: { item: PracticeItem; now: Da
           <button
             className="btn btn-sm"
             style={{ width: 'fit-content' }}
-            onClick={() => setRefusal(transfer(item.id))}
+            onClick={() => {
+              const message = transfer(item.id);
+              setRefusal(message ? { forItem: item.id, message } : null);
+            }}
           >
             Use automatic scheduling
           </button>
@@ -678,9 +691,9 @@ function ReviewOwnership({ item, now: polledNow }: { item: PracticeItem; now: Da
             </p>
           </>
         )}
-        {refusal && (
+        {refusal?.forItem === item.id && (
           <div className="small" role="alert" style={{ color: 'var(--tone-warn)' }}>
-            <span dir="ltr">{refusal}</span>
+            <span dir="ltr">{refusal.message}</span>
           </div>
         )}
         <p className="tiny faint">
@@ -894,8 +907,14 @@ function ScheduleAgain({
   conflict: { rows: Review[]; message: string } | null;
   onSchedule: (date: ISODate) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [date, setDate] = useState<string>('');
+  // The draft carries the item it was opened for and that item's own date at
+  // the time, and `reviewDateDraftFor` decides on EVERY render what it still
+  // means. Deriving it here rather than resetting it from an effect is what
+  // makes a stale date unrepresentable: the panel below only ever renders and
+  // saves the reconciled value, so there is no paint in which the box shows
+  // A's date while the Save button points at B.
+  const [draft, setDraft] = useState<ReviewDateDraft | null>(null);
+  const open = reviewDateDraftFor(draft, item);
 
   return (
     <div className="stack-sm">
@@ -910,22 +929,25 @@ function ScheduleAgain({
             className="input"
             type="date"
             aria-label="Next review date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            value={open.text}
+            onChange={(e) => setDraft({ ...open, text: e.target.value })}
             style={{ maxWidth: 200 }}
           />
           <div className="row" style={{ gap: 6 }}>
             <button
               className="btn btn-sm btn-primary"
-              disabled={!date}
+              disabled={!open.text}
               onClick={() => {
-                onSchedule(date);
-                setOpen(false);
+                // `open` is the reconciled draft for the item rendered in this
+                // very pass, and `onSchedule` closes over that same item — so
+                // the date saved is always the one this panel is showing.
+                onSchedule(open.text);
+                setDraft(null);
               }}
             >
               Save date
             </button>
-            <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+            <button className="btn btn-ghost btn-sm" onClick={() => setDraft(null)}>
               Cancel
             </button>
           </div>
@@ -941,8 +963,11 @@ function ScheduleAgain({
             // Seeded when it OPENS, from the live item and the real day —
             // never once at mount, which would offer a date that has since
             // been changed elsewhere or a "today" that has since rolled over.
-            setDate(item.nextReviewDate ?? todayISODate(new Date()));
-            setOpen(true);
+            setDraft({
+              forItem: item.id,
+              seeded: item.nextReviewDate ?? todayISODate(new Date()),
+              text: item.nextReviewDate ?? todayISODate(new Date()),
+            });
           }}
         >
           {item.nextReviewDate ? 'Change review date' : 'Schedule again'}

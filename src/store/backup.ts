@@ -118,17 +118,47 @@ export function lastModifiedOf(db: ReturnType<typeof useStore.getState>['db']): 
 export async function buildFullBackupWithRev(now: Date = new Date()): Promise<{ text: string; rev: number }> {
   const { db, rev } = useStore.getState();
   const blobs = await allBlobs();
+  // THE EXPORT IS DERIVED FROM THE CANONICAL METADATA, NOT FROM WHATEVER BYTES
+  // THIS DEVICE HAPPENS TO HOLD — so a backup this app writes is always one its
+  // own importer accepts.
+  //
+  // `decodeBackupFiles` refuses bytes that the accompanying `data` describes
+  // nowhere, and refuses an entry whose owner disagrees with its record. Both
+  // are exactly what a blobs-first export can emit, because a blob can outlive
+  // the metadata that named it: a state-only import must PRESERVE local bytes
+  // (that is its contract) while replacing the database that described them,
+  // and `deleteItem`/`deleteLesson`/`resetDemo` remove metadata synchronously
+  // while their `void deleteBlob(...)` cleanup can fail on its own. Exporting
+  // those leftovers made the app produce a file it then refused — and publish a
+  // snapshot every other device refused too, permanently, which is the same
+  // one-way trap the state-only guard below exists to prevent from the other
+  // side. Unreferenced bytes are simply not part of the database this backup
+  // is OF; they are left on the device untouched, never deleted to match.
+  //
+  // The OTHER direction — metadata this device holds no bytes for — is not
+  // fixable here and is not left open either: dropping the metadata would be
+  // silent loss of the owner's own record, and refusing to export would leave a
+  // device unable to back up at all. It is prevented at the two doors that
+  // could ever install it (`decodeBackupFiles` refuses a full backup missing
+  // bytes it describes; the state-only check below refuses metadata this device
+  // does not hold), and `addAttachment` writes the blob BEFORE the metadata, so
+  // no in-app path produces it.
+  const held = new Map(blobs.map((b) => [b.id, b]));
   const files: BackupFile[] = await Promise.all(
-    blobs.map(async (b) => {
-      const meta = db.attachments.find((a) => a.id === b.id);
-      return {
-        id: b.id,
-        ownerId: b.ownerId,
-        mime: meta?.mime ?? b.blob.type ?? 'application/octet-stream',
-        name: meta?.name ?? 'file',
-        data: await blobToBase64(b.blob),
-      };
-    }),
+    db.attachments
+      .filter((a) => held.has(a.id))
+      .map(async (a) => {
+        const b = held.get(a.id)!;
+        return {
+          id: a.id,
+          // The METADATA's owner, which is the one the importer validates
+          // against and the one it writes back onto the blob row.
+          ownerId: a.ownerId,
+          mime: a.mime || b.blob.type || 'application/octet-stream',
+          name: a.name || 'file',
+          data: await blobToBase64(b.blob),
+        };
+      }),
   );
   return {
     text: JSON.stringify({
@@ -277,11 +307,11 @@ export async function importFullBackup(
   // is refused). A state-only file carries no bytes at all, so it cannot prove
   // anything — and left unchecked it is the ONE door that can install metadata
   // for files this device does not hold. That state is a one-way trap rather
-  // than a cosmetic flaw: `buildFullBackupWithRev` derives `files` from the
-  // blobs actually stored while `data` carries the metadata, so the very next
-  // full export describes a file it does not contain — refused by this device's
-  // own import, and refused by every other device a sync publishes it to,
-  // permanently. Refusing here instead leaves the local bytes and the local
+  // than a cosmetic flaw: `buildFullBackupWithRev` carries bytes for exactly the
+  // attachments `data` describes and can only OMIT one whose blob it cannot
+  // find, so the very next full export describes a file it does not contain —
+  // refused by this device's own import, and refused by every other device a
+  // sync publishes it to, permanently. Refusing here instead leaves the local bytes and the local
   // database exactly as they were and says which file is missing, which is the
   // one moment the owner can still do something about it.
   if (!isFullBackup && validated.db.attachments.length > 0) {

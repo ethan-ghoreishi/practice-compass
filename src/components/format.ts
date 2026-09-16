@@ -148,3 +148,55 @@ export function closeOverrideDate(
   if (answer !== 'scheduled') return undefined;
   return override?.dueDate ? override.dueDate : undefined;
 }
+
+/**
+ * The open "Change review date" draft, reconciled against the item the screen
+ * is ACTUALLY showing right now.
+ *
+ * A date editor is a panel that stays mounted across things that change what
+ * it is editing. `/items/A` → `/items/B` is a route PARAMETER change, so React
+ * keeps the same component instance and only the props move; an import, a sync
+ * pull or another tab can likewise replace the item's own date while the panel
+ * sits open. Neither remounts anything, so an untouched draft quietly becomes
+ * a date belonging to something that is no longer on screen — and "Save date"
+ * then writes it through the CURRENT item's callback. A's 2027-02-10 lands on
+ * B.
+ *
+ * So the draft carries the item it was opened for and the item's own date at
+ * that moment, and this decides what it still means. It is the same rule
+ * `ItemNotes` applies to the notebook — a draft is bound to what it was typed
+ * for — expressed once, purely, where a Node test can reach it:
+ *
+ *   • a DIFFERENT item  → dropped. Never re-pointed, never saved onto B.
+ *   • the item's date MOVED beneath an untouched seed → re-seeded, so the
+ *     panel offers what the item now says rather than a value the owner never
+ *     chose and would silently revert.
+ *   • the item's date moved beneath TYPED text → the text stands. It is the
+ *     owner's own intent, not a stale capture; only the baseline catches up so
+ *     this decision is not re-made on every later render.
+ *
+ * A seeded box on an item with NO date offers today, which is deliberately not
+ * the item's date; that case is excluded from the "moved" comparison rather
+ * than being re-seeded to empty.
+ */
+export interface ReviewDateDraft {
+  /** The item this draft was opened for. */
+  forItem: string;
+  /** The item's own pending date when the box was last (re-)seeded. */
+  seeded: string;
+  /** What is in the box now. */
+  text: string;
+}
+
+export function reviewDateDraftFor(
+  draft: ReviewDateDraft | null,
+  item: { id: string; nextReviewDate?: string },
+): ReviewDateDraft | null {
+  if (!draft) return null;
+  if (draft.forItem !== item.id) return null;
+  const current = item.nextReviewDate ?? '';
+  if (!current || current === draft.seeded) return draft;
+  return draft.text === draft.seeded
+    ? { forItem: draft.forItem, seeded: current, text: current }
+    : { ...draft, seeded: current };
+}

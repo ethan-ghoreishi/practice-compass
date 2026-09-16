@@ -74,6 +74,71 @@ async function editNotes(page: Page, text: string): Promise<void> {
   await page.getByText('Saved.').waitFor({ timeout: 10_000 });
 }
 
+/**
+ * Hold a REAL IndexedDB readwrite transaction open on the `kv` store the app
+ * persists into, so the app's own next write genuinely queues behind it.
+ *
+ * Not a stub and not a hook inside the app: IndexedDB serialises overlapping
+ * readwrite transactions on the same store across every connection to the
+ * database, so this is the actual storage platform making the app's write take
+ * time — the same seam the refusal case above rejects a write at. An open
+ * transaction stays alive while its own requests keep arriving, which is what
+ * the spin below does until it is released.
+ *
+ * Nothing may read the persisted bytes while this is held: that read is a
+ * transaction too, and it would queue behind this one.
+ */
+async function blockStorage(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const dbh = req.result;
+          const store = dbh.transaction('kv', 'readwrite').objectStore('kv');
+          const w = window as unknown as { __releaseStorage?: boolean };
+          w.__releaseStorage = false;
+          const spin = () => {
+            if (w.__releaseStorage) {
+              dbh.close();
+              return;
+            }
+            store.get('practice-compass').onsuccess = spin;
+          };
+          spin();
+          resolve();
+        };
+      }),
+  );
+}
+
+async function releaseStorage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { __releaseStorage?: boolean }).__releaseStorage = true;
+  });
+}
+
+const doneButton = (page: Page) => page.getByRole('button', { name: 'Done editing Working notes' });
+
+/** Make the real IndexedDB `put` throw, exactly as a full device would. */
+async function breakStorage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
+    proto.__realPut = proto.put;
+    proto.put = function failing() {
+      throw new DOMException('storage is full', 'QuotaExceededError');
+    };
+  });
+}
+
+async function repairStorage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
+    if (proto.__realPut) proto.put = proto.__realPut;
+  });
+}
+
 /** Everything about an item that editing its notes must never disturb. */
 async function practiceFacts(app: PracticeApp, itemId: string) {
   const db = await persistedDb(app);
@@ -182,17 +247,11 @@ describe('the item notebook, while you are playing', () => {
         // Rejected at the real storage seam (IndexedDB itself), not by a hook
         // inside the app.
         await goTo(app, `/items/${ENGLISH_ITEM}`);
-        await page.evaluate(() => {
-          const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
-          proto.__realPut = proto.put;
-          proto.put = function failing() {
-            throw new DOMException('storage is full', 'QuotaExceededError');
-          };
-        });
+        await breakStorage(page);
         await page.getByRole('button', { name: /^Show Working notes$/ }).click().catch(() => {});
         await page.getByRole('button', { name: 'Edit Working notes' }).click();
         await notesBox(page).fill('words that must not be lost');
-        await page.getByRole('button', { name: 'Done editing Working notes' }).click();
+        await doneButton(page).click();
         await page.getByText(/Not saved/).waitFor({ timeout: 10_000 });
         // The text is still on screen, still editable, with a way out.
         expect(await notesBox(page).inputValue(), where).toBe('words that must not be lost');
@@ -200,10 +259,7 @@ describe('the item notebook, while you are playing', () => {
         expect(await page.getByRole('button', { name: 'Copy the text' }).isVisible(), where).toBe(true);
         expect(await page.getByText('Saved.').count(), where).toBe(0);
         // And restoring storage lets the retry actually succeed.
-        await page.evaluate(() => {
-          const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
-          if (proto.__realPut) proto.put = proto.__realPut;
-        });
+        await repairStorage(page);
         await page.getByRole('button', { name: 'Try again' }).click();
         await page.getByText('Saved.').waitFor({ timeout: 10_000 });
         await persistedUntil(
@@ -211,6 +267,68 @@ describe('the item notebook, while you are playing', () => {
           (s) => (s.state as { db: { items: { id: string; notes?: string }[] } }).db.items.find((i) => i.id === ENGLISH_ITEM)?.notes,
           (n) => n === 'words that must not be lost',
         );
+
+        // --- A WRITE IN FLIGHT NEVER OWNS THE EDITOR ---------------------
+        // The textarea stays live while IndexedDB acknowledges, so the words
+        // typed in that window are NEWER than the ones being written. The
+        // settling write used to clear the draft and say "Saved." regardless,
+        // which silently threw those words away and put a success message over
+        // the older text.
+        const englishBefore = await practiceFacts(app, ENGLISH_ITEM);
+        const SLOW = 'first edit, while storage is slow';
+        const NEWER = `${SLOW} — and this was typed DURING the write`;
+        await page.getByRole('button', { name: 'Edit Working notes' }).click();
+        await notesBox(page).fill(SLOW);
+        await blockStorage(page);
+        await doneButton(page).click();
+        // Genuinely in flight: the app is waiting on storage, not on a timer.
+        await expect.poll(() => doneButton(page).isDisabled(), { timeout: 10_000 }).toBe(true);
+        expect(await page.getByText('Saved.').count(), where).toBe(0);
+        await notesBox(page).fill(NEWER);
+        await releaseStorage(page);
+        await page.getByText('Saved.').waitFor({ timeout: 20_000 });
+        // What was on screen when the write settled is what is on the device.
+        expect(await savedNotes(app, ENGLISH_ITEM), where).toBe(NEWER);
+        expect(await page.locator('main').innerText(), where).toContain('typed DURING the write');
+
+        // A RETRY after a refusal writes what is on screen NOW, not the text
+        // that failed — the same rule, on the failure path.
+        await breakStorage(page);
+        await page.getByRole('button', { name: 'Edit Working notes' }).click();
+        await notesBox(page).fill('the text that the device refused');
+        await doneButton(page).click();
+        await page.getByText(/Not saved/).waitFor({ timeout: 10_000 });
+        await notesBox(page).fill('the text typed after the refusal');
+        await repairStorage(page);
+        await page.getByRole('button', { name: 'Try again' }).click();
+        await page.getByText('Saved.').waitFor({ timeout: 20_000 });
+        expect(await savedNotes(app, ENGLISH_ITEM), where).toBe('the text typed after the refusal');
+
+        // A write still in flight for THIS item never speaks for the next one:
+        // leaving mid-write leaves the other notebook, and its screen, alone.
+        await page.getByRole('button', { name: 'Edit Working notes' }).click();
+        await notesBox(page).fill('left behind mid-write');
+        const farsiNotesBefore = await savedNotes(app, FARSI_ITEM);
+        await blockStorage(page);
+        await doneButton(page).click();
+        await expect.poll(() => doneButton(page).isDisabled(), { timeout: 10_000 }).toBe(true);
+        await goTo(app, `/items/${FARSI_ITEM}`);
+        await releaseStorage(page);
+        // Wait for the write itself to land, so the claim below is about a
+        // SETTLED write reporting on a screen it no longer belongs to.
+        await persistedUntil(
+          app,
+          (s) => (s.state as { db: { items: { id: string; notes?: string }[] } }).db.items.find((i) => i.id === ENGLISH_ITEM)?.notes,
+          (n) => n === 'left behind mid-write',
+        );
+        // Real wall-clock time (Node's, not the page's faked clock) for a
+        // NEGATIVE claim: a wrongly-owned write would have painted by now.
+        await page.waitForTimeout(500);
+        expect(await page.getByText('Saved.').count(), where).toBe(0);
+        expect(await savedNotes(app, FARSI_ITEM), where).toBe(farsiNotesBefore);
+
+        // None of that touched the clock, a block, a review or SM-2 state.
+        expect(await practiceFacts(app, ENGLISH_ITEM), where).toEqual(englishBefore);
 
         expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
       } finally {
