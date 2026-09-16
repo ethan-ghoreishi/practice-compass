@@ -4,7 +4,7 @@ title: Keep useful practice information clear from capture to next time
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/24
 intent: 20260916-keep-useful-practice-information-clear-f-2e1e
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: d014293c205958f45e4393ebf6ae56901db83a1c
   branch: main
