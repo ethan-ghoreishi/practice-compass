@@ -26,11 +26,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # The two real-browser journeys are ordinary Vitest tests driving
-      # Playwright as a library, so they run inside `npm test` and must have
-      # their browser present. A missing browser FAILS them with a setup
-      # message — they never skip.
-      - run: npx playwright install --with-deps chromium
+      # The suite drives real browsers through Playwright as a library, and the
+      # harness FAILS with a setup message rather than skipping when an engine
+      # is missing. So every engine the suite can drive is installed here.
+      # Unversioned on purpose: it resolves the Playwright `npm ci` just
+      # installed, so package-lock.json keeps pinning the browser revisions.
+      # Removing an engine reopens a CI-only failure, not a local one.
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run lint
       - run: npm test
       - run: npm run build
