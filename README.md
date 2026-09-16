@@ -182,9 +182,11 @@ Five core objects (see [`src/domain/types.ts`](src/domain/types.ts)):
 - **Material** — a source/collection an item belongs to (a radif, a course, a set of
   études). `sourceType`, `parentTitle`, `section`, `status`, etc.
 - **PracticeItem** — the heart of the app. A phrase, bar, exercise, technique, full
-  piece, improvisation prompt or body/tension issue. Carries `status`, `importance`,
-  `difficulty`, `currentProblem`, `primaryFocus`, `teacherQuestion`, review/stat
-  fields, and optional nested **Persian** and **Classical‑guitar** metadata.
+  piece, improvisation prompt or body/tension issue. Carries `status`, `importance`
+  (shown as **Personal priority**), `difficulty` (shown as **Current effort**),
+  `primaryFocus`, `notes` (**Working notes** — the item's one notebook), review/stat
+  fields, and optional nested **Persian** and **Classical‑guitar** identity metadata
+  (dastgāh/gushe/form/composer; lesson number/bars).
 - **PracticeBlock** — one focused unit of practice (5–20 min): `mode`, `focus`,
   `constraint`, `result`, `observation`, `nextAction`.
 - **Review** — a scheduled spaced‑review for an item (`dueDate`, `reviewType`).
@@ -192,8 +194,19 @@ Five core objects (see [`src/domain/types.ts`](src/domain/types.ts)):
 Item status ladder: `new → fragile → repairing → usable → integrated → performable`,
 plus `maintenance` and `dormant` for resting material.
 
+**One home per kind of information.** Working notes (`item.notes`) belong to the item and
+last as long as it does. An observation and a next action belong to one recorded block.
+A question belongs to a class, in the lesson agenda. Nothing copies one into another, and
+schema **v13** retired the older fields that competed with them (`currentProblem`,
+`bestStrategy`, `tags`, the item's cached last observation, the block's body note and the
+fourteen Persian/Guitar working-detail fields) — a one-way, owner-authorised exception
+recorded in [`DECISIONS.md`](DECISIONS.md). The identity fields that say what a piece *is*
+were kept.
+
 Everything is plain JSON and round‑trips cleanly through export/import. The persisted
-shape carries a `schemaVersion` for future migrations.
+shape carries a `schemaVersion` for future migrations; a file from a NEWER build is
+refused by version rather than silently downgraded, so rolling back means restoring the
+backup you kept, never a down-migration.
 
 ---
 
@@ -204,17 +217,22 @@ For each item a **priority score** is computed deterministically
 
 ```
 priority = importance*2 + difficulty + fragility + overdue
-         + teacherRelevance + neglected + lessonUrgency − saturationPenalty
+         + neglected + lessonUrgency − exposurePenalty
 ```
 
 | Component         | Meaning                                                        |
 | ----------------- | -------------------------------------------------------------- |
+| `importance`      | **Personal priority** 1–5, doubled (the stored field is `importance`) |
+| `difficulty`      | **Current effort** 1–5 (the stored field is `difficulty`)      |
 | `fragility`       | by status (fragile/repairing = 5 … performable = 0)            |
 | `overdue`         | how many days past `nextReviewDate` (0–5)                      |
-| `teacherRelevance`| +3 if an open teacher question exists                          |
 | `neglected`       | days since last touched, banded 0–4                            |
-| `saturationPenalty`| −3 if drilled 3×/48h **or** last 3 results all "same"         |
-| `lessonUrgency`   | 3–8 if flagged *for next class*, climbing as that class nears   |
+| `exposurePenalty` | decaying recent MINUTES, so January's drilling is not a September penalty |
+| `lessonUrgency`   | 3–8 for a commitment to a SPECIFIC class, climbing as that class nears |
+
+A teacher question contributes **nothing**: a question is something to ASK, not evidence
+that an item needs practice. It used to add three points and quietly reorder the day
+around a note to self.
 
 **Three cards** are then chosen (see [`src/domain/recommend.ts`](src/domain/recommend.ts)):
 
@@ -249,7 +267,8 @@ a filterable list.
   tests in [`pathways.ts`](src/domain/pathways.ts).
 - **Conscious practice**: dastgāh stages carry character intros (what to listen for), each
   gushe carries a standing prompt (find the shāhed, the ist, the forud), and the practice
-  screen keeps "About this piece" one tap away with the question *what is going on here?*
+  screen keeps the item's **Working notes** one tap away — the same notebook you write on
+  its own page, readable and editable while you practise.
 - **Guided routines** ([`RoutineRunner`](src/pages/RoutineRunner.tsx)) walk you through a
   session segment by segment, hands-free.
 - Pathways and stages are fully editable; deleting them never deletes your items.
@@ -280,8 +299,8 @@ never erases a question; you remove it by editing the item.
 Reviews use a **spaced-repetition engine** (SM-2 — the algorithm behind Anki), adapted to
 music in [`scheduling.ts`](src/domain/scheduling.ts). Each item tracks reps, an ease factor
 and its interval: every time a piece/gushe holds up, the gap before you revisit it grows;
-when it slips, the gap resets so you relearn it. Importance and difficulty pull material a
-little sooner. It returns a one-line rationale. Per item you can override the mode:
+when it slips, the gap resets so you relearn it. Personal priority and Current effort
+(stored as `importance`/`difficulty`) pull material a little sooner. It returns a one-line rationale. Per item you can override the mode:
 
 - **Auto** — the engine decides (default).
 - **Every N days** — a fixed cadence you choose.

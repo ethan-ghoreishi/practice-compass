@@ -580,20 +580,31 @@ describe('what a summary may claim about a period it did not watch', () => {
     const edges = buildReportData(boundary, opts);
     expect(edges.worked.find((w) => w.item.id === FARSI_ITEM)!.blocks).toBe(2);
 
-    // A day on which this machine's own UTC offset changes — whatever zone it
-    // runs in. The range is one local day wide, and the block inside it counts.
-    const dstDay = findOffsetChangeDay(2026);
-    if (dstDay) {
-      const iso = `${dstDay.getFullYear()}-${String(dstDay.getMonth() + 1).padStart(2, '0')}-${String(dstDay.getDate()).padStart(2, '0')}`;
+    // A day on which the local UTC offset actually CHANGES. The zone is forced
+    // rather than taken from the machine, because a conditional DST case is no
+    // case at all: this suite runs on a UTC CI runner, where `if (offset
+    // changes)` would never execute and the check would report as passing
+    // having proved nothing. Node re-reads `TZ` per call, so this genuinely
+    // moves the local calendar the report derives its day boundaries from; it
+    // is restored immediately, and only this one assertion runs inside it.
+    const realTZ = process.env.TZ;
+    process.env.TZ = 'Europe/London';
+    try {
+      const dstDay = findOffsetChangeDay(2026);
+      expect(dstDay, 'Europe/London must have an offset change in 2026').toBeTruthy();
+      const iso = `${dstDay!.getFullYear()}-${String(dstDay!.getMonth() + 1).padStart(2, '0')}-${String(dstDay!.getDate()).padStart(2, '0')}`;
       const across = validateDB({
         ...base,
         blocks: [
-          dayBlock('b-dst-morning', local(dstDay.getFullYear(), dstDay.getMonth() + 1, dstDay.getDate(), 9)),
-          dayBlock('b-dst-evening', local(dstDay.getFullYear(), dstDay.getMonth() + 1, dstDay.getDate(), 22)),
+          dayBlock('b-dst-morning', local(dstDay!.getFullYear(), dstDay!.getMonth() + 1, dstDay!.getDate(), 9)),
+          dayBlock('b-dst-evening', local(dstDay!.getFullYear(), dstDay!.getMonth() + 1, dstDay!.getDate(), 22)),
         ],
       } as unknown);
       const dstReport = buildReportData(across, { instrumentId: 'setar', from: iso, to: iso, now: CLOCK });
       expect(dstReport.worked.find((w) => w.item.id === FARSI_ITEM)!.blocks, `DST day ${iso}`).toBe(2);
+    } finally {
+      if (realTZ === undefined) delete process.env.TZ;
+      else process.env.TZ = realTZ;
     }
 
     // --- The rendered and exported sheet ---------------------------------

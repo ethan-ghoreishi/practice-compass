@@ -162,6 +162,15 @@ export async function allBlobs(): Promise<AttachmentBlob[]> {
   return idb.attachments.toArray();
 }
 
+/**
+ * Which attachment blobs this device actually holds — ids only, no bytes read.
+ * Answering "are these files here?" must not load every file into memory to do
+ * it, which is what `allBlobs()` above would cost for the same question.
+ */
+export async function heldBlobIds(): Promise<Set<string>> {
+  return new Set((await idb.attachments.toCollection().primaryKeys()) as string[]);
+}
+
 // --- Pre-sync archive slot ---------------------------------------------------
 // Before sync replaces local data (pull or conflict resolution), the entire
 // current copy — one full backup JSON including file payloads — is preserved

@@ -248,3 +248,46 @@ closing a second block cannot buy a second expansion.
 **Provenance.** `nextReviewSource` says whether the engine or the owner chose
 the current date. Absent means legacy-unknown, which the v12 migration never
 guesses and the engine protects exactly as carefully as the owner's own.
+
+## 7. Ownership of a date — who manages it, and what that does NOT mean
+
+No number in this document changes here. This section only records WHO owns the
+next date, because that is the one thing about scheduling the UI can most easily
+misrepresent.
+
+**"Use automatic scheduling" is administration, not evidence.**
+`transferToAutomaticReview` (`scheduling.ts`) moves an item from `manual` or
+`interval` to `auto` and marks `nextReviewSource: 'auto'`. Both together say the
+ENGINE now has authority over the pending date. Neither says the date was
+calculated, and neither says a review happened:
+
+- the pending date is KEPT, byte-for-byte;
+- `srReps`, `srEase`, `srIntervalDays` and `srLastProgressDay` are untouched, so
+  the next eligible close resumes from exactly the rung the item was already on;
+- no block is written, no result is invented, no statistic and no completed
+  review row moves.
+
+Only later ELIGIBLE real practice — a `stable_alone` / `stable_in_context` /
+`performable` result, at or after the due date, not already advanced today —
+supplies retention evidence, exactly as it does for an item that was always
+automatic. The UI must never describe the retained date as a new calculation.
+
+**It refuses rather than guesses.** Open review rows that disagree with the item
+or with each other, or rows pending with no item date at all, are an ambiguity
+the owner has to resolve with "Change review date"; the transfer names the
+conflict and writes nothing. An item with no date and no open rows becomes
+unscheduled under automatic management, `nextReviewSource` ABSENT — there is no
+date whose provenance it could describe — and stays so until an explicit
+"Review today".
+
+**An ordinary save never releases a protected date.** Editing a title, a status
+or an estimate leaves `reviewMode` and `nextReviewSource` exactly as they were, so
+a date the owner chose keeps its protection. Only the explicit control transfers
+ownership, and only an explicit date change, a snooze or "Schedule again"
+re-establishes the owner's.
+
+**"Review today" resolves the day at the moment of the tap**, not from the polled
+clock the screen was rendered with — the same guard the close screen's Save
+already applies, for the same reason: a device left open across local midnight
+would otherwise write the day the panel was drawn on. Both paths refresh what is
+displayed and let the next tap through, rather than silently writing the stale day.

@@ -237,7 +237,7 @@ export default function ActiveBlock() {
 /**
  * The score, the class video, the photo of the page — one CLOSED disclosure,
  * below the timer AND below Pause/Finish (the buttons you reach for with the
- * instrument in your hands), in the same shape as "About this piece". Nothing loads until
+ * instrument in your hands), in the same shape as the Working notes above it. Nothing loads until
  * it is opened, and nothing here touches the clock, the wake lock or the
  * boundary signal: a photo renders inline, everything else opens in a tab.
  */

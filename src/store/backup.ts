@@ -1,5 +1,5 @@
 import { decideReplacement, nowISO, parseImport, SCHEMA_VERSION } from '../domain';
-import { allBlobs, replaceAllBlobs, type AttachmentBlob } from './idb';
+import { allBlobs, heldBlobIds, replaceAllBlobs, type AttachmentBlob } from './idb';
 import { useHydrationStatus, useStore } from './useStore';
 
 // ---------------------------------------------------------------------------
@@ -269,6 +269,31 @@ export async function importFullBackup(
   const decoded = decodeBackupFiles((parsed as { files?: unknown }).files, validated.db.attachments);
   if (!decoded.ok) return { ok: false, error: decoded.error };
   const { isFullBackup, rows } = decoded;
+
+  // THE SAME INVARIANT, AT THE OTHER DOOR: after any install, every attachment
+  // this database describes has bytes on this device.
+  //
+  // `decodeBackupFiles` enforces it for a full backup (metadata with no bytes
+  // is refused). A state-only file carries no bytes at all, so it cannot prove
+  // anything — and left unchecked it is the ONE door that can install metadata
+  // for files this device does not hold. That state is a one-way trap rather
+  // than a cosmetic flaw: `buildFullBackupWithRev` derives `files` from the
+  // blobs actually stored while `data` carries the metadata, so the very next
+  // full export describes a file it does not contain — refused by this device's
+  // own import, and refused by every other device a sync publishes it to,
+  // permanently. Refusing here instead leaves the local bytes and the local
+  // database exactly as they were and says which file is missing, which is the
+  // one moment the owner can still do something about it.
+  if (!isFullBackup && validated.db.attachments.length > 0) {
+    const held = await heldBlobIds();
+    const absent = validated.db.attachments.find((a) => !held.has(a.id));
+    if (absent) {
+      return {
+        ok: false,
+        error: `That file describes an attachment ("${absent.name || absent.id}") whose contents are not in it and not on this device — import the full backup that carries the file. Nothing was changed.`,
+      };
+    }
+  }
 
   try {
     // Only touch attachment blobs for a genuine full backup (files array

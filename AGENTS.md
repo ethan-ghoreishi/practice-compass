@@ -16,6 +16,82 @@ before you start playing, via `lastNextAction` (`blocks.ts`, tested) — the mos
 NON-EMPTY one, so a later block that recorded none does not blank out a decision that
 still stands. Anything the app asks you to record, it must eventually USE.
 
+## One canonical home per kind of information (schema v13)
+
+Four homes, and nothing may compete with them (`src/domain/practiceInformation.ts`, pure
+and tested; the list of retired keys lives there, not in prose):
+
+- **`PracticeItem.notes` — "Working notes".** The item's ONE notebook: what this piece
+  is, what your teacher said, what to watch. It has the item's lifetime, and it is
+  readable AND editable *while practising* — the point of writing something down is that
+  it reaches you at the moment it was written for.
+- **`PracticeBlock.observation`** — what happened in ONE recorded block.
+- **`PracticeBlock.nextAction`** — the one thing to try next time, decided at that
+  block's close and read at the next one.
+- **`lessonAgenda`** — questions for a teacher and commitments to a class (its own
+  section below).
+
+Nothing copies one into another automatically. Reflection at the close screen never
+overwrites the notebook; the notebook is never dumped into a teacher sheet.
+
+**A DERIVED VALUE IS NOT A FIFTH HOME.** The item's most recent block observation is
+read straight from the blocks (`latestObservation`, `blocks.ts`, tested) and rendered
+WITH ITS DATE wherever current context is wanted. It used to be cached onto the item as
+`lastObservation`, which is how one fact became two that could disagree. Derive it; never
+store it back.
+
+**v12 → v13 RETIRES the fields that competed, and that exception is BOUNDED AND ONE-WAY.**
+`currentProblem`, `bestStrategy`, `tags`, `item.lastObservation`, `block.bodyNote` and the
+fourteen Persian/Guitar WORKING-DETAIL fields (`shahed`, `ist`, `foroud`, `ornamentIssue`,
+`mezrabIssue`, `phraseLabel`, `importantNote`, `rightHandIssue`, `leftHandIssue`,
+`toneIssue`, `fingering`, `tempo`, `stringNoiseIssue`, `bodyTensionNote`) are REMOVED, not
+migrated into `notes` — the owner settled (2026‑09‑16, `DECISIONS.md`) that their content
+was dummy test data, and merging dummy text into the one canonical notebook is the failure
+mode, not the fix. The Persian/Guitar IDENTITY fields (`dastgahAvaz`, `gusheh`, `form`,
+`composer`, `lessonNumber`, `barRange`) stay: they say what the piece IS and they group the
+repertoire. This waiver covers exactly those enumerated fields and nothing else. It is NOT
+permission to reset practice history, ratings, reviews, commitments, or any future
+meaningful text.
+
+`retirePracticeText` is DELETION ONLY — it never writes a value — which is what makes it
+idempotent and makes re-running it incapable of resetting current canonical text. It reads
+no clock, so two devices migrate the same database identically on different days, and it
+runs on EVERY inbound database rather than only one declaring `fromVersion < 13`, for the
+reason `migrateToV12` already records for itself: a database claiming the current schema
+can still carry a stray retired key from a partial conversion or a hand-edited file.
+
+**THE SURVIVING TEXT IS VALIDATED AT EVERY INBOUND DOOR, AND NEVER COERCED.**
+`validatePracticeText` (the four homes' own string fields, nothing else) runs inside
+`validateDB`, so every door — import, sync pull, Keep remote, archive restore, cold-start
+recovery, and BOTH halves of the persist middleware — refuses the same thing. Absent and
+EMPTY are both legitimate (emptying a notebook is a deliberate act); `null` reads as
+absent, because that is what a serialiser writes for "no value" and every reader already
+treats it as missing. A present value of the wrong type is REFUSED with the record named,
+never coerced: `String({})` is how a note becomes the literal text "[object Object]" and
+the owner's real words are gone. The unfinished block's scratch observation lives OUTSIDE
+`PracticeDB` (on the store's ephemeral `active`) so that function never sees it — it gets
+the same rule and the same refusal from `validateUnfinishedText`, called by the same
+hydration hooks.
+
+**ONE EDITOR FOR THE NOTEBOOK, AND IT NEVER LOSES WHAT YOU JUST TYPED.**
+`src/components/ItemNotes.tsx` is the only way Working notes are edited — Item Detail, the
+practice screen and a bound routine segment all render that one component, so there is
+never a second copy of the text or a second way to write it:
+
+- **Saving is EXPLICIT (a Done button), never blur-only.** Blur-only saving makes a stale
+  copy authoritative the moment anything steals focus.
+- **"Saved" waits for IndexedDB to acknowledge the write** (`storageSettled()`,
+  `src/store/idb.ts` — the persist adapter's own in-flight write, not a sleep). A FAILED
+  write keeps the text on screen with Try again and Copy, and never shows a Saved state.
+  Try again must work from the failed state: the store has already accepted the value, so
+  a "nothing changed, skip the write" shortcut would make the retry a silent no-op.
+- **The draft is TAGGED with the item it was typed for** and dropped rather than written
+  when that changes. A timer tick, a store update from elsewhere, or a routine crossing
+  into the next bound segment re-renders this component constantly; without the tag, a
+  stale editor can commit A's words onto B.
+- **Editing notes changes nothing else.** Not the clock, the elapsed figure, the running
+  state, a block, a result, a review or any SM‑2 value.
+
 ## Keep admin overhead low
 
 - Starting a block must stay **under 30 seconds**; closing one **under 60 seconds**.
@@ -807,7 +883,7 @@ data is entirely Farsi. The rule is now mechanical, not a matter of care:
     full stop to the visual start (FriBidi renders a trailing neutral character using the
     surrounding base direction when nothing more specific claims it). `dir="ltr"` here is
     a static fact about content that is never user text, not detection.
-  - A detail that is FREE TEXT the owner typed (ActiveBlock's `constraint`/`problem`,
+  - A detail that is FREE TEXT the owner typed (ActiveBlock's `constraint`,
     the "last time you decided to try" note) sitting after a fixed English label —
     `Constraint: `, `Working on: `, `Last time you decided to try: ` — carries its own
     `dir="auto"` around just the value, not the label. The label would otherwise be the
@@ -880,19 +956,19 @@ grouping), but wrong for two other shapes:
   `RoutineCard` all render the identical "N segments · M min" phrase and all needed the
   same isolate — a fix applied to one occurrence of a repeated pattern and not the
   others is exactly the kind of gap this closure exists to catch.
-- **An independently-authored value** — a question, a problem, an observation, a
+- **An independently-authored value** — a question, an observation, a
   pathway's own description or note — carries its own `dir="auto"` isolate for the same
-  reason `ActiveBlock`'s `constraint`/`problem`/`previousNextAction` already do: its
+  reason `ActiveBlock`'s `constraint`/`previousNextAction` already do: its
   language cannot be assumed from the title sitting next to it. The counterexample:
-  `ClassQuestions`' question/problem/last-observation sat bare in the title's `<li>`
+  `ClassQuestions`' question and last-observation values sat bare in the title's `<li>`
   group with no isolate of any kind — unlike `ActiveBlock`'s established shape (a fixed
   English label left bare, immediately followed by the value in its own `dir="auto"`),
   which `ClassQuestions` now matches rather than inventing a third pattern.
 
 **THIS IS DELIBERATELY NOT "no bare Latin text in a group."** A short fixed label
 immediately followed by its own isolate — `Constraint: ` before
-`<span dir="auto">{value}</span>`, `Problem: ` before the same shape in
-`ClassQuestions` — stays bare on purpose; flagging it would force a change to an
+`<span dir="auto">{value}</span>`, and `ClassQuestions`' own dated
+`Last observed …` caption above the same shape — stays bare on purpose; flagging it would force a change to an
 already-correct, already-reviewed pattern. What actually breaks is a real PHRASE that
 reaches the end of a group's rendered content with nothing to isolate it — which is
 what `src/components/direction.test.ts`'s `unexemptedPhrase` scans for mechanically: it
@@ -908,7 +984,7 @@ isolate fails this test on its own, the same way a missed title already failed t
 group-vs-title test above.
 
 What that scan cannot see from source — an independently-authored VALUE (an
-expression whose content is opaque, like `{q.currentProblem}`) needing `dir="auto"`, or
+expression whose content is opaque, like `{q.lastObservation.text}`) needing `dir="auto"`, or
 a component like `StaleNote` whose OWN return value needs to be isolated regardless of
 which title group calls it — is a recorded ledger instead, `ISOLATED_VALUE_SITES` and
 `LTR_ISOLATE_SITES` in the same test file, carrying the identical visibility contract as
@@ -1016,7 +1092,7 @@ anchored to `ClassQuestions.tsx` — it would catch the identical regression in 
 file adopting this label-first-row pattern, the same "shape, not a location list"
 discipline the instrument-name and native-marker checks above already established. This
 is deliberately NOT generalised to `ActiveBlock`'s
-`constraint`/`problem`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
+`constraint`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
 the older bare-label-then-isolate shape: those fields sit directly under their own title
 in this app's real data (never independently mismatched), so the failure this fixes does
 not arise for them, and touching files this lane's own brief did not name would be scope
@@ -1310,16 +1386,16 @@ RTL run, and excluding it is also what keeps this rule from demanding an unreque
 change on the deliberately centred practice screens.
 
 **EVERY LINE OF A MULTI-LINE FREE-TEXT FIELD RESOLVES ITS OWN DIRECTION — EXCEPT THE ONE
-THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for the question text and
-`currentProblem`/`lastObservation` (one `<textarea>` each, so several
+THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for the question text and for the item's most
+recent block observation (one `<textarea>` each, so several
 distinct questions live as several lines of one string; `splitLines` in `format.ts`, tested)
 first shipped with every bullet bare, on the argument that lines typed into one box in one
 sitting share one direction. They do not — a Farsi question and an English one go into the
 same field — and bare lines all inherit the FIRST line's direction, dragging an English line
 RTL with its bullet on the wrong side, or the reverse. But the catch that argument was right
 about is real, and is why this is not simply "isolate every line": `dir="auto"` skips any
-descendant carrying its own `dir`, and the enclosing `<li dir="auto">` (and the
-Problem/Last-time value wrapper) has nothing else left to hunt once the title is isolated —
+descendant carrying its own `dir`, and the enclosing `<li dir="auto">` (and the dated
+last-observation value wrapper) has nothing else left to hunt once the title is isolated —
 isolating every line would leave the item with no resolution source and a silent LTR
 fallback, which is the ninth finding all over again. Both hold ONE way only: the FIRST line
 is the ANCHOR and stays BARE — it still follows its own language, because the direction it
@@ -1341,6 +1417,38 @@ the branch chosen for lines AFTER the first. Seven mutations were confirmed to f
 either was committed. Verification used DELIBERATELY MISMATCHED languages in both directions
 against the real running pages — the lesson this file keeps relearning, applied before the
 fact this time rather than after.
+
+**`text-align: start` IS NOT PORTABLE ACROSS ENGINES, AND CHROMIUM CANNOT SHOW YOU THAT.**
+Every finding above was checked in Chromium. An eleventh, checked in BOTH engines, found
+the owner's long-reported Safari-only question-alignment symptom and it was none of the
+causes previously guessed at: `ClassQuestions`' `<li dir="auto">` inherits `text-align`
+from an LTR ancestor, and WebKit inherits the RESOLVED PHYSICAL value (`left`) where
+Chromium inherits the LOGICAL keyword (`start`) and re-resolves it against the `<li>`'s own
+direction. So a Farsi question rendered hard against the ENGLISH edge while its ordinal —
+a direction-aware flex child, correct on its own terms — sat on the right. Identical DOM,
+identical CSS, two different pictures, and the Chromium-only checks that had passed nine
+times could never have seen it. The fix is one declaration: a block whose own direction is
+resolved by its content must RE-DECLARE `textAlign: 'start'` on itself, exactly as the
+tenth finding's rule already requires under an ancestor that pins a physical alignment —
+an inherited `start` is not the same thing as an own `start`.
+
+The general rule: **a direction fix verified in one engine is verified in one engine.**
+`tests/practice-information-layout.browser.test.ts` drives the changed surfaces in Chromium
+AND WebKit at 390×844 and desktop and asserts measured bounding positions, so this class of
+divergence fails a check rather than waiting for the next screenshot. A missing WebKit
+binary FAILS with `npx playwright install webkit`; it never skips. Two WebKit-only
+environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB under the
+automation driver (so that journey seeds state-only), and it reports
+`"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
+
+**WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
+the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
+canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
+title in its OWN `dir="auto"` isolate, the question left BARE so it anchors the `<li>`, and
+— when the item has one — the most recent block observation under a stacked, isolated
+`<span dir="ltr">Last observed YYYY-MM-DD</span>` caption. Read the seventh and tenth
+findings for why the caption stacks above the value instead of sitting inline with it; read
+the ninth for why the question, not the title, is what the `<li>` resolves from.
 
 **SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
 authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
@@ -1523,6 +1631,34 @@ screen). No block, no result, no statistics, no SM-2 movement.
 `pendingScheduleConflict` REPORTS legacy open rows that disagree rather than silently
 discarding one.
 
+**HANDING A DATE BACK TO THE ENGINE IS ALSO ADMINISTRATION, AND IT KEEPS THE DATE.**
+"Use automatic scheduling" (`transferToAutomaticReview`, `scheduling.ts`, tested) transfers
+WHO MANAGES the next review and nothing else. The pending calendar date is kept EXACTLY as
+it is; `reviewMode` becomes `'auto'` and `nextReviewSource` becomes `'auto'`, which together
+mean the ENGINE now has authority over that date — never that the date was mathematically
+generated, and never that a review happened. No block is written, no result is invented, and
+`srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`, every statistic, every status and
+every completed review row are left byte-for-byte alone. Only later ELIGIBLE real practice
+supplies retention evidence. **The button's explanation must never call the retained date a
+new calculation** — that is the one sentence this whole transition exists to be honest about.
+
+It REFUSES rather than guesses when the schedule is ambiguous: open rows that disagree with
+the item or with each other, or rows pending with no item date at all, are a decision the
+owner has to make (the existing "Change review date" makes it), and the refusal says which.
+With no date and no open rows the item simply becomes unscheduled under automatic
+management — `nextReviewSource` stays ABSENT, because there is no date whose provenance it
+could describe — and stays that way until an explicit "Review today". It is idempotent, and
+it is reached ONLY by that explicit control: an ORDINARY item save never releases a
+protected date, so editing a title cannot quietly hand the engine a date the owner chose.
+`updateItem` routes the whole change through it and refuses the save WHOLE on an ambiguous
+schedule, rather than applying the other fields and dropping the transfer.
+
+"Review today" is separate, and records no practice: it sets today's date on the item and
+its row. It resolves the day at the moment of the ACTION, not from the polled `now` — the
+same guard `CloseBlock`'s Save already uses, and for the same reason: a screen left open
+across local midnight would otherwise write the day it was rendered on rather than the day
+the owner tapped.
+
 Keep it deterministic and explainable — don't turn it into an opaque model. Item status
 labels are plain-language for the user — keep the enum keys stable and only change the
 display labels in `labels.ts`.
@@ -1555,7 +1691,7 @@ never a second, independently-computed one. The day check itself lives in `Close
 `handleSave` compares the true instant against `now` first, and on a mismatch sets a
 local `nowOverride` and returns WITHOUT calling `closeSession` — refreshing the decision
 visibly (the date field, the rationale, everything derived from `now` recomputes) while
-the draft (result, observation, next action, body note) is untouched, so the very next
+the draft (result, observation, next action) is untouched, so the very next
 Save simply works. This is deliberately a small, local override rather than a change to
 `useDecisionNow`'s shared contract — `SessionPlan.tsx` and `LessonAgenda.tsx` also read
 that hook and neither needed this.
@@ -1784,6 +1920,10 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   (a sealed review reproduced exactly this — see the lesson-agenda section above for the
   legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
   validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v13** retires the competing practice-text fields (`retirePracticeText`; see "One
+  canonical home per kind of information" at the top of this file for the enumerated,
+  one-way waiver) and adds `validatePracticeText`/`validateUnfinishedText` to the §C7
+  checks. Schema
   **v12** converts legacy lesson intent into `lessonAgenda` and
   adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
   neither is ever guessed for old data, so an existing future date keeps UNKNOWN
@@ -1818,8 +1958,22 @@ it did not run is worse than no check at all. All three CI workflows install the
 before `npm test` for the same reason.
 
 `tests/fixtures/practice-decisions-v11.json` is the legacy (pre-agenda) database; the
-v12 one is its migrated output plus the scheduling state a v12 build writes. The unit
-tests read the SAME bytes the journeys import, through Vite's `?raw`.
+v12 one is its migrated output plus the scheduling state a v12 build writes.
+`practice-information-v12.json` is a full backup — attachment bytes included — carrying
+every retired field, and `practice-information-v13.json` is its `validateDB` output, so
+the retirement is asserted against real bytes rather than a hand-written expectation. The
+unit tests read the SAME bytes the journeys import, through Vite's `?raw`.
+
+**Five journeys now, not two**, all through the same harness: the two above plus
+`practice-information.browser.test.ts`, `practice-information-inbound.browser.test.ts`,
+`review-ownership.browser.test.ts` and `practice-information-layout.browser.test.ts` (the
+two-engine one). The inbound journey drives the REAL sync orchestrators against a fake
+GitHub installed at the `fetch` boundary (`page.route('https://api.github.com/**')`) — the
+real transport, real `syncNow`/`resolveConflict`/`restorePreSyncArchive`, no live writes —
+and the rollback journey stands up a DISPOSABLE checkout of the baseline commit
+(`git worktree add --detach`, `node_modules` symlinked, served by a second Vite server via
+`openPracticeApp`'s `root` option) so "the old app refuses the new file" is proved against
+the app that actually wrote the backup, not a description of it.
 
 ## Roadmap items are allowed (they were designed for)
 

@@ -102,8 +102,12 @@ export async function openPracticeApp(options: {
     page.on('pageerror', (e) => pageErrors.push(e));
     await page.clock.install({ time: options.now });
     await page.goto(origin);
-    // The store hydrates from IndexedDB before anything renders.
-    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
+    // The store hydrates from IndexedDB before anything renders. The ceiling is
+    // generous because this is the COLD start: five journeys run concurrently,
+    // each starting its own dev server and browser, so the first paint of the
+    // last one to launch competes with four others compiling modules. A longer
+    // wait cannot hide a real failure — it only refuses to call contention one.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
   } catch (e) {
     await browser.close();
     await server.close();

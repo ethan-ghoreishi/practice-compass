@@ -85,9 +85,9 @@ import { splitLines } from './format';
  *
  * The catch the first pass was right about is real, though: `dir="auto"`
  * skips any descendant carrying its own `dir` when hunting for a first
- * strong character, and the outer `<li dir="auto">` (and the Problem /
- * Last time value wrapper) has nothing else left to hunt — the title is
- * already isolated. Isolating EVERY line would leave the whole item with no
+ * strong character, and the outer `<li dir="auto">` (and the dated
+ * last-observation value wrapper) has nothing else left to hunt — the title
+ * is already isolated. Isolating EVERY line would leave the whole item with no
  * resolution source and a silent LTR fallback, regressing the ninth
  * finding's "the ordinal always tracks the question".
  *

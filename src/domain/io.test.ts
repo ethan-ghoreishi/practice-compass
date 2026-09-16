@@ -624,10 +624,22 @@ describe('the v12 model at every inbound door', () => {
       //     hydration ever succeeded, installed through the real store path
       //     (`recoverFromRefusedHydration` -> `importFullBackup` ->
       //     `importDB`), the identical wiring every other inbound door uses.
+      // A real Settings export is a FULL backup — the data plus the bytes of
+      // every file it describes — so the recovery file here carries `att-1`'s
+      // bytes with it. A data-only file naming an attachment this device does
+      // not hold is refused at this door like any other (see `backup.ts`): it
+      // would install metadata for bytes that are nowhere, and the device's own
+      // next export would then be a backup it could not import back.
       await restoreInput.setInputFiles({
         name: 'good.json',
         mimeType: 'application/json',
-        buffer: Buffer.from(serializeExport(v12, NOW), 'utf8'),
+        buffer: Buffer.from(
+          JSON.stringify({
+            ...(JSON.parse(serializeExport(v12, NOW)) as object),
+            files: (JSON.parse(V11_TEXT) as { files: unknown[] }).files,
+          }),
+          'utf8',
+        ),
       });
       await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
 

@@ -2,6 +2,153 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## One canonical home per kind of practice information — schema v13 (2026-09-16)
+
+Four things the musician writes, four homes: **Working notes** (`item.notes`) belong to the
+item and last as long as it does; an **observation** and a **next action** belong to one
+recorded block; a **question** belongs to a class, in the lesson agenda. Nothing copies one
+into another automatically. The problem was never that any of these were missing — it was
+that eighteen other persisted fields competed with them, so the same fact could be written
+in two places and disagree, and the notebook that should have been in front of you while
+practising was not reachable from the practice screen at all.
+
+**The waiver, stated exactly.** `currentProblem`, `bestStrategy`, `tags`, the item's cached
+`lastObservation`, the block's `bodyNote`, and fourteen Persian/Guitar WORKING-DETAIL
+fields (`shahed`, `ist`, `foroud`, `phraseLabel`, `importantNote`, `ornamentIssue`,
+`mezrabIssue`, `rightHandIssue`, `leftHandIssue`, `toneIssue`, `fingering`, `tempo`,
+`stringNoiseIssue`, `bodyTensionNote`) are REMOVED by the v12 → v13 migration, not merged
+into `notes`. The owner established that their current content is dummy test data and
+waived lossless preservation for these enumerated fields only. Merging dummy text into the
+one real notebook is the failure mode, not the fix — and this app's own rule is that
+nothing silently loses meaningful practice, which is why the exception had to be named,
+bounded and signed rather than assumed. The Persian/Guitar IDENTITY fields (`dastgahAvaz`,
+`gusheh`, `form`, `composer`, `lessonNumber`, `barRange`) are kept: they say what the piece
+IS and they group the repertoire.
+
+**What makes it safe to re-run.** `retirePracticeText` is DELETION ONLY — it never writes a
+value — so a second pass over its own output is a no-op and it is structurally incapable of
+resetting canonical text. It reads no clock, so two devices migrate the same database
+identically on different days. It runs on EVERY inbound database rather than only one
+declaring `fromVersion < 13`, for the reason `migrateToV12` already records: a database
+claiming the current schema can still carry a stray retired key from a partial conversion
+or a hand-edited file.
+
+**`lastObservation` was deleted rather than replaced** because the fact is derivable:
+`latestObservation(blocks)` reads the most recent block observation and returns its DATE
+with it, so the teacher sheet and the question list say *when* the observation was made
+instead of presenting a stale line as current. A cached copy of a derivable fact is two
+facts that can disagree.
+
+**The surviving text is checked, never coerced.** `validatePracticeText` (the four homes'
+own string fields, nothing else) joins `validateDB`, so every inbound door refuses the same
+thing. `null` reads as ABSENT — it is what a serialiser writes for "no value" and every
+reader already treats it as missing — and empty is legitimate, because emptying a notebook
+is a deliberate act. A present value of the wrong type is refused with the record named:
+`String({})` is how a note becomes the literal text "[object Object]". The unfinished
+block's scratch observation lives outside `PracticeDB`, on the store's ephemeral `active`,
+so it gets the same rule from `validateUnfinishedText` at the same hydration boundary.
+
+**Rollback is by restoring the backup you kept, never by a down-migration**, and the check
+proves it against the app that actually wrote the file: a disposable `git worktree` at the
+baseline commit, served by its own Vite server, refuses the v13 export by version with its
+stored bytes unchanged, and then restores the retained v12 export with its attachment
+intact and readable. A block recorded after the upgrade exists only in the v13 export —
+that limitation is stated rather than papered over.
+
+## A strict "metadata without bytes" refusal needs the same rule at the other door (2026-09-16)
+
+`decodeBackupFiles` now refuses a full backup that describes an attachment it does not
+carry (it used to `continue` past unreadable entries and install metadata for bytes that
+never arrived, reporting "Imported (3 files)"). Tightening that alone creates a ONE-WAY
+TRAP, which is the part worth recording: `buildFullBackupWithRev` derives `files` from the
+blobs actually stored while `data` carries the metadata, so a device holding metadata for a
+blob it does not have exports a file it will then refuse on import — and publishes a sync
+snapshot every other device refuses too. Permanent, with no owner-visible way out.
+
+The state-only import (`files` absent) was the one door that could create it. So the same
+invariant is enforced there: **after any install, every attachment the database describes
+has bytes on this device.** A state-only file naming an attachment this device does not
+hold is refused, naming the file, with the local bytes and the local database untouched —
+at the one moment the owner can still do something about it. `heldBlobIds()` answers that
+question from the key index rather than loading every blob to ask it.
+
+The alternative — dropping the metadata for absent bytes — was rejected: that is silent
+loss of the owner's own record, which is exactly what the refusal exists to prevent.
+
+## Handing a review date back to the engine is administration, not evidence (2026-09-16)
+
+`transferToAutomaticReview` moves an item to `reviewMode: 'auto'` with
+`nextReviewSource: 'auto'` and KEEPS the pending date byte-for-byte. Together those two
+fields mean the engine now has AUTHORITY over that date — not that the date was calculated
+and not that a review happened. `srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`,
+every statistic, every status and every completed row are untouched, so the next eligible
+close resumes from the rung the item was already on. The button's explanation must never
+call the retained date a new engine calculation; that sentence is the whole point.
+
+It REFUSES rather than guesses on an ambiguous schedule — open rows disagreeing with the
+item or with each other, or rows pending with no item date — because that is a decision the
+owner makes with "Change review date". `updateItem` refuses such a save WHOLE rather than
+applying the other fields and dropping the transfer. An ordinary save never releases a
+protected date: only this explicit control transfers ownership, and only an explicit date
+change, a snooze or "Schedule again" re-establishes the owner's.
+
+Building the rendered control surfaced a real defect: "Review today" wrote the day the
+panel had been RENDERED with (`useDecisionNow` polls every 30s), so a device left open
+across local midnight saved yesterday. It now resolves the day at the moment of the tap —
+the same action-time guard `CloseBlock`'s Save already uses.
+
+## `text-align: start` is not portable, and Chromium cannot show you that (2026-09-16)
+
+The owner had reported a Safari-only question-alignment symptom that nine rounds of
+Chromium checking never reproduced, and the source left several plausible causes. Driving
+the same page in WebKit reproduced it immediately and it was none of them: `ClassQuestions`'
+`<li dir="auto">` inherits `text-align` from an LTR ancestor, and **WebKit inherits the
+RESOLVED PHYSICAL value (`left`) where Chromium inherits the LOGICAL keyword (`start`)** and
+re-resolves it against the `<li>`'s own direction. Identical DOM, identical CSS, two
+different pictures: a Farsi question rendered hard against the English edge while its
+ordinal — a direction-aware flex child, correct on its own terms — sat on the right.
+
+The fix is one declaration: a block whose own direction is resolved by its content must
+RE-DECLARE `textAlign: 'start'` on itself. An inherited `start` is not the same thing as an
+own `start`. This generalises past `ClassQuestions` and past this lane.
+
+The durable lesson is the other half: **a direction fix verified in one engine is verified
+in one engine.** `tests/practice-information-layout.browser.test.ts` now drives the changed
+surfaces in Chromium AND WebKit, at 390×844 and desktop, asserting measured bounding
+positions. A missing WebKit binary fails with the install command; it never skips. Two
+WebKit-only environment facts encountered on the way, neither an app bug: it cannot store a
+`Blob` in IndexedDB under the automation driver (so that journey seeds state-only), and it
+reports `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was
+aborted.
+
+## Two deliberate limits recorded rather than quietly worked around (2026-09-16)
+
+**The iPhone keyboard/shell symptom stays an OWNER diagnostic, with zero code.** The
+reported displacement is a device-and-shell interaction the browser checks above cannot
+reproduce, and `useViewportGuard.ts`, the shell height, `visualViewport` scrolling and nav
+positioning are all deliberately untouched here. Guessing a timeout to make a symptom go
+away is exactly the change this repo's own rules forbid, and no timeout increase is
+authorised. The Farsi half of that report WAS reproduced and fixed (the WebKit entry
+above); the keyboard half needs the specified capture first, on the deployed revision:
+
+- device / iOS / app version, and standalone PWA versus Safari;
+- repeat focus, keyboard dismissed with the field still focused, blur, field-to-field
+  focus, route exit and orientation change — on item notes, Close, and lesson questions;
+- at each transition (before / during / after), timestamped: `innerHeight`,
+  `visualViewport.height` / `offsetTop` / `pageTop` / `scale`, `window.scrollY`,
+  `document`/`body`/`main` `scrollTop`, `document.activeElement`'s tag, and the rectangles
+  of the app shell, `main`, the tab bar and the focused field.
+
+That set is what distinguishes layout scrolling from visual-viewport displacement from
+residual internal scrolling from keyboard timing from focus scroll — five different fixes.
+Prescribing one before the capture would be guessing.
+
+**A DST assertion that only runs in some timezones is not an assertion.** The report's
+local-day boundary check originally ran `if (the machine's offset changes this year)`,
+which never executes on a UTC CI runner and would have reported as passing having proved
+nothing. It now forces `TZ=Europe/London` around that one assertion (Node re-reads `TZ` per
+call) and restores it immediately, so the case genuinely runs everywhere.
+
 ## Tenth rejection: a resolved direction that never reaches the alignment, and lines that share one (2026-09-13)
 
 Two counterexamples, one family — and both were invisible to the guard, which is the third

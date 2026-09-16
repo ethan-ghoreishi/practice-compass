@@ -412,6 +412,27 @@ describe('a replacement door never installs what it has not checked', () => {
       await importBackup(app, 'empty-full.json', wrap({ ...db, attachments: [] }, []));
       expect(await importOutcome(app)).toContain('Imported');
       await expect.poll(() => attachmentText()).toBe(null);
+      const emptied = JSON.stringify(
+        await persistedUntil(
+          app,
+          (s) => (s.state as { db: { attachments: unknown[] } }).db,
+          (d) => d.attachments.length === 0,
+        ),
+      );
+
+      // …and with no blob on this device, a STATE-ONLY file that DESCRIBES one
+      // is refused at the one door that could install it. That state is a
+      // one-way trap, not a cosmetic flaw: the device's own next full export
+      // derives `files` from the blobs it holds while `data` carries the
+      // metadata, so it would describe a file it does not contain — refused by
+      // its own import above ("metadata whose bytes were omitted") and by every
+      // device a sync published it to, permanently. Local bytes and the local
+      // database are both left exactly as they were.
+      await importBackup(app, 'state-only-dangling.json', wrap(db, undefined));
+      expect(await importOutcome(app)).toMatch(/Import failed/);
+      expect(await importOutcome(app)).toMatch(/not in it and not on this device/);
+      expect(await attachmentText()).toBe(null);
+      expect(JSON.stringify((await readPersistedState(app) as { state: { db: unknown } }).state.db)).toBe(emptied);
 
       // A complete, non-empty set replaces honestly.
       await importBackup(app, 'full.json', wrap(db, [validFile]));
