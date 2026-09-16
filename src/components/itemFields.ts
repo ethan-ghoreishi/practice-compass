@@ -8,41 +8,22 @@ export const PERSIAN_IDENTITY_FIELDS: { key: keyof PersianFields; label: string;
   { key: 'gusheh', label: 'Gusheh (radif only)' },
 ];
 
-/** Working detail — usually added later, while practising. */
-export const PERSIAN_DETAIL_FIELDS: { key: keyof PersianFields; label: string }[] = [
-  { key: 'phraseLabel', label: 'Phrase label' },
-  { key: 'shahed', label: 'Shāhed' },
-  { key: 'ist', label: 'Ist' },
-  { key: 'foroud', label: 'Forud' },
-  { key: 'ornamentIssue', label: 'Ornament issue' },
-  { key: 'mezrabIssue', label: 'Mezrāb issue' },
-  { key: 'importantNote', label: 'Important note' },
-];
-
-export const PERSIAN_FIELDS: { key: keyof PersianFields; label: string }[] = [
-  ...PERSIAN_IDENTITY_FIELDS.map(({ key, label }) => ({ key, label })),
-  ...PERSIAN_DETAIL_FIELDS,
-];
+/**
+ * Identity only. The per-field "working detail" lists that used to sit here
+ * (shāhed / ist / forud / hand / tone / tension…) were retired at schema v13 —
+ * that kind of text belongs in the item's one Working notes field, where it is
+ * readable while you play instead of buried in a form.
+ */
+export const PERSIAN_FIELDS: { key: keyof PersianFields; label: string }[] = PERSIAN_IDENTITY_FIELDS.map(
+  ({ key, label }) => ({ key, label }),
+);
 
 export const GUITAR_IDENTITY_FIELDS: { key: keyof GuitarFields; label: string }[] = [
   { key: 'lessonNumber', label: 'Lesson number' },
   { key: 'barRange', label: 'Bar range' },
 ];
 
-export const GUITAR_DETAIL_FIELDS: { key: keyof GuitarFields; label: string }[] = [
-  { key: 'rightHandIssue', label: 'Right-hand issue' },
-  { key: 'leftHandIssue', label: 'Left-hand issue' },
-  { key: 'toneIssue', label: 'Tone issue' },
-  { key: 'fingering', label: 'Fingering' },
-  { key: 'tempo', label: 'Tempo' },
-  { key: 'stringNoiseIssue', label: 'String noise' },
-  { key: 'bodyTensionNote', label: 'Body tension' },
-];
-
-export const GUITAR_FIELDS: { key: keyof GuitarFields; label: string }[] = [
-  ...GUITAR_IDENTITY_FIELDS,
-  ...GUITAR_DETAIL_FIELDS,
-];
+export const GUITAR_FIELDS: { key: keyof GuitarFields; label: string }[] = GUITAR_IDENTITY_FIELDS;
 
 /**
  * Reference suggestions (never required, free text always allowed) — the

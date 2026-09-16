@@ -724,6 +724,109 @@ export function scheduleAgainPlan(args: {
   };
 }
 
+// --- Handing a date back to the engine ---------------------------------------
+
+export type AutomaticReviewTransfer =
+  | {
+      ok: true;
+      /** The item, with review management transferred. Same DATE, always. */
+      item: PracticeItem;
+      /** Open rows for this item, with any misleading reason corrected. */
+      reviews: Review[];
+      /** True when the item's pending date had no open row and one is owed. */
+      createRow: boolean;
+      reviewType: ReviewType;
+      /** What actually changed, for an honest confirmation. */
+      keptDate?: ISODate;
+    }
+  | { ok: false; reason: string };
+
+/**
+ * "Use automatic scheduling" — an ADMINISTRATIVE transfer of who manages this
+ * item's next review, and nothing else.
+ *
+ * It KEEPS the pending calendar date exactly as it is. `reviewMode` becomes
+ * `'auto'` and `nextReviewSource` becomes `'auto'`, which together mean the
+ * ENGINE now has authority over that date — NOT that the date was
+ * mathematically generated, and NOT that a review happened. No block is
+ * written, no result is invented, and `srReps` / `srEase` / `srIntervalDays` /
+ * `srLastProgressDay`, every statistic, every status and every completed
+ * review row are left byte-for-byte alone. Only later ELIGIBLE real practice
+ * supplies retention evidence.
+ *
+ * It refuses rather than guesses when the schedule is ambiguous: open rows
+ * that disagree with the item or with each other, or rows pending with no item
+ * date at all, are a decision the owner has to make (the existing "Change
+ * review date" makes it). With no date and no open rows the item simply
+ * becomes unscheduled under automatic management — `nextReviewSource` stays
+ * absent, because there is no date whose provenance it could describe.
+ *
+ * Idempotent: run it twice and the second run finds the same date, the same
+ * mode and the same source, and returns the same answer.
+ */
+export function transferToAutomaticReview(args: {
+  item: PracticeItem;
+  reviews: Review[];
+  now: Date;
+}): AutomaticReviewTransfer {
+  const { item, reviews, now } = args;
+  const open = reviews.filter((r) => r.practiceItemId === item.id && !r.completedAt);
+  const rowDates = new Set(open.map((r) => r.dueDate));
+
+  if (rowDates.size > 1) {
+    return {
+      ok: false,
+      reason: `This item has more than one pending review date (${[...rowDates].sort().join(', ')}). Set the date you mean with “Change review date”, then hand it back to automatic.`,
+    };
+  }
+  if (!item.nextReviewDate && rowDates.size === 1) {
+    return {
+      ok: false,
+      reason: `A review is pending for ${[...rowDates][0]} but this item has no next-review date. Set the date you mean with “Change review date”, then hand it back to automatic.`,
+    };
+  }
+  if (item.nextReviewDate && rowDates.size === 1 && ![...rowDates].includes(item.nextReviewDate)) {
+    return {
+      ok: false,
+      reason: `This item is due ${item.nextReviewDate} but its pending review says ${[...rowDates][0]}. Set the date you mean with “Change review date”, then hand it back to automatic.`,
+    };
+  }
+
+  const reviewType = reviewTypeFor(item);
+  // A row's `reason` is the one place a stale sentence could keep claiming the
+  // date is manually protected or was computed from an interval. Replace it
+  // with what is now true; nothing else about the row moves, least of all its
+  // date.
+  const updated = reviews.map((r) =>
+    r.practiceItemId === item.id && !r.completedAt
+      ? { ...r, reason: AUTOMATIC_TRANSFER_REASON, updatedAt: nowISO(now) }
+      : r,
+  );
+
+  return {
+    ok: true,
+    item: {
+      ...item,
+      reviewMode: 'auto',
+      // Only a date can have a provenance. With none, `nextReviewSource` stays
+      // absent rather than claiming the engine chose something that isn't there.
+      ...(item.nextReviewDate ? { nextReviewSource: 'auto' as const } : { nextReviewSource: undefined }),
+      updatedAt: nowISO(now),
+    },
+    reviews: updated,
+    createRow: !!item.nextReviewDate && open.length === 0,
+    reviewType,
+    keptDate: item.nextReviewDate,
+  };
+}
+
+/**
+ * What an open row says once the engine manages it. Deliberately states what
+ * happened — the date was RETAINED — rather than implying it was calculated.
+ */
+export const AUTOMATIC_TRANSFER_REASON =
+  'Date kept as it was; the app now manages it, and real practice from here decides what changes.';
+
 /**
  * Open review rows for one item that DISAGREE about when it is next due —
  * either with each other or with the item's own date. Legacy data can hold

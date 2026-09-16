@@ -1,4 +1,5 @@
 import { seedPathways } from './pathwaySeed';
+import { retirePracticeText } from './practiceInformation';
 import {
   SCHEMA_VERSION,
   type AttachmentMeta,
@@ -289,5 +290,9 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   // docstring for why an already-current-declared database still needs this
   // pass over it.
   next = migrateToV12(next);
+  // v12 → v13: retire the practice-text fields that competed with the four
+  // canonical homes (`retirePracticeText`'s own docstring says which, and why
+  // this too is unconditional rather than gated on `fromVersion < 13`).
+  next = retirePracticeText(next);
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

@@ -6,7 +6,7 @@ import {
   unassignedOpenQuestions,
 } from './questions';
 import { createQuestion, markQuestionAsked } from './lessonAgenda';
-import { createItem, createLesson } from './factories';
+import { createBlock, createItem, createLesson } from './factories';
 import type { LessonAgendaEntry, PracticeItem } from './types';
 
 const NOW = new Date('2026-06-01T08:00:00.000Z');
@@ -16,9 +16,17 @@ function item(o: Partial<PracticeItem> & { id: string; title: string }): Practic
   return { ...createItem({ instrumentId: INST, title: o.title }, NOW), ...o };
 }
 
-const items = [
-  item({ id: 'b', title: 'Bridge passage', currentProblem: 'Shift arrives late' }),
-  item({ id: 'a', title: 'آواز افشاری', lastObservation: 'فرود روشن‌تر شد' }),
+const items = [item({ id: 'b', title: 'Bridge passage' }), item({ id: 'a', title: 'آواز افشاری' })];
+
+/**
+ * Current context now comes from the item's own BLOCKS, not from a cached
+ * field on the item — so it always carries the day it was written.
+ */
+const blocks = [
+  createBlock(
+    { practiceItemId: 'a', instrumentId: INST, durationMinutes: 10, mode: 'repair', focus: 'phrase_direction', startedAt: '2026-06-17T10:00:00.000Z', observation: 'فرود روشن‌تر شد' },
+    NOW,
+  ),
 ];
 
 const agenda: LessonAgendaEntry[] = [
@@ -34,9 +42,14 @@ describe('questions for one class', () => {
     expect(list.map((q) => q.id)).toHaveLength(3);
     // A question with no item still renders — title simply absent.
     expect(list.find((q) => q.id === 'q-free')?.title).toBeUndefined();
-    // Item context travels with the question when there is an item.
-    expect(list.find((q) => q.id === 'q-b')?.currentProblem).toBe('Shift arrives late');
-    expect(list.find((q) => q.id === 'q-a')?.lastObservation).toBe('فرود روشن‌تر شد');
+    // Item context travels with the question when there is an item — and only
+    // when its own blocks recorded something, dated.
+    const withBlocks = openQuestionsForLessonId(agenda, items, 'L', blocks);
+    expect(withBlocks.find((q) => q.id === 'q-b')?.lastObservation).toBeUndefined();
+    expect(withBlocks.find((q) => q.id === 'q-a')?.lastObservation).toEqual({
+      text: 'فرود روشن‌تر شد',
+      at: '2026-06-17T10:00:00.000Z',
+    });
     // Another class's list is genuinely empty, not the same list again.
     expect(openQuestionsForLessonId(agenda, items, 'other')).toEqual([]);
     // Unassigned questions are their own list.
@@ -53,7 +66,12 @@ describe('questions for one class', () => {
     expect(text).toContain('Questions for Setar class — 2026-06-14');
     expect(text).toContain('Tone or tension first?');
     expect(text).toContain('آیا فرودم درست است؟');
-    expect(text).toContain('Problem: Shift arrives late');
+    // The sheet never dumps the item's own Working notes, and the only
+    // context it does carry is the item's latest recorded observation, DATED.
+    expect(text).not.toContain('Problem:');
+    expect(renderClassQuestionsText('Setar', '2026-06-14', openQuestionsForLessonId(agenda, items, 'L', blocks))).toContain(
+      'Last observed 2026-06-17: فرود روشن‌تر شد',
+    );
     expect(text).toContain('(no item)');
 
     const answered = openQuestionsForLessonId(markQuestionAsked(agenda, 'q-b', NOW, 'Tone.'), items, 'L');

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import v11FixtureText from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
+import { RETIRED_ITEM_KEYS } from './practiceInformation';
 import { createSeedDB } from './seed';
 import { SCHEMA_VERSION, type Pathway, type PracticeDB } from './types';
 
@@ -239,7 +240,10 @@ describe('v11 → v12 · legacy lesson intent', () => {
     const current: PracticeDB = { ...out, items: [], lessonAgenda: [] };
     expect(migrateToCurrent(current, SCHEMA_VERSION).lessonAgenda).toEqual([]);
 
-    // 10. Unrelated data and SR state come through byte-equivalent.
+    // 10. Unrelated data and SR state come through byte-equivalent. The v13
+    //     retirement runs in the same chain, so the keys IT removes are
+    //     stripped from the source too — this step is about what the LESSON
+    //     conversion left alone, and ac-1 below owns the retirement itself.
     const strip = (db: PracticeDB) =>
       JSON.stringify({
         ...db,
@@ -249,6 +253,7 @@ describe('v11 → v12 · legacy lesson intent', () => {
           const copy = { ...i } as Record<string, unknown>;
           delete copy.assignedForLesson;
           delete copy.teacherQuestion;
+          for (const key of RETIRED_ITEM_KEYS) delete copy[key];
           return copy;
         }),
       });

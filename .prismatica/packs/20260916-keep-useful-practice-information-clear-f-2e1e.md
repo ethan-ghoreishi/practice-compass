@@ -1,0 +1,1440 @@
+---
+id: 20260916-keep-useful-practice-information-clear-f-2e1e
+contractId: 20260916-keep-useful-practice-information-clear-f-2e1e
+contractHash: 8f223fda7d1e80e09f16884628f2ce61719b3a4009902fe00964e049e9a99048
+createdAt: 2026-09-16T00:36:54.077Z
+skills:
+  - ui-work
+  - build
+  - simplify
+---
+
+# Build brief: Keep useful practice information clear from capture to next time
+
+> This brief is scoped and self-contained. A fresh session can resume from it
+> alone. Prismatica will check your work deterministically — it never reads this
+> chat, only Git and your tests.
+
+- **Linked issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/24
+- **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
+- **Work in the lane:** /Users/Ehsan/workspace/active/practice-compass-lanes/20260916-keep-useful-practice-information-clear-f-2e1e
+
+## The plan the owner approved
+
+This is the complete approved proposal, verbatim. `assumptions` and
+`possibleConflicts` are the Planner's advisory reading — treat them as leads to
+verify against the code, never as established fact.
+
+````yaml
+# Approved intent: Keep useful practice information clear from capture to next time
+
+The owner imported this plan and confirmed the change. Its approved meaning is
+recorded here verbatim; the transport snapshot is deliberately omitted.
+
+- **Kind:** existing-flow
+- **Risk tier:** heavy
+- **Builder:** claude
+
+## What the owner asked for
+
+This is the wording the owner and the planning agent settled on together, taken
+from the plan itself — not a description reconstructed afterwards.
+
+> Practice Compass keeps persistent working notes easy to read and edit while practising, keeps observations, next actions and lesson questions distinct, clarifies existing practice choices, and lets me return a review to automatic scheduling without changing its pending date or inventing practice. Simplify obsolete dummy practice-text data with a small schema migration, protect real history and the shipped decision loop, and prove the behaviour through focused rendered and inbound-boundary tests.
+
+## Why
+
+ONE PRODUCT THESIS
+The few things the musician records should have clear ownership, be available when playing, and never require supervising the scheduler.
+
+OWNER DECISIONS, SETTLED 2026-09-16
+1. One persistent Working notes field, readable/editable during Active. Block Observation, Next time and lesson Question remain separate concepts.
+2. Existing note/question/observation content is dummy test data. Lossless preservation of retired practice-text fields is explicitly waived where simplification benefits the model. Do not build legacy archives, conflict-merging machinery or permanent compatibility fields to preserve it. This is a bounded migration exception, NOT permission to reset practice history, ratings, reviews, commitments or future meaningful text.
+3. Retain existing algorithm inputs and maths. Importance means changeable personal priority; Difficulty means changeable current effort. Optional inputs are progressively disclosed, never inferred automatically.
+4. Returning to automatic scheduling keeps the pending date, releases its protection, switches manual/fixed-cadence mode to auto if necessary, and records no practice. With no date, the separate explicit Review today action is available.
+5. Claude builds. The unexplained iPhone viewport defect is a separate diagnostic task, not a hidden prerequisite of this lane.
+
+CANDIDATE COMPARISON
+Qualitative planning judgement, not measured delivery estimates. Rank 1: coherent capture-to-reuse lane, including date ownership. Daily value very high; trust high; simplification high; coherence high; migration risk moderate but bounded by explicit dummy-text retirement; mobile value high for note editing and shorter forms; ongoing administration low; reviewer comprehension high when split into A-E below. SELECTED.
+Rank 2: general import-integrity, archival and retrospective truth. Trust very high; daily value medium; simplification low; coherence good only as a data-integrity lane; migration risk moderate if archival added; mobile value low; maintenance moderate; reviewer comprehension good. Its bounded malformed-backup refusal earns inclusion only at this lane's actual migration/restore boundary; general graph validation and archival do not.
+Rank 3: full status/result/priority model redesign. Daily value potentially high but uncertain; trust risk high because ranking, spacing and warm-up eligibility depend on these inputs; simplification potentially high; coherence high; migration/semantic risk high; mobile value medium; administration uncertain; reviewer comprehension poorest. Owner explicitly chose clarification over this redesign.
+Rank 4: iPhone viewport and Safari layout diagnosis. Mobile value high; correctness benefit potentially high; schema risk none; excellent bounded scope once diagnosed; present cause uncertain. Run diagnostics separately before specifying a fix.
+
+WHY HEAVY IS JUSTIFIED
+A UI-only lane could expose existing Notes in Active and improve labels with no migration. It would leave obsolete problem/strategy/specialist text and the cached last observation as competing homes. Retiring those persisted fields cleanly warrants schema v12 to v13, using the existing migration chain and validation doors. No new note entity, generic notebook/task system, external service or new scheduling algorithm is justified.
+
+REVIEWER PRE-MORTEM
+A correct migration helper can still be bypassed by current-version hydration, sync, archive restore or corrupt-start recovery: C1-C3 exercise those actual boundaries. A correct note editor can write to the wrong item after a routine boundary or overwrite newer content on blur: A2-A3 exercise both. A correct automatic-mode button can be bypassed by ItemForm or accidentally triggered by an unrelated auto-mode save: D2-D3 distinguish these. A green RTL source guard can still render on the wrong edge: E1 inspects actual text geometry. An exported field can remain practically write-only behind the newest ten blocks: A4 exercises older history. A transferred date can retain a false reason, or a stale page can act on another item's date: D1-D3 assert explanation and identity as well as values. No acceptance family is proved primarily by source regex or JSX shape.
+
+REMAINING FINDINGS, RANKED FOR THIS LANE
+1. Malformed full-backup entries: potential silent byte loss, highest severity, occasional workflow, bounded validation risk; include because full-backup migration/rollback must be trustworthy.
+2. Malformed surviving practice text and editor persistence/identity: crash or lost/overwritten information, everyday use, high trust and low administration; include at actual boundaries.
+3. Active notebook access and duplicated text capture: very frequent practical friction, strongest simplification, small schema retirement risk after the dummy-data waiver; central scope.
+4. Manual date ownership control: everyday interpretability/trust, small administrative transition, no new evidence; include.
+5. Historical result versus current context: reproducible false statement, periodic use, bounded query/copy correction within the information lifecycle; include narrowly.
+6. Self-parenting/family/other graph invariants: potentially disappearing items in repertoire, infrequent editing/import path, wider reference semantics; defer as a coherent integrity lane.
+7. iPhone keyboard and Safari alignment: frequent reported usability issue, high diagnostic uncertainty, no source-established mechanism; diagnose separately before fixing.
+8. Permanent deletion: real history loss but explicit confirmation and non-destructive Resting alternative; defer the owner-dependent archival model.
+9. Untouched stale-day displays and misleading sync wording: still open, varying frequency; only touched decision/context clocks and practice-model documentation belong here.
+
+
+## Today
+
+BASELINE AND EVIDENCE
+Clean local main and origin/main verified at d014293c205958f45e4393ebf6ae56901db83a1c. Fresh Prismatica context snapshot 209143d6c9954774e4722e715b388010bf7a230b8142d24b18cc651320e4d009, no pending proposals/open lanes. 20260913 trusted-daily-session lane is shipped and owner-approved with patch fd6cd73ca467e1f6d07681b89a67f1faed10a396; 20260911 direction/UI lane with patch 1c85fc6fb59ab1a22cac40bb123696586ae4fa69. Read their records, current AGENTS, Rules and relevant canonical Flows. Routine and hands-free mechanics are already represented within existing Flows; lack of separate Flow titles is not proof of absent coverage.
+Historical catalogue /Users/Ehsan/Downloads/review-2026-09-10.md was read as leads only. It names old baseline 0c6058e and 294 tests; neither is current. Baseline verification here: 333 tests passed across the full run and focused rerun of the three browser-containing suites. Initially Playwright was absent from installed node_modules despite being declared; npm ci --offline restored it without changing tracked files. The three browser tests then needed unsandboxed localhost/browser access. 330 passed in the ordinary run and all 16 tests in those three suites passed on focused rerun, covering all 333 unique tests. This is test evidence, not a claim that every defect is absent.
+Live current-main app inspected on a local demo origin: Item Detail, Start before/after item selection, Active disclosures and Lessons at 390x844 in Chromium. Start exposes seven modes and eighteen focus options after item selection. Active exposes read-only piece information plus an unrelated quick-note textarea. Current Farsi question ordinal and question/details resolve RTL and align at start in Chromium. No actual iPhone keyboard/Safari diagnosis was obtained. Automatic approval review refused the synthetic demo note/Finish interaction; the audit block was discarded without saving. Close persistence evidence is from current source tracing and the existing passing isolated browser journey, not that refused interaction.
+
+COMPLETE PRACTICE-INFORMATION INVENTORY AND CONSUMERS
+- PracticeItem.title, instrumentId, itemType: identity and grouping; quick add/full form; all lists, selection, Active and history. Keep.
+- materialId, stageId, parentItemId, lesson.itemIds, strand, catalogKey: source/path/part/origin structure and planner/default context; full form and connection/pathway controls; repertoire, pathway views, plan and defaults. Keep; lesson origin is not preparation.
+- Persian identity: dastgahAvaz, gusheh, form, composer; Guitar identity: lessonNumber, barRange. Full form, detail/repertoire grouping and reference context. Keep as progressive identity metadata.
+- Item notes: persistent notebook, edited only by ItemNotes on Item Detail, saved on blur; read in Active About this piece. ItemForm does not currently expose this same field. Make this the single Working notes home.
+- currentProblem: ItemForm; displayed ItemCard, Item Detail and Active; copied into question/report context. No ranking/date input. bestStrategy: ItemForm and Item Detail only. Retire both as separate inputs.
+- Persian working detail: phraseLabel, shahed, ist, foroud, importantNote, ornamentIssue, mezrabIssue. Guitar working detail: rightHandIssue, leftHandIssue, toneIssue, fingering, tempo, stringNoiseIssue, bodyTensionNote. Entered in form, rendered as Detail rows, not used in scheduling and not available in Active. Retire these specialised practice-text fields; their future content belongs in Working notes. Numeric routine/catalogue BPM is a different field and stays.
+- tags: comma-split form input and Item Detail chips; no current search/ranking/plan consumer. Retire the separate tag input/storage, without adding replacement tagging duties.
+- status: manual item/form choice and optional accepted Close suggestion; drives default mode, fragility, pathway progress and eligibility. new/fragile/repairing/usable/integrated/performable/maintenance/dormant are not eight rungs of one compulsory achievement ladder. Keep enum/behaviour and clarify confidence versus work intention.
+- importance/difficulty: manual 1-5, default 3. Ranking uses importance*2 + difficulty; review urgency factor uses both; warm-up eligibility excludes high difficulty. They are consequential owner estimates, not intrinsic immutable properties. Keep values and weights, explain and progressively disclose them.
+- primaryFocus and per-block mode/focus: defaults and descriptions of what was practised; focus also feeds observations/Insights. Keep existing choices and saved values. Hide optional changes behind the chosen default summary on Start.
+- active.note: unfinished block scratch observation, entered during Active, seeds Close observation; not persistent item notes. Keep but label its destination clearly.
+- PracticeBlock.observation: one block's historical observation; cached to item.lastObservation, shown in recent history and question context. Keep the block field; retire the duplicate item cache and derive the latest non-empty observation from real blocks, labelled with its date. No text parsing or inferred judgement.
+- PracticeBlock.nextAction: future intention recorded with that block; latest non-empty already appears early in Active via lastNextAction. Keep this shipped behaviour and expose it in historical block detail too. It is not a second item-notes field or a new task lifecycle.
+- PracticeBlock.bodyNote: Close optional input, stored but not rendered in current history. Retire the separate input/storage under the dummy-data waiver. Future body/tension observations can be ordinary Observation or Working notes according to their intended lifetime.
+- PracticeBlock.constraint: legacy/optional authored practice constraint, displayed in Active when present; ordinary Start currently supplies undefined. Keep existing values and expose them in block detail; do not add another required capture control.
+- result: worse/same/slightly_better are relative judgements; stable_alone/stable_in_context/performable are demonstrated stability levels. These drive the shipped spacing decision and optional status suggestion, not just a colour. not_logged is a deliberate escape/routine outcome. Keep codes, ranking and behaviour; clarify their questions and examples.
+- minutes: owner-attested duration, proposed by the stale-clock guard; preserve existing semantics. Status suggestion remains optional. Review answer/date/type/mode are separate scheduling intent with existing provenance; keep collapsed explanation and one ReviewPlan derivation.
+- lessonAgenda question.text/answer/askedAt/lessonId and independent preparation entries: teacher agenda and retained lesson history, entered through Close, item and lesson surfaces. Keep canonical v12 collection and independence. Do not migrate questions into item notes or recreate the rolling teacherQuestion field.
+- Lesson.notes; recording/reference title/path/notes; Material.title/sourceName/parentTitle/section/teacherOrSource/notes/status; Pathway name/source/description/note; Stage code/title/group/intro; Routine name and segment label/minutes/essential/itemId: distinct lesson, source or authored route/instruction context. Keep with their current owners and consumers, never absorb these into an item's notebook. Bound routine items can access their own Working notes; unbound countdowns remain unlogged.
+- Attachments: names/ownership/media references are reference data, not practice text. Preserve bytes and ownership; no media/storage redesign.
+
+CURRENT CORRECTNESS FINDINGS
+Executable pure-domain probes against this HEAD confirmed: validateDB accepts a non-string item notes object; validateDB accepts an item parented to itself; buildReportData reports improvement from current lastResult even when the requested period has only a worse block. Source confirms ItemForm can offer self as parent, retains incompatible family metadata after an instrument switch, and backup.ts skips malformed files before replaceAllBlobs. Source also confirms ItemDetail/Lessons/Repertoire/TeacherReport still have some mount-frozen clocks, Settings says newest copy wins, and deleteItem deliberately deletes blocks with a count-bearing confirmation. These are separately classified below, not treated as already reproduced iPhone defects.
+Stale elapsed-time protection, calendar totals, early-success preservation, same versus worse, dormant recommendation exclusion, minutes-based exposure, lesson-specific commitments/questions, clipboard fallback, Farsi search, attachment ownership, single Close derivation, live Close/plan dates and cold-start recovery are shipped. Preserve rather than reimplement them.
+
+## Instead
+
+A. ONE CANONICAL HOME FOR EACH KIND OF INFORMATION
+A1. Reuse PracticeItem.notes, displayed as Working notes. No new workingNotes alias, note collection or rich-text dependency. Full creation/edit, Item Detail and Active all target the same field. One title-only quick add and one full form remain. Retire currentProblem, bestStrategy, tags and the fourteen specialist working-detail fields listed in the inventory. Identity fields stay distinct. Catalogue item creation must put BOTH existing catalogue entry.notes guidance and entry.about guidance into the one notes field when present; moving away from currentProblem must not drop newly-created catalogue guidance.
+A2. Reuse/extend ItemNotes as the shared editor: calm collapsed entry point, readable expanded notes while the timer runs, obvious Edit/Done, multiline plain text with independent Farsi/English paragraph direction. Notes remain useful after Finish, Discard, navigation and reload because they belong to the item, not the block. Done closes editing, not practice. Avoid blur-only saving, stale local copies and misleading Cancel semantics over already-saved text. A timer tick, store update, date change or item switch cannot reset the caret, overwrite fresh text or save A's text into B. Emptying notes is deliberate and persists; absent and empty are not grounds to resurrect retired text. Do not announce Saved before durable acknowledgement; a failed persistence operation retains visible text and offers retry/copy, never silent success. Use existing IndexedDB/Zustand plumbing, not a new persistence framework.
+A3. The same access applies to the current bound item in RoutineRunner. Unbound segments have no fictitious item notebook. An automatic or skipped segment boundary must not transfer an open editor's text to the next item; no focus trap, invisible pause, timer reset, extra block or changed minute allocation. Keep the authored routine segment instruction separate from item notes.
+A4. Active's quick capture is explicitly an Observation for this block, not Working notes. It seeds Close; editing persistent notes does not change it. Close retains Result, Observation and Next time as the main reflection, then optional status/review/question controls. Remove Body/tension as a separate field. Preserve the chosen observation, next action and question through preview refreshes, and never create a question from arbitrary notes. Block history exposes observation, nextAction and any legacy constraint with date/mode/focus/result/minutes; older entries are reachable through simple progressive disclosure. Derive latest observation from blocks rather than item.lastObservation. Keep lastNextAction's latest NON-EMPTY behaviour and label it as a previous decision rather than an inferred current task.
+A5. Adapt every currentProblem/lastObservation consumer. Cards and teacher question exports must not dump the entire personal notebook into a preview or teacher sheet. Remove automatic Problem context; show a clearly labelled latest block observation with its date only where that context already belongs. It is current context, not an answer to a past question or evidence that the question was asked. Lesson question text, optional answers, targets and lifecycle remain unchanged. Working notes can always be opened on the item.
+A6. Bound the existing history/current-state reporting defect as part of truthful reuse: period-specific result statements come from the recorded blocks inside the selected period, never current item.lastResult. Do not claim improvement merely because an absolute stable result has a higher rank; report the result actually recorded. Current status, open questions, repeated-current-pattern and suggested-next-work sections must explicitly say Current where they use present state. Keep existing calendar-versus-rolling definitions; do not invent historical status snapshots, analytics, new metrics or a reporting subsystem. Later practice may change Current sections but not results attributed to an earlier period. Existing user-selected report dates remain selected; refreshing current context must not silently change the historical period.
+
+B. FEWER DECISIONS, HONEST WORDING, SAME ALGORITHMS
+B1. Use an explicit definition table in docs/product-spec.md and concise in-context help. Item status answers how this item currently stands/how the owner is working on it, not how the last ten minutes went. new is New material, still being established rather than a claim that its practice count is zero; fragile unreliable; repairing actively addressing a known problem; usable holds together but not reliably in context; integrated reliable in context; performable ready to play for someone; maintenance deliberately maintaining learned work; dormant deliberately set aside. Preserve existing enum values, defaults, scoring, pathway/mastery and accepted-suggestion transitions. Do not claim perfect scientific separation between neighbouring statuses or force a user through every status. Current new status can survive recorded practice, so never label that case Not practised yet solely from its enum. Preserve the catalogue's honest Not practised yet presentation for genuinely untouched additions, using its existing untouched-item evidence rather than inventing a practice event or automatic status promotion.
+B2. Close asks for the most concrete result actually demonstrated. Clarify stable_alone as the chosen passage/task holding together in isolation, stable_in_context as holding together joined to its surrounding musical context, performable as ready to play for someone; these remain the existing evidence categories. For change short of those claims, same means no meaningful change, slightly_better some improvement, worse genuine deterioration or recall difficulty. Do not turn same, fatigue, an empty field or a missing rating into failed retention automatically. Keep one selection, not an additional proficiency questionnaire. Retain deliberate Save without a result and its unchanged-review semantics. No AI judgement.
+B3. Labels Personal priority and Current effort (with the stored names importance/difficulty retained) have anchored 1/3/5 descriptions and meaningful intermediate levels. Priority is how much the owner currently wants this in the mix; effort is how demanding it currently feels at the intended level. Both can change, need not be maintained on a schedule and default to 3. Lesson urgency remains the independent preparation deadline. Explain briefly that the estimates influence selection/review and high effort excludes easy warm-up; never pretend they are inferred measurements. Keep all numerical effects unchanged.
+B4. Start leads with selected item, duration, a readable default mode/focus summary and Begin practice. Optional Change practice approach reveals the existing mode/focus choices with clear definitions. Keep all seven modes and eighteen focus values; no forced taxonomy merge, new mandatory selection or extra creation path. Mode describes what approach to use; focus describes what to attend to. Item setup uses progressive optional status/priority/effort/focus/review controls. New/changed controls have their own accessible names and visible selected state, not merely a named parent group. Preserve quick title-only creation and direct recommendation/plan starts.
+
+C. SMALL SCHEMA CHANGE, REAL INBOUND SAFETY
+C1. Bump PracticeDB SCHEMA_VERSION 12 to 13 and add one deterministic, clock-free, idempotent retirement pass in migrations.ts after existing migrations. Discard ONLY retired currentProblem, bestStrategy, tags, item.lastObservation, the fourteen specialist working-detail keys and block.bodyNote. Keep existing item.notes, block.observation/nextAction/constraint and lessonAgenda questions/answers without transformation; retaining these costs no compatibility machinery. Keep Persian/Guitar identity keys, all block records and numeric facts, ids/references/timestamps, ratings/status, review state/provenance, sr state/marker, agenda commitments, routines, settings, media metadata and bytes. Remove empty family containers only when truly empty; do not drop their identity. Retired keys are removed even in already-current or partially converted input, so no dual truth survives. Do not rerun destructive reset behaviour on future canonical text. Existing v2-v12 migration steps remain, including v12 lesson-intent conversion; the owner waiver does not authorise ripping out that already-shipped history machinery.
+C2. Extend shared validation for this lane's surviving practice-text inputs before install: optional strings must really be strings; present wrong types are rejected with useful item/block identification, never coerced to [object Object]. Validate the unfinished observation text at the real persisted-state hydration boundary too, because it lives outside PracticeDB. Existing scheduling/agenda and newer-schema refusal stay authoritative. A newer schema is refused before any retirement pass or relabelling. No general graph repair, guessed reference relinking or arbitrary input truncation.
+C3. Actual hydration (migrate AND current-version merge), Settings import, sync pull, Keep remote, archive restore and corrupt-start recovery must reach the same validated model before replacing state. Preserve existing unfinished-session and revision-race guards. A valid schema conversion must survive persisted reload and export/reimport. Invalid input leaves the previous live DB, persisted bytes and attachment bytes unchanged; corrupt cold start stays visible and recoverable through the existing rendered control, while too-new data has update guidance only.
+C4. Because a migration rollback uses a full backup, close the narrow existing malformed-file hole at importFullBackup: a PRESENT files property of the wrong type, malformed entry, empty/non-string or duplicate file id, duplicate attachment metadata id, invalid data/base64, or invalid metadata association is refused before replaceAllBlobs. Validate ownership against canonical metadata; retain supported legacy itemId blob ownership by normalising through existing semantics. Do not silently skip entries or guess owners. Distinguish files absent (state-only import, existing blobs untouched), files:[] (explicit empty full backup), and a complete non-empty set. A full backup must not install metadata for omitted bytes or orphan bytes without matching metadata. Keep remote NAS references out of this file set. Scope this to transport integrity of this lane's backup/restore invariant, not a general attachment feature.
+C5. Rollback is an explicit export/restore procedure, not an invented down-migration. Before upgrading owner data, retain a schema-v12 full backup and attachment bytes outside the upgraded app. v12 cannot safely read v13 and must refuse it; do not stamp a v13 file down to 12. Test a disposable exact-baseline app restoring its pre-upgrade backup and reopening its attachment. Keep a v13 export before any rollback; practice recorded since upgrade will not exist in the v12 backup and must not be silently sacrificed or represented as automatically converted. Updating forward is the recovery path for newer-schema refusal. No startup backup writes or extra archival system are introduced.
+
+D. EXPLICIT TRANSFER OF REVIEW OWNERSHIP
+D1. Add one pure administrative transition and store action for Use automatic scheduling, consuming the LIVE item/open reviews, not captured component state. Keep the existing pending calendar date unchanged; set mode auto and transfer the pending date's management to the engine using the existing nextReviewSource field. Document that auto denotes engine-managed authority, not proof that this date was mathematically generated or that a review occurred. Show the existing date and explain: date retained, future real practice determines changes. Update any open-row reason that would falsely claim manual protection or a computed interval; never fabricate a result. Spacing reps/ease/base/last-progress-day, block counts/minutes/results, statuses and completed historical reviews remain byte-for-byte unchanged.
+D2. Matching pending rows retain their date. If an item has a pending date but no open row, restore that one administrative reminder without creating a block or completing anything. Multiple agreeing open rows need not be historically rewritten. If item/open rows disagree, or rows exist without an item date, refuse the transfer with an actionable choice of which existing date to keep; do not guess. Existing Change review date can resolve the conflict explicitly before transfer. With no pending item date and no open rows, switching to auto leaves it unscheduled and source absent. Offer separate Review today; this invokes honest administrative scheduling with today's live local date and user source, preserves the current mode, and manufactures no retention evidence. No-date mode transfer and Review today are distinguishable operations.
+D3. Item Detail and the existing item edit form must tell the same story. An actual saved mode transition manual/interval to auto routes through the same transition; an unrelated save while already auto MUST preserve a protected user date. The explicit transfer remains available on an already-auto item with a custom/snoozed/unknown-provenance date. No fourth field or parallel scheduler. Changing to manual/fixed cadence does not invent a new date or spacing state. Future cadence rules remain unchanged. Repeated transfer is idempotent, and date controls re-open using current item/date rather than stale mount state.
+D4. After transfer, shipped rules apply: early positive/neutral results keep the date and spacing; worse alone may bring an engine-managed future date forward, never postpone it; manually setting/snoozing/re-arming a date makes it protected again; due eligible practice advances at most once per local day; deliberate No clears pending intent and unanswered/not_logged does not. Item, open row, due list, recommendation reason and Close preview/save must agree. Use existing useDecisionNow where the touched date controls need a live day, with the same action-time stale-preview protection as Close. Do not broaden this to every stale page.
+
+E. BOUNDED FORM/MOBILE RELIABILITY
+E1. Make the changed editors and choices usable at 390x844 and desktop without horizontal overflow, overlapping controls or lost focus. Working notes and observations preserve multiline text and independent Farsi/English direction/alignment, including mixed paragraphs and opposite-language item titles. Keep 16px editable inputs, 44px targets where applicable, safe areas, reduced motion, contrast improvements and keyboard-accessible disclosure. Explicit local logical alignment is allowed where rendered evidence shows inherited alignment is wrong. ClassQuestions changes are bounded to the retired-context adaptation and actual rendered direction coverage, not a presumed cure for the owner's un-reproduced Safari symptom.
+E2. No changes to useViewportGuard, shell height, visualViewport scrolling or nav positioning in this lane. Separate OWNER diagnostic before any such fix: on the current deployed revision, record device/iOS/app version and standalone versus Safari; repeat focus, keyboard dismiss with field still focused, blur, field-to-field focus, route exit and orientation on item notes, Close and lesson questions. Capture timestamps with innerHeight, visualViewport.height/offsetTop/pageTop/scale, window.scrollY, document/body/main scrollTop, activeElement tag and app/main/tabbar/field rectangles before/during/after transitions. For the Farsi symptom also capture computed direction/textAlign on the ordinal, li, wrappers and each line plus an actual screenshot. This distinguishes layout scrolling, visual viewport displacement, residual internal scrolling, keyboard timing, focus scroll and local CSS. Do this before the separate device lane, preferably while this lane builds; no timeout increase is authorised by this contract.
+
+DELIVERY AND HOSTILE-REVIEW CHECKLIST
+[ ] Land A-E as one coherent implementation, reviewed by family rather than one giant journey.
+[ ] Use the exact unique acceptance titles below, with table-driven cases inside each test as appropriate, not dynamically expanded duplicate titles. Existing browser tests run through Vitest; extend the existing Playwright-as-library harness only as needed.
+[ ] Browser tests drive real controls and inspect live AND persisted state after the actual write settles. Never use a fixed sleep as persistence proof. Let browser clock passage trigger real scheduled handlers for day/segment changes; do not manually dispatch events that hide the race.
+[ ] Keep pure migration/selection/ownership decisions outside React. Use real IndexedDB/browser paths for persistence, import and recovery. For sync/archive tests, invoke actual orchestrators with isolated fake transport at the existing port, no live GitHub writes. Intercept/answer each relevant dialog deliberately rather than globally accepting every dialog.
+[ ] Run full required Prismatica checks once on the finished implementation, then rerun only named affected checks for rework plus required final checks. Do not weaken existing tests or substitute JSX guards for interaction evidence.
+[ ] Reconcile changed Flow mechanics/Rules through Prismatica's normal governed workflow, without rewriting unrelated signed records. Update the exact docsDelta files, including stale README formula/question claims, newly retired fields, ownership semantics and the dummy-data exception. No separate Flow is needed for note editing inside practice.
+Highest-leverage first step: implement the canonical notes/retirement decision and its real boundary fixtures before screen polish. Next: wire the shared editors and ownership controls with browser tests. Third: run the adversarial family audit, device usability acceptance and full checks. No hidden prerequisite from the deferred viewport lane.
+
+## Advisory — the planning agent's reading, not established fact
+
+The two lists below are the planning agent's interpretation. Deterministic code
+checked that this plan is complete, in scope, correctly bound, and correctly
+tiered; it did not and cannot check whether this reading of the app is right.
+Verify them against the code.
+
+**Assumptions**
+
+- The existing bare item.notes field is the smallest sufficient canonical notebook; a new persisted alias would add no product value.
+- Persisting notes during a bound routine is the same item-note invariant, not a new routine planning feature.
+- The owner dummy-text waiver permits discarding the explicitly retired practice-text fields, including display-only tags; retained canonical fields need no destructive reset.
+- The existing test harness and installed Playwright package suffice. The layout family requires its matching Chromium and WebKit binaries; install those during test setup if absent, without adding a framework/package or silently skipping coverage.
+
+**Possible conflicts**
+
+- Old AGENTS/README descriptions name currentProblem/bestStrategy/lastObservation and specialised notes; replace those descriptions with the canonical field ownership, rather than append contradictory rules.
+- nextReviewSource has historically been described as origin. Administrative transfer needs precise authority wording so auto never falsely claims a newly computed date or practice event.
+- r-quick-start says title is the only required field anywhere, while shipped Close requires a result or deliberate Save without a result. Document that existing distinction rather than weaken Close or add requirements.
+- Owner data-retirement permission supersedes the original lossless-text request only for the enumerated dummy fields; future text and non-text history remain protected.
+
+## The complete approved plan
+
+```json
+{
+  "format": "prismatica/start@1",
+  "request": "Practice Compass keeps persistent working notes easy to read and edit while practising, keeps observations, next actions and lesson questions distinct, clarifies existing practice choices, and lets me return a review to automatic scheduling without changing its pending date or inventing practice. Simplify obsolete dummy practice-text data with a small schema migration, protect real history and the shipped decision loop, and prove the behaviour through focused rendered and inbound-boundary tests.",
+  "builder": "claude",
+  "summary": "Keep useful practice information clear from capture to next time",
+  "rationale": "ONE PRODUCT THESIS\nThe few things the musician records should have clear ownership, be available when playing, and never require supervising the scheduler.\n\nOWNER DECISIONS, SETTLED 2026-09-16\n1. One persistent Working notes field, readable/editable during Active. Block Observation, Next time and lesson Question remain separate concepts.\n2. Existing note/question/observation content is dummy test data. Lossless preservation of retired practice-text fields is explicitly waived where simplification benefits the model. Do not build legacy archives, conflict-merging machinery or permanent compatibility fields to preserve it. This is a bounded migration exception, NOT permission to reset practice history, ratings, reviews, commitments or future meaningful text.\n3. Retain existing algorithm inputs and maths. Importance means changeable personal priority; Difficulty means changeable current effort. Optional inputs are progressively disclosed, never inferred automatically.\n4. Returning to automatic scheduling keeps the pending date, releases its protection, switches manual/fixed-cadence mode to auto if necessary, and records no practice. With no date, the separate explicit Review today action is available.\n5. Claude builds. The unexplained iPhone viewport defect is a separate diagnostic task, not a hidden prerequisite of this lane.\n\nCANDIDATE COMPARISON\nQualitative planning judgement, not measured delivery estimates. Rank 1: coherent capture-to-reuse lane, including date ownership. Daily value very high; trust high; simplification high; coherence high; migration risk moderate but bounded by explicit dummy-text retirement; mobile value high for note editing and shorter forms; ongoing administration low; reviewer comprehension high when split into A-E below. SELECTED.\nRank 2: general import-integrity, archival and retrospective truth. Trust very high; daily value medium; simplification low; coherence good only as a data-integrity lane; migration risk moderate if archival added; mobile value low; maintenance moderate; reviewer comprehension good. Its bounded malformed-backup refusal earns inclusion only at this lane's actual migration/restore boundary; general graph validation and archival do not.\nRank 3: full status/result/priority model redesign. Daily value potentially high but uncertain; trust risk high because ranking, spacing and warm-up eligibility depend on these inputs; simplification potentially high; coherence high; migration/semantic risk high; mobile value medium; administration uncertain; reviewer comprehension poorest. Owner explicitly chose clarification over this redesign.\nRank 4: iPhone viewport and Safari layout diagnosis. Mobile value high; correctness benefit potentially high; schema risk none; excellent bounded scope once diagnosed; present cause uncertain. Run diagnostics separately before specifying a fix.\n\nWHY HEAVY IS JUSTIFIED\nA UI-only lane could expose existing Notes in Active and improve labels with no migration. It would leave obsolete problem/strategy/specialist text and the cached last observation as competing homes. Retiring those persisted fields cleanly warrants schema v12 to v13, using the existing migration chain and validation doors. No new note entity, generic notebook/task system, external service or new scheduling algorithm is justified.\n\nREVIEWER PRE-MORTEM\nA correct migration helper can still be bypassed by current-version hydration, sync, archive restore or corrupt-start recovery: C1-C3 exercise those actual boundaries. A correct note editor can write to the wrong item after a routine boundary or overwrite newer content on blur: A2-A3 exercise both. A correct automatic-mode button can be bypassed by ItemForm or accidentally triggered by an unrelated auto-mode save: D2-D3 distinguish these. A green RTL source guard can still render on the wrong edge: E1 inspects actual text geometry. An exported field can remain practically write-only behind the newest ten blocks: A4 exercises older history. A transferred date can retain a false reason, or a stale page can act on another item's date: D1-D3 assert explanation and identity as well as values. No acceptance family is proved primarily by source regex or JSX shape.\n\nREMAINING FINDINGS, RANKED FOR THIS LANE\n1. Malformed full-backup entries: potential silent byte loss, highest severity, occasional workflow, bounded validation risk; include because full-backup migration/rollback must be trustworthy.\n2. Malformed surviving practice text and editor persistence/identity: crash or lost/overwritten information, everyday use, high trust and low administration; include at actual boundaries.\n3. Active notebook access and duplicated text capture: very frequent practical friction, strongest simplification, small schema retirement risk after the dummy-data waiver; central scope.\n4. Manual date ownership control: everyday interpretability/trust, small administrative transition, no new evidence; include.\n5. Historical result versus current context: reproducible false statement, periodic use, bounded query/copy correction within the information lifecycle; include narrowly.\n6. Self-parenting/family/other graph invariants: potentially disappearing items in repertoire, infrequent editing/import path, wider reference semantics; defer as a coherent integrity lane.\n7. iPhone keyboard and Safari alignment: frequent reported usability issue, high diagnostic uncertainty, no source-established mechanism; diagnose separately before fixing.\n8. Permanent deletion: real history loss but explicit confirmation and non-destructive Resting alternative; defer the owner-dependent archival model.\n9. Untouched stale-day displays and misleading sync wording: still open, varying frequency; only touched decision/context clocks and practice-model documentation belong here.\n",
+  "kind": "existing-flow",
+  "flowId": "practise-todays-recommendation",
+  "currentBehaviour": "BASELINE AND EVIDENCE\nClean local main and origin/main verified at d014293c205958f45e4393ebf6ae56901db83a1c. Fresh Prismatica context snapshot 209143d6c9954774e4722e715b388010bf7a230b8142d24b18cc651320e4d009, no pending proposals/open lanes. 20260913 trusted-daily-session lane is shipped and owner-approved with patch fd6cd73ca467e1f6d07681b89a67f1faed10a396; 20260911 direction/UI lane with patch 1c85fc6fb59ab1a22cac40bb123696586ae4fa69. Read their records, current AGENTS, Rules and relevant canonical Flows. Routine and hands-free mechanics are already represented within existing Flows; lack of separate Flow titles is not proof of absent coverage.\nHistorical catalogue /Users/Ehsan/Downloads/review-2026-09-10.md was read as leads only. It names old baseline 0c6058e and 294 tests; neither is current. Baseline verification here: 333 tests passed across the full run and focused rerun of the three browser-containing suites. Initially Playwright was absent from installed node_modules despite being declared; npm ci --offline restored it without changing tracked files. The three browser tests then needed unsandboxed localhost/browser access. 330 passed in the ordinary run and all 16 tests in those three suites passed on focused rerun, covering all 333 unique tests. This is test evidence, not a claim that every defect is absent.\nLive current-main app inspected on a local demo origin: Item Detail, Start before/after item selection, Active disclosures and Lessons at 390x844 in Chromium. Start exposes seven modes and eighteen focus options after item selection. Active exposes read-only piece information plus an unrelated quick-note textarea. Current Farsi question ordinal and question/details resolve RTL and align at start in Chromium. No actual iPhone keyboard/Safari diagnosis was obtained. Automatic approval review refused the synthetic demo note/Finish interaction; the audit block was discarded without saving. Close persistence evidence is from current source tracing and the existing passing isolated browser journey, not that refused interaction.\n\nCOMPLETE PRACTICE-INFORMATION INVENTORY AND CONSUMERS\n- PracticeItem.title, instrumentId, itemType: identity and grouping; quick add/full form; all lists, selection, Active and history. Keep.\n- materialId, stageId, parentItemId, lesson.itemIds, strand, catalogKey: source/path/part/origin structure and planner/default context; full form and connection/pathway controls; repertoire, pathway views, plan and defaults. Keep; lesson origin is not preparation.\n- Persian identity: dastgahAvaz, gusheh, form, composer; Guitar identity: lessonNumber, barRange. Full form, detail/repertoire grouping and reference context. Keep as progressive identity metadata.\n- Item notes: persistent notebook, edited only by ItemNotes on Item Detail, saved on blur; read in Active About this piece. ItemForm does not currently expose this same field. Make this the single Working notes home.\n- currentProblem: ItemForm; displayed ItemCard, Item Detail and Active; copied into question/report context. No ranking/date input. bestStrategy: ItemForm and Item Detail only. Retire both as separate inputs.\n- Persian working detail: phraseLabel, shahed, ist, foroud, importantNote, ornamentIssue, mezrabIssue. Guitar working detail: rightHandIssue, leftHandIssue, toneIssue, fingering, tempo, stringNoiseIssue, bodyTensionNote. Entered in form, rendered as Detail rows, not used in scheduling and not available in Active. Retire these specialised practice-text fields; their future content belongs in Working notes. Numeric routine/catalogue BPM is a different field and stays.\n- tags: comma-split form input and Item Detail chips; no current search/ranking/plan consumer. Retire the separate tag input/storage, without adding replacement tagging duties.\n- status: manual item/form choice and optional accepted Close suggestion; drives default mode, fragility, pathway progress and eligibility. new/fragile/repairing/usable/integrated/performable/maintenance/dormant are not eight rungs of one compulsory achievement ladder. Keep enum/behaviour and clarify confidence versus work intention.\n- importance/difficulty: manual 1-5, default 3. Ranking uses importance*2 + difficulty; review urgency factor uses both; warm-up eligibility excludes high difficulty. They are consequential owner estimates, not intrinsic immutable properties. Keep values and weights, explain and progressively disclose them.\n- primaryFocus and per-block mode/focus: defaults and descriptions of what was practised; focus also feeds observations/Insights. Keep existing choices and saved values. Hide optional changes behind the chosen default summary on Start.\n- active.note: unfinished block scratch observation, entered during Active, seeds Close observation; not persistent item notes. Keep but label its destination clearly.\n- PracticeBlock.observation: one block's historical observation; cached to item.lastObservation, shown in recent history and question context. Keep the block field; retire the duplicate item cache and derive the latest non-empty observation from real blocks, labelled with its date. No text parsing or inferred judgement.\n- PracticeBlock.nextAction: future intention recorded with that block; latest non-empty already appears early in Active via lastNextAction. Keep this shipped behaviour and expose it in historical block detail too. It is not a second item-notes field or a new task lifecycle.\n- PracticeBlock.bodyNote: Close optional input, stored but not rendered in current history. Retire the separate input/storage under the dummy-data waiver. Future body/tension observations can be ordinary Observation or Working notes according to their intended lifetime.\n- PracticeBlock.constraint: legacy/optional authored practice constraint, displayed in Active when present; ordinary Start currently supplies undefined. Keep existing values and expose them in block detail; do not add another required capture control.\n- result: worse/same/slightly_better are relative judgements; stable_alone/stable_in_context/performable are demonstrated stability levels. These drive the shipped spacing decision and optional status suggestion, not just a colour. not_logged is a deliberate escape/routine outcome. Keep codes, ranking and behaviour; clarify their questions and examples.\n- minutes: owner-attested duration, proposed by the stale-clock guard; preserve existing semantics. Status suggestion remains optional. Review answer/date/type/mode are separate scheduling intent with existing provenance; keep collapsed explanation and one ReviewPlan derivation.\n- lessonAgenda question.text/answer/askedAt/lessonId and independent preparation entries: teacher agenda and retained lesson history, entered through Close, item and lesson surfaces. Keep canonical v12 collection and independence. Do not migrate questions into item notes or recreate the rolling teacherQuestion field.\n- Lesson.notes; recording/reference title/path/notes; Material.title/sourceName/parentTitle/section/teacherOrSource/notes/status; Pathway name/source/description/note; Stage code/title/group/intro; Routine name and segment label/minutes/essential/itemId: distinct lesson, source or authored route/instruction context. Keep with their current owners and consumers, never absorb these into an item's notebook. Bound routine items can access their own Working notes; unbound countdowns remain unlogged.\n- Attachments: names/ownership/media references are reference data, not practice text. Preserve bytes and ownership; no media/storage redesign.\n\nCURRENT CORRECTNESS FINDINGS\nExecutable pure-domain probes against this HEAD confirmed: validateDB accepts a non-string item notes object; validateDB accepts an item parented to itself; buildReportData reports improvement from current lastResult even when the requested period has only a worse block. Source confirms ItemForm can offer self as parent, retains incompatible family metadata after an instrument switch, and backup.ts skips malformed files before replaceAllBlobs. Source also confirms ItemDetail/Lessons/Repertoire/TeacherReport still have some mount-frozen clocks, Settings says newest copy wins, and deleteItem deliberately deletes blocks with a count-bearing confirmation. These are separately classified below, not treated as already reproduced iPhone defects.\nStale elapsed-time protection, calendar totals, early-success preservation, same versus worse, dormant recommendation exclusion, minutes-based exposure, lesson-specific commitments/questions, clipboard fallback, Farsi search, attachment ownership, single Close derivation, live Close/plan dates and cold-start recovery are shipped. Preserve rather than reimplement them.",
+  "desiredBehaviour": "A. ONE CANONICAL HOME FOR EACH KIND OF INFORMATION\nA1. Reuse PracticeItem.notes, displayed as Working notes. No new workingNotes alias, note collection or rich-text dependency. Full creation/edit, Item Detail and Active all target the same field. One title-only quick add and one full form remain. Retire currentProblem, bestStrategy, tags and the fourteen specialist working-detail fields listed in the inventory. Identity fields stay distinct. Catalogue item creation must put BOTH existing catalogue entry.notes guidance and entry.about guidance into the one notes field when present; moving away from currentProblem must not drop newly-created catalogue guidance.\nA2. Reuse/extend ItemNotes as the shared editor: calm collapsed entry point, readable expanded notes while the timer runs, obvious Edit/Done, multiline plain text with independent Farsi/English paragraph direction. Notes remain useful after Finish, Discard, navigation and reload because they belong to the item, not the block. Done closes editing, not practice. Avoid blur-only saving, stale local copies and misleading Cancel semantics over already-saved text. A timer tick, store update, date change or item switch cannot reset the caret, overwrite fresh text or save A's text into B. Emptying notes is deliberate and persists; absent and empty are not grounds to resurrect retired text. Do not announce Saved before durable acknowledgement; a failed persistence operation retains visible text and offers retry/copy, never silent success. Use existing IndexedDB/Zustand plumbing, not a new persistence framework.\nA3. The same access applies to the current bound item in RoutineRunner. Unbound segments have no fictitious item notebook. An automatic or skipped segment boundary must not transfer an open editor's text to the next item; no focus trap, invisible pause, timer reset, extra block or changed minute allocation. Keep the authored routine segment instruction separate from item notes.\nA4. Active's quick capture is explicitly an Observation for this block, not Working notes. It seeds Close; editing persistent notes does not change it. Close retains Result, Observation and Next time as the main reflection, then optional status/review/question controls. Remove Body/tension as a separate field. Preserve the chosen observation, next action and question through preview refreshes, and never create a question from arbitrary notes. Block history exposes observation, nextAction and any legacy constraint with date/mode/focus/result/minutes; older entries are reachable through simple progressive disclosure. Derive latest observation from blocks rather than item.lastObservation. Keep lastNextAction's latest NON-EMPTY behaviour and label it as a previous decision rather than an inferred current task.\nA5. Adapt every currentProblem/lastObservation consumer. Cards and teacher question exports must not dump the entire personal notebook into a preview or teacher sheet. Remove automatic Problem context; show a clearly labelled latest block observation with its date only where that context already belongs. It is current context, not an answer to a past question or evidence that the question was asked. Lesson question text, optional answers, targets and lifecycle remain unchanged. Working notes can always be opened on the item.\nA6. Bound the existing history/current-state reporting defect as part of truthful reuse: period-specific result statements come from the recorded blocks inside the selected period, never current item.lastResult. Do not claim improvement merely because an absolute stable result has a higher rank; report the result actually recorded. Current status, open questions, repeated-current-pattern and suggested-next-work sections must explicitly say Current where they use present state. Keep existing calendar-versus-rolling definitions; do not invent historical status snapshots, analytics, new metrics or a reporting subsystem. Later practice may change Current sections but not results attributed to an earlier period. Existing user-selected report dates remain selected; refreshing current context must not silently change the historical period.\n\nB. FEWER DECISIONS, HONEST WORDING, SAME ALGORITHMS\nB1. Use an explicit definition table in docs/product-spec.md and concise in-context help. Item status answers how this item currently stands/how the owner is working on it, not how the last ten minutes went. new is New material, still being established rather than a claim that its practice count is zero; fragile unreliable; repairing actively addressing a known problem; usable holds together but not reliably in context; integrated reliable in context; performable ready to play for someone; maintenance deliberately maintaining learned work; dormant deliberately set aside. Preserve existing enum values, defaults, scoring, pathway/mastery and accepted-suggestion transitions. Do not claim perfect scientific separation between neighbouring statuses or force a user through every status. Current new status can survive recorded practice, so never label that case Not practised yet solely from its enum. Preserve the catalogue's honest Not practised yet presentation for genuinely untouched additions, using its existing untouched-item evidence rather than inventing a practice event or automatic status promotion.\nB2. Close asks for the most concrete result actually demonstrated. Clarify stable_alone as the chosen passage/task holding together in isolation, stable_in_context as holding together joined to its surrounding musical context, performable as ready to play for someone; these remain the existing evidence categories. For change short of those claims, same means no meaningful change, slightly_better some improvement, worse genuine deterioration or recall difficulty. Do not turn same, fatigue, an empty field or a missing rating into failed retention automatically. Keep one selection, not an additional proficiency questionnaire. Retain deliberate Save without a result and its unchanged-review semantics. No AI judgement.\nB3. Labels Personal priority and Current effort (with the stored names importance/difficulty retained) have anchored 1/3/5 descriptions and meaningful intermediate levels. Priority is how much the owner currently wants this in the mix; effort is how demanding it currently feels at the intended level. Both can change, need not be maintained on a schedule and default to 3. Lesson urgency remains the independent preparation deadline. Explain briefly that the estimates influence selection/review and high effort excludes easy warm-up; never pretend they are inferred measurements. Keep all numerical effects unchanged.\nB4. Start leads with selected item, duration, a readable default mode/focus summary and Begin practice. Optional Change practice approach reveals the existing mode/focus choices with clear definitions. Keep all seven modes and eighteen focus values; no forced taxonomy merge, new mandatory selection or extra creation path. Mode describes what approach to use; focus describes what to attend to. Item setup uses progressive optional status/priority/effort/focus/review controls. New/changed controls have their own accessible names and visible selected state, not merely a named parent group. Preserve quick title-only creation and direct recommendation/plan starts.\n\nC. SMALL SCHEMA CHANGE, REAL INBOUND SAFETY\nC1. Bump PracticeDB SCHEMA_VERSION 12 to 13 and add one deterministic, clock-free, idempotent retirement pass in migrations.ts after existing migrations. Discard ONLY retired currentProblem, bestStrategy, tags, item.lastObservation, the fourteen specialist working-detail keys and block.bodyNote. Keep existing item.notes, block.observation/nextAction/constraint and lessonAgenda questions/answers without transformation; retaining these costs no compatibility machinery. Keep Persian/Guitar identity keys, all block records and numeric facts, ids/references/timestamps, ratings/status, review state/provenance, sr state/marker, agenda commitments, routines, settings, media metadata and bytes. Remove empty family containers only when truly empty; do not drop their identity. Retired keys are removed even in already-current or partially converted input, so no dual truth survives. Do not rerun destructive reset behaviour on future canonical text. Existing v2-v12 migration steps remain, including v12 lesson-intent conversion; the owner waiver does not authorise ripping out that already-shipped history machinery.\nC2. Extend shared validation for this lane's surviving practice-text inputs before install: optional strings must really be strings; present wrong types are rejected with useful item/block identification, never coerced to [object Object]. Validate the unfinished observation text at the real persisted-state hydration boundary too, because it lives outside PracticeDB. Existing scheduling/agenda and newer-schema refusal stay authoritative. A newer schema is refused before any retirement pass or relabelling. No general graph repair, guessed reference relinking or arbitrary input truncation.\nC3. Actual hydration (migrate AND current-version merge), Settings import, sync pull, Keep remote, archive restore and corrupt-start recovery must reach the same validated model before replacing state. Preserve existing unfinished-session and revision-race guards. A valid schema conversion must survive persisted reload and export/reimport. Invalid input leaves the previous live DB, persisted bytes and attachment bytes unchanged; corrupt cold start stays visible and recoverable through the existing rendered control, while too-new data has update guidance only.\nC4. Because a migration rollback uses a full backup, close the narrow existing malformed-file hole at importFullBackup: a PRESENT files property of the wrong type, malformed entry, empty/non-string or duplicate file id, duplicate attachment metadata id, invalid data/base64, or invalid metadata association is refused before replaceAllBlobs. Validate ownership against canonical metadata; retain supported legacy itemId blob ownership by normalising through existing semantics. Do not silently skip entries or guess owners. Distinguish files absent (state-only import, existing blobs untouched), files:[] (explicit empty full backup), and a complete non-empty set. A full backup must not install metadata for omitted bytes or orphan bytes without matching metadata. Keep remote NAS references out of this file set. Scope this to transport integrity of this lane's backup/restore invariant, not a general attachment feature.\nC5. Rollback is an explicit export/restore procedure, not an invented down-migration. Before upgrading owner data, retain a schema-v12 full backup and attachment bytes outside the upgraded app. v12 cannot safely read v13 and must refuse it; do not stamp a v13 file down to 12. Test a disposable exact-baseline app restoring its pre-upgrade backup and reopening its attachment. Keep a v13 export before any rollback; practice recorded since upgrade will not exist in the v12 backup and must not be silently sacrificed or represented as automatically converted. Updating forward is the recovery path for newer-schema refusal. No startup backup writes or extra archival system are introduced.\n\nD. EXPLICIT TRANSFER OF REVIEW OWNERSHIP\nD1. Add one pure administrative transition and store action for Use automatic scheduling, consuming the LIVE item/open reviews, not captured component state. Keep the existing pending calendar date unchanged; set mode auto and transfer the pending date's management to the engine using the existing nextReviewSource field. Document that auto denotes engine-managed authority, not proof that this date was mathematically generated or that a review occurred. Show the existing date and explain: date retained, future real practice determines changes. Update any open-row reason that would falsely claim manual protection or a computed interval; never fabricate a result. Spacing reps/ease/base/last-progress-day, block counts/minutes/results, statuses and completed historical reviews remain byte-for-byte unchanged.\nD2. Matching pending rows retain their date. If an item has a pending date but no open row, restore that one administrative reminder without creating a block or completing anything. Multiple agreeing open rows need not be historically rewritten. If item/open rows disagree, or rows exist without an item date, refuse the transfer with an actionable choice of which existing date to keep; do not guess. Existing Change review date can resolve the conflict explicitly before transfer. With no pending item date and no open rows, switching to auto leaves it unscheduled and source absent. Offer separate Review today; this invokes honest administrative scheduling with today's live local date and user source, preserves the current mode, and manufactures no retention evidence. No-date mode transfer and Review today are distinguishable operations.\nD3. Item Detail and the existing item edit form must tell the same story. An actual saved mode transition manual/interval to auto routes through the same transition; an unrelated save while already auto MUST preserve a protected user date. The explicit transfer remains available on an already-auto item with a custom/snoozed/unknown-provenance date. No fourth field or parallel scheduler. Changing to manual/fixed cadence does not invent a new date or spacing state. Future cadence rules remain unchanged. Repeated transfer is idempotent, and date controls re-open using current item/date rather than stale mount state.\nD4. After transfer, shipped rules apply: early positive/neutral results keep the date and spacing; worse alone may bring an engine-managed future date forward, never postpone it; manually setting/snoozing/re-arming a date makes it protected again; due eligible practice advances at most once per local day; deliberate No clears pending intent and unanswered/not_logged does not. Item, open row, due list, recommendation reason and Close preview/save must agree. Use existing useDecisionNow where the touched date controls need a live day, with the same action-time stale-preview protection as Close. Do not broaden this to every stale page.\n\nE. BOUNDED FORM/MOBILE RELIABILITY\nE1. Make the changed editors and choices usable at 390x844 and desktop without horizontal overflow, overlapping controls or lost focus. Working notes and observations preserve multiline text and independent Farsi/English direction/alignment, including mixed paragraphs and opposite-language item titles. Keep 16px editable inputs, 44px targets where applicable, safe areas, reduced motion, contrast improvements and keyboard-accessible disclosure. Explicit local logical alignment is allowed where rendered evidence shows inherited alignment is wrong. ClassQuestions changes are bounded to the retired-context adaptation and actual rendered direction coverage, not a presumed cure for the owner's un-reproduced Safari symptom.\nE2. No changes to useViewportGuard, shell height, visualViewport scrolling or nav positioning in this lane. Separate OWNER diagnostic before any such fix: on the current deployed revision, record device/iOS/app version and standalone versus Safari; repeat focus, keyboard dismiss with field still focused, blur, field-to-field focus, route exit and orientation on item notes, Close and lesson questions. Capture timestamps with innerHeight, visualViewport.height/offsetTop/pageTop/scale, window.scrollY, document/body/main scrollTop, activeElement tag and app/main/tabbar/field rectangles before/during/after transitions. For the Farsi symptom also capture computed direction/textAlign on the ordinal, li, wrappers and each line plus an actual screenshot. This distinguishes layout scrolling, visual viewport displacement, residual internal scrolling, keyboard timing, focus scroll and local CSS. Do this before the separate device lane, preferably while this lane builds; no timeout increase is authorised by this contract.\n\nDELIVERY AND HOSTILE-REVIEW CHECKLIST\n[ ] Land A-E as one coherent implementation, reviewed by family rather than one giant journey.\n[ ] Use the exact unique acceptance titles below, with table-driven cases inside each test as appropriate, not dynamically expanded duplicate titles. Existing browser tests run through Vitest; extend the existing Playwright-as-library harness only as needed.\n[ ] Browser tests drive real controls and inspect live AND persisted state after the actual write settles. Never use a fixed sleep as persistence proof. Let browser clock passage trigger real scheduled handlers for day/segment changes; do not manually dispatch events that hide the race.\n[ ] Keep pure migration/selection/ownership decisions outside React. Use real IndexedDB/browser paths for persistence, import and recovery. For sync/archive tests, invoke actual orchestrators with isolated fake transport at the existing port, no live GitHub writes. Intercept/answer each relevant dialog deliberately rather than globally accepting every dialog.\n[ ] Run full required Prismatica checks once on the finished implementation, then rerun only named affected checks for rework plus required final checks. Do not weaken existing tests or substitute JSX guards for interaction evidence.\n[ ] Reconcile changed Flow mechanics/Rules through Prismatica's normal governed workflow, without rewriting unrelated signed records. Update the exact docsDelta files, including stale README formula/question claims, newly retired fields, ownership semantics and the dummy-data exception. No separate Flow is needed for note editing inside practice.\nHighest-leverage first step: implement the canonical notes/retirement decision and its real boundary fixtures before screen polish. Next: wire the shared editors and ownership controls with browser tests. Third: run the adversarial family audit, device usability acceptance and full checks. No hidden prerequisite from the deferred viewport lane.",
+  "mustNotChange": [
+    "One item, one mode, one focus, one result, one next action. Title-only quick creation, under-30-second start and under-60-second close, deliberate unlogged escape; no new required metadata.",
+    "The shipped session planner: deterministic eligibility/build/swap parity, short-session behaviour, warm-up inside budget, exposure/variety maths, urgent work, instrument scoping, stable tie-breaks and stale-plan protection. Today Plan and Routines remain peer doorways above the recommendation.",
+    "The shipped scheduling equations, numerical parameters and scientific-evidence limits. Same is not failed retention; early success never advances spacing; manual protection changes only by explicit date/mode ownership intent; once-per-local-day advancement remains.",
+    "Lesson-specific preparation and independent question targets, unassigned intent, asked/answer history, detach semantics, copy fallback and no question-derived urgency.",
+    "Practice timing, Finish freezing elapsed time, stale-duration proposal, running/paused/reload semantics, routine allocation, wake-lock ownership and signals. Editing notes cannot create, finish or pause practice.",
+    "Local/offline-first IndexedDB, whole-snapshot hash-based sync, active-session and revision guards, visible deferral/retry, explicit conflicts with archives, cold-start refusal/recovery and newer-schema refusal.",
+    "Farsi search, NAS references and media ownership, large-file policy, existing direction/contrast improvements, safe-area and input sizing. No backend, account, paid service, AI/audio grading, gamification or quotas.",
+    "No database reset, fake records, invented results or silent loss of meaningful new text. Owner-authorised retirement applies only to the enumerated dummy legacy practice-text fields. Preserve every practice block and its identity, duration, result and timestamps.",
+    "No generic testing framework, generic note/task system, useStore slice refactor or broad mobile-layout rewrite."
+  ],
+  "assumptions": [
+    "The existing bare item.notes field is the smallest sufficient canonical notebook; a new persisted alias would add no product value.",
+    "Persisting notes during a bound routine is the same item-note invariant, not a new routine planning feature.",
+    "The owner dummy-text waiver permits discarding the explicitly retired practice-text fields, including display-only tags; retained canonical fields need no destructive reset.",
+    "The existing test harness and installed Playwright package suffice. The layout family requires its matching Chromium and WebKit binaries; install those during test setup if absent, without adding a framework/package or silently skipping coverage."
+  ],
+  "possibleConflicts": [
+    "Old AGENTS/README descriptions name currentProblem/bestStrategy/lastObservation and specialised notes; replace those descriptions with the canonical field ownership, rather than append contradictory rules.",
+    "nextReviewSource has historically been described as origin. Administrative transfer needs precise authority wording so auto never falsely claims a newly computed date or practice event.",
+    "r-quick-start says title is the only required field anywhere, while shipped Close requires a result or deliberate Save without a result. Document that existing distinction rather than weaken Close or add requirements.",
+    "Owner data-retirement permission supersedes the original lossless-text request only for the enumerated dummy fields; future text and non-text history remain protected."
+  ],
+  "scope": {
+    "allow": [
+      "src/domain/types.ts",
+      "src/domain/migrations.ts",
+      "src/domain/migrations.test.ts",
+      "src/domain/io.ts",
+      "src/domain/io.test.ts",
+      "src/domain/factories.ts",
+      "src/domain/seed.ts",
+      "src/domain/seedMigration.test.ts",
+      "src/domain/blocks.ts",
+      "src/domain/blocks.test.ts",
+      "src/domain/labels.ts",
+      "src/domain/defaults.ts",
+      "src/domain/scheduling.ts",
+      "src/domain/scheduling.test.ts",
+      "src/domain/questions.ts",
+      "src/domain/questions.test.ts",
+      "src/domain/report.ts",
+      "src/domain/report.test.ts",
+      "src/domain/insights.ts",
+      "src/domain/insights.test.ts",
+      "src/domain/practiceInformation.ts",
+      "src/domain/practiceInformation.test.ts",
+      "src/domain/index.ts",
+      "src/store/useStore.ts",
+      "src/store/backup.ts",
+      "src/store/idb.ts",
+      "src/components/ItemNotes.tsx",
+      "src/components/ItemForm.tsx",
+      "src/components/itemFormValues.ts",
+      "src/components/itemFields.ts",
+      "src/components/ItemCard.tsx",
+      "src/components/ClassQuestions.tsx",
+      "src/components/format.ts",
+      "src/components/format.test.ts",
+      "src/components/direction.test.ts",
+      "src/components/ui.tsx",
+      "src/components/useDecisionNow.ts",
+      "src/pages/NewItem.tsx",
+      "src/pages/ItemDetail.tsx",
+      "src/pages/StageDetail.tsx",
+      "src/pages/StartBlock.tsx",
+      "src/pages/ActiveBlock.tsx",
+      "src/pages/CloseBlock.tsx",
+      "src/pages/RoutineRunner.tsx",
+      "src/pages/Lessons.tsx",
+      "src/pages/TeacherReport.tsx",
+      "src/pages/Insights.tsx",
+      "src/pages/Settings.tsx",
+      "src/styles/global.css",
+      "tests/practiceBrowser.ts",
+      "tests/practice-information.browser.test.ts",
+      "tests/review-ownership.browser.test.ts",
+      "tests/practice-information-inbound.browser.test.ts",
+      "tests/practice-information-layout.browser.test.ts",
+      "tests/daily-practice.browser.test.ts",
+      "tests/lesson-agenda.browser.test.ts",
+      "tests/fixtures/practice-information-v12.json",
+      "tests/fixtures/practice-information-v13.json",
+      "AGENTS.md",
+      "README.md",
+      "DECISIONS.md",
+      "docs/product-spec.md",
+      "docs/scheduling-evidence.md"
+    ],
+    "forbid": [
+      "src/components/useViewportGuard.ts",
+      "src/components/screenAwake.ts",
+      "src/components/useScreenAwake.ts",
+      "src/domain/practiceSignal.ts",
+      "src/domain/practiceSession.ts",
+      "src/domain/plan.ts",
+      "src/domain/scoring.ts",
+      "src/domain/recommend.ts",
+      "src/domain/lessonAgenda.ts",
+      "src/domain/farsi.ts",
+      "src/domain/sync.ts",
+      "src/store/syncEngine.ts",
+      "src/store/gitRemote.ts",
+      "src/store/githubSync.ts",
+      "src/store/revision.ts",
+      "src/components/Layout.tsx",
+      "package.json",
+      "package-lock.json",
+      "vite.config.ts",
+      ".github/**"
+    ]
+  },
+  "exclusions": [
+    "Already shipped: early/repeated-review correction, same/worse distinction, dormant eligibility, minutes-based exposure, varied session planning, lesson-specific agenda migration, clipboard fallback, Farsi search, NAS/material work, stale-session proposed minutes, calendar totals, unfinished-practice sync protection, cold-start recovery and the large direction/contrast lane. Retest their invariants, do not reimplement them.",
+    "Actual iPhone keyboard displacement/overlap and the Safari-only question-alignment symptom: current Chromium view did not reproduce them; source leaves several plausible causes. Perform the specified OWNER diagnostic before prescribing a separate device fix. No timeout guess and no dependency blocking this lane.",
+    "General item relationship validation, self-parent/cycles, cross-instrument family identity cleanup and dangling non-agenda refs: still open in current code, high trust but less frequent than notes; defer to a coherent graph-integrity lane. Do not drop hidden family identity to conceal the issue.",
+    "Archive-versus-delete lifecycle: current permanent deletion is explicitly confirmed and destroys block history; Resting already provides a non-destructive way to set an item aside. Changing archival semantics needs a separate owner decision and must not piggyback on this text migration.",
+    "Broad inbound invariant framework: only this lane's surviving text and full-backup transport boundary are added. Existing v12 agenda/scheduling validation stays. No speculative validate-everything subsystem.",
+    "Global live-clock sweep across untouched Repertoire/Lessons/report pages: source still contains mount-frozen clocks. Fix only touched decision controls/current context where required by these acceptance families; defer unrelated date displays.",
+    "Full status/proficiency/lifecycle split, inferred difficulty, grading redesign, review algorithm replacement and new musical category quotas: owner chose clarified existing semantics.",
+    "General sync copy cleanup and Settings reorganisation: newest-copy wording remains misleading, but changing unrelated sync UI is not the selected thesis. Settings edits here are limited to practice-choice and review-ownership explanations.",
+    "New routine/hands-free canonical Flow project: current existing Flows already carry relevant mechanics. Update changed practice mechanics through normal governance; do not invent duplicate journeys.",
+    "Global accessibility sweep, universal typography/direction repair, generic rich text, notation tools, media viewers and history editing/deletion features. Address accessible names and real rendering only on affected surfaces."
+  ],
+  "acceptance": [
+    {
+      "description": "A1 / C1. Pure migration: exercise v12, older supported through the existing chain, current v13, mixed/partially retired objects and repeated execution. Assert exact retired-key absence and exact preservation of canonical Notes/Observation/Next time/questions, identity metadata, all non-text block/review/agenda/routine/settings facts. Include empty strings, absent family blocks and both retained/retired keys. New catalogue items retain both entry.notes and entry.about guidance. Opposite case: current canonical text is never reset on a second migration.",
+      "test": "practice text retirement removes only authorised legacy fields and is idempotent"
+    },
+    {
+      "description": "C2. Pure validation discriminates absent/empty/valid multilingual strings from numbers, arrays and objects in surviving item/block text. Errors identify the offending record. Keep existing invalid-date/reference and newer-schema refusal. Do not confuse retired dummy fields with malformed surviving canonical fields.",
+      "test": "practice text validation rejects malformed canonical values without coercion"
+    },
+    {
+      "description": "C3. Real IndexedDB hydration in disposable browser: v12 migration, already-current v13 merge, partial leftovers and persisted unfinished observation; invalid canonical/unfinished text, too-new schema and invalid recovery file. Compare raw stored bytes before/after refusal, drive the rendered cold-start recovery control with a valid file, reload and verify recovery; newer-schema UI has no downgrade control. Existing paused-on-reload timing remains.",
+      "test": "practice information hydration and rendered recovery enforce the same schema boundary"
+    },
+    {
+      "description": "C3/C4. Invoke real Settings import plus actual sync pull, Keep remote and archive restore orchestrators using isolated existing transport ports. Matrix valid old/current data, invalid canonical text, files wrong type, malformed/duplicate ids, invalid base64/ownership, omitted/orphan bytes. Check live/persisted DB and blob bytes before/after, not only return values. files absent preserves local bytes; valid files empty/nonempty replaces honestly. Include unfinished and revision-changed refusal; no weakening of existing late-guard semantics. Valid import/reload/export/reimport retains canonical model. Cold recovery is covered separately above. Include duplicate attachment metadata ids as well as duplicate payload ids. Mock the existing network/module transport boundary around actual githubSync entry points where needed; calling only runSync with a fake installer is not proof of real installation wiring.",
+      "test": "practice information replacement doors reject invalid data before database or blob replacement"
+    },
+    {
+      "description": "C5. Disposable exact-baseline v12 app and new v13 app: export full v12 fixture with a real small attachment, upgrade/import it, export v13, prove old app refuses v13 without altering bytes, then restore the retained v12 export and open/read the attachment. A post-upgrade test block exists only in the retained v13 export, making rollback limitations explicit. No checked-in old app bundle or real owner data modification.",
+      "test": "practice information rollback restores the original backup without pretending to downgrade new history"
+    },
+    {
+      "description": "A2. Render real Item Detail and Active at desktop/390px. Edit the same notebook while running and paused, with timer ticks, offline mode, navigation, Finish/return and Discard; verify notes survive and active clock identifiers/running/elapsed semantics, blocks/reviews/sr state stay unchanged by editing. Clear notes and reload; no resurrection. Inspect actual IndexedDB acknowledgement, not a sleep. Reject a storage write through the real storage seam and verify text remains visible with retry/copy and no false Saved state.",
+      "test": "working notes persist across practice navigation without controlling the clock"
+    },
+    {
+      "description": "A2/A3. Render a bound routine, edit item A while time naturally crosses to B, also exercise Skip, unbound and missing-item segments. Notes never land on the wrong item; routine elapsed/allocation/signals keep existing behaviour and no extra blocks appear. Also switch Item Detail route A to B and replace same-id data while the app is running: a stale editor must not overwrite new content on blur. Test Farsi and English text.",
+      "test": "working note editors retain item ownership across routine and database changes"
+    },
+    {
+      "description": "A4. Real Active to Close to next Active journey: distinct notebook, scratch Observation, Next time and lesson Question; choose result and close, inspect persisted records, reload, inspect older block history via disclosure and next-session previous decision. Notebook is not overwritten by reflection; questions stay independent and do not change preparation. Empty later nextAction preserves earlier non-empty choice. Deliberate unlogged close preserves schedule; Close across a local-day change retains authored text while refreshing the existing decision.",
+      "test": "practice reflection keeps notebook observation next action and question distinct"
+    },
+    {
+      "description": "A5/A6. Pure consumer cases plus rendered/exported teacher sheet: later block results and current notes/status change after a selected historical period; period result statements stay based on in-range blocks, current sections are labelled, and no unproved improvement is inferred from absolute ranks. Question output retains targets/asked answers and latest-observation date but never dumps Working notes as Problem or rewrites past answers. Include no-block/unlogged/older-observation cases and ordinary/DST local date boundaries for the selected report period.",
+      "test": "practice summaries separate recorded period evidence from current context"
+    },
+    {
+      "description": "B1-B4. Drive full item create/edit and Start with all retained status/result/mode/focus enums represented in a definition table; verify default summaries, reachable optional controls, accessible names, distinct descriptions, retained rating values and title-only quick add. Pin representative priority, urgency-factor, warm-up eligibility and scheduling outputs against current fixtures, including 1/3/5 effort/priority and Same versus Worse. A label change may not alter stored codes, weights, defaults or status transition behaviour. Include a new-status item with real blocks versus a truly untouched catalogue addition: wording is honest in both, with no automatic status or history mutation.",
+      "test": "clarified practice choices preserve existing defaults and decision inputs"
+    },
+    {
+      "description": "D1/D2. Pure administrative transition matrix: auto/user/unknown provenance; auto/manual/interval mode; future/due/past/no date; zero/matching/multiple agreeing/conflicting open rows; missing item; repeated execution. Retain pending date, normalise only explicit authority, preserve every sr/stat/block/completed-review fact. Restore missing reminder only when an item date exists; refuse ambiguous pending dates; no-date transfer stays unscheduled. Review today is separate and records no result.",
+      "test": "automatic review ownership transfer preserves dates without inventing evidence"
+    },
+    {
+      "description": "D3. Real Item Detail and full edit form: explicit transfer on already-auto custom/snoozed/unknown date, actual manual/interval to auto transition, and unrelated save while already auto. Assert identical intended outcomes and protected-date preservation on unrelated saves through live and persisted state after reload. Reopen/switch items/external live update while panel exists to rule out stale captured dates. Conflicting rows show actionable refusal; no-date auto remains unscheduled until explicit Review today. Button explanation never calls the retained date a new engine calculation.",
+      "test": "review ownership controls distinguish explicit transfer from ordinary item edits"
+    },
+    {
+      "description": "D4. Real UI transfer future custom date, then actual practice early with Same, positive and Worse in isolated scenarios; assert persisted due rows/item date, no early spacing expansion and repair only after worse. Change custom date/snooze/Schedule again re-establishes user protection. Exercise due eligible close, No, unanswered/unlogged and repeated same-day eligible close. Let browser clock cross local midnight before Review today or a displayed date action, without synthetic visibility events, and check displayed/saved date and Today/Close explanations.",
+      "test": "released review dates obey the shipped early practice and local day rules"
+    },
+    {
+      "description": "E1. Render changed note, item-form, Start, Close, routine-note, history and question-context surfaces at 390x844 and desktop in Chromium and WebKit. Install the matching existing Playwright browser binaries during setup if needed; do not silently skip an engine or report a skipped layout case as passing. Use Farsi, English, mixed paragraphs, opposite-language titles and long text. Assert own accessible names, selected states, keyboard activation, visible focus and actual text/ordinal bounding positions, no clipping/overlap/horizontal overflow, minimum editable font size and reduced-motion behaviour. This is browser rendering proof, not a claim to reproduce a physical iPhone keyboard; do not replace it with source regex.",
+      "test": "practice information controls render accessible directional text at phone and desktop widths"
+    },
+    {
+      "description": "OWNER subjective usability on the actual iPhone and Mac: a normal start stays under 30 seconds and close under 60; reading/editing Working notes during ordinary and bound-routine practice remains calm, clearly separate from block observation, and controls remain reachable with the keyboard. Verify understandable status/result/rating definitions and the retained-date automatic explanation. Record actual Farsi/English observations. Known residual shell/Safari symptom is separately diagnosed, not silently declared fixed and not cured with an untested timeout.",
+      "test": "manual:OWNER"
+    }
+  ],
+  "risk": {
+    "touchesAuth": false,
+    "touchesPayments": false,
+    "touchesSavedData": true,
+    "copyOnly": false,
+    "rationale": "Heavy: schema v12 to v13 retires owner-authorised dummy fields, updates text ownership and review-date authority, and exercises actual hydration/import/sync/restore boundaries. A tested pre-upgrade full-backup rollback is required; no automatic down-migration or fabricated retention evidence."
+  },
+  "delta": {
+    "today": "Persistent working information is split across Notes, problem, strategy and specialist fields; Active reads only some of it and edits a separate block note. Close asks overlapping questions, history omits some captured text, and custom date ownership cannot be explicitly released.",
+    "instead": "One item notebook is readable/editable during practice; block observation, previous next action and lesson questions retain distinct lifetimes. Existing choices have plain meanings and progressive controls. Explicit automatic-date ownership transfer retains the pending date and spacing state without recording practice.",
+    "keep": [
+      "One-instrument, quick-start, calm Active loop and honest minutes.",
+      "Trusted planner, lesson-specific agenda, conservative early-review rules and all sync/recovery safety."
+    ],
+    "assumptions": [
+      "Owner explicitly permits retiring the enumerated obsolete dummy practice-text fields; future meaningful information remains protected."
+    ],
+    "showMe": "Open an item, read and edit Working notes while its timer continues, add a separate block observation, finish and choose a result/next action, then reload and practise it again: the notebook and previous decision are available and history says what happened. Repeat during a bound routine transition without notes crossing items. On the item release a custom future date to automatic control: its date stays, no practice/spacing changes, and later early Same versus Worse obey the shipped distinct rules. Restore a valid old backup through the real UI; malformed and newer data refuse before replacement."
+  },
+  "desiredRules": [
+    "Persistent Working notes belong to an item; Observation and Next time belong to a recorded block; teacher questions belong to the existing lesson agenda. Each is used where its lifetime is meaningful, without copying one into another automatically.",
+    "Editing practice information never changes elapsed time, running state, practice counts, results or spaced-repetition state. A bound routine change cannot transfer text between items.",
+    "An explicit administrative transfer to automatic review management retains the pending date and spacing state; only subsequent eligible real practice supplies retention evidence. Ordinary item edits do not release custom-date protection.",
+    "The v13 dummy-text retirement exception is enumerated and one-way. Meaningful canonical text and non-text practice history remain protected by the real validation, persistence and recovery boundaries."
+  ],
+  "docsDelta": [
+    "AGENTS.md",
+    "README.md",
+    "DECISIONS.md",
+    "docs/product-spec.md",
+    "docs/scheduling-evidence.md"
+  ]
+}
+```
+````
+
+## The approved Delta this change must deliver
+
+# One item notebook is readable/editable during practice; block observation, previous next action and lesson questions retain distinct lifetimes. Existing choices have plain meanings and progressive controls. Explicit automatic-date ownership transfer retains the pending date and spacing state without recording practice.
+
+_approved · about "practise-todays-recommendation"_
+
+## Today
+
+Persistent working information is split across Notes, problem, strategy and specialist fields; Active reads only some of it and edits a separate block note. Close asks overlapping questions, history omits some captured text, and custom date ownership cannot be explicitly released.
+
+## Instead
+
+One item notebook is readable/editable during practice; block observation, previous next action and lesson questions retain distinct lifetimes. Existing choices have plain meanings and progressive controls. Explicit automatic-date ownership transfer retains the pending date and spacing state without recording practice.
+
+## Keep
+
+- One-instrument, quick-start, calm Active loop and honest minutes.
+- Trusted planner, lesson-specific agenda, conservative early-review rules and all sync/recovery safety.
+
+## New assumptions
+
+- Owner explicitly permits retiring the enumerated obsolete dummy practice-text fields; future meaningful information remains protected.
+
+## Show me
+
+Open an item, read and edit Working notes while its timer continues, add a separate block observation, finish and choose a result/next action, then reload and practise it again: the notebook and previous decision are available and history says what happened. Repeat during a bound routine transition without notes crossing items. On the item release a custom future date to automatic control: its date stays, no practice/spacing changes, and later early Same versus Worse obey the shipped distinct rules. Restore a valid old backup through the real UI; malformed and newer data refuse before replacement.
+
+
+## Flows near this scope (understand before you change them)
+
+# See and adjust the scheduling engine
+
+_Works now · approved 2026-08-28T13:30:17.733Z by Ethan (signed)_
+
+## Goal
+
+Understand exactly why an item was recommended and a date chosen — and change the numbers if they do not suit you.
+
+## Starts when
+
+The musician follows 'Why this date?' from the close screen, or opens Settings → 'How scheduling works'.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **Practice Compass** States the real priority formula and the spaced-repetition rungs in plain English, filled in with the values currently in force.
+   - Shows: The priority terms, the current first/second/slip-reset gaps, and how importance and difficulty pull material sooner.
+
+2. **The musician** Changes a value — a review gap, the warm-up or deep-work share of a plan, the shortest or longest review slot.
+   - Shows: The explanation updates to the new numbers.
+   - Changes: The settings are stored with the practice data, clamped to safe bounds; out-of-range input is never trusted.
+
+3. **The musician** Closes a block or builds a plan afterwards.
+   - Shows: Review dates and plan shapes computed with the adjusted values.
+   - Changes: The same settings are used for the date previewed and the date saved.
+
+4. **The musician** Taps 'Reset to recommended' whenever they want the original behaviour back.
+   - Shows: 'Using the recommended defaults.'
+   - Changes: The settings field is dropped, so the historical constants apply exactly.
+
+## Ends with
+
+The engine is understood and, if wanted, tuned — and it still produces the same date it showed.
+
+## Variations
+
+- **Never customised** — With no settings stored the defaults reproduce the original constants exactly, so old backups import unchanged. _(Works now)_
+- **Per-item override** — An individual item can be set to a fixed cadence or to manual dates instead of automatic spaced repetition. _(Works now)_
+
+## Rules
+
+- Scheduling is deterministic and explainable — visible and adjustable, never magic.
+- Bounds are enforced on every stored value.
+
+## Involves
+
+- The musician
+- The spaced-repetition scheduler
+- The plan builder
+
+---
+
+# Back up and restore everything
+
+_Works now · approved 2026-08-28T13:30:17.770Z by Ethan (signed)_
+
+## Goal
+
+Keep an independent copy of all practice data and files, and put it back on any device.
+
+## Starts when
+
+In Settings → Data & backup the musician taps 'Export backup'.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **The musician** Taps 'Export backup'.
+   - Shows: A single downloaded file named for this device and today's date, and 'Backup exported (data + files)'.
+   - Changes: One JSON file holding the whole database plus every attachment, stamped with the device name and the latest change; the export time is remembered locally.
+
+2. **The musician** Saves it wherever they keep backups — NAS, iCloud, anywhere.
+   - Shows: Settings shows the last export from this device and the latest change made here.
+
+3. **The musician** Taps 'Import backup' on any device and picks a file.
+   - Shows: A confirmation naming the device the backup came from — and an explicit warning if the backup is older than what is on this device.
+
+4. **Practice Compass** Decodes every attachment before touching anything.
+   - Shows: A corrupt file aborts the whole import with a clear message and nothing changed.
+   - Changes: Only once everything decodes do the files get replaced in one transaction, and only then the data — attachment records can never end up pointing at missing files.
+
+5. **Practice Compass** Leaves existing files alone when the file has no attachments section at all.
+   - Changes: A state-only export is never mistaken for 'zero attachments' and never wipes the device's files.
+
+## Ends with
+
+There is an independent full copy of everything, and restoring it is a single, clearly-confirmed step.
+
+## Variations
+
+- **Older backup** — Importing a backup older than the local data requires confirming a spelled-out warning that shows both dates. _(Works now)_
+- **Legacy backups** — Older exports import unchanged; legacy attachment records are normalised to the current shape on the way in. _(Works now)_
+- **Start over** — 'Reset demo data' and 'Clear all data' both replace everything and both ask first. _(Works now)_
+
+## Rules
+
+- The NAS backup is the user's own independent copy — sync history is never treated as the only backup.
+- Nothing is replaced without an explicit confirmation.
+- Large videos never enter a backup.
+
+## Involves
+
+- The musician
+- The NAS or other storage
+
+---
+
+# Find something in my repertoire
+
+_Works now · approved 2026-08-28T13:30:17.801Z by Ethan (signed)_
+
+## Goal
+
+See everything you play, grouped the way you think about it, and open the one you mean.
+
+## Starts when
+
+The musician opens Repertoire and picks one of the three views: Pathways, My repertoire, or Practice list.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **The musician** Chooses 'My repertoire'.
+   - Shows: Persian works grouped under their dastgāh — radif gushehs and composed maestro pieces side by side — and other instruments grouped by study source.
+   - Changes: Nothing; this is a lens over ordinary items, not a separate store.
+
+2. **Practice Compass** Folds dastgāh spelling variants together, labels each group with the user's own majority spelling, and keeps parts nested under their parent work.
+   - Shows: Each work appears exactly once, however many sources, stages and lessons it is linked to.
+
+3. **The musician** Optionally filters by form, or narrows to one instrument.
+   - Shows: Form chips built from what is actually present.
+
+4. **The musician** Or chooses 'Practice list' and filters by search, instrument, status, type, or a quick chip (due today, for class, fragile, neglected, overworked, teacher question).
+   - Shows: Items in priority order, each with its status and stats.
+
+5. **The musician** Opens an item.
+   - Shows: Its page: status, connections, stats, result trend, recent blocks, parts, notes and files.
+   - Changes: Nothing until an action is taken there.
+
+## Ends with
+
+The right piece is found and opened in a couple of taps, from whichever way of thinking about it came first.
+
+## Variations
+
+- **No dastgāh yet** — Works with Persian identity but no dastgāh sit in an explicit 'No dastgāh yet' group at the end. _(Works now)_
+- **Technique stays out** — Drills and generic exercises are not works — they live in the Practice list only. _(Works now)_
+
+## Rules
+
+- 'My repertoire' is a derived lens, never a parallel database of pieces.
+- Links never duplicate an item.
+- Study sources stay simple: instrument, one clear name, kind, status, note.
+
+## Involves
+
+- The musician
+
+---
+
+# Add a practice item
+
+_Works now · approved 2026-08-28T13:30:17.831Z by Ethan (signed)_
+
+## Goal
+
+Get a new piece, gusheh, étude, passage or technique into the app without breaking your concentration.
+
+## Starts when
+
+The musician wants to record something to work on — from Today, a stage, a lesson, the practice list, or the Start screen.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **The musician** Types a title into the quick-add box and presses Add.
+   - Shows: 'Added ✓' with an 'add details' link.
+   - Changes: A practice item exists, with the instrument taken from context (stage's pathway, lesson, or the current session instrument) and sensible defaults for everything else. From a lesson it is linked to that lesson at the same time.
+
+2. **The musician** Or chooses 'Add practice item' for the full one-step form.
+   - Shows: A kind-first form: what you are adding (gusheh / composed piece / piece / étude / passage / technique), then only that kind's identity fields, then 'Connect it (optional)', then the first practice setup.
+
+3. **The musician** Fills in identity, and optionally connects a study source (creatable inline), a pathway stage, a lesson and a parent work — all at creation.
+   - Shows: Persian instruments are asked for dastgāh, gusheh, form and composer, with dastgāh and form offered as datalist suggestions; free text always wins.
+
+4. **The musician** Saves.
+   - Shows: The item's own page, with a 'Connected to' summary near the top.
+   - Changes: One item, linked to whatever it belongs to — links never duplicate the item.
+
+## Ends with
+
+The thing to practise exists and can be started immediately; details can be filled in later, or never.
+
+## Variations
+
+- **Create while starting** — The Start screen's quick create takes a title only, then begins the block right away; a link opens the full form and returns with the item preselected. _(Works now)_
+- **Edit later** — The same kind-first form is the item's inline edit, so nothing needs a second creation path. _(Works now)_
+
+## Rules
+
+- Exactly two creation paths, both one-step: title-only quick add, and the full kind-first form.
+- No required field beyond a title.
+- Free text is direction-aware so Farsi and English can be mixed anywhere.
+
+## Involves
+
+- The musician
+
+---
+
+# Deal with a due review
+
+_Works now · approved 2026-08-28T13:30:17.861Z by Ethan (signed)_
+
+## Goal
+
+Handle material that is due to come back, without ever faking that it was practised.
+
+## Starts when
+
+Today lists 'Due reviews' for the session instrument — items whose review date has arrived.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **Practice Compass** Lists each due review with the item's title and how long it has been due, and hides any review dismissed earlier today.
+   - Shows: A 'Due reviews' section with three actions per row and one line explaining what each does.
+
+2. **The musician** Taps ▶ to practise it.
+   - Shows: The active block, seeded from the item's status and focus.
+   - Changes: Nothing yet — the review only completes when the block is closed.
+
+3. **The musician** Or taps 'Not now'.
+   - Shows: The row disappears for the rest of the day and returns tomorrow.
+   - Changes: Only a per-day dismissal list in the app's session state — no review or item date is touched.
+
+4. **The musician** Or taps '+2d' to genuinely move it.
+   - Changes: The review's due date and the item's next review date both move to two days from today, so nothing is left showing overdue.
+
+## Ends with
+
+Either the item was actually practised (and spaced repetition advanced), or the schedule was moved honestly — never both, never neither.
+
+## Variations
+
+- **Snoozed from a stale date** — The new date is counted from today, not from the old overdue date, so a long-ignored review does not stay in the past. _(Works now)_
+
+## Rules
+
+- 'Not now' changes no schedule; snooze moves the real date on both the review and the item.
+- No action may fabricate a practice result.
+
+## Involves
+
+- The musician
+- The spaced-repetition scheduler
+
+---
+
+# Install the app and keep it current
+
+_Works now · approved 2026-08-28T13:30:17.892Z by Ethan (signed)_
+
+## Goal
+
+Run the app installed on each device, practise with no network at all, and take new versions without ever reinstalling.
+
+## Starts when
+
+The musician opens the app's web address on a device and installs it to the home screen or dock.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **The musician** Installs the app from its web address.
+   - Shows: It opens like an app, full screen, with the navigation bar reaching the bottom of the phone.
+   - Changes: The app's files are cached on the device; practice data stays in the device's own database.
+
+2. **The musician** Practises with no network at all.
+   - Shows: Everything works — recommendations, blocks, reviews, notes.
+   - Changes: Nothing is special-cased for being offline; only syncing and opening NAS files need a network.
+
+3. **Practice Compass** Checks for a new build every hour and whenever the app is brought back to the foreground.
+   - Shows: A calm 'A new version is ready.' banner with a Reload button — never an automatic reload in the middle of a session.
+   - Changes: Nothing until the musician chooses to reload.
+
+4. **The musician** Taps Reload when it suits them.
+   - Shows: The app restarts on the new version; Settings shows the build it is running.
+   - Changes: Nothing in the practice data — an update replaces code, never data.
+
+## Ends with
+
+Both devices run the current version, neither needed reinstalling, and neither needs a network to practise.
+
+## Variations
+
+- **Offline when a check is due** — The check simply does nothing and tries again later — no error, no interruption. _(Works now)_
+- **Not now** — Ignoring the banner keeps the current version running for as long as the musician likes; the offer comes back. _(Works now)_
+
+## Rules
+
+- Reinstalling is never the update path.
+- An update never interrupts a running block — the reload is always the musician's choice.
+- Every core flow works with no network.
+
+## Involves
+
+- The musician
+
+---
+
+# Log a class and its follow-up work
+
+_Works now · approved 2026-08-28T13:30:17.922Z by Ethan (signed)_
+
+## Goal
+
+Record a lesson, write up what was said after rewatching it, and turn it into concrete work before the next one.
+
+## Starts when
+
+The musician taps 'Add a class' on the Lessons screen for one instrument.
+
+## Needs first
+
+- At least one instrument exists
+
+## Steps
+
+1. **The musician** Accepts the pre-filled class number and picks the date.
+   - Shows: The class appears as 'Class N · date', newest first, with 'upcoming' while it is still ahead.
+   - Changes: A Lesson is stored for that instrument; the number is optional and editable.
+
+2. **The musician** Rewatches the class and types the notes, in Farsi or English.
+   - Shows: A direction-aware notes field; the list shows 'notes ✓' once there is text.
+   - Changes: Notes are saved when the field loses focus.
+
+3. **The musician** Adds a link to the class recording and to any scores — a NAS path or a full https link.
+   - Shows: The links listed video-first, then PDFs and documents, each with its kind icon and 'Stored on NAS'.
+   - Changes: Only a reference (title, path, kind, notes) is stored — never the file itself.
+
+4. **The musician** Taps 'Open' on a link.
+   - Shows: The file opens in a new tab, resolved against the NAS base URL from Settings.
+   - Changes: Nothing is stored or downloaded into the app; removing a link never touches the NAS file.
+   - Only if: A NAS base URL is set in Settings and the NAS is reachable from this device
+
+5. **The musician** Links or quick-adds the practice items that came out of the class, and flags the ones to be ready for next time.
+   - Shows: Each linked item with its status and a 'For next class' toggle.
+   - Changes: The lesson keeps a link to the item (never ownership — unlinking keeps the item); a flagged item gains a priority boost that climbs as that instrument's next class approaches.
+
+6. **The musician** Optionally attaches small hand-outs (a PDF, a photo, a short audio).
+   - Shows: Files over 10 MB and any video are warned about; over 40 MB is refused with a clear message.
+   - Changes: Small blobs are stored on the device and travel with backups and sync.
+
+## Ends with
+
+The class is on record, its material is real practice items, and the work due before the next class is prioritised automatically.
+
+## Variations
+
+- **No NAS base URL yet** — The link shows 'Set your NAS base URL in Settings to open this' and the Open button stays disabled — never a broken link. _(Works now)_
+- **Invalid base URL** — An unparseable base is reported as such and nothing is opened, rather than resolving to a wrong in-app address. _(Works now)_
+- **Import the Setar class history** — Settings → 'Import Setar classes' adds the logged sessions as lessons with their recording and score links, additively and idempotently, backfilling refs missing from classes already imported. _(Works now)_
+- **Wide screen** — At 1000px and above the class list sits beside the open class, giving long Farsi notes real room. _(Works now)_
+
+## Rules
+
+- Class videos and scores are references to the user's NAS, never bytes in the app, sync or backups.
+- A lesson link to an item is a link, never ownership.
+- The next class is the one sanctioned deadline — per instrument, never guilt-toned.
+
+## Involves
+
+- The musician
+- The teacher (indirectly)
+- The NAS
+
+---
+
+# Point this device at the NAS
+
+_Works now · approved 2026-08-28T13:30:17.952Z by Ethan (signed)_
+
+## Goal
+
+Give this device the address that turns a class recording or score link into a file it can actually open — without any of those files entering the app.
+
+## Starts when
+
+In Settings → NAS recordings the musician sets the base URL that serves their recordings folder.
+
+## Needs first
+
+- The recordings folder is served over the network from the NAS and is reachable from this device at some web address
+
+## Steps
+
+1. **The musician** Types the address that serves the recordings folder.
+   - Shows: 'Resolves to: …/…' once it is valid, or 'That doesn’t look like a valid web address' if it is not; a host typed without a scheme is completed to https:// when the field loses focus.
+   - Changes: The address is stored in this device's local storage. It is environment configuration, not practice data and not a secret: it never enters the database, a backup or a sync snapshot.
+
+2. **The musician** Taps 'Test link' to open a known recording and confirm the address works.
+   - Shows: The file opens in a new tab, or the app says the base URL isn’t valid and opens nothing.
+   - Changes: Nothing is stored or downloaded — the app fetches a recording only when someone explicitly opens it.
+
+3. **Practice Compass** Resolves every relative recording and score path in every lesson against this address from then on.
+   - Shows: 'Open' beside each link; with no address it reads 'Set your NAS base URL in Settings to open this' and stays disabled — never a broken or wrong link.
+   - Changes: Nothing in the data; resolving is pure and happens on demand.
+
+## Ends with
+
+This device can open class videos and scores on demand, while the app itself still holds nothing but links.
+
+## Variations
+
+- **Every device sets its own address** — The address is per-device and never syncs, so each device holds whatever address reaches the NAS from where it is — a new device simply has none until it is given one. _(Works now)_
+- **The NAS is not reachable right now** — Opening a link fails in the browser like any unreachable address. Nothing in the app changes, no data is lost, and every other flow keeps working offline. _(Works now)_
+- **Links that need no address** — A recording stored as a complete https address opens with no base URL set at all. _(Works now)_
+- **A bad address** — An unparseable or non-http(s) address is reported as invalid and nothing is opened — it is never silently resolved to an in-app route. _(Works now)_
+
+## Rules
+
+- The NAS address is per-device configuration — never synced, never in a backup, never a password.
+- The app stores links to recordings and scores, never their bytes.
+- An unusable address is reported, never resolved to a wrong link.
+- A recording is fetched only when the musician explicitly opens it — never at startup.
+
+## Involves
+
+- The musician
+- The NAS
+
+---
+
+# Practise what the app suggests
+
+_Works now · approved 2026-08-31T22:05:26.192Z by owner (signed)_
+
+## Goal
+
+Practise the one thing the app suggests next and leave an honest record of how it went.
+
+## Starts when
+
+The musician opens Today, picks the instrument they are practising, and sees a single 'Practise now' card.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **The musician** Taps their instrument in the switcher at the top of Today.
+   - Shows: Everything below is scoped to that instrument: recommendation, class work, due reviews, pathway position.
+   - Changes: The chosen instrument is remembered as the session instrument.
+
+2. **Practice Compass** Scores every item of that instrument and shows the best one with a one-sentence reason.
+   - Shows: One 'Practise now' card above the fold, plus up to two quieter 'then, if you have time' suggestions.
+
+3. **The musician** Taps 'Start · 10 min'.
+   - Shows: The active block screen: item title, mode and focus chips, a running ring timer.
+   - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item.
+
+4. **The musician** Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
+   - Shows: The elapsed clock, and the item's notes and current problem on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time) so the clock stays readable without touching anything; pausing, finishing, discarding or navigating away releases it, and the phone sleeps normally again.
+   - Changes: Elapsed seconds accumulate only while the timer runs.
+
+5. **The musician** Taps 'Finish'.
+   - Shows: The close screen, with the minutes already filled in.
+   - Changes: The clock is frozen first, so reflection time is not counted as practice.
+
+6. **The musician** Picks one of the six results, optionally adds an observation, a next action, a body note or a teacher question, and accepts or declines the suggested status and review date.
+   - Shows: A preview of the next review date with the plain reason behind it, and a 'Why this date?' link.
+
+7. **The musician** Taps 'Save block'.
+   - Shows: Back to Today (or to the running plan), with the item's stats and status updated.
+   - Changes: A PracticeBlock is stored; the item's counters, status, saturation flag and spaced-repetition state advance; any open review for the item is completed and the next one is scheduled on the date that was shown.
+
+## Ends with
+
+The session is recorded honestly: one block, one result, one next action — and the item knows when it should come back.
+
+## Variations
+
+- **Choose something else** — From 'Choose something else to practise…' the Start screen takes instrument → item → mode/focus/duration, with a title-only quick create for something that does not exist yet. _(Works now)_
+- **Start from an item or a stage** — 'Start a block' on an item, or ▶ on a pathway stage row, opens the same block with defaults taken from the item's status and focus. _(Works now)_
+- **Discard** — 'Discard block' (during) or 'Discard without saving' (at close) throws the block away — nothing is logged and no schedule moves. _(Works now)_
+- **Target reached** — When elapsed reaches the block's target, the ring's silent saturation is replaced by a durable 'Target reached' state plus a growing overtime figure (elapsed minus target) — announced once, never once per render. The block does NOT auto-finish — practising past the target stays ordinary, and only Finish or Discard ends it. Whether the screen-wake-lock or the accompanying sound/vibration cue succeeds, fails or is unsupported never changes the elapsed time or the minutes eventually saved. _(Works now)_
+
+## Rules
+
+- Starting a block must stay under 30 seconds and closing one under 60 seconds; a title is the only required field.
+- Practising is the only thing that completes a review and advances spaced repetition.
+- The review date shown before saving is exactly the date saved.
+- A recorded minute is never affected by whether the screen-wake-lock, sound or vibration succeeded — only the wall clock decides elapsed time.
+
+## Involves
+
+- The musician
+- The recommendation engine
+- The spaced-repetition scheduler
+
+---
+
+# Take questions and a summary to class
+
+_Works now · approved 2026-08-28T13:30:18.013Z by Ethan (signed)_
+
+## Goal
+
+Arrive at the lesson with the questions that came up while practising, and a short honest account of the period.
+
+## Starts when
+
+A question is written on an item (at close, or by editing it) while it is flagged for the next class.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **Practice Compass** Collects every item for that instrument that is both flagged for the next class and carries a question, ordered with the Persian collator.
+   - Shows: A 'Questions for your next class' list on the upcoming lesson and on the Teacher report.
+
+2. **The musician** Copies, downloads or prints the questions.
+   - Shows: A numbered plain-text export that preserves mixed Farsi and English, or a friendly empty state when there are none.
+
+3. **The musician** Opens the Teacher report and picks the instrument and a date range (last two weeks by default).
+   - Shows: A copyable summary of what was practised, how it went and what is open.
+
+4. **The musician** Taps 'Copy report'.
+   - Shows: 'Copied ✓'.
+   - Changes: Nothing in the data — the report is generated on the spot.
+
+## Ends with
+
+The musician walks into the lesson with their real questions and a truthful summary, without having kept a separate notebook.
+
+## Variations
+
+- **A question survives practice** — Practising never clears a question — only editing the item removes it. _(Works now)_
+
+## Rules
+
+- A question is never auto-cleared by practising.
+- Reports state what happened; they never grade.
+
+## Involves
+
+- The musician
+- The teacher
+
+---
+
+# Run a time-budgeted session
+
+_Works now · approved 2026-08-31T22:05:33.129Z by owner (signed)_
+
+## Goal
+
+Turn the minutes actually available into an ordered session, then practise it block by block.
+
+## Starts when
+
+The musician taps 'Plan this session' on Today and chooses a length (15, 20, 30, 45 or 60 minutes).
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **Practice Compass** Builds a plan from the same priority numbers the recommendation uses, laid out as warm-up, class work, review, focus and cool-down segments.
+   - Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason, and a total that always equals the chosen budget.
+
+2. **The musician** Swaps, removes or regenerates segments until the shape looks right.
+   - Shows: The remaining minutes are redistributed immediately so the total still equals the budget.
+   - Changes: Only a local copy of the plan — nothing is saved yet.
+
+3. **The musician** Taps 'Start plan'.
+   - Shows: The runner: the whole list with the current segment highlighted.
+   - Changes: The running plan is held in app state (never in the database, never synced), and the chosen length is remembered for this instrument.
+
+4. **The musician** Taps 'Start' on the current segment.
+   - Shows: The ordinary active-block screen, with the segment's minutes as the target — identical behaviour to an unplanned block, including the screen staying awake while it runs and is visible, and a durable 'Target reached' state with a growing overtime figure if the segment runs past its minutes without the musician tapping Finish.
+   - Changes: A real practice block opens for that segment's item.
+
+5. **The musician** Finishes and saves the block as usual.
+   - Shows: Back on the plan, that segment reads 'done' and the pointer moves to the next one.
+   - Changes: The block, item stats and review schedule update exactly as in an unplanned block.
+
+6. **The musician** Skips anything they do not want, or ends the plan at any time.
+   - Shows: 'Session complete' once the last segment is passed.
+   - Changes: A skipped segment logs nothing at all; ending the plan discards it and leaves every logged block untouched.
+
+## Ends with
+
+The available time was spent on real, logged practice in a sensible order — and the plan itself leaves no trace in the data.
+
+## Variations
+
+- **Nothing to plan** — With no items for the instrument the plan is empty and says so rather than inventing filler. _(Works now)_
+- **Everything already practised today** — A plan is still produced, and the summary says plainly that everything has been practised today. _(Works now)_
+- **Resume** — While a plan runs, Today's card becomes 'Resume your plan' with the count of finished segments. _(Works now)_
+
+## Rules
+
+- Segment minutes always sum to the chosen budget.
+- A plan is a view over real practice blocks — it is not a countdown and it is never persisted as data.
+- No scores, no 'optimal session' claims.
+
+## Involves
+
+- The musician
+- The plan builder
+- The recommendation engine
+
+---
+
+# See how practice is actually going
+
+_Works now · approved 2026-08-28T13:30:18.074Z by Ethan (signed)_
+
+## Goal
+
+Get a calm, neutral read on the last week or month across everything you play.
+
+## Starts when
+
+The musician taps 'Overview' on Today, or opens More → Insights.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **The musician** Taps 'Overview' in the instrument switcher.
+   - Shows: Each instrument with its next suggestion and next class, one insight of the day, and a balance bar for the last 7 days.
+   - Changes: The session instrument is set to 'all' — a deliberate, secondary choice, never the default.
+
+2. **The musician** Taps an instrument to drop back into a real session for it.
+   - Shows: Today, scoped to that instrument again.
+   - Changes: The session instrument is set.
+
+3. **The musician** Opens Insights and switches the window between 7 and 30 days.
+   - Shows: Neutral observations generated from the logged blocks — patterns, not a scoreboard, and an honest empty state when there is not enough history.
+
+## Ends with
+
+The musician knows where their time actually went, with no streaks, scores or judgement attached.
+
+## Variations
+
+_none_
+
+## Rules
+
+- No gamification: no streaks, points, badges or fabricated mastery percentages.
+- Insights are neutral observations, never nags.
+- Future-dated blocks never leak into a window that looks backwards.
+
+## Involves
+
+- The musician
+
+---
+
+# Keep the MacBook and iPhone in step
+
+_Works now · approved 2026-08-28T13:30:18.104Z by Ethan (signed)_
+
+## Goal
+
+Practise on either device and have both hold the same data, without a server or an account.
+
+## Starts when
+
+In Settings → Sync the musician enters a private GitHub repo they own and a fine-grained token, and taps 'Connect & sync'.
+
+## Needs first
+
+- A private GitHub repo dedicated to this app's data
+- A fine-grained token with Contents read/write on that repo
+
+## Steps
+
+1. **The musician** Enters owner/name and a token scoped to that one repo with Contents read/write.
+   - Shows: The connection state, with the token kept in this browser only — never in backups or synced data.
+   - Changes: The configuration is written to this device's local storage.
+
+2. **Practice Compass** Builds a whole snapshot of the device's data and files, hashes it, and compares it three ways against the repo and the last synced hash.
+   - Shows: Plain status: in sync, pushed, pulled, or a conflict — with the device name, last sync time and short content hash.
+
+3. **Practice Compass** Publishes the snapshot atomically when this device is ahead — blobs, then tree, then commit, then a fast-forward-only reference update.
+   - Shows: A brand-new empty repo is bootstrapped first; a failed bootstrap says so and leaves no partial snapshot.
+   - Changes: One commit holds the manifest, the state and the attachments; a race is reported as a conflict rather than overwriting anyone.
+   - Only if: The device is online and the token is valid for that repo
+
+4. **Practice Compass** Archives the current copy on this device before applying an incoming snapshot.
+   - Changes: Local data is replaced only after everything has been fetched and validated.
+
+5. **The musician** Chooses a side when both copies changed.
+   - Shows: A two-button choice; which side is newer is shown only as a hint, never applied automatically.
+   - Changes: Keeping this device pushes with the GitHub copy as the parent commit, so it stays in history; taking the GitHub copy archives this device's copy both in the app and on an archive branch first.
+
+6. **Practice Compass** Syncs again on its own when the app opens, 30 quiet seconds after changes, and when the device comes back online.
+   - Shows: Unconfigured or offline, every trigger is simply a no-op.
+
+## Ends with
+
+Both devices hold the same practice data, every replacement was explicit, and no copy was ever destroyed.
+
+## Variations
+
+- **Restore the archived copy** — The pre-sync archive kept on the device can be restored from Settings after an unwanted pull. _(Works now)_
+- **Legacy remote** — An older state.json + files/ remote still pulls losslessly; the next push migrates the format, keeping the old snapshot in git history. _(Works now)_
+- **Sync off** — Without sync the app is fully usable offline and data moves by manual export and import. _(Works now)_
+
+## Rules
+
+- Decisions compare content hashes, never timestamps — newest never silently wins.
+- Both copies are preserved before anything is replaced.
+- The token lives only in this browser's local storage.
+- No backend, no auth server, no paid service.
+
+## Involves
+
+- The musician
+- The user's own GitHub repo
+- Two devices
+
+---
+
+# Work through a pathway stage
+
+_Works now · approved 2026-08-31T22:05:33.178Z by owner (signed)_
+
+## Goal
+
+Follow a route you trust — see where you are, take the next suggestion into your own items, and practise it.
+
+## Starts when
+
+From Repertoire → Pathways (or the 'Now in:' card on Today) the musician opens a pathway and then a stage.
+
+## Needs first
+
+_nothing extra required_
+
+## Steps
+
+1. **Practice Compass** Shows the stage's rows: your own items laid over the stage's reference catalogue, with progress derived from item status.
+   - Shows: A progress bar reading 'n/m solid', guided routines if any, and one line of metadata per row — greyed rows are labelled reference suggestions.
+
+2. **The musician** Taps + on a suggestion.
+   - Shows: The row becomes a real item, honestly marked 'Not practised yet', with a lingering Undo card.
+   - Changes: A practice item is created from the catalogue entry, carrying its stable catalogue key — adding is organisation, not progress.
+
+3. **The musician** Undoes it, or removes it later from the row's − button, if it was added by mistake.
+   - Shows: The row reverts to a suggestion.
+   - Changes: The item is deleted only while it is provably untouched (catalogue item, still 'not practised', zero blocks); the check is re-run against live data, so anything practised is kept.
+
+4. **The musician** Taps ▶ on a row to practise it.
+   - Shows: The ordinary active block.
+   - Changes: A suggestion not yet added is added first, then the block opens.
+
+5. **The musician** Optionally pins the stage as the current one, or edits its code, title and intro.
+   - Shows: Today's 'Now in:' card points at the pinned stage.
+   - Changes: The pathway records the pinned stage; deleting a stage detaches items instead of deleting them.
+
+## Ends with
+
+The next piece of the route is now a real practice item with real practice behind it, and the stage's progress reflects it honestly.
+
+## Variations
+
+- **Teacher jumps around** — A pinned current stage always beats 'first incomplete stage', because teacher-led work does not go in order. _(Works now)_
+- **Guided routine** — A stage routine runs as a segmented warm-up countdown. A segment bound to a real item creates an honest PracticeBlock when the run finishes (result stays 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded); a segment with no bound item is pure warm-up and logs nothing at all. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
+- **Off-catalogue items** — Anything quick-added inside the stage appears in the same list and in recommendations. _(Works now)_
+
+## Rules
+
+- The item is the only unit of work — a pathway is a view over items, never a parallel to-do list.
+- The catalogue is reference data in code, labelled as an aid, never a fixed syllabus.
+- Adding from the catalogue is losslessly reversible until the moment it is practised.
+- A routine records at most one PracticeBlock per distinct bound item per run, never one per segment repeat.
+
+## Involves
+
+- The musician
+- The pathway catalogue
+
+
+## App rules
+
+- **r-direction-aware-text** — Every free-text field is direction-aware so Farsi and English can be mixed anywhere, and built-in Persian data is authored in Farsi behind stable ascii identifiers.
+- **r-explainable-scheduling** — Every recommendation and review date comes from deterministic, published formulas that carry a one-sentence reason, and the date shown before saving is exactly the date saved.
+- **r-large-files-stay-on-nas** — Class videos and score PDFs are stored as references to the user's NAS and never enter local storage, sync or backups; in-app attachments are warned above 10 MB and refused above 40 MB.
+- **r-local-first-offline** — All practice data lives in IndexedDB on the device and every core flow works offline — the app has no backend, account or paid service of its own.
+- **r-no-gamification** — Progress is shown only as honest status, results and counts — never streaks, points, badges, XP or a fabricated mastery percentage.
+- **r-no-silent-data-loss** — Data is never replaced silently: sync compares content hashes rather than timestamps, both-changed is an explicit choice, and the copy about to be replaced is archived first.
+- **r-one-instrument-per-session** — Today is a session workspace scoped to one chosen instrument; the cross-instrument overview is a deliberate secondary choice and no other instrument's work appears inside a session.
+- **r-practice-completes-reviews** — Only closing a practice block completes a review and advances spaced repetition; 'Not now' hides a review for the day without changing any schedule, and snooze moves the real date on both the review and the item.
+- **r-pure-tested-domain** — Domain logic is free of React and side effects, takes an explicit `now`, and is unit-tested; only the store mutates app data.
+- **r-quick-start** — Starting a practice block stays under 30 seconds and closing one under 60; a title is the only required field anywhere, and every other field has a smart default.
+- **r-secrets-stay-on-device** — The GitHub token and the NAS base URL live only in this browser's local storage — never in exports, backups or synced data.
+
+
+## The goal
+
+Keep useful practice information clear from capture to next time
+
+## Stay in scope — you may ONLY change
+
+- src/domain/types.ts
+- src/domain/migrations.ts
+- src/domain/migrations.test.ts
+- src/domain/io.ts
+- src/domain/io.test.ts
+- src/domain/factories.ts
+- src/domain/seed.ts
+- src/domain/seedMigration.test.ts
+- src/domain/blocks.ts
+- src/domain/blocks.test.ts
+- src/domain/labels.ts
+- src/domain/defaults.ts
+- src/domain/scheduling.ts
+- src/domain/scheduling.test.ts
+- src/domain/questions.ts
+- src/domain/questions.test.ts
+- src/domain/report.ts
+- src/domain/report.test.ts
+- src/domain/insights.ts
+- src/domain/insights.test.ts
+- src/domain/practiceInformation.ts
+- src/domain/practiceInformation.test.ts
+- src/domain/index.ts
+- src/store/useStore.ts
+- src/store/backup.ts
+- src/store/idb.ts
+- src/components/ItemNotes.tsx
+- src/components/ItemForm.tsx
+- src/components/itemFormValues.ts
+- src/components/itemFields.ts
+- src/components/ItemCard.tsx
+- src/components/ClassQuestions.tsx
+- src/components/format.ts
+- src/components/format.test.ts
+- src/components/direction.test.ts
+- src/components/ui.tsx
+- src/components/useDecisionNow.ts
+- src/pages/NewItem.tsx
+- src/pages/ItemDetail.tsx
+- src/pages/StageDetail.tsx
+- src/pages/StartBlock.tsx
+- src/pages/ActiveBlock.tsx
+- src/pages/CloseBlock.tsx
+- src/pages/RoutineRunner.tsx
+- src/pages/Lessons.tsx
+- src/pages/TeacherReport.tsx
+- src/pages/Insights.tsx
+- src/pages/Settings.tsx
+- src/styles/global.css
+- tests/practiceBrowser.ts
+- tests/practice-information.browser.test.ts
+- tests/review-ownership.browser.test.ts
+- tests/practice-information-inbound.browser.test.ts
+- tests/practice-information-layout.browser.test.ts
+- tests/daily-practice.browser.test.ts
+- tests/lesson-agenda.browser.test.ts
+- tests/fixtures/practice-information-v12.json
+- tests/fixtures/practice-information-v13.json
+- AGENTS.md
+- README.md
+- DECISIONS.md
+- docs/product-spec.md
+- docs/scheduling-evidence.md
+
+Never touch:
+
+- src/components/useViewportGuard.ts
+- src/components/screenAwake.ts
+- src/components/useScreenAwake.ts
+- src/domain/practiceSignal.ts
+- src/domain/practiceSession.ts
+- src/domain/plan.ts
+- src/domain/scoring.ts
+- src/domain/recommend.ts
+- src/domain/lessonAgenda.ts
+- src/domain/farsi.ts
+- src/domain/sync.ts
+- src/store/syncEngine.ts
+- src/store/gitRemote.ts
+- src/store/githubSync.ts
+- src/store/revision.ts
+- src/components/Layout.tsx
+- package.json
+- package-lock.json
+- vite.config.ts
+- .github/**
+- One item, one mode, one focus, one result, one next action. Title-only quick creation, under-30-second start and under-60-second close, deliberate unlogged escape; no new required metadata.
+- The shipped session planner: deterministic eligibility/build/swap parity, short-session behaviour, warm-up inside budget, exposure/variety maths, urgent work, instrument scoping, stable tie-breaks and stale-plan protection. Today Plan and Routines remain peer doorways above the recommendation.
+- The shipped scheduling equations, numerical parameters and scientific-evidence limits. Same is not failed retention; early success never advances spacing; manual protection changes only by explicit date/mode ownership intent; once-per-local-day advancement remains.
+- Lesson-specific preparation and independent question targets, unassigned intent, asked/answer history, detach semantics, copy fallback and no question-derived urgency.
+- Practice timing, Finish freezing elapsed time, stale-duration proposal, running/paused/reload semantics, routine allocation, wake-lock ownership and signals. Editing notes cannot create, finish or pause practice.
+- Local/offline-first IndexedDB, whole-snapshot hash-based sync, active-session and revision guards, visible deferral/retry, explicit conflicts with archives, cold-start refusal/recovery and newer-schema refusal.
+- Farsi search, NAS references and media ownership, large-file policy, existing direction/contrast improvements, safe-area and input sizing. No backend, account, paid service, AI/audio grading, gamification or quotas.
+- No database reset, fake records, invented results or silent loss of meaningful new text. Owner-authorised retirement applies only to the enumerated dummy legacy practice-text fields. Preserve every practice block and its identity, duration, result and timestamps.
+- No generic testing framework, generic note/task system, useStore slice refactor or broad mobile-layout rewrite.
+- Already shipped: early/repeated-review correction, same/worse distinction, dormant eligibility, minutes-based exposure, varied session planning, lesson-specific agenda migration, clipboard fallback, Farsi search, NAS/material work, stale-session proposed minutes, calendar totals, unfinished-practice sync protection, cold-start recovery and the large direction/contrast lane. Retest their invariants, do not reimplement them.
+- Actual iPhone keyboard displacement/overlap and the Safari-only question-alignment symptom: current Chromium view did not reproduce them; source leaves several plausible causes. Perform the specified OWNER diagnostic before prescribing a separate device fix. No timeout guess and no dependency blocking this lane.
+- General item relationship validation, self-parent/cycles, cross-instrument family identity cleanup and dangling non-agenda refs: still open in current code, high trust but less frequent than notes; defer to a coherent graph-integrity lane. Do not drop hidden family identity to conceal the issue.
+- Archive-versus-delete lifecycle: current permanent deletion is explicitly confirmed and destroys block history; Resting already provides a non-destructive way to set an item aside. Changing archival semantics needs a separate owner decision and must not piggyback on this text migration.
+- Broad inbound invariant framework: only this lane's surviving text and full-backup transport boundary are added. Existing v12 agenda/scheduling validation stays. No speculative validate-everything subsystem.
+- Global live-clock sweep across untouched Repertoire/Lessons/report pages: source still contains mount-frozen clocks. Fix only touched decision controls/current context where required by these acceptance families; defer unrelated date displays.
+- Full status/proficiency/lifecycle split, inferred difficulty, grading redesign, review algorithm replacement and new musical category quotas: owner chose clarified existing semantics.
+- General sync copy cleanup and Settings reorganisation: newest-copy wording remains misleading, but changing unrelated sync UI is not the selected thesis. Settings edits here are limited to practice-choice and review-ownership explanations.
+- New routine/hands-free canonical Flow project: current existing Flows already carry relevant mechanics. Update changed practice mechanics through normal governance; do not invent duplicate journeys.
+- Global accessibility sweep, universal typography/direction repair, generic rich text, notation tools, media viewers and history editing/deletion features. Address accessible names and real rendering only on affected surfaces.
+- Desired rule (not yet truth): Persistent Working notes belong to an item; Observation and Next time belong to a recorded block; teacher questions belong to the existing lesson agenda. Each is used where its lifetime is meaningful, without copying one into another automatically.
+- Desired rule (not yet truth): Editing practice information never changes elapsed time, running state, practice counts, results or spaced-repetition state. A bound routine change cannot transfer text between items.
+- Desired rule (not yet truth): An explicit administrative transfer to automatic review management retains the pending date and spacing state; only subsequent eligible real practice supplies retention evidence. Ordinary item edits do not release custom-date protection.
+- Desired rule (not yet truth): The v13 dummy-text retirement exception is enumerated and one-way. Meaningful canonical text and non-text practice history remain protected by the real validation, persistence and recovery boundaries.
+
+## Definition of done
+
+- **ac-1** — A1 / C1. Pure migration: exercise v12, older supported through the existing chain, current v13, mixed/partially retired objects and repeated execution. Assert exact retired-key absence and exact preservation of canonical Notes/Observation/Next time/questions, identity metadata, all non-text block/review/agenda/routine/settings facts. Include empty strings, absent family blocks and both retained/retired keys. New catalogue items retain both entry.notes and entry.about guidance. Opposite case: current canonical text is never reset on a second migration. → proven by `practice text retirement removes only authorised legacy fields and is idempotent`
+- **ac-2** — C2. Pure validation discriminates absent/empty/valid multilingual strings from numbers, arrays and objects in surviving item/block text. Errors identify the offending record. Keep existing invalid-date/reference and newer-schema refusal. Do not confuse retired dummy fields with malformed surviving canonical fields. → proven by `practice text validation rejects malformed canonical values without coercion`
+- **ac-3** — C3. Real IndexedDB hydration in disposable browser: v12 migration, already-current v13 merge, partial leftovers and persisted unfinished observation; invalid canonical/unfinished text, too-new schema and invalid recovery file. Compare raw stored bytes before/after refusal, drive the rendered cold-start recovery control with a valid file, reload and verify recovery; newer-schema UI has no downgrade control. Existing paused-on-reload timing remains. → proven by `practice information hydration and rendered recovery enforce the same schema boundary`
+- **ac-4** — C3/C4. Invoke real Settings import plus actual sync pull, Keep remote and archive restore orchestrators using isolated existing transport ports. Matrix valid old/current data, invalid canonical text, files wrong type, malformed/duplicate ids, invalid base64/ownership, omitted/orphan bytes. Check live/persisted DB and blob bytes before/after, not only return values. files absent preserves local bytes; valid files empty/nonempty replaces honestly. Include unfinished and revision-changed refusal; no weakening of existing late-guard semantics. Valid import/reload/export/reimport retains canonical model. Cold recovery is covered separately above. Include duplicate attachment metadata ids as well as duplicate payload ids. Mock the existing network/module transport boundary around actual githubSync entry points where needed; calling only runSync with a fake installer is not proof of real installation wiring. → proven by `practice information replacement doors reject invalid data before database or blob replacement`
+- **ac-5** — C5. Disposable exact-baseline v12 app and new v13 app: export full v12 fixture with a real small attachment, upgrade/import it, export v13, prove old app refuses v13 without altering bytes, then restore the retained v12 export and open/read the attachment. A post-upgrade test block exists only in the retained v13 export, making rollback limitations explicit. No checked-in old app bundle or real owner data modification. → proven by `practice information rollback restores the original backup without pretending to downgrade new history`
+- **ac-6** — A2. Render real Item Detail and Active at desktop/390px. Edit the same notebook while running and paused, with timer ticks, offline mode, navigation, Finish/return and Discard; verify notes survive and active clock identifiers/running/elapsed semantics, blocks/reviews/sr state stay unchanged by editing. Clear notes and reload; no resurrection. Inspect actual IndexedDB acknowledgement, not a sleep. Reject a storage write through the real storage seam and verify text remains visible with retry/copy and no false Saved state. → proven by `working notes persist across practice navigation without controlling the clock`
+- **ac-7** — A2/A3. Render a bound routine, edit item A while time naturally crosses to B, also exercise Skip, unbound and missing-item segments. Notes never land on the wrong item; routine elapsed/allocation/signals keep existing behaviour and no extra blocks appear. Also switch Item Detail route A to B and replace same-id data while the app is running: a stale editor must not overwrite new content on blur. Test Farsi and English text. → proven by `working note editors retain item ownership across routine and database changes`
+- **ac-8** — A4. Real Active to Close to next Active journey: distinct notebook, scratch Observation, Next time and lesson Question; choose result and close, inspect persisted records, reload, inspect older block history via disclosure and next-session previous decision. Notebook is not overwritten by reflection; questions stay independent and do not change preparation. Empty later nextAction preserves earlier non-empty choice. Deliberate unlogged close preserves schedule; Close across a local-day change retains authored text while refreshing the existing decision. → proven by `practice reflection keeps notebook observation next action and question distinct`
+- **ac-9** — A5/A6. Pure consumer cases plus rendered/exported teacher sheet: later block results and current notes/status change after a selected historical period; period result statements stay based on in-range blocks, current sections are labelled, and no unproved improvement is inferred from absolute ranks. Question output retains targets/asked answers and latest-observation date but never dumps Working notes as Problem or rewrites past answers. Include no-block/unlogged/older-observation cases and ordinary/DST local date boundaries for the selected report period. → proven by `practice summaries separate recorded period evidence from current context`
+- **ac-10** — B1-B4. Drive full item create/edit and Start with all retained status/result/mode/focus enums represented in a definition table; verify default summaries, reachable optional controls, accessible names, distinct descriptions, retained rating values and title-only quick add. Pin representative priority, urgency-factor, warm-up eligibility and scheduling outputs against current fixtures, including 1/3/5 effort/priority and Same versus Worse. A label change may not alter stored codes, weights, defaults or status transition behaviour. Include a new-status item with real blocks versus a truly untouched catalogue addition: wording is honest in both, with no automatic status or history mutation. → proven by `clarified practice choices preserve existing defaults and decision inputs`
+- **ac-11** — D1/D2. Pure administrative transition matrix: auto/user/unknown provenance; auto/manual/interval mode; future/due/past/no date; zero/matching/multiple agreeing/conflicting open rows; missing item; repeated execution. Retain pending date, normalise only explicit authority, preserve every sr/stat/block/completed-review fact. Restore missing reminder only when an item date exists; refuse ambiguous pending dates; no-date transfer stays unscheduled. Review today is separate and records no result. → proven by `automatic review ownership transfer preserves dates without inventing evidence`
+- **ac-12** — D3. Real Item Detail and full edit form: explicit transfer on already-auto custom/snoozed/unknown date, actual manual/interval to auto transition, and unrelated save while already auto. Assert identical intended outcomes and protected-date preservation on unrelated saves through live and persisted state after reload. Reopen/switch items/external live update while panel exists to rule out stale captured dates. Conflicting rows show actionable refusal; no-date auto remains unscheduled until explicit Review today. Button explanation never calls the retained date a new engine calculation. → proven by `review ownership controls distinguish explicit transfer from ordinary item edits`
+- **ac-13** — D4. Real UI transfer future custom date, then actual practice early with Same, positive and Worse in isolated scenarios; assert persisted due rows/item date, no early spacing expansion and repair only after worse. Change custom date/snooze/Schedule again re-establishes user protection. Exercise due eligible close, No, unanswered/unlogged and repeated same-day eligible close. Let browser clock cross local midnight before Review today or a displayed date action, without synthetic visibility events, and check displayed/saved date and Today/Close explanations. → proven by `released review dates obey the shipped early practice and local day rules`
+- **ac-14** — E1. Render changed note, item-form, Start, Close, routine-note, history and question-context surfaces at 390x844 and desktop in Chromium and WebKit. Install the matching existing Playwright browser binaries during setup if needed; do not silently skip an engine or report a skipped layout case as passing. Use Farsi, English, mixed paragraphs, opposite-language titles and long text. Assert own accessible names, selected states, keyboard activation, visible focus and actual text/ordinal bounding positions, no clipping/overlap/horizontal overflow, minimum editable font size and reduced-motion behaviour. This is browser rendering proof, not a claim to reproduce a physical iPhone keyboard; do not replace it with source regex. → proven by `practice information controls render accessible directional text at phone and desktop widths`
+- **ac-15** — OWNER subjective usability on the actual iPhone and Mac: a normal start stays under 30 seconds and close under 60; reading/editing Working notes during ordinary and bound-routine practice remains calm, clearly separate from block observation, and controls remain reachable with the keyboard. Verify understandable status/result/rating definitions and the retained-date automatic explanation. Record actual Farsi/English observations. Known residual shell/Safari symptom is separately diagnosed, not silently declared fixed and not cured with an untested timeout. → proven by `manual:OWNER`
+
+## Docs to update as part of this change
+
+- AGENTS.md
+- README.md
+- DECISIONS.md
+- docs/product-spec.md
+- docs/scheduling-evidence.md
+
+## Recommended skills (quality only — never gates)
+
+- **ui-work** — visual / front-end work — layout, styling, interaction — _(use your agent’s equivalent)_
+- **build** — implementing the change against the contract — _(use your agent’s equivalent)_
+- **simplify** — reducing risk by simplifying the change — _(use your agent’s equivalent)_
+
+## Current progress
+
+Not started — no checks have run yet. Default state is "not ready".
+
+## Before you finish
+
+Run `prismatica flow report --auto`. It records the flows your diff provably
+touched, and then prints the exact command for every flow it will not decide
+for you — a merely possible hit, or a flow nothing maps to files. Answer those
+yourself: `--auto` never claims a test passed and never claims behaviour is
+unchanged, because no file list can establish either.
+
+File it BEFORE `check` and commit it WITH your work — a report sitting
+uncommitted proves nothing, and `check` refuses an uncommitted proof input.
+
+## How your work will be judged
+
+Deterministic checks run on every push and at the merge gate: the diff must stay
+inside the allowed files, every acceptance check must trace to a passing test,
+docs must be updated, a sealed review must match your exact diff, and the owner must sign a decision over your diff. Nothing merges until they all pass. Default is "not ready".
+
+Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
+

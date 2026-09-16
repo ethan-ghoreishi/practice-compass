@@ -35,10 +35,13 @@ export function RatingInput({
   value,
   onChange,
   label,
+  name,
 }: {
   value: Rating;
   onChange: (v: Rating) => void;
   label?: string;
+  /** What this rating IS, so each star carries its own accessible name. */
+  name?: string;
 }) {
   return (
     <span className="rating" role="group" aria-label={label}>
@@ -47,7 +50,12 @@ export function RatingInput({
           key={n}
           type="button"
           className={n <= value ? 'on' : ''}
-          aria-label={`${n}`}
+          // A bare "3" told a screen reader nothing about WHICH estimate it
+          // set, and nothing about which one is chosen — two rating groups sit
+          // side by side on the item form. aria-pressed marks the CHOSEN
+          // value; the cumulative fill is the visible counterpart.
+          aria-label={name ? `${name} ${n}` : `${n}`}
+          aria-pressed={n === value}
           onClick={() => onChange(n)}
         >
           <StarIcon width={20} height={20} />

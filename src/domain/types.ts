@@ -156,7 +156,11 @@ export type ItemStatus =
 /** 1–5 rating. */
 export type Rating = 1 | 2 | 3 | 4 | 5;
 
-/** Persian-music specific, optional metadata. */
+/**
+ * Persian-music specific IDENTITY metadata — what the piece IS. The working
+ * detail that used to live here (shāhed, ist, forud, ornament/mezrāb notes…)
+ * was retired at schema v13: its home is the item's own Working notes.
+ */
 export interface PersianFields {
   dastgahAvaz?: string;
   gusheh?: string;
@@ -164,26 +168,16 @@ export interface PersianFields {
   form?: string;
   /** Composer / maestro, e.g. Darvish Khān, Sabā. */
   composer?: string;
-  phraseLabel?: string;
-  shahed?: string;
-  ist?: string;
-  foroud?: string;
-  importantNote?: string;
-  ornamentIssue?: string;
-  mezrabIssue?: string;
 }
 
-/** Classical-guitar specific, optional metadata. */
+/**
+ * Classical-guitar specific IDENTITY metadata. The working detail that used to
+ * live here (hand/tone/fingering/tension notes…) was retired at schema v13:
+ * its home is the item's own Working notes.
+ */
 export interface GuitarFields {
   lessonNumber?: string;
   barRange?: string;
-  rightHandIssue?: string;
-  leftHandIssue?: string;
-  toneIssue?: string;
-  fingering?: string;
-  tempo?: string;
-  stringNoiseIssue?: string;
-  bodyTensionNote?: string;
 }
 
 export interface PracticeItem {
@@ -207,12 +201,13 @@ export interface PracticeItem {
   status: ItemStatus;
   importance: Rating;
   difficulty: Rating;
-  currentProblem?: string;
   primaryFocus?: FocusArea;
-  bestStrategy?: string;
-  /** Free-form running notes / annotations (your "notebook" for this item). */
+  /**
+   * Working notes — the item's ONE notebook, and the only persistent free text
+   * it carries. Readable and editable while the timer runs. A block's own
+   * `observation`/`nextAction` belong to that block, never here.
+   */
   notes?: string;
-  tags: string[];
   nextReviewDate?: ISODate;
   /** How nextReviewDate is chosen. Defaults to 'auto' (the scheduling engine). */
   reviewMode?: ReviewMode;
@@ -244,7 +239,6 @@ export interface PracticeItem {
   timesPractised: number;
   totalMinutes: number;
   lastResult?: BlockResult;
-  lastObservation?: string;
   saturationWarning?: boolean;
   // Instrument-specific metadata, nested to keep the core item readable.
   persian?: PersianFields;
@@ -307,7 +301,6 @@ export interface PracticeBlock {
   result: BlockResult;
   observation?: string;
   nextAction?: string;
-  bodyNote?: string;
   createdReview: boolean;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -567,7 +560,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export interface PracticeDB {
   schemaVersion: number;

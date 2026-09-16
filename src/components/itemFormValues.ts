@@ -23,9 +23,8 @@ export interface ItemFormValues {
   importance: Rating;
   difficulty: Rating;
   primaryFocus: FocusArea | '';
-  currentProblem: string;
-  bestStrategy: string;
-  tags: string;
+  /** Working notes — the item's ONE notebook, edited here and while practising. */
+  notes: string;
   reviewMode: ReviewMode;
   reviewIntervalDays: string;
   persian: PersianFields;
@@ -45,9 +44,7 @@ export function emptyItemValues(instrumentId: string): ItemFormValues {
     importance: 3,
     difficulty: 3,
     primaryFocus: '',
-    currentProblem: '',
-    bestStrategy: '',
-    tags: '',
+    notes: '',
     reviewMode: 'auto',
     reviewIntervalDays: '',
     persian: {},
@@ -68,9 +65,7 @@ export function itemToValues(item: PracticeItem): ItemFormValues {
     importance: item.importance,
     difficulty: item.difficulty,
     primaryFocus: item.primaryFocus ?? '',
-    currentProblem: item.currentProblem ?? '',
-    bestStrategy: item.bestStrategy ?? '',
-    tags: item.tags.join(', '),
+    notes: item.notes ?? '',
     reviewMode: item.reviewMode ?? 'auto',
     reviewIntervalDays: item.reviewIntervalDays ? String(item.reviewIntervalDays) : '',
     persian: item.persian ?? {},
@@ -96,12 +91,10 @@ export function valuesToCreateInput(v: ItemFormValues) {
     importance: v.importance,
     difficulty: v.difficulty,
     primaryFocus: v.primaryFocus || undefined,
-    currentProblem: v.currentProblem.trim() || undefined,
-    bestStrategy: v.bestStrategy.trim() || undefined,
-    tags: v.tags
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean),
+    // Emptying the notebook is deliberate and must persist, so this sends
+    // `undefined` (the absent state) rather than omitting the key — which the
+    // store would read as "leave whatever is there".
+    notes: v.notes.trim() || undefined,
     reviewMode: v.reviewMode,
     reviewIntervalDays: v.reviewMode === 'interval' ? Math.max(1, Number(v.reviewIntervalDays) || 7) : undefined,
     persian: cleanRecord(v.persian),

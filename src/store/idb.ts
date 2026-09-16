@@ -57,6 +57,20 @@ export const idb = new PracticeCompassDB();
 /** Set true (once) by the storage adapter when there was nothing to restore. */
 export let storageWasEmpty = false;
 
+let pendingWrite: Promise<void> = Promise.resolve();
+
+/**
+ * Resolves when the most recent persisted write has actually landed in
+ * IndexedDB — and REJECTS with the storage error when it did not. The store's
+ * persist middleware writes through `idbStorage.setItem` below on every state
+ * change, so awaiting this immediately after a store action is a real
+ * acknowledgement of that action's durability, never a timeout standing in
+ * for one.
+ */
+export function storageSettled(): Promise<void> {
+  return pendingWrite;
+}
+
 const PERSIST_KEY = 'practice-compass';
 
 /**
@@ -82,7 +96,13 @@ export const idbStorage: StateStorage = {
     return null;
   },
   setItem: async (name, value) => {
-    await idb.kv.put({ key: name, value });
+    // Track the write so a caller can wait for DURABILITY rather than guess at
+    // it. Nothing in the app may claim "saved" before this settles, and a
+    // rejected write has to reach the person who typed the text — the whole
+    // point of a local-first notebook is that what you wrote is still there.
+    const write = idb.kv.put({ key: name, value }).then(() => undefined);
+    pendingWrite = write;
+    await write;
   },
   removeItem: async (name) => {
     await idb.kv.delete(name);

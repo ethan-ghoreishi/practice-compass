@@ -52,17 +52,11 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
         <StatusBadge status={item.status} />
       </div>
 
-      {item.currentProblem && (
-        <div className="small dim" dir="auto" style={{ marginTop: 8 }}>
-          {item.currentProblem}
-        </div>
-      )}
-
       <div className="row-wrap tiny faint" style={{ marginTop: 10, gap: 12, rowGap: 6 }}>
         <span className="row" style={{ gap: 5 }}>
-          <Stars value={item.importance} /> <span>importance</span>
+          <Stars value={item.importance} /> <span>priority</span>
         </span>
-        <span>difficulty {item.difficulty}/5</span>
+        <span>effort {item.difficulty}/5</span>
         <span className="mono-num">{item.timesPractised}× · {formatMinutes(item.totalMinutes)}</span>
         <span>last {relativeFromDateTime(item.lastPractisedAt, now)}</span>
         {item.nextReviewDate && (

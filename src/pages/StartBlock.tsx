@@ -53,6 +53,9 @@ export default function StartBlock() {
   // Quick-create draft: TITLE ONLY. Anything richer goes through the one
   // complete "Add practice item" form (which returns here ready to begin).
   const [title, setTitle] = useState('');
+  // The mode/focus defaults are shown as one readable line; the full choices
+  // stay one tap behind it rather than being three decisions every time.
+  const [showApproach, setShowApproach] = useState(false);
 
   const items = useMemo(() => itemsForInstrument(db, instrumentId), [db, instrumentId]);
   // Farsi-aware: an Arabic kaf from the iOS keyboard finds a Persian kaf, and
@@ -210,16 +213,14 @@ export default function StartBlock() {
         )}
       </section>
 
-      {/* Step 3 — mode / focus / duration */}
+      {/* Step 3 — how long, and (only if you want it) how.
+          The mode and focus are already decided for you from the item's own
+          status and focus; the summary states what they are, and the seven
+          modes and eighteen focus values stay one tap behind it. Nothing is
+          removed, merged, or made compulsory. */}
       {ready && (
         <section className="stack">
-          <div className="section-label">3 · Mode, focus &amp; duration</div>
-          <Field label="Mode">
-            <OptionPills ariaLabel="Mode" value={mode} onChange={setMode} options={MODE_OPTIONS} />
-          </Field>
-          <Field label="Focus">
-            <OptionPills ariaLabel="Focus" value={focus} onChange={setFocus} options={FOCUS_OPTIONS} />
-          </Field>
+          <div className="section-label">3 · How long</div>
           <Field label="Duration">
             <OptionPills
               ariaLabel="Duration"
@@ -228,6 +229,35 @@ export default function StartBlock() {
               options={DURATION_PRESETS.map((d) => ({ value: String(d), label: `${d} min` }))}
             />
           </Field>
+
+          <div className="card card-quiet stack-sm">
+            <div className="row between">
+              <div className="small" style={{ minWidth: 0 }}>
+                <span dir="ltr">
+                  {BLOCK_MODE_LABELS[mode]} · attending to {FOCUS_LABELS[focus].toLowerCase()}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ flex: 'none' }}
+                aria-expanded={showApproach}
+                onClick={() => setShowApproach((o) => !o)}
+              >
+                {showApproach ? 'Done' : 'Change practice approach'}
+              </button>
+            </div>
+            {showApproach && (
+              <>
+                <Field label="Mode" hint="What approach to use for this block.">
+                  <OptionPills ariaLabel="Mode" value={mode} onChange={setMode} options={MODE_OPTIONS} />
+                </Field>
+                <Field label="Focus" hint="What to pay attention to while you play.">
+                  <OptionPills ariaLabel="Focus" value={focus} onChange={setFocus} options={FOCUS_OPTIONS} />
+                </Field>
+              </>
+            )}
+          </div>
         </section>
       )}
 

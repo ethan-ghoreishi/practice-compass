@@ -266,23 +266,9 @@ export async function importFullBackup(
   const validated = parseImport(text);
   if (!validated.ok) return { ok: false, error: validated.error };
 
-  const files = (parsed as { files?: BackupFile[] }).files;
-  const isFullBackup = Array.isArray(files);
-  const rows: AttachmentBlob[] = [];
-  if (isFullBackup) {
-    for (const f of files) {
-      if (!f?.id || typeof f.data !== 'string') continue;
-      try {
-        rows.push({
-          id: f.id,
-          ownerId: f.ownerId ?? f.itemId ?? '',
-          blob: base64ToBlob(f.data, f.mime || 'application/octet-stream'),
-        });
-      } catch {
-        return { ok: false, error: `File "${f.name ?? f.id}" in the backup is corrupt — nothing was changed.` };
-      }
-    }
-  }
+  const decoded = decodeBackupFiles((parsed as { files?: unknown }).files, validated.db.attachments);
+  if (!decoded.ok) return { ok: false, error: decoded.error };
+  const { isFullBackup, rows } = decoded;
 
   try {
     // Only touch attachment blobs for a genuine full backup (files array
@@ -317,6 +303,110 @@ export async function importFullBackup(
 
   useStore.getState().importDB(parsed);
   return { ok: true, fileCount: rows.length };
+}
+
+/**
+ * Decode and CHECK a full backup's `files` before a single blob is touched.
+ *
+ * A migration rollback is a full-backup restore, so this is the transport this
+ * lane's whole recovery route depends on — and it used to `continue` past any
+ * entry with no id or a non-string `data`, silently installing metadata for
+ * bytes that never arrived. The file said "Imported (3 files)" and the
+ * attachment was simply gone.
+ *
+ * Three states, kept distinct:
+ *   • `files` ABSENT  — not a full backup (a bare state export, a hand-edited
+ *     file). Existing blobs are left exactly as they are.
+ *   • `files: []`     — a real full backup with no attachments. It DOES
+ *     replace: that is what restoring to a snapshot means.
+ *   • a non-empty set — every entry must be sound, or nothing is written.
+ *
+ * "Sound" means: an object with a non-empty string `id`, no duplicate id, a
+ * string `data` that actually base64-decodes, an owner that resolves through
+ * the canonical metadata, and metadata whose own ids are unique. Bytes with no
+ * matching metadata (orphans) and metadata with no bytes (omissions) are both
+ * refused rather than half-installed. Legacy `itemId` ownership is still
+ * accepted — normalised through the same v6 semantics the migration uses — but
+ * an owner is never GUESSED.
+ */
+function decodeBackupFiles(
+  files: unknown,
+  attachments: { id: string; ownerType: string; ownerId: string }[],
+):
+  | { ok: true; isFullBackup: boolean; rows: AttachmentBlob[] }
+  | { ok: false; error: string } {
+  if (files === undefined) return { ok: true, isFullBackup: false, rows: [] };
+  if (!Array.isArray(files)) {
+    return { ok: false, error: 'The backup\'s "files" entry is not a list of files — nothing was changed.' };
+  }
+
+  const metaIds = new Set<string>();
+  for (const a of attachments) {
+    if (metaIds.has(a.id)) {
+      return { ok: false, error: `Two attachments in the backup share the id "${a.id}" — nothing was changed.` };
+    }
+    metaIds.add(a.id);
+  }
+  const metaById = new Map(attachments.map((a) => [a.id, a]));
+
+  const rows: AttachmentBlob[] = [];
+  const seen = new Set<string>();
+  for (const raw of files) {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      return { ok: false, error: 'A file entry in the backup is not readable — nothing was changed.' };
+    }
+    const f = raw as Partial<BackupFile>;
+    if (typeof f.id !== 'string' || f.id.length === 0) {
+      return { ok: false, error: 'A file in the backup has no id — nothing was changed.' };
+    }
+    if (seen.has(f.id)) {
+      return { ok: false, error: `Two files in the backup share the id "${f.id}" — nothing was changed.` };
+    }
+    seen.add(f.id);
+    if (typeof f.data !== 'string') {
+      return { ok: false, error: `File "${f.name ?? f.id}" in the backup has no readable data — nothing was changed.` };
+    }
+    const meta = metaById.get(f.id);
+    if (!meta) {
+      return {
+        ok: false,
+        error: `File "${f.name ?? f.id}" in the backup belongs to nothing this file describes — nothing was changed.`,
+      };
+    }
+    // Legacy (schema ≤ 5) backups carried `itemId` instead of `ownerId`; the
+    // v6 migration folds that into ownerType 'item' + ownerId, so accept it
+    // here through the SAME rule rather than a second interpretation.
+    const owner = typeof f.ownerId === 'string' && f.ownerId ? f.ownerId : f.itemId;
+    if (typeof owner !== 'string' || owner.length === 0) {
+      return { ok: false, error: `File "${f.name ?? f.id}" in the backup names no owner — nothing was changed.` };
+    }
+    if (owner !== meta.ownerId) {
+      return {
+        ok: false,
+        error: `File "${f.name ?? f.id}" in the backup claims a different owner than its record — nothing was changed.`,
+      };
+    }
+    let blob: Blob;
+    try {
+      blob = base64ToBlob(f.data, f.mime || 'application/octet-stream');
+    } catch {
+      return { ok: false, error: `File "${f.name ?? f.id}" in the backup is corrupt — nothing was changed.` };
+    }
+    rows.push({ id: f.id, ownerId: owner, blob });
+  }
+
+  // Metadata with no bytes would install an attachment that cannot be opened.
+  // An EMPTY file set on a database that describes no attachments is fine;
+  // this only fires when the two genuinely disagree.
+  const missing = attachments.find((a) => !seen.has(a.id));
+  if (missing) {
+    return {
+      ok: false,
+      error: `The backup describes a file ("${missing.id}") whose contents are not in it — nothing was changed.`,
+    };
+  }
+
+  return { ok: true, isFullBackup: true, rows };
 }
 
 /**

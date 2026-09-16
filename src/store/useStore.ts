@@ -22,6 +22,9 @@ import {
   completePlanSegment,
   planSegmentStartable,
   scheduleAgainPlan,
+  transferToAutomaticReview,
+  AUTOMATIC_TRANSFER_REASON,
+  validateUnfinishedText,
   skipPlanSegment as skipPlanSegmentRun,
   setQuestionAnswer as setAgendaQuestionAnswer,
   resolveReviewDate,
@@ -191,7 +194,6 @@ export interface CloseSessionInput {
   durationMinutes: number;
   observation?: string;
   nextAction?: string;
-  bodyNote?: string;
   newStatus?: ItemStatus;
   /**
    * What the close screen answered about the next review. 'unanswered' (no
@@ -228,11 +230,9 @@ export interface ItemPatch {
   status?: ItemStatus;
   importance?: Rating;
   difficulty?: Rating;
-  currentProblem?: string;
   primaryFocus?: FocusArea;
-  bestStrategy?: string;
+  /** Working notes. `undefined` CLEARS them — emptying the notebook is deliberate. */
   notes?: string;
-  tags?: string[];
   /** `undefined` (key absent) keeps the schedule; `null` clears it; an ISODate moves it — and its open review row with it (§1.5). */
   nextReviewDate?: ISODate | null;
   reviewMode?: ReviewMode;
@@ -329,7 +329,12 @@ interface StoreState {
 
   // Items
   addItem: (input: CreateItemInput) => ID;
-  updateItem: (id: ID, patch: ItemPatch) => void;
+  /**
+   * Save an item's own fields. Returns null, or the reason it REFUSED — a save
+   * that would hand an ambiguous pending schedule to the engine is refused
+   * whole rather than half-applied.
+   */
+  updateItem: (id: ID, patch: ItemPatch) => string | null;
   setItemStatus: (id: ID, status: ItemStatus) => void;
   deleteItem: (id: ID) => void;
   /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
@@ -380,6 +385,12 @@ interface StoreState {
    * administrative — no block, no result, no SM-2 progress.
    */
   scheduleReviewAgain: (itemId: ID, dueDate: ISODate, reviewType?: ReviewType) => void;
+  /**
+   * Hand this item's next review back to the engine, KEEPING its pending date.
+   * Returns null on success, or the reason it refused (an ambiguous pending
+   * schedule the owner has to resolve first). Records no practice.
+   */
+  useAutomaticReviewDates: (itemId: ID) => string | null;
 
   // Pathways
   addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
@@ -751,6 +762,34 @@ export const useStore = create<StoreState>()(
           rest.instrumentId !== undefined && current && rest.instrumentId !== current.instrumentId
             ? rest.instrumentId
             : undefined;
+        // A SAVED mode change from manual/fixed-cadence to automatic is the
+        // same administrative transfer the item screen's own button performs —
+        // the form must not be a second, quieter route that leaves the date's
+        // provenance (and therefore its protection) saying something different.
+        // An unrelated save on an already-auto item takes neither branch, so a
+        // date the owner chose keeps its protection untouched.
+        const movingToAuto = rest.reviewMode === 'auto' && !!current && (current.reviewMode ?? 'auto') !== 'auto';
+        const transfer = movingToAuto
+          ? transferToAutomaticReview({ item: current!, reviews: get().db.reviews, now })
+          : null;
+        if (transfer && !transfer.ok) return transfer.reason;
+        const transferredRows =
+          transfer && transfer.ok
+            ? transfer.createRow
+              ? [
+                  ...transfer.reviews,
+                  createReview(
+                    {
+                      practiceItemId: id,
+                      dueDate: transfer.keptDate!,
+                      reviewType: transfer.reviewType,
+                      reason: AUTOMATIC_TRANSFER_REASON,
+                    },
+                    now,
+                  ),
+                ]
+              : transfer.reviews
+            : null;
         set((s) => ({
           db: {
             ...s.db,
@@ -768,10 +807,15 @@ export const useStore = create<StoreState>()(
                 // A4/A5 promise it. Clearing the date clears the provenance.
                 next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
               }
+              if (transfer && transfer.ok) {
+                // Same DATE, new authority. Only the provenance moves.
+                next.nextReviewSource = transfer.item.nextReviewSource;
+              }
               return touch(next, now);
             }),
             reviews:
               applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
+              transferredRows ??
               s.db.reviews,
             // An item that changes instrument no longer belongs in a routine
             // scoped to the old one — unbind it there; matching routines keep it.
@@ -786,6 +830,7 @@ export const useStore = create<StoreState>()(
               : s.db.lessonAgenda,
           },
         }));
+        return null;
       },
 
       setItemStatus: (id, status) => {
@@ -1057,7 +1102,6 @@ export const useStore = create<StoreState>()(
             result: input.result,
             observation: input.observation,
             nextAction: input.nextAction,
-            bodyNote: input.bodyNote,
             createdReview: input.answer === 'scheduled',
           },
           now,
@@ -1247,6 +1291,34 @@ export const useStore = create<StoreState>()(
             },
           };
         });
+      },
+
+      useAutomaticReviewDates: (itemId) => {
+        const now = new Date();
+        const state = get();
+        const item = state.db.items.find((i) => i.id === itemId);
+        if (!item) return 'That item no longer exists.';
+        // Decided against the LIVE item and rows, never against whatever a
+        // panel captured when it mounted.
+        const transfer = transferToAutomaticReview({ item, reviews: state.db.reviews, now });
+        if (!transfer.ok) return transfer.reason;
+        const reviews = transfer.createRow
+          ? [
+              ...transfer.reviews,
+              createReview(
+                { practiceItemId: itemId, dueDate: transfer.keptDate!, reviewType: transfer.reviewType, reason: AUTOMATIC_TRANSFER_REASON },
+                now,
+              ),
+            ]
+          : transfer.reviews;
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) => (i.id === itemId ? transfer.item : i)),
+            reviews,
+          },
+        }));
+        return null;
       },
 
       addPathway: (input) => {
@@ -1643,7 +1715,7 @@ export const useStore = create<StoreState>()(
       // protect. `getLastHydrationError()` below still surfaces WHY, without
       // that write.
       migrate: (persisted) => {
-        const state = persisted as { db?: PracticeDB } | undefined;
+        const state = persisted as { db?: PracticeDB; active?: unknown } | undefined;
         // `validateDB` reads the schema version off `state.db` itself (the
         // same source of truth every other inbound door uses) rather than
         // the envelope-level version zustand would pass as a second
@@ -1651,6 +1723,11 @@ export const useStore = create<StoreState>()(
         // writes, and deriving from one place avoids two version signals
         // that could ever disagree.
         if (state?.db) state.db = validateDB(state.db);
+        // `active` lives OUTSIDE PracticeDB, so `validateDB` cannot see its
+        // scratch observation — yet it reaches live state through this very
+        // boundary and is rendered the moment the practice screen opens.
+        const unfinished = validateUnfinishedText((persisted as { active?: unknown } | undefined)?.active);
+        if (unfinished) throw new Error(unfinished);
         return state as unknown;
       },
       merge: (persisted, current) => {
@@ -1674,6 +1751,8 @@ export const useStore = create<StoreState>()(
         // write-back regardless (zustand only writes back after a
         // version-mismatched `migrate` ran).
         const db = p.db ? validateDB(p.db) : current.db;
+        const unfinished = validateUnfinishedText(p.active);
+        if (unfinished) throw new Error(unfinished);
         const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running

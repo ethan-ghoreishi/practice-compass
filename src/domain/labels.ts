@@ -29,16 +29,26 @@ export const ITEM_STATUS_LABELS: Record<ItemStatus, string> = {
   dormant: 'Resting',
 };
 
-/** One-line plain-language description of each status, shown in pickers. */
+/**
+ * One-line plain-language description of each status, shown in pickers.
+ *
+ * Status answers HOW THIS ITEM CURRENTLY STANDS and how you are working on it
+ * — never how the last ten minutes went (that is the block's `result`). These
+ * eight are not eight rungs of one compulsory ladder: nothing makes you pass
+ * through every one, neighbouring statuses deliberately overlap, and you may
+ * move backwards whenever the material does. `new` in particular says "still
+ * being established", NOT "never practised" — an item can carry recorded
+ * blocks and still honestly be new material.
+ */
 export const ITEM_STATUS_DESCRIPTIONS: Record<ItemStatus, string> = {
-  new: 'In your library — no practice logged yet.',
-  fragile: 'Falls apart easily; needs careful attention.',
-  repairing: 'Working through specific problems.',
-  usable: 'Works, but not reliable yet.',
-  integrated: 'Reliable on its own and in context.',
-  performable: 'Solid enough to play for someone.',
-  maintenance: 'Learned — just keeping it fresh.',
-  dormant: 'Set aside for now, on purpose.',
+  new: 'New material, still being established.',
+  fragile: 'Unreliable — falls apart easily.',
+  repairing: 'Actively working on a known problem.',
+  usable: 'Holds together, but not reliably in context.',
+  integrated: 'Reliable in context.',
+  performable: 'Ready to play for someone.',
+  maintenance: 'Learned — deliberately keeping it fresh.',
+  dormant: 'Deliberately set aside for now.',
 };
 
 export const ITEM_STATUS_ORDER: ItemStatus[] = [
@@ -101,6 +111,26 @@ export const FOCUS_LABELS: Record<FocusArea, string> = {
   tempo: 'Tempo',
   body: 'Body',
   other: 'Other',
+};
+
+/**
+ * What each result CLAIMS, in the owner's own terms — asked at the close of a
+ * block as "the most concrete thing you actually demonstrated".
+ *
+ * The last three are EVIDENCE of stability at a named scope; the first three
+ * describe CHANGE short of such a claim. `same` is not failed recall and never
+ * becomes one: no improvement is distinct from deterioration, and only `worse`
+ * is ever read as a slip. Fatigue, a blank field and a missing rating are none
+ * of these — that is what "Save without a result" is for.
+ */
+export const RESULT_DESCRIPTIONS: Record<BlockResult, string> = {
+  worse: 'Genuine deterioration, or you struggled to recall it.',
+  same: 'No meaningful change either way.',
+  slightly_better: 'Some improvement, short of holding together.',
+  stable_alone: 'The passage held together on its own, in isolation.',
+  stable_in_context: 'It held together joined to the music around it.',
+  performable: 'Ready to play for someone.',
+  not_logged: 'Time recorded, no judgement made.',
 };
 
 export const RESULT_LABELS: Record<BlockResult, string> = {
@@ -176,6 +206,42 @@ export const RESULT_RANK: Record<BlockResult, number> = {
   stable_in_context: 4,
   performable: 5,
 };
+
+/**
+ * The two 1–5 estimates the owner sets by hand. Their STORED names stay
+ * `importance` / `difficulty` (every weight, bound and test depends on them);
+ * these are what the screens call them, because "importance" and "difficulty"
+ * both read like intrinsic properties of the music and they are neither —
+ * they are changeable personal estimates, and the app never infers or measures
+ * them.
+ */
+export const RATING_LABELS = {
+  importance: 'Personal priority',
+  difficulty: 'Current effort',
+} as const;
+
+export const RATING_HINTS = {
+  importance: 'How much you want this in the mix right now. It can change any time.',
+  difficulty: 'How demanding it feels right now, at the level you are aiming for.',
+} as const;
+
+/** Anchored 1 / 3 / 5 wording; 2 and 4 are the meaningful steps between. */
+export const RATING_ANCHORS: Record<'importance' | 'difficulty', Record<1 | 3 | 5, string>> = {
+  importance: {
+    1: 'Barely — happy to leave it aside',
+    3: 'Ordinary — part of the mix',
+    5: 'Front of the queue right now',
+  },
+  difficulty: {
+    1: 'Easy — comes out without much thought',
+    3: 'Ordinary — needs attention',
+    5: 'Very demanding at the level I want',
+  },
+};
+
+/** What the two estimates actually DO, stated plainly wherever they are set. */
+export const RATING_EFFECT_NOTE =
+  'These two estimates help order what to practise and how soon reviews come round; high effort also keeps an item out of easy warm-ups. They are your estimates, not measurements, and nothing needs to be kept up to date on a schedule.';
 
 // --- Pathways ---------------------------------------------------------------
 

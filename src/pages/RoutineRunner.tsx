@@ -4,6 +4,7 @@ import { aggregateItemMinutes, locateClock, nextSignal, runElapsedSeconds, segme
 import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
+import ItemNotes from '../components/ItemNotes';
 import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
 import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
 
@@ -273,6 +274,18 @@ export default function RoutineRunner() {
           </div>
         )}
       </div>
+
+      {/* Working notes for THE SEGMENT'S OWN BOUND ITEM — keyed on that item's
+          id, so crossing a segment boundary remounts the editor rather than
+          carrying an open draft onto the next piece. An UNBOUND segment is a
+          plain countdown and has no item, so it gets no notebook rather than a
+          fictitious one, and the authored segment instruction stays separate
+          above. Nothing here touches the run's clock or its allocation. */}
+      {seg.itemId && getItem(db, seg.itemId) && (
+        <div className="card card-quiet" style={{ textAlign: 'start' }}>
+          <ItemNotes key={seg.itemId} itemId={seg.itemId} startExpanded={false} />
+        </div>
+      )}
 
       <div className="row" style={{ justifyContent: 'center' }}>
         {activeRoutine.running ? (

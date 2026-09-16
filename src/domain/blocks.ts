@@ -1,4 +1,4 @@
-import type { ISODate, ItemStatus, PracticeBlock, PracticeItem } from './types';
+import type { ISODate, ISODateTime, ItemStatus, PracticeBlock, PracticeItem } from './types';
 import { isSaturated } from './scoring';
 import { nowISO } from './util';
 
@@ -37,7 +37,6 @@ export function applyBlockStats(
     lastPractisedAt: practisedAt,
     // Keep the previous meaningful result when the block was left unlogged.
     lastResult: block.result === 'not_logged' ? item.lastResult : block.result,
-    lastObservation: block.observation?.trim() ? block.observation.trim() : item.lastObservation,
     saturationWarning: isSaturated(itemBlocksIncludingNew, now),
     status: newStatus ?? item.status,
     nextReviewDate: nextReviewDate === undefined ? item.nextReviewDate : (nextReviewDate ?? undefined),
@@ -60,4 +59,21 @@ export function lastNextAction(blocks: PracticeBlock[]): string | undefined {
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
     .map((b) => b.nextAction?.trim())
     .find((a): a is string => !!a);
+}
+
+/**
+ * The most recent NON-EMPTY observation, DERIVED from the blocks themselves
+ * together with the day it was recorded.
+ *
+ * The item used to cache this as `lastObservation`, which made it a second,
+ * silently diverging copy of something the blocks already knew — and one with
+ * no date, so a sentence from six months ago read exactly like last night's.
+ * Deriving it instead means it is always the real record, and it can be
+ * LABELLED with when it was written wherever it is shown.
+ */
+export function latestObservation(blocks: PracticeBlock[]): { text: string; at: ISODateTime } | undefined {
+  return [...blocks]
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .map((b) => ({ text: b.observation?.trim() ?? '', at: b.startedAt }))
+    .find((o): o is { text: string; at: ISODateTime } => o.text.length > 0);
 }

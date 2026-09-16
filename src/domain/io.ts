@@ -4,6 +4,7 @@ import { nowISO } from './util';
 import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
 import { validateLessonAgenda } from './lessonAgenda';
 import { validateSchedulingFields } from './scheduling';
+import { validatePracticeText } from './practiceInformation';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -118,6 +119,12 @@ export function validateDB(input: unknown): PracticeDB {
   if (agendaProblem) throw new Error(agendaProblem);
   const schedulingProblem = validateSchedulingFields(db);
   if (schedulingProblem) throw new Error(schedulingProblem);
+  // The practice text that SURVIVES the v13 retirement — the item's notebook
+  // and a block's own observation/next action/constraint. Checked AFTER the
+  // migration chain has already removed the retired keys, so a malformed
+  // retired field can never be mistaken for a malformed canonical one.
+  const textProblem = validatePracticeText(db);
+  if (textProblem) throw new Error(textProblem);
 
   return db;
 }

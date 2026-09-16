@@ -4,6 +4,10 @@ import {
   ITEM_STATUS_DESCRIPTIONS,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
+  RATING_ANCHORS,
+  RATING_EFFECT_NOTE,
+  RATING_HINTS,
+  RATING_LABELS,
   REVIEW_MODE_LABELS,
   type FocusArea,
   type ItemStatus,
@@ -13,7 +17,7 @@ import { useStore } from '../store/useStore';
 import { materialLabel, materialsForInstrument } from '../store/lookups';
 import { Field, OptionPills, RatingInput } from './ui';
 import { recordToOptions } from './options';
-import { DASTGAH_SUGGESTIONS, FORM_SUGGESTIONS, GUITAR_DETAIL_FIELDS, PERSIAN_DETAIL_FIELDS } from './itemFields';
+import { DASTGAH_SUGGESTIONS, FORM_SUGGESTIONS } from './itemFields';
 import { fieldsForKind, kindFromItem, kindsForFamily, kindToItemType, type ItemKind } from './itemKinds';
 import type { ItemFormValues } from './itemFormValues';
 
@@ -45,15 +49,7 @@ export default function ItemForm({
   const [kind, setKind] = useState<ItemKind>(() =>
     kindFromItem({ itemType: initial.itemType, persian: initial.persian, parentItemId: initial.parentItemId || undefined }),
   );
-  const [showWorking, setShowWorking] = useState(
-    Boolean(
-      initial.currentProblem ||
-        initial.bestStrategy ||
-        initial.tags ||
-        Object.entries(initial.persian).some(([k, val]) => val && !['dastgahAvaz', 'form', 'composer', 'gusheh'].includes(k)) ||
-        Object.values(initial.guitar).some(Boolean),
-    ),
-  );
+  const [showWorking, setShowWorking] = useState(Boolean(initial.notes));
   const [newSourceName, setNewSourceName] = useState('');
 
   const set = (patch: Partial<ItemFormValues>) => setV((cur) => ({ ...cur, ...patch }));
@@ -187,18 +183,18 @@ export default function ItemForm({
         </div>
       )}
 
-      {fields.range && (
-        <Field label={isPersian ? 'Phrase label' : 'Bar range'} hint="Which part of the work this is.">
+      {/* Bar range is guitar IDENTITY and stays. The Persian "phrase label"
+          that used to share this row was working detail, retired at v13 — a
+          Persian passage says which part it is in its own title and in its
+          Working notes, not in a field of its own. */}
+      {fields.range && !isPersian && (
+        <Field label="Bar range" hint="Which part of the work this is.">
           <input
             className="input"
             dir="auto"
-            placeholder={isPersian ? 'e.g. forud phrase' : 'e.g. bars 9–16'}
-            value={isPersian ? (v.persian.phraseLabel ?? '') : (v.guitar.barRange ?? '')}
-            onChange={(e) =>
-              isPersian
-                ? set({ persian: { ...v.persian, phraseLabel: e.target.value } })
-                : set({ guitar: { ...v.guitar, barRange: e.target.value } })
-            }
+            placeholder="e.g. bars 9–16"
+            value={v.guitar.barRange ?? ''}
+            onChange={(e) => set({ guitar: { ...v.guitar, barRange: e.target.value } })}
           />
         </Field>
       )}
@@ -306,13 +302,16 @@ export default function ItemForm({
       </div>
 
       <div className="grid-2">
-        <Field label="Importance">
-          <RatingInput value={v.importance} onChange={(importance) => set({ importance })} />
+        <Field label={RATING_LABELS.importance} hint={`${RATING_HINTS.importance} ${RATING_ANCHORS.importance[v.importance as 1 | 3 | 5] ?? ''}`.trim()}>
+          <RatingInput name={RATING_LABELS.importance} value={v.importance} onChange={(importance) => set({ importance })} />
         </Field>
-        <Field label="Difficulty">
-          <RatingInput value={v.difficulty} onChange={(difficulty) => set({ difficulty })} />
+        <Field label={RATING_LABELS.difficulty} hint={`${RATING_HINTS.difficulty} ${RATING_ANCHORS.difficulty[v.difficulty as 1 | 3 | 5] ?? ''}`.trim()}>
+          <RatingInput name={RATING_LABELS.difficulty} value={v.difficulty} onChange={(difficulty) => set({ difficulty })} />
         </Field>
       </div>
+      <p className="tiny faint">
+        <span dir="ltr">{RATING_EFFECT_NOTE}</span>
+      </p>
 
       <Field
         label="Reminders"
@@ -345,53 +344,28 @@ export default function ItemForm({
         </Field>
       )}
 
-      {/* ---- Working notes (progressive — usually filled while practising) ---- */}
+      {/* ---- Working notes — the item's ONE notebook, same field the practice
+              screen shows. Progressive: usually filled while practising, not
+              while filing. ---- */}
       <button
         className="link small"
         style={{ background: 'none', border: 'none', textAlign: 'left' }}
-        onClick={() => setShowWorking((s) => !s)}
+        aria-expanded={showWorking}
+        onClick={() => setShowWorking((o) => !o)}
       >
-        {showWorking ? '− Hide' : '+ Add'} working notes (problem, strategy, tags…)
+        {showWorking ? '− Hide' : '+ Add'} working notes
       </button>
       {showWorking && (
-        <>
-          <Field label="Current problem">
-            <textarea className="textarea" dir="auto" value={v.currentProblem} onChange={(e) => set({ currentProblem: e.target.value })} />
-          </Field>
-          <Field label="Best strategy">
-            <textarea className="textarea" dir="auto" value={v.bestStrategy} onChange={(e) => set({ bestStrategy: e.target.value })} />
-          </Field>
-          <Field label="Tags" hint="Comma-separated">
-            <input className="input" dir="auto" value={v.tags} onChange={(e) => set({ tags: e.target.value })} placeholder="e.g. foroud, evenness" />
-          </Field>
-          {isPersian && (
-            <div className="grid-2">
-              {PERSIAN_DETAIL_FIELDS.map((f) => (
-                <Field key={f.key} label={f.label}>
-                  <input
-                    className="input"
-                    dir="auto"
-                    value={v.persian[f.key] ?? ''}
-                    onChange={(e) => set({ persian: { ...v.persian, [f.key]: e.target.value } })}
-                  />
-                </Field>
-              ))}
-            </div>
-          )}
-          {!isPersian && (
-            <div className="grid-2">
-              {GUITAR_DETAIL_FIELDS.map((f) => (
-                <Field key={f.key} label={f.label}>
-                  <input
-                    className="input"
-                    value={v.guitar[f.key] ?? ''}
-                    onChange={(e) => set({ guitar: { ...v.guitar, [f.key]: e.target.value } })}
-                  />
-                </Field>
-              ))}
-            </div>
-          )}
-        </>
+        <Field label="Working notes" hint="The same notes you can read and edit while practising.">
+          <textarea
+            className="textarea"
+            dir="auto"
+            aria-label="Working notes"
+            style={{ minHeight: 110 }}
+            value={v.notes}
+            onChange={(e) => set({ notes: e.target.value })}
+          />
+        </Field>
       )}
 
       <div className="row">

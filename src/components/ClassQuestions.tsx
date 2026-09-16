@@ -275,28 +275,24 @@ export default function ClassQuestions({
                 <div className="small">
                   {renderFreeText(q.question)}
                 </div>
-                {/* Stacked, not inline: the caption's wrapper carries no dir of
+                {/* CURRENT context, labelled and DATED — the item's most recent
+                    recorded observation, derived from its blocks. It is not an
+                    answer to the question above it and not evidence the
+                    question was asked, and the item's own Working notes are
+                    deliberately never dumped here.
+
+                    Stacked, not inline: the caption's wrapper carries no dir of
                     its own, so it inherits the li's (question-driven) direction
                     and aligns with the rest of the card; the value below keeps
                     its own dir="auto", resolving from its own content. Neither
                     line's direction can drag the other out of place. */}
-                {q.currentProblem && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <div className="tiny faint">
-                      <span dir="ltr">Problem</span>
-                    </div>
-                    <div className="tiny faint" dir="auto">
-                      {renderFreeText(q.currentProblem)}
-                    </div>
-                  </div>
-                )}
                 {q.lastObservation && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <div className="tiny faint">
-                      <span dir="ltr">Last time</span>
+                      <span dir="ltr">Last observed {q.lastObservation.at.slice(0, 10)}</span>
                     </div>
                     <div className="tiny faint" dir="auto">
-                      {renderFreeText(q.lastObservation)}
+                      {renderFreeText(q.lastObservation.text)}
                     </div>
                   </div>
                 )}

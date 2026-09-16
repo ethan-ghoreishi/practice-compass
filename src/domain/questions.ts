@@ -1,6 +1,7 @@
-import type { ID, Lesson, LessonAgendaEntry, LessonQuestion, PracticeItem } from './types';
+import type { ID, ISODateTime, Lesson, LessonAgendaEntry, LessonQuestion, PracticeBlock, PracticeItem } from './types';
 import { faCollator } from './farsi';
 import { isOpenQuestion, isQuestion, isUnassigned } from './lessonAgenda';
+import { latestObservation } from './blocks';
 
 // ---------------------------------------------------------------------------
 // Questions for a class — the things the owner actually wants to ask their
@@ -29,8 +30,16 @@ export interface ClassQuestion {
   /** That item's title, when the item still exists. */
   title?: string;
   question: string;
-  currentProblem?: string;
-  lastObservation?: string;
+  /**
+   * The item's most recent recorded observation AND the day it was written —
+   * CURRENT context, derived from its blocks, never an answer to this question
+   * and never evidence the question was asked. Dated, because a sentence from
+   * six months ago reads exactly like last night's without one.
+   *
+   * The item's Working notes are deliberately NOT here: a personal notebook is
+   * not a line item on a teacher's sheet.
+   */
+  lastObservation?: { text: string; at: ISODateTime };
   /** Set once it has been asked; the entry is then historical. */
   askedAt?: string;
   answer?: string;
@@ -38,15 +47,14 @@ export interface ClassQuestion {
   unassigned: boolean;
 }
 
-function toClassQuestion(entry: LessonQuestion, items: PracticeItem[]): ClassQuestion {
+function toClassQuestion(entry: LessonQuestion, items: PracticeItem[], blocks: PracticeBlock[]): ClassQuestion {
   const item = entry.itemId ? items.find((i) => i.id === entry.itemId) : undefined;
   return {
     id: entry.id,
     itemId: entry.itemId,
     title: item?.title.trim(),
     question: entry.text.trim(),
-    currentProblem: item?.currentProblem?.trim() || undefined,
-    lastObservation: item?.lastObservation?.trim() || undefined,
+    lastObservation: item ? latestObservation(blocks.filter((b) => b.practiceItemId === item.id)) : undefined,
     askedAt: entry.askedAt,
     answer: entry.answer?.trim() || undefined,
     unassigned: isUnassigned(entry),
@@ -69,12 +77,13 @@ export function questionsForLessonId(
   agenda: LessonAgendaEntry[],
   items: PracticeItem[],
   lessonId: ID,
+  blocks: PracticeBlock[] = [],
 ): ClassQuestion[] {
   return sortQuestions(
     agenda
       .filter(isQuestion)
       .filter((q) => q.lessonId === lessonId)
-      .map((q) => toClassQuestion(q, items)),
+      .map((q) => toClassQuestion(q, items, blocks)),
   );
 }
 
@@ -83,8 +92,9 @@ export function openQuestionsForLessonId(
   agenda: LessonAgendaEntry[],
   items: PracticeItem[],
   lessonId: ID,
+  blocks: PracticeBlock[] = [],
 ): ClassQuestion[] {
-  return questionsForLessonId(agenda, items, lessonId).filter((q) => !q.askedAt);
+  return questionsForLessonId(agenda, items, lessonId, blocks).filter((q) => !q.askedAt);
 }
 
 /**
@@ -97,12 +107,13 @@ export function unassignedOpenQuestions(
   agenda: LessonAgendaEntry[],
   items: PracticeItem[],
   instrumentId: ID,
+  blocks: PracticeBlock[] = [],
 ): ClassQuestion[] {
   return sortQuestions(
     agenda
       .filter(isOpenQuestion)
       .filter((q) => q.instrumentId === instrumentId && isUnassigned(q))
-      .map((q) => toClassQuestion(q, items)),
+      .map((q) => toClassQuestion(q, items, blocks)),
   );
 }
 
@@ -111,12 +122,13 @@ export function openQuestionsForInstrument(
   agenda: LessonAgendaEntry[],
   items: PracticeItem[],
   instrumentId: ID,
+  blocks: PracticeBlock[] = [],
 ): ClassQuestion[] {
   return sortQuestions(
     agenda
       .filter(isOpenQuestion)
       .filter((q) => q.instrumentId === instrumentId)
-      .map((q) => toClassQuestion(q, items)),
+      .map((q) => toClassQuestion(q, items, blocks)),
   );
 }
 
@@ -144,8 +156,9 @@ export function renderClassQuestionsText(
     lines.push(`${idx + 1}. ${q.title ?? '(no item)'}`);
     lines.push(`   Q: ${q.question}`);
     if (q.answer) lines.push(`   A: ${q.answer}`);
-    if (q.currentProblem) lines.push(`   Problem: ${q.currentProblem}`);
-    if (q.lastObservation) lines.push(`   Last time: ${q.lastObservation}`);
+    // Current context, dated and labelled as such — never the item's Working
+    // notes, and never presented as an answer to the question above it.
+    if (q.lastObservation) lines.push(`   Last observed ${q.lastObservation.at.slice(0, 10)}: ${q.lastObservation.text}`);
     lines.push('');
   });
   return lines.join('\n').trimEnd();
