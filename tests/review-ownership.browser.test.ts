@@ -307,8 +307,12 @@ describe('handing a review date back to the app', () => {
           attachments: [],
           items: live.items.map((i) => {
             if (i.id !== ROWLESS) return i;
-            const { nextReviewDate: _d, nextReviewSource: _s, ...rest } = i;
-            return rest;
+            // Absent, not empty — the shape a real snapshot carries for an
+            // item with nothing scheduled.
+            const unscheduled = { ...i };
+            delete unscheduled.nextReviewDate;
+            delete unscheduled.nextReviewSource;
+            return unscheduled;
           }),
         };
         publishRemote(remote, remoteStateText(cleared), await hashState(cleared), rev);
