@@ -126,6 +126,9 @@ export default function ItemNotes({
    */
   function write(text: string, forItem: string) {
     const seq = (saveSeq.current += 1);
+    // A "Saved." from the PREVIOUS write is still counting down to idle; left
+    // running it would clear this write's own state four seconds in.
+    if (savedTimer.current) clearTimeout(savedTimer.current);
     // Emptying the notebook is deliberate and must persist — `undefined` IS a
     // saved value here, never a reason to keep what was there.
     setState({ phase: 'saving' });
