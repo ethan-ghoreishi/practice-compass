@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { fetchPublishedIndex, readIndexFile, type FetchedIndex } from '../store/archiveIndex';
+import { fetchPublishedIndex, type FetchedIndex } from '../store/archiveIndex';
 import { getNasBaseUrl } from '../store/backup';
 import {
   SETAR_ARCHIVE_ID,
@@ -287,37 +287,6 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
   const key = (d: ReconcileDecision) =>
     'pieceKey' in d ? `piece:${d.pieceKey}` : 'sessionN' in d ? `session:${d.sessionN}` : '';
   return key(a) === key(b) && key(a) !== '';
-}
-
-/** The file fallback: the SAME decoder, for recovery when GitHub is not reachable. */
-export function ArchiveIndexFile({ onLoaded }: { onLoaded: (fetched: FetchedIndex) => void }) {
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <label className="tiny" style={{ textAlign: 'start' }}>
-      <span dir="ltr">Or load an index file</span>
-      <input
-        className="input"
-        type="file"
-        accept="application/json,.json"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          if (!file) return;
-          const result = readIndexFile(await file.text());
-          if (result.ok) {
-            setError(null);
-            onLoaded(result.value);
-          } else {
-            setError(result.error);
-          }
-        }}
-      />
-      {error && (
-        <span className="tiny" style={{ color: 'var(--tone-alert)' }} role="alert">
-          <span dir="ltr">{error}</span>
-        </span>
-      )}
-    </label>
-  );
 }
 
 const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
