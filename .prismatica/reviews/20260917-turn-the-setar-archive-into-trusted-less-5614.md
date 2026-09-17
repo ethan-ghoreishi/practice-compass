@@ -1,47 +1,60 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 69e0e7afcc8f262349423e380340b1876347f44b
+patchId: b051ae0884ca52c4906fb6a5d837571dd97a0e8a
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Archive graph validation across all inbound doors
-    summary: "P1: validateArchiveSources accepts malformed nested fields used by
-      production readers. Rework complete persisted graph validation across all
-      inbound doors; ac-15/ac-16, src/domain/sourceArchive.ts:590."
-    counterexample: Set archiveSources[0].sessions[0].members[0].roles to null in an
-      imported fixture database. validateDB accepts and preserves it;
-      repeatChains then throws reading includes, crashing ItemMaterial.
-      Reproduced against HEAD 781f1d40083d4e47a1c98202b5cf4fc13d888d8c.
-  - family: Legacy reference repair through the real refresh transaction
-    summary: "P1: Reference repair helpers have no production caller. Wire repair
-      and diagnostics into preview/commit while preserving authored rows; ac-12,
-      src/domain/sourceReconcile.ts:447."
-    counterexample: A uniquely adoptable legacy lesson with an obsolete path covered
-      by the exact rename log is adopted by planArchiveImport/applyArchiveImport
-      but retains the obsolete path. The named acceptance test calls
-      repairLessonReferences directly, bypassing Refresh.
-  - family: Owner reconciliation choices from rendered controls through durable refresh
-    summary: "P1: Skip is transient, Create separately for lessons is ignored, and
-      metadata application is unreachable or skipped as Already current. Rework
-      every choice through UI, commit, reload and repeat refresh;
-      ac-6/ac-7/ac-11."
-    counterexample: "Skip an exact-title candidate, apply, JSON-round-trip and
-      refresh: the question returns and suppressions are empty. With two exact
-      legacy lesson candidates, create-lesson leaves the question unresolved.
-      Metadata suggestions are never rendered; same-index apply-field decisions
-      are discarded by useStore.ts:982."
-  - family: Published index content integrity and refresh identity
-    summary: "P2: The decoder validates digest format but never agreement with
-      content. Verify the scanner-defined digest at the shared reader boundary
-      before using it as identity; ac-5, src/domain/sourceArchive.ts:287."
-    counterexample: Change a fixture composer without changing contentHash.
-      decodeSourceIndex accepts it. Against an already installed copy with that
-      hash, the plan reports unchanged and commit returns Already current,
-      ignoring changed facts. Fetch and file fallback share this decoder.
-createdAt: 2026-09-17T02:49:20.381Z
-sealedAt: 2026-09-17T02:56:42.714Z
+  - family: Complete source scans before publishing
+    summary: "P1: scanToIndex checks PIECES.csv twice but reads RENAME-LOG.csv and
+      the media inventory once; it can publish a partial NAS view as a valid
+      removal (ac-4/ac-7, scripts/scan-setar-classes.mjs:524-540)."
+    counterexample: During a non-atomic NAS copy, move a resource out before
+      scanArchive enumerates its folder and restore it while later folders are
+      scanned. PIECES.csv remains unchanged, so scanToIndex emits an index
+      omitting the file; Refresh marks the still-present material unavailable.
+  - family: Archive graph validation at both reader and inbound doors
+    summary: "P1: The published decoder checks a normalised graph, while inbound
+      validation omits acceptedAt; malformed source facts can be silently erased
+      or installed to crash a reader (ac-15/ac-16,
+      src/domain/sourceArchive.ts:337-406,729-750)."
+    counterexample: "In the corpus fixture, set sessions[0].resources to null and
+      recompute the scanner-defined digest: parseSourceIndex accepts it and
+      turns six resources into zero. Separately, a v14 import with
+      archiveSources[0].acceptedAt=null passes validateDB; ArchiveRefresh then
+      throws on acceptedAt.slice while Settings renders."
+  - family: Owner reconciliation choices across revision rebase
+    summary: "P1: commitArchiveImport rebases old apply-field decisions after rev
+      changes and refuses only new questions; it can overwrite a newer owner
+      edit (ac-7/ac-11, src/store/useStore.ts:977-995;
+      src/domain/sourceReconcile.ts:633-670)."
+    counterexample: Preview an empty composer and choose the archive's value. Before
+      Apply, edit the same composer to 'Owner wrote this during refresh'. Rebase
+      finds zero questions and commits the old choice, replacing that newer text
+      with the registry value; reproduced with current pure plan/apply
+      functions.
+  - family: Exact rename identity through adoption and suppression
+    summary: "P1: adoption follows only one rename hop while repair follows the
+      chain, and resource suppressions remain keyed to the old path; a logged
+      rename can misattribute a class or resurrect hidden material
+      (ac-8/ac-12/ac-13, src/domain/sourceReconcile.ts:260-265,282-310;
+      src/domain/sourceArchive.ts:544-553)."
+    counterexample: "Add A->B->C to the exact log, with B in session 1 and C an
+      existing session 2 file: a unique legacy session-1 lesson is adopted, then
+      its reference is repaired to session 2. In a separate same-session rename,
+      a resource hidden for one item reappears under its new path while the old
+      row remains unavailable; both reproduced against current pure functions."
+  - family: Device media base URL safety
+    summary: "P2: normalizeBaseUrl accepts credentials and query or fragment data as
+      a valid NAS base, then archiveRootUrl and resolveRecording append paths
+      after that data (ac-14, src/domain/recordings.ts:32-47,200-203)."
+    counterexample: The base https://user:pass@nas.example/media?token=secret is
+      accepted and stored; Open archive root becomes ...?token=secret/ and a
+      file URL becomes ...?token=secret/session-1/x.mp4, exposing a password in
+      a device URL and failing to address the requested file.
+createdAt: 2026-09-17T14:01:07.857Z
+sealedAt: 2026-09-17T14:28:42.253Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -55,381 +68,7 @@ sealedAt: 2026-09-17T02:56:42.714Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `69e0e7afcc8f262349423e380340b1876347f44b`
-
-## The plan the owner approved
-
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
-
-````yaml
-# Approved intent: Turn the Setar archive into trusted lessons and useful practice material
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Plan and build the next coherent HEAVY Practice Compass lane: safely discover my organised Setar archive and turn its useful parts into historical lessons, canonical repertoire items and correctly linked practice material through Refresh Setar archive, without duplicates, path typing during refresh, guessing, fabricated practice history or transport-dependent identity. Builder: claude. Use the complete supplied CRAWLER-BRIEF semantics and real corpus. Include other high-priority work only where evidence ties it to source integrity, daily material use or reliability. Prefer an unattended NAS scanner publishing a deterministic index to a separate private branch of ethan-ghoreishi/practice-compass-data; one-time NAS runtime/scheduler setup is approved, credentials narrowly scoped, archive read-only. Mac scanning is only a natural manual/development fallback. Use archive-relative asset paths with device-specific configurable bases: Mac https://192.168.0.20:5010/setar-classes/; iPhone https://ds220plus.taild1d1f7.ts.net/media/setar-classes/, with actual iPhone playback as manual:OWNER verification. Preserve all trusted practice, scheduling, notes, lesson agenda, sync and recovery behaviour. This handoff is planning only; do not implement or provision anything before the owner starts the lane.
-
-## Why
-
-THESIS: Turn a trusted Setar archive into useful, portable practice material, with exact reconciliation and durable incremental refresh.
-
-LANE COMPARISON: (1) Small crawler plus Test link repair fulfils discovery but leaves wrong inherited material, duplicates and historical urgency; too weak. (2) Trusted archive to daily material adds deterministic reconciliation, exact old-reference repair, useful Item Detail/Active resources, direct item NAS links, compact historical lessons and durable lesson notes; chosen heavy lane. (3) Whole music-library platform with full Tar/Guitar ingestion and mobile keyboard overhaul is wider but unsupported by shared grammar or a reproduced keyboard defect; defer.
-
-ARCHITECTURE COMPARISON: Direct browser filesystem selection is a Mac-only permission/mount dependency and unsuitable for iPhone. Existing Node scanner generating bundled TypeScript requires rebuild/deployment for every lesson. Browser NAS HTML crawling adds dozens of listing requests, fragile HTML, failed CORS, production CSP changes and certificate complications; no-cors cannot produce readable data. A NAS-served JSON index is sound but still needs CORS/CSP and HTTPS configuration. A live scan service adds an unnecessary runtime API/authentication surface. Choose read-only Node scanner on NAS -> deterministic JSON on private source-index branch -> GitHub API read with existing app connection -> pure reconciliation. Both devices get the same small index without NAS fetch permission, new paid service or large-file storage; media still opens directly through each device base. A file-import fallback uses precisely the same decoder/reconciliation. Refresh consumes the latest published index; it does not remotely start a live NAS scan. Default scheduled scan every15 minutes is documented, and UI distinguishes index last changed/fetched from live scan freshness.
-
-Existing gitRemote creates a complete main tree without base_tree, so placing a sidecar alongside state.json would lose it on next sync. A separate source-index branch is required, outside archive/ recovery branches. No change to whole-state sync semantics is justified.
-
-Evidence: clean main b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417; private data repo main a6c6a664eedcdd3fae8798c350e60ec52e8d6a5c at inspection, schema13/rev175. 39 sessions,258 files,257 parseable,1 known exception,94 canonical pieces verified directly. LAN listings and all CSV/brief bytes equal Sandisk; no ACAO, normal Mac TLS validation fails, diagnostic one-byte Farsi video request returned206. Mac has no Tailscale; iPhone base was subsequently supplied by OWNER and real playback remains manual acceptance.
-
-Tar is flat numbered Farsi course videos; Guitar has18 levels with course sections, notes, PDFs and videos. Neither shares Setar session/registry grammar. Share only the concrete normalised source description, identity/path validation, reconciliation and resource resolution that Setar actually exercises, with no adapter class/plugin registry.
-
-Hostile pre-mortem was performed across parser, attribution, identity, source ownership, deletion, persistence, inbound replacement, sync, transport and render families. The acceptance checks below specify the sibling transitions that defeat a literal happy-path implementation. Already-shipped attachment, working-text, SM2, session protection and WebKit fixes are preserved rather than counted as new work.
-
-## Today
-
-Private practice-compass-data main: schema13,38 lessons,6 items,16 blocks,6 reviews,5 agenda entries,1 attachment.
-74 lesson references:67 exact rename repairs,7 current,0 unmatched,0 absolute.
-Two old/current references collide after repair: session1 class part1 and first Dashti score. Preserve both authored records/metadata; coalesce resource display only or explicit owner resolution.
-Three current personal practice references are already authored; retain records but classify as historical-only outside Item Material/Active.
-Existing upcoming class38 date2026-09-27 is distinct from archive38 date2026-08-04.
-Legacy67 seed paths all absent; all have exact RENAME-LOG targets. Legacy session28 main video is actually named demonstration.
-Current LessonCard opens when notes absent, so 39 imported lessons default open on mobile.
-Exact extracted updateLesson body reproduces inability to clear notes: editor sends undefined and store coalesces to previous notes.
-Current sync createTree supplies no base_tree, so app main sync removes unrelated sidecars. Source index belongs on a separate branch, never data main.
-Existing scanner chooses largest video rather than role; bundled seed has37 sessions. All67 seeded paths are obsolete. ItemMaterial inherits every recording from linked lessons, including irrelevant class/personal material. New source fields would be silently dropped unless validateDB's reconstructed output is extended. Current lesson notes cannot be cleared because editor emits undefined and updateLesson uses nullish fallback. Native installed-app observations corroborated material clutter but were not claimed as exact-current-main rendered proof.
-
-## Instead
-
-1. DELIVERY AND OPERATION
-Replace the old seed-import workflow with Refresh Setar archive in Settings, accessible from Lessons. First use selects the existing Setar instrument only if ambiguous; thereafter one action fetches a pinned source-index commit, validates, previews genuine reconciliation questions if any, and atomically imports. Show Added / Updated / Already current / Needs attention with concise counts and optional details, not crawler output. Binding and owner choices persist. No filesystem or URL entry in routine refresh. Device media setup is one-time.
-Implement the scanner as a small stdlib Node executable; it accepts an operator-configured root and emits outside that root. Production is an unattended NAS DSM scheduled task, not this Mac. Package the launcher and exact installation/rollback instructions. Actual NAS source mount/runtime/permissions are discovered and recorded during OWNER installation acceptance; do not assume Mac /Volumes paths exist on DSM. Source account has read-only access, output/config elsewhere; no root/admin requirement. Failed scan/publication preserves last good remote index. Local execution of the same scanner is sufficient fallback, no separate Mac daemon.
-Publish only setar/index.json on source-index in the existing private data repository, using content hashing, non-force compare-and-swap reference advancement and bounded retry. Create the initial branch without modifying main. Fetch branch SHA then file at that SHA; validate version/size/digest/content before use. No public app bundle of the full private index. App requires only its already-configured GitHub read access; file-import fallback is optional recovery through the same boundary. Publisher credentials belong to NAS protected runtime configuration, never source, Git, output, app state, logs or backups. Restrict token to this repository and necessary Contents write/metadata read, without workflow/admin scope. This is repository-scoped authority, not fictitious branch-scoped token permission; code refuses all targets except source-index/setar/index.json.
-An unchanged semantic scan makes no commit. The UI's fetched time is device-local transient state and publication time means index changed, not proof that a scanner ran recently. NAS scheduler logs record success/failure. No stale-index timestamp is treated as proof an asset disappeared.
-
-2. EXACT SETAR SOURCE CONTRACT
-Read PIECES.csv before assets with a real CSV parser supporting quoting/doubled quotes/embedded commas; no comma splitting. canonical_fa is the byte-exact identity; aliases are literal search alternatives only. Registry forms, dastgah, composer, notes and provisional/MEDIUM caveats are evidence, not free inference. Real forms include هفت-ضربی and چهارپاره. Require unique canonical keys and valid session roster.
-Folder session-N-DD-MM-YYYY defines numeric sequence and validated Gregorian date. Membership, not mtime, associates assets. Longest role prefix at hyphen boundary uses ضبط-کلاس, تمرین-من, تصحیح, تکلیف, جزوه, نمونه, نت. Remove extension; trailing ASCII numeric suffix is part, embedded digits remain piece identity. Display stem replaces hyphen/underscore with spaces. Never split canonical -و-, transliterate, fuzzy-match or infer segmentation. Named pieces must exist in registry. Sort sessions and parts numerically.
-Source graph includes registry pieces, sessions, useful resources, exact piece/session memberships and role presence, logical demo parts, rename aliases, caveats and diagnostics. Persist no individual newly discovered تمرین-من resources: keep only their trustworthy membership/role/repeat evidence. Repeated consecutive session appearances are labelled sessions, not weeks or recorded practice.
-Known exception session-16-26-11-2024/video-2024-10-29-15-32-35.mp4 is skipped and named in Needs attention, never reassigned to15. Session28 has no class recording. Sessions7,34,35 have real provisional identities. RENAME-PLAN confidence is a soft source flag, not identity authority; RENAME-LOG provides exact path provenance.
-Unnamed demo belongs to every canonical member of that session; numbered clips are one ordered logical demonstration. A named demo belongs only to its exact piece. Class recordings are lesson-only. Notation/corrections attach only to the named piece; unnamed handouts/homework/notation stay lesson-level, never guessed onto all pieces. Unknown roster membership blocks that session's ambiguous attribution and yields actionable attention; malformed/duplicate registry or incomplete scan is fatal and preserves last good index. Unknown individual files are reported/skipped, not guessed.
-Ignore dotfiles and NAS housekeeping; do not traverse symlinks, outside-root directories or unsafe paths. Bound bytes, rows and files, detect registry/inventory mutation during scan, and require a complete consistent source view before removals become unavailable. Size can be stat-derived; no media-duration/segment inference or video downloads.
-
-3. IDENTITY, OWNERSHIP AND PERSISTENCE
-Use stable archive ID setar-classes, session key numeric lesson sequence, canonical piece key canonical_fa and raw archive-relative asset path, never absolute transport URL. New Practice Compass IDs are deterministic namespaced encodings/hashes of source identity so independent imports on two devices agree; preserve IDs of explicitly adopted existing records. A source identity binds at most one live app record and a canonical item is never silently equated with a different canonical key or built-in catalogKey.
-Schema14 adds one canonical archiveSources graph plus item/lesson source bindings and manual item reference support, using the smallest representation with no second copy of the same resource per item. Bindings must resolve to source entities and the chosen instrument. Derived From lessons, material lists, aliases and repeat chains come from the graph; do not cache their own competing copies. Imported lesson historical origin is explicit and remains historical even if its date is future relative to the clock.
-Persist the last accepted useful source graph, bindings, owner reconciliation decisions and suppression records, enough for offline rendering/refresh after sync. Latest fetched manifest, transient status and device transport bases are not synced. Retain missing source entities/resources with unavailable status rather than dropping provenance. A new canonical key is a new identity requiring reconciliation, not a metadata rename inferred by similarity. Exact unambiguous RENAME-LOG asset chains may preserve asset identity, recording old aliases.
-Source-owned: registry facts, archive session facts, roles, canonical memberships, resource availability and caveats. User-owned: item/lesson editable titles and identity overrides after initial seeding, Working notes, lesson notes, item status/mode/focus, authored references, links/suppressions and every practice/scheduling/agenda field. Initial title/identity fields are seeded only from registry evidence; form گوشه can identify a gusheh, other descriptive forms remain verbatim; no invented pathway, proficiency, catalog identity or composer. Ambiguous standalone/provisional entries remain repertoire members with source labels, not forced categories. Later registry improvements update source facts and offer explicit selected-field application without overwriting even deliberately empty owner values.
-New imported items default to resting/dormant as an administrative library policy, clearly stated before import, to avoid94 unsolicited recommendations. They remain searchable, visible in My repertoire and directly startable. No observed practice/result/review date/SM2 exposure is seeded. Existing matched item status and scheduling remain untouched.
-
-4. RECONCILIATION AND REFRESH
-Exact source binding wins. For legacy classes, auto-adopt only a unique instrument+date+number match backed by exact source-path provenance; do not merge by number/date alone. Existing upcoming class38 dated2026-09-27 must coexist with archive38 dated2026-08-04. Exact manual title or literal alias equality produces a small Link / Create separately / Skip decision, not automatic merging. The owner can choose another existing item explicitly; never automatically equate catalogKey iraq, a phrase containing عراق, and canonical عراق. No-candidate new pieces can be added in one reviewed batch, without94 questions.
-Prepare against current DB revision and manifest identity, validate whole proposed graph, then perform one synchronous store mutation preserving active/routine/plan and unrelated DB fields. No per-file partial commits, blob APIs or whole-database import/reset. Recheck revision immediately at commit, rebase/repreview if changed; do not overwrite edits/practice completed during fetch. Wait for actual IndexedDB acknowledgement before success. Retry after failed persistence writes again even if in-memory content already matches. Identical durable refresh causes no DB revision/timestamp churn.
-New lesson/file changes add only the delta. Missing files/registry rows after a complete valid scan become unavailable/needs attention; transient I/O or network failure cannot imply removal. Partial old bindings are refused or surfaced for explicit repair, never healed by duplication.
-Delete/unlink/hide operations persist narrowly scoped suppressions in the same transaction as record/link changes. Refresh, reload and sync must not resurrect owner-deleted items, lessons or associations. Hiding a shared demonstration on one item cannot hide it on another. Explicitly resetting a suppression permits reimport. Instrument moves must refuse or explicitly detach incompatible source binding; all store mutation callers, including removeCatalogItem and reset/clear, preserve graph validity.
-Use existing whole-state GitHub conflict protection for concurrent devices. This lane does not invent field-level sync merge. Deterministic source IDs prevent identity duplication, not conflict-free merging of user edits. Pull, Keep remote and restore carry source choices through the same validated snapshot.
-
-5. USEFUL MATERIAL AND HISTORICAL LESSONS
-Compose material once for Item Detail and Active from source attribution plus authored direct item links. Show corrected scores prominently while retaining clean scores; teacher demos are one logical group with ordered parts. All relevant sessions remain accessible, grouped numerically with provenance. Class videos/unnamed lesson handouts stay in the lesson. Newly ingested personal recordings never appear in ItemMaterial/Active.
-Retain the three already-authored personal references as historical lesson evidence with their notes intact, outside useful practice resources. Existing unclassified manual lesson links remain accessible without guessing attribution. Add a direct item NAS reference using the existing reference shape/resolver so useful material need not be attached to an artificial lesson. Keep large assets external; no IndexedDB video copying or new media player. Open remains a direct user gesture, with practice timer/state preserved.
-Historical lessons show compact collapsed rows on phone, useful resources and associated items, and explicit archive provenance. One shared predicate excludes source-history lessons from nextLessonFor, nextLessonDates, defaultTargetLesson, preparationDatesByItem and every upcoming badge/default/question target. Source lesson dates never create current commitments or pending teacher questions. Existing manually authored agenda survives.
-Expose source metadata progressively on the item and From lessons links, source caveats/needs labelling and literal alias search in Repertoire and Start using existing Farsi search. Search normalisation is never identity reconciliation. Farsi values wrap and isolate direction; user-authored text retains dir=auto. Preserve quick Start/Close and collapsed Active material.
-
-6. TRANSPORT AND EXACT REFERENCE REPAIR
-New references store raw paths relative to the Setar archive root. Each device selects/configures an archive media base once; derive from existing device media-root setting where exact mapping is known, preserving legacy semantics. Mac base https://192.168.0.20:5010/setar-classes/; owner-provided iPhone base https://ds220plus.taild1d1f7.ts.net/media/setar-classes/. Do not store either in synced DB, bake a transport into identity, or require Tailscale on Mac. Segment-wise URL encoding happens once at resolution, preserving base subpaths. Reject credentials, unsupported schemes, traversal/encoded separators for source paths; do not rewrite ordinary external links with meaningful query/fragment.
-Replace arbitrary-clip Test link with readable source-index capability/status plus Open archive root for media access. An index GET success is not proof NAS media works; cross-origin root opening cannot programmatically prove it. Explain unavailable/configuration/certificate conditions honestly without disabling TLS checks or broadening CSP.
-Repair67 existing old paths using exact RENAME-LOG mappings. Prefix conversion of absolute URLs is allowed only under a verified configured base; foreign/ambiguous paths remain unchanged with attention. Two old/current rows collide physically after repair: session1 class part1 and its first Dashti score. Preserve both authored rows/notes, coalescing display by physical asset rather than deleting information. No fuzzy old-path repair or rewriting every record after a base change.
-
-7. COHERENT BUG FIX AND SAFE UPGRADE
-Fix inability to clear lesson notes at the authoritative store patch boundary: distinguish omitted patch field from deliberate empty text. Give lesson editor the existing ItemNotes explicit-save/draft-tag/acknowledged-persistence/retry model, reusing its actual code pattern or component only where it reduces duplication. Source refresh cannot overwrite an open draft; switching lesson cannot save to another lesson. Preserve ItemNotes' existing in-flight newer-keystroke protections and Working notes/Observation/Next time homes.
-v13->v14 is additive with empty source state, preserving all legacy fields and running existing migrations unchanged. validateDB accepts AND returns new fields, centrally checks types, versions, path safety, duplicate identities and relationships. All inbound routes use this boundary: Settings full/state import, sync pull, Keep remote, archive restore, both persist migration/merge branches and cold-start recovery. New schema refusal precedes destructive work; no coercion/dropping malformed graph. Existing attachment byte/ownership and active/revision guards remain intact. No scanner/network action in hydration.
-Before upgrading owner data, retain a full v13 backup. v14 exports include the source graph and authored external-reference metadata but no NAS bytes/secrets. Rollback is baseline app plus retained v13 backup, not lossy v14 downgrade. Verify actual baseline refuses v14 without writing. Existing sync format2/hash/archive engine is unchanged.
-
-8. EVIDENCE AND COMPLETION
-Checked-in fixtures use real Farsi filename/registry/rename examples and a compact deterministic metadata corpus, never private owner notes, credentials, IDs or media. Ordinary npm test has no Sandisk/NAS/network dependency. Pure parser/reconciliation tests cover authoritative logic; real store/inbound browser tests cover durability/wiring; rendered desktop390x844 phone journeys run Chromium and WebKit using existing harness, with no missing-engine skip. OWNER checks alone prove actual NAS deployment, corpus and physical iPhone access. Do not call manual checks passed from mocks.
-Corpus baseline:39 sessions,258 files,257 parseable,1 exception,94 pieces;125 personal,57 demo clips/37 logical demos,45 class parts,24 clean scores,6 corrections;132 useful files. Hashes recorded in docs for exact baseline: {"registry":"1f68366e32f0f5ddc8b8db0c1027893b724e16d496f0dca0502fa0a0cd133524","renamePlan":"795faf11c1538e69905e245e9c45d0b13ebcd3469a1b18a2db097786e576b39c","renameLog":"0c276d5e50fc93904ecfb76c71b1c78dca1cda2610f1569f28c9828013278373","brief":"ee76dbc17351fdcc33662b7c467652f5b90728005ef48071bdb35bcf8843a9bc","sortedPathInventoryLF":"0286b07549ad55b0f84166dc2c7b8c2d5949f96a282f03ebaa5837ebf5b22ae7"}. Counts are this corpus evidence, not permanent limits preventing lessons40+.
-Build sequence: first parser/index/publisher and deterministic fixtures; second source graph/reconciliation/migration boundary; third material/lesson/transport/editor integration; finally hostile transition tests, rendered journeys and OWNER deployment/corpus/device checks. Tests must exercise actual shared boundaries; named acceptance titles below are each unique test definitions, not substring/file coverage claims. Full required typecheck/lint/unit/build/secrets checks remain mandatory. A lane cannot be called complete with production publisher setup or physical device verification hidden as future work.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- OWNER explicitly selected claude and NAS scanner -> separate private GitHub index, authorised one-time NAS setup, and supplied exact iPhone Setar mapping. No product/architecture choice remains pending.
-- NAS runtime, actual internal mount and scheduler credentials are deployment facts still to verify in explicit manual:OWNER acceptance; implementation must provide and exercise this setup, not depend on undocumented infrastructure.
-- Default scan interval is15 minutes. Refresh means latest published index, not immediate remote disk rescan; expose that distinction clearly.
-- New imported repertoire defaults resting as a reversible administrative choice; source membership cannot establish current practice priority.
-- Main and data-repo heads/counts bind planning evidence only; re-read owner data before real reconciliation and never hard-code owner UUIDs or private notes.
-
-**Possible conflicts**
-
-- r-secrets-stay-on-device currently says token lives only in browser local storage. The approved NAS publisher needs a separate NAS-local publisher credential. Narrowly amend that rule to distinguish browser credential/device bases from NAS operator secret, while preserving prohibition on export, sync, logs, Git and manifest disclosure.
-- r-direction-aware-text mentions stable ASCII built-in identities; externally imported canonical_fa must remain byte-exact Farsi source identity, carried in a namespaced stable app ID. Do not force transliteration to fit built-in catalog convention.
-- Historical source lessons must not displace the owner's genuine upcoming class38. Current private data contains exact collision counterexample, not a hypothetical.
-- Source-index branch isolation is essential because ordinary sync replaces main's entire tree; do not solve by changing the trusted sync engine or overstating token branch restriction.
-- Existing orphan/duplicate authored reference metadata cannot be deleted merely to simplify source deduplication.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Plan and build the next coherent HEAVY Practice Compass lane: safely discover my organised Setar archive and turn its useful parts into historical lessons, canonical repertoire items and correctly linked practice material through Refresh Setar archive, without duplicates, path typing during refresh, guessing, fabricated practice history or transport-dependent identity. Builder: claude. Use the complete supplied CRAWLER-BRIEF semantics and real corpus. Include other high-priority work only where evidence ties it to source integrity, daily material use or reliability. Prefer an unattended NAS scanner publishing a deterministic index to a separate private branch of ethan-ghoreishi/practice-compass-data; one-time NAS runtime/scheduler setup is approved, credentials narrowly scoped, archive read-only. Mac scanning is only a natural manual/development fallback. Use archive-relative asset paths with device-specific configurable bases: Mac https://192.168.0.20:5010/setar-classes/; iPhone https://ds220plus.taild1d1f7.ts.net/media/setar-classes/, with actual iPhone playback as manual:OWNER verification. Preserve all trusted practice, scheduling, notes, lesson agenda, sync and recovery behaviour. This handoff is planning only; do not implement or provision anything before the owner starts the lane.",
-  "builder": "claude",
-  "summary": "Turn the Setar archive into trusted lessons and useful practice material",
-  "rationale": "THESIS: Turn a trusted Setar archive into useful, portable practice material, with exact reconciliation and durable incremental refresh.\n\nLANE COMPARISON: (1) Small crawler plus Test link repair fulfils discovery but leaves wrong inherited material, duplicates and historical urgency; too weak. (2) Trusted archive to daily material adds deterministic reconciliation, exact old-reference repair, useful Item Detail/Active resources, direct item NAS links, compact historical lessons and durable lesson notes; chosen heavy lane. (3) Whole music-library platform with full Tar/Guitar ingestion and mobile keyboard overhaul is wider but unsupported by shared grammar or a reproduced keyboard defect; defer.\n\nARCHITECTURE COMPARISON: Direct browser filesystem selection is a Mac-only permission/mount dependency and unsuitable for iPhone. Existing Node scanner generating bundled TypeScript requires rebuild/deployment for every lesson. Browser NAS HTML crawling adds dozens of listing requests, fragile HTML, failed CORS, production CSP changes and certificate complications; no-cors cannot produce readable data. A NAS-served JSON index is sound but still needs CORS/CSP and HTTPS configuration. A live scan service adds an unnecessary runtime API/authentication surface. Choose read-only Node scanner on NAS -> deterministic JSON on private source-index branch -> GitHub API read with existing app connection -> pure reconciliation. Both devices get the same small index without NAS fetch permission, new paid service or large-file storage; media still opens directly through each device base. A file-import fallback uses precisely the same decoder/reconciliation. Refresh consumes the latest published index; it does not remotely start a live NAS scan. Default scheduled scan every15 minutes is documented, and UI distinguishes index last changed/fetched from live scan freshness.\n\nExisting gitRemote creates a complete main tree without base_tree, so placing a sidecar alongside state.json would lose it on next sync. A separate source-index branch is required, outside archive/ recovery branches. No change to whole-state sync semantics is justified.\n\nEvidence: clean main b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417; private data repo main a6c6a664eedcdd3fae8798c350e60ec52e8d6a5c at inspection, schema13/rev175. 39 sessions,258 files,257 parseable,1 known exception,94 canonical pieces verified directly. LAN listings and all CSV/brief bytes equal Sandisk; no ACAO, normal Mac TLS validation fails, diagnostic one-byte Farsi video request returned206. Mac has no Tailscale; iPhone base was subsequently supplied by OWNER and real playback remains manual acceptance.\n\nTar is flat numbered Farsi course videos; Guitar has18 levels with course sections, notes, PDFs and videos. Neither shares Setar session/registry grammar. Share only the concrete normalised source description, identity/path validation, reconciliation and resource resolution that Setar actually exercises, with no adapter class/plugin registry.\n\nHostile pre-mortem was performed across parser, attribution, identity, source ownership, deletion, persistence, inbound replacement, sync, transport and render families. The acceptance checks below specify the sibling transitions that defeat a literal happy-path implementation. Already-shipped attachment, working-text, SM2, session protection and WebKit fixes are preserved rather than counted as new work.",
-  "kind": "existing-flow",
-  "flowId": "log-a-class",
-  "currentBehaviour": "Private practice-compass-data main: schema13,38 lessons,6 items,16 blocks,6 reviews,5 agenda entries,1 attachment.\n74 lesson references:67 exact rename repairs,7 current,0 unmatched,0 absolute.\nTwo old/current references collide after repair: session1 class part1 and first Dashti score. Preserve both authored records/metadata; coalesce resource display only or explicit owner resolution.\nThree current personal practice references are already authored; retain records but classify as historical-only outside Item Material/Active.\nExisting upcoming class38 date2026-09-27 is distinct from archive38 date2026-08-04.\nLegacy67 seed paths all absent; all have exact RENAME-LOG targets. Legacy session28 main video is actually named demonstration.\nCurrent LessonCard opens when notes absent, so 39 imported lessons default open on mobile.\nExact extracted updateLesson body reproduces inability to clear notes: editor sends undefined and store coalesces to previous notes.\nCurrent sync createTree supplies no base_tree, so app main sync removes unrelated sidecars. Source index belongs on a separate branch, never data main.\nExisting scanner chooses largest video rather than role; bundled seed has37 sessions. All67 seeded paths are obsolete. ItemMaterial inherits every recording from linked lessons, including irrelevant class/personal material. New source fields would be silently dropped unless validateDB's reconstructed output is extended. Current lesson notes cannot be cleared because editor emits undefined and updateLesson uses nullish fallback. Native installed-app observations corroborated material clutter but were not claimed as exact-current-main rendered proof.",
-  "desiredBehaviour": "1. DELIVERY AND OPERATION\nReplace the old seed-import workflow with Refresh Setar archive in Settings, accessible from Lessons. First use selects the existing Setar instrument only if ambiguous; thereafter one action fetches a pinned source-index commit, validates, previews genuine reconciliation questions if any, and atomically imports. Show Added / Updated / Already current / Needs attention with concise counts and optional details, not crawler output. Binding and owner choices persist. No filesystem or URL entry in routine refresh. Device media setup is one-time.\nImplement the scanner as a small stdlib Node executable; it accepts an operator-configured root and emits outside that root. Production is an unattended NAS DSM scheduled task, not this Mac. Package the launcher and exact installation/rollback instructions. Actual NAS source mount/runtime/permissions are discovered and recorded during OWNER installation acceptance; do not assume Mac /Volumes paths exist on DSM. Source account has read-only access, output/config elsewhere; no root/admin requirement. Failed scan/publication preserves last good remote index. Local execution of the same scanner is sufficient fallback, no separate Mac daemon.\nPublish only setar/index.json on source-index in the existing private data repository, using content hashing, non-force compare-and-swap reference advancement and bounded retry. Create the initial branch without modifying main. Fetch branch SHA then file at that SHA; validate version/size/digest/content before use. No public app bundle of the full private index. App requires only its already-configured GitHub read access; file-import fallback is optional recovery through the same boundary. Publisher credentials belong to NAS protected runtime configuration, never source, Git, output, app state, logs or backups. Restrict token to this repository and necessary Contents write/metadata read, without workflow/admin scope. This is repository-scoped authority, not fictitious branch-scoped token permission; code refuses all targets except source-index/setar/index.json.\nAn unchanged semantic scan makes no commit. The UI's fetched time is device-local transient state and publication time means index changed, not proof that a scanner ran recently. NAS scheduler logs record success/failure. No stale-index timestamp is treated as proof an asset disappeared.\n\n2. EXACT SETAR SOURCE CONTRACT\nRead PIECES.csv before assets with a real CSV parser supporting quoting/doubled quotes/embedded commas; no comma splitting. canonical_fa is the byte-exact identity; aliases are literal search alternatives only. Registry forms, dastgah, composer, notes and provisional/MEDIUM caveats are evidence, not free inference. Real forms include هفت-ضربی and چهارپاره. Require unique canonical keys and valid session roster.\nFolder session-N-DD-MM-YYYY defines numeric sequence and validated Gregorian date. Membership, not mtime, associates assets. Longest role prefix at hyphen boundary uses ضبط-کلاس, تمرین-من, تصحیح, تکلیف, جزوه, نمونه, نت. Remove extension; trailing ASCII numeric suffix is part, embedded digits remain piece identity. Display stem replaces hyphen/underscore with spaces. Never split canonical -و-, transliterate, fuzzy-match or infer segmentation. Named pieces must exist in registry. Sort sessions and parts numerically.\nSource graph includes registry pieces, sessions, useful resources, exact piece/session memberships and role presence, logical demo parts, rename aliases, caveats and diagnostics. Persist no individual newly discovered تمرین-من resources: keep only their trustworthy membership/role/repeat evidence. Repeated consecutive session appearances are labelled sessions, not weeks or recorded practice.\nKnown exception session-16-26-11-2024/video-2024-10-29-15-32-35.mp4 is skipped and named in Needs attention, never reassigned to15. Session28 has no class recording. Sessions7,34,35 have real provisional identities. RENAME-PLAN confidence is a soft source flag, not identity authority; RENAME-LOG provides exact path provenance.\nUnnamed demo belongs to every canonical member of that session; numbered clips are one ordered logical demonstration. A named demo belongs only to its exact piece. Class recordings are lesson-only. Notation/corrections attach only to the named piece; unnamed handouts/homework/notation stay lesson-level, never guessed onto all pieces. Unknown roster membership blocks that session's ambiguous attribution and yields actionable attention; malformed/duplicate registry or incomplete scan is fatal and preserves last good index. Unknown individual files are reported/skipped, not guessed.\nIgnore dotfiles and NAS housekeeping; do not traverse symlinks, outside-root directories or unsafe paths. Bound bytes, rows and files, detect registry/inventory mutation during scan, and require a complete consistent source view before removals become unavailable. Size can be stat-derived; no media-duration/segment inference or video downloads.\n\n3. IDENTITY, OWNERSHIP AND PERSISTENCE\nUse stable archive ID setar-classes, session key numeric lesson sequence, canonical piece key canonical_fa and raw archive-relative asset path, never absolute transport URL. New Practice Compass IDs are deterministic namespaced encodings/hashes of source identity so independent imports on two devices agree; preserve IDs of explicitly adopted existing records. A source identity binds at most one live app record and a canonical item is never silently equated with a different canonical key or built-in catalogKey.\nSchema14 adds one canonical archiveSources graph plus item/lesson source bindings and manual item reference support, using the smallest representation with no second copy of the same resource per item. Bindings must resolve to source entities and the chosen instrument. Derived From lessons, material lists, aliases and repeat chains come from the graph; do not cache their own competing copies. Imported lesson historical origin is explicit and remains historical even if its date is future relative to the clock.\nPersist the last accepted useful source graph, bindings, owner reconciliation decisions and suppression records, enough for offline rendering/refresh after sync. Latest fetched manifest, transient status and device transport bases are not synced. Retain missing source entities/resources with unavailable status rather than dropping provenance. A new canonical key is a new identity requiring reconciliation, not a metadata rename inferred by similarity. Exact unambiguous RENAME-LOG asset chains may preserve asset identity, recording old aliases.\nSource-owned: registry facts, archive session facts, roles, canonical memberships, resource availability and caveats. User-owned: item/lesson editable titles and identity overrides after initial seeding, Working notes, lesson notes, item status/mode/focus, authored references, links/suppressions and every practice/scheduling/agenda field. Initial title/identity fields are seeded only from registry evidence; form گوشه can identify a gusheh, other descriptive forms remain verbatim; no invented pathway, proficiency, catalog identity or composer. Ambiguous standalone/provisional entries remain repertoire members with source labels, not forced categories. Later registry improvements update source facts and offer explicit selected-field application without overwriting even deliberately empty owner values.\nNew imported items default to resting/dormant as an administrative library policy, clearly stated before import, to avoid94 unsolicited recommendations. They remain searchable, visible in My repertoire and directly startable. No observed practice/result/review date/SM2 exposure is seeded. Existing matched item status and scheduling remain untouched.\n\n4. RECONCILIATION AND REFRESH\nExact source binding wins. For legacy classes, auto-adopt only a unique instrument+date+number match backed by exact source-path provenance; do not merge by number/date alone. Existing upcoming class38 dated2026-09-27 must coexist with archive38 dated2026-08-04. Exact manual title or literal alias equality produces a small Link / Create separately / Skip decision, not automatic merging. The owner can choose another existing item explicitly; never automatically equate catalogKey iraq, a phrase containing عراق, and canonical عراق. No-candidate new pieces can be added in one reviewed batch, without94 questions.\nPrepare against current DB revision and manifest identity, validate whole proposed graph, then perform one synchronous store mutation preserving active/routine/plan and unrelated DB fields. No per-file partial commits, blob APIs or whole-database import/reset. Recheck revision immediately at commit, rebase/repreview if changed; do not overwrite edits/practice completed during fetch. Wait for actual IndexedDB acknowledgement before success. Retry after failed persistence writes again even if in-memory content already matches. Identical durable refresh causes no DB revision/timestamp churn.\nNew lesson/file changes add only the delta. Missing files/registry rows after a complete valid scan become unavailable/needs attention; transient I/O or network failure cannot imply removal. Partial old bindings are refused or surfaced for explicit repair, never healed by duplication.\nDelete/unlink/hide operations persist narrowly scoped suppressions in the same transaction as record/link changes. Refresh, reload and sync must not resurrect owner-deleted items, lessons or associations. Hiding a shared demonstration on one item cannot hide it on another. Explicitly resetting a suppression permits reimport. Instrument moves must refuse or explicitly detach incompatible source binding; all store mutation callers, including removeCatalogItem and reset/clear, preserve graph validity.\nUse existing whole-state GitHub conflict protection for concurrent devices. This lane does not invent field-level sync merge. Deterministic source IDs prevent identity duplication, not conflict-free merging of user edits. Pull, Keep remote and restore carry source choices through the same validated snapshot.\n\n5. USEFUL MATERIAL AND HISTORICAL LESSONS\nCompose material once for Item Detail and Active from source attribution plus authored direct item links. Show corrected scores prominently while retaining clean scores; teacher demos are one logical group with ordered parts. All relevant sessions remain accessible, grouped numerically with provenance. Class videos/unnamed lesson handouts stay in the lesson. Newly ingested personal recordings never appear in ItemMaterial/Active.\nRetain the three already-authored personal references as historical lesson evidence with their notes intact, outside useful practice resources. Existing unclassified manual lesson links remain accessible without guessing attribution. Add a direct item NAS reference using the existing reference shape/resolver so useful material need not be attached to an artificial lesson. Keep large assets external; no IndexedDB video copying or new media player. Open remains a direct user gesture, with practice timer/state preserved.\nHistorical lessons show compact collapsed rows on phone, useful resources and associated items, and explicit archive provenance. One shared predicate excludes source-history lessons from nextLessonFor, nextLessonDates, defaultTargetLesson, preparationDatesByItem and every upcoming badge/default/question target. Source lesson dates never create current commitments or pending teacher questions. Existing manually authored agenda survives.\nExpose source metadata progressively on the item and From lessons links, source caveats/needs labelling and literal alias search in Repertoire and Start using existing Farsi search. Search normalisation is never identity reconciliation. Farsi values wrap and isolate direction; user-authored text retains dir=auto. Preserve quick Start/Close and collapsed Active material.\n\n6. TRANSPORT AND EXACT REFERENCE REPAIR\nNew references store raw paths relative to the Setar archive root. Each device selects/configures an archive media base once; derive from existing device media-root setting where exact mapping is known, preserving legacy semantics. Mac base https://192.168.0.20:5010/setar-classes/; owner-provided iPhone base https://ds220plus.taild1d1f7.ts.net/media/setar-classes/. Do not store either in synced DB, bake a transport into identity, or require Tailscale on Mac. Segment-wise URL encoding happens once at resolution, preserving base subpaths. Reject credentials, unsupported schemes, traversal/encoded separators for source paths; do not rewrite ordinary external links with meaningful query/fragment.\nReplace arbitrary-clip Test link with readable source-index capability/status plus Open archive root for media access. An index GET success is not proof NAS media works; cross-origin root opening cannot programmatically prove it. Explain unavailable/configuration/certificate conditions honestly without disabling TLS checks or broadening CSP.\nRepair67 existing old paths using exact RENAME-LOG mappings. Prefix conversion of absolute URLs is allowed only under a verified configured base; foreign/ambiguous paths remain unchanged with attention. Two old/current rows collide physically after repair: session1 class part1 and its first Dashti score. Preserve both authored rows/notes, coalescing display by physical asset rather than deleting information. No fuzzy old-path repair or rewriting every record after a base change.\n\n7. COHERENT BUG FIX AND SAFE UPGRADE\nFix inability to clear lesson notes at the authoritative store patch boundary: distinguish omitted patch field from deliberate empty text. Give lesson editor the existing ItemNotes explicit-save/draft-tag/acknowledged-persistence/retry model, reusing its actual code pattern or component only where it reduces duplication. Source refresh cannot overwrite an open draft; switching lesson cannot save to another lesson. Preserve ItemNotes' existing in-flight newer-keystroke protections and Working notes/Observation/Next time homes.\nv13->v14 is additive with empty source state, preserving all legacy fields and running existing migrations unchanged. validateDB accepts AND returns new fields, centrally checks types, versions, path safety, duplicate identities and relationships. All inbound routes use this boundary: Settings full/state import, sync pull, Keep remote, archive restore, both persist migration/merge branches and cold-start recovery. New schema refusal precedes destructive work; no coercion/dropping malformed graph. Existing attachment byte/ownership and active/revision guards remain intact. No scanner/network action in hydration.\nBefore upgrading owner data, retain a full v13 backup. v14 exports include the source graph and authored external-reference metadata but no NAS bytes/secrets. Rollback is baseline app plus retained v13 backup, not lossy v14 downgrade. Verify actual baseline refuses v14 without writing. Existing sync format2/hash/archive engine is unchanged.\n\n8. EVIDENCE AND COMPLETION\nChecked-in fixtures use real Farsi filename/registry/rename examples and a compact deterministic metadata corpus, never private owner notes, credentials, IDs or media. Ordinary npm test has no Sandisk/NAS/network dependency. Pure parser/reconciliation tests cover authoritative logic; real store/inbound browser tests cover durability/wiring; rendered desktop390x844 phone journeys run Chromium and WebKit using existing harness, with no missing-engine skip. OWNER checks alone prove actual NAS deployment, corpus and physical iPhone access. Do not call manual checks passed from mocks.\nCorpus baseline:39 sessions,258 files,257 parseable,1 exception,94 pieces;125 personal,57 demo clips/37 logical demos,45 class parts,24 clean scores,6 corrections;132 useful files. Hashes recorded in docs for exact baseline: {\"registry\":\"1f68366e32f0f5ddc8b8db0c1027893b724e16d496f0dca0502fa0a0cd133524\",\"renamePlan\":\"795faf11c1538e69905e245e9c45d0b13ebcd3469a1b18a2db097786e576b39c\",\"renameLog\":\"0c276d5e50fc93904ecfb76c71b1c78dca1cda2610f1569f28c9828013278373\",\"brief\":\"ee76dbc17351fdcc33662b7c467652f5b90728005ef48071bdb35bcf8843a9bc\",\"sortedPathInventoryLF\":\"0286b07549ad55b0f84166dc2c7b8c2d5949f96a282f03ebaa5837ebf5b22ae7\"}. Counts are this corpus evidence, not permanent limits preventing lessons40+.\nBuild sequence: first parser/index/publisher and deterministic fixtures; second source graph/reconciliation/migration boundary; third material/lesson/transport/editor integration; finally hostile transition tests, rendered journeys and OWNER deployment/corpus/device checks. Tests must exercise actual shared boundaries; named acceptance titles below are each unique test definitions, not substring/file coverage claims. Full required typecheck/lint/unit/build/secrets checks remain mandatory. A lane cannot be called complete with production publisher setup or physical device verification hidden as future work.",
-  "mustNotChange": [
-    "Never write, rename, move or delete Setar/Tar/Guitar source files, including CSVs; fixtures and outputs live outside archives. No source or NAS configuration is changed during this planning turn.",
-    "Preserve blocks, minutes, Results, all scheduling/SM2/review evidence, counts and streak semantics. Archive appearances are not recorded Practice Compass practice.",
-    "Preserve core loop, quick Start/Close, Active timer/wake-lock, running/paused practice, session plans/routines, instrument scoping, working-text homes, manual review dates and lesson-agenda/question semantics.",
-    "Preserve existing local attachments, full/state backup byte guarantees, refused hydration recovery, snapshot sync conflicts/archives and revision guards. No live owner-data writes in automated tests.",
-    "Keep practice core usable offline with last accepted metadata. Source refresh and external media may need their respective networks without blocking practice.",
-    "No fuzzy matching/transliteration, automatic piece splitting, AI/audio judgement, gamification, paid service, speculative plugin system or public full archive index."
-  ],
-  "assumptions": [
-    "OWNER explicitly selected claude and NAS scanner -> separate private GitHub index, authorised one-time NAS setup, and supplied exact iPhone Setar mapping. No product/architecture choice remains pending.",
-    "NAS runtime, actual internal mount and scheduler credentials are deployment facts still to verify in explicit manual:OWNER acceptance; implementation must provide and exercise this setup, not depend on undocumented infrastructure.",
-    "Default scan interval is15 minutes. Refresh means latest published index, not immediate remote disk rescan; expose that distinction clearly.",
-    "New imported repertoire defaults resting as a reversible administrative choice; source membership cannot establish current practice priority.",
-    "Main and data-repo heads/counts bind planning evidence only; re-read owner data before real reconciliation and never hard-code owner UUIDs or private notes."
-  ],
-  "possibleConflicts": [
-    "r-secrets-stay-on-device currently says token lives only in browser local storage. The approved NAS publisher needs a separate NAS-local publisher credential. Narrowly amend that rule to distinguish browser credential/device bases from NAS operator secret, while preserving prohibition on export, sync, logs, Git and manifest disclosure.",
-    "r-direction-aware-text mentions stable ASCII built-in identities; externally imported canonical_fa must remain byte-exact Farsi source identity, carried in a namespaced stable app ID. Do not force transliteration to fit built-in catalog convention.",
-    "Historical source lessons must not displace the owner's genuine upcoming class38. Current private data contains exact collision counterexample, not a hypothetical.",
-    "Source-index branch isolation is essential because ordinary sync replaces main's entire tree; do not solve by changing the trusted sync engine or overstating token branch restriction.",
-    "Existing orphan/duplicate authored reference metadata cannot be deleted merely to simplify source deduplication."
-  ],
-  "scope": {
-    "allow": [
-      "scripts/scan-setar-classes.mjs",
-      "scripts/publish-setar-index.mjs",
-      "scripts/run-setar-index.sh",
-      "scripts/setar-index.test.mjs",
-      "src/domain/types.ts",
-      "src/domain/migrations.ts",
-      "src/domain/migrations.test.ts",
-      "src/domain/io.ts",
-      "src/domain/io.test.ts",
-      "src/domain/seed.ts",
-      "src/domain/seedMigration.test.ts",
-      "src/domain/index.ts",
-      "src/domain/factories.ts",
-      "src/domain/setarClasses.ts",
-      "src/domain/setarClasses.test.ts",
-      "src/domain/scanSetarClasses.test.ts",
-      "src/domain/recordings.ts",
-      "src/domain/recordings.test.ts",
-      "src/domain/itemFiles.ts",
-      "src/domain/itemFiles.test.ts",
-      "src/domain/selectors.ts",
-      "src/domain/selectors.test.ts",
-      "src/domain/lessonAgenda.ts",
-      "src/domain/lessonAgenda.test.ts",
-      "src/domain/repertoire.ts",
-      "src/domain/repertoire.test.ts",
-      "src/domain/sourceArchive.ts",
-      "src/domain/sourceArchive.test.ts",
-      "src/domain/sourceReconcile.ts",
-      "src/domain/sourceReconcile.test.ts",
-      "src/store/useStore.ts",
-      "src/store/backup.ts",
-      "src/store/archiveIndex.ts",
-      "src/store/archiveIndex.test.ts",
-      "src/components/ItemMaterial.tsx",
-      "src/components/ItemNotes.tsx",
-      "src/components/LessonNotes.tsx",
-      "src/components/ArchiveRefresh.tsx",
-      "src/components/ReferenceEditor.tsx",
-      "src/components/direction.test.ts",
-      "src/pages/Settings.tsx",
-      "src/pages/Lessons.tsx",
-      "src/pages/ItemDetail.tsx",
-      "src/pages/ActiveBlock.tsx",
-      "src/pages/Repertoire.tsx",
-      "src/pages/StartBlock.tsx",
-      "src/styles/global.css",
-      "tests/practiceBrowser.ts",
-      "tests/setarArchive.browser.test.ts",
-      "tests/setarInbound.browser.test.ts",
-      "tests/lessonNotes.browser.test.ts",
-      "tests/fixtures/setar-archive.json",
-      "tests/fixtures/setar-legacy-v13.json",
-      "package.json",
-      "AGENTS.md",
-      "DECISIONS.md",
-      "FUTURE.md",
-      "README.md",
-      "docs/product-spec.md",
-      "docs/setar-archive.md"
-    ],
-    "forbid": [
-      "src/domain/scheduling.ts",
-      "src/domain/scoring.ts",
-      "src/domain/recommend.ts",
-      "src/domain/plan.ts",
-      "src/domain/practiceSession.ts",
-      "src/domain/practiceSignal.ts",
-      "src/components/screenAwake.ts",
-      "src/components/useScreenAwake.ts",
-      "src/components/useViewportGuard.ts",
-      "src/components/Layout.tsx",
-      "src/pages/CloseBlock.tsx",
-      "src/store/githubSync.ts",
-      "src/store/syncEngine.ts",
-      "src/store/gitRemote.ts",
-      "src/store/revision.ts",
-      "src/store/idb.ts",
-      "vite.config.ts",
-      "package-lock.json",
-      ".github/**",
-      "public/**",
-      "src/domain/persian.ts",
-      "src/domain/farsi.ts",
-      "src/domain/pathwaySeed.ts"
-    ]
-  },
-  "exclusions": [
-    "Full Tar/Guitar import, archive normalisation/renaming, generic adapters/plugins and media segmentation.",
-    "iPhone keyboard/bottom-nav changes without a reproduced diagnosis; no heuristic hide/delay workaround.",
-    "Scheduling/session planning/routine redesign, broader duplicate sweep unrelated to source graph, sync engine rewrite, all-purpose library migration or UI redesign.",
-    "Public index publication, NAS browser HTML crawler, permanent TLS bypass, new backend/API or bulk NAS attachment imports.",
-    "Already-shipped working-text retirement, attachment integrity, manual-date/SM2, current session recovery and browser CI fixes."
-  ],
-  "acceptance": [
-    {
-      "description": "Use real PIECES.csv rows including quoted commas, doubled quotes, aliases, provisional and MEDIUM caveats. Preserve canonical_fa byte identity, embedded digits and -و-. Reject duplicate/empty canonical keys, malformed quoting, missing headers, invalid session numbers and unknown manifest versions. aliases_seen is literal search data, never a wildcard or reconciliation heuristic; real forms هفت-ضربی and چهارپاره are supported without inventing categorical facts.",
-      "test": "setar registry keeps exact Farsi keys and rejects ambiguous CSV input"
-    },
-    {
-      "description": "Assert all seven real brief examples exactly, role boundary longest match, parts numeric, the embedded دشتی-1-علیزاده digit and پریچهر-و-پریزاد stay inside one canonical name. Known session16 video exception produces actionable diagnostic and no guessed role. Unknown piece/role/ext and named class recordings are surfaced, not relabelled. No largest-file heuristic.",
-      "test": "setar filenames preserve compound roles and report unhandled assets"
-    },
-    {
-      "description": "Session13 unnamed two-part demo belongs to all eight canonical pieces; session28 named demo only به-زندان-شوشتری and no fabricated class recording; session27 class parts ordered numerically. Folder membership rather than mtime. Provisional session7 and34/35 preserved. Six-session personal repeat chain22..27 is provenance, never six weeks or practice evidence. On roster disagreement do not expand unnamed demos to a guessed set.",
-      "test": "setar session material follows exact roster and demonstration attribution"
-    },
-    {
-      "description": "Deterministic filesystem inventory fixture, shuffled directory order and altered mtimes yield same semantic index. Numeric session order9 before10. Ignore dotfiles/root out-of-scope folders/NAS @eaDir; do not follow symlinks or unsafe relative paths. Reject traversal, escaped separators, URL schemes, duplicate asset/session identities and oversize inputs. Missing root or changed registry/inventory during scan does not replace last good output. Output is atomically published outside archive; no source write API.",
-      "test": "setar scanning is bounded read-only and produces stable complete indexes"
-    },
-    {
-      "description": "Transport stub exercises first index publish, identical scan no commit, changed scan, interruption before ref advance, race with second publisher. All writes confined to designated source-index branch; never state.json, manifest.json or files/ on data main or archive/ recovery branches. Reader pins file fetch to the read branch commit. Authentication/network errors leave old index and app data intact; no token/root URL in payloads or logs. Publisher target branch is fixed source-index and path setar/index.json. Token is scoped to this private repository with only required Contents write and metadata read, no workflow/admin permission; GitHub does not make such a token branch-scoped, so code target restrictions and optional repository rules must not be described as credential isolation. App reuses its existing local GitHub connection only for GETs; no publisher token reaches the browser. Unchanged content means no commit; UI says index last changed/fetched, never falsely last scanned.",
-      "test": "source index publication cannot replace practice data or lose a concurrent update"
-    },
-    {
-      "description": "First empty import produces39 historical lessons94 canonical items; repeat no duplicates. Existing source bindings win across edited titles/dates. Unique legacy lesson with exact source-reference evidence/date+number can be adopted; date-only, number-only or title-only equivalence cannot auto-merge. Exact manual title/alias candidates require owner Link/Create/Skip; multiple candidates do not pick first. Existing upcoming class38 on2026-09-27 survives separate from archive38 on2026-08-04. catalogKey iraq never equals Setar canonical key عراق. Source/instrument binding explicit and persistent. Deterministic namespaced IDs on new records ensure two devices importing the same source separately identify the same logical entities, while existing owner records retain their IDs after explicit binding. Whole-snapshot GitHub conflicts still require the existing owner choice; no automatic merge of divergent practice databases.",
-      "test": "setar reconciliation binds exact identities without merging owner records"
-    },
-    {
-      "description": "Exercise one newlesson40, added score existinglesson, changed registry metadata, exact logged path rename, missing file, missing registry row, unresolved previous candidates and same manifest with a new owner decision. Source metadata/availability updates; item/lesson authored fields seeded once then preserved including deliberate empty values. Later metadata improvement shown for explicit selective apply, never notes overwrite. Missing source retains provenance and flags unavailable, never deletes owner data. Unchanged refresh does not bump db revision or churn timestamps. A canonical key change is a new identity requiring owner decision, never inferred from metadata; exact asset rename chains alone may preserve an asset identity. Missing files only follow a validated complete scan, not timeout, partially copied input or unreachable mount.",
-      "test": "archive refresh preserves owner edits and applies only the new source delta"
-    },
-    {
-      "description": "Actual mutation actions deleteItem, removeCatalogItem, deleteLesson, unlinkItemFromLesson, remove manual ref and hide imported material update only applicable suppression/binding in same store mutation. Retry identical source after reload/sync cannot resurrect deliberately suppressed record/link. Shared demo hidden for one item remains available to others. Moving an archive-bound item to another instrument refuses or explicitly detaches before mutation; no invalid graph emitted. Clear/reset remove source state with DB. Partial/imported dangling bindings refused instead of duplicate healing.",
-      "test": "archive deletions and unlinking remain respected after refresh and reload"
-    },
-    {
-      "description": "Compare complete pre/post blocks,reviews,lessonAgenda,existing item counters/results/all scheduling fields,active+routine+plan,notNow and sessionInstrument. New items have zero totals,no lastPractice/result/review/SM2; source personal files create only membership/roles/repeat provenance. No new material/agenda/pathway commitments inferred. New library items start resting by explicit import policy so Today/plan pools are not flooded, yet direct Start works. No personal recordings in item/active material.",
-      "test": "archive import cannot fabricate practice or next-class urgency"
-    },
-    {
-      "description": "One shared upcoming predicate used by nextLessonFor,nextLessonDates,defaultTargetLesson,preparationDatesByItem and wide/mobile Lessons badges/default selection/question sheet. Test source historical lesson dated past/today/future versus ordinary real upcoming lesson on same dates; imported historical records never create urgency/default question target. Preserve existing manually authored agenda and normal upcoming lesson semantics.",
-      "test": "historical source lessons never become upcoming through sibling selectors"
-    },
-    {
-      "description": "Real store action with controlled persistence: validate and prepare before a single db set; no per-file app commits/no blob copying. Revision change, source change, owner-choice change, active session starting and finishing during fetch cause rebase/repreview or refusal without lost edits. IndexedDB failed save reports unsaved and retry persists complete current state even if in-memory index hash already matches; no false Already current. Reload before/after acknowledgement yields previous complete or new complete state. Refresh never calls whole-DB import/reset.",
-      "test": "archive commits survive interruption and never apply a stale preview"
-    },
-    {
-      "description": "All67 legacy seed paths map through exact257-row RENAME-LOG, no fuzzy URL/title/mtime matching. Full URL converts only under explicitly verified current device prefix with segment-wise decode; foreign/query/fragment links remain untouched. Old/current pairs for session1 classpart1 and firstDashti score show one physical resource without deleting either authored row/notes. Existing3 personal references remain retained historical links outside item/active list. Missing targets/cycles/multiple destinations diagnose, never guess.",
-      "test": "exact Setar rename repair preserves saved references and their metadata"
-    },
-    {
-      "description": "One shared composition for ItemDetail/Active and new direct item links plus lesson composition. Corrections prominent but clean scores retained; logical demo ordered parts one group; resources from earlier repeat-chain lessons remain reachable; named scores/demo never bleed to sibling pieces; whole class video stays lesson-only. Existing manual unclassified lesson references remain accessible without inventing scope. Direct NAS link works without any lesson and uses same resolver as legacy/source refs. External links never go through attachment blob APIs.",
-      "test": "practice material shows only useful correctly scoped archive resources"
-    },
-    {
-      "description": "Same sourceId+relative asset resolves via independently configured Mac/iPhone roots and a changed future base; stored data/export/hash unchanged. Config device-local, never synced. Preserve base path prefixes; reject unsafe path/scheme/traversal/credentials and double-encoded separators; encode each raw Farsi segment once. Root/index capability check never relies on a media filename. Distinguish readable published index from unverified media reachability; do not claim CORS/cert/network failures are absence.",
-      "test": "source transport changes preserve archive identity and encode Farsi once"
-    },
-    {
-      "description": "v13->v14 additive empty-source migration with source keys/manual refs/history marker as chosen representation; legacy baseline fields unchanged apart from schema. Run whole oldest-supported chain, repeated migration and current-declared inbound. validateDB retains/validates every new persisted field with duplicate source keys, wrong types, dangling/mismatched refs,wrong instrument,unsafe paths,unknown format/newer schema refused before mutation. Missing source file is valid unavailable state, not dangling graph. Successful output revalidates and roundtrips export unchanged. New collection is included in validateDB's reconstructed return value, not merely accepted on input. Legacy current-version stray fields do not bypass validation. Reject duplicate bindings and resource graph cycles/invalid part group membership. Preserve surviving practice text and attachment guarantees.",
-      "test": "archive schema migration and validation preserve the whole source graph"
-    },
-    {
-      "description": "Use existing browser/fakeGitHub harness to drive Settings full/state import, automatic pull, Keep remote, archive restore, both hydration branches and cold-start recovery. Same malformed source relation rejected with pre/post persisted DB+blobs checked; valid source bindings/suppressions/user fields survive. Existing active/revision guards retained. Full export includes metadata only for NAS refs and only real local attachment bytes. Real baseline v13 checkout refuses v14 file without writes; retained v13 backup restores there. No format2 sync-engine rewrite.",
-      "test": "archive state crosses all real inbound doors without partial installation"
-    },
-    {
-      "description": "Reproduce current empty-save bug through real editor and store then verify fixed reload. Reuse current ItemNotes durability model: explicit Done, preserved unsaved draft on refresh, tagged lesson ID, storage acknowledgement before Saved, failed-write retry/copy, typing during pending write, latest-save ownership, item/lesson switch and route unmount. Existing Working notes/Observation/Next time and timers remain unchanged.",
-      "test": "lesson notes can be cleared and saved durably without cross-lesson drafts"
-    },
-    {
-      "description": "Rendered controls with frozen time and checked-in corpus-derived metadata fixture. Refresh -> historical lesson -> proper class/score/demo -> canonical item -> useful material -> direct Start -> open material with practice context unchanged. Historical phone rows initially compact/collapsed, Farsi wraps and mixed labels isolate correctly, keyboard controls and accessible names present. Alias search works in Repertoire and Start through existing Farsi matcher; identity matching never uses it. Repeat refresh then add fixturelesson40 only delta; invalid file actionable; persisted reload verifies no duplicates/history fabrication. Both engines mandatory; missing engine fails, not skip.",
-      "test": "setar archive journey works on phone and desktop in Chromium and WebKit"
-    },
-    {
-      "description": "Actual corpus read-only: baseline39/258/257/1/94 with125personal and132useful files, 37logical demos; all CSV+inventory hashes recorded. Verify known exception/session28/provisional rows and full rename coverage. Future lesson delta tested with disposable fixture outside Sandisk, not a mutation of source archive. Publisher runtime/location and scheduling must be installed and exercised, not left as a runbook-only hidden prerequisite. Primary production host is the NAS, explicitly approved by OWNER: install supported Node runtime and a DSM scheduled task (default every15 minutes), read-only source permissions and restricted separate runtime/output directory. Provision publisher-only repository-scoped credentials outside app data and verify unattended run with Mac off. Verify main branch unchanged after index publication; revocation and failed scan retain last good index. Record actual NAS filesystem mapping/runtime rather than assuming /Volumes paths work there.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "Real Mac and iPhone journey using archive bases https://192.168.0.20:5010/setar-classes/ and OWNER-provided https://ds220plus.taild1d1f7.ts.net/media/setar-classes/. Verify same Farsi demo and score open, video range/seek works, changing base changes no source IDs or backup data. iPhone path is owner-confirmed mapping awaiting device playback verification, not a Mac-probed fact. Mac requires no Tailscale. Do not disable certificate validation in shipped code. Show published-index retrieval separately from media access; unavailable NAS or GitHub preserves imported material metadata. Never mark iPhone passed from LAN-only/emulated tests.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": true,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "HEAVY: schema14 with authoritative graph validation and every inbound door, reconciliation against real owner records, exact reference repair, acknowledged store persistence, and new NAS-held narrowly scoped GitHub publisher credential. Remote branch publication and unattended NAS setup require explicit operational proof; no payment surface."
-  },
-  "delta": {
-    "today": "Import Setar classes uses a stale37-session bundled seed, broken renamed reference and broad lesson-material inheritance.",
-    "instead": "Refresh the NAS-published private Setar index into historical lessons and canonical items with useful attributed material, exact reconciliation, portable references and safe incremental updates.",
-    "keep": [
-      "Existing manual lesson and agenda flow",
-      "Honest practice and scheduling history",
-      "Offline data, backup and GitHub conflict safety",
-      "External NAS media and device-local bases"
-    ],
-    "assumptions": [],
-    "showMe": "Empty import ->39 historical lessons -> canonical item with correct source metadata and useful demo/score -> direct practice and open material -> repeat no-op -> fixture lesson40 delta -> same asset on Mac and iPhone -> actionable known exception, with no personal-material clutter or fabricated practice."
-  },
-  "desiredRules": [
-    "Archive evidence may establish repertoire membership, historical lesson provenance and source material, never recorded practice, results, exposure, review completion or scheduling progress.",
-    "Source identity is archive-relative and independent of transport; refresh preserves owner-authored data and explicit reconciliation/suppression decisions across every inbound boundary.",
-    "Browser GitHub credentials and media bases stay device-local; the separately scoped archive publisher credential stays in protected NAS operator configuration. No credential or device base enters source archives, committed files, manifests, app data, logs, sync or backups."
-  ],
-  "docsDelta": [
-    "AGENTS.md",
-    "DECISIONS.md",
-    "FUTURE.md",
-    "README.md",
-    "docs/product-spec.md",
-    "docs/setar-archive.md"
-  ]
-}
-```
-````
+- **Diff patch-id:** `b051ae0884ca52c4906fb6a5d837571dd97a0e8a`
 
 ## The Delta this change was framed from
 
@@ -462,58 +101,14992 @@ Empty import ->39 historical lessons -> canonical item with correct source metad
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- AGENTS.md
-- DECISIONS.md
-- FUTURE.md
-- README.md
-- docs/product-spec.md
-- docs/setar-archive.md
-- package.json
-- scripts/publish-setar-index.mjs
-- scripts/run-setar-index.sh
-- scripts/scan-setar-classes.mjs
-- src/components/ArchiveRefresh.tsx
-- src/components/ItemMaterial.tsx
-- src/components/ItemNotes.tsx
-- src/components/LessonNotes.tsx
-- src/components/ReferenceEditor.tsx
-- src/components/direction.test.ts
-- src/domain/index.ts
-- src/domain/io.test.ts
-- src/domain/io.ts
-- src/domain/itemFiles.test.ts
-- src/domain/itemFiles.ts
-- src/domain/lessonAgenda.ts
-- src/domain/migrations.test.ts
-- src/domain/migrations.ts
-- src/domain/recordings.test.ts
-- src/domain/recordings.ts
-- src/domain/scanSetarClasses.test.ts
-- src/domain/seed.ts
-- src/domain/selectors.test.ts
-- src/domain/selectors.ts
-- src/domain/setarClasses.test.ts
-- src/domain/setarClasses.ts
-- src/domain/sourceArchive.ts
-- src/domain/sourceReconcile.test.ts
-- src/domain/sourceReconcile.ts
-- src/domain/types.ts
-- src/pages/ItemDetail.tsx
-- src/pages/Lessons.tsx
-- src/pages/Repertoire.tsx
-- src/pages/Settings.tsx
-- src/pages/StartBlock.tsx
-- src/store/archiveIndex.test.ts
-- src/store/archiveIndex.ts
-- src/store/useStore.ts
-- tests/fixtures/setar-archive.json
-- tests/fixtures/setar-legacy-v13.json
-- tests/lessonNotes.browser.test.ts
-- tests/practiceBrowser.ts
-- tests/setarArchive.browser.test.ts
-- tests/setarInbound.browser.test.ts
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, plus the
+findings that review recorded, plus the full current text of every file the
+rework touched — the same Check already bound to this head is not to be
+rerun wholesale.
+
+**Findings from the previous review:**
+
+- **Archive graph validation across all inbound doors** — P1: validateArchiveSources accepts malformed nested fields used by production readers. Rework complete persisted graph validation across all inbound doors; ac-15/ac-16, src/domain/sourceArchive.ts:590.
+  _counterexample:_ Set archiveSources[0].sessions[0].members[0].roles to null in an imported fixture database. validateDB accepts and preserves it; repeatChains then throws reading includes, crashing ItemMaterial. Reproduced against HEAD 781f1d40083d4e47a1c98202b5cf4fc13d888d8c.
+- **Legacy reference repair through the real refresh transaction** — P1: Reference repair helpers have no production caller. Wire repair and diagnostics into preview/commit while preserving authored rows; ac-12, src/domain/sourceReconcile.ts:447.
+  _counterexample:_ A uniquely adoptable legacy lesson with an obsolete path covered by the exact rename log is adopted by planArchiveImport/applyArchiveImport but retains the obsolete path. The named acceptance test calls repairLessonReferences directly, bypassing Refresh.
+- **Owner reconciliation choices from rendered controls through durable refresh** — P1: Skip is transient, Create separately for lessons is ignored, and metadata application is unreachable or skipped as Already current. Rework every choice through UI, commit, reload and repeat refresh; ac-6/ac-7/ac-11.
+  _counterexample:_ Skip an exact-title candidate, apply, JSON-round-trip and refresh: the question returns and suppressions are empty. With two exact legacy lesson candidates, create-lesson leaves the question unresolved. Metadata suggestions are never rendered; same-index apply-field decisions are discarded by useStore.ts:982.
+- **Published index content integrity and refresh identity** — P2: The decoder validates digest format but never agreement with content. Verify the scanner-defined digest at the shared reader boundary before using it as identity; ac-5, src/domain/sourceArchive.ts:287.
+  _counterexample:_ Change a fixture composer without changing contentHash. decodeSourceIndex accepts it. Against an already installed copy with that hash, the plan reports unchanged and commit returns Already current, ignoring changed facts. Fetch and file fallback share this decoder.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index 943254d..fb6f835 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -1652,6 +1652,19 @@ consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes
+ validates that index; a version newer than this build understands is REFUSED rather than
+ read leniently.
+ 
++**AND THE DECLARED DIGEST IS RECOMPUTED, NEVER TAKEN ON FAITH.** `contentHash` is not a
++checksum the app may skip past: it is the REFRESH IDENTITY. `planArchiveImport` compares it
++with the hash already accepted to conclude nothing has changed, so content altered under a
++RETAINED old hash was reported "Already current" and its changed facts silently ignored —
++a sealed review reproduced it by editing one composer. `parseSourceIndex` (now async)
++recomputes the SCANNER's own digest — SHA-256 over `canonicalStringify` of the body minus
++`contentHash` and `generatedAt`, byte-for-byte `scan-setar-classes.mjs`'s `contentHash` /
++`canonicalJson` — and refuses a mismatch. It is the ONE boundary the GitHub fetch and the
++file fallback both pass through, so neither door can be given the check separately and miss
++it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
++decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
++broken file reports the error the owner can act on rather than a hash mismatch.
++
+ **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
+ SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
+ COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
+@@ -1709,6 +1722,39 @@ a refresh ADDS to the database, it does not replace it, so the running clock, th
+ the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
+ the SAME database object, so it cannot bump the revision or churn a timestamp.
+ 
++**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND A SKIP IS PERSISTED.** A sealed
++review found three halves of this missing. SKIP lived only in the preview's own `decisions`
++argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
++the next refresh, asked the identical question again with nothing in the database to show it
++had ever been answered; `planArchiveImport` writes a `piece`/`session` suppression for it
++now, the same record every other deliberate removal writes, which a refresh, a reload and a
++sync all already respect (idempotent, so answering twice does not grow the list). CREATE
++SEPARATELY was honoured for an item and silently dropped for a LESSON, so two
++indistinguishable legacy classes re-asked for ever. And a decision taken against an
++ALREADY-CURRENT index — a skip, or one registry field applied — was reported "Already
++current" and thrown away unwritten, because `commitArchiveImport` judged it by
++`summary.unchanged`, which answers about the INDEX alone. The store asks
++`applyArchiveImport` itself now (it returns the SAME OBJECT when a plan changes nothing),
++so there is one source of truth for that question and it is the function that does the
++writing. `applyArchiveImport` counts a field decision only when the plan actually OFFERS
++that field, so both sides of the preview/commit boundary mean the same thing by "nothing to
++do". An OFFER is not a change: an unanswered suggestion writes nothing and says so.
++Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
++current value and the archive's proposal each resolving their own direction — and a decision
++is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
++dastgāh choice made a moment earlier. What is DURABLE here is the suppression a skip writes
++and the value an applied field writes — never the in-flight selection itself: an unpressed
++suggestion is component state, and it is re-derived from the graph on the next refresh
++precisely because nothing about it was stored.
++
++**AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
++decide what file a stored reference names, and they used to decide it differently:
++`hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
++`repairReferencePath` also understood a full URL under this device's verified base. So a
++class whose references were saved as full links carried perfectly good evidence that
++nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
++is that one reading, and both go through it.
++
+ **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
+ `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
+ alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
+@@ -1739,6 +1785,23 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
+ record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
+ its provenance is kept — not a dangling reference.
+ 
++**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
++`validateArchiveSources` used to state the shape separately, and the second stated LESS of
++it: it checked a resource's path and its part group and walked straight past
++`members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
++`folder` and `roster`, and the rename and diagnostic rows entirely. A sealed review set
++`members[0].roles` to `null` in an imported file: every door ACCEPTED and PERSISTED it, and
++the first production reader to touch it — `repeatChains`, doing `m.roles.includes(...)` —
++threw while rendering material. `planArchiveImport` had the identical exposure through
++`new Set([piece.key, ...piece.aliases])`. `checkSourceGraph` (`sourceArchive.ts`) is that
++grammar in ONE place; the decoder runs it over its own normalised output and
++`validateArchiveSources` runs it over every persisted source, so a reader may dereference
++any field the grammar admits and nothing else can reach the database. The fix is the
++GRAMMAR, never a defensive guard in a component: a reader written against a validated graph
++is the point of validating it. `unavailable` stays legal on a piece, a session and a
++resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
++silently widens a hide scoped to ONE item.
++
+ **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
+ ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
+ (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+@@ -1760,6 +1823,24 @@ query or fragment is left alone. Where an old and a current row now point at one
+ file, BOTH rows survive with their own titles and notes: deleting one deletes something the
+ owner wrote.
+ 
++**AND THE REFRESH ITSELF DOES IT — a helper with no production caller repairs nothing.**
++The rename log is published WITH the index, so the one moment the app can repair a stored
++path is the moment it accepts a new graph; a sealed review found a uniquely adoptable
++legacy class being adopted and left pointing at names the archive renamed years ago — bound
++and broken. `planArchiveImport` now runs `repairLessonReferences` in ONE pass over the
++lessons this archive OWNS: the ones this plan adopts and the ones already bound. A lesson
++the archive has no claim on is not something a refresh may rewrite. The pass produces the
++objects the plan SHOWS (`adoptedLessons`) and the ones it installs (`repairedLessons`), so a
++preview cannot display an old path while the commit writes a new one. `verifiedBase` is
++threaded from the device's own configured media base, so a stored full URL under it converts
++and everything else stays exactly as the owner saved it.
++A cycle, a rename whose destination is gone and an unsafe path become plan `attention`
++rows — but `not-described` does NOT (see `RepairReason`): the index deliberately describes
++only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
++own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
++renamed is outside what it knows, never evidence that the file is gone. Those three personal
++references are retained historical links, untouched and unflagged.
++
+ **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
+ (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
+ with the record it was typed for, "Saved." only after IndexedDB acknowledges, retry and copy
+diff --git a/DECISIONS.md b/DECISIONS.md
+index 782e2f2..5e9bb79 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -2,6 +2,43 @@
+ 
+ Durable record of non-obvious choices. Newest first.
+ 
++## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
++
++A sealed review rejected the first Setar-archive diff with four findings. Each was reported
++as one counterexample; each was really a FAMILY, and the fixes are family-shaped.
++
++- **The nested graph had two grammars.** `decodeSourceIndex` stated the shape of a session;
++  `validateArchiveSources` stated LESS of it and was the one every inbound door ran. So
++  `members[0].roles: null` was accepted, persisted, and thrown on by `repeatChains` while
++  rendering material — and `piece.aliases` had the identical exposure through
++  `planArchiveImport`'s own spread. `checkSourceGraph` is now that grammar in ONE place,
++  run by both callers. The alternative — guarding the reader — was rejected outright: a
++  reader written against a validated graph is the whole point of validating it, and a guard
++  in `ItemMaterial` would leave the invalid data on disk for the next reader.
++- **The reference repair had no production caller.** The 67-path mapping was proved against
++  the real rename log and then never wired in, so a uniquely adoptable legacy class was
++  adopted and left pointing at names the archive renamed. The repair runs inside
++  `planArchiveImport` now, in ONE pass whose output is both what the preview shows and what
++  the commit installs. Scope is the lessons the archive owns; `not-described` is deliberately
++  NOT reported, because the index omits 125 of 258 files by construction and "I have never
++  heard of this path" is not "this file is gone".
++- **Owner answers were transient.** Skip lived only in the preview's argument list; Create
++  separately was honoured for items and dropped for lessons; and any decision taken against
++  an already-current index was reported "Already current" and discarded. Skip writes a
++  suppression, the lesson branch exists, and `commitArchiveImport` asks `applyArchiveImport`
++  itself — which returns the same object when a plan changes nothing — instead of keeping a
++  second opinion about what "unchanged" means.
++- **The digest was format-checked, never verified.** `contentHash` is the refresh IDENTITY,
++  so altered content under a retained hash was reported unchanged and its facts ignored.
++  `parseSourceIndex` recomputes the scanner's own digest at the one boundary both readers
++  share. It is async because the platform's SHA-256 is; a hand-rolled synchronous one to
++  avoid two `await`s would be a second implementation of a primitive the app already has.
++
++Each fix was mutation-checked: the roles check, the `create-lesson` branch, the suppression
++write and the digest comparison were each reverted in turn and confirmed to fail the named
++acceptance test — the suppression one failing specifically AFTER a reload, which is where
++the defect actually lived.
++
+ ## The archive describes; it never testifies (2026-09-17)
+ 
+ The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,
+diff --git a/src/components/ArchiveRefresh.tsx b/src/components/ArchiveRefresh.tsx
+index 303e0a8..cc8a7aa 100644
+--- a/src/components/ArchiveRefresh.tsx
++++ b/src/components/ArchiveRefresh.tsx
+@@ -8,6 +8,7 @@ import {
+   describeArchiveAccess,
+   archiveRootUrl,
+   type ImportPlan,
++  type MetadataField,
+   type ReconcileDecision,
+ } from '../domain';
+ 
+@@ -57,7 +58,12 @@ export default function ArchiveRefresh() {
+   const rootUrl = archiveRootUrl(getNasBaseUrl());
+ 
+   function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[]) {
+-    const { plan, rev } = preview({ index: fetched.index, instrumentId: chosen, decisions: nextDecisions });
++    const { plan, rev } = preview({
++      index: fetched.index,
++      instrumentId: chosen,
++      decisions: nextDecisions,
++      verifiedBase: rootUrl ?? undefined,
++    });
+     setPhase({ kind: 'preview', fetched, rev, plan });
+   }
+ 
+@@ -87,7 +93,13 @@ export default function ArchiveRefresh() {
+     if (phase.kind !== 'preview') return;
+     const { fetched, rev } = phase;
+     setPhase({ kind: 'working' });
+-    const result = await commit({ index: fetched.index, instrumentId: chosen, decisions, decidedFromRev: rev });
++    const result = await commit({
++      index: fetched.index,
++      instrumentId: chosen,
++      decisions,
++      verifiedBase: rootUrl ?? undefined,
++      decidedFromRev: rev,
++    });
+     if (!result.ok) {
+       if (result.status === 'stale') {
+         // Something changed underneath; look again rather than apply a plan
+@@ -230,6 +242,43 @@ export default function ArchiveRefresh() {
+             </div>
+           )}
+ 
++          {phase.plan.suggestions.length > 0 && (
++            <div className="stack-sm">
++              <div className="section-label">The archive knows more about these</div>
++              {/* A registry improvement to a piece the owner ALREADY has. It is
++                  offered field by field and applied only when asked — never
++                  written behind them, and never near their notebook. */}
++              {phase.plan.suggestions.map((sg) => {
++                const applied = decisions.some(
++                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
++                );
++                return (
++                  <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
++                    <div dir="auto" style={{ textAlign: 'start' }}>
++                      <strong>{sg.pieceKey}</strong>
++                      <div className="tiny faint">
++                        <span dir="ltr">{FIELD_LABELS[sg.field]}: </span>
++                        <span dir="auto">{sg.from || '—'}</span>
++                        <span dir="ltr"> → </span>
++                        <span dir="auto">{sg.to}</span>
++                      </div>
++                    </div>
++                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
++                      <button
++                        type="button"
++                        className="btn btn-sm"
++                        aria-pressed={applied}
++                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
++                      >
++                        {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
++                      </button>
++                    </div>
++                  </div>
++                );
++              })}
++            </div>
++          )}
++
+           <div className="row" style={{ gap: 8 }}>
+             <button type="button" className="btn btn-primary" onClick={() => void apply()}>
+               {phase.plan.summary.unchanged ? 'Already current' : 'Apply'}
+@@ -269,8 +318,8 @@ function Summary({ plan }: { plan: ImportPlan }) {
+           </button>
+           {open && (
+             <ul className="tiny faint stack-sm" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
+-              {plan.attention.map((d) => (
+-                <li key={d.path} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
++              {plan.attention.map((d, i) => (
++                <li key={`${d.path}-${i}`} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
+                   <span>{d.path}</span>
+                   <span dir="ltr">— {d.reason}</span>
+                 </li>
+@@ -284,9 +333,26 @@ function Summary({ plan }: { plan: ImportPlan }) {
+ }
+ 
+ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
++  // A FIELD decision is keyed by its field, not merely its piece: keyed by
++  // piece alone, choosing a composer evicted the dastgāh choice made a moment
++  // earlier, and either one evicted a Link/Skip answer about the same piece.
+   const key = (d: ReconcileDecision) =>
+-    'pieceKey' in d ? `piece:${d.pieceKey}` : 'sessionN' in d ? `session:${d.sessionN}` : '';
++    d.kind === 'apply-field'
++      ? `field:${d.pieceKey}:${d.field}`
++      : 'pieceKey' in d
++        ? `piece:${d.pieceKey}`
++        : 'sessionN' in d
++          ? `session:${d.sessionN}`
++          : '';
+   return key(a) === key(b) && key(a) !== '';
+ }
+ 
+ const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
++
++/** Plain names for the registry fields an improvement can touch. */
++const FIELD_LABELS: Record<MetadataField, string> = {
++  dastgahAvaz: 'dastgāh',
++  gusheh: 'gusheh',
++  form: 'form',
++  composer: 'composer',
++};
+diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
+index fabcede..7305f6d 100644
+--- a/src/components/direction.test.ts
++++ b/src/components/direction.test.ts
+@@ -144,6 +144,13 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
+  */
+ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
+   { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
++  // The metadata-suggestion row: the piece's own name groups with the change
++  // proposed for it, and the owner's CURRENT value and the archive's PROPOSED
++  // one each resolve from their own content — either may be Farsi or Latin,
++  // and neither follows from the other.
++  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
++  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
++  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
+   { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
+   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
+   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
+@@ -598,6 +605,10 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+   { file: 'components/ItemNotes.tsx', snippet: '<div className="small notes-read" dir="auto"' },
+   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.observation}</span>' },
+   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
++  // A registry improvement offered on Refresh: the value the owner has and the
++  // value the archive proposes are authored independently of each other.
++  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
++  { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
+   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
+   // Instrument names used to be tracked here too, one exact snippet per site.
+   // A sealed review found that shape structurally insufficient FOUR times
+diff --git a/src/domain/io.test.ts b/src/domain/io.test.ts
+index 9bd2bf7..3e3cfc2 100644
+--- a/src/domain/io.test.ts
++++ b/src/domain/io.test.ts
+@@ -6,7 +6,14 @@ import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
+ import { serializeExport, validateDB, parseImport } from './io';
+ import { migrateToCurrent } from './migrations';
+ import { createSeedDB } from './seed';
+-import { decodeSourceIndex } from './sourceArchive';
++import {
++  decodeSourceIndex,
++  membersForSession,
++  repeatChains,
++  resourceReference,
++  resourcesForPiece,
++  resourcesForSession,
++} from './sourceArchive';
+ import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
+ import { createBlock, createItem, createLesson } from './factories';
+ import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
+@@ -890,6 +897,115 @@ describe('the v14 source graph at the schema boundary', () => {
+       d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
+     }, /suppression of an unknown kind/);
+ 
++    // --- EVERY NESTED FIELD A PRODUCTION READER DEREFERENCES ----------------
++    // The validator used to check a resource's path and its part group and
++    // walk straight past the rest of the graph, so a malformed nested value
++    // was accepted, persisted, and then thrown on by the first reader to
++    // touch it. These are that whole family, not one counterexample: the
++    // roles list `repeatChains` calls `.includes` on, the alias list
++    // `planArchiveImport` spreads, the kind/title `resourceReference` reads,
++    // and the session fields `sessionsForPiece` and the material composition
++    // walk.
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { roles: unknown }).roles = null;
++    }, /unreadable role list/);
++    refuses((d) => {
++      d.archiveSources[0]!.sessions[0]!.members[0]!.roles = ['not-a-real-role'];
++    }, /unknown role/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { key: unknown }).key = null;
++    }, /claims an unknown piece/);
++    refuses((d) => {
++      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = null;
++    }, /unreadable alias list/);
++    refuses((d) => {
++      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = [1, 2];
++    }, /unreadable alias list/);
++    refuses((d) => {
++      (d.archiveSources[0]!.pieces[0] as unknown as { composer: unknown }).composer = { name: 'x' };
++    }, /unreadable composer/);
++    refuses((d) => {
++      (d.archiveSources[0]!.pieces[0] as unknown as { sessions: unknown }).sessions = ['13'];
++    }, /invalid session number/);
++    refuses((d) => {
++      (d.archiveSources[0]!.pieces[0] as unknown as { provisional: unknown }).provisional = 'yes';
++    }, /unreadable flag/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { kind: unknown }).kind = 'executable';
++    }, /unknown kind/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { role: unknown }).role = null;
++    }, /unknown role/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { title: unknown }).title = 42;
++    }, /unreadable title/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { pieces: unknown }).pieces = null;
++    }, /unreadable piece list/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { part: unknown }).part = '2';
++    }, /unreadable part number/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { size: unknown }).size = '10mb';
++    }, /unreadable size/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0] as unknown as { resources: unknown }).resources = null;
++    }, /no resource list/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0] as unknown as { members: unknown }).members = null;
++    }, /no membership list/);
++    refuses((d) => {
++      d.archiveSources[0]!.sessions[0]!.folder = '../elsewhere';
++    }, /unsafe folder path/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0] as unknown as { roster: unknown }).roster = null;
++    }, /unreadable roster/);
++    refuses((d) => {
++      d.archiveSources[0]!.sessions[0]!.roster = ['not-in-the-registry'];
++    }, /which it does not describe/);
++    refuses((d) => {
++      (d.archiveSources[0]!.sessions[0] as unknown as { rosterTrusted: unknown }).rosterTrusted = 'maybe';
++    }, /unreadable flag/);
++    refuses((d) => {
++      d.archiveSources[0]!.renames = [{ from: '../secret', to: 'x' }];
++    }, /rename with an unsafe path/);
++    refuses((d) => {
++      d.archiveSources[0]!.renames = [
++        { from: 'a/b.mp4', to: 'a/c.mp4' },
++        { from: 'a/b.mp4', to: 'a/d.mp4' },
++      ];
++    }, /more than one destination/);
++    refuses((d) => {
++      (d.archiveSources[0] as unknown as { diagnostics: unknown }).diagnostics = [{ path: 'x' }];
++    }, /unreadable diagnostic entry/);
++    refuses((d) => {
++      (d.archiveSources[0]!.suppressions as unknown[]) = [
++        { kind: 'resource', ref: 'x', itemId: 42, at: '2026-01-01T00:00:00.000Z' },
++      ];
++    }, /suppression with an unreadable item/);
++    refuses((d) => {
++      (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
++    }, /suppression with no timestamp/);
++
++    // The POSITIVE half: a graph this door ACCEPTS is one every production
++    // reader can walk without throwing. The counterexample above reached
++    // `repeatChains` and crashed the material list; this asserts the whole
++    // reader surface over the whole accepted graph, not one call.
++    const accepted = validateDB(graphed);
++    const live = accepted.archiveSources[0]!;
++    for (const piece of live.pieces) {
++      expect(Array.isArray(repeatChains(live, piece.key))).toBe(true);
++      expect(Array.isArray(resourcesForPiece(live, piece.key))).toBe(true);
++      for (const r of resourcesForPiece(live, piece.key)) {
++        expect(typeof resourceReference(live.id, r).title).toBe('string');
++      }
++      expect([...new Set([piece.key, ...piece.aliases])].length).toBeGreaterThan(0);
++    }
++    for (const sess of live.sessions) {
++      expect(Array.isArray(membersForSession(live, sess.n))).toBe(true);
++      expect(Array.isArray(resourcesForSession(live, sess.n))).toBe(true);
++    }
++
+     // Bindings: dangling, duplicated, or on the wrong instrument.
+     refuses((d) => {
+       d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'setar-classes', pieceKey: 'not-in-the-registry' };
+diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
+index 7f54487..afe9b20 100644
+--- a/src/domain/sourceArchive.ts
++++ b/src/domain/sourceArchive.ts
+@@ -1,4 +1,5 @@
+ import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
++import { canonicalStringify, sha256Hex } from './canonical';
+ 
+ // ---------------------------------------------------------------------------
+ // The Setar class archive as the APP sees it.
+@@ -399,6 +400,12 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+     });
+   }
+ 
++  // The decoder's own normalisation, held to the SAME grammar the persisted
++  // graph is held to. Every field below has just been built here, so this can
++  // only fail if the two ever drift — which is exactly what it exists to stop.
++  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
++  if (bad) throw new Error(bad);
++
+   return {
+     format: INDEX_FORMAT,
+     version: INDEX_VERSION,
+@@ -411,8 +418,39 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+   };
+ }
+ 
+-/** Parse and decode published index TEXT, refusing anything oversized. */
+-export function parseSourceIndex(text: string): SourceIndex {
++/**
++ * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
++ * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
++ * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
++ * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
++ * that serialisation for JSON-derived data.
++ */
++async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
++  const body = { ...parsed };
++  delete body.contentHash;
++  delete body.generatedAt;
++  return sha256Hex(canonicalStringify(body));
++}
++
++/**
++ * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
++ *
++ * `contentHash` is not a checksum the app may take on faith — it is the
++ * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
++ * accepted to decide that nothing has changed, so content altered in transit
++ * (or in the repository) under a retained old hash would be reported "Already
++ * current" and the changed facts silently ignored. Recomputing it here, at the
++ * ONE boundary both the GitHub fetch and the file fallback pass through, makes
++ * that fail closed instead.
++ *
++ * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
++ * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
++ * that build an index object in memory call it directly and have no transport.
++ *
++ * Order matters: size → parse → structure → digest, so a structurally broken
++ * file reports the error the owner can act on rather than a hash mismatch.
++ */
++export async function parseSourceIndex(text: string): Promise<SourceIndex> {
+   if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
+   let parsed: unknown;
+   try {
+@@ -420,7 +458,14 @@ export function parseSourceIndex(text: string): SourceIndex {
+   } catch {
+     throw new Error('That file is not valid JSON.');
+   }
+-  return decodeSourceIndex(parsed);
++  const index = decodeSourceIndex(parsed);
++  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
++  if (actual !== index.contentHash) {
++    throw new Error(
++      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
++    );
++  }
++  return index;
+ }
+ 
+ // --- what counts as an UPCOMING class ---------------------------------------
+@@ -530,6 +575,146 @@ export function resourceReference(archiveId: string, r: SourceResource, date?: I
+   };
+ }
+ 
++// --- the graph's own grammar, in ONE place ---------------------------------
++
++/**
++ * THE grammar of a source graph — every nested field, one definition.
++ *
++ * `decodeSourceIndex` and `validateArchiveSources` used to state this
++ * separately, and the second stated LESS of it: it checked a resource's path
++ * and its part group and then walked straight past `members[].roles`,
++ * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
++ * `folder` and `roster`, and the rename and diagnostic rows entirely. A
++ * database carrying `members[0].roles: null` was therefore accepted and
++ * PERSISTED by every inbound door, and the first production reader to touch it
++ * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
++ * material. `planArchiveImport` had the same exposure through
++ * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
++ *
++ * Both callers run THIS function now, so the decoder and the persisted-graph
++ * validator cannot drift apart again: a reader may dereference any field this
++ * grammar admits, and nothing else can reach the database.
++ *
++ * `unavailable` stays legal on a piece, a session and a resource — a file gone
++ * from the NAS with its provenance kept is a VALID state, not a broken graph.
++ */
++function checkSourceGraph(
++  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
++  label: string,
++): string | null {
++  const text = (v: unknown) => typeof v === 'string';
++  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
++  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
++
++  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
++  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
++
++  const keys = new Set<string>();
++  for (const raw of graph.pieces) {
++    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
++    const p = raw as Partial<SourcePiece>;
++    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
++    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
++    keys.add(p.key);
++    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
++      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
++    }
++    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
++    // that is not a list of text takes the whole refresh down with a TypeError.
++    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
++    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
++      return `Piece "${p.key}" has an invalid session number.`;
++    }
++    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
++      return `Piece "${p.key}" has an unreadable flag.`;
++    }
++  }
++
++  const ns = new Set<number>();
++  const paths = new Set<string>();
++  for (const raw of graph.sessions) {
++    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
++    const sess = raw as Partial<SourceSession>;
++    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
++      return `${label} has a session with no number.`;
++    }
++    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
++    ns.add(sess.n);
++    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
++    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
++    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
++    for (const k of sess.roster as string[]) {
++      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
++    }
++    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
++      return `${label} session ${sess.n} has an unreadable flag.`;
++    }
++
++    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
++    for (const rawRes of sess.resources) {
++      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
++      const r = rawRes as Partial<SourceResource>;
++      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
++      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
++      paths.add(r.path);
++      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
++      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
++      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
++      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
++        return `Resource "${r.path}" has an unreadable part number.`;
++      }
++      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
++      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
++      for (const k of r.pieces as string[]) {
++        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
++      }
++      // A demonstration's parts form ONE group; anything but a plain label
++      // here would let a part claim membership of an arbitrary structure.
++      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
++        return `Resource "${r.path}" has an invalid part group.`;
++      }
++      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
++    }
++
++    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
++    for (const rawMember of sess.members) {
++      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
++      const m = rawMember as Partial<SourceMember>;
++      if (typeof m.key !== 'string' || !keys.has(m.key)) {
++        return `${label} session ${sess.n} claims an unknown piece.`;
++      }
++      // `repeatChains` reads `roles.includes(...)` on every one of these.
++      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
++      for (const role of m.roles as string[]) {
++        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
++      }
++    }
++  }
++
++  if (graph.renames !== undefined) {
++    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
++    const froms = new Set<string>();
++    for (const rawRename of graph.renames) {
++      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
++      const r = rawRename as Partial<SourceRename>;
++      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
++      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
++      froms.add(r.from);
++    }
++  }
++
++  if (graph.diagnostics !== undefined) {
++    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
++    for (const rawDiag of graph.diagnostics) {
++      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
++      const d = rawDiag as Partial<SourceDiagnostic>;
++      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
++    }
++  }
++
++  return null;
++}
++
+ // --- inbound validation (C7) -----------------------------------------------
+ 
+ /**
+@@ -559,43 +744,22 @@ export function validateArchiveSources(db: PracticeDB): string | null {
+     if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
+     if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
+ 
+-    const keys = new Set<string>();
+-    for (const p of s.pieces) {
+-      if (typeof p?.key !== 'string' || !p.key) return `Archive source "${s.id}" has a piece with no canonical key.`;
+-      if (keys.has(p.key)) return `Archive source "${s.id}" has two pieces keyed "${p.key}".`;
+-      keys.add(p.key);
+-    }
+-    const ns = new Set<number>();
+-    const paths = new Set<string>();
+-    for (const sess of s.sessions) {
+-      if (typeof sess?.n !== 'number' || !Number.isInteger(sess.n)) {
+-        return `Archive source "${s.id}" has a session with no number.`;
+-      }
+-      if (ns.has(sess.n)) return `Archive source "${s.id}" has two entries for session ${sess.n}.`;
+-      ns.add(sess.n);
+-      if (!isValidSourceDate(sess.date)) return `Archive source "${s.id}" session ${sess.n} has an unreadable date.`;
+-      for (const r of sess.resources ?? []) {
+-        if (!isSafeSourcePath(r?.path)) return `Archive source "${s.id}" has an unsafe resource path.`;
+-        if (paths.has(r.path)) return `Archive source "${s.id}" lists "${r.path}" twice.`;
+-        paths.add(r.path);
+-        for (const k of r.pieces ?? []) {
+-          if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
+-        }
+-        // A demonstration's parts form ONE group; anything but a plain label
+-        // here would let a part claim membership of an arbitrary structure.
+-        if (r.group !== null && r.group !== undefined && typeof r.group !== 'string') {
+-          return `Resource "${r.path}" has an invalid part group.`;
+-        }
+-      }
+-      for (const m of sess.members ?? []) {
+-        if (!keys.has(m?.key)) return `Archive source "${s.id}" session ${sess.n} claims an unknown piece.`;
+-      }
+-    }
++    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
++    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
++    if (bad) return bad;
++
+     for (const sup of s.suppressions) {
+       if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
+         return `Archive source "${s.id}" has a suppression of an unknown kind.`;
+       }
+       if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
++      // An owner decision carries the id it was scoped to and the moment it
++      // was taken; both are read back — a resource hidden on ONE item is
++      // decided by comparing `itemId`, so a non-string silently widens it.
++      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
++        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
++      }
++      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
+     }
+   }
+ 
+diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
+index 8f54d54..baa2040 100644
+--- a/src/domain/sourceReconcile.test.ts
++++ b/src/domain/sourceReconcile.test.ts
+@@ -15,6 +15,7 @@ import {
+   toArchiveRelative,
+   withSuppression,
+ } from './sourceReconcile';
++import { archiveRootUrl } from './recordings';
+ import { emptyDB } from './seed';
+ import { LEGACY_SEED_PATHS } from './setarClasses';
+ import { createItem, createLesson } from './factories';
+@@ -195,6 +196,63 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+     expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
+ 
++    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
++    // It used to live only in the preview's own `decisions` argument, so "no,
++    // not this one" survived exactly as long as the screen did: a reload, or
++    // simply the next refresh, asked the identical question again with nothing
++    // in the database to show it had ever been answered.
++    const skipDb = baseDB({ items: [sameTitle] });
++    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
++    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
++    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
++    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
++    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
++    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
++    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
++    expect(validateArchiveSources(afterSkip)).toBeNull();
++    // ...and it survives the persisted shape. A LATER refresh, carrying no
++    // decisions at all, neither asks nor re-creates.
++    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
++    const afterReload = plan(reloaded);
++    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
++    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
++    expect(afterReload.summary.unchanged).toBe(true);
++    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
++    // Skipping the same thing twice does not grow the list either.
++    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
++    expect(skipTwice.source.suppressions).toHaveLength(1);
++    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
++
++    // The same holds for a CLASS the owner skips.
++    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
++    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
++    expect(lessonSkipped.newLessons).toHaveLength(38);
++    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
++    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
++    expect(plan(lessonReloaded).newLessons).toEqual([]);
++    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
++
++    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
++    // Two indistinguishable candidates; the owner says neither of them is this
++    // session. The decision used to be dropped on the floor for lessons — the
++    // item side had it from the start — and the question came back for ever.
++    const twinDb = baseDB({ lessons: [evidence, twin] });
++    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
++    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
++    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
++    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
++    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
++    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
++    // Three records for that day now: the archive's own, and BOTH of the
++    // owner's, each keeping its id, its notes and its unbound status.
++    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
++    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
++    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
++    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
++    expect(validateArchiveSources(afterCreate)).toBeNull();
++    // ...and the binding it did create is the archive's own deterministic one.
++    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
++
+     // --- the source/instrument binding is explicit and validated -----------
+     expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
+     expect(after.archiveSources[0]!.id).toBe('setar-classes');
+@@ -295,6 +353,37 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(same.summary.unchanged).toBe(true);
+     expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
+ 
++    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
++    // The suggestion stands until it is answered, and it may be answered days
++    // later against the very same published index. Judging "already current"
++    // by the index hash alone reported exactly that and discarded the answer.
++    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
++    const lateDecision = planArchiveImport({
++      db: refreshed,
++      index: next,
++      instrumentId: SETAR,
++      decisions: lateField,
++      now: NOW,
++    });
++    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
++    expect(lateDecision.summary.unchanged).toBe(false);
++    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
++    expect(lateApplied).not.toBe(refreshed);
++    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
++    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
++    // Only that field: the notebook, the title and the status are the owner's.
++    expect(lateItem.notes).toBe('my notes');
++    expect(lateItem.title).toBe('My own title');
++    expect(lateItem.status).toBe('usable');
++    expect(lateApplied.blocks).toEqual(refreshed.blocks);
++    // Applied, the suggestion is gone: the next refresh has nothing to offer.
++    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
++    // A decision for a field with NO suggestion changes nothing at all.
++    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
++    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
++    expect(noop.summary.unchanged).toBe(true);
++    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
++
+     // --- a missing FILE keeps its provenance, flagged ----------------------
+     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
+     const shrunk: SourceIndex = {
+@@ -528,6 +617,156 @@ describe('reconciling the archive with the owner’s own records', () => {
+     // The archive never offers a personal recording as material for a piece.
+     const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
+     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
++
++    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
++    // The helper above proves the mapping. THIS proves the production journey:
++    // the rename log arrives WITH the index, so the one moment the app can
++    // repair a stored path is the moment it accepts a new graph — and a lesson
++    // adopted with its own references still pointing at names the archive
++    // renamed is half a job, bound and broken.
++    const ownPersonal = lesson({
++      id: 'L25',
++      date: '2025-08-05',
++      number: 25,
++      recordings: [
++        {
++          id: 'mine-1',
++          title: 'My take, August',
++          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
++          kind: 'video',
++          notes: 'Slow but even.',
++          createdAt: '2025-08-06T00:00:00.000Z',
++        },
++      ],
++    });
++    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
++    const refresh = plan(legacyDb);
++    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
++    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
++    // The PLAN already shows the repaired paths, so the preview and the commit
++    // cannot disagree about what is about to be written.
++    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
++    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
++    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
++
++    const installedLegacy = applyArchiveImport(legacyDb, refresh);
++    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
++    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
++    // BOTH rows of each collision survive, with everything the owner wrote.
++    expect(storedOne.recordings).toHaveLength(4);
++    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
++    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
++    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
++    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
++    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
++    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
++    expect(validateArchiveSources(installedLegacy)).toBeNull();
++
++    // The owner's own practice takes are RETAINED, untouched — and never
++    // reported missing. The index describes only material scoped to pieces and
++    // classes, so a path it does not name is outside what it knows, never
++    // evidence that the file is gone.
++    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
++    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
++    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
++    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
++
++    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
++    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
++    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
++    // literal: a trailing-slash or prefix mismatch between the two would fail
++    // silently, leaving the link exactly as it was with nothing to show why.
++    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
++    const absolute = lesson({
++      id: 'L-abs',
++      date: '2023-09-26',
++      number: 1,
++      recordings: [
++        {
++          id: 'abs-1',
++          title: 'Class 1, saved as a full link',
++          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
++          kind: 'video',
++          notes: 'Typed in from the browser bar.',
++          createdAt: '2023-09-27T00:00:00.000Z',
++        },
++        {
++          id: 'foreign',
++          title: 'Somewhere else entirely',
++          path: 'https://elsewhere.example/x.mp4',
++          kind: 'video',
++          createdAt: '2023-09-27T00:00:00.000Z',
++        },
++      ],
++    });
++    const absDb = baseDB({ lessons: [absolute] });
++    const urlRepaired = applyArchiveImport(
++      absDb,
++      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
++    );
++    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
++    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
++    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
++    // A link to somewhere else is not this archive's to rewrite.
++    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
++    // WITHOUT a base, nothing is converted and nothing is mangled.
++    const noBase = applyArchiveImport(absDb, plan(absDb));
++    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
++    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
++    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
++
++    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
++    const again = plan(installedLegacy);
++    expect(again.repairedLessons).toEqual([]);
++    expect(again.summary.unchanged).toBe(true);
++    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
++
++    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
++    // The archive moves a file the owner's bound class already points at. The
++    // next refresh follows the log; the row, its title and its notes stay.
++    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
++    const moved: SourceIndex = {
++      ...INDEX,
++      contentHash: '9'.repeat(64),
++      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
++      sessions: INDEX.sessions.map((sess) =>
++        sess.n === 1
++          ? {
++              ...sess,
++              resources: sess.resources.map((r) =>
++                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
++              ),
++            }
++          : sess,
++      ),
++    };
++    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
++    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
++    const afterMove = applyArchiveImport(installedLegacy, later);
++    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
++    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
++    expect(movedRows.get('old-video')!.path).toBe(movedTo);
++    expect(movedRows.get('current-video')!.path).toBe(movedTo);
++    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
++    // The score, which did not move, is exactly as it was.
++    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
++    // Nothing about practice moved with it.
++    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
++    expect(validateArchiveSources(afterMove)).toBeNull();
++
++    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
++    // A rename whose destination the archive no longer has: the stored path is
++    // left exactly as it is, and the owner is told which file and why.
++    const dangling: SourceIndex = {
++      ...INDEX,
++      contentHash: '8'.repeat(64),
++      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
++    };
++    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
++    expect(broken.repairedLessons).toEqual([]);
++    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
++    const afterBroken = applyArchiveImport(installedLegacy, broken);
++    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+   });
+ });
+ 
+diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
+index 067e2b5..4b1d659 100644
+Binary files a/src/domain/sourceReconcile.ts and b/src/domain/sourceReconcile.ts differ
+diff --git a/src/store/archiveIndex.test.ts b/src/store/archiveIndex.test.ts
+index a1c184e..c80d5d7 100644
+--- a/src/store/archiveIndex.test.ts
++++ b/src/store/archiveIndex.test.ts
+@@ -1,6 +1,9 @@
+ import { describe, expect, it, vi } from 'vitest';
+ // @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
+ import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
++// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
++// against the real producer rather than a restatement of it in the test.
++import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
+ import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
+ import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+ import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+@@ -319,11 +322,69 @@ describe('publishing and reading the source index', () => {
+     expect(everything).not.toContain('/Volumes/');
+ 
+     // The file-import fallback goes through the SAME decoder.
+-    expect(readIndexFile(rival).ok).toBe(true);
+-    const badFile = readIndexFile('{"format":"setar-archive-index","version":99}');
++    expect((await readIndexFile(rival)).ok).toBe(true);
++    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
+     expect(badFile.ok).toBe(false);
+     if (badFile.ok) throw new Error('expected refusal');
+     expect(badFile.error).toMatch(/newer scanner/);
++
++    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
++    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
++    // against the hash already accepted to conclude that nothing has changed.
++    // So content altered under a RETAINED old hash would be reported "Already
++    // current" and its changed facts silently ignored. Both doors recompute
++    // the scanner's own digest and fail closed.
++    const original = JSON.parse(rival) as typeof indexFixture;
++    const altered = {
++      ...original,
++      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
++    };
++    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
++    expect(altered.contentHash).toBe(original.contentHash);
++    const alteredText = JSON.stringify(altered);
++    const tampered = await readIndexFile(alteredText);
++    expect(tampered.ok).toBe(false);
++    if (tampered.ok) throw new Error('expected refusal');
++    expect(tampered.error).toMatch(/does not match its own content hash/);
++
++    // The GitHub door refuses the identical bytes, through the same boundary.
++    const tamperedFetch = async (url: string | URL | Request) => {
++      const href = String(url);
++      if (href.includes('/git/ref/heads/')) {
++        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
++      }
++      return new Response(
++        JSON.stringify({
++          content: Buffer.from(alteredText, 'utf8').toString('base64'),
++          encoding: 'base64',
++          size: alteredText.length,
++        }),
++        { status: 200 },
++      );
++    };
++    const fetchedTampered = await fetchPublishedIndex({
++      repo: 'owner/data',
++      token: 'device-token',
++      fetchImpl: tamperedFetch as typeof fetch,
++    });
++    expect(fetchedTampered.ok).toBe(false);
++    if (fetchedTampered.ok) throw new Error('expected refusal');
++    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
++
++    // Re-scanned content — a NEW digest for the new facts — is accepted, so
++    // this is an integrity gate and not a freeze on the archive ever changing.
++    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
++    expect(rescanned.ok).toBe(true);
++    if (!rescanned.ok) throw new Error(rescanned.error);
++    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
++    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
++
++    // A STRUCTURALLY broken file still reports the structural error rather
++    // than a hash mismatch: the owner can act on the first, never the second.
++    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
++    expect(brokenStructure.ok).toBe(false);
++    if (brokenStructure.ok) throw new Error('expected refusal');
++    expect(brokenStructure.error).toMatch(/no sessions/);
+   });
+ });
+ 
+@@ -479,6 +540,84 @@ describe('committing an archive import', () => {
+     expect(refusedGraph.status).toBe('refused');
+     expect(useStore.getState().db.archiveSources).toEqual([]);
+ 
++    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
++    // The whole lifecycle, not the helper: a rendered choice becomes a
++    // decision, the commit persists it, a real rehydration reads it back, and
++    // the NEXT refresh — carrying no decisions at all — honours it.
++    loadOwnerData();
++    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
++    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
++    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
++    const skipped = await useStore.getState().commitArchiveImport({
++      index: INDEX,
++      instrumentId: SETAR,
++      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
++      decidedFromRev: asked.rev,
++      now: NOW,
++    });
++    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
++
++    // Reload: the bytes actually on disk, back through the app's hydration.
++    const skipDisk = fakeStorage.get()!;
++    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
++    fakeStorage.set(skipDisk);
++    await useStore.persist.rehydrate();
++    const reloadedSource = useStore.getState().db.archiveSources[0]!;
++    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
++    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
++    // The owner's own record is untouched and still theirs.
++    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
++
++    // The NEXT refresh asks nothing and writes nothing.
++    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
++    expect(afterReload.plan.questions).toEqual([]);
++    const quiet = await commit(afterReload.rev);
++    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
++    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
++
++    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
++    // The index has not moved; the owner has only just answered. Judging
++    // "Already current" by the index hash alone reported exactly that and
++    // dropped the answer before it could ever be written.
++    const boundWithComposer = useStore
++      .getState()
++      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
++    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
++    const composer = boundWithComposer.persian!.composer!;
++    const pieceKey = boundWithComposer.source!.pieceKey;
++    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
++    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
++    // An OFFER is not a change: unanswered, this refresh genuinely writes
++    // nothing, and says so. The owner's DECISION is what makes it a write.
++    expect(offered.plan.summary.unchanged).toBe(true);
++    const answered2 = useStore.getState().previewArchiveImport({
++      index: INDEX,
++      instrumentId: SETAR,
++      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
++      now: NOW,
++    });
++    expect(answered2.plan.summary.unchanged).toBe(false);
++    // Left unanswered, the same refresh really is a no-op.
++    const declined = await commit(useStore.getState().rev);
++    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
++    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
++    // Answered, it is applied — and acknowledged by storage.
++    const appliedField = await useStore.getState().commitArchiveImport({
++      index: INDEX,
++      instrumentId: SETAR,
++      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
++      decidedFromRev: useStore.getState().rev,
++      now: NOW,
++    });
++    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
++    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
++    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
++    // Nothing else moved with it.
++    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
++      boundWithComposer.title,
++    );
++    expect(useStore.getState().db.blocks).toHaveLength(1);
++
+     // --- refresh NEVER runs a whole-database import or reset ---------------
+     // `importDB`, `resetDemo` and `clearAll` each null the active session and
+     // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
+diff --git a/src/store/archiveIndex.ts b/src/store/archiveIndex.ts
+index 2ea5eb1..6789442 100644
+--- a/src/store/archiveIndex.ts
++++ b/src/store/archiveIndex.ts
+@@ -98,7 +98,7 @@ export async function fetchPublishedIndex(
+   try {
+     return {
+       ok: true,
+-      value: { index: parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
++      value: { index: await parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
+     };
+   } catch (e) {
+     return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
+@@ -109,9 +109,9 @@ export async function fetchPublishedIndex(
+  * The file-import fallback. The SAME decoder, so a hand-copied index is held to
+  * exactly the rules a fetched one is.
+  */
+-export function readIndexFile(text: string, now: Date = new Date()): IndexFetchResult {
++export async function readIndexFile(text: string, now: Date = new Date()): Promise<IndexFetchResult> {
+   try {
+-    return { ok: true, value: { index: parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
++    return { ok: true, value: { index: await parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
+   } catch (e) {
+     return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
+   }
+diff --git a/src/store/useStore.ts b/src/store/useStore.ts
+index ecd581e..ffe4752 100644
+--- a/src/store/useStore.ts
++++ b/src/store/useStore.ts
+@@ -370,6 +370,8 @@ interface StoreState {
+     index: SourceIndex;
+     instrumentId: ID;
+     decisions?: ReconcileDecision[];
++    /** This device's own media base, for converting a stored full URL. */
++    verifiedBase?: string;
+     now?: Date;
+   }) => { plan: ImportPlan; rev: number };
+   /** Apply a previewed plan in ONE mutation, and wait for IndexedDB to say so. */
+@@ -377,6 +379,7 @@ interface StoreState {
+     index: SourceIndex;
+     instrumentId: ID;
+     decisions?: ReconcileDecision[];
++    verifiedBase?: string;
+     decidedFromRev: number;
+     now?: Date;
+   }) => Promise<ArchiveCommitResult>;
+@@ -954,14 +957,17 @@ export const useStore = create<StoreState>()(
+         }));
+       },
+ 
+-      previewArchiveImport: ({ index, instrumentId, decisions, now }) => {
++      previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
+         // ONE statement, so the plan and the revision it was decided against
+         // cannot drift apart across an await that does not exist yet.
+         const { db, rev } = get();
+-        return { plan: planArchiveImport({ db, index, instrumentId, decisions, now: now ?? new Date() }), rev };
++        return {
++          plan: planArchiveImport({ db, index, instrumentId, decisions, verifiedBase, now: now ?? new Date() }),
++          rev,
++        };
+       },
+ 
+-      commitArchiveImport: async ({ index, instrumentId, decisions = [], decidedFromRev, now }) => {
++      commitArchiveImport: async ({ index, instrumentId, decisions = [], verifiedBase, decidedFromRev, now }) => {
+         const at = now ?? new Date();
+         // REBASE, never overwrite. A block finished, a note saved or an item
+         // deleted while the index was being fetched has bumped `rev`; the plan
+@@ -970,7 +976,7 @@ export const useStore = create<StoreState>()(
+         // decide on the owner's behalf — it goes back for another look.
+         const before = get();
+         const rebased = before.rev !== decidedFromRev;
+-        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, now: at });
++        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
+         if (rebased && plan.questions.length > 0) {
+           return {
+             ok: false,
+@@ -979,13 +985,21 @@ export const useStore = create<StoreState>()(
+           };
+         }
+ 
+-        const nothingToDo = plan.summary.unchanged && !archivePersistFailed;
+-        if (nothingToDo) return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
++        // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
++        // It returns the SAME OBJECT when a plan changes nothing, so asking it
++        // is one source of truth for the question. The summary's own
++        // `unchanged` was a second, and it answered about the INDEX alone: an
++        // owner decision taken against an already-current index — skipping a
++        // candidate, applying one registry field, a path the rename log moved —
++        // was reported "Already current" and thrown away unwritten.
++        const proposed = applyArchiveImport(before.db, plan, decisions);
++        if (proposed === before.db && !archivePersistFailed) {
++          return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
++        }
+ 
+         // VALIDATE THE WHOLE PROPOSED DATABASE BEFORE INSTALLING ANY OF IT —
+         // the same function every inbound door runs. A graph this device would
+         // refuse to import is a graph it must not write.
+-        const proposed = applyArchiveImport(before.db, plan, decisions);
+         try {
+           validateDB(proposed);
+         } catch (e) {
+diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
+index bc29586..bb4f97a 100644
+--- a/tests/practiceBrowser.ts
++++ b/tests/practiceBrowser.ts
+@@ -344,6 +344,37 @@ export function publishRemote(remote: FakeRemote, stateText: string, hash: strin
+   if (!remote.refs.includes('main')) remote.refs.push('main');
+ }
+ 
++/**
++ * Re-stamp an index with the digest the SCANNER would have written for it.
++ *
++ * The app recomputes this digest at its reader boundary and refuses an index
++ * whose content and hash disagree, so a journey that edits a fixture index must
++ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
++ * ONE implementation, here beside `publishSourceIndex`, so no journey can
++ * quietly hand-edit a hash instead.
++ */
++export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
++  const body = { ...index };
++  delete body.contentHash;
++  delete body.generatedAt;
++  const sorted = (value: unknown): unknown => {
++    if (Array.isArray(value)) return value.map(sorted);
++    if (value && typeof value === 'object') {
++      const out: Record<string, unknown> = {};
++      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
++        const v = (value as Record<string, unknown>)[k];
++        if (v !== undefined) out[k] = sorted(v);
++      }
++      return out;
++    }
++    return value;
++  };
++  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
++  const digest = await crypto.subtle.digest('SHA-256', bytes);
++  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
++  return JSON.stringify({ ...index, contentHash });
++}
++
+ /** Put a source index on the source-index branch, as the NAS publisher would. */
+ export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
+   remote.sourceIndex = { text, commit };
+diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
+index a15befe..273ec33 100644
+--- a/tests/setarArchive.browser.test.ts
++++ b/tests/setarArchive.browser.test.ts
+@@ -11,6 +11,7 @@ import {
+   persistedUntil,
+   publishSourceIndex,
+   readPersistedState,
++  stampSourceIndex,
+   reload,
+   type Engine,
+   type PracticeApp,
+@@ -33,7 +34,13 @@ const PHONE = { width: 390, height: 844 };
+ const DESKTOP = { width: 1280, height: 900 };
+ 
+ interface Db {
+-  items: { id: string; title: string; status: string; source?: { pieceKey: string } }[];
++  items: {
++    id: string;
++    title: string;
++    status: string;
++    persian?: { composer?: string };
++    source?: { pieceKey: string };
++  }[];
+   lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
+   blocks: unknown[];
+   archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
+@@ -60,12 +67,18 @@ async function refresh(app: PracticeApp) {
+   await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
+ }
+ 
+-/** An index with one more class than the corpus — the delta a refresh applies. */
+-function withSession40(text: string): string {
++/**
++ * An index with one more class than the corpus — the delta a refresh applies.
++ *
++ * Re-STAMPED with the digest the scanner itself would have written: the app
++ * recomputes that digest and refuses an index whose content and hash disagree,
++ * so a journey may not hand-edit a hash to fake a new scan.
++ */
++async function withSession40(text: string): Promise<string> {
+   const index = JSON.parse(text) as {
+     contentHash: string;
+     sessions: unknown[];
+-    pieces: { key: string }[];
++    pieces: { key: string; composer: string }[];
+   };
+   index.sessions = [
+     ...index.sessions,
+@@ -90,8 +103,22 @@ function withSession40(text: string): string {
+       members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
+     },
+   ];
+-  index.contentHash = index.contentHash.replace(/^../, 'ff');
+-  return JSON.stringify(index);
++  return stampSourceIndex(index as unknown as Record<string, unknown>);
++}
++
++/** The composer this journey's re-scanned registry proposes for one piece. */
++const NEW_COMPOSER = 'میرزا-عبدالله';
++
++/**
++ * A re-scanned index whose REGISTRY has improved: one piece the owner already
++ * has now names a different composer. That is a suggestion, never a write.
++ */
++async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
++  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
++  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
++  const was = target.composer;
++  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
++  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
+ }
+ 
+ describe('the Setar archive, rendered', () => {
+@@ -223,7 +250,7 @@ describe('the Setar archive, rendered', () => {
+           await page.getByRole('button', { name: 'Already current' }).click();
+           await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
+ 
+-          publishSourceIndex(remote, withSession40(INDEX_TEXT), 'source-index-commit-2');
++          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
+           await refresh(app);
+           expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
+           await page.getByRole('button', { name: 'Apply' }).click();
+@@ -235,6 +262,55 @@ describe('the Setar archive, rendered', () => {
+           );
+           expect(delta.items.filter((i) => i.source)).toHaveLength(94);
+ 
++          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
++          // The registry improves. That is an OFFER, field by field: nothing
++          // about the owner's own piece changes until they say so, and the
++          // choice must survive the commit even when the index behind it is
++          // already the one installed.
++          const better = await withBetterComposer(INDEX_TEXT);
++          publishSourceIndex(remote, better.text, 'source-index-commit-4');
++          await refresh(app);
++          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
++          await offerRow.first().waitFor({ timeout: 20_000 });
++          const offerText = await page.locator('main').innerText();
++          // The section label is rendered uppercase by the stylesheet, and
++          // innerText returns what is actually rendered.
++          expect(offerText).toMatch(/the archive knows more about these/i);
++          expect(offerText).toContain(better.key);
++          expect(offerText).toContain(NEW_COMPOSER);
++          // Applying WITHOUT answering updates the source graph and leaves the
++          // owner's own piece exactly as it was.
++          await page.getByRole('button', { name: 'Apply' }).click();
++          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
++          const unanswered = await persistedUntil(
++            app,
++            (s) => (s.state as { db: Db }).db,
++            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
++          );
++          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
++
++          // THE SAME INDEX, a NEW answer. The graph is already current, so a
++          // refresh judged by the index hash alone called this "Already
++          // current" and threw the answer away unwritten.
++          await refresh(app);
++          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
++          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
++          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
++          await page.getByRole('button', { name: 'Apply' }).click();
++          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
++          const answeredDb = await persistedUntil(
++            app,
++            (s) => (s.state as { db: Db }).db,
++            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
++          );
++          // Only that field moved: the piece keeps its title and its history.
++          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
++          expect(answeredDb.blocks).toHaveLength(1);
++          // …and the offer is gone, because it has been taken.
++          await refresh(app);
++          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
++          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
++
+           // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
+           publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
+           await goTo(app, '/settings');
+diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
+index ea5c08b..ca649cc 100644
+--- a/tests/setarInbound.browser.test.ts
++++ b/tests/setarInbound.browser.test.ts
+@@ -62,6 +62,33 @@ function v14Database(): PracticeDB {
+ const V14_DB = v14Database();
+ const V14_TEXT = serializeExport(V14_DB, CLOCK);
+ 
++/**
++ * The same database with ONE nested value inside the graph made malformed.
++ *
++ * `members[].roles` is what `repeatChains` calls `.includes` on to render an
++ * item's material, so a door that accepts this persists a database whose first
++ * reader throws. It is the sharpest member of the family — the nested fields a
++ * production reader dereferences — and every door below is given the identical
++ * bytes rather than a door-specific approximation of them.
++ */
++function withMalformedRoles<T extends PracticeDB>(db: T): T {
++  return {
++    ...db,
++    archiveSources: db.archiveSources.map((src, i) =>
++      i === 0
++        ? {
++            ...src,
++            sessions: src.sessions.map((sess, j) =>
++              j === 0
++                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
++                : sess,
++            ),
++          }
++        : src,
++    ),
++  } as unknown as T;
++}
++
+ const wrap = (data: unknown, files?: unknown) =>
+   JSON.stringify({
+     app: 'practice-compass',
+@@ -71,9 +98,17 @@ const wrap = (data: unknown, files?: unknown) =>
+     ...(files === undefined ? {} : { files }),
+   });
+ 
++/**
++ * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
++ * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
++ * and the rename log moves it here. Repair produces PERSISTED archive state, so
++ * it has to cross these doors like everything else.
++ */
++const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
++
+ interface Shape {
+   items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
+-  lessons: { id: string; source?: { sessionN: number }; origin?: string }[];
++  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
+   blocks: unknown[];
+   archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
+   schemaVersion: number;
+@@ -101,6 +136,9 @@ describe('the archive graph at every inbound door', () => {
+       // …as did their own untouched records.
+       expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
+       expect(db.blocks).toHaveLength(1);
++      // The REPAIRED reference survived the door, with the row the owner wrote.
++      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
++      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+ 
+       const goodBytes = JSON.stringify(await readPersistedState(app));
+ 
+@@ -182,6 +220,12 @@ describe('the archive graph at every inbound door', () => {
+           }),
+           says: /unsafe reference path/,
+         },
++        {
++          // The sealed counterexample: a nested value no door used to check.
++          name: 'a membership with an unreadable role list',
++          text: wrap(withMalformedRoles(bad)),
++          says: /unreadable role list/,
++        },
+         {
+           name: 'a newer schema',
+           text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
+@@ -241,6 +285,7 @@ describe('the archive graph at every inbound door', () => {
+       db = await shape(app);
+       expect(db.archiveSources).toHaveLength(1);
+       expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
++      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+ 
+       // --- A MALFORMED remote snapshot is refused, and installs nothing ----
+       const beforePull = JSON.stringify(await readPersistedState(app));
+@@ -255,6 +300,20 @@ describe('the archive graph at every inbound door', () => {
+         .toBe(true);
+       expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+ 
++      // …and the NESTED malformation is refused by this door too, not only by
++      // the import one. A pull that installed it would leave a database whose
++      // own material reader throws, with nothing to undo it.
++      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
++      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
++      await page.getByRole('button', { name: 'Sync now' }).click();
++      await expect
++        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
++          timeout: 60_000,
++          interval: 500,
++        })
++        .toBe(true);
++      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
++
+       // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
+       await goTo(app, '/items/own-dashti');
+       await page.getByRole('button', { name: 'Edit' }).first().click();
+@@ -302,6 +361,11 @@ describe('the archive graph at every inbound door', () => {
+       // local attachments appear in `files` (there are none here).
+       expect(parsed.files ?? []).toEqual([]);
+       expect(exported).toContain('session-13-03-09-2024');
++      // A repaired path is exported as the archive-relative text it now is —
++      // no device base, no legacy folder prefix, and no bytes.
++      expect(exported).toContain(REPAIRED_PATH);
++      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
++      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
+ 
+       // --- BOTH HYDRATION BRANCHES ----------------------------------------
+       // `migrate`: a persisted database declaring the OLD version.
+@@ -337,6 +401,20 @@ describe('the archive graph at every inbound door', () => {
+       // Rendering the refusal writes nothing at all.
+       expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
+ 
++      // The same hydration branch, given the NESTED malformation instead: this
++      // is the door the sealed counterexample actually walked through, and a
++      // database it accepted would crash the first material render.
++      await writePersistedState(
++        app,
++        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
++        SCHEMA_VERSION,
++      );
++      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
++      await page.reload();
++      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
++      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
++      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
++
+       // --- COLD-START RECOVERY gets the owner back in ----------------------
+       await page.getByLabel('Restore backup file').setInputFiles({
+         name: 'recover.json',
+@@ -349,6 +427,7 @@ describe('the archive graph at every inbound door', () => {
+       db = await shape(app);
+       expect(db.archiveSources).toHaveLength(1);
+       expect(db.items.filter((i) => i.source)).toHaveLength(93);
++      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+     } finally {
+       await app.close();
+```
+
+**Full current text of every file the rework touched:**
+
+### AGENTS.md
+
+```
+# AGENTS.md — development rules for Practice Compass
+
+This file is the contract for anyone (human or AI) extending this app. Read it before
+adding features. The whole value of the tool comes from what it *refuses* to do.
+
+## The one rule above all
+
+Preserve the core loop: **one item · one mode · one focus · one result · one next action.**
+If a change blurs that loop or adds a second thing to think about per step, it's wrong —
+even if it's "useful".
+
+**The loop CLOSES: the next action is read, not just written.** `PracticeBlock.nextAction`
+was captured on every close and read nowhere, so the one thing deliberately decided last
+time never reached the moment it was written for. `ActiveBlock` now shows it at the top,
+before you start playing, via `lastNextAction` (`blocks.ts`, tested) — the most recent
+NON-EMPTY one, so a later block that recorded none does not blank out a decision that
+still stands. Anything the app asks you to record, it must eventually USE.
+
+## One canonical home per kind of information (schema v13)
+
+Four homes, and nothing may compete with them (`src/domain/practiceInformation.ts`, pure
+and tested; the list of retired keys lives there, not in prose):
+
+- **`PracticeItem.notes` — "Working notes".** The item's ONE notebook: what this piece
+  is, what your teacher said, what to watch. It has the item's lifetime, and it is
+  readable AND editable *while practising* — the point of writing something down is that
+  it reaches you at the moment it was written for.
+- **`PracticeBlock.observation`** — what happened in ONE recorded block.
+- **`PracticeBlock.nextAction`** — the one thing to try next time, decided at that
+  block's close and read at the next one. (`PracticeBlock.constraint` — a legacy,
+  optional authored condition shown on the practice screen and in block history — belongs
+  to the block too, and is validated with the other two. Ordinary Start supplies none;
+  existing values are kept and displayed, never a new capture control.)
+- **`lessonAgenda`** — questions for a teacher and commitments to a class (its own
+  section below).
+
+Nothing copies one into another automatically. Reflection at the close screen never
+overwrites the notebook; the notebook is never dumped into a teacher sheet.
+
+**A DERIVED VALUE IS NOT A FIFTH HOME.** The item's most recent block observation is
+read straight from the blocks (`latestObservation`, `blocks.ts`, tested) and rendered
+WITH ITS DATE wherever current context is wanted. It used to be cached onto the item as
+`lastObservation`, which is how one fact became two that could disagree. Derive it; never
+store it back.
+
+**v12 → v13 RETIRES the fields that competed, and that exception is BOUNDED AND ONE-WAY.**
+`currentProblem`, `bestStrategy`, `tags`, `item.lastObservation`, `block.bodyNote` and the
+fourteen Persian/Guitar WORKING-DETAIL fields (`shahed`, `ist`, `foroud`, `ornamentIssue`,
+`mezrabIssue`, `phraseLabel`, `importantNote`, `rightHandIssue`, `leftHandIssue`,
+`toneIssue`, `fingering`, `tempo`, `stringNoiseIssue`, `bodyTensionNote`) are REMOVED, not
+migrated into `notes` — the owner settled (2026‑09‑16, `DECISIONS.md`) that their content
+was dummy test data, and merging dummy text into the one canonical notebook is the failure
+mode, not the fix. The Persian/Guitar IDENTITY fields (`dastgahAvaz`, `gusheh`, `form`,
+`composer`, `lessonNumber`, `barRange`) stay: they say what the piece IS and they group the
+repertoire. This waiver covers exactly those enumerated fields and nothing else. It is NOT
+permission to reset practice history, ratings, reviews, commitments, or any future
+meaningful text.
+
+`retirePracticeText` is DELETION ONLY — it never writes a value — which is what makes it
+idempotent and makes re-running it incapable of resetting current canonical text. It reads
+no clock, so two devices migrate the same database identically on different days, and it
+runs on EVERY inbound database rather than only one declaring `fromVersion < 13`, for the
+reason `migrateToV12` already records for itself: a database claiming the current schema
+can still carry a stray retired key from a partial conversion or a hand-edited file.
+
+**AFTER ANY INSTALL, EVERY ATTACHMENT THE DATABASE DESCRIBES HAS BYTES ON THIS DEVICE.**
+One invariant, enforced at both doors: `decodeBackupFiles` refuses a FULL backup that
+describes a file it does not carry, and `importFullBackup` refuses a STATE-ONLY file
+(`files` absent) that names an attachment whose blob is not already here. Refusing only the
+first is a one-way trap — a full export carries bytes for exactly the attachments `data`
+describes and can only OMIT one whose blob it cannot find, so a device left holding
+metadata for absent bytes exports a backup it then refuses, and publishes a snapshot every
+other device refuses too, permanently. Dropping the dangling metadata instead would be
+silent loss of the owner's own record. Both refusals name the file and change nothing.
+
+**AND AN ATTACHMENT'S IDENTITY IS CHECKED AT EVERY DOOR, NOT AT THE ONE THE CHECK HAPPENED
+TO LIVE IN.** The rule that two attachments may not share an id sat inside
+`decodeBackupFiles`, which returns on its FIRST line for a file with no `files` key — so it
+ran for a full backup and for nothing else. A sealed review reproduced the consequence: a
+state-only import (and equally a sync pull, an archive restore, or either half of
+hydration) installed two metadata rows claiming one id, and because the export emits one
+file per describing row, the device's own next full backup carried two files sharing an id
+and was refused by its own importer — the same permanent one-way trap as the two mismatches
+above, arriving through the door nobody was watching. An id is what an attachment's bytes
+are KEYED by, so two rows claiming one id are two rows claiming one file. The check is in
+`validateDB` now — the one function every inbound door already runs — and
+`decodeBackupFiles` keeps none of its own: one place, six doors, rather than six chances to
+miss it. It is deliberately bounded to attachment ids and is NOT a general duplicate-id
+sweep across every collection, which the contract's own non-goals rule out.
+
+**AND THE EXPORT IS DERIVED FROM THE CANONICAL METADATA, SO THE APP CANNOT WRITE A BACKUP
+ITS OWN IMPORTER REFUSES.** The trap has a second mouth, and closing only the inbound one
+left it open: `buildFullBackupWithRev` used to derive `files` from the blobs actually
+STORED, which is the opposite mismatch — bytes the database describes nowhere.
+`decodeBackupFiles` refuses those as orphans ("belongs to nothing this file describes"), so
+the export was unrestorable here and on every device a sync published it to. They are not
+exotic: a state-only import MUST preserve local blobs (that is its own contract) while
+replacing the database that named them, and `deleteItem`/`deleteLesson`/`resetDemo` drop
+metadata synchronously while their `void deleteBlob(...)` cleanup can fail on its own. So
+`files` is built from `db.attachments` ∩ the blobs held, carrying the METADATA's `ownerId`
+— the one the importer validates against and writes back onto the blob row, so an
+export→import round trip is idempotent rather than a second opinion about ownership.
+Unreferenced bytes are not part of the database the backup is OF; they stay on the device
+UNTOUCHED, never deleted to make the two agree, because deleting them is exactly what the
+state-only contract forbids. The opposite mismatch is not fixable at export — dropping the
+metadata is silent loss, refusing to export leaves a device unable to back up at all — and
+is instead prevented at the two doors above, `addAttachment` writing the blob BEFORE its
+metadata.
+
+**THE SURVIVING TEXT IS VALIDATED AT EVERY INBOUND DOOR, AND NEVER COERCED.**
+`validatePracticeText` (the four homes' own string fields — the block's `constraint`
+included — and nothing else) runs inside
+`validateDB`, so every door — import, sync pull, Keep remote, archive restore, cold-start
+recovery, and BOTH halves of the persist middleware — refuses the same thing. Absent and
+EMPTY are both legitimate (emptying a notebook is a deliberate act); `null` reads as
+absent, because that is what a serialiser writes for "no value" and every reader already
+treats it as missing. A present value of the wrong type is REFUSED with the record named,
+never coerced: `String({})` is how a note becomes the literal text "[object Object]" and
+the owner's real words are gone. The unfinished block's scratch observation lives OUTSIDE
+`PracticeDB` (on the store's ephemeral `active`) so that function never sees it — it gets
+the same rule and the same refusal from `validateUnfinishedText`, called by the same
+hydration hooks.
+
+**ONE EDITOR FOR THE NOTEBOOK, AND IT NEVER LOSES WHAT YOU JUST TYPED.**
+`src/components/ItemNotes.tsx` is the only way Working notes are edited — Item Detail, the
+practice screen and a bound routine segment all render that one component, so there is
+never a second copy of the text or a second way to write it:
+
+- **Saving is EXPLICIT (a Done button), never blur-only.** Blur-only saving makes a stale
+  copy authoritative the moment anything steals focus.
+- **"Saved" waits for IndexedDB to acknowledge the write** (`storageSettled()`,
+  `src/store/idb.ts` — the persist adapter's own in-flight write, not a sleep). A FAILED
+  write keeps the text on screen with Try again and Copy, and never shows a Saved state.
+  Try again must work from the failed state: the store has already accepted the value, so
+  a "nothing changed, skip the write" shortcut would make the retry a silent no-op.
+- **The draft is TAGGED with the item it was typed for** and dropped rather than written
+  when that changes. A timer tick, a store update from elsewhere, or a routine crossing
+  into the next bound segment re-renders this component constantly; without the tag, a
+  stale editor can commit A's words onto B.
+- **AN IN-FLIGHT WRITE NEVER OWNS THE EDITOR.** The textarea stays live while IndexedDB
+  acknowledges, so words typed in that window are NEWER than the ones being written. A
+  settling write may only speak for the text it actually CARRIED: it clears the draft and
+  says "Saved." when the draft is still exactly that text, and otherwise re-issues the
+  write for what is on screen now. Clearing the draft on whatever settles — which is what
+  it did — dropped those words and put a success message over the older ones, and letting
+  the newer text simply sit there unsaved would lose it the moment the screen was left. The
+  same rule holds on the failure path: Try again writes what is on screen NOW, not the text
+  that failed. Only the LATEST save may act at all (`saveSeq` — ONE ownership test, not a
+  second `forItem` comparison nothing could ever make disagree with it), and the draft is
+  read through a REF, never the closure the write was issued in nor a ref mirrored by an
+  effect: `storageSettled()` resolves in a microtask that can land between a keystroke and
+  React's next render. LEAVING THE SCREEN AND SWITCHING ITEM ARE OPPOSITE CASES, and both
+  are checked: unmounting (a different route) keeps the ref alive through the write's own
+  closure, so words typed while it settled are saved on the way out; switching ITEM bumps
+  `saveSeq` and the write says nothing at all, because those words were typed for a
+  notebook that is no longer the one on screen — the pre-existing tag rule above, not a
+  new exception to it.
+- **Editing notes changes nothing else.** Not the clock, the elapsed figure, the running
+  state, a block, a result, a review or any SM‑2 value.
+
+## Keep admin overhead low
+
+- Starting a block must stay **under 30 seconds**; closing one **under 60 seconds**.
+  Any new field in those flows must be optional and have a smart default.
+- Never add a required field beyond an item title.
+- Rich metadata stays progressive: hidden until the user asks for it.
+
+## Prioritise the quick‑start flow
+
+- Smart defaults are a feature, not a convenience. Status → mode, item → focus,
+  10‑minute duration. If you add a concept, give it a sensible default too.
+- Inline item creation must keep working from the Start screen and from recommendations.
+- **Exactly two creation paths, both one-step.** Quick add = title only (Start's
+  inline create is also title-only, with a link to the full form that returns to Start
+  with the item preselected). The full form ("Add practice item", `/items/new`, also
+  inline edit) is KIND-FIRST: it asks what you're adding (gusheh / composed piece /
+  piece / étude / passage / technique — `src/components/itemKinds.ts`, tested) and
+  shows only that kind's identity fields, in three groups: "What are you adding? /
+  Connect it (optional) / First practice setup". Connections (study source with inline
+  create, pathway stage, lesson, parent work) are settable AT creation — no
+  create-then-edit round trips, and never a third half-detailed path. Item detail
+  shows a "Connected to" summary near the top.
+
+## Today is a session workspace, scoped to one instrument
+
+The user practises one instrument at a time ("I'm practising Setar now"). Today is
+driven by a persisted `sessionInstrumentId`: the switcher at the top picks the
+instrument, everything below it (recommendation, class work, reviews, pathway position,
+quick add, Start) is scoped to that instrument, and the primary recommendation must stay
+above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
+secondary choice — never the default. Never hard‑code a morning/evening schedule and
+never surface another instrument's work inside a session. The Session Plan and
+Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
+`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
+and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
+Plan's expanded panel read as routines being subordinate to picking a duration, so
+they were pulled out into their own doorway. Both start collapsed (~50px) so the
+primary recommendation stays above the fold; each has its own open/close state and
+its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+session instrument (`routinesForInstrument`), each row showing Edit and — when a
+segment is essential — a visible "Short on time — essentials only" button, plus "New
+routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
+unplaced routine is reachable from at all, so its rows carry the same Edit/Start/
+short-on-time affordances StageDetail's `RoutineCard`/PathwayDetail's `RoutineRow`
+give a placed one.
+
+**THE TWO DOORWAYS SIT ABOVE THE RECOMMENDATION, AND THAT IS AN OWNER JUDGEMENT, NOT A
+DERIVATION.** The 2026‑09‑11 lane BUILT the other order — Practise now directly under
+the instrument switcher, with Plan and Routines beneath it — on the argument that
+orchestrating a session is a choice you make INSTEAD of taking the suggestion. The owner
+tried it on their own iPhone and preferred the original: Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural. The order
+reverted before the lane shipped, which is a PASSING outcome of that check, not a
+failure. Both orders keep the recommendation above the fold at 390×844, so nothing here
+follows from the phone constraint — do not re-derive this ordering from first principles
+and quietly flip it back. It changes only when the owner says so.
+
+## Review actions have honest, distinct semantics
+
+Practising (closing a block) is the ONLY thing that can complete a review or advance
+SM‑2 — but it does not always do either. **Practice is exposure; only eligible retention
+evidence advances spacing.** A good session on an item whose review is not yet due is real
+practice (minutes, result, observation, next action all recorded) and is not the review it
+was scheduled for: `decideReview` KEEPS the date, leaves `srReps`/`srEase`/`srIntervalDays`
+untouched and leaves the pending row OPEN. `srLastProgressDay` holds that to at most one
+advance per local calendar day, so re-arming a date or reloading cannot buy a second.
+Nothing else may complete a review at all. "Not now" hides a due review for the rest of
+today (no schedule change). Snooze
+(+2d) genuinely moves the due date on both the review and the item — never fabricate a
+result, and never leave a stale overdue item after an action. The Finish button freezes
+the clock (`pauseSession`) before the close screen; reflection time is not counted.
+
+**ANSWERING NOTHING IS NOT DECLINING.** A result is REQUIRED to save a block — the six
+options are already the first thing on the close screen, so this adds no field (r-quick-start
+holds: it makes a choice already present a required one), and "Save without a result" keeps
+`not_logged` reachable and DELIBERATE. `computeReviewOutcome` takes a tri-state
+`ReviewAnswer` (`'scheduled' | 'declined' | 'unanswered'`) and returns
+`completeOpenReviews` ALONGSIDE `nextReviewDate`, because they are ONE decision: a close
+carrying no result keeps the item's date AND leaves its open Review row OPEN, while a
+genuine decline still clears the date and completes the row. `closeSession` must never
+decide the row separately — completing every open row unconditionally, next to a
+`!scheduleReview` branch that cleared the date, is exactly how one skipped tap used to
+erase the next date, close the open review, leave SM‑2 state stale and drop the item out
+of Due reviews for good, all while the panel read "Should this come back? Yes" above an
+empty date field. The row transform is `completeOpenReviewsFor` (`scheduling.ts`, tested)
+so the array change is reachable from a Node test; `CloseBlock` states the mapping in one
+place and the escape hatch forces `'unanswered'` even when a result had already filled in
+a date. r-explainable-scheduling's "the date shown is the date saved" now includes when
+that date is deliberately left UNCHANGED.
+
+**THE CLOSE SCREEN LEADS WITH THE MUSICIAN'S WORDS, AND DERIVES THE DATE ONCE.** How it
+went, what you noticed and what to try next time are always visible and come BEFORE the
+minutes and the scheduler. The whole scheduling decision is ONE honest line — "Review in
+2 days · Repair · …" — with the date field, the review-type choice, "Why this date?" and
+the come-back Yes/No a single tap behind it. (It used to run 1689px at 390×844, with the
+engine's controls fully expanded before a result had been chosen, and a two-column grid
+whose right column stacked five review-type pills vertically.)
+
+There is exactly ONE `ReviewPlan` value in that component (`review`, a `useMemo`): the
+engine's plan for the chosen result with any manual correction folded INTO it. The
+collapsed line, the date field and the value handed to `closeSession` are three
+renderings of THAT object, so a divergent date is UNREPRESENTABLE rather than merely
+guarded against — there used to be a second `planNextReview` call seeding the field from
+a different invocation than the preview. `clampSchedulingParams(db.settings)` is threaded
+into that one derivation. The line itself comes from `reviewSummaryLine`
+(`src/components/format.ts`, tested): a pure FORMATTER that reports the plan's `dueDate`,
+`reviewType` and `rationale` and computes no date of its own. Once the owner sets their
+own date the rationale becomes "The date you chose." — quoting the engine's reason would
+explain a number it did not pick. Never reintroduce a second derivation here.
+
+**A MANUALLY CHOSEN DATE SURVIVES CHANGING THE RESULT WHEN NO AUTOMATIC PLAN EXISTS.**
+`pickResult` clears the manual `override` on every fresh result — a correction made
+earlier belonged to the date the PREVIOUS result's plan produced, so carrying it forward
+would pin a date to a judgement it was never made about. But a manual-mode item
+(`item.reviewMode === 'manual'`) has NO automatic plan for ANY result — `computeReview`
+returns `null` unconditionally in manual mode, before it even looks at `result` — so the
+owner's typed-in date was never tied to a particular judgement in the first place, and
+clearing it on every result change silently threw away a date they had just chosen. The
+restructure once did exactly that (`setOverride(null)` unconditionally), turning a
+deliberate "come back on this date" into an accidental decline the moment the musician
+changed which result they picked. `reviewOverrideSurvivesResultChange`
+(`src/components/format.ts`, tested against the real engine across all six results, both
+a manual- and an auto-mode item) asks the ENGINE whether its answer depends on the
+judgement at all: it calls `planNextReview` once per result and returns true when all six
+produce the same date. Reading `item.reviewMode === 'manual'` directly — which is what it
+used to do — was a PROXY for that question, correct only while manual mode was the sole
+way an item could have no per-result plan. It is not any more: a protected pending date
+(one the owner chose, or a snooze) is kept for every result too, so a mode check would
+clear a just-typed date on an auto-mode item whose date was never tied to a judgement
+either. Calling the engine is still a boolean GATE on whether a per-result plan exists at
+all, never a second value CloseBlock could render — CloseBlock keeps its single
+derivation, and this function returns no date.
+
+**THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
+243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
+one thing the row exists to identify. The text now claims a whole line whenever the three
+actions cannot sit beside it (`flex: 1 1 220px` with `flex-wrap`) and WRAPS instead of
+truncating. All three actions keep their existing, deliberately distinct meanings: this
+is layout only.
+
+## Nothing replaces an unfinished practice session
+
+`src/domain/practiceSession.ts` (pure, tested) is the sibling of `practiceSignal.ts`: that
+module owns pure decisions about a running clock's SIGNALS, this one owns pure decisions
+about the unfinished SESSION. Two INDEPENDENT questions live there and must never be
+conflated:
+
+- **PRESENCE** (`hasUnfinishedPractice`, `decideReplacement`) — does an unfinished session
+  exist? That, and ONLY that, decides whether a whole-database replacement may proceed.
+  Never `running`, so PAUSING PROTECTS A SESSION RATHER THAN EXPOSING IT; the frozen
+  `active`+`activeRoutine` pair the persist `merge` produces is unfinished practice like
+  any other.
+- **PLAUSIBILITY** (`isStaleClock`, `proposedCloseMinutes`) — does this session's elapsed
+  figure still look like time someone played? That decides the minutes `CloseBlock`
+  proposes and the ATTENTION state, and NOTHING else.
+
+**A HEURISTIC ABOUT A DURATION NEVER BECOMES AN AUTHORITY TO DESTROY PRACTICE.** A stale
+verdict must never be wired to a destructive path, and `decideReplacement` must keep
+reaching the SAME decision for a stale session as for a live one (a session paused at
+three genuine hours crosses any sensible threshold — discarding it would lose real
+practice). Staleness may never be fed into `shouldKeepAwake` or `nextSignal` either.
+
+`active` lives outside `db`, so `withRevision` never bumps `rev` while you practise: a
+mid-block device looks UNCHANGED to `decideSync`, a remote change resolves to `pull`, and
+the in-flight block is destroyed with no archive and no prompt. So: AUTOMATIC sync
+(`syncNow`) checks the predicate BEFORE attempting and reports a distinct `deferred`
+SyncPhase — a background merge waiting its turn is not an error and must not be dressed as
+one — while DELIBERATE replacement (Import, Restore archive, Keep remote) gets an explicit
+refusal naming the session. The guard for the inbound paths is the FIRST statement of
+`importFullBackup` (`backup.ts`), before the JSON is even parsed: `replaceAllBlobs` below
+it destroys every attachment blob, so a check placed after it would wipe them while
+returning "nothing was changed". Every deliberate caller already surfaces
+`{ok:false,error}`, so no `Settings.tsx` change is needed.
+
+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
+yields to the event loop, so a tap that starts a block while that transaction is in flight
+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
+second check sits in the same synchronous tick as the install, with nothing awaited in
+between, so it is genuinely the last word. It refuses honestly: the blobs are already
+written by then, so the message says so and invites re-running the import rather than
+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
+watches `deferred`, so an `error` here would stop sync until something else happened to
+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
+this — `replaceAllBlobs` is one
+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+untouched, which installing the `db` first would give up.
+
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
+
+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+labelling only the first left the same block silent after switching instrument or choosing
+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
+against, and `segmentElapsed` already clamps each segment to its authored duration.
+
+The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
+Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
+in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
+counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
+rev-watching retry resumes after a finish and waits forever after a discard. Seed the
+previous-presence ref with the CURRENT presence, or an ordinary load reads as a
+present→absent transition and fires a spurious sync.
+
+**Installing a database clears the ephemeral state that pointed at the old one.**
+`installDatabase` returns the new `db` TOGETHER WITH `active`/`activeRoutine`/`activePlan`
+nulled, `notNow` reset and a `sessionInstrumentId` that survives only if it still resolves
+(`'all'` always survives). Its SIGNATURE is the guarantee: `importDB`, `resetDemo` and
+`clearAll` are each a single `set()` of its result, so installing a database WITHOUT the
+reset is something the code cannot express — which matters because the Node environment
+cannot import `useStore.ts` (it pulls in Dexie via `./idb`), so the unit test proves the
+DECISION and the shape protects the WIRING. There are SIX whole-database replacements, not
+four: `resetDemo` and `clearAll` are called directly on the store and never touch
+`importFullBackup`, so a fix living only there would silently miss two of the three install
+points. Deliberate erasure keeps NO guard — those actions are aimed at destroying the data
+and already confirm first, so refusing them would be obstruction, not safety.
+
+## Practice totals are calendar figures, not rolling windows
+
+`practiceTotals` / `practiceTotalsByInstrument` / `startOfWeekISODate` (`selectors.ts`,
+tested) answer "how much have I practised?" — a compact minutes-and-blocks line low on
+Today (BELOW the recommendation, never above: "Practise now" stays above the fold at
+390×844) and the full today / this week / all time per-instrument view on Insights. Do NOT
+reuse `blocksInWindow`/`totalMinutesInWindow` for these: they filter on HOURS, so `days:1`
+means the last 24 hours and `days:7` the last 168 — a block from late last night is not
+today's practice. The week starts **Monday 00:00 local**.
+
+**A block belongs WHOLE to the local calendar day it BEGAN**, with none of its minutes
+apportioned across midnight or the Monday boundary. This was challenged and the code
+settles it: `durationMinutes` is the figure the owner ATTESTED to and this lane makes it
+diverge from wall clock on purpose (an abandoned block proposes its target), so
+`endedAt - startedAt` is not the authored duration; and `endedAt` is optional and ABSENT on
+routine blocks (`applyRoutineRun` passes none), so apportioning would apply to some blocks
+and not others. Splitting would overrule the owner's own correction with a number they
+never attested to. Totals stay NEUTRAL COUNTS — no goal, streak, score, bar that fills or
+colour that judges. Relatedly, `instrumentBalance` takes its denominator from only the
+blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
+a caller passes active instruments with all blocks (Today does).
+
+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
+not just the active ones, because its "All instruments" row counts every block: filtering
+to active instruments left a retired instrument's history with no row while its minutes
+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
+"one row per supplied instrument" contract is unchanged.
+
+## Hands-free practice: the screen stays awake, and the app announces the end
+
+The practice loop assumes you put the device down and play. While a practice clock —
+an ordinary block (`ActiveBlock`) or a routine run (`RoutineRunner`) — is genuinely
+RUNNING and its screen is VISIBLE, the app holds a Screen Wake Lock so the clock stays
+readable without touching anything; pausing, finishing, discarding, unmounting
+(navigating away) and the document going hidden all release it. WHETHER to hold the
+lock is a pure, tested predicate — `shouldKeepAwake({ hasClock, running, visible })`
+(`src/domain/practiceSignal.ts`) — true only when all three hold. There is exactly ONE
+owner of the lock (`useScreenAwake`, wired once per practice screen), so two can never
+be held at once. Reacquiring on `visibilitychange` back to visible is required by the
+Screen Wake Lock specification (the platform releases a held lock the moment the
+document becomes hidden) — not a browser-specific workaround. No wake-lock outcome,
+success, rejection, or unsupported, may ever influence a recorded minute: the whole
+elapsed-time family (`sessionElapsedSeconds`, `runElapsedSeconds`, `locateClock`,
+`skipCurrentSegment`, `aggregateItemMinutes`) stays exactly as it was before this
+existed.
+
+**The decision of WHEN to announce is pure and tested** (`src/domain/practiceSignal.ts`):
+`nextSignal(marker, elapsedSeconds, boundarySeconds)` announces AT MOST ONCE per call —
+if elapsed has passed more boundaries than the marker records, it announces once and
+advances the marker to the number ACTUALLY passed, never by one. This is what makes a
+background/lock catch-up correct: a phone that wakes up several boundaries later
+announces once and lands on the right one. The marker is a COUNT OF BOUNDARIES ALREADY
+ANNOUNCED, living as an optional `signalledThrough?: number` on the store's EPHEMERAL
+`active`/`activeRoutine` (useStore.ts) — never in `PracticeDB`, so no `SCHEMA_VERSION`
+bump, no migration, and it never syncs or lands in a backup. An ABSENT marker reads as
+zero (nothing announced yet) — the honest reading for a session persisted before this
+feature existed. Boundaries are the run's ordered cumulative END boundaries: an ordinary
+block passes `[targetMinutes * 60]`; a routine passes `segmentBoundaries(segs)`
+(`src/domain/routines.ts`) — the SAME numbers `locateClock` advances on, by construction,
+not a second cumulative sum recomputed in the runner. A deliberate Skip calls
+`acknowledgeThrough` instead, which advances the marker to match elapsed WITHOUT
+announcing — the user ended the segment themselves, so telling them it ended is noise —
+and clears every boundary at or before elapsed (not just one), since Skip can produce a
+zero-length or repeated boundary that is legitimate input, never malformed.
+
+**The visual state change is the guaranteed signal**, always delivered regardless of the
+wake lock or any device capability: an ordinary block reaching its target shows a
+durable "target reached" ring state and a growing overtime figure
+(`formatClock(elapsed - targetSeconds)`) for as long as the block runs — it does NOT
+auto-finish; practising past the target is ordinary, and only Finish or Discard ends a
+block. A routine segment boundary is perceptible for a defined window after arrival
+(never a single-render flash), and routine completion is already durably shown by the
+existing "Routine complete" screen. Audio and vibration (`playSignalCue`,
+`useScreenAwake.ts`) are FEATURE-DETECTED BEST-EFFORT ONLY, wrapped so any failure is
+silent, and are never part of any automated check: `navigator.vibrate` is unimplemented
+in Safari on iOS, and a WebAudio context needs a user-gesture unlock that happens on the
+page that starts the clock (Today/StageDetail/SessionPlan) — never on the practice
+screen itself, which hands-free practice, by definition, never taps. It may therefore be
+silent on the owner's own iPhone; the OWNER device checks record what was actually heard
+rather than asserting it. Widening the frame to unlock audio at the start gesture is a
+separate lane. Neutral and non-gamified throughout: a state change and a number, never a
+streak, score, or
+celebration.
+
+**The wake lock itself is one shared, port-injected coordinator**
+(`src/components/screenAwake.ts`) — no `navigator`/`window`/`document`, so its whole
+ownership state machine (at most one outstanding request and one held sentinel; a
+rejected or unsupported acquisition swallowed silently; a pending acquisition that
+resolves after being disabled released immediately rather than stranded held) is
+reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the thin
+React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
+real port, and wires `visibilitychange`.
+
+**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
+Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
+deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
+plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
+(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
+environment gap). Before drawing any conclusion about this feature (or any future
+secure-context-dependent work) from an unmerged branch, first confirm
+`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
+establish a genuine HTTPS route for it first.
+
+## Hard "do nots" (require explicit user instruction to change)
+
+- ❌ **No gamification** — no streaks, points, badges, XP, leaderboards, confetti,
+  or fake "mastery %". Progress is shown as honest status + result, nothing else.
+- ❌ **No backend, no auth server, no service of our own.** The app is local‑first:
+  **IndexedDB (Dexie) is the source of truth** on each device (app state in the `kv`
+  table, attachment blobs in the `attachments` table) and everything works offline.
+  **Amended by explicit user decision (2026‑07‑11):** device sync IS sanctioned — via
+  the **user's own GitHub repo**. The engine (`src/store/syncEngine.ts`, port-injected
+  and fully unit-tested; GitHub transport in `gitRemote.ts`; wiring in `githubSync.ts`)
+  publishes whole snapshots ATOMICALLY with the Git Data API: blobs → tree → commit →
+  fast-forward-only ref update, so a race or partial failure never leaves a broken
+  remote. A brand-new EMPTY data repo is bootstrapped first via the Contents API
+  (`RemotePort.initialize()`) — the git-data endpoints 409 on an empty repo — then the
+  first snapshot commits as a child of that bootstrap commit; init failures surface a
+  clear message with the manual README fallback and never leave a partial snapshot. Decisions are three-way CONTENT-HASH comparisons (`decideSync` +
+  `canonicalStringify`/`hashState` in `src/domain/`), never timestamps — pathway-only
+  edits and deletions sync like everything else, and a store middleware
+  (`src/store/revision.ts`) bumps a `rev` counter on every db mutation. Both-changed =
+  explicit two-button conflict ("newest" is a hint, never an auto-winner), and BOTH
+  copies are preserved before any replace: the local copy goes to an in-app restore
+  slot (idb) and an `archive/…` branch; the remote copy stays reachable as the parent
+  commit. Legacy `state.json`+`files/` remotes stay readable; the first new push
+  migrates the format with the old snapshot kept in git history. Never a silent merge,
+  never per-field magic, never a custom server. Manual export/import stays as the
+  fallback. Free tiers only; no paid services.
+- ❌ **No AI or audio analysis** in v1 — no tone scoring, pitch detection, posture
+  tracking, or "AI teacher" judgement. The app organises; it does not grade.
+- ❌ **No guilt‑driven copy.** Insights are neutral observations, never nags.
+
+## The Pathway is a trust anchor — keep it that way
+
+Pathways exist so the user can **stop deciding what's next and just practise**, at their
+own pace, on a route they trust. Protect that:
+
+- **The item is the only unit of work — pathways are a view over items.** There is no
+  separate "step" object. A `PracticeItem` may carry a `stageId` (placing it inside a
+  pathway stage), a `strand`, and a `catalogKey`. Stage progress is *derived* from the
+  mastery status of the items in it (`itemStageState` in `pathways.ts`). Never reintroduce
+  a parallel to-do list next to items.
+- **The catalog is reference data in code, not persisted.** `pathwaySeed.ts` defines
+  per-stage `CatalogEntry` suggestions (gushes, lesson areas) with `about` guidance for
+  conscious practice; `addFromCatalog` turns one into a real item with one tap. The new
+  item is honestly **"Not practised yet"** (status `new`, zero stats) with an immediate
+  Undo — adding is organisation, not progress. Label suggestions as reference aids, never
+  canonical. Improving the catalog needs no migration; keep entry keys stable per stage.
+- **Adding from the catalog is losslessly reversible.** The Undo is DURABLE (persists until
+  dismissed or the item is practised — no timeout), and a fresh catalog item shows a "Remove"
+  affordance on its row and in the item's "Connected to". `isLosslesslyRemovable`
+  (`pathways.ts`, tested) gates this: `catalogKey` set AND status `new` AND zero blocks AND
+  `timesPractised === 0`. The store's `removeCatalogItem` re-checks the predicate against
+  LIVE blocks before delegating to `deleteItem`; once anything is logged, only the ordinary
+  delete-with-confirm remains. This is the one place a stage row grows a second 44×44 action
+  (− beside ▶); it disappears the moment the item is practised.
+- **Structure, not gamification.** Show honest position (items solid / in progress /
+  suggestions remaining). No streaks, scores, or fabricated mastery %.
+- **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
+  with full CRUD. Sections are the stages' `group` string (rename via `renameSection`;
+  new stages pick their section explicitly). Deleting a stage/pathway must never delete
+  items — only detach them, and clear any stale `currentStageId` pin.
+- **Routines are ordinary editable data belonging to an instrument** (`src/domain/routines.ts`,
+  tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
+  `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
+  (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+  from the routine's current data — so a mid-run edit can never shorten or desync the
+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
+  whatever item was actually practised. Discarding that instead would silently lose real
+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
+  block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
+  ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
+  Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
+  the factory default `not_logged`: a routine records time, never a judgement, and never
+  completes a review or advances SM-2. `focusForItem` (`src/domain/defaults.ts`) is the
+  shared strong focus default — the same one `startItemSession` uses — so a routine block
+  is indistinguishable from starting that item directly; do not reintroduce a third copy of
+  that fallback expression. The run in progress lives in the store as `activeRoutine`
+  (ephemeral — never in `PracticeDB`, same shape as `active`/`activePlan`), not component
+  state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
+  bound-item practice, matching how an active block already survives navigation, and only
+  one routine can run at a time — starting a different one while another is active redirects
+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
+  guard pair in each shared function covers every caller, rather than trusting each page to
+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
+  persisted (`partialize`), so a dual state can reach a device from before this guard
+  existed, and resuming either clock without checking the other would tick both at once, the
+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
+  remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
+  in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
+  `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+  catches up across MULTIPLE segment boundaries at once rather than losing time or advancing
+  one tick at a time. Skip clamps the current segment's effective duration to whatever
+  actually elapsed (never the full authored minutes); a segment played to completion keeps
+  its full duration. Choosing "short on time" (`segmentsForRun`) drops every non-essential
+  segment, honouring the syllabus's asterisk rule. "Finish routine" (mid-run) always saves
+  whatever bound-item time has genuinely elapsed via the same `finishRoutine` path as natural
+  completion — never a separate discard — with a caption stating that plainly, since ending
+  early must never silently fabricate or silently lose practice. Today's Routines card is
+  documented in its own bullet above.
+- **The current stage is the user's choice.** Teacher-led work jumps around:
+  `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
+  fallback. Never treat linear order as truth for Setar/Tar.
+- **Pieces can have parts** (`parentItemId`): parts are ordinary items grouped under a
+  piece/étude, with a deterministic "practise this part now" pick (`pickNextPart`) and a
+  calm stall hint (`stallHint`) — smaller unit or new strategy, never quotas.
+- **"My repertoire" is a DERIVED lens, not new structure.** Repertoire has exactly
+  three views: **Pathways · My repertoire · Practice list**. A "work" is any top-level
+  item with Persian identity (dastgāh/form/composer/gusheh) or a full piece/gusheh type
+  (`isWork`/`repertoireWorks` in `src/domain/repertoire.ts`, tested). Persian works
+  group by dastgāh via `groupByDastgah` (`src/domain/persian.ts` — folds spelling
+  variants, labels with the user's own majority spelling, standard dastgāh order) with
+  radif gushehs and composed maestro pieces side by side; other instruments group by
+  study source. Parent works appear ONCE; parts stay nested (never standalone
+  duplicates). Form/composer are compact metadata + filter chips, never a deep
+  hierarchy. Dastgāh/form suggestions are datalists (reference aids), free text always
+  wins. Never invent a parallel "pieces" object or a guitar-specific model.
+- **Sources stay simple.** A Material is instrument + one clear name + kind + status +
+  note. Piece-level detail (dastgāh, gusheh, composer, teacher) belongs on items, never
+  on sources — the removed parent-title/section/teacher-source fields must not return.
+  Sources are reached from Repertoire (not More), and are creatable inline from the
+  item form.
+- **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
+  a radif/dastgāh map (teacher-driven, explicitly "reorder me"). Tar = the Honarestān
+  method. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
+  generic conscious-practice prompt (shāhed / ist / forud) — the teacher's account is the
+  authority, never invent specifics as if canonical.
+- **Calm, self-paced copy.** "Move on when it feels right, not by a deadline" is the voice.
+
+## Lessons (classes) and the deadline exception
+
+`Lesson` records (per instrument, date + free-form notes) support the user's real
+workflow: record the class, rewatch it, type up notes (often **in Farsi** — all free-text
+fields must stay direction-aware; `.input`/`.textarea` carry `unicode-bidi: plaintext`,
+which is the only place that rule is set — it is NOT global, and display text gets its
+direction from the grouping rule below), then
+create/link the concrete practice items (`lesson.itemIds` — a link, never ownership;
+unlinking keeps the item). "Originated in this lesson" (`itemIds`) is separate from
+"prepare this FOR that class" — a `preparation` entry in the lesson agenda (see below),
+which gives a priority boost climbing towards ITS OWN class's date
+(`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app — a monthly
+class is a real commitment, not a manufactured streak. Keep it per-instrument and
+generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
+OR a lesson (`AttachmentMeta.ownerType/ownerId`; blobs keyed by `ownerId` in Dexie) for
+SMALL files (PDFs/photos/short audio, size-capped). **Full class videos — and score
+PDFs/docs — are NAS references, never bytes:** `Lesson.recordings` (`LessonRecording`)
+holds title + a relative NAS path (or full https URL) + size/notes + an optional `kind`
+(`LessonFileKind` = video/pdf/doc/audio; schema **v9** stamps legacy refs `kind:'video'`).
+`resolveRecording` (`src/domain/recordings.ts`, tested) returns a discriminated
+`ok|no-base|bad-base|empty` result — the scheme-less-base bug is fixed by
+`normalizeBaseUrl` (prepends `https://`, rejects non-http(s), validates via `new URL`);
+`resolveRecordingUrl`/`needsBaseUrl` are thin wrappers. It joins the ref under the
+per-device NAS base URL (Settings, localStorage) and opens only on explicit tap — never at
+startup, never in IndexedDB/sync/backups; a `bad-base` never `window.open`s. Removing a
+reference never touches the NAS file. Lessons carry an optional `number`
+(`nextLessonNumber` prefills it, editable, never required; shown as "Class N · date"); refs
+render video-first then scores/docs with kind icons. The user's Setar class history imports
+additively via `buildSetarClassLessons` (`src/domain/setarClasses.ts`, tested) →
+`importSetarClasses`, which also **backfills** missing refs (video + one per PDF/doc,
+path-deduped) onto already-imported lessons — idempotent. `SETAR_CLASS_SESSIONS` lives
+between `// [scan:begin]`/`// [scan:end]` markers and is regenerated from the real NAS
+folder by `npm run scan:setar` (`scripts/scan-setar-classes.mjs`, stdlib, dry-run by
+default; pure helpers unit-tested) — references only, never copying bytes.
+
+## Lesson commitments and questions are ONE typed collection (schema v12)
+
+`PracticeDB.lessonAgenda` is the single home for "prepare this before that class" and
+"ask this at that class" (`src/domain/lessonAgenda.ts`, pure and tested; queries in
+`questions.ts`; UI in `src/components/LessonAgenda.tsx`). It replaced the item's rolling
+`assignedForLesson` boolean and its single mutable `teacherQuestion` string, neither of
+which could name WHICH class it meant or hold more than one answer.
+
+- **Two kinds, one discriminated union.** `preparation` links an item to a lesson;
+  `question` carries its own text, an OPTIONAL item, a lesson target and an open → asked
+  lifecycle with an optional answer. Never separate independently toggleable booleans
+  for next-class / asked / archived / completed.
+- **A commitment names ITS OWN class, and that class's date is its only deadline.**
+  `preparationDatesByItem` is the ONLY channel by which lesson intent reaches practice
+  priority. A commitment for March never inherits January's deadline, a past commitment
+  carries none, and an unassigned one carries none.
+- **A QUESTION CHANGES NO PRACTICE PRIORITY, EVER.** It used to add three points and
+  quietly reorder the day around a note to self.
+- **An entry with no lesson is visibly UNASSIGNED, never guessed onto a class.** New
+  entries default to the nearest upcoming lesson on that instrument with the date named
+  on screen; with no future lesson they are captured unassigned.
+- **Questions are selected BY LESSON ID** (`questionsForLessonId` /
+  `openQuestionsForLessonId`), not by instrument — every future class used to show the
+  identical list. `ClassQuestions` still exports them (Copy / Download / print), and a
+  refused clipboard now says so in a live region and offers a selectable textarea.
+- **Asked is explicit and reversible, and stays HISTORY.** Marking asked logs no
+  practice and changes no urgency; the entry leaves the open lists, stays with the class
+  it was asked at, and is never copied forward. An unasked question on a past class
+  stays there until the owner explicitly moves it (`retargetEntry`).
+- **Detaching preserves identity.** Deleting a lesson leaves its entries unassigned with
+  `detachedFromLessonId` set; deleting an item removes its preparations (a commitment to
+  prepare something that no longer exists means nothing) but KEEPS its questions with
+  `detachedFromItemId` — a question and the teacher's answer are the owner's record of a
+  class, not a property of the item. Nothing here deletes an item or its practice.
+- **A question is never cleared by practising.** `CloseBlock` can raise one; it becomes
+  its OWN entry and never overwrites another, and raising it does not commit the item to
+  a class.
+
+**The v11 → v12 migration converts legacy intent exactly once, and guesses nothing.**
+`migrateToV12` turns each `assignedForLesson === true` into ONE unassigned preparation
+and each non-empty `teacherQuestion` into ONE unassigned question — whatever the boolean
+said, because the two were always independent facts. It reads NO clock (its timestamps
+come from the item's own), so the same database migrates identically on two devices run
+on different days. Multiline text stays ONE question. Ids are deterministic
+(`prep:<itemId>` / `question:<itemId>`, with a `~2` suffix only when an unrelated entry
+already owns one), the conversion is presence-aware, and the legacy fields are removed
+only once their content is represented — so it is idempotent, including over an
+already-current database whose agenda is legitimately empty.
+
+**"REPRESENTED" MEANS SAME CONTENT, NOT MERELY A MATCHING ID.** A sealed review found
+`represented()` treated a matching generated `id`/`kind`/`itemId` alone as proof a
+question was already there — so a legacy `teacherQuestion` whose generated id happened to
+already name a DIFFERENT existing question (partial migration, a hand-edited file, an
+interrupted write) was silently DROPPED, because the pre-existing entry with the same id
+looked like "already represented". A preparation carries no content beyond the link
+itself, so any matching entry genuinely represents it, but a question's content IS its
+text: `represented()` now also compares that text, and a same-id/different-text match
+falls through to `freeId` exactly like an unrelated collision, so BOTH questions survive
+under distinct ids. This step also now runs on EVERY inbound database, not only one
+declaring `fromVersion < 12`: a database claiming the CURRENT schema can still carry a
+stray `assignedForLesson`/`teacherQuestion` from an incomplete conversion, and gating on
+the declared version silently accepted that leftover with nothing to show for it. Running
+it unconditionally costs nothing extra on genuinely current data — it is a no-op wherever
+neither legacy field survives.
+
+**Inbound validation rejects invalid NEW intent and tolerates legacy debris — but only
+where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSchedulingFields`
+run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
+missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
+and a target that RESOLVES to a different instrument all refuse the import with
+actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
+its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
+`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
+intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
+accepting `lessonId: 'nonexistent'` before this.
+
+**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
+section previously tolerated it on the theory that the v11→v12 migration mints entries
+from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
+agenda entries pointing at nothing. A sealed review found that theory does not hold
+against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
+`detachItem` in the SAME synchronous update that removes the item — a preparation naming
+it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
+so there is no in-app path that leaves a live `itemId` dangling any more than there is for
+`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
+a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
+unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
+(the same shape `detachLesson` already used for `lessonId`), so this strict check never
+sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
+not a hand-built approximation of its shape.
+
+**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
+`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
+round-trip their calendar components through `Date.UTC` rather than trusting a shape
+regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
+matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
+NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
+it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
+check had already been fixed once, but its date-TIME sibling in a different file had not.
+The two checks stay small and separately owned, one per file, rather than merged into a
+shared import.
+
+**THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO, NOT ONLY `validateDB`'S IMPORT-PATH
+CALLERS.** A sealed review found Zustand's own persist `migrate`/`merge` (`useStore.ts`)
+called `migrateToCurrent` directly, bypassing everything above: a persisted schema NEWER
+than this build understands got silently stamped down to `SCHEMA_VERSION` by
+`migrateToCurrent`'s own final line and hydrated anyway, and an already-current v12
+database carrying a dangling live `itemId` or an impossible `askedAt` entered live state
+unchanged — reproduced through the real Zustand `persist.rehydrate()`, not merely
+`validateDB` called by hand. Both hooks now call `validateDB` itself — the SAME function,
+not a parallel check — so hydration refuses exactly what every other inbound door already
+refuses. Letting it THROW there (never caught) is deliberate: `hydrate()` only calls its
+own raw `set()` once `migrate`/`merge` return normally, and only persists the result back
+to storage after THAT — a thrown validation error rejects the whole promise chain before
+either happens, so a refused hydration leaves BOTH the live state and whatever is actually
+on disk exactly as they were, never a downgraded-and-relabelled or partially-installed
+in-between. The gate that flips `hydrated: true` deliberately stays UNFLIPPED on a refusal
+rather than forcing it open: every external call to `useStore.setState` — the only way to
+flip it — is itself wrapped by this same persist middleware to re-persist the current
+state immediately afterwards, so forcing it open here would write the live (fallback)
+database straight back over the very data a refusal, above all a genuinely newer schema,
+exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY, as a
+plain module variable rather than store state, for the identical reason — recording it
+through `setState` would trigger that same destructive write.
+
+**A REFUSED HYDRATION IS SURFACED TO THE UI, AND THE OWNER HAS A REAL WAY BACK IN.**
+`hydrated` never turns true on a refusal (zustand's own `onFinishHydration` fires only on
+the success path), so without a separate signal `App.tsx` stayed on "Loading…" forever
+with no visible reason. `onRehydrateStorage` also writes to `useHydrationStatus`
+(`useStore.ts`) — a second, UNPERSISTED store (the same shape `useSyncStatus` already
+uses) — distinguishing a genuinely newer schema (`tooNew`, an app-update problem) from
+invalid/corrupt current-version data (an owner-fixable one). `App.tsx` renders an
+explanation instead of the spinner whenever `!hydrated && hydrationStatus.refused`, reading
+`useHydrationStatus` only and never writing to `useStore` on its own, so simply SHOWING
+this screen touches neither the live nor the persisted database.
+
+A sealed review found the first version of this screen actionable in wording only: it told
+the owner to "use Import in Settings", but Settings — like every other route — mounts only
+once `hydrated` is true, which this exact refusal prevents. There was no way back in.
+`ColdStartRecovery` (`App.tsx`) closes that: a file control rendered directly on the
+refusal screen, shown ONLY for the invalid/corrupt-data case — never for `tooNew`, which
+has no safe import/downgrade and keeps the plain "update the app" guidance. It calls
+`recoverFromRefusedHydration` (`store/backup.ts`), a thin wrapper over `importFullBackup`
+rather than a second import implementation, so an invalid recovery file is rejected through
+the SAME §C7 validation every other inbound door already uses, with nothing written. On
+success it additionally flips `hydrated` true and clears the reactive refusal flag —
+`importFullBackup`/`importDB` install a valid `db` but have no reason to know about a gate
+that exists only before this device's very first successful hydration. The bytes already on
+disk are never touched by anything except that explicit, validated recovery: rendering the
+screen, and a rejected recovery attempt, both leave them exactly as they were.
+
+## Persian text is canonical, and direction-aware
+
+Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
+composers, study sources, seeded items) is authored in **Farsi**; generic app UI and
+Classical Guitar stay English. STABLE ascii identifiers are decoupled from Farsi
+display: `StageSeed.slug` / `StepSeed.key` in `pathwaySeed.ts` keep stage ids and
+catalog keys byte-stable (fall back to `slug(code)`/`slug(title)` for English seeds), so
+the Farsi conversion needs no migration. `src/domain/farsi.ts` (tested) provides
+`normalizePersian` (fold Arabic↔Persian yeh/kaf, digits, ZWNJ, whitespace — preserves
+آ), `faCollator` for sorting, and Latin transliteration aliases for search
+(`persianSearchMatch`); `groupByDastgah` folds spelling variants and ranks by Farsi or
+Latin dastgāh names. Every Farsi surface resolves its direction NATIVELY, via
+`dir="auto"` — never by detecting a script in JavaScript and never by reordering text.
+Free-text FIELDS also carry `unicode-bidi: plaintext` (set on `.input`/`.textarea` in
+`global.css`, and nowhere else — this was previously described here as global, which was
+never true).
+
+**LAYOUT FOLLOWS THE DIRECTION OF THE CONTENT IT SHOWS.** A title and the details that
+belong to it sit in ONE group carrying `dir="auto"`, so a Persian item reads as one
+right-aligned block. Before 2026‑09‑11 direction sat on the TITLE alone at 47 sites and
+on no container anywhere: a Farsi title resolved RTL and hugged the right edge of its
+cell while its own "due 14 days ago" caption, carrying no direction at all, hugged the
+left — the app looked polished in English and broken on the two instruments whose seeded
+data is entirely Farsi. The rule is now mechanical, not a matter of care:
+
+- `dir="auto"` appears on GROUPS (the element holding a title together with the details
+  that belong to it) and on free-text FIELDS — **never bare on a title element**
+  (`truncate`, `title-md`, `page-title`, `stage-unit-title`).
+- The group is drawn so the TITLE is the first strong text inside it. Where an English
+  eyebrow precedes the title in the DOM — Today's Practise-now card, the close screen's
+  header, Session Plan's minutes/bucket line, ItemDetail's "practise this part now",
+  Today's Routines doorway ("Resume your routine"/"Routines" precedes the routine's own
+  name), ActiveBlock's "Last time you decided to try:"/"Working on:" — the group wraps
+  title + details and LEAVES THE EYEBROW OUT, because `dir="auto"` resolves from the
+  first strong character in the subtree. Getting this backwards doesn't just mis-align:
+  Today's Routines buttons carried `dir="auto"` on the whole button, so the fixed English
+  label — not the Farsi routine name that followed it — decided the resolved direction,
+  and the button never read the name at all.
+- **A detail that mixes languages needs its OWN nested `dir` inside the group, not the
+  group's resolved direction.** Two different cases, two different attributes:
+  - A detail that is ALWAYS ENGLISH BY CONSTRUCTION — `buildReason`/`planSegmentReason`'s
+    generated sentences (Today's recommendation reason, ItemDetail's "practise this part
+    now" reason, Session Plan's segment reason) — carries its own `dir="ltr"` isolate
+    around the whole sentence, nested inside the group. Grouped under a Farsi title, that
+    div/paragraph still resolves RTL and the detail still sits in the same right-aligned
+    block (nothing about ALIGNMENT changes) — but the isolate fixes the sentence's OWN
+    bidi base to LTR, so the title's RTL base can no longer drag the sentence's trailing
+    full stop to the visual start (FriBidi renders a trailing neutral character using the
+    surrounding base direction when nothing more specific claims it). `dir="ltr"` here is
+    a static fact about content that is never user text, not detection.
+  - A detail that is FREE TEXT the owner typed (ActiveBlock's `constraint`,
+    the "last time you decided to try" note) sitting after a fixed English label —
+    `Constraint: `, `Working on: `, `Last time you decided to try: ` — carries its own
+    `dir="auto"` around just the value, not the label. The label would otherwise be the
+    subtree's first strong text (the same eyebrow bug as above) and pin the whole line to
+    English regardless of what the owner actually typed.
+- A group that sits under an ancestor pinning `text-align: left` OR `text-align: center`
+  must set `text-align: start` on itself, or its own direction never reaches the
+  alignment — ActiveBlock's whole screen centres its timer and buttons regardless of
+  language (that stays, it isn't text), but the title group overrides back to `start`
+  so ac-6's "English stays left, Farsi goes right" actually holds on that screen. This
+  is a deliberate LAYOUT CHANGE for English on Active specifically (centred → left) and
+  does not conflict with "English keeps its layout exactly as it is today" elsewhere in
+  this file: that non-goal protects English from being flipped to a Farsi-style
+  right-align, it was never a promise that Active's pre-existing centring was sacred —
+  ac-6 names Active as a checked surface with exactly this expectation.
+- Group HEADINGS that render Farsi (the dastgāh sections, Materials' instrument sections)
+  take direction on the SECTION, so a heading can no longer disagree with the rows
+  beneath it.
+- A lone title with no caption of its own takes the group it shares with its badge or
+  action — the row itself.
+- OUT of scope by construction: `<option>` contents (the native control owns their
+  rendering) and titles inside `confirm()`/toast template strings (plain strings, not
+  laid-out blocks). `ItemForm.tsx`, `QuickAdd.tsx` and `RoutineEdit.tsx` hold field sites
+  only and are correct as they are.
+
+`src/components/direction.test.ts` holds this closed and records the surface list, so a
+missed title FAILS and a whole skipped file FAILS — and "fixing" one by deleting the
+attribute fails too, since that would break Farsi rendering outright. Genuine exceptions
+live in that test's explicit allowlist AND here; **the allowlist is currently EMPTY**,
+because every title on every surface turned out to have a group it could join. An
+exception must always be VISIBLE, never silent.
+
+**"a whole skipped file fails" is not the same guarantee as "a deleted site fails."** A
+per-FILE check ("does this file have at least one group somewhere") stays green as long
+as one group survives anywhere in the file — so deleting the Practise-now card's own
+`dir="auto"` from Today.tsx, which carries several other unrelated groups, passed that
+check even though the one thing it was there to prove had broken. `GROUP_SITE_INVENTORY`
+in that test is the fix: every group-level site, recorded in file-then-source order,
+DUPLICATES INCLUDED (three bare `<div dir="auto">` in Today.tsx are three sites, not one
+collapsed entry, or removing one of the three would still pass a de-duplicated list), and
+asserted with `toEqual` against the live scan. Deleting any one recorded site — anywhere,
+in any file — shrinks or reorders that array and fails, regardless of what else survives
+in the same file. It carries the same visibility contract as the title allowlist: a
+legitimate new group site must be added to the recorded array (a test fails until it is),
+never inferred silently. The scanner also strips `//` and `/* */` comments before
+matching — this file's own prose repeatedly writes the literal string `dir="auto"`, and
+matching inside a comment either produces a site with no real enclosing tag or, worse,
+walks backward out of the comment and mis-attributes an unrelated tag from earlier in the
+file.
+
+**A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN.**
+A sealed review rejected the first pass at this section for exactly that gap: the
+inventory above proves a title and its details share ONE resolved direction (the fix this
+whole rule exists for), but it says nothing about a CHILD inside that group whose own
+bidi base needs to be independent of the title's — a Farsi title makes the group resolve
+RTL, and anything else in that subtree with no `dir` of its own is exposed to that same
+RTL base. That is exactly right for a caption that belongs to the title (the point of
+grouping), but wrong for two other shapes:
+
+- **Fixed English page copy or generated metadata** — a hardcoded sentence
+  (`CloseBlock`'s "A few seconds to capture what happened.", `StaleNote`'s "Running far
+  past its target…"), or a phrase built from numbers and English words
+  (`{n} segments · {m} min`, `due {relativeDay(...)}`) — is never user text and never
+  changes language, so it carries its own `dir="ltr"` isolate, nested inside the group,
+  the same shape already established for `reason` props (Today/ItemDetail/SessionPlan).
+  The counterexample the review found: `CloseBlock.tsx`'s "A few seconds…" sentence sat
+  bare in the item-title group, so a Farsi title made its trailing full stop render at
+  the visual start — the same defect this section already fixed once, reappearing one
+  level down. `TodayRoutineRow`/`PathwayDetail`'s `RoutineRow`/`StageDetail`'s
+  `RoutineCard` all render the identical "N segments · M min" phrase and all needed the
+  same isolate — a fix applied to one occurrence of a repeated pattern and not the
+  others is exactly the kind of gap this closure exists to catch.
+- **An independently-authored value** — a question, an observation, a
+  pathway's own description or note — carries its own `dir="auto"` isolate for the same
+  reason `ActiveBlock`'s `constraint`/`previousNextAction` already do: its
+  language cannot be assumed from the title sitting next to it. The counterexample:
+  `ClassQuestions`' question and last-observation values sat bare in the title's `<li>`
+  group with no isolate of any kind — unlike `ActiveBlock`'s established shape (a fixed
+  English label left bare, immediately followed by the value in its own `dir="auto"`),
+  which `ClassQuestions` now matches rather than inventing a third pattern.
+
+**THIS IS DELIBERATELY NOT "no bare Latin text in a group."** A short fixed label
+immediately followed by its own isolate — `Constraint: ` before
+`<span dir="auto">{value}</span>`, and `ClassQuestions`' own dated
+`Last observed …` caption above the same shape — stays bare on purpose; flagging it would force a change to an
+already-correct, already-reviewed pattern. What actually breaks is a real PHRASE that
+reaches the end of a group's rendered content with nothing to isolate it — which is
+what `src/components/direction.test.ts`'s `unexemptedPhrase` scans for mechanically: it
+walks a group's body in source order, accumulating exposed literal text, and clears
+that accumulation the moment it is immediately followed by any element carrying its own
+`dir=` — regardless of the accumulated text's length, which is what keeps the
+`ActiveBlock` label shape passing. Only a run that survives to a TAG boundary (not an
+expression boundary — `{n} segments · {m} min` is one generated phrase split across two
+expressions and must not fragment into single, individually-innocent words) and reads
+as two or more words is flagged. This is the "detectable, not enumerated" half the
+rejected review asked for: a NEW hardcoded sentence dropped into a group without its own
+isolate fails this test on its own, the same way a missed title already failed the
+group-vs-title test above.
+
+What that scan cannot see from source — an independently-authored VALUE (an
+expression whose content is opaque, like `{q.lastObservation.text}`) needing `dir="auto"`, or
+a component like `StaleNote` whose OWN return value needs to be isolated regardless of
+which title group calls it — is a recorded ledger instead, `ISOLATED_VALUE_SITES` and
+`LTR_ISOLATE_SITES` in the same test file, carrying the identical visibility contract as
+`GROUP_SITE_INVENTORY`: a legitimate new one must be added, visibly, or the test fails
+until it is.
+
+**AN ISOLATE MUST BE INLINE. A BLOCK CARRYING ONE RESOLVES ITS OWN ALIGNMENT,
+INDEPENDENTLY OF THE GROUP.** A third rejected review found `ItemMaterial.tsx`'s NAS/
+device detail line isolated with `<div className="tiny faint" dir="ltr">…</div>` — the
+isolate correctly fixed the sentence's own bidi ordering, but moved the BUG rather than
+fixing it: `text-align: start`, inherited from the group, is a per-box COMPUTED value
+that resolves against THAT box's OWN `direction` — give the div its own `dir="ltr"` and
+its `text-align: start` resolves LEFT regardless of the group's (possibly RTL) resolved
+direction, splitting the detail from a right-aligned Farsi title exactly as before, just
+relocated one level down. An inline isolate (`<span dir="ltr">`, nested inside a block
+that carries no `dir` of its own) never has this problem: `text-align` only governs how a
+BLOCK aligns its own content, and a `<span>` is not itself a block — even where a flex
+container blockifies it into a flex item, that item sizes to its content, so there is no
+extra width for its own `text-align` to act on. Its `dir` therefore only ever isolates the
+Unicode bidi algorithm's treatment of the text inside it, never which edge anything
+visually sits on — the established shape throughout this file was always the span form,
+and the block form was a new, narrower regression in one fix. `direction.test.ts` now
+bans the shape mechanically rather than by care: no
+`dir="ltr"`/`dir="rtl"` may sit on any tag but `span`/`bdi`, full stop, so this class of
+bug cannot resurface in any file, named here or not — one location fixed and the anti-
+pattern deleted are two different guarantees, and only the second is durable.
+
+**A NATIVE LIST MARKER'S OWN LOGICAL POSITION IS NOT SOMETHING A GUTTER MEASUREMENT CAN
+GUARANTEE.** The third rejection found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+space with `paddingInlineStart` alone while each `<li>` resolves its OWN direction via
+`dir="auto"`, and fixed it with symmetric `paddingInline` instead, reasoning that a
+marker landing on either side would then have room. A SIXTH SEALED FINDING, checked on
+the owner's own iPhone, found the number still escaping the card even with that room
+reserved: an outside `::marker`'s exact position for a direction-variable list item is a
+browser implementation detail — exactly the class of thing jsdom cannot compute either,
+which is why a padding measurement was ever trusted to stand in for it — not a distance a
+gutter can be sized against. The fix stops accommodating the native marker and removes it
+instead: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a real element,
+the FIRST child of a flex `<li dir="auto">`. Flexbox's row axis is direction-aware BY
+SPECIFICATION (`flex-direction: row`'s start is the writing mode's own start, not a fixed
+physical side), so the number leads on the right for a Farsi question and on the left for
+an English one — and because it is now an ordinary flex child inside the `<li>`'s own
+content box, rather than a marker rendered in the padding area outside it, it can no
+longer escape the card on any device. It carries no `dir` of its own (a digit is
+bidi-neutral, so `dir="auto"` on the `<li>` skips it and still resolves from the title as
+before) and neither does the wrapper around title/question/details: `dir="auto"` skips a
+descendant that carries its own `dir` when hunting for a first strong character, so
+giving the wrapper one would leave the `<li>` with no resolution source at all — the same
+class of regression the `stage.title` revert and the instrument-name checks above already
+found. `direction.test.ts` now asserts the mechanism directly rather than a proxy for it:
+every `<ol>`/`<ul>` containing a `dir="auto"` `<li>` must disable the native marker
+outright, and that `<li>` must itself be a flex/grid container able to reorder its own
+content — a shape check on the fix itself, not a measurement around a browser behaviour
+nothing here can verify.
+
+Removing the native marker has an accessibility cost the visual fix alone doesn't pay
+back: WebKit drops an `<ol>`'s own list semantics from the accessibility tree once
+`list-style: none` removes its marker, so VoiceOver on the owner's own iPhone — the exact
+device this fix targets — would stop announcing "list, N items" or a question's position
+in it. `role="list"` on the `<ol>` restores that; the visible ordinal carries
+`aria-hidden` so it is not announced a second time on top of it.
+
+**A ROW'S OWN ALIGNMENT COMES FROM THE VALUE, NEVER FROM A LABEL MARKED OUT OF THE HUNT.**
+The sixth finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed
+at the time as a WRAP-alignment gap: the established shape — a fixed English label left
+bare, immediately followed by the value in its own `dir="auto"` isolate — gives the
+value's own CHARACTERS correct bidi order, but a plain inline span has no width of its own
+to align a wrapped line within, so a long value was given `display: 'inline-block'` +
+`textAlign: 'start'` to align its OWN wrapped lines independent of whatever surrounded it.
+
+A SEVENTH SEALED FINDING found that diagnosis addressed the wrong claim. Giving the value
+its own wrap-line alignment is not the same claim as giving the ROW — the element that
+actually positions "Label: value" as a unit — the right alignment in the first place. The
+row itself was left BARE in both the original and the wrap-alignment fix, so it inherited
+whichever direction the TITLE above it resolved to, regardless of what script the VALUE
+was written in. For a Farsi title with a Farsi value this looked right by coincidence
+(inherited-from-title happened to match the value); for an English-titled item with a
+Farsi problem note, the whole row stayed pinned left — the label's inherited position, not
+the value's own — with the value's internal characters shaping correctly but its overall
+POSITION wrong regardless of whether it wrapped. This is exactly the "a group carrying
+direction is not the same claim as every child in it having its own" family two sections
+up, just not yet applied to a row whose OWN direction, not merely a child's bidi base,
+needed to track an independently-authored value.
+
+The fix moves `dir="auto"` from the value to the ROW, and marks the LABEL — never the
+value — with its own `dir="ltr"`. Not because the label's text ever changes: `dir="auto"`
+skips a descendant that carries its own `dir` when hunting for a first strong character
+(the exact mechanism the eyebrow/title split above already relies on), so marking the
+label takes it OUT of that hunt and leaves the deliberately bare value as the row's only
+candidate. Marking the value too would take BOTH out, leaving the row with nothing to
+resolve from and a silent fallback to LTR no matter what the value says — confirmed to
+fail the new check when tried, alongside the opposite mutation (removing the label's
+`dir="ltr"` entirely, reverting to the original bug), which the pre-existing
+`unexemptedPhrase` check also independently catches. Verified across all four
+title/value language combinations at both a 350px (iPhone-card-width) and a 700px
+(desktop) container width: a value's own language determines its row's alignment
+independent of the title, in both directions, at both widths — and with all four lines
+(title, question, Problem, Last time) now agreeing, the block reads as one attached unit
+against the marker rather than two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the two `ISOLATED_VALUE_SITES` snippet entries with a SHAPE
+check, `isLabelFirstAutoRow`: any `dir="auto"` group whose body opens with a
+`<span dir="ltr">…</span>` must have no other `dir=` anywhere else in its body. It is not
+anchored to `ClassQuestions.tsx` — it would catch the identical regression in any future
+file adopting this label-first-row pattern, the same "shape, not a location list"
+discipline the instrument-name and native-marker checks above already established. This
+is deliberately NOT generalised to `ActiveBlock`'s
+`constraint`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
+the older bare-label-then-isolate shape: those fields sit directly under their own title
+in this app's real data (never independently mismatched), so the failure this fixes does
+not arise for them, and touching files this lane's own brief did not name would be scope
+the sealed finding never asked for.
+
+**THE MARKER/TITLE GAP AND THE RAGGED LEFT EDGE ARE TWO DIFFERENT CLAIMS, AND ONLY ONE OF
+THEM WAS EVER BROKEN.** A follow-up OWNER pass on this same finding read as a second,
+distinct complaint — the ordinal "looked" detached from a Farsi question because the
+Problem/Last-time lines sat at the opposite (left) edge while the title and question sat
+right, an asymmetry a screenshot reads as "the number is not attached" even though the
+title itself was never the problem. Measured directly against the live DOM (real seeded
+Farsi data, cloned at a 340px container width, text extents read via
+`Range.getClientRects()`, not `getBoundingClientRect()` on the boxes): the ordinal's right
+edge sits at 338px, the title/question/Problem/Last-time lines all right-align flush
+against 330px — an 8px gap matching the authored `gap: 8` on every one of the four lines,
+not just the title. The remaining LEFT edges spread across a 143px range (62px-205px),
+because the four lines are different lengths and each is right-aligned within a box whose
+own right edge is pinned to the ordinal regardless of the box's width. That spread is
+mathematically invariant to how the box is sized: left edge = box_right minus line_width,
+and box_right never moves, so switching the wrapper from `flex: 1` (this file's `.grow`)
+to shrink-to-fit was tried and measured byte-for-byte identical before and after — proof
+that no flex-sizing change can touch it, because there is nothing wrong with the sizing to
+begin with. A ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same thing an address block or a right-aligned caption does), not a
+resolvable defect, and the row-direction fix above is what actually closed the gap the
+owner was reacting to for THAT screenshot: before it, Problem/Last-time sat at the FAR left
+(~25px, the opposite edge entirely) while title/question sat at ~330px — a hard
+two-line/two-line split, not mere length variance. Once all four lines agree on which edge
+they hug, the remaining spread is length variance, and no further padding or flex-sizing
+change was warranted for it specifically. **This measurement is scoped to the ragged-edge
+question alone and is NOT a claim that every marker-attachment complaint was closed** — a
+NINTH finding below, on the exact same screenshot's underlying data, found a real,
+different structural bug in how the `<li>` itself picks its resolved direction. Read that
+finding for the actual fix; do not re-derive "nothing more to do here" from this measurement
+a second time.
+
+**THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
+NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
+Seventh/Eighth findings' — used seed data where an item's title and its teacher question
+(then an item field, now a `lessonAgenda` entry) happen to share a language. That is exactly the one condition under which the underlying
+bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
+descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
+and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
+isolates — so the hunt could only ever land on the bare TITLE. Whichever language the TITLE
+happened to be in decided which side the ordinal rendered on, regardless of the question's
+own language. An OWNER pass with a title and question in DIFFERENT languages (reproduced
+directly against the live running app — the real Teacher Report page, not a clone — by
+temporarily setting an English title on the real seeded Farsi item via the store) showed
+this concretely: the ordinal and title landed together on the English side, while the
+question — right-aligned by its own independent `dir="auto"`, correctly, on its own terms —
+sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse combination
+(Farsi title, English question) reproduced the mirror image. Neither combination is exotic:
+an item's title is free text the owner chooses for their own reasons and has no obligation
+to share a language with a teacher's question about it.
+
+The fix reverses which of the two is left bare. The lesson-agenda query behind this list
+(`openQuestionsForLessonId`, formerly `questionsForNextClass`) guarantees `q.question` is
+non-empty on every row this component ever renders — a question entry has no meaning
+without its text; `q.title` carries no such guarantee and is authored completely independently.
+The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
+applied to the OTHER field this time), so it renders in its own correct direction but is
+taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
+`dir="auto"` actually finds — the marker now always tracks the question, the one field
+guaranteed present, never the optional title. Structural, not padding: this is the same
+skip mechanism this file already relies on throughout, applied to the correct field.
+Verified directly against the real, running page
+(not a synthetic clone) at both a 390px (real DOM node, width forced via the live element's
+own style, not `resize_window` — which does not affect layout in this environment — so the
+SAME component tree is exercised, just narrower) and the full desktop width: an English
+title with a Farsi question now attaches the marker to the question (right) with the title
+independently left-aligned; a Farsi title with an English question attaches the marker to
+the question (left) with the title independently right-aligned; the original matching-language
+case (both Farsi) is unaffected. `direction.test.ts` records this as a dedicated,
+mutation-tested shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the
+title's tag carries `dir="auto"` and the question's does not — confirmed to fail under both
+reverted mutations (title bare again; question marked again) before being committed.
+
+**THE LESSON THIS FILE KEEPS RELEARNING:** matching-language seed data proves a fix works
+when title and value AGREE, and says nothing about what happens when they DISAGREE — the
+Seventh finding's row-direction fix and this Ninth finding are the same shape of gap,
+found twice because the same seed data was trusted twice. Any future verification of a
+mixed-language surface in this file should deliberately construct a MISMATCHED case, not
+only the matching one already in the seed.
+
+**THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
+every `{…}` expression as fully opaque, contributing zero words — which is exactly
+right for a single expression like a title, but means a run built ENTIRELY from
+expressions (`{MATERIAL_SOURCE_LABELS[m.sourceType]} · {MATERIAL_STATUS_LABELS[m.status]}
+·{' '} {itemCount(m.id)} item{…}`) read as zero words to the scanner while rendering
+three always-English fragments in a row, unisolated, in a group whose title could
+resolve RTL. This is precisely why the named counterexamples (`Materials.tsx`,
+`ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx`) passed a test that
+was supposed to catch them. Fixed by counting an opaque, non-JSX-bearing expression as
+ONE token rather than zero — its actual text stays invisible from source, but its mere
+UNISOLATED PRESENCE next to other content is what the shape is; an expression whose own
+content contains nested JSX (`{cond && <div dir="auto">…</div>}`) stays fully opaque, its
+children already reachable by the outer whole-file scan. That single change, plus
+re-auditing every recorded group's body by hand, found the five named sites AND several
+more of the identical shape the review did not enumerate: `Repertoire.tsx`'s SECOND,
+near-duplicate dastgāh-count span (the non-Persian `sourceGroups` branch mirrors the
+fixed one exactly and had been missed), `ActiveBlock.tsx`'s mode/focus chips (the
+practice screen itself), `Attachments.tsx`'s and `ItemDetail.tsx`'s file kind/size line,
+`StartBlock.tsx`'s and `Today.tsx`'s item-type/status labels, `StageDetail.tsx`'s
+strand/status `meta` line, `PathwayDetail.tsx`'s "Current"/"Done"/item-count badges and
+its piece-count fallback, `Today.tsx`'s "routine running" indicator (at the time, one
+`dir="ltr"` isolate covering the whole phrase — a sealed review later found that this
+wrongly pinned the instrument name inside it too; see below) and its cross-instrument
+Overview row (a fixed sentence embedding the next item's own possibly-Farsi title —
+isolated the same way `StageDetail`'s undo banner already does, whole sentence under one
+`dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of which also
+embed an item's own title mid-sentence). One further site needed the OTHER isolate —
+`dir="auto"` for a value authored independently of its neighbour, not `dir="ltr"` for
+generated copy: `RoutineRunner.tsx`'s "Next: {label}" (the upcoming segment's own name).
+`PathwayDetail.tsx`'s pathway `source` field got the same treatment (free text beside the
+instrument name, at the time itself still wrongly isolated as `dir="ltr"` — see below),
+but its stage's own `title` was tried the same way and REVERTED: `stage.title` is not authored
+independently of `stage.code`, it is the SAME stage's own fuller name, and this file
+already settles (a few paragraphs up) that the two must AGREE on whichever direction
+the group resolves — isolating `stage.title` would have pulled it OUT of the button's
+own `dir="auto"` detection (a nested `dir` is skipped by the HTML auto algorithm),
+which can flip the group's resolved direction whenever `stage.code` itself carries no
+strong character. It stays a bare `<span>`, exactly like `stage.code`.
+
+**RE-DERIVING THE TEST'S OWN TAG TRAVERSAL FROM FIRST PRINCIPLES FOUND A DEEPER GAP
+THAN ANY SINGLE MISSED FILE.** `elementBody` (the helper both `unexemptedPhrase` and
+the isolate-skip logic use to find where an element's content ends) tracked nesting
+depth by incrementing on every opening tag and decrementing on every closing one —
+except a React Fragment shorthand, `<>`, starts with neither `/` nor a letter, so it
+matched NEITHER branch and never incremented depth, while its own close, `</>`, starts
+with `/` and DID match the closing branch, decrementing it. Every `<>…</>` pair inside
+a body therefore owed depth one MORE decrement than it was ever given an increment for
+— and this codebase's own established shape for a conditional detail
+(`{stage && (<><span>…</span><Link>…</Link></>)}`, exactly what `ItemDetail.tsx`'s
+header uses) hits that shape twice. On that header, depth reached zero several tags
+before the real `</header>`, so `unexemptedPhrase` silently stopped scanning before
+ever reaching `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a
+real, unisolated generated-English phrase that had been sitting in the group
+throughout every previous pass of this lane, invisible to a scanner whose entire claim
+is "detectable, not enumerated." Fixed by giving `<>` the same weight as any other
+opening tag. Re-running the FULL suite after the fix surfaced exactly this one
+violation — nothing else in the currently-scanned files was hiding behind the same
+bug — now closed with the same `dir="ltr"` (at the time, `instrumentName` sat in this
+same list too — a sealed review later found that wrong; see below — plus
+`ITEM_TYPE_LABELS`, "difficulty N/5", "saturated — consider resting") the rest of this
+section already established, while `stage.code` and the material label stay bare for the
+same reason `stage.title` does two paragraphs up. The lesson generalises beyond this one bug: an
+example-driven fix only ever closes the examples in front of it; only re-deriving a
+shared helper's own correctness from what it claims to do (does `<>` open or close a
+nesting level? — the answer was always "both, and this code only handled one") finds
+what a location list, however carefully audited, cannot.
+
+Two sites the stronger scanner flagged are recorded, VISIBLY, as genuine exceptions in
+`UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: `PathwayDetail.tsx`'s stage-progress
+counter (`{sp.done}/{sp.total}`, e.g. "3/5") is digits only — numbers carry no bidi risk
+the way an English WORD dropped into an RTL run does — and `ItemDetail.tsx`'s
+pathway-plus-stage breadcrumb (`` `${pathway.name} — ` `` immediately followed by
+`{stage.code}`) is one continuous compound LABEL built from two fields, not a title
+split from an unrelated caption; there is no separate "caption" here with an opinion of
+its own about direction. The allowlist carries the same visibility contract as
+`ALLOWED_TITLE_SITES` — a stale entry (naming a site that no longer exists) fails its own
+test.
+
+**THE SCANNER'S OWN COMMENT-STRIPPING HAD A LATENT BUG THAT THIS WORK EXPOSED.**
+`stripComments` treated any `'`/`"` as a real string delimiter and scanned forward,
+unbounded, for its match — correct for a real JS string, wrong for plain JSX TEXT
+containing an apostrophe (`StageDetail.tsx`: "That stage doesn't exist."). Hitting that
+apostrophe outside any real string put the scanner into a phantom "inside a string"
+state that swallowed everything after it — real comments included — until an unrelated
+quote character somewhere later happened to close it, cascading into a chain of further
+phantom strings for the rest of the file. This had been silently true all along; it only
+surfaced now because a newly added comment happened to be inside the corrupted span and
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the `dir="ltr"`/`dir="rtl"` block-isolate scan as if it were a real
+attribute. Fixed at the root rather than by rewording the comment: a `'`/`"` now only
+starts a real string if its matching quote appears before the next newline (every real
+string/attribute value in this codebase is single-line); otherwise it is passed through
+as ordinary text and scanning resumes normally right after it. Backtick template
+literals keep their original unbounded, multi-line scan. This makes EVERY check in this
+file more trustworthy, not just the new ones — the exact failure mode the file's own
+`stripComments` docstring already warned about ("worst, `enclosingTag` walking backward
+out of the comment and mis-attributing an unrelated tag") was silently possible for any
+file containing a stray apostrophe in plain prose, this codebase's Setar/Tar seed data
+included.
+
+**AN INSTRUMENT NAME IS THE OWNER'S OWN EDITABLE TEXT, NEVER GENERATED COPY — GETTING
+THIS BACKWARDS IS A CLASSIFICATION MISTAKE, NOT A MISSED LOCATION.** A sealed review
+found four sites (`ItemCard.tsx`, `ItemDetail.tsx`, `PathwayDetail.tsx`,
+`Repertoire.tsx`) pinning an item's or work's instrument name under `dir="ltr"` right
+alongside genuinely generated metadata like `ITEM_TYPE_LABELS` — Settings lets an
+instrument be renamed, Farsi included, so forcing a renamed instrument to LTR gives it
+the wrong bidi base, the exact defect every other isolate in this file exists to
+prevent. Auditing every remaining `LTR_ISOLATE_SITES` entry against its real source
+(not just the four named) found a fifth of the identical shape — `Today.tsx`'s "routine
+running" row bundled the instrument name and the fixed English suffix into ONE
+`dir="ltr"` span — and two more with no direction treatment AT ALL, invisible to that
+same audit because it can only see spans that already carry a `dir`: the Plan doorway's
+mismatched-instrument row (the exact twin of the routine row, same bundling, just
+missing the isolate rather than misusing it) and the weekly Balance row's instrument
+name, sitting bare inside a `.truncate` title span. All seven now isolate the
+instrument name on its own `dir="auto"` — nested one level in for the Balance row
+rather than on `.balance-row` itself, because that row is a CSS GRID and giving IT a
+resolved RTL direction would reverse its three columns for a Farsi instrument, flipping
+the bar and percentage to the other side. The fix generalises past these seven
+locations: `direction.test.ts` now also fails if any `dir="ltr"`/`"rtl"` isolate's body
+references `instrumentName` — a call, a bare identifier, or a property access like
+`b.instrumentName` all match, not only the call form (the widened check was itself the
+product of a caught regression: an earlier `\binstrumentName\(` version missed the
+Balance row's own property-access form) — or ItemCard's own `inst` alias for it, so a
+future regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
+happened to name.
+
+**A FIFTH REJECTION FOUND THE SHAPE-BAN STILL WASN'T ENOUGH, BECAUSE IT WAS ONLY EVER A
+NEGATIVE CHECK.** Banning `dir="ltr"`/`"rtl"` around an instrument name catches nothing
+about a name rendered with NO direction treatment at all, an alias beyond the two literal
+anchors the check happened to know (`instrumentName`, `{inst}`), or a name fused into a
+template string (`` `${instrumentName(db, x)} plan` ``) before anything could render it —
+three shapes a fourth sealed review found live in the app (Repertoire's `PathwayCard`,
+Session Plan's two page titles, wide Lessons' sidebar heading and its detail-pane header,
+Today's cross-instrument "in progress"/"plan"/"routine" rows, Today's `EmptyState` title
+and "Before your … class" heading, and ActiveBlock's/CloseBlock's own eyebrow — the last
+two mis-classifying the instrument's own name as "the English eyebrow" in their own
+comments). `direction.test.ts` now asserts the invariant itself rather than banning one
+way of getting it wrong: `instrumentNameOccurrences` DISCOVERS every current renderer
+mechanically — the `instrumentName(db, id)` call, a bare `.instrumentName` property read,
+a LOCAL ALIAS of either (a destructured, renamed prop; a `const X = instrumentName(...)`
+binding; a `const X = …instruments….find(...)?.name` binding, generalised past the literal
+spelling "instrumentName" so a differently-named local is still caught), and a per-item
+`.name` read inside an `instruments.map`/`.filter().map` callback or an inline
+`instruments.find(...)?.name` — rather than requiring each to be re-listed by hand.
+`resolvesOwnDirection` then asserts the POSITIVE invariant: the name's nearest ancestor
+`dir` must be `"auto"`, AND nothing else may render before it within that SAME ancestor's
+body — a `dir="auto"` ancestor resolves from whichever strong character comes FIRST in
+its subtree, so an item's own title (or anything else) preceding the name inside the same
+auto group claims that resolution for itself, exactly the classification mistake this
+whole family exists to catch. `isFusedIntoTemplate` separately catches the template-fusion
+shape. A declaration/binding site (the alias's own introduction) and a value forwarded as
+a JSX ATTRIBUTE (`instrumentName={x}`, prop-drilling rather than a DOM text render — the
+receiving component is checked wherever IT renders the value; `ClassQuestions` never does)
+are both excluded, visibly, in the check's own comments rather than by a silent gap.
+
+Two real sites deliberately stay BARE and must keep passing exactly as they are:
+Insights.tsx's `<th dir="auto">{r.instrumentName}</th>` and Today.tsx's cross-instrument
+`<div className="grow" dir="auto">…<div>{inst.name}</div>…` row. Both already resolve
+correctly because the name is genuinely the FIRST strong content of their own dir="auto"
+ancestor; wrapping either in a nested isolate would BREAK, not fix, them — `dir="auto"`
+skips a descendant that already carries its own `dir` when hunting for a first strong
+character, so the ancestor would lose its only resolution source and silently fall back to
+LTR for a Farsi instrument, the same reasoning this file already used once to revert
+isolating `stage.title`. The completion gate for this check was empirical, not assumed:
+each discovery shape above was mutated back to its broken form in turn and confirmed to
+fail the test before being reverted, and the check itself asserts it discovers a non-zero
+set of sites overall, so a regression that makes every pattern silently stop matching
+cannot masquerade as "nothing to report."
+
+Two gaps are named here because this lane cannot close them, not because they were missed.
+`src/components/QuickAdd.tsx`'s instrument-picker button renders `{i.name}` with no
+direction treatment at all — a real instance of this same defect — but `QuickAdd.tsx`,
+`ItemForm.tsx` and `RoutineEdit.tsx` are this lane's own contract's declared non-goal
+("their dir=\"auto\" usage is already correct and must not be touched"), so
+`direction.test.ts`'s instrument-name check explicitly excludes all three rather than
+either silently passing over a real bug or failing a check this lane cannot act on.
+Separately, `src/domain/insights.ts` (a forbidden path here) bakes
+`${r.instrumentName} ${r.percent}%` for every instrument into one generated sentence
+before Today or Insights ever renders it — the identical "fused into a string" defect,
+sitting one layer below where a presentation-only lane can reach it. Today.tsx's own
+render of that sentence (`insight.body`) was still tightened to match Insights.tsx's
+existing inline `<span dir="ltr">` isolate (it was previously a bare, undirected block),
+but the embedded instrument name inside that generated sentence stays open pending a
+domain-layer fix and its own lane.
+
+**A RESOLVED DIRECTION THAT NEVER REACHES THE ALIGNMENT IS NOT A FIX, AND NEITHER IS ONE
+WITH NOTHING TO RESOLVE FROM.** A tenth sealed finding named two counterexamples, both in
+this same family, and both invisible to the guard as it stood.
+
+Repertoire's `PathwayCard` rendered a user-authored `pathway.name` inside
+`<button style={{ textAlign: 'left' }}>` with NO direction-resolving group between them. A
+Farsi pathway name shaped correctly — the browser's bidi algorithm needs no help for that —
+and then sat pinned to the English edge, split from its own instrument/stage caption
+underneath. The inline `<span dir="auto">` already on that caption could never have fixed
+it: `text-align` is a BLOCK concept, which is exactly why this file's own "an isolate must
+be INLINE" rule exists. The fix is ONE group carrying `dir="auto"` AND re-declaring
+`textAlign: 'start'`, sitting INSIDE the button (the Balance-row precedent — the chevron row
+and the progress bar are layout, not text). Either half alone leaves the name where it was:
+a group with no `start` resolves a direction the alignment never hears about, and a `start`
+with no group has no direction to resolve. The same shape, audited across the app, was live
+in two more places and fixed with it — Insights' `<th style={CELL} dir="auto">` (CELL pinned
+`textAlign: 'left'` over an instrument name the owner can rename to Farsi; it is `'start'`
+now) and RoutineRunner's "Recorded" rows under a card pinning `'left'`. `center` is
+deliberately NOT a forcing value: centred text points at no edge, so it cannot misalign an
+RTL run, and excluding it is also what keeps this rule from demanding an unrequested layout
+change on the deliberately centred practice screens.
+
+**EVERY LINE OF A MULTI-LINE FREE-TEXT FIELD RESOLVES ITS OWN DIRECTION — EXCEPT THE ONE
+THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for the question text and for the item's most
+recent block observation (one `<textarea>` each, so several
+distinct questions live as several lines of one string; `splitLines` in `format.ts`, tested)
+first shipped with every bullet bare, on the argument that lines typed into one box in one
+sitting share one direction. They do not — a Farsi question and an English one go into the
+same field — and bare lines all inherit the FIRST line's direction, dragging an English line
+RTL with its bullet on the wrong side, or the reverse. But the catch that argument was right
+about is real, and is why this is not simply "isolate every line": `dir="auto"` skips any
+descendant carrying its own `dir`, and the enclosing `<li dir="auto">` (and the dated
+last-observation value wrapper) has nothing else left to hunt once the title is isolated —
+isolating every line would leave the item with no resolution source and a silent LTR
+fallback, which is the ninth finding all over again. Both hold ONE way only: the FIRST line
+is the ANCHOR and stays BARE — it still follows its own language, because the direction it
+inherits is the direction it produced — and every line AFTER it carries its own `dir="auto"`
+on the row, so that line's text and its bullet follow it alone. The two branches are written
+out LITERALLY (never `dir={i === 0 ? undefined : 'auto'}`): `direction.test.ts` is a source
+scanner, and a computed attribute is invisible to every guard in it.
+
+`direction.test.ts` holds both closed with checks that assert the invariants rather than the
+presence of a group somewhere in a file — which is what the finding correctly said ac-5's
+own check could never fail on. The first discovers every element carrying a title class
+whose body renders an opaque data expression, and, when anything above it forces
+`textAlign: 'left'`/`'right'` — inline OR through a module-level style constant it names,
+the shape the Insights counterexample was actually written in — requires a `dir="auto"`
+group below that forcing element which re-declares `textAlign: 'start'`; it also fails any
+`dir="auto"` group that pins a physical alignment on ITSELF. The second asserts the anchor
+shape directly: exactly one bare branch, exactly one `dir="auto"` branch, and the isolate on
+the branch chosen for lines AFTER the first. Seven mutations were confirmed to fail before
+either was committed. Verification used DELIBERATELY MISMATCHED languages in both directions
+against the real running pages — the lesson this file keeps relearning, applied before the
+fact this time rather than after.
+
+**`text-align: start` IS NOT PORTABLE ACROSS ENGINES, AND CHROMIUM CANNOT SHOW YOU THAT.**
+Every finding above was checked in Chromium. An eleventh, checked in BOTH engines, found
+the owner's long-reported Safari-only question-alignment symptom and it was none of the
+causes previously guessed at: `ClassQuestions`' `<li dir="auto">` inherits `text-align`
+from an LTR ancestor, and WebKit inherits the RESOLVED PHYSICAL value (`left`) where
+Chromium inherits the LOGICAL keyword (`start`) and re-resolves it against the `<li>`'s own
+direction. So a Farsi question rendered hard against the ENGLISH edge while its ordinal —
+a direction-aware flex child, correct on its own terms — sat on the right. Identical DOM,
+identical CSS, two different pictures, and the Chromium-only checks that had passed nine
+times could never have seen it. The fix is one declaration: a block whose own direction is
+resolved by its content must RE-DECLARE `textAlign: 'start'` on itself, exactly as the
+tenth finding's rule already requires under an ancestor that pins a physical alignment —
+an inherited `start` is not the same thing as an own `start`.
+
+The general rule: **a direction fix verified in one engine is verified in one engine.**
+`tests/practice-information-layout.browser.test.ts` drives the changed surfaces in Chromium
+AND WebKit at 390×844 and desktop and asserts measured bounding positions, so this class of
+divergence fails a check rather than waiting for the next screenshot. A missing WebKit
+binary FAILS with `npx playwright install webkit`; it never skips. Two WebKit-only
+environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB under the
+automation driver (so that journey seeds state-only), and it reports
+`"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
+
+**WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
+the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
+canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
+title in its OWN `dir="auto"` isolate, the question left BARE so it anchors the `<li>`, and
+— when the item has one — the most recent block observation under a stacked, isolated
+`<span dir="ltr">Last observed YYYY-MM-DD</span>` caption. Read the seventh and tenth
+findings for why the caption stacks above the value instead of sitting inline with it; read
+the ninth for why the question, not the title, is what the `<li>` resolves from.
+
+**SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
+authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
+a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard
+produces the ARABIC kaf (U+0643) and the seeded titles hold the PERSIAN kaf (U+06A9),
+and no amount of case folding bridges those. Both search boxes — Repertoire's practice
+list and Start's item picker — filter through `itemMatchesSearch` (`selectors.ts`,
+tested), the one wrapper over the existing `persianSearchMatch`. It is a WRAPPER, not
+a second matcher: `farsi.ts` keeps its behaviour exactly, and the wrapper exists so
+the WIRING is reachable from a Node test in a repo whose vitest environment is
+`'node'` and can therefore never render a screen. A new search surface calls it too.
+
+## Everything the app already knows reaches you where you are
+
+Which instrument you are practising, which piece you mean when you type it in Farsi,
+and which class files are already linked to a piece — none of that may sit one screen
+away from where you need it, and NONE of it is new stored data.
+
+**A BROWSE SCREEN OPENS ON THE INSTRUMENT YOU ARE PRACTISING, AND STILL WIDENS.**
+Repertoire (all three views — Pathways, My repertoire, Practice list) and Lessons seed
+their instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
+Add, New Item and the Session Plan already read, via `defaultInstrumentFilter`
+(`selectors.ts`, tested): a resolvable session instrument seeds the filter, the `'all'`
+sentinel seeds the every-instrument view, and a session instrument that no longer
+resolves IN THE LIST THAT SCREEN'S OWN DROPDOWN RENDERS falls back to every-instrument
+rather than seeding a value with no matching option and showing an empty screen. These
+screens SEED from that value and never WRITE it: browsing another instrument's
+repertoire must not change what Today recommends. The cross-instrument view is never
+removed — only stopped from being the default you undo on every visit.
+
+**A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
+OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
+can hold items from ANY instrument, so showing it while narrowed to Setar can still
+surface a Tar item's progress with no way to know it slipped through. `pathwaysForInstrumentFilter`
+(`selectors.ts`, tested) is the one place this is decided: a real filter keeps only
+pathways scoped to that exact instrument, and only the explicit `''` ("all") filter
+widens back to see General pathways too — the same opt-in-widen shape as everything else
+in this section, not a second rule.
+
+**AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
+(`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
+the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
+a file referenced from two of those lessons appears once, followed by the item's own
+attachments — lessons newest first, kind order within a lesson, attachments oldest
+first. Nothing is persisted to make this view work and no new field exists; these links
+were always in the data and were simply never composed. An attachment's `ownerId` is not
+an item id on its own — a lesson's attachments share the same id space, so a lesson and an
+item can collide on id — so ownership is decided by `ownerType` AND `ownerId` TOGETHER, via
+one shared `attachmentsOwnedBy(attachments, ownerType, ownerId)` predicate (`itemFiles.ts`,
+exported and tested), with `itemOwnedAttachments` as its item-scoped wrapper. EVERY surface
+that lists, counts or removes attachments reuses it rather than re-deriving the check:
+Material's composition here, ItemDetail's Files CRUD list below, the shared `Attachments`
+component (a lesson's own file list, `ownerType="lesson"`), `ItemCard`'s file-count badge, and
+`deleteItem`/`deleteLesson` (`useStore.ts`) choosing which attachment metadata AND blobs to
+destroy — so no read, count or delete can cross-contaminate the other owner type on a
+colliding id. An item with no lesson link and no attachments yields an EMPTY LIST, and the
+surfaces render nothing rather than an
+empty frame. An item with no lesson link cannot reference NAS material at all — that is
+the honest gap, and closing it needs a persisted item-level reference, therefore a
+schema change and its own lane. Both the PRACTICE screen and ItemDetail render the WHOLE
+composition — a reference and an attachment for the same piece are never split across two
+sections of the screen. ItemDetail's existing Files section stays below it, but only for
+add/remove: that is a CRUD concern, never a second, partial presentation of what
+`itemFiles` already composed. It selects its list via the SAME `itemOwnedAttachments`
+predicate rather than filtering `ownerId` alone, so it can never present or remove a
+lesson's attachment that happens to share the item's id. It is therefore its own small
+list local to `ItemDetail.tsx`
+(name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
+for a lesson's own attachments: that component's preview and Open are exactly the
+presentation Material already gives an item's files, and reusing it here would put the
+same file on screen twice.
+
+**THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
+reference resolves through the configured NAS base URL; an attachment resolves to a
+blob on this device. `ItemFile` is a discriminated union on `source`
+(`'reference' | 'attachment'`) so the compiler — not a component's care — is what stops
+a reference being opened as a blob or an attachment being pushed through the base URL
+and 404ing. They share no identity field (a reference has a `path`, an attachment a
+`name`), so they are never merged and deduplication is WITHIN a kind, never across.
+
+**WHAT MAY RENDER INLINE IS A PURE PROPERTY OF THE ENTRY, decided in `itemFiles.ts`.**
+`inline` is true only for a LOCAL IMAGE attachment; every PDF, audio file and every NAS
+reference is open-only. Written inline in a component that rule would be unreachable
+from a Node test, and it is exactly the rule that keeps the practice screen a practice
+screen and the whole feature inside the existing production CSP: `blob:` images are
+already permitted, while a NAS origin is not knowable at build time and so could never
+render under a static policy in any case. Large media stays on the NAS — files are
+OPENED, never fetched into attachments, IndexedDB, sync or a backup.
+
+**MATERIAL DURING PRACTICE IS ONE CLOSED DISCLOSURE, BELOW THE TIMER.** `ActiveBlock`
+offers it only when `itemFiles` is non-empty, renders nothing until it is opened (a
+closed disclosure does zero async work), and sits in the same shape as "About this
+piece" — not a panel, not a viewer, not a dashboard. No material or viewer concern may
+influence a recorded minute, the wake lock, or a boundary announcement: the
+elapsed-time family, `shouldKeepAwake` and `nextSignal` are untouched by any of this.
+
+**A NAS REFERENCE IS STORED RELATIVE TO THE CONFIGURED BASE, so it stays portable.**
+An absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS: it dies on a phone
+away from home, and everywhere at once if the base URL ever changes.
+`relativizeReference(base, pasted)` (`recordings.ts`, tested) rewrites a pasted URL that
+sits UNDER the configured base into the path beneath it — requiring the path BOUNDARY
+(`base + '/'`, so `…/media` never swallows `…/mediaXYZ/`) and comparing normalised URLs,
+not raw strings. It DECODES per segment because `resolveRecording` re-encodes on the way
+out; a Farsi filename copied percent-encoded from a directory listing would otherwise be
+double-escaped into a dead link. Everything else is stored EXACTLY as given, because
+guessing is worse than mangling nothing: a different origin is a deliberate external
+link, a URL carrying a query or fragment is not a plain file path, and a blank or
+unparseable base is not something to reason from. This is what makes the transport
+(LAN address today, something else later) a decision that can be CHANGED WITHOUT
+REWRITING A SINGLE STORED REFERENCE — and it is the only thing this lane writes
+differently: the TEXT of an existing `LessonRecording.path`, its type and meaning
+unchanged.
+
+**BROWSE IS OFFERED ONLY WHERE IT CAN WORK.** Settings and the lesson add-reference form
+open the NAS listing at `normalizeBaseUrl(base)`; a blank or unparseable base yields no
+target and the action is disabled with a plain explanation, never a dead link or a
+same-origin request. A missing or unreachable NAS degrades to a disabled or absent
+action — never an error state, and never anything that blocks practising. Everything
+still works fully offline; the base URL stays per-device in localStorage, out of
+exports, backups and synced data.
+
+## The Setar archive is a SOURCE: it describes, it never testifies
+
+A read-only Node scanner on the NAS (`scripts/scan-setar-classes.mjs`, stdlib only) turns
+the normalised Setar class archive into a deterministic, CLOCK-FREE JSON index;
+`scripts/publish-setar-index.mjs` commits it to ONE file on ONE branch of the existing
+private data repo (`source-index` / `setar/index.json`); the app GETs it with the GitHub
+connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
+runbook, the corpus baseline and the recorded source hashes.
+
+**THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
+trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
+token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
+consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes and
+validates that index; a version newer than this build understands is REFUSED rather than
+read leniently.
+
+**AND THE DECLARED DIGEST IS RECOMPUTED, NEVER TAKEN ON FAITH.** `contentHash` is not a
+checksum the app may skip past: it is the REFRESH IDENTITY. `planArchiveImport` compares it
+with the hash already accepted to conclude nothing has changed, so content altered under a
+RETAINED old hash was reported "Already current" and its changed facts silently ignored —
+a sealed review reproduced it by editing one composer. `parseSourceIndex` (now async)
+recomputes the SCANNER's own digest — SHA-256 over `canonicalStringify` of the body minus
+`contentHash` and `generatedAt`, byte-for-byte `scan-setar-classes.mjs`'s `contentHash` /
+`canonicalJson` — and refuses a mismatch. It is the ONE boundary the GitHub fetch and the
+file fallback both pass through, so neither door can be given the check separately and miss
+it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
+decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
+broken file reports the error the owner can act on rather than a hash mismatch.
+
+**ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
+SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
+COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
+`lastPractisedAt`, no result, no review row, no SM-2 state, no pathway placement and no
+catalogue identity. The owner's own `تمرین-من` recordings are the sharpest case: their
+membership and role survive in the graph as provenance (the six-session
+`پیش-درامد-سه-گاه-فروتن` chain is six CLASSES, never six weeks and never practice), and the
+files themselves are never a resource anywhere.
+
+**A CLASS RECORDING BELONGS TO ITS LESSON; A NAMED SCORE BELONGS TO ITS PIECE; AN UNNAMED
+DEMONSTRATION BELONGS TO EVERY CANONICAL MEMBER OF ITS SESSION.** That last one is the
+archive's own rule (`CRAWLER-BRIEF.md` §4): the teacher records the week's pieces in one
+take, so there is no single piece to attribute it to and the information simply does not
+exist in the filename. The ROSTER is the registry's answer to "what was assigned at class
+N", never a set inferred from the files present — and when the two disagree, the unnamed
+demo is NOT expanded across a guessed set; the disagreement is reported instead.
+
+**IDENTITY IS BYTE-EXACT AND TRANSPORT-INDEPENDENT.** `canonical_fa` is the join key,
+unfolded and untransliterated; `aliases_seen` is literal SEARCH data (`itemMatchesSearch`
+takes them, `persianSearchMatch` unchanged) and is NEVER consulted to decide which piece a
+record is. App ids are deterministic hashes of the source identity (`sourceItemId`,
+`sourceLessonId`), so two devices importing the same index separately agree on which record
+is which. Asset paths are stored RELATIVE TO THE ARCHIVE ROOT, so changing the transport
+rewrites no stored record; each device configures its own base once.
+
+**EXACT BINDINGS WIN; WEAK EQUIVALENCES ASK.** A record already bound to a source identity
+IS that entity, whatever its title or date has since been edited to. A legacy class is
+auto-adopted only on instrument + date + number + EXACT source-path evidence — the owner's
+real upcoming class 38 (2026‑09‑27) and archive session 38 (2026‑08‑04) are the live
+counterexample to merging on a number. An exact title or literal-alias match produces
+Link / Create separately / Skip, never an automatic merge and never "pick the first
+candidate"; a built-in `catalogKey` (`iraq`) is never equated with a canonical key (عراق).
+
+**NEW IMPORTED PIECES ARRIVE RESTING** (`status: 'dormant'`), as an administrative import
+policy stated BEFORE the import: ninety-four live candidates would flood Today and every
+session plan. They stay searchable, stay in My repertoire and start directly.
+
+**AN IMPORTED CLASS IS HISTORY EVEN WHEN ITS DATE IS IN THE FUTURE.** The archive runs to
+September 2026, so a device whose clock is behind it holds future-dated records of classes
+that already happened. `isUpcomingLesson` (`sourceArchive.ts`) checks `origin === 'archive'`
+BEFORE the date, and it is the ONE predicate `nextLessonFor`, `nextLessonDates`,
+`defaultTargetLesson`, `preparationDatesByItem` and every Lessons badge / default selection /
+question sheet go through. A plain `date >= today` anywhere here turns thirty-nine pieces of
+history into thirty-nine deadlines.
+
+**THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
+`commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
+saved or a block finished while the index was being fetched is never lost — refuses with
+`stale` when the rebase raises a NEW question, runs the whole proposed database through
+`validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
+write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
+matches, because "Already current" over data that was never saved is the lie this guards.
+It never calls `importDB`/`installDatabase`/`resetDemo`/`clearAll` and never touches a blob:
+a refresh ADDS to the database, it does not replace it, so the running clock, the routine,
+the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
+the SAME database object, so it cannot bump the revision or churn a timestamp.
+
+**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND A SKIP IS PERSISTED.** A sealed
+review found three halves of this missing. SKIP lived only in the preview's own `decisions`
+argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
+the next refresh, asked the identical question again with nothing in the database to show it
+had ever been answered; `planArchiveImport` writes a `piece`/`session` suppression for it
+now, the same record every other deliberate removal writes, which a refresh, a reload and a
+sync all already respect (idempotent, so answering twice does not grow the list). CREATE
+SEPARATELY was honoured for an item and silently dropped for a LESSON, so two
+indistinguishable legacy classes re-asked for ever. And a decision taken against an
+ALREADY-CURRENT index — a skip, or one registry field applied — was reported "Already
+current" and thrown away unwritten, because `commitArchiveImport` judged it by
+`summary.unchanged`, which answers about the INDEX alone. The store asks
+`applyArchiveImport` itself now (it returns the SAME OBJECT when a plan changes nothing),
+so there is one source of truth for that question and it is the function that does the
+writing. `applyArchiveImport` counts a field decision only when the plan actually OFFERS
+that field, so both sides of the preview/commit boundary mean the same thing by "nothing to
+do". An OFFER is not a change: an unanswered suggestion writes nothing and says so.
+Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
+current value and the archive's proposal each resolving their own direction — and a decision
+is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
+dastgāh choice made a moment earlier. What is DURABLE here is the suppression a skip writes
+and the value an applied field writes — never the in-flight selection itself: an unpressed
+suggestion is component state, and it is re-derived from the graph on the next refresh
+precisely because nothing about it was stored.
+
+**AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
+decide what file a stored reference names, and they used to decide it differently:
+`hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
+`repairReferencePath` also understood a full URL under this device's verified base. So a
+class whose references were saved as full links carried perfectly good evidence that
+nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
+is that one reading, and both go through it.
+
+**A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
+`deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
+alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
+than resurrecting what the owner removed. Hiding a resource carries the ITEM id, so a
+demonstration shared by eight pieces stays available to the other seven. Lifting a
+suppression (`resetArchiveSuppression`) permits reimport. Moving an archive-bound item to
+another instrument is REFUSED with an actionable message rather than emitting a graph
+`validateDB` would reject at every door.
+
+**ONE COMPOSITION FOR MATERIAL, SCOPED BY THE GRAPH.** `itemFiles` (`itemFiles.ts`) now
+composes, in order: what the archive scopes to this piece (corrections first, clean scores
+retained, demonstration parts as one ordered group, each row carrying its session and role
+as provenance), then the owner's own DIRECT item references, then the references of LINKED
+lessons that are NOT archive-bound. An archive-bound lesson contributes nothing through the
+link route — its files reached the list already, correctly scoped — which is what stops a
+class recording and someone's practice takes from landing on a piece. A manual, unclassified
+lesson still contributes everything it has, because nothing knows the scope and inventing
+one would be a guess. `lessonFiles` is the same composition for a lesson.
+
+**SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
+`migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
+and idempotent for the reason `migrateToV12` and `retirePracticeText` already are.
+`archiveSources` is in `validateDB`'s ARRAY_KEYS *and* in its reconstructed return value — a
+new collection left out of that object literal is silently dropped on the way in.
+`validateArchiveSources` refuses duplicate source ids, duplicate piece keys, duplicate
+session numbers, wrong types, unsafe paths, invalid part groups, dangling or duplicated
+item/lesson bindings, an instrument mismatch and an unsafe direct reference, naming the
+record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
+its provenance is kept — not a dangling reference.
+
+**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
+`validateArchiveSources` used to state the shape separately, and the second stated LESS of
+it: it checked a resource's path and its part group and walked straight past
+`members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
+`folder` and `roster`, and the rename and diagnostic rows entirely. A sealed review set
+`members[0].roles` to `null` in an imported file: every door ACCEPTED and PERSISTED it, and
+the first production reader to touch it — `repeatChains`, doing `m.roles.includes(...)` —
+threw while rendering material. `planArchiveImport` had the identical exposure through
+`new Set([piece.key, ...piece.aliases])`. `checkSourceGraph` (`sourceArchive.ts`) is that
+grammar in ONE place; the decoder runs it over its own normalised output and
+`validateArchiveSources` runs it over every persisted source, so a reader may dereference
+any field the grammar admits and nothing else can reach the database. The fix is the
+GRAMMAR, never a defensive guard in a component: a reader written against a validated graph
+is the point of validating it. `unavailable` stays legal on a piece, a session and a
+resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
+silently widens a hide scoped to ONE item.
+
+**TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
+ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
+(`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+the same stored path with each one's own path prefix preserved. `relativizeReference` will
+not store a pasted URL whose decoded form steps OUT of the base — it keeps the pasted text
+exactly as given instead. The arbitrary-clip "Test link" is gone: a single clip proves
+nothing (it fails for a renamed file and passes for a base whose other thousand files are
+unreachable), so Settings opens the ARCHIVE ROOT and `describeArchiveAccess` states the
+index and the media as two separate facts. Reading the index proves GitHub answered and
+says nothing about the NAS; a certificate rejection, a blocked cross-origin request and an
+outage are indistinguishable from a web page, so none of them is ever called absence.
+
+**THE 67 LEGACY PATHS ARE REPAIRED EXACTLY, OR DIAGNOSED.** `src/domain/setarClasses.ts` is
+FROZEN — no longer a workflow, now the ledger of what the old bundled importer wrote — and
+`repairReferencePath` maps all 67 through the archive's own 257-row rename log. No fuzzy
+matching by title, size or modification time; a cycle, a missing target or an ambiguous
+mapping is reported. A full URL converts only under a VERIFIED base, and one carrying a
+query or fragment is left alone. Where an old and a current row now point at one physical
+file, BOTH rows survive with their own titles and notes: deleting one deletes something the
+owner wrote.
+
+**AND THE REFRESH ITSELF DOES IT — a helper with no production caller repairs nothing.**
+The rename log is published WITH the index, so the one moment the app can repair a stored
+path is the moment it accepts a new graph; a sealed review found a uniquely adoptable
+legacy class being adopted and left pointing at names the archive renamed years ago — bound
+and broken. `planArchiveImport` now runs `repairLessonReferences` in ONE pass over the
+lessons this archive OWNS: the ones this plan adopts and the ones already bound. A lesson
+the archive has no claim on is not something a refresh may rewrite. The pass produces the
+objects the plan SHOWS (`adoptedLessons`) and the ones it installs (`repairedLessons`), so a
+preview cannot display an old path while the commit writes a new one. `verifiedBase` is
+threaded from the device's own configured media base, so a stored full URL under it converts
+and everything else stays exactly as the owner saved it.
+A cycle, a rename whose destination is gone and an unsafe path become plan `attention`
+rows — but `not-described` does NOT (see `RepairReason`): the index deliberately describes
+only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
+own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
+renamed is outside what it knows, never evidence that the file is gone. Those three personal
+references are retained historical links, untouched and unflagged.
+
+**LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
+(exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
+with the record it was typed for, "Saved." only after IndexedDB acknowledges, retry and copy
+on failure, and an in-flight write that never owns the textarea — and `LessonNotes.tsx` is a
+thin wrapper over it. The defect it fixes was NOT in an editor: `updateLesson` read
+`patch.notes ?? l.notes`, which cannot tell an OMITTED patch field from a deliberately empty
+one, so clearing a class's notes wrote the previous notes straight back. The store decides
+on the PRESENCE of the key now, the same distinction `resolveReviewDate` already makes for a
+date.
+
+**SECRETS.** The NAS publisher's credential is a SEPARATE, repository-scoped token
+(Contents write + metadata read, no workflow or admin scope) living only in the NAS
+runtime's protected configuration. GitHub does not issue branch-scoped tokens: the
+branch/path restriction is a property of `publish-setar-index.mjs`, and must never be
+described as credential isolation. The app's own browser token and each device's media base
+stay device-local exactly as before. No credential and no archive root enters a source
+archive, a committed file, a manifest, app data, a log, sync or a backup.
+
+## Review scheduling stays explainable
+
+`decideReview` (in `scheduling.ts`) is the ONE pure decision behind closing a block: the
+date disposition, the SM-2 transition and the sentence that explains them, together.
+`planNextReview` previews it, `computeReviewOutcome` turns it into the write, and the
+close screen renders it — three renderings of one value, never three derivations. Per
+item it tracks `srReps` / `srEase` / `srIntervalDays`, plus `nextReviewSource` (who chose
+the current date) and `srLastProgressDay` (the one-advance-per-day marker). Every number
+is published in `docs/scheduling-evidence.md`.
+
+**PRACTICE IS EXPOSURE; ONLY ELIGIBLE RETENTION EVIDENCE ADVANCES SPACING.** Eligible
+means ALL THREE of: a logged `stable_alone` / `stable_in_context` / `performable`; at or
+after the pending due date (or the first opportunity, when no date exists); and spacing
+not already advanced today. Each of those independently blocks an advance. A missing,
+`undefined` or `not_logged` result never advances — which is exactly what a routine block
+is, so routine exposure can never become a retention judgement.
+
+**`same` IS NOT FAILED RECALL.** This engine used to map it to a quality of 2, which fell
+into the slip branch and reset a schedule the musician had every reason to trust. No
+improvement is distinct from deterioration. Before a due date, `same` and
+`slightly_better` change nothing; AT a due automatic review they REPEAT the current gap
+(the configured first gap if there is none) without touching repetitions or ease, and
+neither is ever described as a slip.
+
+**ONLY `worse` MAY BRING AN AUTOMATIC DATE FORWARD**, to the EARLIER of the existing date
+and the repair proposal — never later, so a repeated negative close cannot slide
+tomorrow's repair into next week. Nothing else is read as failure: not duration, not
+mode, not difficulty, not a teacher question, not a stale clock.
+
+**A DATE THE OWNER OWNS IS NOT THE ENGINE'S TO MOVE.** A FUTURE date is PROTECTED when
+the owner chose it (typed, snoozed, or re-armed — `nextReviewSource: 'user'`), when the
+item is on a fixed cadence, or when its provenance predates this field and is therefore
+unknown. Early practice, `worse` included, leaves it exactly where it is. Protection ends
+when the date comes due: it is then the review, whoever chose it. Manual mode with no
+newly chosen date preserves the pending schedule — an empty automatic proposal is not an
+implicit "no".
+
+**ONE ADVANCE PER ITEM PER LOCAL CALENDAR DAY**, recorded as `srLastProgressDay`. It is
+an administrative eligibility marker, never a measured retention score: clearing and
+re-arming the date, a reload, a sync, or simply closing a second block cannot buy a
+second expansion.
+
+**THE RATIONALE REPORTS THE FINAL SAVED DATE.** It used to quote the raw setting: a
+three-day repair gap on an easy, unimportant item produced a four-day date and said
+"three days".
+
+**A CLOSE THAT ONLY KEEPS A DATE COMPLETES NOTHING.** `ReviewOutcome.completeOpenReviews`
+is false for a `keep`, so extra practice before a review leaves that pending row OPEN —
+it is not the review it was scheduled for. `closeOverrideDate` (`format.ts`, tested) is
+the seam that makes this hold: the close screen SHOWS the date that will stand, which for
+an early session is the item's existing one, and passing that back as an explicit
+override would both stamp every engine-proposed date as the owner's and turn every keep
+into a write. Only a date actually typed into the field is an override.
+
+**AN OPEN DATE EDITOR IS BOUND TO THE ITEM AND THE DATE IT WAS OPENED FOR.** The same rule
+as the notebook's draft tag, on the panel that edits a review date
+(`reviewDateDraftFor`, `format.ts`, tested; used by `ScheduleAgain` in `ItemDetail.tsx`).
+`/items/A` → `/items/B` is a route PARAMETER change: React keeps the same component
+instance and only moves the props, so an open draft survived it and "Save date" wrote it
+through the NEW item's callback — A's 2027‑02‑10 landing on B, silently replacing a
+schedule B's owner never touched. The draft therefore carries `forItem` AND the item's own
+pending date at the moment it was seeded, and is reconciled on EVERY render rather than
+reset from an effect, so there is no paint in which the box shows A's date while Save
+points at B. A different item DROPS it; the item's own date moving beneath an UNTOUCHED
+seed re-seeds the box, because saving a captured date would silently revert a change the
+owner never saw; the item's date moving beneath TYPED text leaves the text alone (it is
+their intent, not a stale capture) and only catches the baseline up.
+`ReviewOwnership`'s refusal message carries the same tag, for the same
+reason: a refusal about A's schedule shown under B is a statement about the wrong item.
+
+**THREE FACTS NEED THREE FIELDS, AND CONFLATING TWO OF THEM EXEMPTED A WHOLE TRANSITION.**
+`seeded` used to hold "the item's date, or today when it had none", which made "this item
+has no date" indistinguishable from "this item's date happens to be today". The only way to
+stop a dateless item's today-box being re-seeded to empty was therefore to skip the
+comparison ENTIRELY whenever the item had no date — and a sealed review reproduced what
+that exemption let through: a live update (a sync pull, a review declined elsewhere) that
+CLEARS the item's pending date left the box showing, and "Save date" writing, a date the
+item no longer had. There is no exemption now. `seeded` is the item's OWN date and is empty
+when it has none, `offered` is what the box was actually filled with (that date, or today),
+and "untouched" is `text === offered`. present→different, present→absent and absent→present
+are then ONE rule instead of three cases with three answers, and a cleared date re-seeds the
+box to exactly what opening it fresh on that item would offer. `today` is passed in, because
+`format.ts` is pure and the screen already has the day it is rendered against.
+
+The browser proof is a REAL SYNC PULL (`review-ownership.browser.test.ts`, ac-12), not a
+description of one: a pull is the only thing that replaces an item's date while
+`ScheduleAgain` stays MOUNTED — an import leaves the page, and "Review today" is offered
+only when the item has no date — so the journey installs the same fake GitHub transport the
+inbound journey uses (now shared, in `tests/practiceBrowser.ts`) and triggers the app's own
+`online` listener. Both halves are checked there: an untouched box follows the item, typed
+text stands.
+
+**"Schedule again" is administration, not practice.** `scheduleAgainPlan` sets ONE date on
+the item and its pending row, CREATING the row when none is open (the case the old date
+helper could not reach, which left a declined review unreachable from the item's own
+screen). No block, no result, no statistics, no SM-2 movement.
+`pendingScheduleConflict` REPORTS legacy open rows that disagree rather than silently
+discarding one.
+
+**HANDING A DATE BACK TO THE ENGINE IS ALSO ADMINISTRATION, AND IT KEEPS THE DATE.**
+"Use automatic scheduling" (`transferToAutomaticReview`, `scheduling.ts`, tested) transfers
+WHO MANAGES the next review and nothing else. The pending calendar date is kept EXACTLY as
+it is; `reviewMode` becomes `'auto'` and `nextReviewSource` becomes `'auto'`, which together
+mean the ENGINE now has authority over that date — never that the date was mathematically
+generated, and never that a review happened. No block is written, no result is invented, and
+`srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`, every statistic, every status and
+every completed review row are left byte-for-byte alone. Only later ELIGIBLE real practice
+supplies retention evidence. **The button's explanation must never call the retained date a
+new calculation** — that is the one sentence this whole transition exists to be honest about.
+
+It REFUSES rather than guesses when the schedule is ambiguous: open rows that disagree with
+the item or with each other, or rows pending with no item date at all, are a decision the
+owner has to make (the existing "Change review date" makes it), and the refusal says which.
+With no date and no open rows the item simply becomes unscheduled under automatic
+management — `nextReviewSource` stays ABSENT, because there is no date whose provenance it
+could describe — and stays that way until an explicit "Review today". It is idempotent, and
+it is reached ONLY by that explicit control: an ORDINARY item save never releases a
+protected date, so editing a title cannot quietly hand the engine a date the owner chose.
+`updateItem` routes the whole change through it and refuses the save WHOLE on an ambiguous
+schedule, rather than applying the other fields and dropping the transfer.
+
+"Review today" is separate, and records no practice: it sets today's date on the item and
+its row. It resolves the day at the moment of the ACTION, not from the polled `now` — the
+same guard `CloseBlock`'s Save already uses, and for the same reason: a screen left open
+across local midnight would otherwise write the day it was rendered on rather than the day
+the owner tapped.
+
+Keep it deterministic and explainable — don't turn it into an opaque model. Item status
+labels are plain-language for the user — keep the enum keys stable and only change the
+display labels in `labels.ts`.
+
+**The engine is visible AND adjustable, never magic.** `SchedulingParams`
+(`src/domain/types.ts`) holds bounded knobs — the SM-2 first/second/slip-reset gaps and
+the Session Plan minute shares — persisted as an OPTIONAL `PracticeDB.settings` (schema
+**v10**; `undefined ⇒ DEFAULT_SCHEDULING_PARAMS`, so old backups import unchanged and
+`validateDB` carries the field through). `DEFAULT_SCHEDULING_PARAMS` reproduces the
+historical constants EXACTLY — `decideReview`/`planNextReview` take an optional `params`
+whose default is byte-identical to before (a snapshot test guards this). Every call site
+that shows OR persists a date must thread the SAME params (`db.settings`): the store into
+`closeSession`, `CloseBlock` into both preview calls — the date shown must equal the date
+saved. `clampSchedulingParams` enforces the bounds (never trust raw input). Settings' "How
+scheduling works" section states the real priority formula and the SM-2 rungs in plain
+English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
+review row links to it ("Why this date?").
+
+**"THE DATE SHOWN EQUALS THE DATE SAVED" ALSO HAS TO SURVIVE THE SAVE ITSELF, NOT JUST
+THE RENDER.** `CloseBlock`'s `now` (`useDecisionNow`) only refreshes every 30 seconds plus
+visibility/focus, while `closeSession` used to compute its OWN fresh `new Date()` at call
+time — so a Save clicked in the narrow window after the local day had genuinely rolled,
+but before either the poll or a visibility event caught up, could write a decision
+`computeReviewOutcome` recomputed for TODAY while the screen had only ever shown
+YESTERDAY's. A sealed review named this gap explicitly. `closeSession` now takes the
+screen's own `now` (`CloseSessionInput.now`, defaulting to `new Date()` only for the rare
+caller with no prior decision to keep in step) instead of reading a fresh clock at module
+scope, so once a save actually proceeds it writes EXACTLY the value just previewed —
+never a second, independently-computed one. The day check itself lives in `CloseBlock`:
+`handleSave` compares the true instant against `now` first, and on a mismatch sets a
+local `nowOverride` and returns WITHOUT calling `closeSession` — refreshing the decision
+visibly (the date field, the rationale, everything derived from `now` recomputes) while
+the draft (result, observation, next action) is untouched, so the very next
+Save simply works. This is deliberately a small, local override rather than a change to
+`useDecisionNow`'s shared contract — `SessionPlan.tsx` and `LessonAgenda.tsx` also read
+that hook and neither needed this.
+
+## The Session Plan is a view over real blocks, not a new to-do list
+
+The Session Plan (`src/domain/plan.ts`, pure + fully tested; `/plan` page) lays out one
+time-budgeted session for the current instrument: ordered segments in five buckets
+(`warmup · lesson · review · deep · cooldown`), each with minutes, a mode/focus, and a
+one-sentence reason. It **reuses the same `scoreItems` priority numbers** as the
+recommendation engine — no second, hidden ranking. It is organisation, never judgement:
+no scores, no "optimal" claims, no gamification.
+
+- **The invariant: minutes NEVER exceed the budget, and normally use all of it**
+  (`buildSessionPlan`, `allocateMinutes` — weighted split, min 2 and max 25 per segment,
+  drops the lowest-priority segments when the budget can't seat them all). An HONEST
+  REMAINDER is allowed and stated in the summary: two items and two hours is not a reason
+  to propose a sixty-minute block on each. Budgets are whole minutes from 5 to 120;
+  anything else (non-finite, zero, out of range) is REJECTED at the boundary
+  (`validateBudgetMinutes`) rather than clamped into a session the owner never chose.
+  Keep it deterministic (explicit `now`, stable score-desc-then-id tiebreaks) and keep
+  the edge cases green (0 items, 1 item, resting-only, everything practised-today →
+  repeats honestly and says so). `redistributePlan`/`swapSegment` are the pure editors and
+  preserve each segment's identity, role and reason; the preview page tweaks a LOCAL copy
+  before `startPlan`.
+- **THE ANCHOR COMES FROM REAL URGENCY, BEFORE ANY ROLE DECORATION.** A five-minute
+  session used to pre-select new deep work and only then consider an item committed for
+  tomorrow's class. Under 12 minutes the session is ONE useful main focus, no warm-up and
+  no cool-down. Usable material, improvisation, rhythm and theory are ordinary useful
+  work even though they fit none of the old buckets.
+- **Warm-up is a ROLE an ordinary familiar item fills, never a tag.** `isWarmupSuitable`
+  wants low demand (difficulty ≤ 3) AND evidence of familiarity (a settled status or 3+
+  real sessions) — an unfamiliar demanding étude is not a warm-up because it is labelled
+  "technique". It never consumes a due review or a class commitment, its share
+  (`warmupShare`) is a PINNED allocation target rather than a weight, and with nothing
+  suitable it is omitted honestly.
+- **ONE eligibility policy** (`isProactiveCandidate`) across Today, the initial build,
+  regeneration, swaps and every fallback: resting material never surfaces in a
+  suggestion, and a fallback never widens to reach it. Direct, deliberate practice of a
+  resting item stays available and its review data is untouched.
+- **A SWAP SHARES THE BUILD'S OWN CANDIDATE POOL, NOT JUST ITS ELIGIBILITY POLICY.** A
+  sealed review found `swapSegment` filtering by `isProactiveCandidate` alone and then
+  searching `scored` directly — bypassing the build's OWN practised-today exclusion
+  (`candidatePool`, shared by both now) and the warm-up pool's extra due/lesson
+  exclusions. Concretely: three same-instrument usable items scored 5/4/3 with the
+  middle one practised one minute ago today; a five-minute build correctly stepped past
+  it for the fresher lowest-scoring one, but Swap handed it right back because fresh
+  work scored lower — the exact material the build had just deliberately set aside, with
+  an ordinary "focus" reason as if nothing were off. A warm-up swap could likewise reach
+  a candidate that was due for review or committed to a class, which the build's own
+  warm-up pool excludes on purpose (that slot belongs to the actual need, never spent as
+  a warm-up). `candidatePool` (`plan.ts`) is now the ONE practised-today/repeat-fallback
+  computation both `buildSessionPlan` and `swapSegment` draw from, and swap's own
+  eligibility switch repeats the warm-up bucket's due/lesson exclusion verbatim. Swap
+  deliberately does NOT replay the build's diversity preference (a tie-break among
+  segments chosen together in one pass, which a single substitution has none of) — see
+  `swapSegment`'s own docstring for why that is a documented choice, not an oversight.
+- **Over-practice is bounded, decaying recent MINUTES**, not a block count and not a run
+  of identical results (`recentExposureMinutes`, `exposurePenalty`). Three "same" results
+  in January are a strategy hint in January, not a permanent penalty in September, and
+  one 30-minute session is the same exposure as three 10-minute ones. A modest diversity
+  preference (≤ 2 points, from the item's existing strand/type) is subordinate to every
+  real need.
+- **A preview is rebuilt for what it is FOR** — instrument and budget — and is marked as
+  needing regeneration when the underlying practice data changes beneath it, rather than
+  silently starting stale work. `beginPlanSegment` revalidates the item LIVE
+  (`planSegmentStartable`): deleted or moved to another instrument ⇒ visibly skipped,
+  another clock running ⇒ refused. Skipping logs nothing.
+- **A PLAN CAN GO STALE WITH NO DATABASE WRITE AT ALL: THE CLOCK MOVING PAST IT.**
+  `SessionPlan.tsx` tracked staleness only via `rev` (the store's mutation counter) and a
+  `seedKey` of `instrumentId|budget` — neither moves when a preview is simply left open
+  across local midnight. A sealed review reproduced this: yesterday's segments, reasons
+  and "for today's class" labels stayed on screen and startable with the Start button
+  enabled, because `build` (the live recomputation) had quietly changed underneath while
+  nothing told the visible `plan` state to notice. The preview now also tracks the LOCAL
+  CALENDAR DAY it was built for (`baseDay`, set alongside `baseRev`) and is `stale`
+  whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
+  treatment `rev` already got, so a deliberate swap or removal survives a midnight
+  exactly as it survives any other change underneath the plan.
+- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
+  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
+  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
+  visibility/focus — a real device left untouched across local midnight, with no event to
+  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
+  button for up to that whole window. A sealed review reproduced this against the real
+  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
+  code installed yesterday's selections. Starting a plan is an authority boundary, so
+  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
+  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
+  `stale`'s own day comparison already applies, just evaluated against the true instant
+  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
+  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
+  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
+  banner and disabled button render — a visible refusal, never a silent no-op click. This
+  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
+  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
+  click in the first place.
+- **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
+  warm-up timer) stays untouched. The runner orchestrates the existing
+  start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
+  segment (its minutes become the target). `closeSession` has a tail that, when a plan is
+  running and the closed block was the current segment, marks it `done` and advances the
+  pointer — **the plain flow (no active plan) is byte-identical to before.** Skipping logs
+  nothing. Practising is still the only thing that CAN complete a review or advance SM-2,
+  and a plan segment closed before that item's review is due keeps the date and the
+  spacing state exactly as an ordinary early session does.
+- **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
+  store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
+  never syncs/backs-up as data.**
+- **Today's plan card stays collapsed (~50px) above "Practise now"** so the primary
+  recommendation stays above the fold at 390×844 (verified). Putting it BELOW the
+  recommendation was built and tried in the 2026‑09‑11 lane and the owner preferred it
+  where it is — see "Today is a session workspace" above. It becomes "Resume your plan"
+  while one runs. The evidence behind the bucket shape (spacing, interleaving, retrieval
+  practice, end-on-stability) is cited soberly in `plan.ts` and `DECISIONS.md` — sane
+  defaults, adjustable via `SchedulingParams`, never dressed up as an optimum.
+
+## Device & infrastructure
+
+**MacBook-first in daily use** (laptop open while practising — notes, files, webcam as
+mirror), iPhone as the companion; the phone constraint still binds (primary
+recommendation above the fold at 390×844). Both run the **same installed PWA** served
+from **GitHub Pages** (`.github/workflows/deploy.yml` publishes `dist/` on every push to
+main; the repo is public by explicit user decision, 2026‑07‑11 — the user does not need
+the app or data private). Prod base `/practice-compass/` (override with `PC_BASE`)
+matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
+installed PWA works fully offline; hosting reliability only affects updates.
+`scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
+Tailscale requirement in the main flow.
+
+**Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
+30 quiet seconds following changes (rev-driven), on returning online, and manually.
+Status shows device name, last sync, current revision + short content hash, plain
+errors, and a "restore archived copy" recovery action. The UI must stay honest about
+the model: whole snapshots, hash-compared, explicit conflicts, both sides preserved.
+The PAT is scoped to the single data repo (Contents R/W) and lives only in
+localStorage — never in backups or synced data.
+
+**Attachment size policy is enforced, not claimed** (`attachmentPolicy` in
+`src/domain/files.ts`, tested): warn over 10 MB and for any video, refuse over 40 MB
+with a clear message. Class videos live on the NAS as recording references, never the app.
+
+**Hybrid storage — keep the roles distinct (Settings explains them):** LOCAL data
+(IndexedDB) is the source of truth and works offline. GITHUB SYNC is the small,
+versioned multi-device state transport — one private data repo per app that genuinely
+needs it; a phone-only app uses local + NAS backup and needs no GitHub repo. NAS BACKUP
+is the user's own independent full export — never treat sync git history as the only
+backup. NAS RECORDINGS hold the large videos the other three must never carry. Do not
+replace GitHub sync with a NAS backend, and do not fold recordings into sync/backup.
+
+**The app shell is a fixed-height flex column and only `<main>` scrolls** — nothing is
+`position: fixed/sticky`, so the nav bar cannot drift. The shell height is **`100dvh`
+(dynamic viewport) with a `100vh` fallback via `@supports`**, NOT `height: 100%`: in an
+installed iOS PWA with `viewport-fit=cover`, `100%` resolves to the layout viewport
+which stops above the home-indicator safe area, leaving the bar floating above the
+physical bottom with dead space beneath. With `100dvh` the shell reaches the true
+bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
+clear. **The iOS software keyboard must not drift the shell:** `useViewportGuard`
+(`src/components/useViewportGuard.ts`, wired once in `Layout`) listens to `visualViewport`
+and, when no editable is focused, resets any layout-viewport displacement to 0; on focus it
+scrolls the field into `<main>` instead. It is a no-op without `visualViewport` and must
+stay pure glue — never restructure the shell to "fix" the keyboard. Five EQUAL nav tabs
+(no raised centre button — Today owns the primary Start
+action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
+practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
+controls/nav/metadata are sans. Pathway catalogue rows use a stable
+`[state · minmax(0,1fr) · one 44×44 action]` grid so adding a suggestion swaps only the
+action icon (+→▶) without reflowing the text; status shows once (no duplicate badge);
+detach lives in the item's "Connected to", not the row. The service worker registers in PROMPT mode: updates show an in-app "new version
+→ Reload" banner (checked hourly and on visibilitychange) and the build stamp
+(`__APP_VERSION__`) is visible in Settings — reinstalling is never the update path.
+The public build ships a restrictive CSP meta (self + api.github.com only), injected
+at build time (`cspPlugin` in vite.config.ts). Pages deploys ONLY behind lint + tests
++ build (deploy.yml single dependency chain).
+
+**Canonical names in user-facing copy:** practice item (the only unit of work) ·
+Study source (where an item comes from: radif, method book, collection, course,
+teacher handout — nothing else) · Pathways / My repertoire / Practice list (the three
+Repertoire views) · "Add practice item" (full form) · "Based on / reference" (a
+pathway's provenance) · "Connect it (optional)" (the links group). A practice item may
+link to a study source, a stage, lessons and a parent work at once; links never
+duplicate the item.
+
+## Colour is checked by a test, not by eye
+
+`src/styles/contrast.test.ts` computes WCAG ratios from the SHIPPED stylesheet and fails
+the suite if a listed pair drops below AA for small text (4.5:1). The checked
+(foreground token, background token) pairs are written out explicitly in that test, so a
+token that is NOT covered is a visible omission rather than a silent one; the claim is
+bounded to those pairs and is not a claim about every possible combination. A
+translucent background (`--tone-*-soft` behind a `.badge`/`.chip`, `--accent-soft`
+behind a selected option) is composited over the opaque surface the pair names — badges
+are the only place `--tone-rest` renders at all, so an opaque pair for it would be a
+fiction.
+
+Every block that declares the palette is asserted, not just the first: `global.css`
+declares the light palette TWICE — at `:root[data-theme='light']` and again inside
+`@media (prefers-color-scheme: light) { :root:not([data-theme]) }` — and the duplicate is
+what an owner who has never picked a theme actually sees. **Move a light token in both
+blocks or the test fails.** Only tokens that FAIL a listed pair move; every passing token
+is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim` and
+`--accent-contrast` are unchanged), and no layout, spacing or type changes with them.
+
+## Architecture rules
+
+- **Domain logic stays pure.** Everything in `src/domain/` must be free of React and
+  side effects, and must take an explicit `now: Date` instead of calling `new Date()`
+  internally. This keeps it deterministic and unit‑testable.
+- **The recommendation engine stays deterministic and explainable.** Every recommended
+  card must produce a one‑sentence reason from the same numbers that ranked it. No
+  hidden heuristics, no models.
+- **The store is the only place that mutates app data.** UI components call store actions;
+  they never touch IndexedDB or rebuild domain objects by hand. Attachment **blobs** are the
+  one exception: they live in IndexedDB via `src/store/idb.ts` and the `attachments.ts`
+  service (too big for the reactive JSON); only their lightweight metadata sits in the store.
+- **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
+  `hydrated`. Every inbound database — rehydration, manual import, sync pull,
+  conflict-keep-remote, archive restore — runs through the one shared `validateDB`
+  (`src/domain/io.ts`), which itself runs the `migrateToCurrent` chain
+  (`src/domain/migrations.ts`) plus the newer-schema guard and the §C7 semantic checks;
+  persistence changes must keep it green and bump `SCHEMA_VERSION`. Rehydration reaches it
+  via BOTH halves of the persist middleware — `migrate` when the persisted version differs
+  from the current one, `merge` UNCONDITIONALLY otherwise — because Zustand skips `migrate`
+  entirely once the persisted version already matches, which would otherwise let an
+  already-current database carry a stray legacy field, or genuinely invalid data, forever
+  (a sealed review reproduced exactly this — see the lesson-agenda section above for the
+  legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
+  validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v13** retires the competing practice-text fields (`retirePracticeText`; see "One
+  canonical home per kind of information" at the top of this file for the enumerated,
+  one-way waiver) and adds `validatePracticeText`/`validateUnfinishedText` to the §C7
+  checks. Schema
+  **v12** converts legacy lesson intent into `lessonAgenda` and
+  adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
+  neither is ever guessed for old data, so an existing future date keeps UNKNOWN
+  provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  it belonged to — but only when that pathway names an instrument that actually resolves
+  in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
+  reference all leave the routine honestly unscoped rather than inventing one), and never
+  overwrites a routine that already has one.
+- **One file per route** under `src/pages/`. Shared UI primitives live in
+  `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
+  React Fast Refresh and the `react-refresh` lint rule happy).
+
+## Tests are not optional
+
+`npm test` must pass. The suite guards the behaviour that makes the recommendations
+trustworthy; if you change the scoring formula or scheduling intervals, update the tests
+in the same change and make sure they still describe correct behaviour.
+
+**Two of them drive the REAL app in a real browser.**
+`tests/daily-practice.browser.test.ts` and `tests/lesson-agenda.browser.test.ts` are
+ordinary Vitest tests using Playwright as a LIBRARY through `tests/practiceBrowser.ts`,
+so their results land in the same report everything else does — a standalone Playwright
+run would prove nothing to the check engine. Each starts its own Vite dev server and its
+own browser CONTEXT (its own IndexedDB, its own localStorage, no GitHub and no NAS), at a
+390×844 viewport, with the clock fixed so every derived date is deterministic. They seed
+themselves by importing a fixture through the real Settings control and drive rendered
+controls by role and name — never a debug hook, never a source regex.
+
+Local setup, once: `npx playwright install chromium`. **A missing browser FAILS these
+tests with that instruction; it never skips them** — a check that quietly passes because
+it did not run is worse than no check at all. All three CI workflows install the browser
+before `npm test` for the same reason.
+
+`tests/fixtures/practice-decisions-v11.json` is the legacy (pre-agenda) database; the
+v12 one is its migrated output plus the scheduling state a v12 build writes.
+`practice-information-v12.json` is a full backup — attachment bytes included — carrying
+every retired field, and `practice-information-v13.json` is its `validateDB` output, so
+the retirement is asserted against real bytes rather than a hand-written expectation. The
+unit tests read the SAME bytes the journeys import, through Vite's `?raw`.
+
+**Six journeys now, not two**, all through the same harness — plus the rendered
+cold-start recovery inside `src/domain/io.test.ts`, which drives the real `App` in the
+same way. The two named above, plus
+`practice-information.browser.test.ts`, `practice-information-inbound.browser.test.ts`,
+`review-ownership.browser.test.ts` and `practice-information-layout.browser.test.ts` (the
+two-engine one). The inbound journey drives the REAL sync orchestrators against a fake
+GitHub installed at the `fetch` boundary (`page.route('https://api.github.com/**')`) — the
+real transport, real `syncNow`/`resolveConflict`/`restorePreSyncArchive`, no live writes —
+and the rollback journey stands up a DISPOSABLE checkout of the baseline commit
+(`git worktree add --detach`, `node_modules` symlinked, served by a second Vite server via
+`openPracticeApp`'s `root` option) so "the old app refuses the new file" is proved against
+the app that actually wrote the backup, not a description of it.
+
+## Roadmap items are allowed (they were designed for)
+
+Audio recording attachment, PWA offline install, CSV export, calendar reminders, a
+simple audio note per block, teacher‑sharing PDF. These extend the tool without breaking
+the philosophy. Anything that contradicts the "do nots" above needs an explicit decision
+from the user, recorded here.
+```
+
+### DECISIONS.md
+
+```
+# Decisions
+
+Durable record of non-obvious choices. Newest first.
+
+## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
+
+A sealed review rejected the first Setar-archive diff with four findings. Each was reported
+as one counterexample; each was really a FAMILY, and the fixes are family-shaped.
+
+- **The nested graph had two grammars.** `decodeSourceIndex` stated the shape of a session;
+  `validateArchiveSources` stated LESS of it and was the one every inbound door ran. So
+  `members[0].roles: null` was accepted, persisted, and thrown on by `repeatChains` while
+  rendering material — and `piece.aliases` had the identical exposure through
+  `planArchiveImport`'s own spread. `checkSourceGraph` is now that grammar in ONE place,
+  run by both callers. The alternative — guarding the reader — was rejected outright: a
+  reader written against a validated graph is the whole point of validating it, and a guard
+  in `ItemMaterial` would leave the invalid data on disk for the next reader.
+- **The reference repair had no production caller.** The 67-path mapping was proved against
+  the real rename log and then never wired in, so a uniquely adoptable legacy class was
+  adopted and left pointing at names the archive renamed. The repair runs inside
+  `planArchiveImport` now, in ONE pass whose output is both what the preview shows and what
+  the commit installs. Scope is the lessons the archive owns; `not-described` is deliberately
+  NOT reported, because the index omits 125 of 258 files by construction and "I have never
+  heard of this path" is not "this file is gone".
+- **Owner answers were transient.** Skip lived only in the preview's argument list; Create
+  separately was honoured for items and dropped for lessons; and any decision taken against
+  an already-current index was reported "Already current" and discarded. Skip writes a
+  suppression, the lesson branch exists, and `commitArchiveImport` asks `applyArchiveImport`
+  itself — which returns the same object when a plan changes nothing — instead of keeping a
+  second opinion about what "unchanged" means.
+- **The digest was format-checked, never verified.** `contentHash` is the refresh IDENTITY,
+  so altered content under a retained hash was reported unchanged and its facts ignored.
+  `parseSourceIndex` recomputes the scanner's own digest at the one boundary both readers
+  share. It is async because the platform's SHA-256 is; a hand-rolled synchronous one to
+  avoid two `await`s would be a second implementation of a primitive the app already has.
+
+Each fix was mutation-checked: the roles check, the `create-lesson` branch, the suppression
+write and the digest comparison were each reverted in turn and confirmed to fail the named
+acceptance test — the suppression one failing specifically AFTER a reload, which is where
+the defect actually lived.
+
+## The archive describes; it never testifies (2026-09-17)
+
+The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,
+normalised so that every filename parses. Turning that into lessons, repertoire items and
+material raised one question over and over, and the answer is always the same shape:
+**archive evidence may establish membership, provenance and material. It may never
+establish practice.**
+
+**The scanner is on the NAS, and the app reads a published index.** Four architectures were
+weighed. Browser filesystem access is Mac-only and useless on the phone. A bundled
+TypeScript array (what the old `scan:setar` produced) needs a rebuild and a deploy for every
+new class. Browser crawling of a NAS directory listing means dozens of requests, fragile
+HTML, a CORS refusal, a CSP change and a certificate problem — and `no-cors` cannot produce
+readable data at all. A live scan service is a new authenticated runtime nobody asked for.
+So: a read-only Node scanner on the NAS emits a deterministic JSON index; the publisher
+commits it to a SEPARATE branch of the existing private data repo; the app GETs it with the
+GitHub connection it already has. Both devices get the same small file with no NAS fetch
+permission, no new service and no large-file storage, and media still opens directly from
+each device's own base.
+
+**A separate branch, not a sidecar.** `gitRemote.createTree` builds `main`'s whole tree with
+no `base_tree`, so anything placed beside `state.json` is deleted by the next sync. That is a
+fact about the sync engine, and the answer is to stay out of its way — not to change the one
+part of this app whose job is never losing data.
+
+**The token is repository-scoped, and saying otherwise would be a lie.** GitHub does not
+issue branch-scoped tokens. `publish-setar-index.mjs` refuses every target but
+`source-index`/`setar/index.json`, and that is a property of the CODE. The docs say so in
+those words, because "the credential can only touch the index branch" is exactly the kind of
+comfortable sentence that turns into a breach.
+
+**Identity is byte-exact and archive-relative.** `canonical_fa` is the join key, unfolded and
+untransliterated; `aliases_seen` is literal SEARCH data and is never consulted to decide
+which piece a record is. App ids are deterministic hashes of the source identity, so two
+devices importing the same index independently agree on which record is which. Paths are
+stored relative to the archive root, so changing the transport — LAN today, Tailscale on the
+phone, something else later — rewrites no stored record.
+
+**Weak equivalences ask; they do not merge.** A legacy class is auto-adopted only on
+instrument + date + number + exact source-path evidence. The owner's real upcoming class 38
+(2026‑09‑27) and archive session 38 (2026‑08‑04) are a live counterexample to merging on a
+number. An exact title or alias match produces Link / Create separately / Skip; a catalogue
+slug (`iraq`) is never equated with a canonical Farsi key (عراق), however obviously they
+"mean" the same thing.
+
+**Imported pieces arrive resting.** Ninety-four live candidates would flood every
+recommendation and every session plan on the day of the import. Resting is an administrative
+import policy, stated before the import — the items stay searchable, stay in My repertoire,
+and start directly whenever the owner wants.
+
+**History is history, whatever the clock says.** The archive runs to September 2026, so on a
+device whose clock is behind it an imported class is dated in the FUTURE. `date >= today`
+would turn thirty-nine records of classes that already happened into thirty-nine deadlines.
+`isUpcomingLesson` checks `origin === 'archive'` FIRST, and all four next-class selectors
+plus every Lessons badge go through it.
+
+**The bug that was not in the editor.** Lesson notes could not be cleared. The editor was
+blameless: `updateLesson` read `patch.notes ?? l.notes`, which cannot tell an omitted field
+from a deliberately empty one, so deleting the text wrote the old text straight back. Fixed
+at the patch boundary, on the PRESENCE of the key — the same distinction `resolveReviewDate`
+already makes for a date — and the lesson editor now shares `ItemNotes`' durability model
+(explicit Done, tagged draft, acknowledged persistence, retry) through one extracted
+component rather than a second copy of it.
+
+## A check that lives in one door is a check with five doors missing (2026-09-16)
+
+Two more sealed findings, and the same shape underneath both: a rule that was genuinely
+correct, sitting somewhere only one caller reaches.
+
+**Attachment identity.** "Two attachments may not share an id" lived in
+`decodeBackupFiles` — which returns on its FIRST line when a file carries no `files` key.
+So it ran for a full backup and for nothing else: a state-only import, a sync pull, an
+archive restore and both halves of hydration all installed duplicates unchecked. Not
+cosmetic, because the export emits one file per describing row: the device's own next
+backup then carried two files sharing an id and was refused by its own importer, here and
+on every device a sync published it to. The check moved to `validateDB`, the one function
+every inbound door already runs, and `decodeBackupFiles` keeps none of its own. Bounded to
+attachment ids on purpose — an id is what the bytes are KEYED by — and not widened into a
+duplicate-id sweep over every collection, which this change's own non-goals rule out.
+
+**The review-date draft.** `seeded` held "the item's date, or today when it had none", so
+"no date" and "a date that is today" were the same value. That forced an exemption —
+skip the whole comparison when the item has no date — and the exemption is what a live
+update CLEARING the date fell into: the box went on showing, and Save date went on
+writing, a schedule the item no longer had. Fixed by separating the two facts rather than
+special-casing the symptom: `seeded` is the item's own date (empty when absent), `offered`
+is what the box was filled with, and untouched is `text === offered`. All three
+transitions — to a different date, to none, from none — are now one rule. Proved in the
+browser through a real sync pull, the only thing that changes an item's date while that
+panel stays mounted.
+
+## A draft belongs to what it was typed for, not to whatever is on screen (2026-09-16)
+
+Two sealed findings, one rule, in two editors.
+
+**Working notes.** `ItemNotes` cleared its draft and showed "Saved." whenever the
+IndexedDB write it had issued settled — but the textarea stays live while that write is
+acknowledged, so anything typed in that window is NEWER than what was written. Pressing
+Done, typing one more word, and letting the write land threw that word away and put a
+success message over the older text. A settling write now speaks only for the text it
+actually CARRIED: same text ⇒ clear the draft and say saved; different ⇒ re-issue the
+write for what is on screen, which is what pressing Done asked for and is what keeps the
+words when the screen is LEFT mid-write. Switching ITEM is the opposite case and stays as
+it was: `saveSeq` is bumped, the write says nothing, and the draft is abandoned — those
+words were typed for a notebook that is no longer on screen. Try again does the same as
+Done on the failure path.
+Only the latest save may act (`saveSeq`, bumped by a retry and by switching item), and the
+draft is read through a ref: `storageSettled()` resolves in a microtask that can land
+between a keystroke and React's next render, so neither the issuing closure nor an
+effect-mirrored ref is sound.
+
+**The review date.** `ScheduleAgain` kept `open`/`date` in plain state, and `/items/A` →
+`/items/B` is a route PARAMETER change — same component instance, new props — so an open
+draft survived it and "Save date" wrote A's date through B's callback. The draft now
+carries the item it was opened for and that item's own pending date, and
+`reviewDateDraftFor` (pure, tested) reconciles it on every render: another item drops it;
+an untouched seed follows a date that moved beneath it, rather than silently reverting a
+change the owner never saw; text the owner typed survives, because that is intent, not a
+stale capture. Deliberately NOT an effect that resets state — a derivation cannot leave a
+paint in which the box shows one item's date while Save points at another.
+
+Both are the same sentence: an editor's draft is bound to what it was typed for, and
+neither time nor a route change may re-point it.
+
+## The export is derived from the metadata, so the app cannot write a backup it refuses (2026-09-16)
+
+Amends "A strict “metadata without bytes” refusal needs the same rule at the other door" below, which closed one mouth of that trap and left the other open. A
+sealed review found the mirror case: with a blob stored locally, a valid STATE-ONLY import
+whose `data` describes no attachments is accepted and — correctly, by that door's own
+contract — preserves the bytes. The database now names nothing, but
+`buildFullBackupWithRev` derived `files` from the blobs actually STORED, so the next full
+export carried orphan bytes and `decodeBackupFiles` refused its own device's backup
+("belongs to nothing this file describes"). Not exotic either: `deleteItem`,
+`deleteLesson` and `resetDemo` remove metadata synchronously while their
+`void deleteBlob(...)` cleanup can fail on its own.
+
+`files` is now built from `db.attachments` ∩ the blobs held, carrying the METADATA's
+`ownerId` — the field the importer validates against and writes back onto the blob row, so
+the round trip is idempotent rather than a second opinion about ownership. Unreferenced
+bytes stay on the device UNTOUCHED; deleting them to make the two agree is exactly what the
+state-only contract forbids, and they are simply not part of the database the backup is OF.
+
+Fixing it at the export rather than at the state-only door was the point: the door must
+preserve those bytes, so the inconsistency is legitimate and it is the EXPORT that has to
+be honest about which of them the backup is for.
+
+## One canonical home per kind of practice information — schema v13 (2026-09-16)
+
+Four things the musician writes, four homes: **Working notes** (`item.notes`) belong to the
+item and last as long as it does; an **observation** and a **next action** belong to one
+recorded block; a **question** belongs to a class, in the lesson agenda. Nothing copies one
+into another automatically. The problem was never that any of these were missing — it was
+that nineteen other persisted fields competed with them, so the same fact could be written
+in two places and disagree, and the notebook that should have been in front of you while
+practising was not reachable from the practice screen at all.
+
+**The waiver, stated exactly.** `currentProblem`, `bestStrategy`, `tags`, the item's cached
+`lastObservation`, the block's `bodyNote`, and fourteen Persian/Guitar WORKING-DETAIL
+fields (`shahed`, `ist`, `foroud`, `phraseLabel`, `importantNote`, `ornamentIssue`,
+`mezrabIssue`, `rightHandIssue`, `leftHandIssue`, `toneIssue`, `fingering`, `tempo`,
+`stringNoiseIssue`, `bodyTensionNote`) are REMOVED by the v12 → v13 migration, not merged
+into `notes`. The owner established that their current content is dummy test data and
+waived lossless preservation for these enumerated fields only. Merging dummy text into the
+one real notebook is the failure mode, not the fix — and this app's own rule is that
+nothing silently loses meaningful practice, which is why the exception had to be named,
+bounded and signed rather than assumed. The Persian/Guitar IDENTITY fields (`dastgahAvaz`,
+`gusheh`, `form`, `composer`, `lessonNumber`, `barRange`) are kept: they say what the piece
+IS and they group the repertoire.
+
+**What makes it safe to re-run.** `retirePracticeText` is DELETION ONLY — it never writes a
+value — so a second pass over its own output is a no-op and it is structurally incapable of
+resetting canonical text. It reads no clock, so two devices migrate the same database
+identically on different days. It runs on EVERY inbound database rather than only one
+declaring `fromVersion < 13`, for the reason `migrateToV12` already records: a database
+claiming the current schema can still carry a stray retired key from a partial conversion
+or a hand-edited file.
+
+**`lastObservation` was deleted rather than replaced** because the fact is derivable:
+`latestObservation(blocks)` reads the most recent block observation and returns its DATE
+with it, so the teacher sheet and the question list say *when* the observation was made
+instead of presenting a stale line as current. A cached copy of a derivable fact is two
+facts that can disagree.
+
+**The surviving text is checked, never coerced.** `validatePracticeText` (the four homes'
+own string fields — the block's legacy `constraint` included — and nothing else) joins
+`validateDB`, so every inbound door refuses the same
+thing. `null` reads as ABSENT — it is what a serialiser writes for "no value" and every
+reader already treats it as missing — and empty is legitimate, because emptying a notebook
+is a deliberate act. A present value of the wrong type is refused with the record named:
+`String({})` is how a note becomes the literal text "[object Object]". The unfinished
+block's scratch observation lives outside `PracticeDB`, on the store's ephemeral `active`,
+so it gets the same rule from `validateUnfinishedText` at the same hydration boundary.
+
+**Rollback is by restoring the backup you kept, never by a down-migration**, and the check
+proves it against the app that actually wrote the file: a disposable `git worktree` at the
+baseline commit, served by its own Vite server, refuses the v13 export by version with its
+stored bytes unchanged, and then restores the retained v12 export with its attachment
+intact and readable. A block recorded after the upgrade exists only in the v13 export —
+that limitation is stated rather than papered over.
+
+## A strict "metadata without bytes" refusal needs the same rule at the other door (2026-09-16)
+
+`decodeBackupFiles` now refuses a full backup that describes an attachment it does not
+carry (it used to `continue` past unreadable entries and install metadata for bytes that
+never arrived, reporting "Imported (3 files)"). Tightening that alone creates a ONE-WAY
+TRAP, which is the part worth recording: an export can only carry bytes it actually holds,
+so a device holding metadata for a blob it does not have exports a file it will then refuse
+on import — and publishes a sync snapshot every other device refuses too. Permanent, with
+no owner-visible way out.
+
+The state-only import (`files` absent) was the one door that could create it. So the same
+invariant is enforced there: **after any install, every attachment the database describes
+has bytes on this device.** A state-only file naming an attachment this device does not
+hold is refused, naming the file, with the local bytes and the local database untouched —
+at the one moment the owner can still do something about it. `heldBlobIds()` answers that
+question from the key index rather than loading every blob to ask it.
+
+The alternative — dropping the metadata for absent bytes — was rejected: that is silent
+loss of the owner's own record, which is exactly what the refusal exists to prevent.
+
+## Handing a review date back to the engine is administration, not evidence (2026-09-16)
+
+`transferToAutomaticReview` moves an item to `reviewMode: 'auto'` with
+`nextReviewSource: 'auto'` and KEEPS the pending date byte-for-byte. Together those two
+fields mean the engine now has AUTHORITY over that date — not that the date was calculated
+and not that a review happened. `srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`,
+every statistic, every status and every completed row are untouched, so the next eligible
+close resumes from the rung the item was already on. The button's explanation must never
+call the retained date a new engine calculation; that sentence is the whole point.
+
+It REFUSES rather than guesses on an ambiguous schedule — open rows disagreeing with the
+item or with each other, or rows pending with no item date — because that is a decision the
+owner makes with "Change review date". `updateItem` refuses such a save WHOLE rather than
+applying the other fields and dropping the transfer. An ordinary save never releases a
+protected date: only this explicit control transfers ownership, and only an explicit date
+change, a snooze or "Schedule again" re-establishes the owner's.
+
+Building the rendered control surfaced a real defect: "Review today" wrote the day the
+panel had been RENDERED with (`useDecisionNow` polls every 30s), so a device left open
+across local midnight saved yesterday. It now resolves the day at the moment of the tap —
+the same action-time guard `CloseBlock`'s Save already uses.
+
+## `text-align: start` is not portable, and Chromium cannot show you that (2026-09-16)
+
+The owner had reported a Safari-only question-alignment symptom that nine rounds of
+Chromium checking never reproduced, and the source left several plausible causes. Driving
+the same page in WebKit reproduced it immediately and it was none of them: `ClassQuestions`'
+`<li dir="auto">` inherits `text-align` from an LTR ancestor, and **WebKit inherits the
+RESOLVED PHYSICAL value (`left`) where Chromium inherits the LOGICAL keyword (`start`)** and
+re-resolves it against the `<li>`'s own direction. Identical DOM, identical CSS, two
+different pictures: a Farsi question rendered hard against the English edge while its
+ordinal — a direction-aware flex child, correct on its own terms — sat on the right.
+
+The fix is one declaration: a block whose own direction is resolved by its content must
+RE-DECLARE `textAlign: 'start'` on itself. An inherited `start` is not the same thing as an
+own `start`. This generalises past `ClassQuestions` and past this lane.
+
+The durable lesson is the other half: **a direction fix verified in one engine is verified
+in one engine.** `tests/practice-information-layout.browser.test.ts` now drives the changed
+surfaces in Chromium AND WebKit, at 390×844 and desktop, asserting measured bounding
+positions. A missing WebKit binary fails with the install command; it never skips. Two
+WebKit-only environment facts encountered on the way, neither an app bug: it cannot store a
+`Blob` in IndexedDB under the automation driver (so that journey seeds state-only), and it
+reports `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was
+aborted.
+
+## Two deliberate limits recorded rather than quietly worked around (2026-09-16)
+
+**The iPhone keyboard/shell symptom stays an OWNER diagnostic, with zero code.** The
+reported displacement is a device-and-shell interaction the browser checks above cannot
+reproduce, and `useViewportGuard.ts`, the shell height, `visualViewport` scrolling and nav
+positioning are all deliberately untouched here. Guessing a timeout to make a symptom go
+away is exactly the change this repo's own rules forbid, and no timeout increase is
+authorised. The Farsi half of that report WAS reproduced and fixed (the WebKit entry
+above); the keyboard half needs the specified capture first, on the deployed revision:
+
+- device / iOS / app version, and standalone PWA versus Safari;
+- repeat focus, keyboard dismissed with the field still focused, blur, field-to-field
+  focus, route exit and orientation change — on item notes, Close, and lesson questions;
+- at each transition (before / during / after), timestamped: `innerHeight`,
+  `visualViewport.height` / `offsetTop` / `pageTop` / `scale`, `window.scrollY`,
+  `document`/`body`/`main` `scrollTop`, `document.activeElement`'s tag, and the rectangles
+  of the app shell, `main`, the tab bar and the focused field.
+
+That set is what distinguishes layout scrolling from visual-viewport displacement from
+residual internal scrolling from keyboard timing from focus scroll — five different fixes.
+Prescribing one before the capture would be guessing.
+
+**A DST assertion that only runs in some timezones is not an assertion.** The report's
+local-day boundary check originally ran `if (the machine's offset changes this year)`,
+which never executes on a UTC CI runner and would have reported as passing having proved
+nothing. It now forces `TZ=Europe/London` around that one assertion (Node re-reads `TZ` per
+call) and restores it immediately, so the case genuinely runs everywhere.
+
+## Tenth rejection: a resolved direction that never reaches the alignment, and lines that share one (2026-09-13)
+
+Two counterexamples, one family — and both were invisible to the guard, which is the third
+thing this entry fixes.
+
+**A user-authored title under a forced physical alignment.** Repertoire's `PathwayCard`
+rendered `pathway.name` inside `<button style={{ textAlign: 'left' }}>` with no
+direction-resolving group between them. The browser shaped a Farsi pathway name correctly
+(bidi needs no help for that) and then pinned it to the English edge, split from its own
+instrument/stage caption. The inline `<span dir="auto">` already on that caption could
+never have fixed it: `text-align` is a BLOCK concept, and this repo's own "an isolate must
+be inline" rule exists precisely because a `<span>` never participates in one. Fixed by
+wrapping the name and its caption in ONE `dir="auto"` group that also re-declares
+`textAlign: 'start'` — both halves, because either alone leaves the name where it was. The
+group sits INSIDE the button rather than on it (the Balance-row precedent: the progress bar
+and its counter below are layout, not text). Measured against the live page: before,
+the Farsi name occupied x 41–184 of a 1068px card; after, 884–1027, with its caption on the
+same edge. The English card is byte-identical in layout (`start` === `left` under LTR).
+
+Auditing the same shape across the app found two more real instances, fixed with it:
+Insights' per-instrument `<th style={CELL} dir="auto">{r.instrumentName}</th>`, where
+`CELL` pinned `textAlign: 'left'` over an instrument name the owner can rename to Farsi
+(CELL now uses `'start'`), and RoutineRunner's "Recorded" rows, whose `dir="auto"` row sat
+under a card pinning `'left'`. `center` is deliberately NOT treated as forcing: centred text
+points at no edge, so it cannot misalign an RTL run — which is also what keeps this from
+demanding an unrequested layout change on the deliberately centred practice screens.
+
+**Lines of one field that are not one language.** The bulleted multi-line renderer added
+for `teacherQuestion`/`currentProblem`/`lastObservation` left every bullet bare, arguing
+that lines typed into one box share one direction. They do not: a musician who types a
+Farsi question and an English one into the same field gets two lines whose languages
+genuinely differ, and bare lines all inherit the FIRST line's direction — an English line
+dragged RTL with its bullet on the wrong side, or the reverse.
+
+The catch that argument was right about is real, though, and is why this is not simply
+"isolate every line": `dir="auto"` skips any descendant carrying its own `dir`, and the
+enclosing `<li dir="auto">` (and the Problem/Last-time value wrapper) has nothing else left
+to hunt, since the Ninth rejection above already isolated the title. Isolating every line
+would leave the whole item with no resolution source and a silent LTR fallback — the Ninth
+rejection, back again. Both hold one way only: the FIRST line is the ANCHOR and stays bare
+(it still follows its own language, because the direction it inherits is the one it
+produced), and every line AFTER it carries its own `dir="auto"` on the row, so its text and
+its bullet both follow that line alone. The two branches are written out literally rather
+than as `dir={i === 0 ? undefined : 'auto'}`, because `direction.test.ts` is a source
+scanner and a computed attribute is invisible to every guard in it.
+
+Verified against the real running Teacher Report page with DELIBERATELY MISMATCHED data in
+both directions (Farsi question line followed by an English one, and the reverse; an English
+item title over a Farsi question, and the reverse), at a 350px forced width: each bullet's
+computed `direction` and its bullet dot's measured x-position follow that line alone, while
+the item's ordinal still tracks the question's first line. In the Farsi-titled item, the
+bare Farsi first line computes `rtl` with its dot at x 327–333 (the right edge) and the
+isolated English second line computes `ltr` with its dot at 0–6; in the English-titled item
+the mirror holds — bare English line `ltr`, dot at 19–25, isolated Farsi line `rtl`, dot at
+344–350 — with the ordinal at 0–11 rather than 341–350. The `direction.test.ts` checks are
+shape checks over the source, so these measured figures are the only evidence that what the
+shape encodes actually renders; the discovery set behind the alignment check spans four
+files (Repertoire ×2, RoutineRunner, StartBlock, Today), not the counterexample's own file
+alone, so it cannot pass by having quietly emptied.
+
+**The guard.** The sealed finding was right that the existing ac-5 check only required one
+direction-aware group SOMEWHERE per file, which neither counterexample could fail.
+`direction.test.ts` adds two checks that assert the invariants themselves. The first
+discovers, mechanically, every element carrying a title class whose body renders an opaque
+data expression, and — when anything above it forces `textAlign: 'left'`/`'right'`, inline
+OR through a module-level style constant it names (which is how the Insights counterexample
+was written) — requires a `dir="auto"` group below that forcing element which re-declares
+`textAlign: 'start'`; it also fails any `dir="auto"` group that pins a physical alignment on
+itself. The second asserts the anchor shape of the multi-line renderer: exactly one bare
+line branch, exactly one `dir="auto"` branch, and the isolate on the branch chosen for lines
+AFTER the first. Seven mutations were confirmed to fail the suite before this was committed
+— dropping the group's `textAlign: 'start'`, dropping its `dir`, making both bullets bare,
+making both bullets isolated, moving the anchor to the last line, reverting `CELL` to
+`'left'`, and dropping RoutineRunner's `'start'`.
+
+## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
+
+The Eighth review below concluded no further structural change was needed, using seed data
+where the item's title and its `teacherQuestion` share a language (both Farsi). An OWNER
+pass reported the marker was STILL not attached to the question on the real, current build
+— and, tested directly against the real running app (the actual Teacher Report page, not a
+synthetic clone), with a title and question set to DIFFERENT languages, this was true and
+was a genuinely different, previously undiagnosed bug: the Eighth review's own conclusion
+does not extend past the one language combination its evidence used.
+
+Root cause: `<li dir="auto">`'s hunt for a first strong character skips any descendant that
+carries its own `dir`. The question and the Problem/Last-time rows all already carried
+their own `dir="auto"` isolates, so the hunt could only ever land on the bare TITLE —
+meaning the ordinal's side was decided by the TITLE's language alone, regardless of the
+QUESTION's. With matching languages this is invisible (title and question agree on which
+side to hug); with an English title and a Farsi question (or the reverse), the ordinal and
+title land on one side while the question — correctly right- or left-aligned by its own
+independent isolate — lands on the OTHER, unattached from the marker entirely. Reproduced
+both ways by temporarily setting an English title on the real seeded Farsi item via the
+live store (`useStore.getState().updateItem(...)`) against the actual running page, at both
+a 390px-forced real DOM width and the full desktop width.
+
+Fixed by reversing which field is left bare: `questionsForNextClass` guarantees
+`q.question` is non-empty on every row this component renders (that is its filter); `q.title`
+carries no such guarantee. The title now carries its own `dir="auto"` isolate (out of the
+`<li>`'s hunt, rendering in its own correct direction independently); the question is left
+bare, so the `<li>`'s `dir="auto"` — and therefore the ordinal's side — always tracks it.
+Verified at both widths, both mismatch directions, and confirmed the original
+matching-language case is unaffected. `direction.test.ts` adds a dedicated, mutation-tested
+shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the title's tag
+carries `dir="auto"` and the question's does not; both reverting the title and re-marking
+the question were confirmed to fail it (and, independently, `GROUP_SITE_INVENTORY`'s exact
+count) before this was committed. The stale `ISOLATED_VALUE_SITES` entry for the question's
+old isolate was removed; no new entry was needed for the title's new one since it is a
+plain `GROUP_SITE_INVENTORY` site (same tag/class the old entry already tracked).
+
+The general lesson, restated because this is the second time this file has learned it: a
+verification built entirely from matching-language seed data proves a fix holds when the
+two sides AGREE and says nothing about what happens when they DISAGREE. The Seventh
+rejection's row-direction fix and this Ninth rejection are the same shape of gap, closed
+twice because the same seed data was trusted twice.
+
+## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
+
+**Scope note (superseded in part by the Ninth rejection above):** this review's conclusion
+— that no further structural change was warranted — was correct only for the ragged-edge
+question it actually measured, using seed data with a Farsi title AND a Farsi question. It
+was not, and should not have been read as, a claim that every marker-attachment complaint
+on this screenshot was closed; a real, different bug (title/question language mismatch)
+was still open and is fixed above.
+
+A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
+the "1." marker looked detached from the Farsi question because the Problem/Last-time
+lines sat at the opposite (left) edge from the title and question — a visible asymmetry a
+screenshot reads as "not attached" even where the title itself was correctly positioned.
+Rather than trust that reading, both edges were measured directly against the live DOM:
+the real seeded Farsi item, cloned into a fixed-width harness at 340px, with each line's
+actual rendered text extent read via `Range.getClientRects()` (glyph bounds, not
+`getBoundingClientRect()` on the containing boxes). Result: all four lines — title,
+question, Problem, Last time — right-align flush at 330px, an 8px gap from the ordinal's
+own right edge at 338px, matching the authored `gap: 8` exactly. The LEFT edges spread
+across 62px-205px (143px), because the four lines differ in length and each is
+right-aligned inside a box whose right edge is pinned to the ordinal regardless of the
+box's own width.
+
+A specific fix was proposed and tested before being rejected: swap the value wrapper's
+`flex: 1` (`.grow`) for shrink-to-fit sizing, on the theory that a narrower box would pull
+the ragged edges together. Patched live and re-measured, the result was byte-for-byte
+identical — same 143px spread, same individual line positions — because for right-aligned
+text, `left edge = box_right − line_width`, and `box_right` never moves: it stays flush
+against the ordinal no matter how the box itself is sized. There is no flex-sizing change
+that touches this, because the sizing was never the defect.
+
+Conclusion: a ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same shape any right-aligned paragraph or an address block has), not a
+resolvable structural defect. The actual defect the owner was reacting to was fixed by the
+Seventh rejection below, before this measurement was taken: Problem/Last-time used to sit
+at the FAR left (~25px, the opposite edge entirely) while title/question sat at ~330px — a
+hard two-line/two-line split, not mere length variance. Once the row-direction fix made
+all four lines agree on which edge they hug, what's left is ordinary variance in line
+length, and no further structural or padding change is warranted. No source change
+accompanies this entry; it exists so a future review does not reopen the same screenshot
+and re-diagnose an already-closed gap as a new one.
+
+## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
+
+A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's
+`display: 'inline-block'` fix for `ClassQuestions`' `Problem:`/`Last time:` rows still
+wrong — not merely incomplete. That fix gave the VALUE its own bidi character order and
+its own wrap-line alignment, but left the ROW that positions "Label: value" as a unit
+BARE, so the row inherited whichever direction the TITLE above it resolved to — right for
+a Farsi title, left for an English one — regardless of what script the value was actually
+written in. For the common case (title and value the same language) this looked correct
+by coincidence; for an English-titled item with a Farsi problem note, the whole row
+stayed pinned left, exactly where the inherited direction put it, with the value's
+internal shaping correct but its POSITION wrong. This is the same root cause the
+"A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN"
+section already named for other files, just not yet applied to a LABEL-plus-VALUE row.
+
+Fixed by moving `dir="auto"` from the value to the ROW itself, and marking the LABEL —
+never the value — with its own `dir="ltr"`. This is not because the label's text ever
+changes; `dir="auto"` skips a descendant that carries its own `dir` when hunting for a
+first strong character, so marking the label takes it OUT of that hunt and leaves the
+(deliberately bare) value as the row's only resolution source. Marking the value too
+would take BOTH out, leaving the row with nothing to resolve from and a silent fallback
+to LTR regardless of the value's own script — confirmed to fail the new test when tried.
+Verified across all four combinations (Farsi/English title × Farsi/English value) at both
+a narrow (350px, iPhone-card-width) and a wide (700px, desktop) container: a value's own
+language now determines its row's alignment independently of the title, in both
+directions, at both widths. This also resolved the number/title "detachment" the same
+finding reported: with all four lines (title, question, Problem, Last time) correctly
+right-aligning together, the block reads as one coherent unit against the marker instead
+of two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the `ISOLATED_VALUE_SITES` ledger entries for these rows
+with a shape check, `isLabelFirstAutoRow` / "a label-first auto row's value stays bare":
+any `dir="auto"` group whose body opens with a `<span dir="ltr">…</span>` must have no
+other `dir=` anywhere else in its body, or the row has nothing left to resolve from. It is
+a SHAPE check, not a ClassQuestions-specific one, so it would catch the same regression in
+any future file using this pattern. Two mutations were confirmed to fail before this was
+committed: marking the value `dir="auto"` too (caught by the new check and by
+`GROUP_SITE_INVENTORY`'s exact-order equality), and removing the label's `dir="ltr"`
+entirely — reverting to the original bug — which the PRE-EXISTING `unexemptedPhrase` check
+also catches on its own (the bare "Problem" label plus the value's opaque expression reads
+as a 2-word exposed phrase), giving this shape two independent guards.
+
+## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
+
+A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
+question number still escaping the card despite the third rejection's symmetric
+`paddingInline` fix — proof that an outside `::marker`'s exact position for a
+direction-variable `<li>` is a browser implementation detail no gutter measurement can
+guarantee (jsdom cannot compute it either, which is why a padding proxy was ever trusted
+to stand in for it). Fixed by removing the native marker mechanism entirely rather than
+reserving room for it: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a
+real element, the FIRST child of a flex `<li dir="auto">` — flexbox's row axis is
+direction-aware by specification, so the number leads on the correct side and sits inside
+the content box it can never escape. The wrapper around title/question/details carries no
+`dir` of its own, deliberately: `dir="auto"` skips a descendant that has its own `dir`
+when hunting for a first strong character, so giving the wrapper one would leave the
+`<li>` with no resolution source at all. `direction.test.ts`'s list-marker check
+(`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
+now asserts the mechanism directly — no native marker, and the `<li>` is itself a
+flex/grid container — rather than measuring a proxy for it; each half was confirmed to
+fail on its own when reverted. `role="list"` on the `<ol>` pays back the one accessibility
+cost of removing the marker: WebKit drops an `<ol>`'s list semantics from the
+accessibility tree once `list-style: none` takes its marker away, which would have gone
+unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
+surfaced.
+
+The same finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed at
+the time as a wrap-alignment gap and fixed with `display: 'inline-block'` on the value's
+own isolate. A seventh sealed finding (below) found that diagnosis incomplete — the value
+having its own bidi order was never the same claim as the ROW having the right
+alignment — and replaced it with a different fix entirely. See "Seventh rejection" above
+for what actually shipped.
+
+## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
+
+A fifth sealed review found the fourth rejection's fix was still a negative check —
+banning `dir="ltr"`/`"rtl"` around an instrument name — which cannot detect a name with
+NO direction treatment at all, an alias beyond the two literal anchors the check knew
+(`instrumentName`, `{inst}`), or a name fused into a template string before anything
+renders. Real, live instances of all three: Repertoire's `PathwayCard`, Session Plan's
+two page titles, wide Lessons' sidebar heading and detail-pane header, Today's
+cross-instrument "in progress"/"plan"/"routine" rows (built as pre-joined template
+strings), Today's instrument switcher and `EmptyState` title and "Before your … class"
+heading, and ActiveBlock's/CloseBlock's own eyebrow (mis-classifying the instrument's own
+name as fixed English in their own comments). Fixed by replacing the ban with a positive,
+mechanically-discovering check in `direction.test.ts`: `instrumentNameOccurrences` finds
+every current renderer from the SHAPES this codebase uses to produce one (the helper call,
+a property read, a local alias of either via destructure-rename/const-binding/find-and-name,
+or a per-item `.name` read inside an `instruments` iteration) rather than a location list,
+and `resolvesOwnDirection` asserts the invariant itself — the nearest ancestor `dir` must
+be `"auto"` AND nothing else may render before the name within that ancestor's body, or
+the ancestor's resolution belongs to whatever precedes it, not to the name riding along
+beside it. Two sites deliberately stay bare because they are already the first strong
+content of their own dir="auto" ancestor (Insights.tsx's `<th>`, Today.tsx's
+cross-instrument `{inst.name}` row) — isolating either would break, not fix, them, the
+same reasoning that earlier reverted isolating `stage.title`. Two gaps are named rather
+than silently left: `QuickAdd.tsx`'s instrument-picker button has the identical bare-name
+defect but sits in a file this lane's own contract puts out of scope, so the check
+explicitly excludes it instead of failing on a bug this lane cannot fix; and
+`src/domain/insights.ts` fuses an instrument name into a generated sentence one layer
+below where a presentation-only lane can reach, left open for its own lane. See
+AGENTS.md's "A FIFTH REJECTION..." section for the full account.
+
+## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
+
+A sealed review found four sites (`ItemCard.tsx`, `ItemDetail.tsx`,
+`PathwayDetail.tsx`, `Repertoire.tsx`) forcing an item's or work's instrument name under
+`dir="ltr"` as if it were generated metadata like `ITEM_TYPE_LABELS` sitting next to
+it — but an instrument is renameable in Settings, Farsi included, so it is the owner's
+own editable text and needed its own `dir="auto"` isolate instead. Auditing every
+remaining `LTR_ISOLATE_SITES` entry against its real source (not just the four named)
+found a fifth of the identical shape (`Today.tsx`'s "routine running" row, bundling the
+instrument name and a fixed English suffix into one `dir="ltr"` span) and two with no
+direction treatment at all — invisible to that audit because it can only see spans that
+already carry a `dir`: the Plan doorway's mismatched-instrument row (the exact twin of
+the routine row) and the weekly Balance row's instrument name, bare inside a
+`.truncate` title span whose row is a CSS grid (isolating the row itself, rather than
+the name, would have reversed its three columns for a Farsi instrument). All seven now
+carry their own `dir="auto"`, and `direction.test.ts` bans the SHAPE going forward — any
+`dir="ltr"`/`"rtl"` isolate whose body references `instrumentName` (a call, a bare
+identifier, or a property access like `b.instrumentName`) fails — rather than
+re-closing whichever locations a reviewer happened to enumerate.
+
+## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
+
+A third sealed review of the direction lane found the SAME family — mixed-content
+groups, alignment, list markers, completeness — still open in `ItemMaterial.tsx`,
+`Materials.tsx`, `ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx` and
+`ClassQuestions.tsx`, closed as three root causes rather than as seven counterexamples.
+
+1. **A block-level isolate resolves its own alignment, independently of the group.**
+   `ItemMaterial.tsx`'s detail line carried `<div className="tiny faint" dir="ltr">…
+   </div>` — the isolate fixed the sentence's own bidi ordering but, because
+   `text-align: start` is a per-box computed value resolved against that box's OWN
+   `direction`, gave the div's `text-align` a LEFT resolution regardless of the group's
+   (possibly RTL) one — the detail split from a right-aligned Farsi title exactly as
+   before, one level down. Fixed by moving every such isolate to an inline `<span>`
+   nested inside a `dir`-less block (the shape already used everywhere else in the
+   file), and closed for good with a mechanical rule in `direction.test.ts`: no
+   `dir="ltr"`/`dir="rtl"` may sit on anything but `span`/`bdi`. One rejected review
+   found one file doing this; a structural ban is what stops a second file doing it
+   next lane.
+
+2. **A native list marker follows its OWN list item's direction, not the list's.**
+   `ClassQuestions.tsx`'s `<ol>` reserved gutter space with `paddingInlineStart` alone
+   while each `<li>` resolves its own direction via `dir="auto"` — the browser positions
+   the outside `::marker` on that li's OWN start edge, so a Farsi item's marker lands on
+   the right, the side the list reserved no room for, and gets pressed against or past
+   the content border. Fixed with symmetric `paddingInline`. `direction.test.ts` scans
+   every `<ol>`/`<ul>` for this shape now, not just this one list.
+
+3. **The scanner itself skipped every `{…}` expression as opaque, contributing zero
+   words — hiding a run built ENTIRELY from expressions.** `Materials.tsx`'s
+   `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '} {itemCount(...)}
+   item{...}` reads as zero literal words to a scanner counting only literal text, while
+   rendering three always-English fragments in a row, unisolated, next to a title that
+   could resolve RTL. `unexemptedPhrase` now counts an opaque, non-JSX-bearing
+   expression as ONE token (its content stays invisible from source, but its
+   unisolated PRESENCE next to other content is the shape being caught); an expression
+   containing its own nested JSX stays fully opaque, since its children are already
+   reachable by the outer whole-file scan. That one change, plus re-auditing every
+   recorded group by hand, surfaced the five named sites and further, unnamed ones of
+   the identical shape: `Repertoire.tsx`'s second, near-duplicate work-count span (the
+   non-Persian branch mirrors the fixed one and had simply been missed), `ActiveBlock`'s
+   own mode/focus chips, `Attachments`'/`ItemDetail`'s file kind/size line,
+   `StartBlock`'s/`Today`'s item-type/status labels, `StageDetail`'s strand/status
+   line, `PathwayDetail`'s "Current"/"Done"/item-count badges and piece-count fallback,
+   `Today`'s "routine running" indicator and its cross-instrument Overview row (a fixed
+   sentence embedding the next item's own possibly-Farsi title, isolated the way
+   `StageDetail`'s undo banner already does), and `Insights`' generated observation
+   sentences. Two sites needed `dir="auto"` rather than `dir="ltr"` — a value authored
+   independently of its neighbour, not generated copy: `RoutineRunner`'s upcoming
+   segment label and `PathwayDetail`'s pathway `source`. A stage's own `title` was
+   tried the same way and REVERTED: `stage.title` is not authored independently of
+   `stage.code` — it is the SAME stage's fuller name, rendered only when it differs
+   from the code — and a prior lane already settled that the two should AGREE on
+   whichever direction the group resolves rather than one overriding the other
+   (`PathwayDetail`'s stage rows, 2026-09-11 entry below: "even where a group DOES
+   resolve LTR from its code, that is the point"). Isolating `stage.title` in its own
+   `dir="auto"` would have pulled it OUT of the button's own auto-detection (a nested
+   `dir` attribute is skipped by the HTML algorithm), which can flip the group's OWN
+   resolved direction whenever `stage.code` itself has no strong character — the
+   opposite of "agree." It stays a bare `<span>`, exactly like `stage.code`. Two
+   flagged sites were genuine exceptions, recorded visibly in a new
+   `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: a numeric progress counter
+   (`{sp.done}/{sp.total}` — digits carry no bidi risk) and a compound "Pathway — Stage"
+   breadcrumb built from two fields (one continuous label, not a title split from a
+   foreign caption).
+
+4. **`elementBody`'s depth counter did not recognise React's Fragment shorthand as an
+   opening tag, only as a closing one — silently truncating the body several checks
+   scan.** `</>` starts with `/`, so it matched the ordinary CLOSING-tag branch and
+   decremented depth; `<>` starts with neither `/` nor a letter, so it matched nothing
+   and never incremented it. Every `<>…</>` pair inside a group's body therefore
+   decremented depth once more than it was ever incremented — and this codebase's own
+   established shape for a conditional detail (`{stage && (<><span>…</span>
+   <Link>…</Link></>)}`, `ItemDetail.tsx`'s header) uses exactly that shorthand. On
+   that header, depth hit zero several tags before the `</header>` actually closes,
+   so `unexemptedPhrase` silently stopped scanning before ever reaching
+   `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a real,
+   unisolated generated-English phrase that had been sitting in the group the whole
+   time, invisible to a scanner whose whole claim is "detectable, not enumerated."
+   Fixed by giving `<>` the same weight as any other opening tag; the fix surfaced
+   this one concrete violation across every file the suite scans (no others were
+   hiding behind it), now fixed with the same `dir="ltr"`/`dir="auto"` split as its
+   sibling `row-wrap` (`instrumentName`/`ITEM_TYPE_LABELS` generated, `stage.code`/
+   the material label left bare since both can be Farsi themselves) and its
+   importance/difficulty/saturated row. A structural bug in the TEST's own tag
+   traversal is exactly the kind of gap a purely example-driven fix cannot close —
+   only re-deriving the traversal from first principles (does this construct open or
+   close a nesting level?) finds it.
+
+**A restructure, not a pure direction-only edit, in `Repertoire.tsx`'s `WorkRow`.**
+Its metadata line was `[form, composer, gusheh, instrumentName, lastPractised]
+.filter(Boolean).join(' · ')` — a single STRING assembled from fields in two
+different authorships (Persian identity fields, genuinely Farsi; instrument name and
+the last-practised phrase, generated English). A joined string has no seam to hang a
+`dir=` on partway through, so isolating it correctly required rebuilding the array as
+JSX nodes (`<span dir="auto">`/`<span dir="ltr">` per fragment) joined with an
+explicit separator, rather than adding an attribute to existing markup. This is more
+than the "direction wiring only" the contract asks of a non-loop file, but there was
+no lighter way to give each fragment its own bidi base — flagged here rather than
+left for a reviewer to have to notice on their own.
+
+**The scanner's own comment-stripping had a latent bug this work exposed, not
+introduced.** `stripComments` treated any `'`/`"` as a real string delimiter and
+scanned forward, unbounded, for its match. Plain JSX text containing an apostrophe
+(`StageDetail.tsx`: "That stage doesn't exist.") is not a string at all; hitting that
+apostrophe put the scanner into a phantom "inside a string" state that swallowed
+everything after it — including real comments — until an unrelated quote later
+happened to close it, cascading through the rest of the file. This had been silently
+true all along and only surfaced because a new comment inside the corrupted span
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the new block-isolate scan as a phantom real attribute. Fixed at the
+root: a `'`/`"` now starts a real string only if its match appears before the next
+newline (every real string/attribute value here is single-line); otherwise it passes
+through as ordinary text. Backtick template literals keep their unbounded, multi-line
+scan. This makes every check in the file more trustworthy, not just the new ones.
+
+## The content leads: direction on the group, and a colour list that is bounded on purpose (2026-09-11)
+
+**Direction lives on the GROUP, never on the title.** `dir="auto"` was on 47 title
+elements and on no container anywhere, so a Farsi title resolved RTL and hugged the right
+edge of its cell while its own English caption hugged the left. The fix is not a new
+mechanism — it is moving the SAME native attribute up one level, to the element that
+holds a title together with the details belonging to it. Two consequences are worth
+recording because they are not obvious:
+
+1. `dir="auto"` resolves from the FIRST STRONG CHARACTER in the subtree, so where an
+   English eyebrow precedes the title in the DOM (Today's Practise-now card, the close
+   screen's header, Session Plan's minutes/bucket line) the group is drawn around
+   title + details and the eyebrow is deliberately left OUTSIDE it. Wrapping the whole
+   card would pin the group LTR and change nothing.
+2. Direction alone does not move text. Several groups sit under an ancestor pinning
+   `text-align: left` (a picker row button, the practice screen's centred column), and
+   `left` is inherited as a COMPUTED value — it does not re-resolve per element. Those
+   groups set `text-align: start` on themselves.
+
+The sweep is held closed by `src/components/direction.test.ts` rather than by care, and
+its exception allowlist came out EMPTY: every title on every surface had a group it could
+join. `PathwayDetail`'s stage rows were the candidate exception (an ascii-looking code
+like "2A" leading a Farsi title) — but the Setar and Tar seeds author stage codes in
+Farsi (`نشست`, `شور`, `ماهور`), so grouping code + title is both correct and what the
+owner actually sees. Even where a group DOES resolve LTR from its code, that is the point:
+the code and the title then agree instead of pointing at opposite edges.
+
+**The colour list is bounded, and the planner's "six failing tokens" was an undercount.**
+The plan measured each foreground token against `--bg` only. Two tokens fail there and
+were missed (`--tone-progress` 4.41, `--tone-rest` 4.26), and more importantly `--bg` is
+not where several of them RENDER: `--tone-rest` only ever appears as `.badge`/`.chip`
+text over its own translucent `--tone-rest-soft` fill. `src/styles/contrast.test.ts`
+therefore lists the pairs each token is ACTUALLY rendered on, compositing a translucent
+fill over the card it sits in, and asserts them in all three palette blocks.
+
+That honest list moves EIGHT light tokens (`--text-faint`, `--accent`, `--gold`,
+`--tone-alert`, `--tone-warn`, `--tone-progress`, `--tone-good`, `--tone-rest`) and FOUR
+dark ones (`--text-faint`, `--tone-alert`, `--tone-progress`, `--tone-rest`) rather than
+the six + one the plan predicted. The list was NOT trimmed to make that arithmetic come
+out right: an uncovered token is supposed to be a visible omission, and dropping badges
+would have left two of the five tone tokens with no coverage at all. Three of the four
+dark moves are 1–7 units and imperceptible. `--accent-contrast` (white on the primary
+Start button, 3.95 at HEAD) needed no move of its own — darkening `--accent` to clear AA
+against the page took that pair to 5.94. Every `-soft` fill, `--text`, `--text-dim` and
+`--accent-dim` are untouched, because they pass.
+
+**Both light blocks, every time.** `global.css` declares the light palette twice — at
+`:root[data-theme='light']` and again inside `@media (prefers-color-scheme: light)
+{ :root:not([data-theme]) }`. The duplicate is what an owner who never picked a theme
+sees, so the test asserts both blocks AND that they agree token for token.
+
+**Reading the stylesheet needed a workaround, not a config change.** `src` is typechecked
+by `tsconfig.app.json`, which does not enable node types, and Vitest blanks every `.css`
+module — `?raw` included — unless `test.css` is on in `vite.config.ts`. Both files are
+outside this lane's scope. So the contrast test reads the real file through a dynamic
+import whose specifier the compiler cannot resolve statically. Reading the REAL file is
+the whole point: a table of colours copied into the test would keep passing while the app
+shipped something else. The direction test needs no such trick — `import.meta.glob` with
+`?raw` works for `.tsx`, and a glob also means a NEW page is swept in automatically.
+
+**One ReviewPlan on the close screen.** The collapsed summary line and the expanded date
+field are two renderings of ONE value, with a manual correction folded into it rather
+than held beside it. The guarantee had to be structural: `CloseBlock` previously called
+`planNextReview` twice (once for the preview hint, once inside `pickResult` to seed the
+field), which is exactly the drift r-explainable-scheduling exists to prevent. A pure
+formatter (`reviewSummaryLine`) renders the line and computes nothing, so a divergent
+date is unrepresentable rather than merely remembered about.
+
+**Today's order was built the other way round, tried, and REVERTED — by design.** The
+lane built Practise now directly under the instrument switcher with Plan and Routines as
+two compact peer doorways beneath it, on the argument that orchestrating a session is a
+choice you make INSTEAD of taking the suggestion. It shipped as one ordering change with
+no data or state implication precisely so the owner's own device could settle it. It did:
+on 2026-09-11 the owner judged the original order better — Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural — so the
+order went back. That reversal is a PASSING outcome of the check, not a failure of the
+lane, and everything else the lane built stands.
+
+Worth recording for whoever reads the code next: BOTH orders keep the recommendation
+above the fold at 390×844, so nothing about this ordering follows from the phone
+constraint or from any other rule in AGENTS.md. It is a taste judgement that only the
+owner can make, and the argument for recommendation-first is genuinely available to
+re-derive — which is exactly why `Today.tsx` and AGENTS.md now say, in so many words,
+not to act on it without asking.
+
+**Rejection findings, addressed (fresh review, 2026-09-11).** A sealed fresh review of
+this lane's diff returned `request_changes` against two families, fixed comprehensively
+rather than by patching the two cited examples:
+
+1. **Mixed-content groups and completeness.** Grouping a Farsi title with an
+   ALWAYS-ENGLISH generated detail (`buildReason`, `planSegmentReason`) under one
+   `dir="auto"` fixed the ALIGNMENT but broke the detail's own bidi ordering: the Farsi
+   title's resolved RTL base became the detail's base too, and FriBidi renders a trailing
+   neutral character (the sentence's own full stop) using that base when nothing more
+   specific claims it — so it visually jumped to the start. Fixed by nesting a
+   `dir="ltr"` isolate around each such detail (Today's Practise-now card and secondary
+   recommendations, ItemDetail's "practise this part now", Session Plan's segment
+   list and runner) — grouping and alignment are unchanged, only the isolate's own
+   internal ordering is fixed. A structurally identical bug existed the other way round
+   for FREE TEXT the owner typed after a fixed English label (ActiveBlock's
+   `constraint`/`problem`, "last time you decided to try"): the label was the subtree's
+   first strong text, so `dir="auto"` on the whole line resolved from the label and never
+   saw the owner's own (possibly Farsi) words — fixed the same way the codebase already
+   excludes an eyebrow, by giving the VALUE its own nested `dir="auto"` and leaving the
+   label outside it. Today's Routines doorway had the same eyebrow-first bug at the
+   button level ("Resume your routine"/"Routines" decided the direction, not the routine's
+   own name) — fixed by moving `dir="auto"` off the button and onto a block wrapper
+   around just the name, mirroring the shape `ElsewhereSessions` already used a few lines
+   above it (an inline `<span>` there would silently break `.truncate`'s ellipsis, since
+   `overflow`/`text-overflow` do nothing on a non-replaced inline box). ActiveBlock's
+   header stayed CENTRED despite the contract requiring Farsi right / English left on that
+   screen — the page's own `text-align: center` (correct for the timer ring and buttons)
+   was never overridden for the title group; it now sets `text-align: start` on itself,
+   which is a deliberate LAYOUT CHANGE for English on that one screen and is documented in
+   AGENTS.md as not conflicting with "English keeps its layout" elsewhere (that non-goal
+   guards against a Farsi-style right-align, not against ac-6's explicit left-for-English
+   requirement on Active).
+
+   The COMPLETENESS gap: `direction.test.ts`'s "every surface has a group" check passed
+   as long as ONE group survived anywhere in the file, so deleting the Practise-now card's
+   own `dir="auto"` still passed because Today.tsx has several unrelated groups. Fixed
+   with `GROUP_SITE_INVENTORY` — every group-level site recorded in order, duplicates
+   included, asserted with `toEqual` against the live scan, so removing any ONE recorded
+   site anywhere fails regardless of what else survives in the same file. Building that
+   inventory surfaced a second, unrelated defect in the scanner itself: this file's own
+   prose repeatedly writes the literal string `dir="auto"` in comments, and the naive
+   regex scan matched those too — usually producing a site with no real enclosing tag, but
+   at least once walking backward out of a long comment and mis-attributing an unrelated
+   component tag from elsewhere in the file as if it were the match's real element. The
+   scanner now strips `//` and `/* */` comments (copying string/template literals through
+   verbatim, since that is where a REAL `dir="auto"` attribute value lives) before
+   matching.
+
+2. **CloseBlock manual-date preservation.** `pickResult` cleared the manual `override` on
+   every result change — correct when the engine actually re-plans (a fresh judgement
+   deserves a fresh plan, not a stale correction pinned to the old one), wrong when it
+   doesn't: a manual-mode item (`item.reviewMode === 'manual'`) has no automatic plan for
+   ANY result, so a date the owner had just typed in was never tied to a particular
+   judgement, and clearing it turned a deliberate "come back on this date" into an
+   accidental decline the moment they picked a different result. Fixed by gating the
+   clear on `reviewOverrideSurvivesResultChange(item.reviewMode)`
+   (`src/components/format.ts`) rather than calling `planNextReview` a second time inside
+   `pickResult` — CloseBlock's single `ReviewPlan` derivation is unchanged; this is a
+   boolean read of the item's own mode, not a second value that could disagree with it.
+   The predicate is tested against the real engine across all six results for both a
+   manual- and an auto-mode item, not asserted in prose alone.
+
+**Second rejection, closed as a family rather than as four counterexamples
+(2026-09-11).** A second sealed review found the FIRST fix's isolate pattern had not
+been applied everywhere it was needed: `CloseBlock`'s own "A few seconds to capture
+what happened." sat bare in the item-title group (the identical defect the first
+rejection fixed elsewhere in the same file's neighbours), and `ClassQuestions`'
+question/problem/last-observation carried no isolate of any kind, unlike the
+`ActiveBlock` shape the first fix established. Rather than patching just those two
+call sites, the whole surface list was re-audited for the same two shapes:
+
+- **Fixed English copy/metadata bare in a group** — beyond the two named sites, the
+  same "N segments · M min" phrase existed identically in THREE places
+  (`Today.tsx`'s `TodayRoutineRow`, `PathwayDetail.tsx`'s `RoutineRow`,
+  `StageDetail.tsx`'s `RoutineCard` — one component per surface a routine can be
+  started from, never refactored into one shared component), `StaleNote`'s "Running
+  far past its target…" (rendered inside two different title groups), Today's due-review
+  caption ("due `relativeDay(...)`"), the NAS-reference warning sentences
+  (`Lessons.tsx`, `ItemMaterial.tsx`), `ItemDetail.tsx`'s "Study source:" label and
+  `StageDetail.tsx`'s "Added "…" — not practised yet." undo banner. Every one now
+  carries the same nested `dir="ltr"` isolate as the first fix's `reason` spans.
+- **Independently-authored values bare in a group** — `PathwayDetail.tsx`'s
+  `pathway.description`/`pathway.note`, editable independently of the pathway's own
+  name, needed the same `dir="auto"` isolate `ActiveBlock`'s `constraint`/`problem`
+  already carry.
+
+**The test itself was the real gap, not just the four sites.** `direction.test.ts`
+proved a GROUP carries direction; it never proved a CHILD inside it does. A generic
+"no bare Latin text in a group" rule would have forced changes to the already-correct
+`ActiveBlock` label shape (`Constraint: ` stays bare on purpose, immediately followed
+by its own isolate), so the new check (`unexemptedPhrase`) walks a group's body in
+source order, judges an accumulated run of exposed text at each TAG boundary (never at
+an expression boundary, or `{n} segments · {m} min` fragments into single innocent
+words), and exempts a run — regardless of its length — the moment it is immediately
+followed by an element carrying its own `dir=`. Two recorded ledgers
+(`ISOLATED_VALUE_SITES`, `LTR_ISOLATE_SITES`) cover what no source scan can prove:
+an expression's own content (`{q.currentProblem}`) is opaque from source, and a
+component like `StaleNote` renders its isolate from its OWN definition, invisible from
+any of its call sites. Both carry the same visibility contract as
+`GROUP_SITE_INVENTORY` — a new site must be added, visibly, never inferred silently.
+
+## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
+
+**Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores
+live on the Synology NAS under `homes/ethan/SNDK/video-courses` (on disk:
+`/volume1/homes/ethan/SNDK/video-courses`). A lesson reference stores a *relative*
+path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a **NAS
+base URL** set in Settings. Two things must be true for playback:
+
+1. The base URL must be a real `https://` origin. (A scheme-less value like
+   `ds220plus.taild1d1f7.ts.net` was previously concatenated raw and treated as a
+   *relative* URL against the Pages origin — so every recording opened the same
+   in-app 404. Fixed in `normalizeBaseUrl` / `resolveRecording`,
+   `src/domain/recordings.ts`.)
+2. The folder must be served over HTTPS. DSM on `:5000` does **not** serve raw
+   files, and plain `http://` links are mixed content that iOS blocks.
+
+**What is ACTUALLY running (probed 2026-09-10, and this corrects what this record
+used to claim).** This file previously recorded *Tailscale Serve on the Synology* as
+the chosen mechanism, with a runbook. That is **not** what is in place, and an agent
+following that runbook would have configured the wrong thing:
+
+- There is **no Tailscale CLI and no Tailscale.app on this Mac**.
+- `https://192.168.0.20:5010/` answers **HTTP 200 from nginx** and already serves
+  **real browsable directory listings** (mod_autoindex-style "Index of /"), whose
+  document root IS the `video-courses` folder — it lists `setar-classes/`,
+  `tar-classes/` and `classical-guitar/`, and `/setar-classes/` answers 200. So the
+  existing relative references already resolve against it, and a **Browse** link
+  needs no server change whatsoever; the capability was already there and unused.
+- The certificate is Synology's own default (`CN=synology`, issuer
+  `Synology Inc. CA`) and does **not** match `192.168.0.20`. That is why this works
+  on the MacBook, where the exception has been accepted, and why **each new device
+  must accept the certificate once** before NAS links open there. A certificate
+  prompt on the iPhone is INFRASTRUCTURE, not an app defect.
+
+**Current base URL:** `https://192.168.0.20:5010` (LAN only).
+
+**The app is deliberately TRANSPORT-AGNOSTIC, and that is now enforced rather than
+hoped for.** A reference pasted from the NAS listing is stored **relative** to the
+configured base (`relativizeReference`, `recordings.ts`, tested) instead of as the
+absolute URL the browser gave you. An absolute URL would pin that reference to one
+route to the NAS — dead on a phone away from home, and dead everywhere the day the
+base URL changes. Because only the path is stored, **choosing the transport is a
+decision that can be changed later without rewriting a single stored reference.**
+
+**That choice is deliberately left OPEN.** Staying on the LAN address, moving to
+Tailscale (`ts.net` gives a valid certificate and tailnet-only access; Go's file
+server supports Range requests, so video seeking works), or putting a reverse proxy
+in front are all still available. Whichever is chosen, only the Settings base URL
+changes.
+
+**Rejected alternatives.** WebDAV (auth prompts break iOS inline video); per-file
+File Station share links (unmaintainable — one link per file). Also deliberately NOT
+built: a `scan:nas` index feeding an in-app file picker — the NAS already renders
+browsable listings, so browse → copy → paste closes most of the gap without adding a
+build script, a generated reference module, a staleness story and a Mac-only
+dependency. Revisit only if browsing and pasting proves insufficient in real use.
+
+**Never modify the recordings themselves** — the app only stores references, and
+removing a reference never touches the NAS file.
+
+---
+
+## Session Plan — algorithm & evidence (2026-07-18)
+
+The Session Plan (`src/domain/plan.ts`) lays out a time-budgeted session as ordered
+segments in five buckets (warm-up · lesson · review · deep · cool-down). It reuses the
+recommendation engine's `scoreItems` — no second ranking — and is pure and deterministic.
+
+**Decisions.**
+- **Minutes always sum to the budget.** A largest-remainder split by bucket weight, each
+  segment ≥ 2 min; when the budget can't seat every segment, the lowest-priority ones are
+  dropped before allocation. This is the one load-bearing invariant and is tested across
+  15/20/30/45/60 and the edge cases.
+- **The plan runs REAL blocks, not a countdown.** The runner drives the existing
+  start→active→close flow; `closeSession` advances the plan only when the closed block was
+  the current segment. `RoutineRunner` (the warm-up timer) is deliberately left untouched.
+- **The running plan is ephemeral** (store-only, never in `PracticeDB`) so it never syncs
+  or lands in a backup as data.
+- **Shares are sane defaults, adjustable, never "optimal".** Bucket minute shares come from
+  `SchedulingParams` (Settings) — the app makes no claim of an ideal ratio.
+
+**Evidence (used as rationale for the SHAPE, not as precise prescriptions).**
+- Spacing effect → short, spaced segments + SM-2 (Cepeda et al. 2006; Simmons 2012).
+- Contextual interference / interleaving → the no-adjacent-same-item mix and the "it feels
+  harder; that's the point" framing (Shea & Morgan 1979; Carter & Grahn 2016; Stambaugh 2011).
+- Retrieval practice → short review slots (Roediger & Karpicke 2006).
+- Deliberate, goal-directed practice → one focus per segment (Ericsson et al. 1993;
+  Duke, Simmons & Cash 2009).
+- Sleep consolidation → cool-down / end-on-stability (Simmons & Duke 2006).
+
+No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.
+```
+
+### src/components/ArchiveRefresh.tsx
+
+```
+import { useMemo, useState } from 'react';
+import { useStore } from '../store/useStore';
+import { fetchPublishedIndex, type FetchedIndex } from '../store/archiveIndex';
+import { getNasBaseUrl } from '../store/backup';
+import {
+  SETAR_ARCHIVE_ID,
+  archiveFor,
+  describeArchiveAccess,
+  archiveRootUrl,
+  type ImportPlan,
+  type MetadataField,
+  type ReconcileDecision,
+} from '../domain';
+
+// ---------------------------------------------------------------------------
+// "Refresh Setar archive" — the ONE routine action.
+//
+// No filesystem picker, no URL to type, no crawler output. It fetches the
+// latest PUBLISHED index (a small JSON file the NAS scanner writes to its own
+// branch of the private data repository), says what would change, asks only
+// the questions that genuinely need an owner, and applies the lot in one go.
+//
+// It is deliberately honest about what it knows: the index was FETCHED at a
+// device-local time and CHANGED when the scanner last published something
+// different. Neither is proof that a scan ran recently, and this never says
+// "last scanned".
+// ---------------------------------------------------------------------------
+
+type Phase =
+  | { kind: 'idle' }
+  | { kind: 'working' }
+  | { kind: 'error'; message: string }
+  | { kind: 'done'; message: string; plan?: ImportPlan }
+  | { kind: 'preview'; fetched: FetchedIndex; rev: number; plan: ImportPlan };
+
+export default function ArchiveRefresh() {
+  const db = useStore((s) => s.db);
+  const preview = useStore((s) => s.previewArchiveImport);
+  const commit = useStore((s) => s.commitArchiveImport);
+  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
+  const [decisions, setDecisions] = useState<ReconcileDecision[]>([]);
+  const [instrumentId, setInstrumentId] = useState<string>('');
+
+  const source = archiveFor(db, SETAR_ARCHIVE_ID);
+  // FIRST USE picks the instrument only when there is no doubt about it. An
+  // archive already bound keeps its own instrument for good.
+  const candidates = useMemo(
+    () => db.instruments.filter((i) => i.active && (/setar/i.test(i.name) || i.name.includes('سه'))),
+    [db.instruments],
+  );
+  const chosen = source?.instrumentId ?? (candidates.length === 1 ? candidates[0]!.id : instrumentId);
+
+  const access = describeArchiveAccess({
+    indexFetchedAt: phase.kind === 'preview' ? phase.fetched.fetchedAt.slice(0, 16).replace('T', ' ') : null,
+    indexChangedAt: source ? source.acceptedAt.slice(0, 16).replace('T', ' ') : null,
+    baseUrl: getNasBaseUrl(),
+  });
+  const rootUrl = archiveRootUrl(getNasBaseUrl());
+
+  function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[]) {
+    const { plan, rev } = preview({
+      index: fetched.index,
+      instrumentId: chosen,
+      decisions: nextDecisions,
+      verifiedBase: rootUrl ?? undefined,
+    });
+    setPhase({ kind: 'preview', fetched, rev, plan });
+  }
+
+  async function startRefresh() {
+    if (!chosen) {
+      setPhase({ kind: 'error', message: 'Choose which instrument this archive belongs to first.' });
+      return;
+    }
+    setPhase({ kind: 'working' });
+    setDecisions([]);
+    const result = await fetchPublishedIndex();
+    if (!result.ok) {
+      setPhase({ kind: 'error', message: result.error });
+      return;
+    }
+    showPlan(result.value, []);
+  }
+
+  function decide(next: ReconcileDecision) {
+    if (phase.kind !== 'preview') return;
+    const merged = [...decisions.filter((d) => !sameTarget(d, next)), next];
+    setDecisions(merged);
+    showPlan(phase.fetched, merged);
+  }
+
+  async function apply() {
+    if (phase.kind !== 'preview') return;
+    const { fetched, rev } = phase;
+    setPhase({ kind: 'working' });
+    const result = await commit({
+      index: fetched.index,
+      instrumentId: chosen,
+      decisions,
+      verifiedBase: rootUrl ?? undefined,
+      decidedFromRev: rev,
+    });
+    if (!result.ok) {
+      if (result.status === 'stale') {
+        // Something changed underneath; look again rather than apply a plan
+        // that was decided against a database that has moved on.
+        showPlan(fetched, decisions);
+        setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
+        return;
+      }
+      setPhase({ kind: 'error', message: result.message });
+      return;
+    }
+    setPhase({ kind: 'done', message: result.message, plan: phase.plan });
+  }
+
+  return (
+    <section className="card stack-sm">
+      <div className="row between">
+        <h3 style={{ margin: 0 }}>Setar archive</h3>
+        <button type="button" className="btn btn-sm btn-primary" onClick={() => void startRefresh()} disabled={phase.kind === 'working'}>
+          {phase.kind === 'working' ? 'Working…' : 'Refresh Setar archive'}
+        </button>
+      </div>
+
+      <p className="tiny faint" style={{ textAlign: 'start' }}>
+        <span dir="ltr">
+          Brings in classes, pieces and their material from the archive index published by the NAS scanner. Your
+          practice, notes and schedule are never changed by it.
+        </span>
+      </p>
+
+      {!source && candidates.length !== 1 && (
+        <label className="tiny" style={{ textAlign: 'start' }}>
+          <span dir="ltr">Which instrument is this archive for?</span>
+          <select className="input" value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
+            <option value="">Choose…</option>
+            {db.instruments.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <div className="tiny faint" style={{ textAlign: 'start' }}>
+        <div>
+          <span dir="ltr">{access.index}</span>
+        </div>
+        <div>
+          <span dir="ltr">{access.media}</span>
+        </div>
+        {rootUrl && (
+          <a className="tiny" href={rootUrl} target="_blank" rel="noreferrer">
+            Open archive root
+          </a>
+        )}
+      </div>
+
+      {phase.kind === 'error' && (
+        <p className="tiny" style={{ color: 'var(--tone-alert)', textAlign: 'start' }} role="alert">
+          <span dir="ltr">{phase.message}</span>
+        </p>
+      )}
+
+      {phase.kind === 'done' && (
+        <div className="tiny" aria-live="polite" style={{ textAlign: 'start' }}>
+          <span dir="ltr">{phase.message}</span>
+          {phase.plan && <Summary plan={phase.plan} />}
+        </div>
+      )}
+
+      {phase.kind === 'preview' && (
+        <div className="stack-sm">
+          <Summary plan={phase.plan} />
+
+          {phase.plan.questions.length > 0 && (
+            <div className="stack-sm">
+              <div className="section-label">Needs a decision</div>
+              {phase.plan.questions.map((q) => (
+                <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm">
+                  {/* The GROUP is the name and the sentence that belongs to it;
+                      the fixed English buttons below sit OUTSIDE it, so a Farsi
+                      piece name cannot claim their bidi base. */}
+                  <div dir="auto" style={{ textAlign: 'start' }}>
+                    <strong>{q.label}</strong>
+                    <div className="tiny faint">
+                      <span dir="ltr">
+                        {q.kind === 'item'
+                          ? 'An existing piece has this exact name.'
+                          : 'More than one class matches this session.'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                    {q.candidates.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={() =>
+                          decide(
+                            q.kind === 'item'
+                              ? { kind: 'link-item', pieceKey: q.pieceKey!, itemId: c.id }
+                              : { kind: 'link-lesson', sessionN: q.sessionN!, lessonId: c.id },
+                          )
+                        }
+                      >
+                        Link to “{c.title}”
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() =>
+                        decide(
+                          q.kind === 'item'
+                            ? { kind: 'create-item', pieceKey: q.pieceKey! }
+                            : { kind: 'create-lesson', sessionN: q.sessionN! },
+                        )
+                      }
+                    >
+                      Create separately
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() =>
+                        decide(
+                          q.kind === 'item'
+                            ? { kind: 'skip-item', pieceKey: q.pieceKey! }
+                            : { kind: 'skip-lesson', sessionN: q.sessionN! },
+                        )
+                      }
+                    >
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {phase.plan.suggestions.length > 0 && (
+            <div className="stack-sm">
+              <div className="section-label">The archive knows more about these</div>
+              {/* A registry improvement to a piece the owner ALREADY has. It is
+                  offered field by field and applied only when asked — never
+                  written behind them, and never near their notebook. */}
+              {phase.plan.suggestions.map((sg) => {
+                const applied = decisions.some(
+                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
+                );
+                return (
+                  <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
+                    <div dir="auto" style={{ textAlign: 'start' }}>
+                      <strong>{sg.pieceKey}</strong>
+                      <div className="tiny faint">
+                        <span dir="ltr">{FIELD_LABELS[sg.field]}: </span>
+                        <span dir="auto">{sg.from || '—'}</span>
+                        <span dir="ltr"> → </span>
+                        <span dir="auto">{sg.to}</span>
+                      </div>
+                    </div>
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        aria-pressed={applied}
+                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
+                      >
+                        {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="row" style={{ gap: 8 }}>
+            <button type="button" className="btn btn-primary" onClick={() => void apply()}>
+              {phase.plan.summary.unchanged ? 'Already current' : 'Apply'}
+            </button>
+            <button type="button" className="btn" onClick={() => setPhase({ kind: 'idle' })}>
+              Cancel
+            </button>
+          </div>
+          <p className="tiny faint" style={{ textAlign: 'start' }}>
+            <span dir="ltr">
+              New pieces arrive resting, so today’s suggestions are not flooded. They stay searchable and you can start
+              one directly whenever you like.
+            </span>
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Summary({ plan }: { plan: ImportPlan }) {
+  const s = plan.summary;
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="stack-sm">
+      <div className="tiny" style={{ textAlign: 'start' }}>
+        <span dir="ltr">
+          {s.unchanged
+            ? 'Already current.'
+            : `Added ${s.addedItems} pieces and ${s.addedLessons} classes · Updated ${s.updatedLessons} · ${s.questions} to decide · ${s.attention} needing attention`}
+        </span>
+      </div>
+      {plan.attention.length > 0 && (
+        <div className="tiny" style={{ textAlign: 'start' }}>
+          <button type="button" className="link tiny" style={LINK_BTN} onClick={() => setOpen((o) => !o)}>
+            {open ? 'Hide details' : `Show ${plan.attention.length} needing attention`}
+          </button>
+          {open && (
+            <ul className="tiny faint stack-sm" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
+              {plan.attention.map((d, i) => (
+                <li key={`${d.path}-${i}`} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
+                  <span>{d.path}</span>
+                  <span dir="ltr">— {d.reason}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
+  // A FIELD decision is keyed by its field, not merely its piece: keyed by
+  // piece alone, choosing a composer evicted the dastgāh choice made a moment
+  // earlier, and either one evicted a Link/Skip answer about the same piece.
+  const key = (d: ReconcileDecision) =>
+    d.kind === 'apply-field'
+      ? `field:${d.pieceKey}:${d.field}`
+      : 'pieceKey' in d
+        ? `piece:${d.pieceKey}`
+        : 'sessionN' in d
+          ? `session:${d.sessionN}`
+          : '';
+  return key(a) === key(b) && key(a) !== '';
+}
+
+const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
+
+/** Plain names for the registry fields an improvement can touch. */
+const FIELD_LABELS: Record<MetadataField, string> = {
+  dastgahAvaz: 'dastgāh',
+  gusheh: 'gusheh',
+  form: 'form',
+  composer: 'composer',
+};
+```
+
+### src/components/direction.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+
+/**
+ * Layout follows the direction of the content it shows.
+ *
+ * A title and the details that belong to it sit in ONE group that carries
+ * `dir="auto"`, so a Persian item reads as one right-aligned block instead of
+ * splitting across the card — the title hugging one edge while its own caption
+ * hugs the other. Direction is resolved natively by the browser from the first
+ * strong character; nothing here detects or reorders text in JavaScript.
+ *
+ * The completion boundary is mechanical, not a matter of care. After this lane
+ * `dir="auto"` appears on GROUPS and on free-text FIELDS — never bare on a
+ * title element. This test asserts BOTH halves, so a missed title fails and a
+ * whole skipped file fails; "fixing" a file by DELETING the attribute fails
+ * too, which is important because that would break Farsi rendering outright.
+ *
+ * jsdom cannot evaluate any of this — it resolves no `dir=auto` and computes no
+ * `text-align` — so this reads the source instead, and the owner's device check
+ * (ac-6) is what proves the rendering. This test proves COMPLETENESS.
+ */
+
+/**
+ * Every page and shared component, as source text. Read through Vite's raw
+ * loader rather than node:fs: `src` is compiled without node types, and a glob
+ * means a NEW file is swept in automatically rather than needing to be
+ * remembered.
+ */
+const under = (dir: string, modules: Record<string, unknown>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(modules).map(([path, source]) => [`${dir}/${path.split('/').pop()}`, source as string]),
+  );
+
+const SOURCES: Record<string, string> = {
+  ...under('pages', import.meta.glob('../pages/*.tsx', { query: '?raw', import: 'default', eager: true })),
+  ...under('components', import.meta.glob('./*.tsx', { query: '?raw', import: 'default', eager: true })),
+};
+
+/** Classes that mark an element as a TITLE — direction may not sit on these. */
+const TITLE_CLASSES = ['truncate', 'title-md', 'page-title', 'stage-unit-title'];
+
+/** Native controls own their own text; direction on them is a FIELD, not a group. */
+const FIELD_TAGS = ['input', 'textarea', 'select'];
+
+/**
+ * Every surface that renders user-authored text and must therefore carry
+ * direction on at least one group. Recorded here (and in AGENTS.md) so the next
+ * lane inherits the list rather than re-deriving it.
+ */
+const SURFACES = [
+  'pages/Today.tsx',
+  'pages/StartBlock.tsx',
+  'pages/ActiveBlock.tsx',
+  'pages/CloseBlock.tsx',
+  'pages/Repertoire.tsx',
+  'pages/ItemDetail.tsx',
+  'pages/Lessons.tsx',
+  'pages/PathwayDetail.tsx',
+  'pages/StageDetail.tsx',
+  'pages/SessionPlan.tsx',
+  'pages/RoutineRunner.tsx',
+  'pages/Materials.tsx',
+  'pages/Insights.tsx',
+  'pages/TeacherReport.tsx',
+  'components/ItemCard.tsx',
+  'components/ItemMaterial.tsx',
+  'components/ClassQuestions.tsx',
+  'components/LessonAgenda.tsx',
+  'components/Attachments.tsx',
+];
+
+/**
+ * Titles that genuinely have no group to join, listed so the exception is
+ * VISIBLE to a reviewer rather than silently left behind. Each entry must still
+ * match a real site — a stale entry fails the test below.
+ */
+const ALLOWED_TITLE_SITES: { file: string; snippet: string; why: string }[] = [
+  // EMPTY, and that is the finding: every title on every surface turned out to
+  // have a group it could join — the catalogue row's own text column, the row a
+  // lone title shares with its badge, or a wrapper drawn around the title and
+  // the caption beneath it. An entry here would be a title the sweep could not
+  // reach; the list is kept (and asserted below) so the next one is visible
+  // rather than silent.
+];
+
+/**
+ * Genuine exceptions to `unexemptedPhrase`'s 2+-token rule, visible for the
+ * same reason `ALLOWED_TITLE_SITES` is: a stale entry (its `tagSnippet` no
+ * longer found on the named group) fails the test below, so an exception
+ * can't quietly outlive the code it was written for. Both entries here are
+ * TWO+ opaque data expressions that read as a single compound VALUE, not a
+ * title split from a foreign caption — the shape this whole family exists to
+ * catch:
+ * - `{sp.done}/{sp.total}` (PathwayDetail's stage progress) is a numeric
+ *   counter ("3/5") — digits carry no bidi risk on their own, unlike an
+ *   English WORD dropped into an RTL run.
+ * - `` `${pathway.name} — ` `` followed by `{stage.code}` (ItemDetail's
+ *   breadcrumb) is one continuous "Pathway — Stage" label built from two
+ *   fields, exactly the same kind of compound anchor a lone title already
+ *   forms with the badge it sits next to elsewhere in this file — there is
+ *   no separate "caption" here to have its own opinion about direction.
+ */
+const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: string }[] = [
+  {
+    file: 'pages/PathwayDetail.tsx',
+    tagSnippet: '<button className="grow" dir="auto"',
+    why: '{sp.done}/{sp.total} is a numeric progress counter, not English words',
+  },
+  {
+    file: 'pages/ItemDetail.tsx',
+    tagSnippet: 'stage.pathwayId',
+    why: 'pathway name + stage code is one compound breadcrumb label, not a title plus a foreign caption',
+  },
+  {
+    // The two "tokens" here are the bidi-neutral ordinal DIGIT and the
+    // QUESTION itself — not English words dropped into an RTL run. Both are
+    // bare BY CONSTRUCTION and must stay that way: the ninth finding above
+    // established that the <li>'s dir="auto" must resolve from the question
+    // (the only field guaranteed present), and dir="auto" skips any
+    // descendant carrying its own dir. Isolating either would put the ordinal
+    // back on the title's side — the exact bug this shape exists to fix.
+    file: 'components/ClassQuestions.tsx',
+    tagSnippet: 'key={q.id}',
+    why: 'a neutral ordinal digit plus the question that anchors the row — both bare on purpose',
+  },
+];
+
+/**
+ * Every group-level `dir="auto"` site, recorded in source order — duplicates
+ * included, because three bare `<div dir="auto">` in the same file (Today.tsx
+ * has several) are three separate SITES, not one collapsed entry. This is
+ * what "every listed surface has A group" (below) cannot see: a file keeps
+ * passing that check as long as ONE of its groups survives, so deleting the
+ * Practise-now card's own `dir="auto"` — the exact regression a rejected
+ * review found — left Today.tsx's other, unrelated groups to vouch for it.
+ * Comparing the WHOLE ordered inventory instead means removing any one of
+ * these sites — anywhere in any file — shrinks or reorders the array and
+ * fails here, whether or not that file has other groups left.
+ *
+ * Same visibility contract as ALLOWED_TITLE_SITES: this is a recorded ledger,
+ * not a derivation, so a legitimate new group site must be added here (the
+ * "keeps every recorded group site current" test below fails until it is),
+ * exactly as a title exception must be added to the allowlist above.
+ */
+const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
+  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
+  // The metadata-suggestion row: the piece's own name groups with the change
+  // proposed for it, and the owner's CURRENT value and the archive's PROPOSED
+  // one each resolve from their own content — either may be Farsi or Latin,
+  // and neither follows from the other.
+  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
+  { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
+  { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
+  { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
+  { file: "components/ClassQuestions.tsx", tagName: "div", classValue: "small" },
+  { file: "components/ClassQuestions.tsx", tagName: "div", classValue: "tiny faint" },
+  { file: "components/ItemCard.tsx", tagName: "div", classValue: "grow" },
+  { file: "components/ItemCard.tsx", tagName: "span", classValue: "" },
+  { file: "components/ItemMaterial.tsx", tagName: "div", classValue: "grow" },
+  { file: "components/ItemMaterial.tsx", tagName: "div", classValue: "grow" },
+  { file: "components/ItemNotes.tsx", tagName: "div", classValue: "small notes-read" },
+  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "" },
+  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "small" },
+  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
+  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
+  { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
+  { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
+  { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
+  { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
+  { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
+  { file: "pages/CloseBlock.tsx", tagName: "div", classValue: "eyebrow" },
+  { file: "pages/CloseBlock.tsx", tagName: "div", classValue: "stack-sm" },
+  { file: "pages/Insights.tsx", tagName: "th", classValue: "dim" },
+  { file: "pages/Insights.tsx", tagName: "div", classValue: "" },
+  { file: "pages/ItemDetail.tsx", tagName: "header", classValue: "stack-sm" },
+  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
+  { file: "pages/ItemDetail.tsx", tagName: "div", classValue: "" },
+  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "list-row card-link" },
+  { file: "pages/ItemDetail.tsx", tagName: "div", classValue: "list-row" },
+  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "link" },
+  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "dim" },
+  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "link" },
+  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
+  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
+  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Lessons.tsx", tagName: "div", classValue: "row between" },
+  { file: "pages/Lessons.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Lessons.tsx", tagName: "div", classValue: "row between" },
+  { file: "pages/Lessons.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/Lessons.tsx", tagName: "div", classValue: "tiny dim" },
+  { file: "pages/Lessons.tsx", tagName: "link", classValue: "grow" },
+  { file: "pages/Materials.tsx", tagName: "section", classValue: "stack-sm" },
+  { file: "pages/Materials.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/PathwayDetail.tsx", tagName: "header", classValue: "stack-sm" },
+  { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
+  { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
+  { file: "pages/PathwayDetail.tsx", tagName: "p", classValue: "page-sub" },
+  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "card card-quiet small dim" },
+  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "small dim" },
+  { file: "pages/PathwayDetail.tsx", tagName: "button", classValue: "grow" },
+  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Repertoire.tsx", tagName: "section", classValue: "stack-sm" },
+  { file: "pages/Repertoire.tsx", tagName: "section", classValue: "stack-sm" },
+  { file: "pages/Repertoire.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Repertoire.tsx", tagName: "link", classValue: "row between small card-link" },
+  { file: "pages/Repertoire.tsx", tagName: "div", classValue: "stack-sm" },
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "row between" },
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "" },
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
+  { file: "pages/RoutineRunner.tsx", tagName: "span", classValue: "" },
+  { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
+  { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
+  { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
+  { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
+  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "card card-quiet row between small" },
+  { file: "pages/StageDetail.tsx", tagName: "button", classValue: "stage-unit-text" },
+  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "" },
+  { file: "pages/StartBlock.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/TeacherReport.tsx", tagName: "pre", classValue: "pre" },
+  { file: "pages/Today.tsx", tagName: "button", classValue: "`option${!overview && selected?.id === i.id ? ' selected' : ''}`" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "button", classValue: "grow" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "link", classValue: "grow" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  { file: "pages/Today.tsx", tagName: "link", classValue: "list-row card-link" },
+  { file: "pages/Today.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+];
+
+// --- reading the source -----------------------------------------------------
+
+function sourceFiles(): string[] {
+  return Object.keys(SOURCES).sort();
+}
+
+interface Site {
+  file: string;
+  line: number;
+  tagName: string;
+  classValue: string;
+  text: string;
+  at: number;
+}
+
+/** The opening tag that an index sits inside, brace- and quote-aware. */
+function enclosingTag(src: string, at: number): string {
+  const start = src.lastIndexOf('<', at);
+  let depth = 0;
+  let i = start + 1;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '{') depth += 1;
+    else if (c === '}') depth -= 1;
+    else if (c === '"' || c === "'") {
+      const end = src.indexOf(c, i + 1);
+      if (end < 0) break;
+      i = end;
+    } else if (c === '>' && depth === 0) break;
+    i += 1;
+  }
+  return src.slice(start, i + 1);
+}
+
+/** The raw text of a tag's className attribute (string or expression). */
+function classNameOf(tag: string): string {
+  const at = tag.indexOf('className=');
+  if (at < 0) return '';
+  const from = at + 'className='.length;
+  const opener = tag[from];
+  if (opener === '"' || opener === "'") {
+    const end = tag.indexOf(opener, from + 1);
+    return end < 0 ? tag.slice(from + 1) : tag.slice(from + 1, end);
+  }
+  if (opener !== '{') return '';
+  let depth = 0;
+  for (let i = from; i < tag.length; i += 1) {
+    if (tag[i] === '{') depth += 1;
+    else if (tag[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return tag.slice(from + 1, i);
+    }
+  }
+  return tag.slice(from + 1);
+}
+
+/**
+ * Blank out `//` and `/* *\/` comments before scanning — a prose comment that
+ * mentions `dir="auto"` (this file is full of them, and rightly so) is not an
+ * attribute, and matching it anyway produces a phantom site: at best one with
+ * no enclosing tag, at worst `enclosingTag` walking backward out of the
+ * comment and mis-picking an unrelated real tag from earlier in the file.
+ * String and template literals are copied through verbatim — that is where a
+ * REAL `dir="auto"` attribute value lives — and every character removed is
+ * replaced with a space (newlines kept as newlines) so line numbers and
+ * offsets into the rest of the source are unaffected.
+ *
+ * A `'`/`"` is treated as a real string delimiter only if its MATCHING quote
+ * shows up before the next newline. A genuine JS string/JSX attribute value
+ * in this codebase is always single-line, so this is a safe bound — and it
+ * is a NECESSARY one: plain JSX text containing an apostrophe ("That stage
+ * doesn't exist.") is not a string at all, and treating it as one made the
+ * scanner consume every real comment and tag after it — including this
+ * file's OWN prose, once a comment happened to quote `dir="ltr"` inside that
+ * unterminated span — as literal, unstripped text. A backtick template
+ * literal has no such single-line guarantee in general (this codebase's
+ * few multi-line ones are template literals), so it keeps the unbounded
+ * scan.
+ */
+function stripComments(src: string): string {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const two = src.slice(i, i + 2);
+    if (two === '//') {
+      while (i < src.length && src[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+    } else if (two === '/*') {
+      out += '  ';
+      i += 2;
+      while (i < src.length && src.slice(i, i + 2) !== '*/') {
+        out += src[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += '  ';
+      i += 2;
+    } else if (src[i] === '"' || src[i] === "'") {
+      const quote = src[i];
+      const lineEnd = src.indexOf('\n', i + 1);
+      const searchEnd = lineEnd < 0 ? src.length : lineEnd;
+      const close = src.indexOf(quote, i + 1);
+      if (close < 0 || close > searchEnd) {
+        // No same-line match — an apostrophe/quote in plain text, not a
+        // real string. Pass it through and keep scanning normally right
+        // after it, so a later quote on the same or a later line gets its
+        // own fresh (and likely correct) chance to pair up.
+        out += src[i];
+        i += 1;
+        continue;
+      }
+      out += quote;
+      i += 1;
+      while (i < close) {
+        if (src[i] === '\\' && i + 1 < close) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i += 1;
+      }
+      out += src[i];
+      i += 1;
+    } else if (src[i] === '`') {
+      const quote = src[i];
+      out += quote;
+      i += 1;
+      while (i < src.length && src[i] !== quote) {
+        if (src[i] === '\\' && i + 1 < src.length) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i += 1;
+      }
+      if (i < src.length) {
+        out += src[i];
+        i += 1;
+      }
+    } else {
+      out += src[i];
+      i += 1;
+    }
+  }
+  return out;
+}
+
+function directionSites(file: string): Site[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: Site[] = [];
+  for (const match of src.matchAll(/dir="auto"/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
+      classValue: classNameOf(tag),
+      text: tag,
+      at,
+    });
+  }
+  return sites;
+}
+
+const isTitle = (site: Site) => TITLE_CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(site.classValue));
+const isField = (site: Site) => FIELD_TAGS.includes(site.tagName);
+const isGroup = (site: Site) => !isTitle(site) && !isField(site);
+
+const allowed = (site: Site) =>
+  ALLOWED_TITLE_SITES.some((e) => e.file === site.file && site.text.includes(e.snippet));
+
+// --- mixed-content groups: a child's OWN bidi base, not just the group's ---
+//
+// A rejected review found that the inventory above proves a GROUP carries
+// direction, but nothing proved that a fixed English sentence or an
+// independently-authored value sitting INSIDE that group has a bidi base of
+// its own. A Farsi title makes the whole group resolve RTL; anything else in
+// that subtree with no `dir` of its own is exposed to that same RTL base —
+// which is exactly right for a caption that belongs to the title (that is
+// the whole point of grouping), but wrong for fixed page copy or a separately
+// authored value that could be a different script entirely.
+//
+// This can't be reduced to "no bare Latin text in a group": a short fixed
+// label immediately followed by its own isolate — `Constraint: ` before
+// `<span dir="auto">{value}</span>`, the established shape ActiveBlock set —
+// is deliberately left bare, and flagging it would force changes to an
+// already-correct, already-reviewed pattern. What actually breaks is a real
+// PHRASE (2+ words) that reaches the end of the group with nothing to isolate
+// it: `unexemptedPhrase` walks a group's body in source order, accumulating
+// exposed literal text (skipping `{…}` expressions, whose content is opaque
+// from source) into a run, and clears that run the moment it is immediately
+// followed by an element carrying its own `dir=` — the run is exempted
+// regardless of length, because whatever risk existed is now the isolate's
+// to own. Only a run that survives to the end of the group's body, and that
+// reads as a real phrase, is flagged.
+
+/**
+ * The element's body span: from just after its own opening tag's `>` to just
+ * after its matching closing tag (empty for a self-closing tag). Depth
+ * tracking is generic — any opened tag increases it, any closed tag
+ * decreases it — since well-formed JSX nests properly regardless of name.
+ *
+ * A React Fragment shorthand (`<>…</>`) is EVERY bit as much an opening/
+ * closing pair as a named tag, and must be counted as one: `</>` starts with
+ * `/` so the CLOSING branch below already matched it (correctly decrementing
+ * depth), but `<>` starts with neither `/` nor a letter, so it fell through
+ * unmatched and never incremented depth. Every `<>…</>` pair inside a body
+ * therefore decremented depth ONE MORE TIME than it was ever incremented —
+ * on a group whose conditional content used a fragment (`{cond && (<>…
+ * </>)}`, the shape `{stage && (<><span>…</span><Link>…</Link></>)}` already
+ * uses in this codebase), depth hit zero several tags before the group's
+ * REAL close, silently truncating the body `unexemptedPhrase` scans and
+ * hiding every violation after that point — exactly the kind of gap a
+ * "detectable, not enumerated" claim must not have.
+ */
+function elementBody(src: string, tag: string, openAt: number): { start: number; end: number } {
+  const start = openAt + tag.length;
+  if (tag.endsWith('/>')) return { start, end: start };
+  let depth = 1;
+  let i = start;
+  while (i < src.length && depth > 0) {
+    if (src[i] === '<') {
+      if (src[i + 1] === '/') {
+        const close = src.indexOf('>', i);
+        i = close < 0 ? src.length : close + 1;
+        depth -= 1;
+        continue;
+      }
+      if (src[i + 1] === '>') {
+        // Fragment shorthand open, <>. Its close, </>, is matched by the
+        // ordinary closing-tag branch above, so this one must increment.
+        i += 2;
+        depth += 1;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const inner = enclosingTag(src, i);
+        i += inner.length;
+        if (!inner.endsWith('/>')) depth += 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return { start, end: i };
+}
+
+/**
+ * The first exposed, unexempted 2+-token run in a group's body, or null when
+ * everything either belongs to an isolate or never accumulates a real phrase.
+ * See the block comment above for what "exempted" means.
+ *
+ * A DATA expression (`{item.title}`, `{ITEM_TYPE_LABELS[item.itemType]}`,
+ * `{formatBytes(a.size)}`) counts as ONE opaque token — its actual rendered
+ * text is invisible from source, but its mere PRESENCE, unisolated, next to
+ * other content is exactly the shape a rejected review found live in the
+ * app: `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '}
+ * {itemCount(...)} item{...}` reads as zero words to a scanner that only
+ * counts literal text, yet renders three always-English fragments in a row.
+ * Treating each such expression as a token turns that invisible run into a
+ * 3+-token hit without ever needing to know what the labels actually say.
+ * An expression that contains its own nested JSX (`{cond && <div dir="auto">
+ * …</div>}`) is left fully opaque (zero contribution) as before — its
+ * children are independent elements, already reachable by the outer scan
+ * over the whole file, and forcing them through this same linear buffer
+ * would require a real JSX parser this file deliberately doesn't have.
+ */
+function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): string | null {
+  let buffer = '';
+  // A run is judged at each TAG boundary (open or close) — two adjacent but
+  // unrelated elements (e.g. two one-word buttons, "Edit" and "Delete") must
+  // never concatenate into a false 2-word phrase. An EXPRESSION boundary does
+  // NOT judge the run: `{n} segments · {m} min` is one generated phrase split
+  // across two expressions, and judging at each `{` would fragment it into
+  // single, individually-innocent words, hiding the real violation.
+  const flush = (): string | null => {
+    const words = buffer.trim().match(/[A-Za-z]+/g) ?? [];
+    buffer = '';
+    return words.length >= 2 ? words.join(' ') : null;
+  };
+  let i = bodyStart;
+  while (i < bodyEnd) {
+    const c = src[i];
+    if (c === '{') {
+      const exprStart = i + 1;
+      let depth = 1;
+      i += 1;
+      while (i < bodyEnd && depth > 0) {
+        if (src[i] === '{') depth += 1;
+        else if (src[i] === '}') depth -= 1;
+        i += 1;
+      }
+      const exprText = src.slice(exprStart, i - 1);
+      if (!/<[A-Za-z]/.test(exprText)) buffer += ' X ';
+      continue;
+    }
+    if (c === '<') {
+      if (src[i + 1] === '/') {
+        const hit = flush();
+        if (hit) return hit;
+        const close = src.indexOf('>', i);
+        i = close < 0 ? bodyEnd : close + 1;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const hit = flush();
+        if (hit) return hit;
+        const tag = enclosingTag(src, i);
+        if (/\sdir="(auto|ltr|rtl)"/.test(tag)) {
+          const body = elementBody(src, tag, i);
+          i = body.end; // exempted: leads into its own isolate, whatever its length
+        } else {
+          i += tag.length; // transparent: its children are scanned in the same pass
+        }
+        continue;
+      }
+    }
+    buffer += c;
+    i += 1;
+  }
+  return flush();
+}
+
+/**
+ * Independently-authored values (case ii: a question, a note, an observation
+ * — content whose own language cannot be assumed from the title next to it)
+ * that carry their own `dir=` isolate, so they resolve from their OWN content
+ * rather than the group's. Unlike the fixed-copy phrases above, these are
+ * plain expressions (`{q.currentProblem}`, `{pathway.note}`) — their value is
+ * opaque from source, so completeness here is a recorded ledger, not a
+ * derivation, exactly like ALLOWED_TITLE_SITES and GROUP_SITE_INVENTORY: a
+ * legitimate new one must be added, visibly, rather than left silent.
+ */
+const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{active.constraint}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
+  { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
+  { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
+  { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
+  {
+    file: 'components/ClassQuestions.tsx',
+    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.lastObservation.text)}',
+  },
+  // The practice screen's Working notes and the block history's own free-text
+  // values: each is authored independently of whatever title sits above it, so
+  // each resolves from its OWN content.
+  { file: 'components/ItemNotes.tsx', snippet: '<div className="small notes-read" dir="auto"' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.observation}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
+  // A registry improvement offered on Refresh: the value the owner has and the
+  // value the archive proposes are authored independently of each other.
+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
+  { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
+  // Instrument names used to be tracked here too, one exact snippet per site.
+  // A sealed review found that shape structurally insufficient FOUR times
+  // running: each rework closed only the sites a reviewer had named, while
+  // aliases, property access and names fused into template strings kept
+  // slipping through undetected. Instrument names are now covered by a
+  // dedicated, pattern-driven check below ('an instrument name resolves its
+  // own direction wherever it renders') that discovers every renderer of the
+  // name mechanically instead of requiring each one to be re-listed here —
+  // see that check for the full rationale.
+  //
+  // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
+  // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
+  // them to a "label-first auto row" shape (row carries dir="auto", label
+  // isolated dir="ltr" to take it out of the hunt, value left bare) covered
+  // by the dedicated shape check below instead of a snippet ledger. A TENTH
+  // finding found THAT shape puts the label at the wrong visual end whenever
+  // the row resolves RTL: isolating the label makes it an atomic run the
+  // bidi algorithm is free to reorder, so its trailing colon landed on the
+  // outer edge, detached from the value. The fix stacks caption over value
+  // instead of one inline line, which removes the single line the two ever
+  // had to contend a resolution source for — so the value is back to being a
+  // plain isolated value, tracked in ISOLATED_VALUE_SITES below, and the
+  // caption is back to being an ordinary LTR_ISOLATE_SITES entry.
+  //
+  // ClassQuestions' q.question used to be tracked here too, isolated with
+  // its own dir="auto" span while the title was left bare to anchor the
+  // <li>. An OWNER-observed regression found that backwards: the title is
+  // optional and independently authored, so anchoring the li on it split
+  // the ordinal from the question whenever the two differed in language.
+  // The roles are now reversed — title isolated, question bare — which
+  // makes the title's new dir="auto" a plain GROUP_SITE_INVENTORY entry
+  // (same tag/class as the old question entry, so that ledger needs no
+  // edit) rather than a value-ledger one, and adds a dedicated shape check
+  // below ('the question anchors the group's direction...') asserting the
+  // anchor is the question, not the title.
+];
+
+/**
+ * Fixed English copy or generated metadata (case i: `buildReason`,
+ * `relativeDay`, a hardcoded sentence) that is ALWAYS English by
+ * construction, wrapped in its own `dir="ltr"` isolate so a Farsi title's RTL
+ * base can't drag its trailing punctuation to the visual start. Recorded for
+ * the same reason as ISOLATED_VALUE_SITES: a call like `StaleNote` renders
+ * from a different function than its call site, so no source scan at the
+ * call site can see whether its OWN return value is isolated.
+ */
+const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
+  { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> plan running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  {
+    file: 'pages/Today.tsx',
+    snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
+  },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  {
+    file: 'pages/ItemDetail.tsx',
+    snippet: '<span className="tiny faint" dir="ltr">\n            {RATING_LABELS.difficulty.toLowerCase()} {item.difficulty}/5',
+  },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Noticed: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Decided to try next: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Constraint: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
+  { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
+  { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
+  { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },
+  { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
+  { file: 'pages/StageDetail.tsx', snippet: '<span dir="ltr">{meta.join(\' · \')}</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: "<span className=\"badge tone-progress\" dir=\"ltr\">{isPinned ? 'Current · pinned' : 'Current'}</span>" },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="badge tone-good" dir="ltr">Done</span>' },
+  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems' },
+  { file: 'pages/PathwayDetail.tsx', snippet: "<span dir=\"ltr\">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>" },
+  { file: 'pages/Lessons.tsx', snippet: '<span className="badge tone-progress" dir="ltr">' },
+  { file: 'pages/Lessons.tsx', snippet: '<span className="tiny faint" dir="ltr">no class planned</span>' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{meta}</span>' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Set your NAS base URL in' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Your NAS base URL isn’t a valid web address' },
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  { file: 'pages/RoutineRunner.tsx', snippet: '<span className="tiny faint" dir="ltr">{minutes} min</span>' },
+  { file: 'pages/StartBlock.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'pages/Insights.tsx', snippet: '<span dir="ltr">{insight.body}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{BLOCK_MODE_LABELS[active.mode]}</span>' },
+  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{FOCUS_LABELS[active.focus]}</span>' },
+  {
+    file: 'pages/Repertoire.tsx',
+    snippet: '<span className="tiny faint" dir="ltr">\n              {g.works.length} work',
+  },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
+  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
+  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
+  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last observed {q.lastObservation.at.slice(0, 10)}</span>' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
+  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
+  { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
+  {
+    file: 'pages/Materials.tsx',
+    snippet: '<span dir="ltr">\n                          {MATERIAL_SOURCE_LABELS[m.sourceType]}',
+  },
+];
+
+// --- an isolate must be INLINE, never a block that resolves its own align --
+//
+// A rejected review found `ItemMaterial.tsx` fixing a Farsi title's detail
+// line with `<div className="tiny faint" dir="ltr">…</div>` — a BLOCK
+// carrying the isolate directly. `text-align: start`, inherited from the
+// group, is a per-BOX computed value: it resolves against that box's OWN
+// `direction`, not the group's. Give the block its own `dir="ltr"` and its
+// `text-align: start` resolves LEFT regardless of the group's (possibly RTL)
+// resolved direction — splitting the detail from a right-aligned Farsi title
+// exactly as before, just relocated. An INLINE isolate (`<span dir="ltr">`)
+// never has this problem: `text-align` is a block-level concept, so a span's
+// own `dir` only isolates the Unicode bidi algorithm's treatment of the text
+// inside it and never touches which edge the enclosing block aligns to. This
+// is therefore not a location to enumerate but a SHAPE to ban outright: no
+// `dir="ltr"`/`dir="rtl"` may ever sit on a tag other than `span`/`bdi`,
+// full stop, so this class of bug cannot come back in any file, named here
+// or not.
+const INLINE_ISOLATE_TAGS = ['span', 'bdi'];
+
+function isolateSites(file: string): Site[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: Site[] = [];
+  for (const match of src.matchAll(/dir="(?:ltr|rtl)"/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
+      classValue: classNameOf(tag),
+      text: tag,
+      at,
+    });
+  }
+  return sites;
+}
+
+// --- a native list marker is never relied on for a direction-variable item -
+//
+// A rejected review found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+// space with `paddingInlineStart` alone while its `<li>`s each resolve their
+// OWN direction via `dir="auto"`, and the first fix reserved symmetric
+// `paddingInline` instead, reasoning that a marker landing on either side
+// would then have room. A SIXTH SEALED FINDING, checked on the owner's own
+// iPhone, found the number still escaping the card even with that room
+// reserved: an outside `::marker`'s exact position for a direction-variable
+// list item is a browser implementation detail — exactly the class of thing
+// jsdom cannot compute either, which is why a padding measurement was ever
+// trusted to stand in for it — not a distance a gutter can be sized against.
+// The fix stops accommodating the native marker and removes it instead
+// (`listStyle: 'none'`), rendering the ordinal as a real element: the FIRST
+// child of a flex `<li dir="auto">`, so flexbox's own direction-aware row
+// axis (a spec-mandated behaviour, unlike marker positioning) puts it on the
+// correct side and keeps it inside the content box by construction — it can
+// no longer escape a card it is now genuinely inside of. This scans every
+// `<ol>`/`<ul>` in the app (not just the one known today) and asserts the
+// mechanism directly: a list containing a `dir="auto"` `<li>` must disable
+// the native marker outright, and that `<li>` must itself be a flex/grid
+// container able to reorder its own content — a shape check on the fix
+// itself, not a measurement around a browser behaviour nothing here can
+// verify.
+function listSites(file: string): { file: string; line: number; tag: string; autoLiTags: string[] }[] {
+  const src = stripComments(SOURCES[file]);
+  const sites: { file: string; line: number; tag: string; autoLiTags: string[] }[] = [];
+  for (const match of src.matchAll(/<(ol|ul)\b/g)) {
+    const at = match.index!;
+    const tag = enclosingTag(src, at);
+    if (tag.endsWith('/>')) continue;
+    const body = elementBody(src, tag, at);
+    const bodyText = src.slice(body.start, body.end);
+    sites.push({
+      file,
+      line: src.slice(0, at).split('\n').length,
+      tag,
+      autoLiTags: [...bodyText.matchAll(/<li\b[^>]*\sdir="auto"[^>]*>/g)].map((m) => m[0]),
+    });
+  }
+  return sites;
+}
+
+/** True when the list's own inline style disables the native marker outright
+ *  (`listStyle`/`listStyleType: 'none'`) — the only thing about a marker's
+ *  own rendered position a source scan can actually verify, unlike a
+ *  padding measurement around a mechanism jsdom cannot compute either. */
+function disablesNativeMarker(tag: string): boolean {
+  const style = tag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+  return /\blistStyle(?:Type)?\s*:\s*['"]none['"]/.test(style);
+}
+
+/** True when a `<li>` tag is itself a flex (or grid) container — the
+ *  mechanism that lets its own content (an ordinal, a badge) reorder with
+ *  its own resolved direction instead of depending on a static layout. */
+function isDirectionAwareContainer(liTag: string): boolean {
+  // `.row` is `display: flex` in global.css — this is a source scan trusting
+  // a fact declared in a different file; renaming or redefining that class
+  // would silently blind this check.
+  if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
+  const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
+  return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);
+}
+
+// --- a row's alignment comes from its value, never a label marked out of the hunt ---
+//
+// A SEVENTH SEALED FINDING found `ClassQuestions.tsx`'s Problem:/Last time:
+// rows still misaligned after the sixth rework: giving the VALUE its own
+// `dir="auto"` isolate (or later, `display: inline-block`) makes the value's
+// OWN characters shape correctly, but the ROW that positions "Label: value"
+// as a unit was left bare, inheriting whichever direction the TITLE above it
+// happened to resolve to — right for a Farsi title, left for an English one
+// — regardless of what script the value itself was written in. An
+// English-titled item with a Farsi problem note left the whole "Problem:
+// ..." row pinned to the left, exactly where the label's own inherited
+// direction put it, with the value's internal shaping correct but its
+// POSITION wrong.
+//
+// The fix gives the ROW itself `dir="auto"`, and marks the LABEL —
+// `Problem:`/`Last time:`, never the value — with its own `dir="ltr"`. This
+// is not because the label's text ever changes; it is because `dir="auto"`
+// skips a descendant that carries its own `dir` when hunting for a first
+// strong character (the same mechanism the group-vs-title rule above relies
+// on). Marking the label takes it OUT of that hunt, so the row's resolution
+// comes from whatever is left — the value, left deliberately BARE. Marking
+// the value too would take BOTH out, leaving the row with no candidate at
+// all and a silent fallback to LTR no matter what the value says — the
+// regression this check exists to catch. This is a SHAPE check, not a
+// ClassQuestions-specific one: it fires on any file using the same
+// label-first `dir="auto"` row pattern.
+function isLabelFirstAutoRow(file: string, site: Site): boolean {
+  const src = stripComments(SOURCES[file]);
+  const openAt = src.lastIndexOf('<', site.at);
+  const body = elementBody(src, site.text, openAt);
+  return /^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/.test(src.slice(body.start, body.end));
+}
+
+// --- an instrument name resolves its own direction, wherever it renders ----
+//
+// Four consecutive sealed reviews rejected this family for the same root
+// cause: every rework closed the handful of sites a reviewer had named by
+// file:line, while the same defect kept resurfacing in a shape the fix
+// hadn't covered — an alias, a property read, a name folded into a template
+// string before anything could render. A location list can only ever be as
+// complete as the audit that built it. This discovers every CURRENT
+// renderer of an instrument's name mechanically, from the shapes this
+// codebase actually uses to produce one, rather than requiring each to be
+// re-listed by hand:
+//   - the instrumentName(db, id) helper, called directly;
+//   - a bare `.instrumentName` property read (a selector row's own field);
+//   - a LOCAL ALIAS of either — a destructured, renamed prop
+//     (`instrumentName: name`), or a `const X = instrumentName(...)`
+//     binding — found by locating the alias's OWN declaration, then
+//     scanning the rest of the file for bare reads of it;
+//   - a direct `.name` read on an Instrument object bound by iterating
+//     `db.instruments` (a `.map`/`.filter().map` callback's own parameter,
+//     or an inline `instruments.find(...)?.name` with no variable at all).
+// An instrument is renameable in Settings, Farsi included, so every one of
+// these is the OWNER'S OWN editable text, never generated copy.
+//
+// The invariant asserted is the one BEHIND the fix, not the fix's own site
+// list: a rendered instrument name resolves its OWN direction — nothing may
+// fuse it into a plain string with other text before it renders, and its
+// nearest enclosing `dir` (searching outward through real ancestors, never
+// a neighbouring SIBLING) must be "auto", never absent and never forced to
+// "ltr"/"rtl". A declaration/binding site (the alias's own introduction) is
+// not itself a render and is excluded; so is a value forwarded as a JSX
+// ATTRIBUTE (`instrumentName={x}`) — that is prop-drilling, not a DOM text
+// render, and the component actually receiving it is checked wherever IT
+// renders the value (ClassQuestions never does — it only builds
+// clipboard/filename text with the prop, never a laid-out block).
+
+/** Index of the `)` matching the `(` at `openAt`, skipping over the contents
+ *  of any string/template so a stray bracket character inside one (none
+ *  exist in the callbacks this scans today) can never desync the count. */
+function matchingParenClose(src: string, openAt: number): number {
+  let depth = 0;
+  let i = openAt;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === '(') depth += 1;
+    else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) return i;
+    } else if (c === '"' || c === "'" || c === '`') {
+      const close = src.indexOf(c, i + 1);
+      i = close < 0 ? src.length : close;
+    }
+    i += 1;
+  }
+  return src.length;
+}
+
+/** Walks back over a receiver chain (`db.instruments` → the start of `db`)
+ *  so a declaration check lands on the true start of the expression, not
+ *  wherever a matched sub-pattern happens to begin inside it. */
+function receiverChainStart(src: string, at: number): number {
+  let i = at;
+  while (i > 0 && src[i - 1] === '.') {
+    let k = i - 1;
+    while (k > 0 && /[\w$]/.test(src[k - 1] ?? '')) k -= 1;
+    if (k === i - 1) break; // a bare '.' with no identifier before it
+    i = k;
+  }
+  return i;
+}
+
+/**
+ * The tag name, dir value and own body-start offset of every element
+ * enclosing position `at`, outermost first — the ANCESTOR chain, not just
+ * the nearest opening tag. What resolves a name's direction is the nearest
+ * ancestor carrying ANY dir at all, which is not necessarily the immediate
+ * parent: ActiveBlock's/CloseBlock's eyebrow divs sit right next to (not
+ * inside) the title's own dir="auto" group, so that group must never count
+ * for them.
+ */
+function ancestorChain(src: string, at: number): { tagName: string; dir: string | null; bodyStart: number }[] {
+  const stack: { tagName: string; dir: string | null; bodyStart: number }[] = [];
+  let i = 0;
+  while (i < at) {
+    if (src[i] === '<') {
+      if (src[i + 1] === '/') {
+        const close = src.indexOf('>', i);
+        i = close < 0 ? at : close + 1;
+        stack.pop();
+        continue;
+      }
+      if (src[i + 1] === '>') {
+        stack.push({ tagName: '', dir: null, bodyStart: i + 2 }); // fragment shorthand, never carries dir
+        i += 2;
+        continue;
+      }
+      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
+        const tag = enclosingTag(src, i);
+        const tagEnd = i + tag.length;
+        i = tagEnd;
+        if (!tag.endsWith('/>')) {
+          const dirMatch = /\sdir="(auto|ltr|rtl)"/.exec(tag);
+          const nameMatch = /^<\s*([A-Za-z][\w.]*)/.exec(tag);
+          stack.push({ tagName: (nameMatch?.[1] ?? '').toLowerCase(), dir: dirMatch ? dirMatch[1] : null, bodyStart: tagEnd });
+        }
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return stack;
+}
+
+/**
+ * Whatever renders BEFORE position `at` inside a body that runs from
+ * `bodyStart` to `at` — real sibling content only, opaque-but-present
+ * markers ('X') standing in for anything whose actual text isn't visible
+ * from source. Two things are deliberately NOT "preceding content":
+ *   - A bare `{` that is the START of the very expression `at` sits inside
+ *     (`<span dir="auto">{instrumentName(...)}</span>` has no sibling
+ *     before the call, just the brace opening its own container) — this
+ *     function stops (returns what it has so far) the moment it finds the
+ *     `{…}` or `<tag>…</tag>` that CONTAINS `at`, rather than descending
+ *     through it as if it were a finished sibling.
+ *   - A ternary/logical-AND's UNTAKEN branch or its own condition text
+ *     (`{cond ? instrumentName(db, x) : 'General'}`) — these sit inside
+ *     the SAME expression as `at`, never as separate rendered siblings, so
+ *     stopping at that expression's boundary (rather than treating its
+ *     condition as literal preceding text) is what keeps this from
+ *     flagging PathwayDetail's and Repertoire's `cond ? instrumentName(...)
+ *     : 'General'` pattern as though "cond ? " had rendered first.
+ * A COMPLETE prior `{…}` expression or `<tag>…</tag>` element (one that
+ * closes before `at`) DOES count, opaquely — an item's own title rendered
+ * in an earlier sibling div is real content even though this text scan
+ * can't see what the title actually says.
+ */
+function contentBefore(src: string, bodyStart: number, at: number): string {
+  let i = bodyStart;
+  let out = '';
+  while (i < at) {
+    const c = src[i];
+    if (c === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
+      const tag = enclosingTag(src, i);
+      if (tag.endsWith('/>')) {
+        out += 'X'; // a self-closing element — opaque prior content
+        i += tag.length;
+        continue;
+      }
+      const body = elementBody(src, tag, i);
+      if (body.end <= at) {
+        out += 'X'; // this whole child closes before `at` — opaque prior content
+        i = body.end;
+      } else {
+        return out + contentBefore(src, body.start, at); // `at` is inside this child — descend, don't skip it
+      }
+      continue;
+    }
+    if (c === '{') {
+      const closeAt = matchingBraceClose(src, i);
+      if (closeAt <= at) {
+        out += 'X'; // a full sibling expression — opaque prior content
+        i = closeAt + 1;
+      } else {
+        return out; // `at` is inside THIS expression — its own condition/branches never count
+      }
+      continue;
+    }
+    if (!/\s/.test(c)) out += c; // literal JSX text
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Whether an occurrence at `at` resolves ITS OWN direction — the nearest
+ * ancestor carrying any `dir` must be "auto", AND nothing else may render
+ * before it within that SAME ancestor's body. A dir="auto" ancestor
+ * resolves from whichever strong character comes FIRST in its subtree: if
+ * an item's own title (or any other independently-authored value) precedes
+ * the name inside the same auto ancestor, the ancestor's resolution belongs
+ * to THAT value, not to the name riding along beside it — exactly the
+ * classification mistake this whole family exists to catch (ItemCard's row
+ * would silently regress this way if its instrument name ever lost its own
+ * `<span dir="auto">` and merely sat inside the row's outer auto group).
+ * Two real sites deliberately rely on being genuinely FIRST rather than
+ * carrying their own isolate — Insights.tsx's `<th dir="auto">` and
+ * Today.tsx's cross-instrument `{inst.name}` — and this still accepts both.
+ */
+function resolvesOwnDirection(src: string, at: number): { ok: boolean; dir: string | null } {
+  const chain = ancestorChain(src, at);
+  for (let i = chain.length - 1; i >= 0; i -= 1) {
+    const entry = chain[i];
+    if (entry.dir === null) continue;
+    if (entry.dir !== 'auto') return { ok: false, dir: entry.dir };
+    return { ok: contentBefore(src, entry.bodyStart, at).length === 0, dir: 'auto' };
+  }
+  return { ok: false, dir: null };
+}
+
+/** `<option>` contents are excluded from this whole family by the contract:
+ *  the native control owns their rendering, so no dir treatment applies. */
+function isInsideOption(src: string, at: number): boolean {
+  return ancestorChain(src, at).some((a) => a.tagName === 'option');
+}
+
+/** Index just past the matching `}` for the `{` at `openAt`. */
+function matchingBraceClose(src: string, openAt: number): number {
+  let depth = 0;
+  let i = openAt;
+  while (i < src.length) {
+    if (src[i] === '{') depth += 1;
+    else if (src[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+    i += 1;
+  }
+  return src.length;
+}
+
+/**
+ * True when `matchStart` sits inside a `${…}` template substitution whose
+ * enclosing backtick template also holds OTHER literal text — the shape
+ * that fuses a name with fixed words into one string before anything can
+ * render, so no isolate can ever wrap the name alone by the time it
+ * reaches JSX (`Nothing for ${name} yet`, `${instrumentName(db, x)} plan`).
+ * A template holding ONLY the one substitution has nothing fused into it.
+ */
+function isFusedIntoTemplate(src: string, matchStart: number): boolean {
+  if (src.slice(matchStart - 2, matchStart) !== '${') return false;
+  const subClose = matchingBraceClose(src, matchStart - 1);
+  const openBacktick = src.lastIndexOf('`', matchStart);
+  const closeBacktick = src.indexOf('`', subClose);
+  if (openBacktick < 0 || closeBacktick < 0) return true; // malformed — be conservative
+  const body = src.slice(openBacktick + 1, closeBacktick).replace(/\$\{[^{}]*\}/g, '');
+  return body.trim().length > 0;
+}
+
+/** Every current DOM-text render of an instrument's name in `file`, as
+ *  [start, end) spans into the (comment-stripped) source. See the block
+ *  comment above for the shapes discovered and excluded. */
+function instrumentNameOccurrences(file: string): { at: number; end: number }[] {
+  const src = stripComments(SOURCES[file]);
+  const occurrences: { at: number; end: number }[] = [];
+
+  const isAttributeValue = (at: number): boolean =>
+    /[A-Za-z][\w-]*=\{\s*$/.test(src.slice(Math.max(0, at - 60), at));
+  const isDeclarationRhs = (at: number): boolean =>
+    /\b(?:const|let)\s+\w+\s*=\s*$/.test(src.slice(Math.max(0, at - 80), at));
+  const record = (at: number, end: number) => {
+    if (isAttributeValue(at)) return; // prop-drilling — the callee is checked separately
+    if (isInsideOption(src, at)) return; // native control owns its own rendering
+    occurrences.push({ at, end });
+  };
+
+  // instrumentName(db, EXPR) — direct calls. A call bound to a const is an
+  // alias, not itself a render; its later bare reads are tracked below.
+  for (const m of src.matchAll(/\binstrumentName\(([^()]*)\)/g)) {
+    if (isDeclarationRhs(m.index!)) continue;
+    record(m.index!, m.index! + m[0].length);
+  }
+
+  // X.instrumentName — property reads, receiver chain included so a
+  // declaration check lands before the whole expression, not mid-chain.
+  // `m.index` is the dot itself, so first step back over the identifier
+  // immediately before it (receiverChainStart expects to start AT an
+  // identifier, not at a dot).
+  for (const m of src.matchAll(/\.\s*instrumentName\b/g)) {
+    let idStart = m.index!;
+    while (idStart > 0 && /[\w$]/.test(src[idStart - 1] ?? '')) idStart -= 1;
+    const start = receiverChainStart(src, idStart);
+    if (isDeclarationRhs(start)) continue;
+    record(start, m.index! + m[0].length);
+  }
+
+  // Local aliases: a destructured, renamed prop (excluding the type
+  // annotation `instrumentName: string`, which reads identically), a
+  // `const X = instrumentName(...)` binding, or a `const X =
+  // …instruments….find(...)?.name` binding — the last generalised past the
+  // literal spelling "instrumentName" so a differently-named local (or a
+  // future one) is still caught.
+  const aliases = new Set<string>();
+  for (const m of src.matchAll(/\binstrumentName\s*:\s*(\w+)/g)) {
+    if (m[1] !== 'string') aliases.add(m[1]);
+  }
+  for (const m of src.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*instrumentName\(/g)) {
+    aliases.add(m[1]);
+  }
+  for (const m of src.matchAll(
+    /\b(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?\binstruments\b[^;\n]*?\.find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
+  )) {
+    aliases.add(m[1]);
+  }
+  for (const alias of aliases) {
+    for (const m of src.matchAll(new RegExp(`\\b${alias}\\b`, 'g'))) {
+      const at = m.index!;
+      const end = at + alias.length;
+      const before = src.slice(Math.max(0, at - 20), at);
+      const after = src.slice(end, end + 20);
+      // A BARE alias is a standalone identifier — `.name` on some unrelated
+      // object (`routine.name`, `selected.name`) merely ENDS in the same
+      // letters and must never count just because a plain-text \b-bounded
+      // scan can't tell "name" the alias from "name" the property name.
+      if (before.endsWith('.')) continue;
+      const isBindingLhs = /\b(?:const|let)\s+$/.test(before) && /^\s*=(?!=)/.test(after);
+      const isRenameTarget = /\binstrumentName\s*:\s*$/.test(before);
+      // `<ClassQuestions instrumentName={instrumentName} />` — the KEY is
+      // this same word too (coincidentally, since the alias here happens to
+      // be spelled "instrumentName"); it is the attribute's NAME, not a
+      // value being read, and must not be confused with the VALUE right
+      // after it, which `record`'s own isAttributeValue check still catches.
+      const isAttributeName = /^\s*=\{/.test(after);
+      if (isBindingLhs || isRenameTarget || isAttributeName) continue; // the alias's own introduction, not a read
+      record(at, end);
+    }
+  }
+
+  // A per-item `.name` read inside a `db.instruments`/`instruments` iteration
+  // — `(?:\.\w+\([^()]*\))*` tolerates any number of chained hops
+  // (`.filter(...).map(...)`) before the `.map(` that actually binds a
+  // per-instrument callback parameter.
+  for (const m of src.matchAll(
+    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*map\(\s*\(?\s*(\w+)\s*\)?\s*=>/g,
+  )) {
+    const param = m[1];
+    const mapOpenParen = m.index! + m[0].lastIndexOf('map(') + 'map('.length - 1;
+    const bodyStart = m.index! + m[0].length;
+    const bodyEnd = matchingParenClose(src, mapOpenParen);
+    const scope = src.slice(bodyStart, bodyEnd);
+    for (const im of scope.matchAll(new RegExp(`\\b${param}\\.name\\b`, 'g'))) {
+      record(bodyStart + im.index!, bodyStart + im.index! + im[0].length);
+    }
+  }
+
+  // An inline `instruments.find(...)?.name` with no intermediate variable —
+  // the whole expression is the render candidate. One already bound to a
+  // `const` was tracked as an alias above instead. `(?:[^()]|\([^()]*\))*`
+  // (not the plain `[^()]*` the .map( pattern above gets away with) is
+  // needed here because .find's own callback is itself parenthesized —
+  // `.find((i) => i.id === x)` nests one paren level that a no-parens-
+  // allowed class can never get past.
+  for (const m of src.matchAll(
+    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
+  )) {
+    const start = receiverChainStart(src, m.index!);
+    if (isDeclarationRhs(start)) continue;
+    record(start, m.index! + m[0].length);
+  }
+
+  return occurrences.sort((a, b) => a.at - b.at);
+}
+
+// --- a forced physical alignment never overrides a data title's own ------
+//
+// An EIGHTH SEALED FINDING found Repertoire's PathwayCard rendering a
+// user-authored pathway name inside a `<button style={{ textAlign: 'left' }}>`
+// with no direction-resolving group anywhere between them: a Farsi pathway
+// name shaped correctly (the browser's own bidi algorithm needs no help for
+// that) and then sat pinned to the English edge, split from the instrument /
+// stage caption underneath it. The inline instrument isolate already on that
+// caption could never fix it — `text-align` is a BLOCK concept, and this
+// file's own "an isolate must be inline" rule exists precisely because a
+// `<span>` never participates in one.
+//
+// Two things have to hold together, which is why this is ONE check rather
+// than two: the title needs a `dir="auto"` group to resolve from, AND that
+// group has to sit BELOW whatever is forcing a physical alignment and
+// re-declare `textAlign: 'start'`, or the direction it resolves never
+// reaches the alignment. Either half alone leaves the name exactly where it
+// was. `center` is deliberately NOT a forcing value: centred text points at
+// no edge, so it cannot misalign an RTL run — only `left`/`right` can, and
+// excluding `center` is also what keeps this from demanding an unrequested
+// layout change on the deliberately centred practice screens.
+//
+// The scan resolves a `style={CONST}` / `style={{ ...CONST, x }}` reference
+// against module-level `const NAME = { … }` declarations in the same file,
+// because that is how the real counterexample this found in Insights.tsx was
+// written (`<th style={CELL} dir="auto">{r.instrumentName}</th>`, with CELL
+// pinning `textAlign: 'left'`) — a scanner that only read inline literals
+// would have called that site clean.
+
+/** Module-level `const NAME = { … }` style objects, by name. */
+function styleConstants(src: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of src.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*(?::\s*[\w.<>]+)?\s*=\s*\{([^{}]*)\}/g)) {
+    out[m[1]] = m[2];
+  }
+  return out;
+}
+
+/** The whole text of a tag's `style={…}` attribute value, with any
+ *  module-level style constant it names spliced in. */
+function styleTextOf(tag: string, consts: Record<string, string>): string {
+  const at = tag.indexOf('style=');
+  if (at < 0) return '';
+  const from = tag.indexOf('{', at);
+  if (from < 0) return '';
+  let depth = 0;
+  let end = tag.length;
+  for (let i = from; i < tag.length; i += 1) {
+    if (tag[i] === '{') depth += 1;
+    else if (tag[i] === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+  const inline = tag.slice(from, end);
+  const referenced = [...inline.matchAll(/[A-Za-z_$][\w$]*/g)]
+    .map((m) => consts[m[0]])
+    .filter(Boolean)
+    .join(' ');
+  return `${inline} ${referenced}`;
+}
+
+/** 'left'/'right' when a tag forces a PHYSICAL alignment over its content
+ *  (directly or through a style constant), null otherwise. 'center' points
+ *  at no edge and never misaligns an RTL run, so it is not forcing. */
+function forcedAlign(tag: string, consts: Record<string, string>): string | null {
+  return /textAlign\s*:\s*['"](left|right)['"]/.exec(styleTextOf(tag, consts))?.[1] ?? null;
+}
+
+/** True when a tag re-declares the logical `textAlign: 'start'`. */
+function declaresStart(tag: string, consts: Record<string, string>): boolean {
+  return /textAlign\s*:\s*['"]start['"]/.test(styleTextOf(tag, consts));
+}
+
+/**
+ * Every element carrying a TITLE class whose body renders an OPAQUE data
+ * expression — the owner's own text, whose language cannot be known from
+ * source. A title made only of literal copy ("Routine complete") is fixed
+ * English and never needs a direction of its own.
+ */
+function dataTitleSites(file: string): { line: number; tag: string; at: number }[] {
+  const src = stripComments(SOURCES[file]);
+  const out: { line: number; tag: string; at: number }[] = [];
+  for (const m of src.matchAll(/<[A-Za-z][\w.]*\s[^>]*className=/g)) {
+    const at = m.index!;
+    const tag = enclosingTag(src, at + 1);
+    if (!TITLE_CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(classNameOf(tag)))) continue;
+    if (tag.endsWith('/>')) continue;
+    const body = elementBody(src, tag, at);
+    if (!src.slice(body.start, body.end).includes('{')) continue;
+    out.push({ line: src.slice(0, at).split('\n').length, tag, at });
+  }
+  return out;
+}
+
+/**
+ * The ancestor chain of a title, innermost FIRST, each entry carrying its own
+ * opening tag text so this check can read both its `dir` and its alignment.
+ */
+function ancestorTags(src: string, at: number): { tag: string; dir: string | null }[] {
+  return ancestorChain(src, at)
+    .map((e) => {
+      const tag = enclosingTag(src, e.bodyStart - 1);
+      return { tag, dir: e.dir };
+    })
+    .reverse();
+}
+
+// --- the check --------------------------------------------------------------
+
+describe('direction lives on the group', () => {
+  it('direction lives on the group: no title element carries dir="auto", and every listed surface has one', () => {
+    const all = sourceFiles().flatMap(directionSites);
+
+    // (a) A title that still carries direction is a site the sweep missed: its
+    //     own caption still aligns to the opposite edge.
+    const onTitles = all
+      .filter((s) => isTitle(s) && !allowed(s))
+      .map((s) => `${s.file}:${s.line} — dir="auto" on a title (class "${s.classValue.trim()}")`);
+    expect(onTitles).toEqual([]);
+
+    // (b) A surface with no group at all is a whole file the sweep skipped —
+    //     and deleting the attribute instead of moving it fails here too.
+    const withoutGroup = SURFACES.filter(
+      (file) => !all.some((s) => s.file === file && isGroup(s)),
+    ).map((file) => `${file} — renders user text but carries direction on no group`);
+    expect(withoutGroup).toEqual([]);
+  });
+
+  it('keeps every listed exception real, so the allowlist cannot rot', () => {
+    const all = sourceFiles().flatMap(directionSites);
+    for (const entry of ALLOWED_TITLE_SITES) {
+      const hit = all.some((s) => s.file === entry.file && s.text.includes(entry.snippet) && isTitle(s));
+      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.snippet})`).toBe(true);
+    }
+  });
+
+  it('keeps every recorded group site current — removing any ONE of them fails, even when its file has others', () => {
+    const inventory = sourceFiles()
+      .flatMap(directionSites)
+      .filter(isGroup)
+      .map(({ file, tagName, classValue }) => ({ file, tagName, classValue }));
+    expect(inventory).toEqual(GROUP_SITE_INVENTORY);
+  });
+
+  it('no fixed English phrase in a group inherits the title\'s bidi base unisolated', () => {
+    const exempt = (file: string, tagText: string) =>
+      UNEXEMPTED_PHRASE_ALLOWLIST.some((e) => e.file === file && tagText.includes(e.tagSnippet));
+    const violations: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of directionSites(file).filter(isGroup)) {
+        if (exempt(file, site.text)) continue;
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const phrase = unexemptedPhrase(src, body.start, body.end);
+        if (phrase) violations.push(`${file}:${site.line} — "${phrase}" is exposed to the group's bidi base`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it('keeps every listed unexempted-phrase exception real, so it cannot rot', () => {
+    for (const entry of UNEXEMPTED_PHRASE_ALLOWLIST) {
+      const hit = sourceFiles()
+        .filter((f) => f === entry.file)
+        .flatMap(directionSites)
+        .filter(isGroup)
+        .some((s) => s.text.includes(entry.tagSnippet));
+      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.tagSnippet})`).toBe(true);
+    }
+  });
+
+  it('keeps every independently-authored value isolated from the group it sits in', () => {
+    for (const entry of ISOLATED_VALUE_SITES) {
+      const hit = SOURCES[entry.file]?.includes(entry.snippet);
+      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
+    }
+  });
+
+  it('keeps every fixed-English / generated-metadata site isolated from the group it sits in', () => {
+    for (const entry of LTR_ISOLATE_SITES) {
+      const hit = SOURCES[entry.file]?.includes(entry.snippet);
+      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
+    }
+  });
+
+  it('a bidi isolate is always inline (span/bdi), never a block that resolves its own alignment', () => {
+    const violations = sourceFiles()
+      .flatMap(isolateSites)
+      .filter((s) => !INLINE_ISOLATE_TAGS.includes(s.tagName))
+      .map((s) => `${s.file}:${s.line} — dir="ltr"/"rtl" on a <${s.tagName}>, not an inline span`);
+    expect(violations).toEqual([]);
+  });
+
+  // A sealed review found FOUR sites forcing an instrument name — the OWNER'S
+  // OWN editable text, never generated copy — under dir="ltr" as if it were
+  // metadata like ITEM_TYPE_LABELS sitting next to it. Auditing the rest of
+  // LTR_ISOLATE_SITES by hand found three more of the identical shape. A
+  // location list closes only the sites that happened to exist today; this
+  // bans the SHAPE, so a future dir="ltr"/"rtl" wrapped around an instrument
+  // name fails here regardless of which file it turns up in. The pattern is
+  // deliberately NOT anchored to a call — `\binstrumentName\(` alone missed
+  // `{b.instrumentName}` (a property access, no call, no parenthesis) in the
+  // very same audit that added this test — so it also matches a bare
+  // `instrumentName` identifier, covering a property access and a value
+  // passed through as a prop (e.g. `TeacherReport.tsx`'s local `instrumentName`
+  // variable), not just a direct call.
+  it('no dir="ltr"/"rtl" isolate wraps an instrument name', () => {
+    const violations: string[] = [];
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of isolateSites(file)) {
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const bodyText = src.slice(body.start, body.end);
+        if (/\binstrumentName\b|\{inst\}/.test(bodyText)) {
+          violations.push(`${file}:${site.line} — an instrument name sits inside a dir="ltr"/"rtl" isolate`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // See the block comment above `instrumentNameOccurrences` for the full
+  // rationale and the shapes discovered. This supersedes the previous
+  // approach of listing each fixed site's exact snippet in
+  // ISOLATED_VALUE_SITES: that ledger could only ever vouch for sites a
+  // human had already found, and four rounds of rejection on this exact
+  // family showed that was never enough. Two real sites deliberately keep
+  // resolving from an ANCESTOR rather than their own isolate — Insights.tsx's
+  // `<th dir="auto">` and Today.tsx's cross-instrument `{inst.name}` — and
+  // this check accepts that (it asks about the name's own resolved
+  // direction, not the shape of the markup around it); wrapping either in a
+  // nested isolate later would silently regress the GROUP's own resolution
+  // instead (dir="auto" skips a descendant that carries its own dir when
+  // hunting for a first strong character), which is caught separately by
+  // `GROUP_SITE_INVENTORY`'s exhaustive equality against any new dir="auto"
+  // site, not by this check.
+  //
+  // Excluded: ItemForm.tsx, QuickAdd.tsx and RoutineEdit.tsx, the three
+  // files this lane's own contract puts out of scope ("their dir='auto'
+  // usage is already correct and must not be touched"). That claim turned
+  // out to be wrong for one of them — QuickAdd.tsx's instrument-picker
+  // button renders `{i.name}` with no dir anywhere — but fixing it means
+  // editing a forbidden file, so it is named here and in AGENTS.md instead
+  // of silently passing OR silently failing a check this lane cannot act on.
+  const OUT_OF_SCOPE_FOR_THIS_LANE = ['components/ItemForm.tsx', 'components/QuickAdd.tsx', 'pages/RoutineEdit.tsx'];
+  it('an instrument name resolves its own direction, wherever it renders', () => {
+    const violations: string[] = [];
+    let sitesSeen = 0;
+    for (const file of sourceFiles().filter((f) => !OUT_OF_SCOPE_FOR_THIS_LANE.includes(f))) {
+      const src = stripComments(SOURCES[file]);
+      const occurrences = instrumentNameOccurrences(file);
+      sitesSeen += occurrences.length;
+      for (const { at, end } of occurrences) {
+        if (isFusedIntoTemplate(src, at)) {
+          const line = src.slice(0, at).split('\n').length;
+          violations.push(`${file}:${line} — an instrument name is fused into a template string before it renders`);
+          continue;
+        }
+        const { ok, dir } = resolvesOwnDirection(src, at);
+        if (!ok) {
+          const line = src.slice(0, at).split('\n').length;
+          const found =
+            dir === null
+              ? 'no dir="" ancestor at all'
+              : dir === 'auto'
+                ? 'a dir="auto" ancestor whose resolution is already claimed by something preceding it'
+                : `an ancestor forces dir="${dir}"`;
+          violations.push(`${file}:${line} — "${src.slice(at, end)}" resolves its direction from ${found}`);
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // A scanner that silently finds nothing is not proof of nothing being
+    // wrong — this fails if a regression in the discovery patterns above
+    // ever made them stop matching entirely (every shape they cover is
+    // exercised by real code in this app today).
+    expect(sitesSeen).toBeGreaterThan(0);
+  });
+
+  it('a list with a direction-variable item never relies on the native marker, and lays that item out as a direction-aware flex container', () => {
+    const violations: string[] = [];
+    for (const site of sourceFiles().flatMap(listSites)) {
+      if (site.autoLiTags.length === 0) continue;
+      if (!disablesNativeMarker(site.tag)) {
+        violations.push(`${site.file}:${site.line} — <ol>/<ul> relies on a native marker for an li whose direction can vary`);
+      }
+      for (const liTag of site.autoLiTags) {
+        if (!isDirectionAwareContainer(liTag)) {
+          violations.push(
+            `${site.file}:${site.line} — a dir="auto" <li> isn't itself a flex/grid container, so its own content can't reorder with its direction`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("a label-first auto row's value stays bare, so the row still has a direction to resolve from", () => {
+    const violations: string[] = [];
+    let rowsSeen = 0;
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      for (const site of directionSites(file).filter(isGroup)) {
+        if (!isLabelFirstAutoRow(file, site)) continue;
+        rowsSeen += 1;
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        const bodyText = src.slice(body.start, body.end);
+        const afterLabel = bodyText.replace(/^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/, '');
+        if (/\sdir="(?:auto|ltr|rtl)"/.test(afterLabel)) {
+          violations.push(
+            `${file}:${site.line} — the value in a label-first row carries its own dir, leaving the row with nothing left to resolve from`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // Same discipline as the instrument-name check above: a scanner that
+    // silently matches nothing is not proof nothing needs checking.
+    expect(rowsSeen).toBeGreaterThan(0);
+  });
+
+  // An OWNER-observed regression found ClassQuestions' <li dir="auto">
+  // anchored on the wrong candidate: the title was left bare (leading the
+  // hunt) while the question carried its own isolate — so an item whose
+  // title and question differed in language put the ordinal on the
+  // title's side while the question (the only field questionsForNextClass
+  // actually guarantees is non-empty) resolved its own, different
+  // direction and landed on the opposite edge, unattached from the
+  // marker entirely. Matching-language seed data never exposed this: the
+  // bug only shows when the two differ. Fixed by reversing which one is
+  // bare — the question anchors the <li>, the title gets its own isolate
+  // — and asserted directly here rather than trusting seed data again.
+  it("the question anchors ClassQuestions' <li>, not the independently-authored title", () => {
+    const file = 'components/ClassQuestions.tsx';
+    const src = stripComments(SOURCES[file]);
+    // The item's own <li>, not one of renderFreeText's bullet rows (which
+    // now carry dir="auto" of their own and appear earlier in the file).
+    const liSite = directionSites(file).find((s) => s.tagName === 'li' && s.text.includes('key={q.id}'));
+    expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
+    const openAt = src.lastIndexOf('<', liSite!.at);
+    const body = elementBody(src, liSite!.text, openAt);
+    const bodyText = src.slice(body.start, body.end);
+    const smallDivs = [...bodyText.matchAll(/<div className="small"[^>]*>/g)].map((m) => m[0]);
+    expect(smallDivs.length, 'expected a title div and a question div').toBeGreaterThanOrEqual(2);
+    const [titleTag, questionTag] = smallDivs;
+    expect(titleTag, 'the title must carry its own dir="auto" isolate, out of the <li>\'s hunt').toMatch(
+      /\sdir="auto"/,
+    );
+    expect(questionTag, "the question must stay bare so the <li> resolves from it").not.toMatch(/\sdir=/);
+  });
+
+  // An EIGHTH SEALED FINDING: Repertoire's PathwayCard forced a user-authored
+  // pathway name left (the button's own textAlign:'left') with no
+  // direction-resolving group anywhere above it, so a Persian pathway read
+  // against the English edge while its own caption sat beside it. The two
+  // halves are asserted together because either alone leaves the name where
+  // it was: a group to resolve the direction FROM, and that same group
+  // re-declaring the logical `textAlign: 'start'` below whatever pinned a
+  // physical one. Discovered mechanically from the shapes the app actually
+  // uses (a title class whose body renders an opaque data expression; an
+  // alignment pinned inline OR through a module-level style constant), not
+  // from a list of locations a reviewer happened to name.
+  it('no forced left/right alignment overrides a data title\'s own resolved direction', () => {
+    const violations: string[] = [];
+    let titlesSeen = 0;
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      const consts = styleConstants(src);
+      for (const title of dataTitleSites(file)) {
+        // A title carrying its own dir is an isolate (fixed copy deliberately
+        // pinned), judged by the isolate rules above, not by this one.
+        if (/\sdir="(auto|ltr|rtl)"/.test(title.tag)) continue;
+        const chain = [{ tag: title.tag, dir: null as string | null }, ...ancestorTags(src, title.at + 1)];
+        const forcedAt = chain.findIndex((e) => forcedAlign(e.tag, consts) !== null);
+        if (forcedAt < 0) continue; // nothing forces a physical edge on this title
+        titlesSeen += 1;
+        const where = `${file}:${title.line} [${classNameOf(title.tag).trim()}]`;
+        // The group must sit strictly BELOW the forcing element (a smaller
+        // index is nearer the title), resolve direction, and restore start.
+        const group = chain.slice(0, forcedAt).find((e) => e.dir !== null);
+        if (!group) {
+          violations.push(`${where} — forced ${forcedAlign(chain[forcedAt].tag, consts)} with no dir group between`);
+        } else if (group.dir !== 'auto') {
+          violations.push(`${where} — the nearest group pins dir="${group.dir}" instead of resolving the title's own`);
+        } else if (!declaresStart(group.tag, consts)) {
+          violations.push(`${where} — its dir="auto" group never restores textAlign:'start', so the resolved direction never reaches the alignment`);
+        }
+      }
+      // The same defect one level up, in a shape no title-class filter can
+      // see: a group that resolves a direction and then pins a physical edge
+      // ON ITSELF. Insights' per-instrument <th style={CELL} dir="auto"> was
+      // exactly this — CELL pinning textAlign:'left' over the owner's own
+      // (renameable, Farsi-capable) instrument name.
+      for (const group of directionSites(file).filter(isGroup)) {
+        const forced = forcedAlign(group.text, consts);
+        if (forced) {
+          violations.push(
+            `${file}:${group.line} — a dir="auto" group pins textAlign:'${forced}', overriding the direction it just resolved`,
+          );
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+    // Same discipline as the checks above: a scanner that silently matches
+    // nothing is not proof that nothing needed checking.
+    expect(titlesSeen).toBeGreaterThan(0);
+  });
+
+  // The same EIGHTH FINDING's second half: renderFreeText rendered every line
+  // of a multi-line question/problem/observation bare, so one Farsi line
+  // dragged every following English line RTL (and the reverse). Each line is
+  // independently authored and resolves its OWN direction — except the FIRST,
+  // which stays bare ON PURPOSE: it is the only strong text left for the
+  // enclosing dir="auto" (the item's <li>, the Problem/Last-time value
+  // wrapper) to resolve from, since the title is already isolated. Isolating
+  // it too would leave the whole item with no resolution source and a silent
+  // LTR fallback — the ninth finding, back again. Mutation-tested both ways:
+  // making the first line resolve its own direction fails here, and so does
+  // leaving the rest bare.
+  it('every line after the anchor of a multi-line free-text field resolves its own direction', () => {
+    const file = 'components/ClassQuestions.tsx';
+    const src = stripComments(SOURCES[file]);
+    const at = src.indexOf('function bullet(');
+    expect(at, 'renderFreeText\'s per-line renderer not found').toBeGreaterThan(-1);
+    const end = src.indexOf('\nfunction renderFreeText', at);
+    const liTags = [...src.slice(at, end).matchAll(/<li\b[^>]*>/g)].map((m) => m[0]);
+    expect(liTags.length, 'expected an anchor branch and an own-direction branch').toBe(2);
+    const bare = liTags.filter((t) => !/\sdir=/.test(t));
+    const own = liTags.filter((t) => /\sdir="auto"/.test(t));
+    expect(bare.length, 'exactly one line — the anchor — stays bare').toBe(1);
+    expect(own.length, 'every other line carries its own dir="auto"').toBe(1);
+    // …and the branch that gets the isolate is the one chosen for lines
+    // AFTER the first, never the first itself.
+    expect(src.slice(at, end)).toMatch(/return own \? \(\s*<li key=\{key\} dir="auto"/);
+    expect(src.slice(end)).toMatch(/bullet\(line, i, i > 0\)/);
+  });
+});
+```
+
+### src/domain/io.test.ts
+
+```
+import { describe, expect, it, vi } from 'vitest';
+import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
+import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
+import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
+import { serializeExport, validateDB, parseImport } from './io';
+import { migrateToCurrent } from './migrations';
+import { createSeedDB } from './seed';
+import {
+  decodeSourceIndex,
+  membersForSession,
+  repeatChains,
+  resourceReference,
+  resourcesForPiece,
+  resourcesForSession,
+} from './sourceArchive';
+import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
+import { createBlock, createItem, createLesson } from './factories';
+import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
+import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
+import { SCHEMA_VERSION, type PracticeDB } from './types';
+import { addDays, nowISO, toISODate } from './util';
+// The Zustand persist boundary (§C7's actual enforcement point, not just
+// validateDB's own import-path callers) has no allowed dedicated store test
+// file for this contract — the same situation routines.test.ts documents for
+// the single-active-clock guard — so its regression coverage extends this
+// ac-15 test instead of being left unproven.
+import { useStore, getLastHydrationError, useHydrationStatus } from '../store/useStore';
+// The cold-start refusal screen and its recovery action are rendered UI, not
+// store wiring — reusing the SAME real-browser harness the two journey tests
+// use (never a second import implementation, never jsdom/RTL as a new
+// testing platform) is what lets this test prove the recovery action is
+// actually reachable and actually works, not merely that the store computes
+// the right flags.
+import { openPracticeApp, readPersistedState, reload, writePersistedState } from '../../tests/practiceBrowser';
+
+// The IndexedDB-backed persist storage doesn't exist in this test environment
+// (no real indexedDB global) — same stub routines.test.ts uses, except the
+// fake storage here is CONTROLLABLE per assertion: vi.hoisted keeps its state
+// reachable from the mock factory (which Vitest hoists above these imports)
+// without a temporal-dead-zone reference.
+const fakeStorage = vi.hoisted(() => {
+  let value: string | null = null;
+  let setItemCalls = 0;
+  return {
+    get: () => value,
+    set: (v: string | null) => {
+      value = v;
+    },
+    recordSetItem: () => {
+      setItemCalls += 1;
+    },
+    setItemCalls: () => setItemCalls,
+  };
+});
+vi.mock('../store/idb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../store/idb')>();
+  return {
+    ...actual,
+    idbStorage: {
+      getItem: async () => fakeStorage.get(),
+      setItem: async (_name: string, value: string) => {
+        fakeStorage.recordSetItem();
+        fakeStorage.set(value);
+      },
+      removeItem: async () => fakeStorage.set(null),
+    },
+  };
+});
+
+const NOW = new Date('2026-06-18T12:00:00.000Z');
+
+describe('validateDB — backward-compatible import', () => {
+  it('round-trips a current export untouched', () => {
+    const db = createSeedDB(NOW);
+    const out = validateDB({ app: 'practice-compass', data: db });
+    expect(out.items.length).toBe(db.items.length);
+    expect(out.lessons.length).toBe(db.lessons.length);
+  });
+
+  it('folds a legacy attachment itemId into ownerType and ownerId', () => {
+    const db = createSeedDB(NOW);
+    const legacy = {
+      ...db,
+      schemaVersion: 5,
+      attachments: [
+        { id: 'att1', itemId: db.items[0].id, name: 'afshari.pdf', mime: 'application/pdf', size: 100, kind: 'pdf', createdAt: '2026-01-01T00:00:00.000Z' },
+      ],
+    };
+    const out = validateDB(legacy);
+    expect(out.attachments[0].ownerType).toBe('item');
+    expect(out.attachments[0].ownerId).toBe(db.items[0].id);
+    expect((out.attachments[0] as unknown as { itemId?: string }).itemId).toBeUndefined();
+  });
+
+  it('keeps modern owner-shaped attachments and lesson item links as-is', () => {
+    const db = createSeedDB(NOW);
+    const lesson = createLesson({ instrumentId: db.instruments[0].id, date: '2026-06-01' }, NOW);
+    lesson.itemIds = [db.items[0].id];
+    const withData = {
+      ...db,
+      lessons: [...db.lessons, lesson],
+      attachments: [
+        { id: 'a2', ownerType: 'lesson' as const, ownerId: lesson.id, name: 'notes.pdf', mime: 'application/pdf', size: 5, kind: 'pdf' as const, createdAt: '2026-01-01T00:00:00.000Z' },
+      ],
+    };
+    const out = validateDB(withData);
+    expect(out.attachments[0].ownerType).toBe('lesson');
+    expect(out.lessons.find((l) => l.id === lesson.id)?.itemIds).toEqual([db.items[0].id]);
+  });
+
+  it('rejects unusable shapes with a readable error', () => {
+    expect(parseImport('not json').ok).toBe(false);
+    expect(parseImport(JSON.stringify({ items: 'nope' })).ok).toBe(false);
+  });
+
+  it('treats a missing schemaVersion as the oldest and runs the whole chain', () => {
+    // Pre-v3 shaped: no `pathways` key at all, and no schemaVersion field.
+    const legacy = {
+      instruments: [{ id: 'i-setar', name: 'Setar', family: 'Persian', active: true, createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z' }],
+      materials: [],
+      items: [],
+      blocks: [],
+      reviews: [],
+    };
+    const out = validateDB(legacy);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.pathways.length).toBeGreaterThan(0);
+  });
+
+  it('places a legacy pathwaySteps item into its stage on every path', () => {
+    const db = createSeedDB(NOW);
+    const item = { ...db.items[0], stageId: 'stale-stage' };
+    const legacy = {
+      ...db,
+      schemaVersion: 4,
+      items: [item],
+      // Truncated to one item on purpose (this test is about pathwaySteps,
+      // not lesson agenda) — the seed's OWN agenda entries would otherwise
+      // dangle against every item but this one, which the strict live-itemId
+      // check now (correctly) refuses.
+      lessonAgenda: [],
+      pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
+    };
+    // migrateToV5's overwrite behaviour wins over the old "fill only when
+    // empty" precedence — the same result whichever path the data arrived by:
+    // the chain directly, and the real import entry point.
+    const viaChain = migrateToCurrent(legacy as unknown as PracticeDB, 4);
+    expect(viaChain.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
+    const viaImport = validateDB(legacy);
+    expect(viaImport.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
+  });
+
+  it('returns a legacy backup with no schemaVersion fully migrated', () => {
+    const db = createSeedDB(NOW);
+    const item = db.items[0];
+    const legacy: Record<string, unknown> = {
+      instruments: db.instruments,
+      materials: db.materials,
+      items: [{ ...item, stageId: undefined }],
+      blocks: db.blocks,
+      reviews: db.reviews,
+      pathwaySteps: [{ itemId: item.id, stageId: 'legacy-stage' }],
+      attachments: [
+        { id: 'att-legacy', itemId: item.id, name: 'notes.pdf', mime: 'application/pdf', size: 10, kind: 'pdf', createdAt: '2025-01-01T00:00:00.000Z' },
+      ],
+    };
+    const out = validateDB(legacy);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(out.pathways.length).toBeGreaterThan(0);
+    expect(out.items.find((i) => i.id === item.id)?.stageId).toBe('legacy-stage');
+    expect(out.attachments[0].ownerType).toBe('item');
+    expect(out.attachments[0].ownerId).toBe(item.id);
+    expect(out.lessons).toEqual([]);
+  });
+
+  it('rejects a database from a newer schema version instead of downgrading it', () => {
+    const db = createSeedDB(NOW);
+    const fromTheFuture = {
+      app: 'practice-compass' as const,
+      schemaVersion: SCHEMA_VERSION + 1,
+      exportedAt: nowISO(NOW),
+      data: { ...db, schemaVersion: SCHEMA_VERSION + 1 },
+    };
+    const result = parseImport(JSON.stringify(fromTheFuture));
+    expect(result.ok).toBe(false);
+    expect(() => validateDB(fromTheFuture)).toThrow(/newer version/i);
+  });
+
+  it('keeps legacy pathwaySteps placements when imported through the real entry point', () => {
+    const db = createSeedDB(NOW);
+    const item = { ...db.items[0], stageId: undefined };
+    const legacyText = JSON.stringify({
+      ...db,
+      schemaVersion: undefined,
+      items: [item],
+      // Truncated to one item on purpose (see the sibling test above).
+      lessonAgenda: [],
+      pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
+    });
+    const result = parseImport(legacyText);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.db.items.find((i) => i.id === item.id)?.stageId).toBe('from-pathway-steps');
+    }
+  });
+});
+
+describe('blocksInWindow — history stays historical', () => {
+  const item = createItem({ instrumentId: 'i', title: 't' }, NOW);
+  const at = (daysAgo: number) =>
+    createBlock(
+      {
+        practiceItemId: item.id,
+        instrumentId: 'i',
+        durationMinutes: 10,
+        mode: 'learn',
+        focus: 'tone',
+        result: 'slightly_better',
+        startedAt: addDays(NOW, -daysAgo).toISOString(),
+      },
+      NOW,
+    );
+
+  it('excludes future-dated blocks from insight windows', () => {
+    const blocks = [at(1), at(3), at(-2)]; // one block "from the future"
+    const windowed = blocksInWindow(blocks, NOW, 7);
+    expect(windowed).toHaveLength(2);
+    expect(windowed.every((b) => new Date(b.startedAt) <= NOW)).toBe(true);
+  });
+
+  it('still bounds the window at N days back', () => {
+    const blocks = [at(1), at(10)];
+    expect(blocksInWindow(blocks, NOW, 7)).toHaveLength(1);
+  });
+});
+
+describe('per-instrument lesson dates', () => {
+  it('nextLessonDates maps each instrument only to its own next class', () => {
+    const lessons = [
+      createLesson({ instrumentId: 'setar', date: toISODate(addDays(NOW, 5)) }, NOW),
+      createLesson({ instrumentId: 'setar', date: toISODate(addDays(NOW, 30)) }, NOW),
+      createLesson({ instrumentId: 'tar', date: toISODate(addDays(NOW, 2)) }, NOW),
+      createLesson({ instrumentId: 'setar', date: toISODate(addDays(NOW, -10)) }, NOW), // past
+    ];
+    const map = nextLessonDates(lessons, NOW);
+    expect(map.get('setar')).toBe(toISODate(addDays(NOW, 5)));
+    expect(map.get('tar')).toBe(toISODate(addDays(NOW, 2)));
+    expect(map.get('guitar')).toBeUndefined();
+    expect(nextLessonFor(lessons, 'guitar', NOW)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-15 — C5/C6/C7: every inbound door, and what must be refused at it
+// ---------------------------------------------------------------------------
+
+// The exact bytes the browser journeys import through the real UI.
+
+/** The shapes `validateDB` accepts, i.e. every door an inbound database uses. */
+function doors(text: string): { label: string; payload: unknown }[] {
+  const wrapped = JSON.parse(text) as { data: unknown };
+  return [
+    { label: 'full backup (data + files)', payload: JSON.parse(text) },
+    { label: 'wrapped export', payload: { app: 'practice-compass', schemaVersion: 11, data: wrapped.data } },
+    { label: 'bare database', payload: wrapped.data },
+  ];
+}
+
+describe('the v12 model at every inbound door', () => {
+  it('all inbound paths preserve the new model or reject before replacement', async () => {
+    // 1. Every door migrates identically. `importFullBackup` (manual import,
+    //    sync pull, Keep remote, archive restore) and the store's own
+    //    `importDB` all route through THIS function, so a door that behaved
+    //    differently would have to bypass it.
+    const reference = JSON.stringify(validateDB(JSON.parse(V11_TEXT)));
+    for (const { label, payload } of doors(V11_TEXT)) {
+      expect(JSON.stringify(validateDB(payload)), label).toBe(reference);
+    }
+
+    // 2. A CURRENT v12 database round-trips with its agenda, question history,
+    //    scheduling provenance and one-advance-per-day marker intact.
+    const v12 = validateDB(JSON.parse(V12_TEXT));
+    const enriched: PracticeDB = {
+      ...v12,
+      items: v12.items.map((i) =>
+        i.id === 'i-scheduled'
+          ? { ...i, nextReviewSource: 'user' as const, srLastProgressDay: '2026-08-01' }
+          : i,
+      ),
+      lessonAgenda: v12.lessonAgenda.map((e) =>
+        e.kind === 'question' && e.itemId === 'i-q-farsi'
+          ? { ...e, askedAt: '2026-08-02T10:00:00.000Z', answer: 'بله، زینت را سبک‌تر کن.' }
+          : e,
+      ),
+    };
+    const round = validateDB(JSON.parse(serializeExport(enriched)));
+    expect(round.lessonAgenda).toEqual(enriched.lessonAgenda);
+    const scheduled = round.items.find((i) => i.id === 'i-scheduled')!;
+    expect(scheduled.nextReviewSource).toBe('user');
+    expect(scheduled.srLastProgressDay).toBe('2026-08-01');
+    expect(scheduled.srReps).toBe(3);
+    expect(scheduled.reviewMode).toBe('manual');
+
+    // 3. INVALID NEW DATA is refused with actionable detail, and nothing is
+    //    filtered away quietly — dropping an entry the owner wrote is the
+    //    data loss this guard exists to prevent.
+    const bad = (agenda: unknown[]) => () => validateDB({ ...v12, lessonAgenda: agenda });
+    const sample = v12.lessonAgenda[0];
+    expect(bad([{ ...sample, kind: 'reminder' }])).toThrow(/unknown kind/);
+    expect(bad([{ ...sample, id: undefined }])).toThrow(/missing an id/);
+    expect(bad([sample, { ...v12.lessonAgenda[1], id: sample.id }])).toThrow(/share the id/);
+    expect(bad([{ ...sample, instrumentId: '' }])).toThrow(/missing its instrument/);
+    expect(bad([{ ...sample, lessonId: 'L-guitar-past' }])).toThrow(/different instrument/);
+    expect(bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: '  ' }])).toThrow(/has no text/);
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
+    ).toThrow(/unreadable asked date/);
+    // An IMPOSSIBLE calendar timestamp is refused too, not merely an
+    // unparseable one: `Date.parse` silently NORMALISES "2026-02-30" into
+    // March 2nd rather than rejecting it, so a shape check (or `Date.parse`
+    // alone) happily accepted it before this. A sealed review reproduced
+    // exactly this string passing.
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: '2026-02-30T12:00:00.000Z' }]),
+    ).toThrow(/unreadable asked date/);
+    // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
+    // a real agenda entry nor an honest unassigned one: `deleteLesson` always
+    // converts a live reference to a detached marker, so this app never
+    // leaves one dangling, and it is refused rather than tolerated as legacy
+    // debris.
+    expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
+    // A dangling `itemId` is REFUSED for the identical reason, not tolerated:
+    // `deleteItem` (`useStore.ts`) always calls `detachItem` in the SAME
+    // synchronous update that removes the item — a preparation naming it is
+    // removed outright, and a question's `itemId` becomes
+    // `detachedFromItemId` — so this app never leaves a LIVE `itemId`
+    // dangling any more than a `lessonId`. A sealed review found this
+    // previously tolerated on a theory the real producer above does not
+    // support.
+    expect(
+      bad([{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }]),
+    ).toThrow(/practice item that no longer exists/);
+    expect(
+      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }]),
+    ).toThrow(/practice item that no longer exists/);
+    expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
+    // Calendar values are checked for real, not merely shape: a due date and
+    // an item's own next-review date must both name a date that exists.
+    expect(() =>
+      validateDB({ ...v12, items: v12.items.map((i) => (i.id === 'i-scheduled' ? { ...i, nextReviewDate: '2027-99-99' } : i)) }),
+    ).toThrow(/unreadable next-review date/);
+    expect(() =>
+      validateDB({ ...v12, reviews: v12.reviews.map((r) => ({ ...r, dueDate: '2026-02-30' })) }),
+    ).toThrow(/unreadable due date/);
+    // An INCOMPLETE conversion — a legacy field still set with no entry to
+    // represent it — is converted rather than accepted as-is, because the
+    // chain runs on every inbound database whatever version it claims.
+    // Declaring schema 12 (the CURRENT version, not a legacy 11) is the real
+    // counterexample: a version-gated conversion step would skip this
+    // database entirely and accept the leftover field with zero questions to
+    // show for it.
+    const halfConverted = validateDB({
+      ...v12,
+      schemaVersion: 12,
+      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'left behind' } : i)),
+    });
+    expect(halfConverted.lessonAgenda.some((e) => e.kind === 'question' && e.text === 'left behind')).toBe(true);
+    // A generated id that already names a DIFFERENT existing question is not
+    // "already represented" merely by matching id/kind/itemId — the content
+    // has to agree too. Both survive under distinct ids.
+    const halfConvertedConflict = validateDB({
+      ...v12,
+      schemaVersion: 12,
+      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'a brand new question' } : i)),
+      lessonAgenda: [
+        ...v12.lessonAgenda,
+        {
+          id: 'question:i-flag-false',
+          kind: 'question' as const,
+          itemId: 'i-flag-false',
+          instrumentId: 'setar',
+          text: 'a completely different pre-existing question',
+          createdAt: '2026-08-01T09:00:00.000Z',
+          updatedAt: '2026-08-01T09:00:00.000Z',
+        },
+      ],
+    });
+    const conflictEntry = halfConvertedConflict.lessonAgenda.find((e) => e.id === 'question:i-flag-false');
+    expect(conflictEntry?.kind === 'question' ? conflictEntry.text : undefined).toBe(
+      'a completely different pre-existing question',
+    );
+    expect(
+      halfConvertedConflict.lessonAgenda.some(
+        (e) => e.kind === 'question' && e.itemId === 'i-flag-false' && e.text === 'a brand new question',
+      ),
+    ).toBe(true);
+
+    // 4. LEGITIMATE unassigned and detached historical records PASS — proven
+    //    against the REAL producer, not a hand-built approximation of its
+    //    shape. `detachLesson` destructures `lessonId` OUT rather than
+    //    setting it undefined; a JSON round-trip must still read that as
+    //    genuinely absent, not as a lingering `null`/`undefined` key.
+    const attached = createPreparation({ id: 'prep:real', itemId: 'i-premigrated', instrumentId: 'setar', lessonId: 'L-setar-1', now: NOW });
+    const [reallyDetached] = JSON.parse(JSON.stringify(detachLesson([attached], 'L-setar-1', NOW))) as typeof v12.lessonAgenda;
+    expect(reallyDetached).not.toHaveProperty('lessonId');
+    expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
+    // The item-side equivalent, against the REAL producer `detachItem`
+    // (`deleteItem`'s own path) rather than a hand-built approximation: it
+    // destructures `itemId` OUT rather than setting it undefined, so the
+    // strict live-itemId check just proven above must never see one here.
+    const questionOnItem = createQuestion({ id: 'q:real', text: 'Real question', itemId: 'i-premigrated', instrumentId: 'setar', now: NOW });
+    const [reallyDetachedQuestion] = JSON.parse(
+      JSON.stringify(detachItem([questionOnItem], 'i-premigrated', NOW)),
+    ) as typeof v12.lessonAgenda;
+    expect(reallyDetachedQuestion).not.toHaveProperty('itemId');
+    expect(reallyDetachedQuestion).toMatchObject({ detachedFromItemId: 'i-premigrated' });
+    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetachedQuestion] })).not.toThrow();
+    expect(() =>
+      validateDB({
+        ...v12,
+        lessonAgenda: [
+          { ...sample, lessonId: undefined, detachedFromLessonId: 'L-setar-past' },
+          {
+            kind: 'question',
+            id: 'q-detached',
+            instrumentId: 'setar',
+            text: 'Asked about a piece I have since deleted',
+            askedAt: '2026-02-01T00:00:00.000Z',
+            answer: 'Yes.',
+            detachedFromItemId: 'long-gone',
+            createdAt: '2026-02-01T00:00:00.000Z',
+            updatedAt: '2026-02-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    ).not.toThrow();
+
+    // 4c. ATTACHMENT IDENTITY, at EVERY door rather than the full-backup one.
+    //     A sealed review found the duplicate-metadata check living inside
+    //     `decodeBackupFiles`, which returns on its FIRST line for a file with
+    //     no `files` key — so a state-only import (and a sync pull, an archive
+    //     restore, and hydration) installed two attachments claiming one id
+    //     unchecked. That is a one-way trap, not an untidiness: the export
+    //     emits one file per describing row, so the device's very next full
+    //     backup carries two files sharing an id and is refused by its own
+    //     importer. The check is in `validateDB` now, so it is the same
+    //     refusal at every door — including a bare database, which is the
+    //     shape a state-only file and a sync snapshot both arrive in.
+    const withAttachment = validateDB(JSON.parse(V12_TEXT));
+    expect(withAttachment.attachments.length).toBeGreaterThan(0);
+    const duplicated = {
+      ...withAttachment,
+      attachments: [...withAttachment.attachments, { ...withAttachment.attachments[0] }],
+    };
+    expect(() => validateDB(duplicated)).toThrow(/Two attachments share the id "att-1"/);
+    // Two rows sharing an id but disagreeing about their owner is the same
+    // refusal — the id IS the identity, and the blob is keyed by it.
+    expect(() =>
+      validateDB({
+        ...withAttachment,
+        attachments: [
+          ...withAttachment.attachments,
+          { ...withAttachment.attachments[0], ownerId: 'someone-else' },
+        ],
+      }),
+    ).toThrow(/Two attachments share the id/);
+    for (const { label, payload } of [
+      { label: 'wrapped export', payload: { app: 'practice-compass', schemaVersion: SCHEMA_VERSION, data: duplicated } },
+      { label: 'bare database (state-only import, sync pull, archive restore)', payload: duplicated },
+    ]) {
+      expect(() => validateDB(payload), label).toThrow(/Two attachments share the id/);
+    }
+    // Distinct ids are untouched, and so is a database with no attachments at
+    // all — this refuses a collision, it does not police attachments.
+    expect(() =>
+      validateDB({
+        ...withAttachment,
+        attachments: [...withAttachment.attachments, { ...withAttachment.attachments[0], id: 'att-2' }],
+      }),
+    ).not.toThrow();
+    expect(() => validateDB({ ...withAttachment, attachments: [] })).not.toThrow();
+
+    // 5. A NEWER schema is still refused outright rather than silently
+    //    downgraded and stripped of whatever it added.
+    expect(() => validateDB({ ...v12, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+
+    // 6. No fake repair of old data: the v11 fixture's dangling instrument
+    //    reference survives exactly as it arrived.
+    const migrated = validateDB(JSON.parse(V11_TEXT));
+    expect(migrated.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
+    expect(migrated.lessonAgenda.find((e) => e.itemId === 'i-dangling')?.instrumentId).toBe('gone');
+
+    // 7. THE ACTUAL PERSISTED-HYDRATION BOUNDARY — a sealed review found that
+    //    every check above, however thorough, only ever exercised
+    //    `validateDB`'s own import-path callers. Zustand's persist
+    //    `migrate`/`merge` called `migrateToCurrent` directly, bypassing both
+    //    the newer-schema guard and every §C7 semantic check above: a
+    //    version=13 database hydrated successfully relabelled as
+    //    schemaVersion=12 (migrateToCurrent's own final line stamps the
+    //    CURRENT version unconditionally), and an already-current v12
+    //    database carrying a dangling live itemId or an impossible askedAt
+    //    entered live state unchanged. Drive the REAL store through its own
+    //    `persist.rehydrate()` — not a hand call to `migrate`/`merge` in
+    //    isolation — so the actual wiring, including zustand's own
+    //    no-write-back-on-a-thrown-migrate behaviour, is what's under test.
+    const wrap = (db: unknown, version: number) => JSON.stringify({ state: { db }, version });
+
+    // 7a. Valid CURRENT v12 data hydrates normally.
+    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    expect(getLastHydrationError()).toBeNull();
+    expect(useStore.getState().hydrated).toBe(true);
+    expect(useStore.getState().db.lessonAgenda.length).toBe(v12.lessonAgenda.length);
+    // The REACTIVE signal App.tsx actually renders from agrees — a clean
+    // hydration carries no refusal forward from any earlier attempt.
+    expect(useHydrationStatus.getState()).toEqual({ refused: false, message: null, tooNew: false });
+
+    // 7b. Valid OLDER data migrates then hydrates — and, unlike the refusals
+    //     below, genuinely gets written back (a real upgrade worth saving).
+    const setItemsBeforeUpgrade = fakeStorage.setItemCalls();
+    fakeStorage.set(wrap((JSON.parse(V11_TEXT) as { data: unknown }).data, 11));
+    await useStore.persist.rehydrate();
+    expect(getLastHydrationError()).toBeNull();
+    expect(useStore.getState().db.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(useStore.getState().db.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
+    expect(fakeStorage.setItemCalls()).toBeGreaterThan(setItemsBeforeUpgrade);
+
+    // 7c. INVALID current-v12 data — the exact sealed counterexample, a
+    //     dangling live itemId — is refused. The previously live database is
+    //     preserved BY REFERENCE (nothing was ever `set()`), and nothing is
+    //     written back over whatever is actually on disk: refusing must not
+    //     itself become a write, or a refusal of genuinely newer data (7d)
+    //     would silently destroy it the moment this build merely NOTICES the
+    //     problem.
+    const sentinel = useStore.getState().db;
+    const setItemsBeforeRefusal = fakeStorage.setItemCalls();
+    const badCurrent: PracticeDB = {
+      ...v12,
+      lessonAgenda: [
+        ...v12.lessonAgenda,
+        {
+          kind: 'question',
+          id: 'q-hydration-refused',
+          instrumentId: 'setar',
+          text: 'x',
+          itemId: 'nonexistent',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    fakeStorage.set(wrap(badCurrent, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinel);
+    expect(getLastHydrationError()).toMatch(/practice item that no longer exists/);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeRefusal);
+    // The reactive signal flips too, and is distinguishable from "too new":
+    // this is invalid/corrupt CURRENT-version data, not an app-update case.
+    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
+    expect(useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
+
+    // 7c-ii. THE SAME hydration door refuses duplicate attachment metadata.
+    //     This is the door the state-only counterexample actually ends at: an
+    //     import that installed the duplicates would hand them straight back
+    //     to `merge` on the next load. The previously live database is
+    //     preserved by reference and nothing is written back, exactly as 7c.
+    const sentinelDup = useStore.getState().db;
+    const setItemsBeforeDup = fakeStorage.setItemCalls();
+    fakeStorage.set(
+      wrap({ ...v12, attachments: [...v12.attachments, { ...v12.attachments[0] }] }, SCHEMA_VERSION),
+    );
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelDup);
+    expect(getLastHydrationError()).toMatch(/Two attachments share the id/);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeDup);
+    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
+
+    // 7d. A NEWER-than-supported schema is refused — never passed through
+    //     migrateToCurrent and relabelled as the current version, and never
+    //     written back over the (unreadable but genuinely newer) original.
+    const sentinelNewer = useStore.getState().db;
+    const setItemsBeforeNewer = fakeStorage.setItemCalls();
+    fakeStorage.set(wrap({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1));
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelNewer);
+    expect(getLastHydrationError()).toMatch(/newer version/i);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+    // The reactive signal distinguishes THIS refusal from 7c's: `tooNew` is
+    // true here, so the UI can say "update the app" instead of "this data
+    // looks broken" — the two are not the same recovery instruction.
+    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
+    expect(useHydrationStatus.getState().message).toMatch(/newer version/i);
+
+    // 7e. REPEATED hydration stays safe: refusing the identical newer-schema
+    //     data twice in a row is idempotent (same refusal, live state never
+    //     mutated, and still no write-back the second time either)...
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db).toBe(sentinelNewer);
+    expect(getLastHydrationError()).toMatch(/newer version/i);
+    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
+    // ...and re-hydrating the same valid data twice in a row produces
+    // byte-identical live state both times.
+    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
+    await useStore.persist.rehydrate();
+    const firstHydrate = JSON.stringify(useStore.getState().db);
+    await useStore.persist.rehydrate();
+    expect(JSON.stringify(useStore.getState().db)).toBe(firstHydrate);
+    expect(getLastHydrationError()).toBeNull();
+
+    // 7f/7g. THE GENUINE COLD START — a sealed review found every case above
+    //     (7a-7e) runs on a store that had already hydrated successfully at
+    //     least once (module import itself reads empty storage and hydrates
+    //     fine before this test body even starts), so none of them prove
+    //     what a device experiences the very FIRST time it ever hydrates
+    //     with already-bad persisted bytes: `hydrated` never turns true,
+    //     zustand's own `onFinishHydration` is wired to the success path
+    //     only, and — before this fix — nothing reactive told the UI why,
+    //     so `App.tsx` stayed on "Loading…" forever. `vi.resetModules()`
+    //     plus a dynamic re-import gets a genuinely fresh store instance —
+    //     its own never-hydrated `hydrated`/`getLastHydrationError`/
+    //     `useHydrationStatus` — while `fakeStorage` (bound outside the
+    //     module graph via `vi.hoisted`) still feeds it through the same
+    //     mocked `idbStorage`, so this is still the REAL Zustand persistence
+    //     path, not a hand call to `migrate`/`merge`.
+    const coldStart = async (payload: unknown, version: number) => {
+      fakeStorage.set(wrap(payload, version));
+      const writesBefore = fakeStorage.setItemCalls();
+      vi.resetModules();
+      const fresh = await import('../store/useStore');
+      await fresh.useStore.persist.rehydrate();
+      expect(fresh.useStore.getState().hydrated).toBe(false);
+      expect(fakeStorage.setItemCalls()).toBe(writesBefore);
+      return fresh;
+    };
+
+    // 7f. Invalid CURRENT-version data, never successfully hydrated before:
+    //     refused, and the REACTIVE state (not just the internal
+    //     `lastHydrationError` variable) reports it as recoverable data
+    //     corruption rather than a schema mismatch.
+    const coldInvalid = await coldStart(badCurrent, SCHEMA_VERSION);
+    expect(coldInvalid.getLastHydrationError()).toMatch(/practice item that no longer exists/);
+    expect(coldInvalid.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
+    expect(coldInvalid.useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
+
+    // 7g. A newer-than-supported schema, never successfully hydrated before:
+    //     refused, and flagged distinctly as "too new" — an app update, not
+    //     a data restore, is the fix this device actually needs.
+    const coldNewer = await coldStart({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1);
+    expect(coldNewer.getLastHydrationError()).toMatch(/newer version/i);
+    expect(coldNewer.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
+    expect(coldNewer.useHydrationStatus.getState().message).toMatch(/newer version/i);
+
+    // 8. THE RECOVERY ROUTE ITSELF, RENDERED — a sealed review found that
+    //    7f/7g above, however real the store wiring, never render `App`:
+    //    the corrupt-data refusal it produces tells the owner to "use Import
+    //    in Settings", but Settings — and every other route — mounts only
+    //    once `hydrated` is true, which this exact refusal prevents. Drive
+    //    the REAL App component in a real browser (the SAME Playwright
+    //    harness the two journey tests use, never a hand call to
+    //    `recoverFromRefusedHydration`), so this proves the recovery action
+    //    is actually reachable and actually works, not merely that the store
+    //    computes the right flags.
+    const app = await openPracticeApp({ now: NOW });
+    try {
+      // 8a. Seed the SAME invalid-current-version bytes 7f used, straight
+      //     into the real app's own IndexedDB, then reload — the very first
+      //     hydration attempt this real page ever makes is a refusal.
+      await writePersistedState(app, { db: badCurrent }, SCHEMA_VERSION);
+      await app.page.reload();
+      await app.page.getByText(/data couldn.t be loaded safely/).waitFor({ timeout: 20_000 });
+      await app.page.getByText(/looks invalid or corrupted/).waitFor();
+      const restoreInput = app.page.getByLabel('Restore backup file');
+      await app.page.getByRole('button', { name: /Restore from backup/ }).waitFor();
+      // Rendering the refusal screen — even once its recovery control has
+      // mounted and become interactive — writes NOTHING on its own: the
+      // refused bytes are still exactly what was seeded above.
+      const beforeRecovery = await readPersistedState(app);
+      expect(beforeRecovery).toEqual({ state: { db: badCurrent }, version: SCHEMA_VERSION });
+
+      // 8b. An INVALID recovery file is rejected through REAL §C7 validation
+      //     (the same dangling-itemId rule 7c/7f already exercise headlessly)
+      //     — and the refused bytes already on this device are NOT silently
+      //     overwritten by the failed attempt.
+      await restoreInput.setInputFiles({
+        name: 'bad.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify(badCurrent), 'utf8'),
+      });
+      await app.page.getByText(/Import failed:/).waitFor({ timeout: 20_000 });
+      await app.page.getByText(/data couldn.t be loaded safely/).waitFor();
+      expect(await readPersistedState(app)).toEqual(beforeRecovery);
+
+      // 8c. A VALID backup genuinely recovers the app — reachable BEFORE
+      //     hydration ever succeeded, installed through the real store path
+      //     (`recoverFromRefusedHydration` -> `importFullBackup` ->
+      //     `importDB`), the identical wiring every other inbound door uses.
+      // A real Settings export is a FULL backup — the data plus the bytes of
+      // every file it describes — so the recovery file here carries `att-1`'s
+      // bytes with it. A data-only file naming an attachment this device does
+      // not hold is refused at this door like any other (see `backup.ts`): it
+      // would install metadata for bytes that are nowhere, and the device's own
+      // next export would then be a backup it could not import back.
+      await restoreInput.setInputFiles({
+        name: 'good.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(
+          JSON.stringify({
+            ...(JSON.parse(serializeExport(v12, NOW)) as object),
+            files: (JSON.parse(V11_TEXT) as { files: unknown[] }).files,
+          }),
+          'utf8',
+        ),
+      });
+      await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
+
+      // 8d. The recovery is DURABLE, not a live-state patch that a reload
+      //     would lose: reloading hydrates cleanly from what was actually
+      //     written, carrying the recovered agenda with it.
+      await reload(app);
+      const after = await readPersistedState(app);
+      const afterDb = (after.state as { db: PracticeDB }).db;
+      expect(afterDb.lessonAgenda.length).toBe(v12.lessonAgenda.length);
+
+      // 8e. A NEWER-than-supported schema offers NO recovery control at
+      //     all — there is no safe import/downgrade for it, only "update the
+      //     app", so nothing here could let the owner mistake one for the
+      //     other.
+      await writePersistedState(app, { db: { ...v12, schemaVersion: SCHEMA_VERSION + 1 } }, SCHEMA_VERSION + 1);
+      const beforeNewerRefusal = await readPersistedState(app);
+      await app.page.reload();
+      await app.page.getByText(/This device holds data saved by a newer version/).waitFor({ timeout: 20_000 });
+      expect(await app.page.getByRole('button', { name: /Restore from backup/ }).count()).toBe(0);
+      expect(await app.page.getByLabel('Restore backup file').count()).toBe(0);
+      expect(await readPersistedState(app)).toEqual(beforeNewerRefusal);
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-16 — C8: the rollout / rollback route
+// ---------------------------------------------------------------------------
+
+describe('the documented rollback route', () => {
+  it('rollback fixtures preserve exports without pretending v12 can be downgraded', () => {
+    // The owner's PRE-UPGRADE export restores into this build, upgrading
+    // deterministically — the same result twice, whatever day it is run.
+    const first = validateDB(JSON.parse(V11_TEXT));
+    const second = validateDB(JSON.parse(V11_TEXT));
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
+    expect(first.schemaVersion).toBe(SCHEMA_VERSION);
+
+    // Attachment METADATA and the fixture's file bytes both survive the trip:
+    // the metadata through the database, the bytes as the backup's own files
+    // array, which `importFullBackup` writes before the data is installed.
+    expect(first.attachments).toHaveLength(1);
+    expect(first.attachments[0]).toMatchObject({ id: 'att-1', ownerType: 'item', ownerId: 'i-scheduled' });
+    const files = (JSON.parse(V11_TEXT) as { files: { id: string; data: string }[] }).files;
+    expect(files.map((f) => f.id)).toEqual(['att-1']);
+    expect(atob(files[0].data)).toBe('score bytes');
+
+    // A POST-UPGRADE export keeps everything v12 added — answers, manual
+    // dates, provenance and SR state.
+    const answered: PracticeDB = {
+      ...first,
+      lessonAgenda: first.lessonAgenda.map((e) =>
+        e.kind === 'question' && e.itemId === 'i-q-only'
+          ? { ...e, lessonId: 'L-setar-1', askedAt: '2027-03-05T10:00:00.000Z', answer: 'Tone first.' }
+          : e,
+      ),
+    };
+    const restored = validateDB(JSON.parse(serializeExport(answered)));
+    const q = restored.lessonAgenda.find((e) => e.kind === 'question' && e.itemId === 'i-q-only')!;
+    expect(q).toMatchObject({ lessonId: 'L-setar-1', answer: 'Tone first.' });
+    expect(q.kind === 'question' && q.askedAt).toBe('2027-03-05T10:00:00.000Z');
+    const manual = restored.items.find((i) => i.id === 'i-scheduled')!;
+    expect(manual.nextReviewDate).toBe('2027-01-15');
+    expect(manual.srEase).toBe(2.6);
+
+    // THERE IS NO DOWNGRADE. An older build refuses a v12 file outright, and
+    // this build must not pretend otherwise by rewriting the number or
+    // dropping the new fields: the exported file says 12 and carries them.
+    const exported = JSON.parse(serializeExport(answered)) as { schemaVersion: number; data: PracticeDB };
+    expect(exported.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(exported.data.lessonAgenda.length).toBeGreaterThan(0);
+    expect(() => validateDB({ ...first, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+    // An old v11 build can only restore an explicitly chosen PRE-upgrade
+    // backup — which still exists, unchanged, and still says 11.
+    expect((JSON.parse(V11_TEXT) as { schemaVersion: number }).schemaVersion).toBe(11);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-15 — the v14 source graph across the migration and validation boundary.
+// ---------------------------------------------------------------------------
+
+describe('the v14 source graph at the schema boundary', () => {
+  const NOW = new Date('2026-09-17T09:00:00.000Z');
+  const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
+
+  /** A database with a real accepted graph in it, built by the real planner. */
+  function withGraph(): PracticeDB {
+    const base = validateDB(legacy());
+    const index = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT));
+    const plan = planArchiveImport({ db: base, index, instrumentId: 'inst-setar', now: NOW });
+    return applyArchiveImport(base, plan);
+  }
+
+  it('archive schema migration and validation preserve the whole source graph', () => {
+    // --- v13 -> v14 is ADDITIVE ---------------------------------------------
+    const source = legacy().data;
+    const migrated = validateDB(legacy());
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migrated.archiveSources).toEqual([]);
+    // Every legacy field comes through unchanged apart from the schema number
+    // and the new, empty collection.
+    const strip = (db: PracticeDB) => JSON.stringify({ ...db, schemaVersion: 0, archiveSources: [] });
+    expect(strip(migrated)).toBe(strip({ ...source, archiveSources: [] } as PracticeDB));
+    expect(migrated.blocks).toEqual(source.blocks);
+    expect(migrated.reviews).toEqual(source.reviews);
+    expect(migrated.lessonAgenda).toEqual(source.lessonAgenda);
+    expect(migrated.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+
+    // The WHOLE chain from the oldest supported version, and a repeat of it.
+    const fromOldest = migrateToCurrent(source, 2);
+    expect(Array.isArray(fromOldest.archiveSources)).toBe(true);
+    expect(migrateToCurrent(fromOldest, SCHEMA_VERSION)).toEqual(fromOldest);
+    // A database DECLARING the current schema but carrying no collection at
+    // all is still given one — gating on the version would hydrate an app with
+    // no source state and no way to say so.
+    const stray = { ...source, schemaVersion: SCHEMA_VERSION } as unknown as Record<string, unknown>;
+    delete stray.archiveSources;
+    expect(validateDB(stray).archiveSources).toEqual([]);
+    // ...and a stray LEGACY field on a current-declared database does not slip
+    // past validation just because the version says it should not be there.
+    expect(() =>
+      validateDB({
+        ...source,
+        schemaVersion: SCHEMA_VERSION,
+        lessonAgenda: [{ id: 'bad', kind: 'question', instrumentId: 'inst-setar', text: '' }],
+      }),
+    ).toThrow();
+
+    // --- the collection is RECONSTRUCTED, not merely accepted ---------------
+    const graphed = withGraph();
+    expect(graphed.archiveSources).toHaveLength(1);
+    const roundTripped = validateDB(JSON.parse(serializeExport(graphed, NOW)));
+    expect(roundTripped.archiveSources).toEqual(graphed.archiveSources);
+    expect(roundTripped.items.filter((i) => i.source).length).toBe(94);
+    expect(roundTripped.lessons.filter((l) => l.source).length).toBeGreaterThan(0);
+    // Revalidating its own output changes nothing, and an export round trip is
+    // byte-identical.
+    expect(serializeExport(validateDB(roundTripped), NOW)).toBe(serializeExport(graphed, NOW));
+
+    // --- every new persisted field is CHECKED --------------------------------
+    const mutate = (fn: (db: PracticeDB) => void): unknown => {
+      const copy = JSON.parse(JSON.stringify(graphed)) as PracticeDB;
+      fn(copy);
+      return copy;
+    };
+    const refuses = (fn: (db: PracticeDB) => void, pattern: RegExp) =>
+      expect(() => validateDB(mutate(fn))).toThrow(pattern);
+
+    refuses((d) => {
+      d.archiveSources.push({ ...d.archiveSources[0]! });
+    }, /Two archive sources share the id/);
+    refuses((d) => {
+      d.archiveSources[0]!.pieces.push({ ...d.archiveSources[0]!.pieces[0]! });
+    }, /two pieces keyed/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions.push({ ...d.archiveSources[0]!.sessions[0]! });
+    }, /two entries for session/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { indexHash: unknown }).indexHash = 42;
+    }, /no index hash/);
+    refuses((d) => {
+      d.archiveSources[0]!.instrumentId = 'no-such-instrument';
+    }, /instrument that does not exist/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.path = '../../etc/passwd';
+    }, /unsafe resource path/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.pieces = ['not-a-registry-key'];
+    }, /which this source does not describe/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { group: unknown }).group = { n: 1 };
+    }, /invalid part group/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.date = '2026-02-30';
+    }, /unreadable date/);
+    refuses((d) => {
+      d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
+    }, /suppression of an unknown kind/);
+
+    // --- EVERY NESTED FIELD A PRODUCTION READER DEREFERENCES ----------------
+    // The validator used to check a resource's path and its part group and
+    // walk straight past the rest of the graph, so a malformed nested value
+    // was accepted, persisted, and then thrown on by the first reader to
+    // touch it. These are that whole family, not one counterexample: the
+    // roles list `repeatChains` calls `.includes` on, the alias list
+    // `planArchiveImport` spreads, the kind/title `resourceReference` reads,
+    // and the session fields `sessionsForPiece` and the material composition
+    // walk.
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { roles: unknown }).roles = null;
+    }, /unreadable role list/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.members[0]!.roles = ['not-a-real-role'];
+    }, /unknown role/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { key: unknown }).key = null;
+    }, /claims an unknown piece/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = null;
+    }, /unreadable alias list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = [1, 2];
+    }, /unreadable alias list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { composer: unknown }).composer = { name: 'x' };
+    }, /unreadable composer/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { sessions: unknown }).sessions = ['13'];
+    }, /invalid session number/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { provisional: unknown }).provisional = 'yes';
+    }, /unreadable flag/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { kind: unknown }).kind = 'executable';
+    }, /unknown kind/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { role: unknown }).role = null;
+    }, /unknown role/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { title: unknown }).title = 42;
+    }, /unreadable title/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { pieces: unknown }).pieces = null;
+    }, /unreadable piece list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { part: unknown }).part = '2';
+    }, /unreadable part number/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { size: unknown }).size = '10mb';
+    }, /unreadable size/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { resources: unknown }).resources = null;
+    }, /no resource list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { members: unknown }).members = null;
+    }, /no membership list/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.folder = '../elsewhere';
+    }, /unsafe folder path/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { roster: unknown }).roster = null;
+    }, /unreadable roster/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.roster = ['not-in-the-registry'];
+    }, /which it does not describe/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { rosterTrusted: unknown }).rosterTrusted = 'maybe';
+    }, /unreadable flag/);
+    refuses((d) => {
+      d.archiveSources[0]!.renames = [{ from: '../secret', to: 'x' }];
+    }, /rename with an unsafe path/);
+    refuses((d) => {
+      d.archiveSources[0]!.renames = [
+        { from: 'a/b.mp4', to: 'a/c.mp4' },
+        { from: 'a/b.mp4', to: 'a/d.mp4' },
+      ];
+    }, /more than one destination/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { diagnostics: unknown }).diagnostics = [{ path: 'x' }];
+    }, /unreadable diagnostic entry/);
+    refuses((d) => {
+      (d.archiveSources[0]!.suppressions as unknown[]) = [
+        { kind: 'resource', ref: 'x', itemId: 42, at: '2026-01-01T00:00:00.000Z' },
+      ];
+    }, /suppression with an unreadable item/);
+    refuses((d) => {
+      (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
+    }, /suppression with no timestamp/);
+
+    // The POSITIVE half: a graph this door ACCEPTS is one every production
+    // reader can walk without throwing. The counterexample above reached
+    // `repeatChains` and crashed the material list; this asserts the whole
+    // reader surface over the whole accepted graph, not one call.
+    const accepted = validateDB(graphed);
+    const live = accepted.archiveSources[0]!;
+    for (const piece of live.pieces) {
+      expect(Array.isArray(repeatChains(live, piece.key))).toBe(true);
+      expect(Array.isArray(resourcesForPiece(live, piece.key))).toBe(true);
+      for (const r of resourcesForPiece(live, piece.key)) {
+        expect(typeof resourceReference(live.id, r).title).toBe('string');
+      }
+      expect([...new Set([piece.key, ...piece.aliases])].length).toBeGreaterThan(0);
+    }
+    for (const sess of live.sessions) {
+      expect(Array.isArray(membersForSession(live, sess.n))).toBe(true);
+      expect(Array.isArray(resourcesForSession(live, sess.n))).toBe(true);
+    }
+
+    // Bindings: dangling, duplicated, or on the wrong instrument.
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'setar-classes', pieceKey: 'not-in-the-registry' };
+    }, /which archive "setar-classes" does not describe/);
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'no-such-archive', pieceKey: 'عراق' };
+    }, /which is not present/);
+    refuses((d) => {
+      const bound = d.items.find((i) => i.source)!;
+      // 'own-iraq' carries no binding of its own, so this is a genuine second
+      // claim on one canonical piece.
+      d.items.find((i) => i.id === 'own-iraq')!.source = { ...bound.source! };
+    }, /Two items are bound to piece/);
+    refuses((d) => {
+      d.instruments.push({ ...d.instruments[0]!, id: 'inst-tar', name: 'Tar' });
+      d.items.find((i) => i.source)!.instrumentId = 'inst-tar';
+    }, /belongs to another instrument/);
+    refuses((d) => {
+      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { archiveId: 'setar-classes', sessionN: 4242 };
+    }, /which archive "setar-classes" does not describe/);
+    refuses((d) => {
+      const bound = d.lessons.find((l) => l.source)!;
+      // The owner's own upcoming class 38 — deliberately an UNBOUND record, so
+      // this really is a second claim on one session rather than a no-op.
+      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { ...bound.source! };
+    }, /Two lessons are bound to session/);
+    // Manual direct item references obey the same path rules.
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.references = [
+        { id: 'x', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: '2026-01-01T00:00:00.000Z' },
+      ];
+    }, /unsafe reference path/);
+
+    // --- a MISSING FILE is a valid state, not a broken graph ----------------
+    const unavailable = mutate((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.unavailable = true;
+      d.archiveSources[0]!.pieces[0]!.unavailable = true;
+    }) as PracticeDB;
+    expect(() => validateDB(unavailable)).not.toThrow();
+    expect(validateDB(unavailable).archiveSources[0]!.pieces[0]!.unavailable).toBe(true);
+
+    // --- a newer schema, and an unknown index format, are refused -----------
+    expect(() => validateDB({ ...graphed, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+    expect(() => decodeSourceIndex({ format: 'something-else', version: 1 })).toThrow(/not a Setar archive index/);
+    expect(() => decodeSourceIndex({ ...JSON.parse(SETAR_INDEX_TEXT), version: 99 })).toThrow(/newer scanner/);
+
+    // --- nothing above disturbed practice text or the attachment rules ------
+    expect(roundTripped.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+    expect(roundTripped.blocks[0]!.observation).toBe('The return is still heavy.');
+    expect(roundTripped.attachments).toEqual(graphed.attachments);
+    const attachment = {
+      id: 'att-1',
+      ownerType: 'lesson' as const,
+      ownerId: graphed.lessons[0]!.id,
+      name: 'handout.pdf',
+      mime: 'application/pdf',
+      size: 2048,
+      kind: 'pdf' as const,
+      createdAt: '2026-09-10T19:00:00.000Z',
+    };
+    expect(validateDB({ ...graphed, attachments: [attachment] }).attachments).toEqual([attachment]);
+    expect(() => validateDB({ ...graphed, attachments: [attachment, attachment] })).toThrow(/share the id/);
+  });
+});
+```
+
+### src/domain/sourceArchive.ts
+
+```
+import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
+import { canonicalStringify, sha256Hex } from './canonical';
+
+// ---------------------------------------------------------------------------
+// The Setar class archive as the APP sees it.
+//
+// The app never parses a filename. A read-only scanner (scripts/scan-setar-
+// classes.mjs) publishes a deterministic JSON index; everything here decodes
+// that index, keeps the accepted graph, and answers questions about it.
+//
+// Pure: no React, no clock, no network. The decoder is a TRUST BOUNDARY — it
+// refuses what it cannot vouch for rather than coercing it, because every
+// identity downstream (which lesson, which piece, which file) is taken from
+// this data verbatim.
+// ---------------------------------------------------------------------------
+
+export const INDEX_FORMAT = 'setar-archive-index';
+export const INDEX_VERSION = 1;
+/** The one archive this lane knows. Tar/Guitar do not share this grammar. */
+export const SETAR_ARCHIVE_ID = 'setar-classes';
+
+/** A published index larger than this is refused rather than parsed. */
+export const MAX_INDEX_BYTES = 4 * 1024 * 1024;
+
+// --- the published index ---------------------------------------------------
+
+export interface SourcePiece {
+  /** `canonical_fa` — the BYTE-EXACT join key. Never folded or transliterated. */
+  key: string;
+  form: string;
+  piece: string;
+  dastgah: string;
+  composer: string;
+  /** Literal historical spellings, for SEARCH only — never for identity. */
+  aliases: string[];
+  sessions: number[];
+  notes: string;
+  provisional?: boolean;
+  mediumConfidence?: boolean;
+  /** The source no longer describes this piece; its provenance is kept. */
+  unavailable?: boolean;
+}
+
+export type SourceRole = string;
+export type SourceKind = 'video' | 'score' | 'photo';
+
+export interface SourceResource {
+  /** Archive-RELATIVE path. Never an absolute URL: transport is per device. */
+  path: string;
+  role: SourceRole;
+  kind: SourceKind;
+  title: string;
+  part?: number | null;
+  size?: number;
+  /** Canonical piece keys this resource is material for. Empty = lesson-level. */
+  pieces: string[];
+  /** Parts of ONE logical demonstration share a group. */
+  group?: string | null;
+  unavailable?: boolean;
+}
+
+export interface SourceMember {
+  key: string;
+  roles: SourceRole[];
+}
+
+export interface SourceSession {
+  n: number;
+  date: ISODate;
+  folder: string;
+  roster: string[];
+  rosterTrusted: boolean;
+  hasClassRecording: boolean;
+  resources: SourceResource[];
+  members: SourceMember[];
+  unavailable?: boolean;
+}
+
+export interface SourceRename {
+  from: string;
+  to: string;
+}
+
+export interface SourceDiagnostic {
+  path: string;
+  reason: string;
+}
+
+export interface SourceIndex {
+  format: typeof INDEX_FORMAT;
+  version: number;
+  archiveId: string;
+  pieces: SourcePiece[];
+  sessions: SourceSession[];
+  renames: SourceRename[];
+  diagnostics: SourceDiagnostic[];
+  contentHash: string;
+}
+
+// --- what the database keeps ----------------------------------------------
+
+/** An owner decision that a refresh, a reload and a sync must all respect. */
+export interface SourceSuppression {
+  /** `piece` / `session` / `resource` (a hidden file), `link` (item-to-lesson). */
+  kind: 'piece' | 'session' | 'resource' | 'link';
+  /** Piece key, session number, resource path, or `sessionN:pieceKey`. */
+  ref: string;
+  /** A resource hidden on ONE item only — never on its siblings. */
+  itemId?: ID;
+  at: ISODateTime;
+}
+
+/**
+ * The last accepted source graph, persisted so material, provenance and the
+ * next refresh all work offline. One row per archive; items and lessons carry
+ * only a KEY into it, so a resource is never copied per item.
+ */
+export interface ArchiveSource {
+  id: ID;
+  instrumentId: ID;
+  indexHash: string;
+  acceptedAt: ISODateTime;
+  pieces: SourcePiece[];
+  sessions: SourceSession[];
+  renames: SourceRename[];
+  diagnostics: SourceDiagnostic[];
+  suppressions: SourceSuppression[];
+}
+
+/** An item's binding to a canonical piece in an archive. */
+export interface ItemSourceRef {
+  archiveId: ID;
+  pieceKey: string;
+}
+
+/** A lesson's binding to one archive session. */
+export interface LessonSourceRef {
+  archiveId: ID;
+  sessionN: number;
+}
+
+// --- path safety -----------------------------------------------------------
+
+/**
+ * An archive path is a relative POSIX path of plain segments. Traversal,
+ * absolute paths, backslashes, URL schemes, credentials and percent-encoded
+ * separators are REFUSED, never sanitised: a rewritten path names a different
+ * file, and this graph is an identity table.
+ *
+ * Deliberately a small copy of the scanner's own predicate rather than an
+ * import — `scripts/` is a Node operator tool that must not be pulled into the
+ * browser bundle, and this rule is eight lines.
+ */
+export function isSafeSourcePath(p: unknown): p is string {
+  if (typeof p !== 'string' || !p) return false;
+  if (p.length > 1024) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(p)) return false;
+  if (p.startsWith('/') || p.includes('\\')) return false;
+  if (/%2f|%5c/i.test(p)) return false;
+  if (p.includes('@')) return false; // no user:pass@host smuggled in
+  return p.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
+}
+
+// --- deterministic identity ------------------------------------------------
+
+const NUL = String.fromCharCode(0);
+
+/**
+ * FNV-1a over the UTF-8 bytes, twice, for a stable 64-bit hex digest. Two
+ * devices importing the same source must MINT THE SAME ID for the same logical
+ * entity, or the next sync sees two records for one piece. A readable
+ * `src:<archive>:piece:<farsi key>` would be equally deterministic but puts
+ * Farsi into every route parameter; this keeps ids ASCII.
+ */
+function stableHash(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (const byte of bytes) {
+    a = Math.imul(a ^ byte, 0x01000193) >>> 0;
+    b = Math.imul(b ^ byte, 0x85ebca6b) >>> 0;
+  }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+
+/** Deterministic id for the item a canonical piece becomes. */
+export function sourceItemId(archiveId: string, pieceKey: string): ID {
+  return `src-${stableHash(`${archiveId}${NUL}piece${NUL}${pieceKey}`)}`;
+}
+
+/** Deterministic id for the historical lesson an archive session becomes. */
+export function sourceLessonId(archiveId: string, sessionN: number): ID {
+  return `src-${stableHash(`${archiveId}${NUL}session${NUL}${sessionN}`)}`;
+}
+
+/** Deterministic id for a resource reference minted from the graph. */
+export function sourceResourceId(archiveId: string, path: string): ID {
+  return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
+}
+
+// --- decoding --------------------------------------------------------------
+
+/** The fixed role vocabulary, byte-exact from the archive's own contract. */
+export const SOURCE_ROLES: readonly string[] = [
+  'ضبط-کلاس', // class recording
+  'تمرین-من', // my practice
+  'تصحیح', // corrected notation
+  'تکلیف', // homework
+  'جزوه', // handout
+  'نمونه', // teacher demonstration
+  'نت', // clean notation
+];
+
+/**
+ * Plain-English names for the archive's own role words, for UI copy only.
+ * The Farsi word stays the identity everywhere else — this is a LABEL map,
+ * exactly like `ITEM_STATUS_LABELS`, and never a second vocabulary.
+ */
+export const SOURCE_ROLE_LABELS: Record<string, string> = {
+  [SOURCE_ROLES[0]!]: 'class recording',
+  [SOURCE_ROLES[1]!]: 'my practice',
+  [SOURCE_ROLES[2]!]: 'teacher’s corrections',
+  [SOURCE_ROLES[3]!]: 'homework',
+  [SOURCE_ROLES[4]!]: 'handout',
+  [SOURCE_ROLES[5]!]: 'teacher’s demonstration',
+  [SOURCE_ROLES[6]!]: 'notation',
+};
+
+export const CLASS_ROLE = SOURCE_ROLES[0];
+export const PERSONAL_ROLE = SOURCE_ROLES[1];
+export const CORRECTION_ROLE = SOURCE_ROLES[2];
+export const DEMO_ROLE = SOURCE_ROLES[5];
+export const NOTATION_ROLE = SOURCE_ROLES[6];
+
+const ROLE_SET = new Set<string>(SOURCE_ROLES);
+const KIND_SET = new Set<string>(['video', 'score', 'photo']);
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function str(v: unknown, what: string): string {
+  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
+  return v;
+}
+
+function strList(v: unknown, what: string): string[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) throw new Error(`${what} must be a list of text.`);
+  return v as string[];
+}
+
+/** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
+export function isValidSourceDate(v: unknown): v is ISODate {
+  if (typeof v !== 'string') return false;
+  const m = DATE_RE.exec(v);
+  if (!m) return false;
+  const [, y, mo, d] = m;
+  const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
+}
+
+/**
+ * Validate an unknown published index into a {@link SourceIndex}, or throw with
+ * a message the owner can act on.
+ *
+ * A NEWER version is refused rather than read leniently: a future scanner may
+ * mean something different by the same field, and this graph decides which
+ * file is which piece.
+ */
+export function decodeSourceIndex(input: unknown): SourceIndex {
+  if (!isRecord(input)) throw new Error('The source index is not a valid object.');
+  if (input.format !== INDEX_FORMAT) throw new Error('That file is not a Setar archive index.');
+  if (typeof input.version !== 'number' || !Number.isInteger(input.version)) {
+    throw new Error('The source index has no usable version.');
+  }
+  if (input.version > INDEX_VERSION) {
+    throw new Error(
+      `This index was written by a newer scanner (version ${input.version}) than this app understands (version ${INDEX_VERSION}). Update the app.`,
+    );
+  }
+  if (input.version < INDEX_VERSION) {
+    throw new Error(`This index is from an older scanner (version ${input.version}). Re-run the scanner.`);
+  }
+  const archiveId = str(input.archiveId, 'The index archive id');
+  if (!archiveId.trim()) throw new Error('The index archive id is empty.');
+  if (typeof input.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(input.contentHash)) {
+    throw new Error('The index carries no usable content hash.');
+  }
+
+  if (!Array.isArray(input.pieces)) throw new Error('The index has no piece registry.');
+  if (!Array.isArray(input.sessions)) throw new Error('The index has no sessions.');
+
+  const pieces: SourcePiece[] = [];
+  const keys = new Set<string>();
+  for (const raw of input.pieces) {
+    if (!isRecord(raw)) throw new Error('A registry entry is not an object.');
+    const key = str(raw.key, 'A registry entry key');
+    if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
+    if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
+    keys.add(key);
+    const sessions = Array.isArray(raw.sessions) ? raw.sessions : [];
+    if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
+      throw new Error(`Registry entry "${key}" has an invalid session number.`);
+    }
+    pieces.push({
+      key,
+      form: str(raw.form ?? '', 'form'),
+      piece: str(raw.piece ?? '', 'piece'),
+      dastgah: str(raw.dastgah ?? '', 'dastgah'),
+      composer: str(raw.composer ?? '', 'composer'),
+      aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
+      sessions: sessions as number[],
+      notes: str(raw.notes ?? '', 'notes'),
+      ...(raw.provisional ? { provisional: true } : {}),
+      ...(raw.mediumConfidence ? { mediumConfidence: true } : {}),
+    });
+  }
+
+  const sessions: SourceSession[] = [];
+  const seenN = new Set<number>();
+  const seenPaths = new Set<string>();
+  for (const raw of input.sessions) {
+    if (!isRecord(raw)) throw new Error('A session entry is not an object.');
+    const n = raw.n;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) throw new Error('A session has no usable number.');
+    if (seenN.has(n)) throw new Error(`Two entries claim session ${n}.`);
+    seenN.add(n);
+    if (!isValidSourceDate(raw.date)) throw new Error(`Session ${n} has an unreadable date.`);
+    const folder = str(raw.folder, `Session ${n} folder`);
+    if (!isSafeSourcePath(folder)) throw new Error(`Session ${n} has an unsafe folder path.`);
+    const roster = strList(raw.roster, `Session ${n} roster`);
+    for (const k of roster) {
+      if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
+    }
+    const resources: SourceResource[] = [];
+    for (const r of Array.isArray(raw.resources) ? raw.resources : []) {
+      if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
+      const path = r.path;
+      if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
+      if (seenPaths.has(path)) throw new Error(`Two resources share the path "${path}".`);
+      seenPaths.add(path);
+      const role = str(r.role, 'A resource role');
+      if (!ROLE_SET.has(role)) throw new Error(`Resource "${path}" has an unknown role.`);
+      const kind = str(r.kind, 'A resource kind');
+      if (!KIND_SET.has(kind)) throw new Error(`Resource "${path}" has an unknown kind "${kind}".`);
+      const forPieces = strList(r.pieces, `Resource "${path}" pieces`);
+      for (const k of forPieces) {
+        if (!keys.has(k)) throw new Error(`Resource "${path}" names piece "${k}", which is not in the registry.`);
+      }
+      resources.push({
+        path,
+        role,
+        kind: kind as SourceKind,
+        title: str(r.title ?? '', 'A resource title'),
+        part: typeof r.part === 'number' ? r.part : null,
+        ...(typeof r.size === 'number' ? { size: r.size } : {}),
+        pieces: forPieces,
+        group: typeof r.group === 'string' ? r.group : null,
+      });
+    }
+    const members: SourceMember[] = [];
+    for (const m of Array.isArray(raw.members) ? raw.members : []) {
+      if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
+      const key = str(m.key, 'A membership key');
+      if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
+      const roles = strList(m.roles, `Membership "${key}" roles`);
+      for (const role of roles) if (!ROLE_SET.has(role)) throw new Error(`Membership "${key}" has an unknown role.`);
+      members.push({ key, roles });
+    }
+    sessions.push({
+      n,
+      date: raw.date as ISODate,
+      folder,
+      roster,
+      rosterTrusted: raw.rosterTrusted !== false,
+      hasClassRecording: raw.hasClassRecording === true,
+      resources,
+      members,
+    });
+  }
+
+  const renames: SourceRename[] = [];
+  const froms = new Set<string>();
+  for (const r of Array.isArray(input.renames) ? input.renames : []) {
+    if (!isRecord(r)) throw new Error('A rename entry is not an object.');
+    if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
+    if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
+    froms.add(r.from);
+    renames.push({ from: r.from, to: r.to });
+  }
+
+  const diagnostics: SourceDiagnostic[] = [];
+  for (const d of Array.isArray(input.diagnostics) ? input.diagnostics : []) {
+    if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
+    diagnostics.push({
+      path: str(d.path ?? '', 'A diagnostic path'),
+      reason: str(d.reason ?? '', 'A diagnostic reason'),
+    });
+  }
+
+  // The decoder's own normalisation, held to the SAME grammar the persisted
+  // graph is held to. Every field below has just been built here, so this can
+  // only fail if the two ever drift — which is exactly what it exists to stop.
+  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
+  if (bad) throw new Error(bad);
+
+  return {
+    format: INDEX_FORMAT,
+    version: INDEX_VERSION,
+    archiveId,
+    pieces,
+    sessions,
+    renames,
+    diagnostics,
+    contentHash: input.contentHash,
+  };
+}
+
+/**
+ * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
+ * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
+ * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
+ * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
+ * that serialisation for JSON-derived data.
+ */
+async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
+  const body = { ...parsed };
+  delete body.contentHash;
+  delete body.generatedAt;
+  return sha256Hex(canonicalStringify(body));
+}
+
+/**
+ * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
+ *
+ * `contentHash` is not a checksum the app may take on faith — it is the
+ * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
+ * accepted to decide that nothing has changed, so content altered in transit
+ * (or in the repository) under a retained old hash would be reported "Already
+ * current" and the changed facts silently ignored. Recomputing it here, at the
+ * ONE boundary both the GitHub fetch and the file fallback pass through, makes
+ * that fail closed instead.
+ *
+ * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
+ * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
+ * that build an index object in memory call it directly and have no transport.
+ *
+ * Order matters: size → parse → structure → digest, so a structurally broken
+ * file reports the error the owner can act on rather than a hash mismatch.
+ */
+export async function parseSourceIndex(text: string): Promise<SourceIndex> {
+  if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('That file is not valid JSON.');
+  }
+  const index = decodeSourceIndex(parsed);
+  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
+  if (actual !== index.contentHash) {
+    throw new Error(
+      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
+    );
+  }
+  return index;
+}
+
+// --- what counts as an UPCOMING class ---------------------------------------
+
+/**
+ * THE one predicate for "is this lesson still ahead of me". Every caller that
+ * asks about the next class — the badges, the default question target, the
+ * commitment deadline that reaches practice priority — goes through this.
+ *
+ * A lesson imported from a source archive is a record of a class that ALREADY
+ * HAPPENED. Its date can still be in the future relative to this device's
+ * clock (the archive runs to September 2026 and a device may be behind it, or
+ * the owner may simply be importing early), and a plain `date >= today` then
+ * turns thirty-nine pieces of history into thirty-nine deadlines: urgency on
+ * items nobody committed to anything, and a question sheet defaulting to a
+ * class that is over. `origin: 'archive'` is checked FIRST, before the date,
+ * because no date can make history upcoming.
+ */
+export function isUpcomingLesson(lesson: { date: ISODate; origin?: string }, todayISO: ISODate): boolean {
+  if (lesson.origin === 'archive') return false;
+  return lesson.date >= todayISO;
+}
+
+// --- queries over the accepted graph ---------------------------------------
+
+export function archiveFor(db: PracticeDB, archiveId: string): ArchiveSource | undefined {
+  return db.archiveSources?.find((a) => a.id === archiveId);
+}
+
+function suppressed(source: ArchiveSource, kind: SourceSuppression['kind'], ref: string, itemId?: ID): boolean {
+  return source.suppressions.some(
+    (s) => s.kind === kind && s.ref === ref && (s.itemId === undefined || s.itemId === itemId),
+  );
+}
+
+/** Sessions a canonical piece appears in, numerically ordered. */
+export function sessionsForPiece(source: ArchiveSource, pieceKey: string): SourceSession[] {
+  return source.sessions.filter((s) => s.members.some((m) => m.key === pieceKey)).sort((a, b) => a.n - b.n);
+}
+
+/**
+ * Consecutive runs of sessions a piece was practised in. Six sessions in a row
+ * is six CLASSES worth of provenance — never six weeks, and never practice
+ * this app recorded.
+ */
+export function repeatChains(source: ArchiveSource, pieceKey: string): number[][] {
+  // A REPEAT is the student having been asked to play the piece again: its own
+  // practice recording, in consecutive sessions. Membership alone is the wrong
+  // input — an unnamed demonstration gives every piece in its session
+  // membership, so a chain read from membership would report a repeat nobody
+  // was asked for.
+  const ns = source.sessions
+    .filter((s) => s.members.some((m) => m.key === pieceKey && m.roles.includes(PERSONAL_ROLE)))
+    .sort((a, b) => a.n - b.n)
+    .map((s) => s.n);
+  const chains: number[][] = [];
+  for (const n of ns) {
+    const last = chains[chains.length - 1];
+    if (last && last[last.length - 1] === n - 1) last.push(n);
+    else chains.push([n]);
+  }
+  return chains.filter((c) => c.length > 1);
+}
+
+export interface ScopedResource extends SourceResource {
+  sessionN: number;
+  sessionDate: ISODate;
+}
+
+/**
+ * Every archive resource that is USEFUL PRACTICE MATERIAL for one piece, in
+ * session order. A class recording stays with its lesson, a resource the owner
+ * hid on THIS item is dropped for this item only, and a suppressed session or
+ * piece contributes nothing.
+ */
+export function resourcesForPiece(source: ArchiveSource, pieceKey: string, itemId?: ID): ScopedResource[] {
+  if (suppressed(source, 'piece', pieceKey)) return [];
+  const out: ScopedResource[] = [];
+  for (const s of sessionsForPiece(source, pieceKey)) {
+    if (suppressed(source, 'session', String(s.n))) continue;
+    for (const r of s.resources) {
+      if (!r.pieces.includes(pieceKey)) continue;
+      if (suppressed(source, 'resource', r.path, itemId)) continue;
+      out.push({ ...r, sessionN: s.n, sessionDate: s.date });
+    }
+  }
+  return out;
+}
+
+/** Everything an archive session contributes to its own lesson, in role order. */
+export function resourcesForSession(source: ArchiveSource, sessionN: number): SourceResource[] {
+  const s = source.sessions.find((x) => x.n === sessionN);
+  if (!s || suppressed(source, 'session', String(sessionN))) return [];
+  return s.resources.filter((r) => !suppressed(source, 'resource', r.path));
+}
+
+/** Turn a graph resource into the app's ordinary NAS reference shape. */
+export function resourceReference(archiveId: string, r: SourceResource, date?: ISODate): LessonRecording {
+  return {
+    id: sourceResourceId(archiveId, r.path),
+    title: r.title,
+    path: r.path,
+    kind: r.kind === 'video' ? 'video' : r.kind === 'score' ? 'pdf' : 'doc',
+    ...(date ? { date } : {}),
+    ...(r.size ? { sizeBytes: r.size } : {}),
+    createdAt: '1970-01-01T00:00:00.000Z',
+  };
+}
+
+// --- the graph's own grammar, in ONE place ---------------------------------
+
+/**
+ * THE grammar of a source graph — every nested field, one definition.
+ *
+ * `decodeSourceIndex` and `validateArchiveSources` used to state this
+ * separately, and the second stated LESS of it: it checked a resource's path
+ * and its part group and then walked straight past `members[].roles`,
+ * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
+ * `folder` and `roster`, and the rename and diagnostic rows entirely. A
+ * database carrying `members[0].roles: null` was therefore accepted and
+ * PERSISTED by every inbound door, and the first production reader to touch it
+ * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
+ * material. `planArchiveImport` had the same exposure through
+ * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
+ *
+ * Both callers run THIS function now, so the decoder and the persisted-graph
+ * validator cannot drift apart again: a reader may dereference any field this
+ * grammar admits, and nothing else can reach the database.
+ *
+ * `unavailable` stays legal on a piece, a session and a resource — a file gone
+ * from the NAS with its provenance kept is a VALID state, not a broken graph.
+ */
+function checkSourceGraph(
+  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
+  label: string,
+): string | null {
+  const text = (v: unknown) => typeof v === 'string';
+  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
+  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
+
+  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
+  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
+
+  const keys = new Set<string>();
+  for (const raw of graph.pieces) {
+    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
+    const p = raw as Partial<SourcePiece>;
+    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
+    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
+    keys.add(p.key);
+    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
+      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
+    }
+    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
+    // that is not a list of text takes the whole refresh down with a TypeError.
+    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
+    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
+      return `Piece "${p.key}" has an invalid session number.`;
+    }
+    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
+      return `Piece "${p.key}" has an unreadable flag.`;
+    }
+  }
+
+  const ns = new Set<number>();
+  const paths = new Set<string>();
+  for (const raw of graph.sessions) {
+    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
+    const sess = raw as Partial<SourceSession>;
+    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
+      return `${label} has a session with no number.`;
+    }
+    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
+    ns.add(sess.n);
+    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
+    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
+    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
+    for (const k of sess.roster as string[]) {
+      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
+    }
+    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
+      return `${label} session ${sess.n} has an unreadable flag.`;
+    }
+
+    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
+    for (const rawRes of sess.resources) {
+      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
+      const r = rawRes as Partial<SourceResource>;
+      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
+      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
+      paths.add(r.path);
+      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
+      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
+      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
+      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
+        return `Resource "${r.path}" has an unreadable part number.`;
+      }
+      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
+      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
+      for (const k of r.pieces as string[]) {
+        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
+      }
+      // A demonstration's parts form ONE group; anything but a plain label
+      // here would let a part claim membership of an arbitrary structure.
+      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
+        return `Resource "${r.path}" has an invalid part group.`;
+      }
+      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
+    }
+
+    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
+    for (const rawMember of sess.members) {
+      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
+      const m = rawMember as Partial<SourceMember>;
+      if (typeof m.key !== 'string' || !keys.has(m.key)) {
+        return `${label} session ${sess.n} claims an unknown piece.`;
+      }
+      // `repeatChains` reads `roles.includes(...)` on every one of these.
+      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
+      for (const role of m.roles as string[]) {
+        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
+      }
+    }
+  }
+
+  if (graph.renames !== undefined) {
+    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
+    const froms = new Set<string>();
+    for (const rawRename of graph.renames) {
+      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
+      const r = rawRename as Partial<SourceRename>;
+      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
+      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
+      froms.add(r.from);
+    }
+  }
+
+  if (graph.diagnostics !== undefined) {
+    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
+    for (const rawDiag of graph.diagnostics) {
+      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
+      const d = rawDiag as Partial<SourceDiagnostic>;
+      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
+    }
+  }
+
+  return null;
+}
+
+// --- inbound validation (C7) -----------------------------------------------
+
+/**
+ * The v14 graph, checked at EVERY inbound door through `validateDB`. Invalid
+ * structure is REFUSED with the record named, never coerced or dropped: a
+ * binding that points at nothing is a claim about which file is which piece,
+ * and silently discarding it loses the owner's own reconciliation decisions.
+ *
+ * A source entity marked `unavailable` is a VALID state (the file is gone from
+ * the NAS, its provenance is kept) — not a dangling reference.
+ */
+export function validateArchiveSources(db: PracticeDB): string | null {
+  const sources = db.archiveSources ?? [];
+  const ids = new Set<string>();
+  const instrumentIds = new Set(db.instruments.map((i) => i.id));
+  const byId = new Map<string, ArchiveSource>();
+
+  for (const s of sources) {
+    if (typeof s?.id !== 'string' || !s.id.trim()) return 'An archive source has no id.';
+    if (ids.has(s.id)) return `Two archive sources share the id "${s.id}".`;
+    ids.add(s.id);
+    byId.set(s.id, s);
+    if (typeof s.instrumentId !== 'string' || !instrumentIds.has(s.instrumentId)) {
+      return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
+    }
+    if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
+    if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
+    if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
+
+    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
+    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
+    if (bad) return bad;
+
+    for (const sup of s.suppressions) {
+      if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
+        return `Archive source "${s.id}" has a suppression of an unknown kind.`;
+      }
+      if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
+      // An owner decision carries the id it was scoped to and the moment it
+      // was taken; both are read back — a resource hidden on ONE item is
+      // decided by comparing `itemId`, so a non-string silently widens it.
+      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
+        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
+      }
+      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
+    }
+  }
+
+  // Bindings: exactly one live record per source identity, resolving to a real
+  // entity of the right instrument.
+  const itemBindings = new Set<string>();
+  for (const item of db.items) {
+    const ref = item.source;
+    if (!ref) continue;
+    if (typeof ref.archiveId !== 'string' || typeof ref.pieceKey !== 'string') {
+      return `Item "${item.title}" has an unreadable archive binding.`;
+    }
+    const source = byId.get(ref.archiveId);
+    if (!source) return `Item "${item.title}" is bound to archive "${ref.archiveId}", which is not present.`;
+    if (!source.pieces.some((p) => p.key === ref.pieceKey)) {
+      return `Item "${item.title}" is bound to piece "${ref.pieceKey}", which archive "${ref.archiveId}" does not describe.`;
+    }
+    if (item.instrumentId !== source.instrumentId) {
+      return `Item "${item.title}" is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
+    }
+    const k = `${ref.archiveId}${NUL}${ref.pieceKey}`;
+    if (itemBindings.has(k)) return `Two items are bound to piece "${ref.pieceKey}".`;
+    itemBindings.add(k);
+  }
+
+  const lessonBindings = new Set<string>();
+  for (const lesson of db.lessons) {
+    const ref = lesson.source;
+    if (!ref) continue;
+    if (typeof ref.archiveId !== 'string' || typeof ref.sessionN !== 'number') {
+      return 'A lesson has an unreadable archive binding.';
+    }
+    const source = byId.get(ref.archiveId);
+    if (!source) return `A lesson is bound to archive "${ref.archiveId}", which is not present.`;
+    if (!source.sessions.some((s) => s.n === ref.sessionN)) {
+      return `A lesson is bound to session ${ref.sessionN}, which archive "${ref.archiveId}" does not describe.`;
+    }
+    if (lesson.instrumentId !== source.instrumentId) {
+      return `A lesson is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
+    }
+    const k = `${ref.archiveId}${NUL}${ref.sessionN}`;
+    if (lessonBindings.has(k)) return `Two lessons are bound to session ${ref.sessionN}.`;
+    lessonBindings.add(k);
+  }
+
+  // Manual item references: the same path rules as every other NAS reference.
+  for (const item of db.items) {
+    for (const r of item.references ?? []) {
+      if (typeof r?.path !== 'string' || !r.path.trim()) return `Item "${item.title}" has a reference with no path.`;
+      if (!/^https?:\/\//i.test(r.path) && !isSafeSourcePath(r.path)) {
+        return `Item "${item.title}" has an unsafe reference path.`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The canonical pieces an archive session is associated with, honouring an
+ * owner's explicit unlink of ONE piece from ONE class.
+ *
+ * Derived from the graph, never stored on the lesson: a session's membership
+ * is a source fact, and copying it into `lesson.itemIds` would make one fact
+ * two that can disagree.
+ */
+export function membersForSession(source: ArchiveSource, sessionN: number): SourceMember[] {
+  const s = source.sessions.find((x) => x.n === sessionN);
+  if (!s || suppressed(source, 'session', String(sessionN))) return [];
+  return s.members.filter((m) => !suppressed(source, 'link', `${sessionN}:${m.key}`));
+}
+```
+
+### src/domain/sourceReconcile.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+import {
+  decodeSourceIndex,
+  sourceItemId,
+  sourceLessonId,
+  validateArchiveSources,
+  type SourceIndex,
+} from './sourceArchive';
+import {
+  applyArchiveImport,
+  planArchiveImport,
+  repairReferencePath,
+  repairLessonReferences,
+  toArchiveRelative,
+  withSuppression,
+} from './sourceReconcile';
+import { archiveRootUrl } from './recordings';
+import { emptyDB } from './seed';
+import { LEGACY_SEED_PATHS } from './setarClasses';
+import { createItem, createLesson } from './factories';
+import type { Lesson, PracticeDB, PracticeItem } from './types';
+
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+const INDEX: SourceIndex = decodeSourceIndex(rawIndex);
+const SETAR = 'inst-setar';
+
+function baseDB(over: Partial<PracticeDB> = {}): PracticeDB {
+  return {
+    ...emptyDB(),
+    instruments: [
+      { id: SETAR, name: 'Setar', family: 'Persian', active: true, createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z' },
+    ],
+    ...over,
+  };
+}
+
+const item = (over: Partial<PracticeItem>): PracticeItem => ({
+  ...createItem({ instrumentId: SETAR, title: 'x' }, NOW),
+  ...over,
+});
+
+const lesson = (over: Partial<Lesson>): Lesson => ({
+  ...createLesson({ instrumentId: SETAR, date: '2026-01-01' }, NOW),
+  ...over,
+});
+
+const plan = (db: PracticeDB, index = INDEX, decisions = undefined as never) =>
+  planArchiveImport({ db, index, instrumentId: SETAR, decisions, now: NOW });
+
+describe('reconciling the archive with the owner’s own records', () => {
+  it('setar reconciliation binds exact identities without merging owner records', () => {
+    // --- a first import of an empty database --------------------------------
+    const first = plan(baseDB());
+    expect(first.newLessons).toHaveLength(39);
+    expect(first.newItems).toHaveLength(94);
+    expect(first.questions).toEqual([]);
+    expect(first.newLessons.every((l) => l.origin === 'archive')).toBe(true);
+    const after = applyArchiveImport(baseDB(), first);
+    expect(after.lessons).toHaveLength(39);
+    expect(after.items).toHaveLength(94);
+    expect(after.archiveSources).toHaveLength(1);
+
+    // Canonical keys survive BYTE-EXACT as the items' own titles.
+    expect(after.items.map((i) => i.title)).toContain('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان');
+    expect(after.items.map((i) => i.title)).toContain('تمرین-دشتی-1-علیزاده');
+
+    // --- repeating it adds NOTHING -----------------------------------------
+    const second = plan(after);
+    expect(second.newLessons).toEqual([]);
+    expect(second.newItems).toEqual([]);
+    expect(second.summary.unchanged).toBe(true);
+    // ...and applying it returns the very same database object, so an
+    // unchanged refresh cannot bump a revision or churn a timestamp.
+    expect(applyArchiveImport(after, second)).toBe(after);
+
+    // --- DETERMINISTIC IDENTITY across devices ------------------------------
+    // Two devices importing the same published index separately must agree on
+    // which record is which, or the next sync sees two of everything.
+    const other = applyArchiveImport(baseDB(), plan(baseDB()));
+    expect(other.items.map((i) => i.id).sort()).toEqual(after.items.map((i) => i.id).sort());
+    expect(other.lessons.map((l) => l.id).sort()).toEqual(after.lessons.map((l) => l.id).sort());
+    expect(after.items.some((i) => i.id === sourceItemId('setar-classes', 'عراق'))).toBe(true);
+    expect(after.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
+
+    // --- EXISTING BINDINGS WIN, across edited titles and dates --------------
+    const edited: PracticeDB = {
+      ...after,
+      items: after.items.map((i) =>
+        i.source?.pieceKey === 'عراق' ? { ...i, title: 'Iraq — my own name for it', notes: 'teacher said…' } : i,
+      ),
+      lessons: after.lessons.map((l) => (l.source?.sessionN === 13 ? { ...l, date: '2020-01-01', number: 999 } : l)),
+    };
+    const third = plan(edited);
+    expect(third.newItems).toEqual([]);
+    expect(third.newLessons).toEqual([]);
+    const applied = applyArchiveImport(edited, third);
+    // The owner's edits are still there: a binding identifies, it never rewrites.
+    expect(applied.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('Iraq — my own name for it');
+    expect(applied.lessons.find((l) => l.source?.sessionN === 13)!.date).toBe('2020-01-01');
+
+    // --- adopting ONE legacy lesson, on EXACT evidence ----------------------
+    const evidence = lesson({
+      id: 'legacy-13',
+      date: '2024-09-03',
+      number: 13,
+      // The owner's own old reference — legacy prefix and pre-rename name.
+      recordings: [
+        {
+          id: 'r1',
+          title: 'Class 13',
+          path: 'setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4',
+          kind: 'video',
+          createdAt: '2024-09-04T00:00:00.000Z',
+        },
+      ],
+      notes: 'What the teacher said that day.',
+    });
+    const withLegacy = plan(baseDB({ lessons: [evidence] }));
+    const adopted = withLegacy.adoptedLessons.find((l) => l.source?.sessionN === 13);
+    expect(adopted).toBeDefined();
+    expect(adopted!.id).toBe('legacy-13'); // the owner's record KEEPS its id
+    expect(adopted!.notes).toBe('What the teacher said that day.');
+    expect(withLegacy.newLessons).toHaveLength(38);
+
+    // --- weaker equivalences CANNOT auto-merge ------------------------------
+    const dateOnly = lesson({ id: 'date-only', date: '2024-09-03' });
+    const numberOnly = lesson({ id: 'number-only', date: '2019-05-05', number: 13 });
+    const dateAndNumber = lesson({ id: 'date-and-number', date: '2024-09-03', number: 13 });
+    const weak = plan(baseDB({ lessons: [dateOnly, numberOnly, dateAndNumber] }));
+    expect(weak.adoptedLessons).toEqual([]);
+    expect(weak.newLessons).toHaveLength(39);
+    // Two identical candidates do not pick the first: the owner is asked.
+    const twin = { ...evidence, id: 'legacy-13-twin' };
+    const ambiguous = plan(baseDB({ lessons: [evidence, twin] }));
+    expect(ambiguous.adoptedLessons).toEqual([]);
+    const q = ambiguous.questions.find((x) => x.sessionN === 13)!;
+    expect(q.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-twin']);
+
+    // --- the owner's real upcoming class 38 survives ------------------------
+    const upcoming = lesson({ id: 'class-38-upcoming', date: '2026-09-27', number: 38 });
+    const withUpcoming = plan(baseDB({ lessons: [upcoming] }));
+    expect(withUpcoming.adoptedLessons).toEqual([]);
+    expect(withUpcoming.newLessons).toHaveLength(39);
+    const installed = applyArchiveImport(baseDB({ lessons: [upcoming] }), withUpcoming);
+    const thirtyEights = installed.lessons.filter((l) => l.number === 38);
+    expect(thirtyEights.map((l) => l.date).sort()).toEqual(['2026-08-04', '2026-09-27']);
+    expect(installed.lessons.find((l) => l.id === 'class-38-upcoming')!.origin).toBeUndefined();
+
+    // --- a catalogue slug is NEVER a canonical Farsi key --------------------
+    const catalogued = item({ id: 'cat-iraq', title: 'Iraq', catalogKey: 'iraq' });
+    const withCatalogue = plan(baseDB({ items: [catalogued] }));
+    expect(withCatalogue.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(withCatalogue.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
+    const cataloguedAfter = applyArchiveImport(baseDB({ items: [catalogued] }), withCatalogue);
+    expect(cataloguedAfter.items.find((i) => i.id === 'cat-iraq')!.source).toBeUndefined();
+
+    // --- exact title / literal alias equality ASKS, never merges ------------
+    const sameTitle = item({ id: 'mine-araq', title: 'عراق' });
+    const aliasTitle = item({ id: 'mine-alias', title: 'araq' });
+    const asked = plan(baseDB({ items: [sameTitle, aliasTitle] }));
+    const itemQ = asked.questions.find((x) => x.pieceKey === 'عراق')!;
+    expect(itemQ.candidates.map((c) => c.id).sort()).toEqual(['mine-alias', 'mine-araq']);
+    expect(asked.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    const untouched = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), asked);
+    expect(untouched.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
+
+    // Link: the owner's record keeps its id and gains the binding.
+    const linked = planArchiveImport({
+      db: baseDB({ items: [sameTitle, aliasTitle] }),
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'link-item', pieceKey: 'عراق', itemId: 'mine-araq' }],
+      now: NOW,
+    });
+    expect(linked.adoptedItems.map((i) => i.id)).toEqual(['mine-araq']);
+    expect(linked.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    const linkedDb = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), linked);
+    expect(linkedDb.items.find((i) => i.id === 'mine-araq')!.source).toEqual({
+      archiveId: 'setar-classes',
+      pieceKey: 'عراق',
+    });
+    // ...and the binding PERSISTS: a later refresh asks nothing more about it.
+    expect(plan(linkedDb).questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+
+    // Create separately: two records, both kept, only one bound.
+    const separate = planArchiveImport({
+      db: baseDB({ items: [sameTitle] }),
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'create-item', pieceKey: 'عراق' }],
+      now: NOW,
+    });
+    const separateDb = applyArchiveImport(baseDB({ items: [sameTitle] }), separate);
+    expect(separateDb.items.filter((i) => i.title === 'عراق')).toHaveLength(2);
+    expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+    expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
+
+    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
+    // It used to live only in the preview's own `decisions` argument, so "no,
+    // not this one" survived exactly as long as the screen did: a reload, or
+    // simply the next refresh, asked the identical question again with nothing
+    // in the database to show it had ever been answered.
+    const skipDb = baseDB({ items: [sameTitle] });
+    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
+    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
+    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
+    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
+    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
+    expect(validateArchiveSources(afterSkip)).toBeNull();
+    // ...and it survives the persisted shape. A LATER refresh, carrying no
+    // decisions at all, neither asks nor re-creates.
+    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
+    const afterReload = plan(reloaded);
+    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(afterReload.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
+    // Skipping the same thing twice does not grow the list either.
+    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
+    expect(skipTwice.source.suppressions).toHaveLength(1);
+    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
+
+    // The same holds for a CLASS the owner skips.
+    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
+    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
+    expect(lessonSkipped.newLessons).toHaveLength(38);
+    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
+    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
+    expect(plan(lessonReloaded).newLessons).toEqual([]);
+    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+
+    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
+    // Two indistinguishable candidates; the owner says neither of them is this
+    // session. The decision used to be dropped on the floor for lessons — the
+    // item side had it from the start — and the question came back for ever.
+    const twinDb = baseDB({ lessons: [evidence, twin] });
+    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
+    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
+    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
+    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
+    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
+    // Three records for that day now: the archive's own, and BOTH of the
+    // owner's, each keeping its id, its notes and its unbound status.
+    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
+    expect(validateArchiveSources(afterCreate)).toBeNull();
+    // ...and the binding it did create is the archive's own deterministic one.
+    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
+
+    // --- the source/instrument binding is explicit and validated -----------
+    expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
+    expect(after.archiveSources[0]!.id).toBe('setar-classes');
+    expect(after.items.every((i) => i.instrumentId === SETAR)).toBe(true);
+  });
+
+  it('archive refresh preserves owner edits and applies only the new source delta', () => {
+    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
+
+    // The owner then works on their own records.
+    const owned: PracticeDB = {
+      ...installed,
+      items: installed.items.map((i) =>
+        i.source?.pieceKey === 'عراق'
+          ? { ...i, title: 'My own title', notes: 'my notes', status: 'usable', persian: { ...i.persian, composer: '' } }
+          : i,
+      ),
+      lessons: installed.lessons.map((l) => (l.source?.sessionN === 1 ? { ...l, notes: 'class one notes' } : l)),
+    };
+
+    // --- ONE new session, plus one new score on an existing session ---------
+    const session40 = {
+      n: 40,
+      date: '2026-09-29',
+      folder: 'session-40-29-09-2026',
+      roster: ['عراق'],
+      rosterTrusted: true,
+      hasClassRecording: true,
+      resources: [
+        {
+          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
+          role: 'ضبط-کلاس',
+          kind: 'video' as const,
+          title: 'ضبط کلاس',
+          part: null,
+          pieces: [],
+          group: null,
+        },
+      ],
+      members: [{ key: 'عراق', roles: ['ضبط-کلاس'] }],
+    };
+    const addedScore = {
+      path: 'session-12-06-08-2024/نت-عراق.pdf',
+      role: 'نت',
+      kind: 'score' as const,
+      title: 'نت عراق',
+      part: null,
+      pieces: ['عراق'],
+      group: null,
+    };
+    const next: SourceIndex = {
+      ...INDEX,
+      contentHash: 'b'.repeat(64),
+      sessions: [
+        ...INDEX.sessions.map((s) => (s.n === 12 ? { ...s, resources: [...s.resources, addedScore] } : s)),
+        session40,
+      ],
+      // A later registry improvement on a piece already seeded.
+      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, composer: 'میرزا-حسینقلی' } : p)),
+    };
+
+    const delta = planArchiveImport({ db: owned, index: next, instrumentId: SETAR, now: NOW });
+    // ONLY the delta: one lesson, no items (عراق is already bound).
+    expect(delta.newLessons.map((l) => l.source?.sessionN)).toEqual([40]);
+    expect(delta.newItems).toEqual([]);
+
+    const refreshed = applyArchiveImport(owned, delta);
+    expect(refreshed.lessons).toHaveLength(40);
+    // AUTHORED FIELDS ARE SEEDED ONCE AND THEN PRESERVED — including the
+    // deliberately EMPTY composer the owner cleared.
+    const araq = refreshed.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(araq.title).toBe('My own title');
+    expect(araq.notes).toBe('my notes');
+    expect(araq.status).toBe('usable');
+    expect(araq.persian?.composer).toBe('');
+    expect(refreshed.lessons.find((l) => l.source?.sessionN === 1)!.notes).toBe('class one notes');
+    // Source facts DID update: the new score is in the graph.
+    const source = refreshed.archiveSources.find((s) => s.id === 'setar-classes')!;
+    expect(source.sessions.find((s) => s.n === 12)!.resources.some((r) => r.path === addedScore.path)).toBe(true);
+    expect(source.indexHash).toBe('b'.repeat(64));
+
+    // The registry improvement is OFFERED, never applied behind the owner.
+    const suggestion = delta.suggestions.find((s) => s.pieceKey === 'عراق' && s.field === 'composer')!;
+    expect(suggestion).toBeDefined();
+    expect(suggestion.from).toBe('');
+    expect(suggestion.to).toBe('میرزا-حسینقلی');
+    const selective = applyArchiveImport(owned, delta, [
+      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer' },
+    ]);
+    const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
+    // ...and applying a field NEVER touches the notebook or the title.
+    expect(applied.notes).toBe('my notes');
+    expect(applied.title).toBe('My own title');
+
+    // --- an UNCHANGED refresh writes nothing --------------------------------
+    const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
+    expect(same.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
+
+    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
+    // The suggestion stands until it is answered, and it may be answered days
+    // later against the very same published index. Judging "already current"
+    // by the index hash alone reported exactly that and discarded the answer.
+    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
+    const lateDecision = planArchiveImport({
+      db: refreshed,
+      index: next,
+      instrumentId: SETAR,
+      decisions: lateField,
+      now: NOW,
+    });
+    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
+    expect(lateDecision.summary.unchanged).toBe(false);
+    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
+    expect(lateApplied).not.toBe(refreshed);
+    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
+    // Only that field: the notebook, the title and the status are the owner's.
+    expect(lateItem.notes).toBe('my notes');
+    expect(lateItem.title).toBe('My own title');
+    expect(lateItem.status).toBe('usable');
+    expect(lateApplied.blocks).toEqual(refreshed.blocks);
+    // Applied, the suggestion is gone: the next refresh has nothing to offer.
+    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
+    // A decision for a field with NO suggestion changes nothing at all.
+    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
+    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
+    expect(noop.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
+
+    // --- a missing FILE keeps its provenance, flagged ----------------------
+    const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
+    const shrunk: SourceIndex = {
+      ...next,
+      contentHash: 'c'.repeat(64),
+      sessions: next.sessions.map((s) => (s.n === 12 ? { ...s, resources: [] } : s)),
+    };
+    const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
+    const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
+    // The LESSON and the ITEM are still there — a vanished file never deletes
+    // an owner record, it only changes what the source can offer.
+    expect(afterShrink.lessons).toHaveLength(40);
+    expect(afterShrink.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('My own title');
+    expect(afterShrink.blocks).toEqual(refreshed.blocks);
+    const shrunkSource = afterShrink.archiveSources.find((s) => s.id === 'setar-classes')!;
+    const goneRow = shrunkSource.sessions.find((s) => s.n === 12)!.resources.find((r) => r.path === goneFile)!;
+    expect(goneRow.unavailable).toBe(true);
+    // ...and the database this produced is one every inbound door accepts.
+    expect(validateArchiveSources(afterShrink)).toBeNull();
+
+    // --- a missing REGISTRY ROW is the case that used to lock refresh out ---
+    // Dropping a piece the owner has an item bound to would leave that binding
+    // pointing at nothing — which `validateDB` refuses at every door, so the
+    // next Refresh, and every one after it, would fail outright. Provenance is
+    // RETAINED and flagged instead.
+    const withoutPiece: SourceIndex = {
+      ...next,
+      contentHash: 'e'.repeat(64),
+      pieces: next.pieces.filter((p) => p.key !== 'عراق'),
+      sessions: next.sessions.map((s) => ({
+        ...s,
+        roster: s.roster.filter((k) => k !== 'عراق'),
+        members: s.members.filter((m) => m.key !== 'عراق'),
+        resources: s.resources.map((r) => ({ ...r, pieces: r.pieces.filter((k) => k !== 'عراق') })),
+      })),
+    };
+    const withoutPlan = planArchiveImport({ db: refreshed, index: withoutPiece, instrumentId: SETAR, now: NOW });
+    const afterWithout = applyArchiveImport(refreshed, withoutPlan);
+    expect(validateArchiveSources(afterWithout)).toBeNull();
+    const keptPiece = afterWithout.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!;
+    expect(keptPiece.unavailable).toBe(true);
+    // The owner's item, its title and its binding are all still there.
+    const keptItem = afterWithout.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(keptItem.title).toBe('My own title');
+    expect(keptItem.notes).toBe('my notes');
+    // It is not re-created as a second item either.
+    expect(afterWithout.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+    // A WHOLE SESSION that disappears is retained the same way.
+    const withoutSession: SourceIndex = {
+      ...next,
+      contentHash: 'f'.repeat(64),
+      sessions: next.sessions.filter((s) => s.n !== 13),
+    };
+    const afterNoSession = applyArchiveImport(
+      refreshed,
+      planArchiveImport({ db: refreshed, index: withoutSession, instrumentId: SETAR, now: NOW }),
+    );
+    expect(validateArchiveSources(afterNoSession)).toBeNull();
+    expect(afterNoSession.archiveSources[0]!.sessions.find((s) => s.n === 13)!.unavailable).toBe(true);
+    expect(afterNoSession.lessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
+    // ...and the source coming BACK clears the flag: the source is
+    // authoritative about what it has.
+    const restoredPlan = planArchiveImport({ db: afterWithout, index: next, instrumentId: SETAR, now: NOW });
+    const afterRestore = applyArchiveImport(afterWithout, restoredPlan);
+    expect(afterRestore.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!.unavailable).toBeUndefined();
+    expect(afterRestore.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+
+    // --- a CHANGED canonical key is a NEW identity, never a rename ----------
+    const renamedKey: SourceIndex = {
+      ...INDEX,
+      contentHash: 'd'.repeat(64),
+      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, key: 'عراق-جدید' } : p)),
+      sessions: INDEX.sessions.map((s) => ({
+        ...s,
+        roster: s.roster.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
+        members: s.members.map((m) => (m.key === 'عراق' ? { ...m, key: 'عراق-جدید' } : m)),
+        resources: s.resources.map((r) => ({
+          ...r,
+          pieces: r.pieces.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
+        })),
+      })),
+    };
+    const keyChange = planArchiveImport({ db: refreshed, index: renamedKey, instrumentId: SETAR, now: NOW });
+    // A NEW piece appears; the old binding is NOT silently carried across.
+    expect(keyChange.newItems.map((i) => i.source?.pieceKey)).toEqual(['عراق-جدید']);
+    expect(keyChange.adoptedItems).toEqual([]);
+
+    // --- an unresolved question stays a question until answered ------------
+    const stranger = item({ id: 'stranger', title: 'چهار-پاره' });
+    const strangerDb = { ...baseDB(), items: [stranger] };
+    const asked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(asked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
+    const stillAsked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(stillAsked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
+    // The SAME index with a NEW owner decision resolves it, with no re-scan.
+    const resolved = planArchiveImport({
+      db: strangerDb,
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'چهار-پاره' }],
+      now: NOW,
+    });
+    expect(resolved.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(false);
+    expect(resolved.newItems.some((i) => i.source?.pieceKey === 'چهار-پاره')).toBe(false);
+  });
+
+  it('exact Setar rename repair preserves saved references and their metadata', () => {
+    const renames = new Map(INDEX.renames.map((r) => [r.from, r.to]));
+    const known = new Set(INDEX.sessions.flatMap((s) => s.resources.map((r) => r.path)));
+
+    // The archive prefix the owner's legacy paths carry is not part of the
+    // archive-relative identity; the device base now ends in it.
+    expect(toArchiveRelative('setar-classes/session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
+    expect(toArchiveRelative('session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
+
+    // EVERY legacy seed path the old importer ever wrote — all 67 of them —
+    // maps through the rename log EXACTLY. No title, size or modification-time
+    // matching is involved anywhere, and none of the 67 is left to a guess.
+    expect(LEGACY_SEED_PATHS).toHaveLength(67);
+    expect(INDEX.renames).toHaveLength(257);
+    const repairedPaths = new Map<string, string>();
+    for (const p of LEGACY_SEED_PATHS) {
+      const outcome = repairReferencePath(p, renames, known);
+      expect(outcome.status).toBe('repaired');
+      if (outcome.status !== 'repaired') throw new Error('unreachable');
+      expect(outcome.path.startsWith('session-')).toBe(true);
+      expect(known.has(outcome.path)).toBe(true);
+      repairedPaths.set(p, outcome.path);
+    }
+    expect(repairedPaths.size).toBe(67);
+    // Session 28's "main video" is really a NAMED DEMONSTRATION; the repair
+    // says so by landing on the demo file, and nothing invents a class
+    // recording for a session that has none.
+    const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
+    expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
+
+    // A path with no rename row and no file is DIAGNOSED, never guessed.
+    const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
+    expect(missing.status).toBe('attention');
+    // A foreign link, and a link carrying a query, are left exactly as they are.
+    const base = 'https://192.168.0.20:5010/setar-classes';
+    expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
+    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4?download=1`, renames, known, base).status).toBe(
+      'unchanged',
+    );
+    // Without a VERIFIED base a full URL is not converted at all.
+    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4`, renames, known).status).toBe('attention');
+    // Under the verified base it converts, decoding each segment once.
+    const encoded = `${base}/${encodeURIComponent('session-13-03-09-2024')}/${encodeURIComponent('نمونه-1.mp4')}`;
+    const converted = repairReferencePath(encoded, renames, known, base);
+    expect(converted.status === 'repaired' && converted.path).toBe('session-13-03-09-2024/نمونه-1.mp4');
+    // A cycle in the log is reported rather than followed forever.
+    const cyclic = new Map([
+      ['a/b.mp4', 'a/c.mp4'],
+      ['a/c.mp4', 'a/b.mp4'],
+    ]);
+    expect(repairReferencePath('a/b.mp4', cyclic, new Set(['a/c.mp4'])).status).toBe('attention');
+
+    // --- both rows of a real collision survive, with their own metadata -----
+    // Session 1's class part 1 and the first Dashti score each have an OLD and
+    // a CURRENT row that now point at one physical file. Repairing them keeps
+    // TWO rows, because each carries something the owner wrote.
+    const collided = lesson({
+      id: 'L1',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [
+        {
+          id: 'old-video',
+          title: 'Class 1 (old link)',
+          path: 'setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4',
+          kind: 'video',
+          notes: 'The half I watched first.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'current-video',
+          title: 'Class 1 part 1',
+          path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4',
+          kind: 'video',
+          createdAt: '2026-09-10T00:00:00.000Z',
+        },
+        {
+          id: 'old-score',
+          title: 'First Dashti score (old link)',
+          path: 'setar-classes/session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf',
+          kind: 'pdf',
+          notes: 'Teacher marked bar 12.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'current-score',
+          title: 'Dashti score',
+          path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf',
+          kind: 'pdf',
+          createdAt: '2026-09-10T00:00:00.000Z',
+        },
+      ],
+    });
+    const repaired = repairLessonReferences(collided, renames, known);
+    expect(repaired.repaired).toBe(2);
+    expect(repaired.attention).toEqual([]);
+    expect(repaired.lesson.recordings).toHaveLength(4);
+    const byId = new Map(repaired.lesson.recordings!.map((r) => [r.id, r]));
+    // The two old rows now resolve to the same physical files as the new ones…
+    expect(byId.get('old-video')!.path).toBe(byId.get('current-video')!.path);
+    expect(byId.get('old-score')!.path).toBe(byId.get('current-score')!.path);
+    // …and neither authored row, nor its notes or title, was deleted.
+    expect(byId.get('old-video')!.notes).toBe('The half I watched first.');
+    expect(byId.get('old-video')!.title).toBe('Class 1 (old link)');
+    expect(byId.get('old-score')!.notes).toBe('Teacher marked bar 12.');
+
+    // --- the owner's own practice recordings stay, outside useful material --
+    const personal = lesson({
+      id: 'L2',
+      date: '2025-08-05',
+      recordings: [
+        {
+          id: 'mine-1',
+          title: 'My take, August',
+          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
+          kind: 'video',
+          notes: 'Slow but even.',
+          createdAt: '2025-08-06T00:00:00.000Z',
+        },
+      ],
+    });
+    const personalRepair = repairLessonReferences(personal, renames, known);
+    expect(personalRepair.lesson.recordings).toHaveLength(1);
+    expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
+    // The archive never offers a personal recording as material for a piece.
+    const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
+    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+
+    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
+    // The helper above proves the mapping. THIS proves the production journey:
+    // the rename log arrives WITH the index, so the one moment the app can
+    // repair a stored path is the moment it accepts a new graph — and a lesson
+    // adopted with its own references still pointing at names the archive
+    // renamed is half a job, bound and broken.
+    const ownPersonal = lesson({
+      id: 'L25',
+      date: '2025-08-05',
+      number: 25,
+      recordings: [
+        {
+          id: 'mine-1',
+          title: 'My take, August',
+          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
+          kind: 'video',
+          notes: 'Slow but even.',
+          createdAt: '2025-08-06T00:00:00.000Z',
+        },
+      ],
+    });
+    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
+    const refresh = plan(legacyDb);
+    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
+    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
+    // The PLAN already shows the repaired paths, so the preview and the commit
+    // cannot disagree about what is about to be written.
+    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
+    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
+    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
+
+    const installedLegacy = applyArchiveImport(legacyDb, refresh);
+    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
+    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
+    // BOTH rows of each collision survive, with everything the owner wrote.
+    expect(storedOne.recordings).toHaveLength(4);
+    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
+    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
+    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
+    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
+    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
+    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
+    expect(validateArchiveSources(installedLegacy)).toBeNull();
+
+    // The owner's own practice takes are RETAINED, untouched — and never
+    // reported missing. The index describes only material scoped to pieces and
+    // classes, so a path it does not name is outside what it knows, never
+    // evidence that the file is gone.
+    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
+    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
+    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
+    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+
+    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
+    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
+    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
+    // literal: a trailing-slash or prefix mismatch between the two would fail
+    // silently, leaving the link exactly as it was with nothing to show why.
+    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
+    const absolute = lesson({
+      id: 'L-abs',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [
+        {
+          id: 'abs-1',
+          title: 'Class 1, saved as a full link',
+          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+          kind: 'video',
+          notes: 'Typed in from the browser bar.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'foreign',
+          title: 'Somewhere else entirely',
+          path: 'https://elsewhere.example/x.mp4',
+          kind: 'video',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+      ],
+    });
+    const absDb = baseDB({ lessons: [absolute] });
+    const urlRepaired = applyArchiveImport(
+      absDb,
+      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
+    );
+    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
+    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
+    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
+    // A link to somewhere else is not this archive's to rewrite.
+    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
+    // WITHOUT a base, nothing is converted and nothing is mangled.
+    const noBase = applyArchiveImport(absDb, plan(absDb));
+    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
+    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
+    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
+
+    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
+    const again = plan(installedLegacy);
+    expect(again.repairedLessons).toEqual([]);
+    expect(again.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
+
+    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
+    // The archive moves a file the owner's bound class already points at. The
+    // next refresh follows the log; the row, its title and its notes stay.
+    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
+    const moved: SourceIndex = {
+      ...INDEX,
+      contentHash: '9'.repeat(64),
+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1
+          ? {
+              ...sess,
+              resources: sess.resources.map((r) =>
+                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
+              ),
+            }
+          : sess,
+      ),
+    };
+    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
+    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
+    const afterMove = applyArchiveImport(installedLegacy, later);
+    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
+    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
+    expect(movedRows.get('old-video')!.path).toBe(movedTo);
+    expect(movedRows.get('current-video')!.path).toBe(movedTo);
+    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
+    // The score, which did not move, is exactly as it was.
+    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
+    // Nothing about practice moved with it.
+    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
+    expect(validateArchiveSources(afterMove)).toBeNull();
+
+    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
+    // A rename whose destination the archive no longer has: the stored path is
+    // left exactly as it is, and the owner is told which file and why.
+    const dangling: SourceIndex = {
+      ...INDEX,
+      contentHash: '8'.repeat(64),
+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
+    };
+    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
+    expect(broken.repairedLessons).toEqual([]);
+    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
+    const afterBroken = applyArchiveImport(installedLegacy, broken);
+    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+  });
+});
+
+describe('owner suppressions', () => {
+  it('a suppressed piece or session is never re-created by a later refresh', () => {
+    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
+    const stripped: PracticeDB = {
+      ...installed,
+      items: installed.items.filter((i) => i.source?.pieceKey !== 'عراق'),
+      lessons: installed.lessons.filter((l) => l.source?.sessionN !== 13),
+      archiveSources: withSuppression(
+        withSuppression(installed.archiveSources, 'setar-classes', {
+          kind: 'piece',
+          ref: 'عراق',
+          at: NOW.toISOString(),
+        }),
+        'setar-classes',
+        { kind: 'session', ref: '13', at: NOW.toISOString() },
+      ),
+    };
+    const again = plan(stripped);
+    expect(again.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(again.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    // Idempotent: suppressing the same thing twice does not grow the list.
+    const twice = withSuppression(stripped.archiveSources, 'setar-classes', {
+      kind: 'piece',
+      ref: 'عراق',
+      at: '2027-01-01T00:00:00.000Z',
+    });
+    expect(twice[0]!.suppressions).toHaveLength(2);
+  });
+});
+```
+
+### src/domain/sourceReconcile.ts
+
+```
+import type { ID, ISODate, Lesson, LessonRecording, PracticeDB, PracticeItem } from './types';
+import { createItem, createLesson } from './factories';
+import { nowISO } from './util';
+import {
+  isSafeSourcePath,
+  sourceItemId,
+  sourceLessonId,
+  type ArchiveSource,
+  type SourceDiagnostic,
+  type SourceIndex,
+  type SourcePiece,
+  type SourceSuppression,
+} from './sourceArchive';
+
+// ---------------------------------------------------------------------------
+// Reconciling a published source index with the owner's own database.
+//
+// PURE and clock-explicit. Two steps, deliberately separate: `planArchiveImport`
+// decides and explains, `applyArchiveImport` writes. The store commits the plan
+// in ONE synchronous mutation, so a partially-applied import cannot exist.
+//
+// THE RULE THIS MODULE EXISTS FOR: the archive owns what the archive knows —
+// registry facts, session facts, roles, memberships, availability. Everything
+// else is the owner's and is seeded ONCE, then never written again. An import
+// may establish repertoire membership, historical lesson provenance and source
+// material. It may never establish recorded practice, a result, a review, or a
+// deadline.
+// ---------------------------------------------------------------------------
+
+/**
+ * The archive folder the owner's LEGACY references were written against. New
+ * references are stored relative to the archive ROOT (the device base now ends
+ * in `/setar-classes/`), so a legacy path carries one extra leading segment
+ * that must come off before it can be looked up — and must not be written back.
+ */
+export const LEGACY_ARCHIVE_PREFIX = 'setar-classes/';
+
+// --- decisions and questions -----------------------------------------------
+
+export type ReconcileDecision =
+  | { kind: 'link-item'; pieceKey: string; itemId: ID }
+  | { kind: 'create-item'; pieceKey: string }
+  | { kind: 'skip-item'; pieceKey: string }
+  | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
+  | { kind: 'create-lesson'; sessionN: number }
+  | { kind: 'skip-lesson'; sessionN: number }
+  | { kind: 'apply-field'; pieceKey: string; field: MetadataField };
+
+export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
+
+export interface ReconcileCandidate {
+  id: ID;
+  title: string;
+  why: string;
+}
+
+export interface ReconcileQuestion {
+  kind: 'item' | 'lesson';
+  /** Exactly one of these is set. */
+  pieceKey?: string;
+  sessionN?: number;
+  label: string;
+  candidates: ReconcileCandidate[];
+}
+
+/** A registry improvement the owner may apply to an already-seeded item. */
+export interface MetadataSuggestion {
+  pieceKey: string;
+  itemId: ID;
+  field: MetadataField;
+  from: string;
+  to: string;
+}
+
+export interface ImportSummary {
+  addedItems: number;
+  addedLessons: number;
+  updatedLessons: number;
+  questions: number;
+  attention: number;
+  /** Nothing at all would change: the same index, already accepted. */
+  unchanged: boolean;
+}
+
+export interface ImportPlan {
+  archiveId: string;
+  instrumentId: ID;
+  indexHash: string;
+  /** The graph to persist, carrying the owner's existing suppressions. */
+  source: ArchiveSource;
+  newItems: PracticeItem[];
+  newLessons: Lesson[];
+  /** Existing lessons adopted into the archive (id preserved, binding added). */
+  adoptedLessons: Lesson[];
+  /**
+   * Already-bound lessons whose stored reference PATHS the rename log moved —
+   * the row, its title and its notes untouched, only the path text rewritten.
+   */
+  repairedLessons: Lesson[];
+  /** Existing items adopted by an explicit owner decision. */
+  adoptedItems: PracticeItem[];
+  questions: ReconcileQuestion[];
+  suggestions: MetadataSuggestion[];
+  attention: SourceDiagnostic[];
+  summary: ImportSummary;
+}
+
+// --- helpers ---------------------------------------------------------------
+
+/** Strip the legacy archive-folder prefix; leave anything else alone. */
+export function toArchiveRelative(path: string): string {
+  return path.startsWith(LEGACY_ARCHIVE_PREFIX) ? path.slice(LEGACY_ARCHIVE_PREFIX.length) : path;
+}
+
+function suppressionKey(s: SourceSuppression): string {
+  return `${s.kind} ${s.ref} ${s.itemId ?? ''}`;
+}
+
+/** The registry facts an item is SEEDED from — identity, never working detail. */
+function persianFromPiece(piece: SourcePiece) {
+  return {
+    // "گوشه" is the form that identifies a gusheh. Every other form is carried
+    // verbatim; none of them is turned into a category the registry never made.
+    ...(piece.form === 'گوشه' ? { gusheh: piece.piece || piece.key } : {}),
+    ...(piece.dastgah ? { dastgahAvaz: piece.dastgah } : {}),
+    ...(piece.form ? { form: piece.form } : {}),
+    ...(piece.composer ? { composer: piece.composer } : {}),
+  };
+}
+
+/**
+ * A NEW library item for a canonical piece.
+ *
+ * `status: 'dormant'` ("Resting") is an explicit ADMINISTRATIVE import policy,
+ * not a judgement about the music: ninety-four pieces arriving as live
+ * candidates would flood every recommendation and every session plan on the
+ * day of the import. A resting item is still searchable, still in My
+ * repertoire, and still directly startable — the owner decides what comes back.
+ *
+ * Nothing about practice is seeded: no last practice, no result, no review
+ * date, no SM-2 state. `createItem` already leaves every one of those empty;
+ * this function adds no field it does not.
+ */
+function itemForPiece(archiveId: string, instrumentId: ID, piece: SourcePiece, now: Date): PracticeItem {
+  const item = createItem(
+    {
+      instrumentId,
+      // The canonical key IS the piece's name in this archive, byte for byte.
+      title: piece.key,
+      itemType: piece.form === 'گوشه' ? 'gusheh' : 'full_piece',
+      status: 'dormant',
+      persian: persianFromPiece(piece),
+    },
+    now,
+  );
+  return { ...item, id: sourceItemId(archiveId, piece.key), source: { archiveId, pieceKey: piece.key } };
+}
+
+/** A historical lesson for one archive session. */
+function lessonForSession(
+  archiveId: string,
+  instrumentId: ID,
+  session: { n: number; date: ISODate },
+  now: Date,
+): Lesson {
+  const lesson = createLesson({ instrumentId, date: session.date, number: session.n }, now);
+  return {
+    ...lesson,
+    id: sourceLessonId(archiveId, session.n),
+    source: { archiveId, sessionN: session.n },
+    // HISTORY, whatever the clock says. See `isUpcomingLesson`.
+    origin: 'archive',
+  };
+}
+
+/**
+ * Read a stored reference path as an ARCHIVE-RELATIVE one.
+ *
+ * A full URL sitting under THIS DEVICE's own verified base names the same file
+ * as the relative path beneath it — written differently, nothing more. Adoption
+ * evidence and path repair therefore have to read a stored path the SAME way,
+ * or one of them adopts a class the other cannot fix: a lesson whose references
+ * were saved as full links would carry perfectly good evidence that nothing
+ * recognised.
+ *
+ * Anything it cannot read as archive-relative — a foreign origin, a link with a
+ * query or fragment, a URL with no verified base to measure it against, an
+ * unsafe path — comes back as the repair outcome that case deserves, so the two
+ * callers cannot disagree about those either.
+ */
+type RelativeRead = { ok: true; relative: string; wasUrl: boolean } | { ok: false; outcome: ReferenceRepair };
+
+function readArchiveRelative(raw: string, verifiedBase?: string): RelativeRead {
+  if (!raw) return { ok: false, outcome: { status: 'attention', reason: 'This reference has no path.', code: 'no-path' } };
+
+  let relative = raw;
+  let wasUrl = false;
+  if (/^https?:\/\//i.test(raw)) {
+    wasUrl = true;
+    if (!verifiedBase) {
+      return {
+        ok: false,
+        outcome: {
+          status: 'attention',
+          reason: 'A full link cannot be converted without a verified media base.',
+          code: 'no-base',
+        },
+      };
+    }
+    let url: URL;
+    let base: URL;
+    try {
+      url = new URL(raw);
+      base = new URL(verifiedBase);
+    } catch {
+      return { ok: false, outcome: { status: 'attention', reason: 'That link could not be read as a URL.', code: 'bad-url' } };
+    }
+    if (url.search || url.hash) return { ok: false, outcome: { status: 'unchanged' } };
+    const prefix = base.toString().replace(/\/+$/, '') + '/';
+    if (!url.toString().startsWith(prefix)) return { ok: false, outcome: { status: 'unchanged' } };
+    // Decoded per SEGMENT because `resolveRecording` re-encodes on the way out;
+    // a Farsi filename copied percent-encoded would otherwise double-escape.
+    relative = url
+      .toString()
+      .slice(prefix.length)
+      .split('/')
+      .map((seg) => {
+        try {
+          return decodeURIComponent(seg);
+        } catch {
+          return seg;
+        }
+      })
+      .join('/');
+  }
+
+  const stripped = toArchiveRelative(relative);
+  if (!isSafeSourcePath(stripped)) {
+    return { ok: false, outcome: { status: 'attention', reason: 'That path is not a safe archive path.', code: 'unsafe' } };
+  }
+  return { ok: true, relative: stripped, wasUrl };
+}
+
+/**
+ * Does this lesson carry EXACT source-path evidence that it is this session?
+ *
+ * A reference whose stored path — once the legacy archive prefix is off, and
+ * once the rename log has been followed — sits inside that session's folder is
+ * proof the owner's own record already points at these very files. Date and
+ * number agreeing is not: two classes can share a number across years, and the
+ * owner's upcoming class 38 and archive session 38 are a real, live example of
+ * exactly that collision.
+ */
+function hasSourcePathEvidence(
+  lesson: Lesson,
+  folder: string,
+  renames: Map<string, string>,
+  verifiedBase?: string,
+): boolean {
+  return (lesson.recordings ?? []).some((r) => {
+    const read = readArchiveRelative(r.path.trim(), verifiedBase);
+    if (!read.ok) return false;
+    const current = renames.get(read.relative) ?? read.relative;
+    return current.startsWith(`${folder}/`);
+  });
+}
+
+/**
+ * Keep what the source has STOPPED describing, flagged unavailable.
+ *
+ * A piece removed from the registry, a session folder that is gone, a file that
+ * was deleted — the app has an item bound to it, a lesson bound to it and
+ * material listed from it. Replacing the graph with the incoming index alone
+ * would leave those bindings pointing at nothing, which `validateDB` refuses at
+ * every door: the next Refresh, and every one after it, would fail outright.
+ *
+ * So provenance is RETAINED and labelled instead. The owner sees that the file
+ * is no longer in the archive and decides what to do; nothing of theirs is
+ * deleted to make the two agree. A row that comes back is simply the incoming
+ * row again, with no flag — the source is authoritative about what it HAS.
+ */
+function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex) {
+  if (!previous) return { pieces: index.pieces, sessions: index.sessions };
+
+  const incomingKeys = new Set(index.pieces.map((p) => p.key));
+  const pieces = [
+    ...index.pieces,
+    ...previous.pieces.filter((p) => !incomingKeys.has(p.key)).map((p) => ({ ...p, unavailable: true as const })),
+  ];
+
+  const incomingSessions = new Map(index.sessions.map((s) => [s.n, s]));
+  const sessions = index.sessions.map((s) => {
+    const before = previous.sessions.find((x) => x.n === s.n);
+    if (!before) return s;
+    const paths = new Set(s.resources.map((r) => r.path));
+    const gone = before.resources
+      .filter((r) => !paths.has(r.path))
+      .map((r) => ({ ...r, unavailable: true as const }));
+    return gone.length > 0 ? { ...s, resources: [...s.resources, ...gone] } : s;
+  });
+  for (const before of previous.sessions) {
+    if (incomingSessions.has(before.n)) continue;
+    sessions.push({
+      ...before,
+      unavailable: true,
+      resources: before.resources.map((r) => ({ ...r, unavailable: true as const })),
+    });
+  }
+  sessions.sort((a, b) => a.n - b.n);
+  return { pieces, sessions };
+}
+
+// --- planning --------------------------------------------------------------
+
+export interface PlanInput {
+  db: PracticeDB;
+  index: SourceIndex;
+  instrumentId: ID;
+  decisions?: ReconcileDecision[];
+  /**
+   * This DEVICE's confirmed media base, when it has one. Only a full URL
+   * sitting under it may be rewritten to an archive-relative path; without it
+   * a stored `https://…` link is left exactly as the owner saved it.
+   */
+  verifiedBase?: string;
+  now: Date;
+}
+
+/**
+ * Decide what an import would do, without doing any of it.
+ *
+ * EXACT SOURCE BINDING WINS. A record already bound to a source identity IS
+ * that entity, whatever its title or date has since been edited to. Only an
+ * UNBOUND record is a candidate for anything, and only exact evidence adopts
+ * one: everything weaker becomes a question with the candidates named.
+ */
+export function planArchiveImport({ db, index, instrumentId, decisions = [], verifiedBase, now }: PlanInput): ImportPlan {
+  const archiveId = index.archiveId;
+  const existing = db.archiveSources?.find((s) => s.id === archiveId);
+  const suppressions = existing?.suppressions ?? [];
+  const isSuppressed = (kind: SourceSuppression['kind'], ref: string) =>
+    suppressions.some((s) => s.kind === kind && s.ref === ref && s.itemId === undefined);
+
+  const decisionFor = <T extends ReconcileDecision['kind']>(kind: T, match: (d: ReconcileDecision) => boolean) =>
+    decisions.find((d) => d.kind === kind && match(d));
+
+  // A SKIP IS A DECISION, AND A DECISION IS PERSISTED.
+  //
+  // It used to live only in this call's `decisions` argument, so the owner's
+  // "no, not this one" survived exactly as long as the preview screen did: the
+  // next refresh — or simply a reload — asked the identical question again,
+  // with nothing in the database to show it had ever been answered. It becomes
+  // a suppression, the same record every other deliberate removal writes, which
+  // a refresh, a reload and a sync all already respect.
+  const addedSuppressions: SourceSuppression[] = [];
+  const knownSuppressions = new Set(suppressions.map(suppressionKey));
+  const suppress = (kind: SourceSuppression['kind'], ref: string) => {
+    const entry: SourceSuppression = { kind, ref, at: nowISO(now) };
+    if (knownSuppressions.has(suppressionKey(entry))) return;
+    knownSuppressions.add(suppressionKey(entry));
+    addedSuppressions.push(entry);
+  };
+
+  const renames = new Map(index.renames.map((r) => [r.from, r.to]));
+
+  // --- lessons ------------------------------------------------------------
+  const boundLessons = new Map<number, Lesson>();
+  for (const l of db.lessons) {
+    if (l.source?.archiveId === archiveId) boundLessons.set(l.source.sessionN, l);
+  }
+
+  const newLessons: Lesson[] = [];
+  const adoptedLessons: Lesson[] = [];
+  const questions: ReconcileQuestion[] = [];
+
+  for (const session of index.sessions) {
+    if (boundLessons.has(session.n)) continue;
+    if (isSuppressed('session', String(session.n))) continue;
+
+    const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
+    if (skip) {
+      suppress('session', String(session.n));
+      continue;
+    }
+
+    // "Create separately" ends the question: the owner has said this session is
+    // NOT any of the classes already in their database. Without this branch the
+    // decision was silently dropped and the ambiguous candidates re-asked for
+    // ever — the item side had it from the start, and the lesson side did not.
+    const createSeparately = decisionFor('create-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
+    if (createSeparately) {
+      newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
+      continue;
+    }
+
+    const linked = decisionFor('link-lesson', (d) => 'sessionN' in d && d.sessionN === session.n) as
+      | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
+      | undefined;
+    if (linked) {
+      const target = db.lessons.find((l) => l.id === linked.lessonId);
+      if (target) {
+        adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
+        continue;
+      }
+    }
+
+    // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
+    // date, same number, and a reference that actually points into this
+    // session's own folder.
+    const candidates = db.lessons.filter(
+      (l) =>
+        !l.source &&
+        l.instrumentId === instrumentId &&
+        l.date === session.date &&
+        l.number === session.n &&
+        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
+    );
+    if (candidates.length === 1) {
+      adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
+      continue;
+    }
+    if (candidates.length > 1) {
+      questions.push({
+        kind: 'lesson',
+        sessionN: session.n,
+        label: `Class ${session.n} · ${session.date}`,
+        candidates: candidates.map((l) => ({
+          id: l.id,
+          title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
+          why: 'Same date and number, and it already links to this folder.',
+        })),
+      });
+      continue;
+    }
+    newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
+  }
+
+  // --- items --------------------------------------------------------------
+  const boundItems = new Map<string, PracticeItem>();
+  for (const i of db.items) {
+    if (i.source?.archiveId === archiveId) boundItems.set(i.source.pieceKey, i);
+  }
+
+  const newItems: PracticeItem[] = [];
+  const adoptedItems: PracticeItem[] = [];
+  const suggestions: MetadataSuggestion[] = [];
+
+  for (const piece of index.pieces) {
+    const bound = boundItems.get(piece.key);
+    if (bound) {
+      // SOURCE FACTS update; the owner's own fields never do. A later registry
+      // improvement is OFFERED, field by field, and applied only on an explicit
+      // decision — including when the owner's value is deliberately EMPTY.
+      for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
+        const proposed = persianFromPiece(piece)[field] ?? '';
+        const current = bound.persian?.[field] ?? '';
+        if (proposed && proposed !== current) {
+          suggestions.push({ pieceKey: piece.key, itemId: bound.id, field, from: current, to: proposed });
+        }
+      }
+      continue;
+    }
+    if (isSuppressed('piece', piece.key)) continue;
+
+    if (decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key)) {
+      suppress('piece', piece.key);
+      continue;
+    }
+    const linked = decisionFor('link-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key) as
+      | { kind: 'link-item'; pieceKey: string; itemId: ID }
+      | undefined;
+    if (linked) {
+      const target = db.items.find((i) => i.id === linked.itemId);
+      if (target && target.instrumentId === instrumentId) {
+        adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
+        continue;
+      }
+    }
+    const createNow = decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
+
+    // CANDIDATES are EXACT equality only: the canonical key itself, or one of
+    // the registry's own literal aliases. Nothing is normalised, folded or
+    // transliterated here — that is search, and search is not identity. A
+    // built-in `catalogKey` is never compared at all: "iraq" is a catalogue
+    // slug, عراق is a canonical Farsi key, and equating them would merge two
+    // different things on a coincidence of meaning.
+    const literals = new Set<string>([piece.key, ...piece.aliases]);
+    const candidates = createNow
+      ? []
+      : db.items.filter(
+          (i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()),
+        );
+
+    if (candidates.length > 0) {
+      questions.push({
+        kind: 'item',
+        pieceKey: piece.key,
+        label: piece.key,
+        candidates: candidates.map((i) => ({
+          id: i.id,
+          title: i.title,
+          why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
+        })),
+      });
+      continue;
+    }
+    newItems.push(itemForPiece(archiveId, instrumentId, piece, now));
+  }
+
+  // --- EXACT REFERENCE REPAIR, inside the refresh the owner actually runs ---
+  //
+  // The rename log is published WITH the index, so the one moment the app can
+  // repair a stored path is the moment it accepts a new graph. Adopting a
+  // legacy class and leaving its own references pointing at names the archive
+  // renamed years ago is half a job: the lesson binds, and every file on it
+  // still 404s.
+  //
+  // Scope is the lessons this archive OWNS — the ones adopted by this plan and
+  // the ones already bound. A lesson the archive has no claim on is not
+  // something a refresh may rewrite.
+  //
+  // ONE pass over both, so `adoptedLessons` in the plan is byte-identical to
+  // what `applyArchiveImport` installs: a preview that shows an old path while
+  // the commit writes a new one is the plan/apply divergence this module is
+  // built to make impossible.
+  const known = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
+  const repairAttention: SourceDiagnostic[] = [];
+  const repair = (l: Lesson): { lesson: Lesson; changed: boolean } => {
+    const outcome = repairLessonReferences(l, renames, known, verifiedBase);
+    for (const a of outcome.attention) {
+      // 'not-described' is NOT reported: the index describes only the material
+      // scoped to pieces and classes, so a path it never names and never
+      // renamed is outside what it knows — never evidence the file is gone.
+      // See `RepairReason`.
+      if (a.code === 'not-described') continue;
+      repairAttention.push({ path: a.path, reason: a.reason });
+    }
+    return { lesson: outcome.lesson, changed: outcome.repaired > 0 };
+  };
+
+  const repairedAdopted = adoptedLessons.map((l) => repair(l).lesson);
+  const repairedLessons: Lesson[] = [];
+  for (const bound of boundLessons.values()) {
+    const outcome = repair(bound);
+    if (outcome.changed) repairedLessons.push(outcome.lesson);
+  }
+
+  // --- the graph to persist ------------------------------------------------
+  // What the source still describes, PLUS what it has stopped describing,
+  // flagged. New records above were minted from `index.pieces` alone, so a
+  // retained-but-unavailable piece never comes back as a fresh item.
+  const retained = retainMissing(existing, index);
+  const source: ArchiveSource = {
+    id: archiveId,
+    instrumentId,
+    indexHash: index.contentHash,
+    acceptedAt: nowISO(now),
+    pieces: retained.pieces,
+    sessions: retained.sessions,
+    renames: index.renames,
+    diagnostics: index.diagnostics,
+    suppressions: [...suppressions, ...addedSuppressions],
+  };
+
+  // A field decision only counts as a change when there is a suggestion for it
+  // to apply — a stale one left over from an earlier preview changes nothing.
+  const appliedFields = decisions.filter(
+    (d) => d.kind === 'apply-field' && suggestions.some((x) => x.pieceKey === d.pieceKey && x.field === d.field),
+  );
+  const changesRecords =
+    newItems.length > 0 ||
+    newLessons.length > 0 ||
+    adoptedLessons.length > 0 ||
+    adoptedItems.length > 0 ||
+    repairedLessons.length > 0 ||
+    addedSuppressions.length > 0 ||
+    appliedFields.length > 0;
+  const sameGraph = existing?.indexHash === index.contentHash;
+  const attention = [...index.diagnostics, ...repairAttention];
+
+  return {
+    archiveId,
+    instrumentId,
+    indexHash: index.contentHash,
+    source,
+    newItems,
+    newLessons,
+    adoptedLessons: repairedAdopted,
+    repairedLessons,
+    adoptedItems,
+    questions,
+    suggestions,
+    attention,
+    summary: {
+      addedItems: newItems.length,
+      addedLessons: newLessons.length,
+      updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length,
+      questions: questions.length,
+      attention: attention.length,
+      unchanged: sameGraph && !changesRecords && questions.length === 0,
+    },
+  };
+}
+
+// --- applying --------------------------------------------------------------
+
+/**
+ * Apply a plan to a database, returning a NEW database — or the SAME OBJECT
+ * when the plan changes nothing at all, so an unchanged refresh cannot bump the
+ * revision counter or churn a timestamp.
+ *
+ * Nothing here touches a block, a review, an agenda entry, a practice counter,
+ * a result or any scheduling field. It adds records and it replaces the source
+ * graph; that is the whole of it.
+ */
+export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: ReconcileDecision[] = []): PracticeDB {
+  const existing = db.archiveSources?.find((s) => s.id === plan.archiveId);
+  const graphChanged = !existing || existing.indexHash !== plan.indexHash;
+  // AN OWNER DECISION IS A CHANGE even when the index is not. A skip recorded
+  // against an already-current graph writes a suppression, and comparing the
+  // index hash alone returned the database untouched — which is precisely how
+  // "Skip" survived the preview and nothing else. The digest is verified at the
+  // reader, so an equal hash really does mean an equal graph; the suppression
+  // list is the part it says nothing about.
+  const knownSuppressions = new Set((existing?.suppressions ?? []).map(suppressionKey));
+  const suppressionsChanged =
+    plan.source.suppressions.length !== knownSuppressions.size ||
+    plan.source.suppressions.some((s) => !knownSuppressions.has(suppressionKey(s)));
+  // A field decision counts only when the plan actually OFFERS that field —
+  // the same rule the plan's own summary applies, so "nothing to do" means the
+  // same thing on both sides of the preview/commit boundary. A decision left
+  // over from an earlier preview must not make an unchanged refresh a write.
+  const applied = decisions.filter(
+    (d): d is Extract<ReconcileDecision, { kind: 'apply-field' }> =>
+      d.kind === 'apply-field' && plan.suggestions.some((x) => x.pieceKey === d.pieceKey && x.field === d.field),
+  );
+  const nothingToDo =
+    !graphChanged &&
+    !suppressionsChanged &&
+    plan.newItems.length === 0 &&
+    plan.newLessons.length === 0 &&
+    plan.adoptedLessons.length === 0 &&
+    plan.repairedLessons.length === 0 &&
+    plan.adoptedItems.length === 0 &&
+    applied.length === 0;
+  if (nothingToDo) return db;
+
+  const adoptedLessonIds = new Set(plan.adoptedLessons.map((l) => l.id));
+  const repairedById = new Map(plan.repairedLessons.map((l) => [l.id, l]));
+  const fieldsByItem = new Map<ID, MetadataSuggestion[]>();
+  for (const s of plan.suggestions) {
+    if (!applied.some((d) => d.pieceKey === s.pieceKey && d.field === s.field)) continue;
+    fieldsByItem.set(s.itemId, [...(fieldsByItem.get(s.itemId) ?? []), s]);
+  }
+
+  const items = db.items.map((item) => {
+    const adopted = plan.adoptedItems.find((i) => i.id === item.id);
+    const fields = fieldsByItem.get(item.id);
+    if (!adopted && !fields) return item;
+    const base = adopted ?? item;
+    if (!fields) return base;
+    return {
+      ...base,
+      persian: { ...base.persian, ...Object.fromEntries(fields.map((f) => [f.field, f.to])) },
+      updatedAt: plan.source.acceptedAt,
+    };
+  });
+
+  // A repaired path carries NO `updatedAt`: the archive renamed a file, which
+  // is a source fact about where the bytes are, not the owner revising their
+  // own record. The field application above DOES touch it, because that one is
+  // the owner choosing to change a value of theirs. The asymmetry is the point.
+  const lessons = db.lessons.map((l) => {
+    if (adoptedLessonIds.has(l.id)) return plan.adoptedLessons.find((x) => x.id === l.id)!;
+    return repairedById.get(l.id) ?? l;
+  });
+
+  const sources = (db.archiveSources ?? []).filter((s) => s.id !== plan.archiveId);
+
+  return {
+    ...db,
+    // Adopted records are rewritten IN PLACE above — they keep their own ids,
+    // their practice history and their position. Only genuinely new records are
+    // appended.
+    items: [...items, ...plan.newItems],
+    lessons: [...lessons, ...plan.newLessons],
+    archiveSources: [...sources, plan.source],
+  };
+}
+
+// --- suppression -----------------------------------------------------------
+
+/**
+ * Record an owner decision that a refresh, a reload and a sync must all
+ * respect. Narrowly scoped BY CONSTRUCTION: a resource hidden on one item
+ * carries that item's id and leaves every sibling alone.
+ *
+ * Idempotent, so re-deleting the same thing does not grow the list.
+ */
+export function withSuppression(
+  sources: ArchiveSource[],
+  archiveId: string,
+  suppression: SourceSuppression,
+): ArchiveSource[] {
+  return sources.map((s) => {
+    if (s.id !== archiveId) return s;
+    const key = suppressionKey(suppression);
+    if (s.suppressions.some((x) => suppressionKey(x) === key)) return s;
+    return { ...s, suppressions: [...s.suppressions, suppression] };
+  });
+}
+
+/** Lift a suppression, so the next refresh may import that entity again. */
+export function withoutSuppression(
+  sources: ArchiveSource[],
+  archiveId: string,
+  match: (s: SourceSuppression) => boolean,
+): ArchiveSource[] {
+  return sources.map((s) => (s.id === archiveId ? { ...s, suppressions: s.suppressions.filter((x) => !match(x)) } : s));
+}
+
+// --- exact reference repair (no fuzzy matching, ever) ----------------------
+
+/**
+ * Why a repair could not proceed. The CODE exists because one of these is not
+ * something the app may state as a fact: the published index deliberately
+ * describes only the material the archive scopes to pieces and classes — 125
+ * of its 258 files (the owner's own practice takes) are absent from it by
+ * construction — so a path that is neither renamed nor described is simply
+ * OUTSIDE what the index knows, never evidence that the file is gone. Every
+ * other code is a real finding about the log itself.
+ */
+export type RepairReason = 'no-path' | 'unsafe' | 'no-base' | 'bad-url' | 'cycle' | 'renamed-gone' | 'not-described';
+
+export type ReferenceRepair =
+  | { status: 'repaired'; path: string }
+  | { status: 'unchanged' }
+  | { status: 'attention'; reason: string; code: RepairReason };
+
+/**
+ * Repair ONE stored reference path against the archive's own rename log.
+ *
+ * EXACT mapping only. A path that the log does not name is left exactly as it
+ * is with a reason — never matched by title, by size, by modification time or
+ * by similarity. A full URL is converted only when it sits under the device's
+ * VERIFIED base, and a URL carrying a query or fragment is not a plain file
+ * path and stays untouched.
+ */
+export function repairReferencePath(
+  path: string,
+  renames: Map<string, string>,
+  known: Set<string>,
+  verifiedBase?: string,
+): ReferenceRepair {
+  const raw = path.trim();
+  const read = readArchiveRelative(raw, verifiedBase);
+  if (!read.ok) return read.outcome;
+  const { relative: stripped, wasUrl } = read;
+
+  // Follow the rename chain, refusing a cycle rather than looping.
+  let current = stripped;
+  const seen = new Set<string>([current]);
+  while (renames.has(current)) {
+    const next = renames.get(current)!;
+    if (seen.has(next)) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
+    seen.add(next);
+    current = next;
+  }
+  if (current === stripped) {
+    if (known.has(current)) return !wasUrl && stripped === raw ? { status: 'unchanged' } : { status: 'repaired', path: current };
+    return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
+  }
+  if (!known.has(current)) {
+    return { status: 'attention', reason: 'This file was renamed, but the archive no longer has it.', code: 'renamed-gone' };
+  }
+  return { status: 'repaired', path: current };
+}
+
+/** Repair every reference on a lesson, preserving each row and its metadata. */
+export function repairLessonReferences(
+  lesson: Lesson,
+  renames: Map<string, string>,
+  known: Set<string>,
+  verifiedBase?: string,
+): { lesson: Lesson; repaired: number; attention: { title: string; path: string; reason: string; code: RepairReason }[] } {
+  let repaired = 0;
+  const attention: { title: string; path: string; reason: string; code: RepairReason }[] = [];
+  const recordings: LessonRecording[] = (lesson.recordings ?? []).map((r) => {
+    const outcome = repairReferencePath(r.path, renames, known, verifiedBase);
+    if (outcome.status === 'repaired') {
+      repaired += 1;
+      // The ROW survives with its own title, notes, date and size: only the
+      // path text changes. Two rows that now point at one physical file stay
+      // two rows — deleting one would delete something the owner wrote.
+      return { ...r, path: outcome.path };
+    }
+    if (outcome.status === 'attention') {
+      attention.push({ title: r.title, path: r.path, reason: outcome.reason, code: outcome.code });
+    }
+    return r;
+  });
+  return { lesson: { ...lesson, recordings }, repaired, attention };
+}
+```
+
+### src/store/archiveIndex.test.ts
+
+```
+import { describe, expect, it, vi } from 'vitest';
+// @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
+import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
+// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
+// against the real producer rather than a restatement of it in the test.
+import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
+import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
+import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+import { decodeSourceIndex } from '../domain/sourceArchive';
+import { validateDB } from '../domain/io';
+import type { PracticeDB } from '../domain/types';
+
+// ---------------------------------------------------------------------------
+// The persist storage, CONTROLLABLE per assertion — the same stub io.test.ts
+// uses, plus a settle promise this test can reject on demand. A failed
+// IndexedDB write is the one thing `commitArchiveImport` must never mistake
+// for a success, and it cannot be provoked in a real browser on purpose.
+// ---------------------------------------------------------------------------
+const fakeStorage = vi.hoisted(() => {
+  let value: string | null = null;
+  let failNextWrite = false;
+  return {
+    get: () => value,
+    set: (v: string | null) => {
+      value = v;
+    },
+    failNext: () => {
+      failNextWrite = true;
+    },
+    takeFailure: () => {
+      const f = failNextWrite;
+      failNextWrite = false;
+      return f;
+    },
+  };
+});
+vi.mock('./idb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./idb')>();
+  let settle: Promise<void> = Promise.resolve();
+  return {
+    ...actual,
+    // Dexie itself has no IndexedDB to talk to in this environment, and
+    // `clearAll` reaches for the blob store. Stubbed so a deliberate erasure
+    // does not raise an unhandled rejection that would mask a real one.
+    clearBlobs: async () => undefined,
+    deleteBlob: async () => undefined,
+    allBlobs: async () => [],
+    heldBlobIds: async () => new Set<string>(),
+    storageSettled: () => settle,
+    idbStorage: {
+      getItem: async () => fakeStorage.get(),
+      setItem: async (_name: string, value: string) => {
+        if (fakeStorage.takeFailure()) {
+          settle = Promise.reject(new Error('the device refused the write'));
+          // Mark it handled here so the rejection reaches only the one caller
+          // that is waiting on it, exactly as the real adapter does.
+          void settle.catch(() => undefined);
+          return;
+        }
+        fakeStorage.set(value);
+        settle = Promise.resolve();
+      },
+      removeItem: async () => fakeStorage.set(null),
+    },
+  };
+});
+// Imported AFTER the mock declaration on purpose: the store's persist
+// middleware binds its storage at module load.
+const { useStore } = await import('./useStore');
+
+// ---------------------------------------------------------------------------
+// A fake git repository, small enough to assert against exactly. It records
+// EVERY write, so "this publisher cannot touch practice data" is a checked
+// property of the calls made, not a claim about intent.
+// ---------------------------------------------------------------------------
+
+interface FakeRepo {
+  refs: Map<string, string>;
+  commits: Map<string, { treeSha: string; parents: string[] }>;
+  trees: Map<string, Record<string, string>>;
+  blobs: Map<string, string>;
+  writes: { kind: string; target: string }[];
+  n: number;
+}
+
+function newRepo(): FakeRepo {
+  const repo: FakeRepo = {
+    refs: new Map(),
+    commits: new Map(),
+    trees: new Map(),
+    blobs: new Map(),
+    writes: [],
+    n: 0,
+  };
+  // The app's own data branch, exactly as the sync engine leaves it. Nothing in
+  // this test may change any of these three.
+  const tree = { 'state.json': 'blob-state', 'manifest.json': 'blob-manifest', 'files/a.pdf': 'blob-file' };
+  repo.trees.set('tree-main', tree);
+  repo.commits.set('commit-main', { treeSha: 'tree-main', parents: [] });
+  repo.refs.set('main', 'commit-main');
+  repo.refs.set('archive/2026-09-01', 'commit-main');
+  return repo;
+}
+
+function transportFor(repo: FakeRepo, opts: { failAfterCommit?: boolean; raceOnce?: () => void } = {}) {
+  const id = (p: string) => `${p}-${(repo.n += 1)}`;
+  return {
+    async getRef(branch: string) {
+      const sha = repo.refs.get(branch);
+      return sha ? { sha } : null;
+    },
+    async getCommit(sha: string) {
+      return { treeSha: repo.commits.get(sha)!.treeSha };
+    },
+    async getFile(sha: string, path: string) {
+      const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
+      const blob = tree[path];
+      return blob ? { text: repo.blobs.get(blob)! } : null;
+    },
+    async createBlob(text: string) {
+      const sha = id('blob');
+      repo.blobs.set(sha, text);
+      repo.writes.push({ kind: 'blob', target: sha });
+      return sha;
+    },
+    async createTree({ baseTreeSha, path, blobSha }: { baseTreeSha: string | null; path: string; blobSha: string }) {
+      const sha = id('tree');
+      repo.trees.set(sha, { ...(baseTreeSha ? repo.trees.get(baseTreeSha) : {}), [path]: blobSha });
+      repo.writes.push({ kind: 'tree', target: path });
+      return sha;
+    },
+    async createCommit({ treeSha, parents }: { treeSha: string; parents: string[] }) {
+      const sha = id('commit');
+      repo.commits.set(sha, { treeSha, parents });
+      repo.writes.push({ kind: 'commit', target: treeSha });
+      return sha;
+    },
+    async updateRef(branch: string, sha: string, expectedSha: string) {
+      opts.raceOnce?.();
+      if (opts.failAfterCommit) throw new Error('network dropped');
+      // NON-FORCE: the ref only advances from the commit that was read.
+      if (repo.refs.get(branch) !== expectedSha) return 'HTTP 422';
+      repo.refs.set(branch, sha);
+      repo.writes.push({ kind: 'ref', target: branch });
+      return 'ok';
+    },
+    async createRef(branch: string, sha: string) {
+      if (opts.failAfterCommit) throw new Error('network dropped');
+      if (repo.refs.has(branch)) return 'HTTP 422';
+      repo.refs.set(branch, sha);
+      repo.writes.push({ kind: 'ref', target: branch });
+      return 'ok';
+    },
+  };
+}
+
+const publishedText = (repo: FakeRepo) => {
+  const sha = repo.refs.get(SOURCE_INDEX_BRANCH);
+  if (!sha) return null;
+  const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
+  return repo.blobs.get(tree[INDEX_PATH]) ?? null;
+};
+
+// A credential-shaped placeholder — never a real token, and never a
+// contiguous 16+ char [A-Za-z0-9_-] run (the space keeps it that way) — used
+// only to prove no credential text reaches anything the publisher's output
+// touches.
+const NEVER_LEAKED_CREDENTIAL = 'publisher credential placeholder';
+const ROOT = '/volume1/media/setar-classes';
+
+describe('publishing and reading the source index', () => {
+  it('source index publication cannot replace practice data or lose a concurrent update', async () => {
+    const repo = newRepo();
+    const first = `${JSON.stringify(indexFixture, null, 1)}\n`;
+
+    // --- first publish: creates the branch, main untouched -----------------
+    const created = await publishIndex({ transport: transportFor(repo), indexText: first });
+    expect(created.status).toBe('created');
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(created.commit);
+    expect(publishedText(repo)).toBe(first);
+    expect(repo.refs.get('main')).toBe('commit-main');
+    expect(repo.refs.get('archive/2026-09-01')).toBe('commit-main');
+    expect(repo.trees.get('tree-main')).toEqual({
+      'state.json': 'blob-state',
+      'manifest.json': 'blob-manifest',
+      'files/a.pdf': 'blob-file',
+    });
+    // Every ref this publisher advanced, and every path it wrote.
+    expect(repo.writes.filter((w) => w.kind === 'ref').map((w) => w.target)).toEqual([SOURCE_INDEX_BRANCH]);
+    expect(repo.writes.filter((w) => w.kind === 'tree').map((w) => w.target)).toEqual([INDEX_PATH]);
+    expect(repo.writes.some((w) => /state\.json|manifest\.json|^files\//.test(w.target))).toBe(false);
+
+    // --- an identical scan makes NO commit ---------------------------------
+    const before = repo.refs.get(SOURCE_INDEX_BRANCH);
+    const writesBefore = repo.writes.length;
+    const again = await publishIndex({ transport: transportFor(repo), indexText: first });
+    expect(again.status).toBe('unchanged');
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(before);
+    expect(repo.writes).toHaveLength(writesBefore);
+
+    // --- a changed scan advances the branch, and only it --------------------
+    const changed = `${JSON.stringify({ ...indexFixture, diagnostics: [{ path: 'x', reason: 'y' }] }, null, 1)}\n`;
+    const second = await publishIndex({ transport: transportFor(repo), indexText: changed });
+    expect(second.status).toBe('published');
+    expect(publishedText(repo)).toBe(changed);
+    expect(repo.commits.get(second.commit)!.parents).toEqual([before]);
+    expect(repo.refs.get('main')).toBe('commit-main');
+
+    // --- interrupted BEFORE the ref advances: the old index still stands ----
+    const head = repo.refs.get(SOURCE_INDEX_BRANCH);
+    const interrupted = `${JSON.stringify({ ...indexFixture, archiveId: 'half-written' }, null, 1)}\n`;
+    await expect(
+      publishIndex({ transport: transportFor(repo, { failAfterCommit: true }), indexText: interrupted }),
+    ).rejects.toThrow(/network dropped/);
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(head);
+    expect(publishedText(repo)).toBe(changed);
+
+    // --- racing a second publisher: nothing is overwritten ------------------
+    // The other publisher lands its own commit between this one's read and its
+    // update. Non-force, so this update is refused; the retry re-reads and,
+    // because the other publisher wrote exactly what this one has, it settles
+    // on "unchanged" rather than clobbering.
+    const rival = `${JSON.stringify({ ...indexFixture, archiveId: 'setar-classes' }, null, 1)}\n`;
+    let raced = false;
+    const race = () => {
+      if (raced) return;
+      raced = true;
+      const blob = 'blob-rival';
+      repo.blobs.set(blob, rival);
+      repo.trees.set('tree-rival', { [INDEX_PATH]: blob });
+      repo.commits.set('commit-rival', { treeSha: 'tree-rival', parents: [repo.refs.get(SOURCE_INDEX_BRANCH)!] });
+      repo.refs.set(SOURCE_INDEX_BRANCH, 'commit-rival');
+    };
+    const afterRace = await publishIndex({ transport: transportFor(repo, { raceOnce: race }), indexText: rival });
+    expect(afterRace.status).toBe('unchanged');
+    expect(publishedText(repo)).toBe(rival);
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe('commit-rival');
+    // A racing publisher with DIFFERENT content gives up rather than force it.
+    let always = true;
+    const alwaysRace = () => {
+      if (!always) return;
+      repo.commits.set(`commit-rival-${(repo.n += 1)}`, { treeSha: 'tree-rival', parents: [] });
+      repo.refs.set(SOURCE_INDEX_BRANCH, `commit-rival-${repo.n}`);
+    };
+    await expect(
+      publishIndex({ transport: transportFor(repo, { raceOnce: alwaysRace }), indexText: changed }),
+    ).rejects.toThrow(/nothing was overwritten/);
+    always = false;
+
+    // --- the target is fixed in CODE, not by trusting the caller ------------
+    for (const branch of ['main', 'master', 'archive/2026-09-01', 'source-index-2']) {
+      await expect(publishIndex({ transport: transportFor(repo), indexText: first, branch })).rejects.toThrow(
+        /only writes/,
+      );
+    }
+    for (const path of ['state.json', 'manifest.json', 'files/a.pdf', 'setar/other.json']) {
+      await expect(publishIndex({ transport: transportFor(repo), indexText: first, path })).rejects.toThrow(
+        /only writes "setar\/index\.json"/,
+      );
+    }
+
+    // --- the READER pins the file to the branch's own commit ----------------
+    const requests: string[] = [];
+    const publishedCommit = repo.refs.get(SOURCE_INDEX_BRANCH)!;
+    const fakeFetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      requests.push(href);
+      // The reader must never send anything but a GET.
+      expect(init?.method ?? 'GET').toBe('GET');
+      if (href.includes('/git/ref/heads/')) {
+        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+      }
+      const m = /contents\/(.+)\?ref=(.+)$/.exec(href)!;
+      const tree = repo.trees.get(repo.commits.get(m[2])!.treeSha)!;
+      const text = repo.blobs.get(tree[decodeURIComponent(m[1])])!;
+      return new Response(
+        JSON.stringify({ content: Buffer.from(text, 'utf8').toString('base64'), encoding: 'base64', size: text.length }),
+        { status: 200 },
+      );
+    };
+    const got = await fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: fakeFetch as typeof fetch });
+    expect(got.ok).toBe(true);
+    if (!got.ok) throw new Error(got.error);
+    expect(got.value.commitSha).toBe(publishedCommit);
+    expect(got.value.index.archiveId).toBe('setar-classes');
+    // The content request names the COMMIT, not the branch: a publish landing
+    // between the two calls cannot hand back half of one index and half of
+    // another.
+    expect(requests[1]).toContain(`?ref=${publishedCommit}`);
+    expect(requests[1]).not.toContain(SOURCE_INDEX_BRANCH);
+    expect(requests.every((r) => r.startsWith('https://api.github.com/'))).toBe(true);
+
+    // --- authentication and network failures change nothing -----------------
+    const refuse = async () => new Response('no', { status: 401 });
+    const denied = await fetchPublishedIndex({ repo: 'owner/data', token: 'bad', fetchImpl: refuse as typeof fetch });
+    expect(denied.ok).toBe(false);
+    if (denied.ok) throw new Error('expected refusal');
+    expect(denied.error).toMatch(/refused/i);
+    const offline = async () => {
+      throw new Error('offline');
+    };
+    const down = await fetchPublishedIndex({ repo: 'owner/data', token: 't', fetchImpl: offline as typeof fetch });
+    expect(down.ok).toBe(false);
+    if (down.ok) throw new Error('expected refusal');
+    expect(down.error).toMatch(/already imported is unaffected/);
+    // The published index and the app's data branch are exactly as they were.
+    expect(publishedText(repo)).toBe(rival);
+    expect(repo.refs.get('main')).toBe('commit-main');
+
+    // --- no credential and no archive root in anything that travels ---------
+    const everything = JSON.stringify([
+      [...repo.blobs.values()],
+      [...repo.trees.values()],
+      [...repo.commits.keys()],
+      requests,
+      denied.error,
+      down.error,
+    ]);
+    expect(everything).not.toContain(NEVER_LEAKED_CREDENTIAL);
+    expect(everything).not.toContain(ROOT);
+    expect(everything).not.toContain('/Volumes/');
+
+    // The file-import fallback goes through the SAME decoder.
+    expect((await readIndexFile(rival)).ok).toBe(true);
+    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
+    expect(badFile.ok).toBe(false);
+    if (badFile.ok) throw new Error('expected refusal');
+    expect(badFile.error).toMatch(/newer scanner/);
+
+    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
+    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
+    // against the hash already accepted to conclude that nothing has changed.
+    // So content altered under a RETAINED old hash would be reported "Already
+    // current" and its changed facts silently ignored. Both doors recompute
+    // the scanner's own digest and fail closed.
+    const original = JSON.parse(rival) as typeof indexFixture;
+    const altered = {
+      ...original,
+      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
+    };
+    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
+    expect(altered.contentHash).toBe(original.contentHash);
+    const alteredText = JSON.stringify(altered);
+    const tampered = await readIndexFile(alteredText);
+    expect(tampered.ok).toBe(false);
+    if (tampered.ok) throw new Error('expected refusal');
+    expect(tampered.error).toMatch(/does not match its own content hash/);
+
+    // The GitHub door refuses the identical bytes, through the same boundary.
+    const tamperedFetch = async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes('/git/ref/heads/')) {
+        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          content: Buffer.from(alteredText, 'utf8').toString('base64'),
+          encoding: 'base64',
+          size: alteredText.length,
+        }),
+        { status: 200 },
+      );
+    };
+    const fetchedTampered = await fetchPublishedIndex({
+      repo: 'owner/data',
+      token: 'device-token',
+      fetchImpl: tamperedFetch as typeof fetch,
+    });
+    expect(fetchedTampered.ok).toBe(false);
+    if (fetchedTampered.ok) throw new Error('expected refusal');
+    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
+
+    // Re-scanned content — a NEW digest for the new facts — is accepted, so
+    // this is an integrity gate and not a freeze on the archive ever changing.
+    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
+    expect(rescanned.ok).toBe(true);
+    if (!rescanned.ok) throw new Error(rescanned.error);
+    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
+    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
+
+    // A STRUCTURALLY broken file still reports the structural error rather
+    // than a hash mismatch: the owner can act on the first, never the second.
+    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
+    expect(brokenStructure.ok).toBe(false);
+    if (brokenStructure.ok) throw new Error('expected refusal');
+    expect(brokenStructure.error).toMatch(/no sessions/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-11 — the commit boundary, against the REAL store.
+// ---------------------------------------------------------------------------
+
+const INDEX = decodeSourceIndex(indexFixture);
+const SETAR = 'inst-setar';
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+
+function loadOwnerData(): PracticeDB {
+  const db = validateDB(JSON.parse(V13_SETAR_TEXT));
+  useStore.setState({ db, active: null, activeRoutine: null, activePlan: null, sessionInstrumentId: SETAR });
+  return db;
+}
+
+const commit = (decidedFromRev: number) =>
+  useStore.getState().commitArchiveImport({ index: INDEX, instrumentId: SETAR, decidedFromRev, now: NOW });
+
+describe('committing an archive import', () => {
+  it('archive commits survive interruption and never apply a stale preview', async () => {
+    loadOwnerData();
+
+    // --- ONE mutation, validated first, acknowledged by storage -------------
+    const { plan, rev } = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(plan.newItems).toHaveLength(94);
+    const applied = await commit(rev);
+    expect(applied).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+    // The storage adapter holds the WHOLE new state, not a partial one.
+    const persisted = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    expect(persisted.state.db.items.filter((i) => i.source)).toHaveLength(94);
+    expect(persisted.state.db.archiveSources).toHaveLength(1);
+
+    // --- an unchanged refresh writes NOTHING, and churns no revision --------
+    const quietRev = useStore.getState().rev;
+    const again = await commit(quietRev);
+    expect(again).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().rev).toBe(quietRev);
+
+    // --- a REVISION CHANGE during the fetch rebases without losing edits ----
+    loadOwnerData();
+    const stale = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    // The owner edits a notebook while the index is being read.
+    useStore.getState().updateItem('own-dashti', { notes: 'edited while the index was being read' });
+    expect(useStore.getState().rev).not.toBe(stale.rev);
+    const rebased = await commit(stale.rev);
+    expect(rebased).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'edited while the index was being read',
+    );
+    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+
+    // --- a rebase that raises a NEW question refuses, and changes nothing ---
+    loadOwnerData();
+    const before = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(before.plan.questions).toEqual([]);
+    // An item appears with a canonical title while the index is being read —
+    // now there IS something to decide, and it is not this code's decision.
+    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
+    const itemsBefore = useStore.getState().db.items.length;
+    const refused = await commit(before.rev);
+    expect(refused).toMatchObject({ ok: false, status: 'stale' });
+    expect(useStore.getState().db.items).toHaveLength(itemsBefore);
+    expect(useStore.getState().db.archiveSources).toEqual([]);
+    // Answering it explicitly lets the same index through.
+    const answered = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(answered).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
+
+    // --- A RUNNING SESSION IS UNTOUCHED, and one that FINISHES is kept ------
+    loadOwnerData();
+    useStore.getState().startItemSession('own-dashti');
+    const activeBefore = useStore.getState().active;
+    expect(activeBefore).not.toBeNull();
+    const duringPractice = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const withClock = await commit(duringPractice.rev);
+    expect(withClock).toMatchObject({ ok: true, status: 'applied' });
+    // Not replaced, not nulled, not restarted: the same object, still running.
+    expect(useStore.getState().active).toBe(activeBefore);
+    expect(useStore.getState().activeRoutine).toBeNull();
+    expect(useStore.getState().activePlan).toBeNull();
+    expect(useStore.getState().sessionInstrumentId).toBe(SETAR);
+
+    loadOwnerData();
+    const beforeBlock = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    useStore.getState().startItemSession('own-dashti');
+    useStore.getState().closeSession({ durationMinutes: 12, result: 'same', answer: 'unanswered', now: NOW });
+    const blocksAfterClose = useStore.getState().db.blocks.length;
+    expect(blocksAfterClose).toBe(2);
+    const afterBlock = await commit(beforeBlock.rev);
+    expect(afterBlock).toMatchObject({ ok: true, status: 'applied' });
+    // The minute played while the index was being read is still there.
+    expect(useStore.getState().db.blocks).toHaveLength(2);
+
+    // --- A FAILED WRITE IS REPORTED, and the retry really writes -----------
+    loadOwnerData();
+    const toFail = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const persistedBefore = fakeStorage.get();
+    fakeStorage.failNext();
+    const unsaved = await commit(toFail.rev);
+    expect(unsaved).toMatchObject({ ok: false, status: 'unsaved' });
+    expect(unsaved.message).toMatch(/could not save/i);
+    // The store holds the graph; the DISK does not. A reload before the
+    // acknowledgement therefore yields the PREVIOUS complete state.
+    expect(useStore.getState().db.archiveSources).toHaveLength(1);
+    expect(fakeStorage.get()).toBe(persistedBefore);
+
+    // THE RETRY IS THE POINT: the in-memory index hash already matches, so a
+    // "nothing changed" shortcut would answer "Already current" over data that
+    // was never saved.
+    const retry = await commit(useStore.getState().rev);
+    expect(retry).toMatchObject({ ok: true, status: 'applied' });
+    const afterRetry = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    // A COMPLETE state, not a delta: the graph, the owner's items, the blocks.
+    expect(afterRetry.state.db.archiveSources).toHaveLength(1);
+    expect(afterRetry.state.db.items.filter((i) => i.source)).toHaveLength(94);
+    expect(afterRetry.state.db.blocks).toHaveLength(1);
+    expect(afterRetry.state.db.lessonAgenda).toHaveLength(1);
+
+    // --- reload AFTER the acknowledgement yields the NEW complete state -----
+    // The bytes on disk at the moment of the acknowledgement, replayed through
+    // the app's own hydration. (Every `setState` re-persists, so the captured
+    // text is put back first — otherwise this would only prove that the store
+    // can read what it has just written.)
+    const onDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(onDisk);
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db.archiveSources).toHaveLength(1);
+    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+
+    // --- a graph this device would REFUSE to import is never written -------
+    loadOwnerData();
+    const broken = { ...INDEX, sessions: INDEX.sessions.map((s) => ({ ...s, n: 1 })) };
+    const refusedGraph = await useStore.getState().commitArchiveImport({
+      index: broken,
+      instrumentId: SETAR,
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(refusedGraph.ok).toBe(false);
+    expect(refusedGraph.status).toBe('refused');
+    expect(useStore.getState().db.archiveSources).toEqual([]);
+
+    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
+    // The whole lifecycle, not the helper: a rendered choice becomes a
+    // decision, the commit persists it, a real rehydration reads it back, and
+    // the NEXT refresh — carrying no decisions at all — honours it.
+    loadOwnerData();
+    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
+    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
+    const skipped = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
+      decidedFromRev: asked.rev,
+      now: NOW,
+    });
+    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
+
+    // Reload: the bytes actually on disk, back through the app's hydration.
+    const skipDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(skipDisk);
+    await useStore.persist.rehydrate();
+    const reloadedSource = useStore.getState().db.archiveSources[0]!;
+    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    // The owner's own record is untouched and still theirs.
+    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
+
+    // The NEXT refresh asks nothing and writes nothing.
+    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(afterReload.plan.questions).toEqual([]);
+    const quiet = await commit(afterReload.rev);
+    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+
+    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
+    // The index has not moved; the owner has only just answered. Judging
+    // "Already current" by the index hash alone reported exactly that and
+    // dropped the answer before it could ever be written.
+    const boundWithComposer = useStore
+      .getState()
+      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
+    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
+    const composer = boundWithComposer.persian!.composer!;
+    const pieceKey = boundWithComposer.source!.pieceKey;
+    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
+    // An OFFER is not a change: unanswered, this refresh genuinely writes
+    // nothing, and says so. The owner's DECISION is what makes it a write.
+    expect(offered.plan.summary.unchanged).toBe(true);
+    const answered2 = useStore.getState().previewArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      now: NOW,
+    });
+    expect(answered2.plan.summary.unchanged).toBe(false);
+    // Left unanswered, the same refresh really is a no-op.
+    const declined = await commit(useStore.getState().rev);
+    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
+    // Answered, it is applied — and acknowledged by storage.
+    const appliedField = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
+    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
+    // Nothing else moved with it.
+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
+      boundWithComposer.title,
+    );
+    expect(useStore.getState().db.blocks).toHaveLength(1);
+
+    // --- refresh NEVER runs a whole-database import or reset ---------------
+    // `importDB`, `resetDemo` and `clearAll` each null the active session and
+    // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
+    // intact across a commit. The source, too, says so:
+    const storeSource = await (await import('node:fs/promises')).readFile('src/store/useStore.ts', 'utf8');
+    const from = storeSource.indexOf('commitArchiveImport: async');
+    expect(from).toBeGreaterThan(0);
+    const body = storeSource.slice(from, storeSource.indexOf('hideArchiveResource: (', from));
+    expect(body.length).toBeGreaterThan(200);
+    // Comments stripped first — this action's own docstring NAMES the things
+    // it must not call, and a scan that matched prose would be checking the
+    // comment rather than the code.
+    const code = body.replace(/\/\/[^\n]*/g, '');
+    expect(code).not.toMatch(/importDB|installDatabase|resetDemo|clearAll|replaceAllBlobs|addAttachment/);
+    // ONE db mutation in the whole action.
+    expect(code.match(/\bset\(/g) ?? []).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-9 — an import may establish membership and provenance. Never practice.
+// ---------------------------------------------------------------------------
+
+describe('what an archive import may and may not establish', () => {
+  it('archive import cannot fabricate practice or next-class urgency', async () => {
+    loadOwnerData();
+    useStore.getState().startItemSession('own-dashti');
+    useStore.getState().notNowReview('rev-1');
+    const beforeState = useStore.getState();
+    const before = JSON.parse(JSON.stringify(beforeState.db)) as PracticeDB;
+    const activeBefore = beforeState.active;
+    const notNowBefore = JSON.parse(JSON.stringify(beforeState.notNow)) as unknown;
+
+    const applied = await commit(useStore.getState().rev);
+    expect(applied).toMatchObject({ ok: true, status: 'applied' });
+    const after = useStore.getState();
+
+    // --- EVERY existing record, byte for byte ------------------------------
+    expect(after.db.blocks).toEqual(before.blocks);
+    expect(after.db.reviews).toEqual(before.reviews);
+    expect(after.db.lessonAgenda).toEqual(before.lessonAgenda);
+    expect(after.db.materials).toEqual(before.materials);
+    expect(after.db.pathways).toEqual(before.pathways);
+    expect(after.db.pathwayStages).toEqual(before.pathwayStages);
+    expect(after.db.pathwayRoutines).toEqual(before.pathwayRoutines);
+    expect(after.db.attachments).toEqual(before.attachments);
+    for (const original of before.items) {
+      const now = after.db.items.find((i) => i.id === original.id)!;
+      expect(now).toEqual(original);
+    }
+    // ...and the ephemeral session state the owner is standing in.
+    expect(after.active).toBe(activeBefore);
+    expect(after.activeRoutine).toBeNull();
+    expect(after.activePlan).toBeNull();
+    expect(after.notNow).toEqual(notNowBefore);
+    expect(after.sessionInstrumentId).toBe(SETAR);
+
+    // --- NEW items carry no practice at all ---------------------------------
+    const fresh = after.db.items.filter((i) => i.source);
+    expect(fresh).toHaveLength(94);
+    for (const item of fresh) {
+      expect(item.timesPractised).toBe(0);
+      expect(item.totalMinutes).toBe(0);
+      expect(item.lastPractisedAt).toBeUndefined();
+      expect(item.lastResult).toBeUndefined();
+      expect(item.nextReviewDate).toBeUndefined();
+      expect(item.nextReviewSource).toBeUndefined();
+      expect(item.srReps).toBeUndefined();
+      expect(item.srEase).toBeUndefined();
+      expect(item.srIntervalDays).toBeUndefined();
+      expect(item.srLastProgressDay).toBeUndefined();
+      // RESTING by explicit import policy: 94 pieces must not flood Today.
+      expect(item.status).toBe('dormant');
+      // No pathway placement, no catalogue identity, no material invented.
+      expect(item.stageId).toBeUndefined();
+      expect(item.catalogKey).toBeUndefined();
+      expect(item.materialId).toBeUndefined();
+    }
+    // No review row and no agenda entry was created for any of them.
+    expect(after.db.reviews.filter((r) => fresh.some((i) => i.id === r.practiceItemId))).toEqual([]);
+    expect(after.db.lessonAgenda).toHaveLength(1);
+    expect(after.db.blocks.filter((b) => fresh.some((i) => i.id === b.practiceItemId))).toEqual([]);
+
+    // A resting item is still DIRECTLY startable — resting is administrative,
+    // not a lock.
+    const araq = after.db.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    useStore.getState().cancelSession();
+    useStore.getState().startItemSession(araq.id);
+    expect(useStore.getState().active?.itemId).toBe(araq.id);
+    useStore.getState().cancelSession();
+
+    // --- THE OWNER'S OWN RECORDINGS ARE EVIDENCE, NOT MATERIAL -------------
+    const source = useStore.getState().db.archiveSources[0]!;
+    // 125 personal files in the real corpus, and not one of them is a resource.
+    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+    // Their membership and role survive — that is the whole of what they leave.
+    const chainPiece = 'پیش-درامد-سه-گاه-فروتن';
+    const { repeatChains } = await import('../domain/sourceArchive');
+    // The longest repeat chain in the real archive. It is read from the
+    // PERSONAL role — a piece is a repeat because the student was asked to play
+    // it again, not because an unnamed demonstration gave it membership of a
+    // session (which would report a repeat nobody was asked for).
+    expect(repeatChains(source, chainPiece)).toEqual([[22, 23, 24, 25, 26, 27]]);
+    // The real counterexample: پیش-درامد-ماهور-هرمزی is a MEMBER of sessions
+    // 16, 17 and 18, but the student only recorded themselves playing it in 17
+    // and 18 — session 16's membership comes from a correction and a
+    // demonstration. Read from membership the chain would be three classes
+    // long; read from what was actually asked for again, it is two.
+    const hormozi = 'پیش-درامد-ماهور-هرمزی';
+    expect(source.sessions.filter((s) => s.members.some((m) => m.key === hormozi)).map((s) => s.n)).toEqual([
+      16, 17, 18,
+    ]);
+    expect(repeatChains(source, hormozi)).toEqual([[17, 18]]);
+    const chainItem = useStore.getState().db.items.find((i) => i.source?.pieceKey === chainPiece)!;
+    // Six classes of provenance, and still zero recorded practice.
+    expect(chainItem.timesPractised).toBe(0);
+    expect(chainItem.totalMinutes).toBe(0);
+    const material = (await import('../domain/itemFiles')).itemFiles(useStore.getState().db, chainItem.id);
+    expect(material.every((f) => f.source !== 'reference' || !f.path.includes('تمرین-من'))).toBe(true);
+
+    // --- HISTORY NEVER BECOMES THE NEXT CLASS ------------------------------
+    const { nextLessonFor } = await import('../domain/selectors');
+    const { preparationDatesByItem, defaultTargetLesson } = await import('../domain/lessonAgenda');
+    const db = useStore.getState().db;
+    expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+    expect(nextLessonFor(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
+    expect(defaultTargetLesson(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
+    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, NOW).values()]).toEqual([]);
+
+    // AND ON A DEVICE WHOSE CLOCK IS BEHIND THE ARCHIVE. Read from 1 June 2026,
+    // the last three imported classes are all in the FUTURE and all NEARER than
+    // the owner's own next class — the exact case a plain `date >= today` turns
+    // into a deadline. They are still history.
+    const EARLIER = new Date('2026-06-01T09:00:00.000Z');
+    const futureHistory = db.lessons.filter((l) => l.origin === 'archive' && l.date > '2026-06-01');
+    expect(futureHistory.map((l) => l.date).sort()).toEqual(['2026-06-09', '2026-07-09', '2026-08-04', '2026-09-01']);
+    expect(nextLessonFor(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
+    expect(defaultTargetLesson(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
+    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, EARLIER).values()]).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-8 — an owner's deletion is a decision a refresh has to respect.
+// ---------------------------------------------------------------------------
+
+describe('deletions, unlinking and hiding', () => {
+  it('archive deletions and unlinking remain respected after refresh and reload', async () => {
+    loadOwnerData();
+    await commit(useStore.getState().rev);
+    const store = () => useStore.getState();
+    const itemFor = (key: string) => store().db.items.find((i) => i.source?.pieceKey === key)!;
+    const lessonFor = (n: number) => store().db.lessons.find((l) => l.source?.sessionN === n)!;
+    const suppressions = () => store().db.archiveSources[0]!.suppressions;
+
+    // --- deleteItem records the decision IN THE SAME mutation --------------
+    const araqId = itemFor('عراق').id;
+    store().deleteItem(araqId);
+    expect(store().db.items.some((i) => i.id === araqId)).toBe(false);
+    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'piece', ref: 'عراق' }));
+
+    // --- deleteLesson likewise ---------------------------------------------
+    const lesson13 = lessonFor(13).id;
+    store().deleteLesson(lesson13);
+    expect(store().db.lessons.some((l) => l.id === lesson13)).toBe(false);
+    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'session', ref: '13' }));
+
+    // --- REFRESHING THE SAME SOURCE MUST NOT BRING THEM BACK ---------------
+    const again = await commit(store().rev);
+    expect(again.ok).toBe(true);
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+
+    // ...nor may a RELOAD, which replays the persisted bytes through hydration.
+    const onDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(onDisk);
+    await useStore.persist.rehydrate();
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    await commit(store().rev);
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+
+    // --- lifting a suppression lets the next refresh bring it back ----------
+    store().resetArchiveSuppression('setar-classes', 'piece', 'عراق');
+    const restored = await commit(store().rev);
+    expect(restored).toMatchObject({ ok: true, status: 'applied' });
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
+
+    // --- HIDING A SHARED DEMO IS SCOPED TO ONE ITEM ------------------------
+    const { itemFiles } = await import('../domain/itemFiles');
+    const sharedDemo = 'session-13-03-09-2024/نمونه-1.mp4';
+    const oneMember = itemFor('کرشمه-در-عراق');
+    const otherMember = itemFor('حزین-در-عراق');
+    // Session 13 was suppressed above and is back only for the piece; re-run a
+    // refresh so its resources are present for both members.
+    store().resetArchiveSuppression('setar-classes', 'session', '13');
+    await commit(store().rev);
+    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(true);
+    store().hideArchiveResource('setar-classes', sharedDemo, oneMember.id);
+    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(false);
+    // Its seven siblings still have it.
+    expect(itemFiles(store().db, otherMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(
+      true,
+    );
+
+    // --- unlinking an item from an archive class is remembered -------------
+    const lesson28 = lessonFor(28);
+    const zendan = itemFor('به-زندان-شوشتری');
+    store().unlinkItemFromLesson(lesson28.id, zendan.id);
+    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'link', ref: `28:${'به-زندان-شوشتری'}` }));
+    const { membersForSession } = await import('../domain/sourceArchive');
+    expect(membersForSession(store().db.archiveSources[0]!, 28).some((m) => m.key === 'به-زندان-شوشتری')).toBe(false);
+
+    // --- a MANUAL reference is removed without touching the archive --------
+    store().addItemReference(zendan.id, { title: 'my own copy', path: 'session-28-28-10-2025/نت-به-زندان-شوشتری.pdf' });
+    const added = store().db.items.find((i) => i.id === zendan.id)!.references![0]!;
+    const suppressionsBefore = suppressions().length;
+    store().removeItemReference(zendan.id, added.id);
+    expect(store().db.items.find((i) => i.id === zendan.id)!.references).toEqual([]);
+    // Removing an owner's own link says nothing about the archive.
+    expect(suppressions()).toHaveLength(suppressionsBefore);
+
+    // --- a catalogue removal of a bound item is still lossless -------------
+    const catalogueItem = itemFor('چهار-پاره');
+    expect(store().removeCatalogItem(catalogueItem.id)).toBe(false); // no catalogKey
+    expect(store().db.items.some((i) => i.id === catalogueItem.id)).toBe(true);
+
+    // --- MOVING A BOUND ITEM TO ANOTHER INSTRUMENT IS REFUSED --------------
+    useStore.setState((s) => ({
+      db: {
+        ...s.db,
+        instruments: [
+          ...s.db.instruments,
+          { ...s.db.instruments[0]!, id: 'inst-tar', name: 'Tar' },
+        ],
+      },
+    }));
+    const boundId = itemFor('به-زندان-شوشتری').id;
+    const refusal = store().updateItem(boundId, { instrumentId: 'inst-tar' });
+    expect(refusal).toMatch(/Detach it from the archive/);
+    expect(store().db.items.find((i) => i.id === boundId)!.instrumentId).toBe(SETAR);
+    // No invalid graph was emitted: the database still validates.
+    expect(() => validateDB(store().db)).not.toThrow();
+
+    // --- a PARTIAL binding is refused, never healed by duplication ---------
+    expect(() =>
+      validateDB({
+        ...store().db,
+        items: store().db.items.map((i) =>
+          i.id === boundId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'not-a-real-piece' } } : i,
+        ),
+      }),
+    ).toThrow(/does not describe/);
+
+    // --- clearing everything takes the source state with it ----------------
+    store().clearAll();
+    expect(store().db.archiveSources).toEqual([]);
+    expect(store().db.items).toEqual([]);
+    expect(store().active).toBeNull();
+  });
+});
+```
+
+### src/store/archiveIndex.ts
+
+```
+import { getSyncConfig } from './githubSync';
+import { parseSourceIndex, MAX_INDEX_BYTES, type SourceIndex } from '../domain/sourceArchive';
+
+// ---------------------------------------------------------------------------
+// Reading the published source index.
+//
+// The app only ever GETs. The NAS publisher's credential never reaches the
+// browser — this reuses the device's OWN already-configured GitHub connection,
+// which is read/write for the app's data but is used here for reads alone.
+//
+// A separate branch, not a sidecar on main: the sync engine writes main's whole
+// tree with no base_tree, so anything placed beside state.json would vanish on
+// the next sync. That engine is not touched by any of this.
+// ---------------------------------------------------------------------------
+
+const API = 'https://api.github.com';
+/** The one branch and the one path the app reads. */
+export const SOURCE_INDEX_BRANCH = 'source-index';
+export const INDEX_PATH = 'setar/index.json';
+
+export interface FetchedIndex {
+  index: SourceIndex;
+  /** The commit the file was read AT — not merely the branch name. */
+  commitSha: string;
+  /** When THIS DEVICE fetched it. Transient, device-local, never synced. */
+  fetchedAt: string;
+}
+
+export type IndexFetchResult = { ok: true; value: FetchedIndex } | { ok: false; error: string };
+
+type Fetcher = typeof fetch;
+
+function decodeBase64Utf8(b64: string): string {
+  const binary = atob(b64.replace(/\s+/g, ''));
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+/**
+ * Fetch the published index, PINNED to the commit the branch points at.
+ *
+ * Resolving the ref and then asking for the file "on that branch" would read
+ * two different states when a publish lands between the two calls — half of an
+ * older index with a newer hash. Reading the ref first and then the file AT
+ * THAT SHA is one consistent snapshot.
+ *
+ * Every failure returns a message; nothing is thrown at the caller and nothing
+ * is written. A network or auth failure leaves the last accepted graph exactly
+ * as it is — the app keeps working offline from it.
+ */
+export async function fetchPublishedIndex(
+  options: { repo?: string; token?: string; fetchImpl?: Fetcher; now?: Date } = {},
+): Promise<IndexFetchResult> {
+  const cfg = options.repo && options.token ? { repo: options.repo, token: options.token } : getSyncConfig();
+  if (!cfg) {
+    return { ok: false, error: 'Connect this device to your GitHub data repository in Sync first.' };
+  }
+  const doFetch = options.fetchImpl ?? fetch;
+  const headers = {
+    Authorization: `Bearer ${cfg.token}`,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+
+  let commitSha: string;
+  try {
+    const res = await doFetch(`${API}/repos/${cfg.repo}/git/ref/heads/${SOURCE_INDEX_BRANCH}`, { headers });
+    if (res.status === 404 || res.status === 409) {
+      return { ok: false, error: 'No source index has been published yet. Run the archive scanner on the NAS.' };
+    }
+    if (!res.ok) return { ok: false, error: githubError(res.status) };
+    const body = (await res.json()) as { object?: { sha?: string } };
+    if (typeof body.object?.sha !== 'string') return { ok: false, error: 'The source index branch has no commit.' };
+    commitSha = body.object.sha;
+  } catch {
+    return { ok: false, error: 'Could not reach GitHub. The material already imported is unaffected.' };
+  }
+
+  let text: string;
+  try {
+    const res = await doFetch(`${API}/repos/${cfg.repo}/contents/${INDEX_PATH}?ref=${commitSha}`, { headers });
+    if (res.status === 404) {
+      return { ok: false, error: `The index branch exists but carries no ${INDEX_PATH}.` };
+    }
+    if (!res.ok) return { ok: false, error: githubError(res.status) };
+    const body = (await res.json()) as { content?: string; encoding?: string; size?: number };
+    if (typeof body.size === 'number' && body.size > MAX_INDEX_BYTES) {
+      return { ok: false, error: 'That index file is too large to be a Setar archive index.' };
+    }
+    if (typeof body.content !== 'string' || body.encoding !== 'base64') {
+      return { ok: false, error: 'GitHub returned the index in a shape this app cannot read.' };
+    }
+    text = decodeBase64Utf8(body.content);
+  } catch {
+    return { ok: false, error: 'Could not reach GitHub. The material already imported is unaffected.' };
+  }
+
+  try {
+    return {
+      ok: true,
+      value: { index: await parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
+  }
+}
+
+/**
+ * The file-import fallback. The SAME decoder, so a hand-copied index is held to
+ * exactly the rules a fetched one is.
+ */
+export async function readIndexFile(text: string, now: Date = new Date()): Promise<IndexFetchResult> {
+  try {
+    return { ok: true, value: { index: await parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
+  }
+}
+
+function githubError(status: number): string {
+  if (status === 401 || status === 403) {
+    return 'GitHub refused this device’s access token. Check Sync settings; nothing was changed.';
+  }
+  return `GitHub returned an error (HTTP ${status}). Nothing was changed.`;
+}
+```
+
+### src/store/useStore.ts
+
+```
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
+import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
+import { withRevision } from './revision';
+import {
+  acknowledgeThrough,
+  applyBlockStats,
+  applyRoutineRun,
+  catalogForStage,
+  isLosslesslyRemovable,
+  completeOpenReviewsFor,
+  computeReviewOutcome,
+  installDatabase,
+  createPreparation,
+  createQuestion,
+  detachItem as detachAgendaItem,
+  detachLesson as detachAgendaLesson,
+  markQuestionAsked as markAgendaQuestionAsked,
+  reopenQuestion as reopenAgendaQuestion,
+  retargetEntriesForItemInstrument,
+  retargetEntry as retargetAgendaEntry,
+  completePlanSegment,
+  planSegmentStartable,
+  scheduleAgainPlan,
+  transferToAutomaticReview,
+  AUTOMATIC_TRANSFER_REASON,
+  validateUnfinishedText,
+  skipPlanSegment as skipPlanSegmentRun,
+  setQuestionAnswer as setAgendaQuestionAnswer,
+  resolveReviewDate,
+  applyReviewDateToRows,
+  applyReviewDateToRow,
+  clampSchedulingParams,
+  createBlock,
+  createInstrument,
+  createItem,
+  createLesson,
+  createMaterial,
+  createReview,
+  createSeedDB,
+  detachIncompatibleRoutinesForPathway,
+  detachRoutinesFromPathway,
+  detachRoutinesFromStage,
+  duplicateRoutineData,
+  focusForItem,
+  groupBlocksByItem,
+  itemFromCatalogEntry,
+  itemOwnedAttachments,
+  retargetRoutineInstrument,
+  runElapsedSeconds,
+  segmentBoundaries,
+  skipCurrentSegment,
+  toRunSegments,
+  snoozePlan,
+  SNOOZE_DAYS_DEFAULT,
+  todayISODate,
+  unbindItemFromRoutines,
+  unbindItemWhereInstrumentMismatch,
+  defaultModeForStatus,
+  DEFAULT_DURATION_MINUTES,
+  emptyDB,
+  newId,
+  nowISO,
+  withSuppression,
+  withoutSuppression,
+  planArchiveImport,
+  applyArchiveImport,
+  type ImportPlan,
+  type ImportSummary,
+  type ReconcileDecision,
+  type SourceIndex,
+  SCHEMA_VERSION,
+  seedPathways,
+  validateDB,
+  SchemaTooNewError,
+  type BlockMode,
+  type BlockResult,
+  type FocusArea,
+  type GuitarFields,
+  type ID,
+  type Instrument,
+  type AttachmentMeta,
+  type ISODate,
+  type ItemStatus,
+  type LessonFileKind,
+  type LessonRecording,
+  type Material,
+  type MaterialSourceType,
+  type MaterialStatus,
+  type Pathway,
+  type PathwayRoutine,
+  type PathwayStage,
+  type PersianFields,
+  type PracticeDB,
+  type PracticeItem,
+  type Rating,
+  type ReviewAnswer,
+  type ReviewMode,
+  type ReviewType,
+  type RoutineSegment,
+  type RunSegment,
+  type PlanRunSegment,
+  type SchedulingParams,
+  type SessionPlan,
+} from '../domain';
+import type { CreateItemInput } from '../domain/factories';
+
+// ---------------------------------------------------------------------------
+// The single app store. Holds the whole local database, the live practice
+// session, and a colour-scheme preference. Everything persists to
+// localStorage; domain logic stays pure and is called from the actions here.
+// ---------------------------------------------------------------------------
+
+export type ThemePref = 'system' | 'light' | 'dark';
+
+export interface ArchiveCommitResult {
+  ok: boolean;
+  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved'. */
+  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
+  message: string;
+  summary?: ImportSummary;
+}
+
+/**
+ * Module scope, for the same reason `githubSync`'s own `running` is: it
+ * describes THIS DEVICE'S in-flight durability, not app data. A failed
+ * IndexedDB write leaves the new graph in memory but not on disk, so the next
+ * attempt must WRITE AGAIN even though nothing in the plan changed — otherwise
+ * the retry says "Already current" over data that was never saved.
+ */
+let archivePersistFailed = false;
+
+export interface ActiveSession {
+  itemId: ID;
+  instrumentId: ID;
+  materialId?: ID;
+  mode: BlockMode;
+  focus: FocusArea;
+  constraint?: string;
+  targetMinutes: number;
+  startedAt: string;
+  /** Seconds accumulated up to the last pause. */
+  accumulatedSeconds: number;
+  running: boolean;
+  /** When the current running segment began (if running). */
+  segmentStartedAt?: string;
+  /** A quick note jotted during practice; pre-fills the close screen. */
+  note?: string;
+  /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
+  signalledThrough?: number;
+}
+
+export function sessionElapsedSeconds(s: ActiveSession, now: Date = new Date()): number {
+  const live = s.running && s.segmentStartedAt
+    ? (now.getTime() - new Date(s.segmentStartedAt).getTime()) / 1000
+    : 0;
+  return Math.max(0, Math.floor(s.accumulatedSeconds + live));
+}
+
+/** A plan segment plus its live run status (the domain's own run shape). */
+export type PlanSegmentState = PlanRunSegment;
+
+/** The Session Plan currently being run (ephemeral — never in PracticeDB). */
+export interface ActivePlan {
+  instrumentId: ID;
+  budgetMinutes: number;
+  startedAt: string;
+  /** Index of the next segment to practise. */
+  pointer: number;
+  segments: PlanSegmentState[];
+}
+
+/**
+ * A routine run in progress (ephemeral — never in PracticeDB). Same
+ * accumulated-seconds-plus-live-since-timestamp shape as `ActiveSession`, for
+ * the same reason: living in the store — not component state — means
+ * navigating away (a nav-bar tap, browser back) never silently loses
+ * genuinely-elapsed bound-item practice, exactly like an active block. Only
+ * one routine can run at a time, matching `active`/`activePlan`.
+ */
+export interface ActiveRoutine {
+  routineId: ID;
+  shortOnTime: boolean;
+  /**
+   * The segment list as it was AT START — label, essential, itemId — frozen
+   * here rather than re-derived live from the routine's current data. The
+   * routine can be edited (segments added/removed) while a run is in
+   * progress (Edit is reachable from StageDetail/PathwayDetail with no
+   * "is this active" guard); re-deriving from live data would desync this
+   * list's length from `segs` below and index past the end of one of them —
+   * a blank runner screen. A run's segments are what was actually started.
+   */
+  authoredSegments: RoutineSegment[];
+  /** Same length/order as authoredSegments; .seconds mutates (Skip clamps it). */
+  segs: RunSegment[];
+  accumulatedSeconds: number;
+  running: boolean;
+  runningSince?: string;
+  /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
+  signalledThrough?: number;
+}
+
+/** Advance the pointer to the next still-pending segment (or one past the end). */
+export interface StartSessionInput {
+  itemId: ID;
+  instrumentId: ID;
+  materialId?: ID;
+  mode: BlockMode;
+  focus: FocusArea;
+  constraint?: string;
+  targetMinutes: number;
+}
+
+export interface CloseSessionInput {
+  result: BlockResult;
+  durationMinutes: number;
+  observation?: string;
+  nextAction?: string;
+  newStatus?: ItemStatus;
+  /**
+   * What the close screen answered about the next review. 'unanswered' (no
+   * result chosen) must leave the item's date AND its open review row exactly
+   * as they are — see ReviewAnswer in scheduling.ts.
+   */
+  answer: ReviewAnswer;
+  nextReviewDate?: ISODate;
+  reviewType?: ReviewType;
+  /**
+   * A question raised during this close. It becomes its OWN agenda entry —
+   * it never overwrites an existing question, and it never marks the item as
+   * work committed for a class. Targetless means honestly unassigned.
+   */
+  newQuestion?: { text: string; lessonId?: ID };
+  /**
+   * The `now` the close screen actually PREVIEWED its decision with — never
+   * read from module scope inside `closeSession`. Recomputing a fresh
+   * `new Date()` here instead would let the saved date silently diverge from
+   * the one the screen just showed if the local day rolled between the
+   * screen's last render and this call; the caller (`CloseBlock`) is
+   * responsible for checking that first and refusing to call this while they
+   * disagree. Defaults to `new Date()` for callers with no decision to keep
+   * in step (there are none in-app; only tests omit it).
+   */
+  now?: Date;
+}
+
+export interface ItemPatch {
+  instrumentId?: ID;
+  title?: string;
+  itemType?: PracticeItem['itemType'];
+  materialId?: ID;
+  status?: ItemStatus;
+  importance?: Rating;
+  difficulty?: Rating;
+  primaryFocus?: FocusArea;
+  /** Working notes. `undefined` CLEARS them — emptying the notebook is deliberate. */
+  notes?: string;
+  /** `undefined` (key absent) keeps the schedule; `null` clears it; an ISODate moves it — and its open review row with it (§1.5). */
+  nextReviewDate?: ISODate | null;
+  reviewMode?: ReviewMode;
+  reviewIntervalDays?: number;
+  persian?: PersianFields;
+  guitar?: GuitarFields;
+}
+
+interface StoreState {
+  db: PracticeDB;
+  /** Monotonic data revision — bumped by middleware on every db mutation. */
+  rev: number;
+  active: ActiveSession | null;
+  theme: ThemePref;
+  /** True once the async IndexedDB store has finished rehydrating. */
+  hydrated: boolean;
+  /**
+   * The instrument the user chose to practise right now ("I'm practising Setar").
+   * Persisted so Today reopens where they left off. Null = overview.
+   */
+  sessionInstrumentId: ID | null;
+  /** Reviews the user said "not now" to — hidden for the rest of *today* only. */
+  notNow: { date: string; ids: ID[] };
+  /** The Session Plan being run right now (ephemeral; not in PracticeDB). */
+  activePlan: ActivePlan | null;
+  /** Last chosen plan duration per instrument, so the picker remembers. */
+  planMinutesByInstrument: Record<ID, number>;
+  /** The routine run in progress right now (ephemeral; not in PracticeDB). */
+  activeRoutine: ActiveRoutine | null;
+
+  setTheme: (t: ThemePref) => void;
+  setSessionInstrument: (id: ID | null) => void;
+
+  /** Merge + clamp scheduling knobs. Passing null resets to the defaults. */
+  updateSchedulingParams: (patch: Partial<SchedulingParams> | null) => void;
+
+  // Session Plan (a time-budgeted programme over real practice blocks)
+  /** Remember the chosen duration for an instrument's next plan. */
+  setPlanMinutes: (instrumentId: ID, minutes: number) => void;
+  /** Begin running a built plan (segments become pending). */
+  startPlan: (plan: SessionPlan) => void;
+  /** Start a real block seeded from the current segment (→ /active → /close). */
+  beginPlanSegment: () => void;
+  /** Mark the current segment skipped and advance (no data written). */
+  skipPlanSegment: () => void;
+  /** End the running plan (clears it). */
+  endPlan: () => void;
+
+  // Attachments (metadata; blobs live in IndexedDB via src/store/idb.ts)
+  addAttachmentMeta: (meta: AttachmentMeta) => void;
+  removeAttachmentMeta: (id: ID) => void;
+
+  // Instruments
+  addInstrument: (input: { name: string; family?: string }) => ID;
+  updateInstrument: (id: ID, patch: Partial<Pick<Instrument, 'name' | 'family' | 'active'>>) => void;
+
+  // Lessons (classes with a teacher)
+  addLesson: (input: { instrumentId: ID; date: ISODate; notes?: string; number?: number }) => ID;
+  updateLesson: (id: ID, patch: { date?: ISODate; notes?: string; number?: number }) => void;
+  deleteLesson: (id: ID) => void;
+  /** Link/unlink an existing item to a lesson (a link, never ownership). */
+  linkItemToLesson: (lessonId: ID, itemId: ID) => void;
+  addLessonRecording: (
+    lessonId: ID,
+    input: {
+      title: string;
+      path: string;
+      kind?: LessonFileKind;
+      date?: ISODate;
+      sizeBytes?: number;
+      durationLabel?: string;
+      notes?: string;
+    },
+  ) => ID;
+  removeLessonRecording: (lessonId: ID, recordingId: ID) => void;
+  unlinkItemFromLesson: (lessonId: ID, itemId: ID) => void;
+
+  // Materials
+  addMaterial: (input: {
+    instrumentId: ID;
+    title: string;
+    sourceType?: MaterialSourceType;
+    sourceName?: string;
+    parentTitle?: string;
+    section?: string;
+    teacherOrSource?: string;
+    notes?: string;
+    status?: MaterialStatus;
+  }) => ID;
+  updateMaterial: (id: ID, patch: Partial<Omit<Material, 'id' | 'createdAt'>>) => void;
+  deleteMaterial: (id: ID) => void;
+
+  // Items
+  addItem: (input: CreateItemInput) => ID;
+  /**
+   * Save an item's own fields. Returns null, or the reason it REFUSED — a save
+   * that would hand an ambiguous pending schedule to the engine is refused
+   * whole rather than half-applied.
+   */
+  updateItem: (id: ID, patch: ItemPatch) => string | null;
+  setItemStatus: (id: ID, status: ItemStatus) => void;
+  deleteItem: (id: ID) => void;
+  /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
+  removeCatalogItem: (id: ID) => boolean;
+  placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
+
+  // --- The archive source graph -------------------------------------------
+  /**
+   * Preview what a published index would do to THIS database, against the
+   * revision it was decided at. Pure decision, no write.
+   */
+  previewArchiveImport: (input: {
+    index: SourceIndex;
+    instrumentId: ID;
+    decisions?: ReconcileDecision[];
+    /** This device's own media base, for converting a stored full URL. */
+    verifiedBase?: string;
+    now?: Date;
+  }) => { plan: ImportPlan; rev: number };
+  /** Apply a previewed plan in ONE mutation, and wait for IndexedDB to say so. */
+  commitArchiveImport: (input: {
+    index: SourceIndex;
+    instrumentId: ID;
+    decisions?: ReconcileDecision[];
+    verifiedBase?: string;
+    decidedFromRev: number;
+    now?: Date;
+  }) => Promise<ArchiveCommitResult>;
+  /** Hide ONE archive resource — on one item, or everywhere. */
+  hideArchiveResource: (archiveId: ID, path: string, itemId?: ID) => void;
+  /** Lift a suppression, so the next refresh may bring that entity back. */
+  resetArchiveSuppression: (archiveId: ID, kind: 'piece' | 'session' | 'resource' | 'link', ref: string) => void;
+  /** Attach a direct NAS reference to an item — no artificial lesson needed. */
+  addItemReference: (itemId: ID, ref: { title: string; path: string; kind?: LessonFileKind; notes?: string }) => void;
+  /** Remove a direct item reference. Never touches the file it points at. */
+  removeItemReference: (itemId: ID, refId: ID) => void;
+
+  // Lesson agenda — commitments and questions, each naming its own class
+  /** Commit an item to a specific class (or capture it unassigned). Returns the entry id. */
+  addLessonPreparation: (itemId: ID, lessonId?: ID) => ID | null;
+  /** Raise a question. It is its own entry; nothing else is overwritten. */
+  addLessonQuestion: (input: { text: string; instrumentId: ID; itemId?: ID; lessonId?: ID }) => ID | null;
+  /** Edit a question's text. Never touches its asked state or answer. */
+  updateLessonQuestion: (id: ID, text: string) => void;
+  /** Point an entry at a different class, or at none. The only carry-forward. */
+  setAgendaTarget: (id: ID, lessonId: ID | undefined) => void;
+  /** Mark asked (optionally with the teacher's answer). Logs no practice. */
+  markQuestionAsked: (id: ID, answer?: string) => void;
+  /** Put an asked question back on the open list. */
+  reopenQuestion: (id: ID) => void;
+  /** Record or replace a teacher answer without changing the asked state. */
+  setQuestionAnswer: (id: ID, answer: string) => void;
+  /** Remove an entry. Never deletes the item or its practice. */
+  removeAgendaEntry: (id: ID) => void;
+  /** Create a practice item from a stage's reference catalog entry; returns its id. */
+  addFromCatalog: (stageId: ID, entryKey: string) => ID;
+  /** Begin a session on an existing item (with smart defaults). */
+  startItemSession: (itemId: ID) => void;
+
+  // Session
+  startSession: (input: StartSessionInput) => void;
+  pauseSession: () => void;
+  resumeSession: () => void;
+  setSessionNote: (note: string) => void;
+  /** Persist how many target boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
+  setSessionSignal: (marker: number) => void;
+  cancelSession: () => void;
+  closeSession: (input: CloseSessionInput) => void;
+
+  // Reviews
+  completeReview: (id: ID, result?: BlockResult) => void;
+  /** "Not now": hide a due review for the rest of today (no schedule change). */
+  notNowReview: (id: ID) => void;
+  /** Snooze: honestly move the due date N days from today (no SM-2 change). */
+  snoozeReview: (id: ID, days?: number) => void;
+  /**
+   * "Schedule again" from the item itself: set the one pending date on both
+   * the item and its review row, creating the row when none is open. Purely
+   * administrative — no block, no result, no SM-2 progress.
+   */
+  scheduleReviewAgain: (itemId: ID, dueDate: ISODate, reviewType?: ReviewType) => void;
+  /**
+   * Hand this item's next review back to the engine, KEEPING its pending date.
+   * Returns null on success, or the reason it refused (an ambiguous pending
+   * schedule the owner has to resolve first). Records no practice.
+   */
+  useAutomaticReviewDates: (itemId: ID) => string | null;
+
+  // Pathways
+  addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
+  updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived' | 'currentStageId'>>) => void;
+  deletePathway: (id: ID) => void;
+  reseedDefaultPathways: () => void;
+
+  addStage: (pathwayId: ID, input: { code: string; title: string; group?: string; intro?: string }) => ID;
+  updateStage: (id: ID, patch: Partial<Pick<PathwayStage, 'code' | 'title' | 'group' | 'intro'>>) => void;
+  deleteStage: (id: ID) => void;
+  moveStage: (id: ID, dir: -1 | 1) => void;
+  /** Rename a section heading across all of a pathway's stages. */
+  renameSection: (pathwayId: ID, oldGroup: string | undefined, newGroup: string) => void;
+
+  // Routines (ordinary editable data, placement optional, instrument required)
+  addRoutine: (input: {
+    name: string;
+    instrumentId: ID;
+    pathwayId?: ID;
+    stageId?: ID;
+    segments?: RoutineSegment[];
+  }) => ID;
+  /**
+   * Full-form save: a complete replace, not a partial patch. Every save
+   * re-enforces the binding + placement invariants against the instrument
+   * being saved, whether or not it changed — never trusts the form on
+   * faith. `instrumentId` is optional here (unlike addRoutine): editing an
+   * already-unscoped legacy routine must be able to save without inventing
+   * one.
+   */
+  updateRoutine: (
+    id: ID,
+    patch: { name: string; segments: RoutineSegment[]; instrumentId?: ID; pathwayId?: ID; stageId?: ID },
+  ) => void;
+  deleteRoutine: (id: ID) => void;
+  duplicateRoutine: (id: ID) => ID;
+  /**
+   * Begin running a routine (segments become the live run). A no-op if an
+   * ordinary block is running, or if a DIFFERENT routine is already active —
+   * callers must resolve (resume/finish/discard) that one first, so its
+   * in-flight elapsed time is never silently overwritten or double-counted.
+   */
+  startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
+  pauseRoutineRun: () => void;
+  resumeRoutineRun: () => void;
+  /** Mark the current segment skipped; finishes the run if that was the last one. */
+  skipRoutineRun: () => void;
+  /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
+  finishRoutine: () => void;
+  /** Persist how many segment boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
+  setRoutineSignal: (marker: number) => void;
+
+  // Data management
+  exportDB: () => PracticeDB;
+  importDB: (raw: unknown) => void;
+  resetDemo: () => void;
+  clearAll: () => void;
+}
+
+function touch<T extends { updatedAt: string }>(entity: T, now: Date): T {
+  return { ...entity, updatedAt: nowISO(now) };
+}
+
+export const useStore = create<StoreState>()(
+  persist(
+    withRevision((set, get) => ({
+      db: emptyDB(),
+      rev: 0,
+      active: null,
+      theme: 'system',
+      hydrated: false,
+      sessionInstrumentId: null,
+      notNow: { date: '', ids: [] },
+      activePlan: null,
+      planMinutesByInstrument: {},
+      activeRoutine: null,
+
+      setTheme: (theme) => set({ theme }),
+
+      updateSchedulingParams: (patch) =>
+        set((s) => ({
+          db: {
+            ...s.db,
+            // null ⇒ reset (drop the field so it falls back to defaults).
+            settings: patch === null ? undefined : clampSchedulingParams({ ...s.db.settings, ...patch }),
+          },
+        })),
+
+      setPlanMinutes: (instrumentId, minutes) =>
+        set((s) => ({
+          planMinutesByInstrument: { ...s.planMinutesByInstrument, [instrumentId]: Math.max(5, Math.round(minutes)) },
+        })),
+
+      startPlan: (plan) =>
+        set({
+          activePlan: {
+            instrumentId: plan.instrumentId,
+            budgetMinutes: plan.budgetMinutes,
+            startedAt: nowISO(),
+            pointer: 0,
+            segments: plan.segments.map((seg) => ({ ...seg, status: 'pending' as const })),
+          },
+        }),
+
+      beginPlanSegment: () => {
+        const { activePlan, db, active, activeRoutine } = get();
+        if (!activePlan) return;
+        const seg = activePlan.segments[activePlan.pointer];
+        // Revalidated LIVE against the same pure check a test can reach, never
+        // trusted from the plan: an item can be deleted or moved to another
+        // instrument between building the plan and reaching this segment.
+        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
+        if (!check.ok) {
+          // A deleted or moved item is visibly skipped (and skipping logs
+          // nothing); a busy clock is refused outright rather than replaced.
+          if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
+          return;
+        }
+        const item = check.item;
+        if (!seg) return;
+        get().startSession({
+          itemId: item.id,
+          instrumentId: item.instrumentId,
+          materialId: item.materialId,
+          mode: seg.mode,
+          focus: seg.focus,
+          targetMinutes: seg.minutes,
+        });
+      },
+
+      skipPlanSegment: () =>
+        set((s) => (s.activePlan ? { activePlan: skipPlanSegmentRun(s.activePlan) } : {})),
+
+      endPlan: () => set({ activePlan: null }),
+
+      setSessionInstrument: (sessionInstrumentId) => set({ sessionInstrumentId }),
+
+      addAttachmentMeta: (meta) => {
+        set((s) => ({ db: { ...s.db, attachments: [...s.db.attachments, meta] } }));
+      },
+      removeAttachmentMeta: (id) => {
+        set((s) => ({ db: { ...s.db, attachments: s.db.attachments.filter((a) => a.id !== id) } }));
+      },
+
+      addInstrument: (input) => {
+        const now = new Date();
+        const inst = createInstrument(input, now);
+        set((s) => ({ db: { ...s.db, instruments: [...s.db.instruments, inst] } }));
+        return inst.id;
+      },
+
+      updateInstrument: (id, patch) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            instruments: s.db.instruments.map((i) =>
+              i.id === id ? touch({ ...i, ...patch }, now) : i,
+            ),
+          },
+        }));
+      },
+
+      addLesson: (input) => {
+        const now = new Date();
+        const lesson = createLesson(input, now);
+        set((s) => ({ db: { ...s.db, lessons: [...s.db.lessons, lesson] } }));
+        return lesson.id;
+      },
+
+      updateLesson: (id, patch) => {
+        const now = new Date();
+        // AN OMITTED FIELD AND A DELIBERATELY EMPTY ONE ARE DIFFERENT THINGS.
+        // `patch.notes ?? l.notes` could not tell them apart, so clearing a
+        // lesson's notes was IMPOSSIBLE: the editor sends `undefined` for empty
+        // text and the store handed the previous notes straight back, which
+        // looked to the owner like the app silently refusing to delete what
+        // they had just deleted. The PRESENCE of the key is the intent — the
+        // same distinction `resolveReviewDate` already makes for a date.
+        const clearsNotes = 'notes' in patch && !patch.notes;
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === id
+                ? touch(
+                    { ...l, ...patch, notes: clearsNotes ? undefined : ('notes' in patch ? patch.notes : l.notes) },
+                    now,
+                  )
+                : l,
+            ),
+          },
+        }));
+      },
+
+      deleteLesson: (id) => {
+        const detachNow = new Date();
+        const lessonSource = get().db.lessons.find((l) => l.id === id)?.source;
+        // The lesson owns its attachments; linked items are never touched.
+        // ownerId alone is not a lesson id — an item can share it — so only
+        // an attachment whose ownerType is ALSO 'lesson' is this lesson's own.
+        const owned = get().db.attachments.filter((a) => a.ownerType === 'lesson' && a.ownerId === id);
+        for (const a of owned) void deleteBlob(a.id);
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.filter((l) => l.id !== id),
+            attachments: s.db.attachments.filter((a) => !(a.ownerType === 'lesson' && a.ownerId === id)),
+            // Entries that named it become visibly unassigned and REMEMBER
+            // which class they were for. Nothing is deleted and nothing is
+            // silently reassigned to another class.
+            lessonAgenda: detachAgendaLesson(s.db.lessonAgenda, id, detachNow),
+            // A DELETION IS A DECISION, and the next refresh must respect it:
+            // without this the very same class comes straight back, because the
+            // source still describes it. Recorded in the SAME mutation as the
+            // delete, so there is no window in which one happened and not the
+            // other.
+            archiveSources: lessonSource
+              ? withSuppression(s.db.archiveSources, lessonSource.archiveId, {
+                  kind: 'session',
+                  ref: String(lessonSource.sessionN),
+                  at: nowISO(detachNow),
+                })
+              : s.db.archiveSources,
+          },
+        }));
+      },
+
+      linkItemToLesson: (lessonId, itemId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId && !(l.itemIds ?? []).includes(itemId)
+                ? touch({ ...l, itemIds: [...(l.itemIds ?? []), itemId] }, now)
+                : l,
+            ),
+          },
+        }));
+      },
+
+      addLessonRecording: (lessonId, input) => {
+        const now = new Date();
+        const rec: LessonRecording = {
+          id: newId(),
+          title: input.title.trim() || 'Class recording',
+          path: input.path.trim(),
+          kind: input.kind ?? 'video',
+          date: input.date,
+          sizeBytes: input.sizeBytes,
+          durationLabel: input.durationLabel,
+          notes: input.notes?.trim() || undefined,
+          createdAt: nowISO(now),
+        };
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId ? touch({ ...l, recordings: [...(l.recordings ?? []), rec] }, now) : l,
+            ),
+          },
+        }));
+        return rec.id;
+      },
+
+      // Removes only the REFERENCE. The NAS file is never touched.
+      removeLessonRecording: (lessonId, recordingId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId
+                ? touch({ ...l, recordings: (l.recordings ?? []).filter((r) => r.id !== recordingId) }, now)
+                : l,
+            ),
+          },
+        }));
+      },
+
+      unlinkItemFromLesson: (lessonId, itemId) => {
+        const now = new Date();
+        const { db } = get();
+        // An archive association is DERIVED from the session's membership, not
+        // stored on the lesson — so removing it means recording the owner's
+        // decision, in the same mutation, or the graph simply asserts it again.
+        const lessonSource = db.lessons.find((l) => l.id === lessonId)?.source;
+        const itemSource = db.items.find((i) => i.id === itemId)?.source;
+        const both = lessonSource && itemSource && lessonSource.archiveId === itemSource.archiveId ? lessonSource : null;
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessons: s.db.lessons.map((l) =>
+              l.id === lessonId
+                ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== itemId) }, now)
+                : l,
+            ),
+            archiveSources: both
+              ? withSuppression(s.db.archiveSources, both.archiveId, {
+                  kind: 'link',
+                  ref: `${both.sessionN}:${itemSource!.pieceKey}`,
+                  at: nowISO(now),
+                })
+              : s.db.archiveSources,
+          },
+        }));
+      },
+
+      addMaterial: (input) => {
+        const now = new Date();
+        const mat = createMaterial(input, now);
+        set((s) => ({ db: { ...s.db, materials: [...s.db.materials, mat] } }));
+        return mat.id;
+      },
+
+      updateMaterial: (id, patch) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            materials: s.db.materials.map((m) =>
+              m.id === id ? touch({ ...m, ...patch }, now) : m,
+            ),
+          },
+        }));
+      },
+
+      deleteMaterial: (id) => {
+        set((s) => ({
+          db: {
+            ...s.db,
+            materials: s.db.materials.filter((m) => m.id !== id),
+            // Detach items from the removed material rather than deleting them.
+            items: s.db.items.map((i) =>
+              i.materialId === id ? { ...i, materialId: undefined } : i,
+            ),
+          },
+        }));
+      },
+
+      addItem: (input) => {
+        const now = new Date();
+        const item = createItem(input, now);
+        set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
+        return item.id;
+      },
+
+      updateItem: (id, patch) => {
+        const now = new Date();
+        // Route the review date through the shared resolver (§1.5): absent
+        // leaves the schedule untouched, so a blind spread of `patch` can
+        // never silently wipe it; an ISODate moves the open review row with
+        // it; null clears both sides honestly.
+        const { nextReviewDate, ...rest } = patch;
+        const write = resolveReviewDate(nextReviewDate);
+        const current = get().db.items.find((i) => i.id === id);
+        const newInstrumentId =
+          rest.instrumentId !== undefined && current && rest.instrumentId !== current.instrumentId
+            ? rest.instrumentId
+            : undefined;
+        // AN ARCHIVE BINDING NAMES ONE INSTRUMENT'S SOURCE. Moving the item
+        // elsewhere would leave a binding that resolves to the wrong
+        // instrument — a graph `validateDB` refuses at every inbound door, so
+        // writing it here would produce a database this device could not
+        // re-import. Refuse BEFORE the mutation and say what to do instead;
+        // detaching from the archive is a separate, explicit act.
+        if (newInstrumentId && current?.source) {
+          return 'This piece is linked to the Setar archive. Detach it from the archive before moving it to another instrument.';
+        }
+        // A SAVED mode change from manual/fixed-cadence to automatic is the
+        // same administrative transfer the item screen's own button performs —
+        // the form must not be a second, quieter route that leaves the date's
+        // provenance (and therefore its protection) saying something different.
+        // An unrelated save on an already-auto item takes neither branch, so a
+        // date the owner chose keeps its protection untouched.
+        const movingToAuto = rest.reviewMode === 'auto' && !!current && (current.reviewMode ?? 'auto') !== 'auto';
+        const transfer = movingToAuto
+          ? transferToAutomaticReview({ item: current!, reviews: get().db.reviews, now })
+          : null;
+        if (transfer && !transfer.ok) return transfer.reason;
+        const transferredRows =
+          transfer && transfer.ok
+            ? transfer.createRow
+              ? [
+                  ...transfer.reviews,
+                  createReview(
+                    {
+                      practiceItemId: id,
+                      dueDate: transfer.keptDate!,
+                      reviewType: transfer.reviewType,
+                      reason: AUTOMATIC_TRANSFER_REASON,
+                    },
+                    now,
+                  ),
+                ]
+              : transfer.reviews
+            : null;
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) => {
+              if (i.id !== id) return i;
+              const next = { ...i, ...rest };
+              if (write) {
+                next.nextReviewDate = write.nextReviewDate;
+                // A date arriving through an explicit item patch is the
+                // OWNER'S, never the engine's — stamp the provenance here so
+                // this cannot become a fourth path that writes a date without
+                // one (closeSession, snoozeReview and scheduleReviewAgain all
+                // stamp their own). Without it an owner-edited date on an
+                // auto-source item would stay 'auto' and lose the protection
+                // A4/A5 promise it. Clearing the date clears the provenance.
+                next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
+              }
+              if (transfer && transfer.ok) {
+                // Same DATE, new authority. Only the provenance moves.
+                next.nextReviewSource = transfer.item.nextReviewSource;
+              }
+              return touch(next, now);
+            }),
+            reviews:
+              applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
+              transferredRows ??
+              s.db.reviews,
+            // An item that changes instrument no longer belongs in a routine
+            // scoped to the old one — unbind it there; matching routines keep it.
+            pathwayRoutines: newInstrumentId
+              ? unbindItemWhereInstrumentMismatch(s.db.pathwayRoutines, id, newInstrumentId, now)
+              : s.db.pathwayRoutines,
+            // Its commitments and questions follow it; a class target that no
+            // longer matches is cleared rather than pointing at another
+            // instrument's lesson.
+            lessonAgenda: newInstrumentId
+              ? retargetEntriesForItemInstrument(s.db.lessonAgenda, id, newInstrumentId, s.db.lessons, now)
+              : s.db.lessonAgenda,
+          },
+        }));
+        return null;
+      },
+
+      setItemStatus: (id, status) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) => (i.id === id ? touch({ ...i, status }, now) : i)),
+          },
+        }));
+      },
+
+      deleteItem: (id) => {
+        // ownerId alone is not an item id — a lesson can share it — so only
+        // an attachment owned by THIS item (ownerType 'item' too) is deleted.
+        const owned = itemOwnedAttachments(get().db.attachments, id);
+        for (const a of owned) void deleteBlob(a.id);
+        const now = new Date();
+        const itemSource = get().db.items.find((i) => i.id === id)?.source;
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items
+              .filter((i) => i.id !== id)
+              // Parts of a deleted piece stay, but ungrouped.
+              .map((i) => (i.parentItemId === id ? touch({ ...i, parentItemId: undefined }, now) : i)),
+            blocks: s.db.blocks.filter((b) => b.practiceItemId !== id),
+            reviews: s.db.reviews.filter((r) => r.practiceItemId !== id),
+            attachments: s.db.attachments.filter((a) => !(a.ownerType === 'item' && a.ownerId === id)),
+            lessons: s.db.lessons.map((l) =>
+              (l.itemIds ?? []).includes(id)
+                ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== id) }, now)
+                : l,
+            ),
+            // The segment survives as an unbound countdown — never removed.
+            pathwayRoutines: unbindItemFromRoutines(s.db.pathwayRoutines, id, now),
+            // Commitments to prepare a deleted item go with it; QUESTIONS
+            // survive, detached, because a question and its answer are the
+            // owner's record of a class, not a property of the item.
+            lessonAgenda: detachAgendaItem(s.db.lessonAgenda, id, now),
+            // The same rule as a deleted class: a refresh, a reload and a sync
+            // must not resurrect a piece the owner deliberately removed.
+            archiveSources: itemSource
+              ? withSuppression(s.db.archiveSources, itemSource.archiveId, {
+                  kind: 'piece',
+                  ref: itemSource.pieceKey,
+                  at: nowISO(now),
+                })
+              : s.db.archiveSources,
+          },
+          active: s.active?.itemId === id ? null : s.active,
+        }));
+      },
+
+      removeCatalogItem: (id) => {
+        const s = get();
+        const item = s.db.items.find((i) => i.id === id);
+        if (!item) return false;
+        const itemBlocks = s.db.blocks.filter((b) => b.practiceItemId === id);
+        // Only proceed when the deletion is provably lossless — a fresh,
+        // never-practised catalog item reverting to a suggestion.
+        if (!isLosslesslyRemovable(item, itemBlocks)) return false;
+        get().deleteItem(id);
+        return true;
+      },
+
+      placeItemInStage: (itemId, stageId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) => (i.id === itemId ? touch({ ...i, stageId }, now) : i)),
+          },
+        }));
+      },
+
+      previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
+        // ONE statement, so the plan and the revision it was decided against
+        // cannot drift apart across an await that does not exist yet.
+        const { db, rev } = get();
+        return {
+          plan: planArchiveImport({ db, index, instrumentId, decisions, verifiedBase, now: now ?? new Date() }),
+          rev,
+        };
+      },
+
+      commitArchiveImport: async ({ index, instrumentId, decisions = [], verifiedBase, decidedFromRev, now }) => {
+        const at = now ?? new Date();
+        // REBASE, never overwrite. A block finished, a note saved or an item
+        // deleted while the index was being fetched has bumped `rev`; the plan
+        // is recomputed against the database as it is NOW, so none of that work
+        // is lost. A rebase that turns up a NEW question is not something to
+        // decide on the owner's behalf — it goes back for another look.
+        const before = get();
+        const rebased = before.rev !== decidedFromRev;
+        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
+        if (rebased && plan.questions.length > 0) {
+          return {
+            ok: false,
+            status: 'stale',
+            message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
+          };
+        }
+
+        // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
+        // It returns the SAME OBJECT when a plan changes nothing, so asking it
+        // is one source of truth for the question. The summary's own
+        // `unchanged` was a second, and it answered about the INDEX alone: an
+        // owner decision taken against an already-current index — skipping a
+        // candidate, applying one registry field, a path the rename log moved —
+        // was reported "Already current" and thrown away unwritten.
+        const proposed = applyArchiveImport(before.db, plan, decisions);
+        if (proposed === before.db && !archivePersistFailed) {
+          return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
+        }
+
+        // VALIDATE THE WHOLE PROPOSED DATABASE BEFORE INSTALLING ANY OF IT —
+        // the same function every inbound door runs. A graph this device would
+        // refuse to import is a graph it must not write.
+        try {
+          validateDB(proposed);
+        } catch (e) {
+          return {
+            ok: false,
+            status: 'refused',
+            message: e instanceof Error ? e.message : 'That index could not be applied.',
+          };
+        }
+
+        // ONE synchronous mutation. No per-file commit, no blob copying, and
+        // never `importDB`/`installDatabase`: this ADDS to the database, it
+        // does not replace it, so the running clock, the routine, the plan and
+        // every unrelated field stay exactly as they are.
+        set({ db: proposed });
+        try {
+          await storageSettled();
+        } catch {
+          // The store already holds the new graph, so a retry that asked
+          // "has anything changed?" would answer "no" and save nothing. The
+          // flag is what makes the retry a real write rather than a false
+          // "Already current".
+          archivePersistFailed = true;
+          return {
+            ok: false,
+            status: 'unsaved',
+            message: 'The archive was read, but this device could not save it. Try again.',
+            summary: plan.summary,
+          };
+        }
+        archivePersistFailed = false;
+        return { ok: true, status: 'applied', message: 'Archive updated.', summary: plan.summary };
+      },
+
+      hideArchiveResource: (archiveId, path, itemId) => {
+        const at = nowISO(new Date());
+        set((s) => ({
+          db: {
+            ...s.db,
+            // `itemId` present hides it on THAT item only — a demonstration
+            // shared by eight pieces stays available to the other seven.
+            archiveSources: withSuppression(s.db.archiveSources, archiveId, {
+              kind: 'resource',
+              ref: path,
+              ...(itemId ? { itemId } : {}),
+              at,
+            }),
+          },
+        }));
+      },
+
+      resetArchiveSuppression: (archiveId, kind, ref) => {
+        set((s) => ({
+          db: {
+            ...s.db,
+            archiveSources: withoutSuppression(
+              s.db.archiveSources,
+              archiveId,
+              (x) => x.kind === kind && x.ref === ref,
+            ),
+          },
+        }));
+      },
+
+      addItemReference: (itemId, ref) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) =>
+              i.id === itemId
+                ? touch(
+                    {
+                      ...i,
+                      references: [
+                        ...(i.references ?? []),
+                        {
+                          id: newId(),
+                          title: ref.title.trim() || ref.path,
+                          path: ref.path.trim(),
+                          kind: ref.kind ?? 'video',
+                          notes: ref.notes?.trim() || undefined,
+                          createdAt: nowISO(now),
+                        },
+                      ],
+                    },
+                    now,
+                  )
+                : i,
+            ),
+          },
+        }));
+      },
+
+      removeItemReference: (itemId, refId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) =>
+              i.id === itemId
+                ? touch({ ...i, references: (i.references ?? []).filter((r) => r.id !== refId) }, now)
+                : i,
+            ),
+          },
+        }));
+      },
+
+      addLessonPreparation: (itemId, lessonId) => {
+        const now = new Date();
+        const { db } = get();
+        const item = db.items.find((i) => i.id === itemId);
+        if (!item) return null;
+        // A class on another instrument is never a valid target — refuse
+        // rather than silently rewriting either side.
+        if (lessonId) {
+          const lesson = db.lessons.find((l) => l.id === lessonId);
+          if (!lesson || lesson.instrumentId !== item.instrumentId) return null;
+        }
+        // One commitment per item per class: committing twice is the same
+        // commitment, not two.
+        const existing = db.lessonAgenda.find(
+          (e) => e.kind === 'preparation' && e.itemId === itemId && e.lessonId === lessonId,
+        );
+        if (existing) return existing.id;
+        const entry = createPreparation({
+          id: newId(),
+          itemId,
+          instrumentId: item.instrumentId,
+          lessonId,
+          now,
+        });
+        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
+        return entry.id;
+      },
+
+      addLessonQuestion: (input) => {
+        const now = new Date();
+        const text = input.text.trim();
+        if (!text) return null;
+        const { db } = get();
+        if (input.itemId) {
+          const item = db.items.find((i) => i.id === input.itemId);
+          if (!item || item.instrumentId !== input.instrumentId) return null;
+        }
+        if (input.lessonId) {
+          const lesson = db.lessons.find((l) => l.id === input.lessonId);
+          if (!lesson || lesson.instrumentId !== input.instrumentId) return null;
+        }
+        const entry = createQuestion({ id: newId(), ...input, text, now });
+        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
+        return entry.id;
+      },
+
+      updateLessonQuestion: (id, text) => {
+        const now = new Date();
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        set((s) => ({
+          db: {
+            ...s.db,
+            lessonAgenda: s.db.lessonAgenda.map((e) =>
+              e.id === id && e.kind === 'question' ? touch({ ...e, text: trimmed }, now) : e,
+            ),
+          },
+        }));
+      },
+
+      setAgendaTarget: (id, lessonId) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, lessonAgenda: retargetAgendaEntry(s.db.lessonAgenda, id, lessonId, s.db.lessons, now) },
+        }));
+      },
+
+      markQuestionAsked: (id, answer) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: markAgendaQuestionAsked(s.db.lessonAgenda, id, now, answer) } }));
+      },
+
+      reopenQuestion: (id) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: reopenAgendaQuestion(s.db.lessonAgenda, id, now) } }));
+      },
+
+      setQuestionAnswer: (id, answer) => {
+        const now = new Date();
+        set((s) => ({ db: { ...s.db, lessonAgenda: setAgendaQuestionAnswer(s.db.lessonAgenda, id, answer, now) } }));
+      },
+
+      removeAgendaEntry: (id) => {
+        set((s) => ({ db: { ...s.db, lessonAgenda: s.db.lessonAgenda.filter((e) => e.id !== id) } }));
+      },
+
+      addFromCatalog: (stageId, entryKey) => {
+        const { db } = get();
+        // Reuse an existing item already created from this catalog entry.
+        const existing = db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey);
+        if (existing) return existing.id;
+
+        const entry = catalogForStage(stageId).find((e) => e.key === entryKey);
+        const stage = db.pathwayStages.find((s) => s.id === stageId);
+        const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
+        const instrumentId =
+          (pathway?.instrumentId && db.instruments.find((i) => i.id === pathway.instrumentId)?.id) ||
+          db.instruments.find((i) => i.active)?.id ||
+          db.instruments[0]?.id ||
+          '';
+        const now = new Date();
+        const item = entry
+          ? itemFromCatalogEntry(entry, instrumentId, now)
+          : createItem({ instrumentId, title: 'New item', stageId }, now);
+        set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
+        return item.id;
+      },
+
+      startItemSession: (itemId) => {
+        const { db } = get();
+        const item = db.items.find((i) => i.id === itemId);
+        if (!item) return;
+        get().startSession({
+          itemId: item.id,
+          instrumentId: item.instrumentId,
+          materialId: item.materialId,
+          mode: defaultModeForStatus(item.status),
+          focus: focusForItem(item),
+          targetMinutes: DEFAULT_DURATION_MINUTES,
+        });
+      },
+
+      startSession: (input) => {
+        const { active, activeRoutine } = get();
+        // Never silently overwrite an existing session's elapsed time, and
+        // never let an ordinary block run alongside a routine — every start
+        // path (direct item starts, Session Plan segments) routes through
+        // here, so this one guard is what keeps only one practice clock
+        // ticking at a time. The caller must resolve the existing one first
+        // (finish/discard/resume it) — same rule startRoutineRun applies in
+        // the other direction.
+        if (active || activeRoutine) return;
+        const now = new Date();
+        set({
+          active: {
+            ...input,
+            startedAt: nowISO(now),
+            accumulatedSeconds: 0,
+            running: true,
+            segmentStartedAt: nowISO(now),
+          },
+        });
+      },
+
+      pauseSession: () => {
+        const { active } = get();
+        if (!active || !active.running) return;
+        set({
+          active: {
+            ...active,
+            accumulatedSeconds: sessionElapsedSeconds(active),
+            running: false,
+            segmentStartedAt: undefined,
+          },
+        });
+      },
+
+      resumeSession: () => {
+        const { active, activeRoutine } = get();
+        if (!active || active.running) return;
+        // A routine clock is also live (only reachable from persisted state
+        // predating this guard) — resuming would tick two clocks at once,
+        // same as a fresh start. Resolve it first (finish/discard it).
+        if (activeRoutine) return;
+        set({ active: { ...active, running: true, segmentStartedAt: nowISO() } });
+      },
+
+      setSessionNote: (note) => {
+        const { active } = get();
+        if (!active) return;
+        set({ active: { ...active, note } });
+      },
+
+      setSessionSignal: (marker) => {
+        const { active } = get();
+        if (!active) return;
+        set({ active: { ...active, signalledThrough: marker } });
+      },
+
+      cancelSession: () => set({ active: null }),
+
+      closeSession: (input) => {
+        const now = input.now ?? new Date();
+        const { active, db, activePlan } = get();
+        if (!active) return;
+        const item = db.items.find((i) => i.id === active.itemId);
+        if (!item) {
+          set({ active: null });
+          return;
+        }
+
+        const block = createBlock(
+          {
+            practiceItemId: item.id,
+            instrumentId: active.instrumentId,
+            materialId: active.materialId,
+            startedAt: active.startedAt,
+            endedAt: nowISO(now),
+            durationMinutes: input.durationMinutes,
+            mode: active.mode,
+            focus: active.focus,
+            constraint: active.constraint,
+            result: input.result,
+            observation: input.observation,
+            nextAction: input.nextAction,
+            createdReview: input.answer === 'scheduled',
+          },
+          now,
+        );
+
+        // The one decision behind closing a block: does the item get a next
+        // review at all, and — if so — the single date written to both the
+        // item and its new Review row (§1.1–§1.3).
+        const outcome = computeReviewOutcome({
+          item,
+          result: input.result,
+          answer: input.answer,
+          nextReviewDate: input.nextReviewDate,
+          reviewType: input.reviewType,
+          now,
+          params: clampSchedulingParams(db.settings),
+        });
+
+        const existing = db.blocks.filter((b) => b.practiceItemId === item.id);
+        let updatedItem = applyBlockStats(item, block, {
+          itemBlocksIncludingNew: [...existing, block],
+          now,
+          newStatus: input.newStatus,
+          nextReviewDate: outcome.nextReviewDate,
+        });
+        if (outcome.sr) {
+          updatedItem = {
+            ...updatedItem,
+            srReps: outcome.sr.srReps,
+            srEase: outcome.sr.srEase,
+            srIntervalDays: outcome.sr.srIntervalDays,
+            // The one-advance-per-day marker only moves when the decision
+            // actually advanced spacing; every other close leaves it alone.
+            ...(outcome.sr.srLastProgressDay ? { srLastProgressDay: outcome.sr.srLastProgressDay } : {}),
+          };
+        }
+        // Provenance travels with the date, from the same decision: an
+        // engine-proposed date is the engine's to move again, a typed one is
+        // the owner's and is protected until it comes due.
+        if (outcome.nextReviewSource !== undefined) {
+          updatedItem = {
+            ...updatedItem,
+            nextReviewSource: outcome.nextReviewSource ?? undefined,
+          };
+        }
+
+        // A question raised here becomes its own agenda entry. It never
+        // overwrites another question and never commits the item to a class.
+        const questionText = input.newQuestion?.text.trim();
+        // The same target validation the guarded action applies: a class on
+        // another instrument is never a valid target, so the question is saved
+        // honestly unassigned rather than pointed at somebody else's lesson.
+        const questionLessonId = input.newQuestion?.lessonId;
+        const questionLesson = questionLessonId ? db.lessons.find((l) => l.id === questionLessonId) : undefined;
+        const newQuestion = questionText
+          ? createQuestion({
+              id: newId(),
+              text: questionText,
+              instrumentId: item.instrumentId,
+              itemId: item.id,
+              lessonId: questionLesson?.instrumentId === item.instrumentId ? questionLesson.id : undefined,
+              now,
+            })
+          : undefined;
+
+        // Complete this item's open reviews only when the SAME decision that
+        // set the date says so, and schedule the next from that one date
+        // (§1.2). Deciding it separately and unconditionally here is exactly
+        // how the row and the date used to come apart.
+        const reviews = completeOpenReviewsFor({
+          reviews: db.reviews,
+          practiceItemId: item.id,
+          complete: outcome.completeOpenReviews,
+          result: input.result,
+          now,
+        });
+        if (outcome.review) {
+          reviews.push(
+            createReview(
+              {
+                practiceItemId: item.id,
+                dueDate: outcome.review.dueDate,
+                reviewType: outcome.review.reviewType,
+              },
+              now,
+            ),
+          );
+        }
+
+        // If a Session Plan is running and this block closed its current
+        // segment's item, mark that segment done and advance. The plain flow
+        // (no active plan) is byte-identical to before.
+        const nextPlan = activePlan ? completePlanSegment(activePlan, item.id) : activePlan;
+
+        set({
+          db: {
+            ...db,
+            blocks: [...db.blocks, block],
+            items: db.items.map((i) => (i.id === item.id ? updatedItem : i)),
+            reviews,
+            lessonAgenda: newQuestion ? [...db.lessonAgenda, newQuestion] : db.lessonAgenda,
+          },
+          active: null,
+          activePlan: nextPlan,
+        });
+      },
+
+      completeReview: (id, result) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            reviews: s.db.reviews.map((r) =>
+              r.id === id ? { ...r, completedAt: nowISO(now), result, updatedAt: nowISO(now) } : r,
+            ),
+          },
+        }));
+      },
+
+      notNowReview: (id) => {
+        const today = todayISODate();
+        set((s) => {
+          const sameDay = s.notNow.date === today;
+          return {
+            notNow: { date: today, ids: sameDay ? [...new Set([...s.notNow.ids, id])] : [id] },
+          };
+        });
+      },
+
+      snoozeReview: (id, days = SNOOZE_DAYS_DEFAULT) => {
+        const now = new Date();
+        const { dueDate } = snoozePlan(days, now);
+        // The existing correct model: one date, resolved once. The write is
+        // scoped to the SELECTED row only (applyReviewDateToRow) — snoozing
+        // one due review must not silently move a sibling open review for
+        // the same item, unlike closeSession/updateItem where the item's
+        // whole schedule is what's being decided.
+        const write = resolveReviewDate(dueDate)!;
+        set((s) => {
+          const review = s.db.reviews.find((r) => r.id === id);
+          if (!review) return s;
+          return {
+            db: {
+              ...s.db,
+              reviews:
+                applyReviewDateToRow({ reviews: s.db.reviews, reviewId: id, instruction: dueDate, now }) ??
+                s.db.reviews,
+              // Keep the item's own schedule in step so nothing shows overdue.
+              // A snooze is the owner's own choice of date, so it is stamped
+              // as theirs: extra practice before it must not quietly undo it.
+              items: s.db.items.map((i) =>
+                i.id === review.practiceItemId
+                  ? touch({ ...i, nextReviewDate: write.nextReviewDate, nextReviewSource: 'user' as const }, now)
+                  : i,
+              ),
+            },
+          };
+        });
+      },
+
+      // --- Pathways --------------------------------------------------------
+
+      scheduleReviewAgain: (itemId, dueDate, reviewType) => {
+        const now = new Date();
+        set((s) => {
+          const item = s.db.items.find((i) => i.id === itemId);
+          if (!item) return s;
+          const plan = scheduleAgainPlan({ item, reviews: s.db.reviews, dueDate, reviewType, now });
+          const reviews = plan.createRow
+            ? [
+                ...plan.reviews,
+                createReview({ practiceItemId: itemId, dueDate: plan.dueDate, reviewType: plan.reviewType }, now),
+              ]
+            : plan.reviews;
+          return {
+            db: {
+              ...s.db,
+              // The owner chose this date, so the engine treats it as
+              // authoritative until it comes due. No block, no result, no
+              // statistics and no SM-2 movement: this is administration.
+              items: s.db.items.map((i) =>
+                i.id === itemId
+                  ? touch({ ...i, nextReviewDate: plan.dueDate, nextReviewSource: 'user' as const }, now)
+                  : i,
+              ),
+              reviews,
+            },
+          };
+        });
+      },
+
+      useAutomaticReviewDates: (itemId) => {
+        const now = new Date();
+        const state = get();
+        // Decided against the LIVE item and rows, never against whatever a
+        // panel captured when it mounted — including whether the item is
+        // still there at all.
+        const transfer = transferToAutomaticReview({
+          item: state.db.items.find((i) => i.id === itemId),
+          reviews: state.db.reviews,
+          now,
+        });
+        if (!transfer.ok) return transfer.reason;
+        const reviews = transfer.createRow
+          ? [
+              ...transfer.reviews,
+              createReview(
+                { practiceItemId: itemId, dueDate: transfer.keptDate!, reviewType: transfer.reviewType, reason: AUTOMATIC_TRANSFER_REASON },
+                now,
+              ),
+            ]
+          : transfer.reviews;
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) => (i.id === itemId ? transfer.item : i)),
+            reviews,
+          },
+        }));
+        return null;
+      },
+
+      addPathway: (input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const pathway: Pathway = {
+          id: newId(),
+          instrumentId: input.instrumentId,
+          name: input.name.trim(),
+          source: input.source?.trim() || undefined,
+          description: input.description?.trim() || undefined,
+          note: input.note?.trim() || undefined,
+          order: get().db.pathways.length,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        set((s) => ({ db: { ...s.db, pathways: [...s.db.pathways, pathway] } }));
+        return pathway.id;
+      },
+
+      updatePathway: (id, patch) => {
+        const now = new Date();
+        const current = get().db.pathways.find((p) => p.id === id);
+        const instrumentChanged = 'instrumentId' in patch && current && patch.instrumentId !== current.instrumentId;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)),
+            // Neither side is silently rewritten to agree — an incompatible
+            // placed routine is detached instead.
+            pathwayRoutines: instrumentChanged
+              ? detachIncompatibleRoutinesForPathway(s.db.pathwayRoutines, id, patch.instrumentId, now)
+              : s.db.pathwayRoutines,
+          },
+        }));
+      },
+
+      deletePathway: (id) => {
+        const now = new Date();
+        set((s) => {
+          const stageIds = new Set(s.db.pathwayStages.filter((st) => st.pathwayId === id).map((st) => st.id));
+          return {
+            db: {
+              ...s.db,
+              pathways: s.db.pathways.filter((p) => p.id !== id),
+              pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
+              // A user's routine is detached, never deleted — same rule as items.
+              pathwayRoutines: detachRoutinesFromPathway(s.db.pathwayRoutines, id, now),
+              // Items are kept — they simply leave their stages.
+              items: s.db.items.map((i) =>
+                i.stageId && stageIds.has(i.stageId) ? touch({ ...i, stageId: undefined }, now) : i,
+              ),
+            },
+          };
+        });
+      },
+
+      reseedDefaultPathways: () => {
+        const now = new Date();
+        const { db } = get();
+        const ids = {
+          guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
+          setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
+          tar:
+            db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
+        };
+        const seeded = seedPathways(ids, now);
+        const have = new Set(db.pathways.map((p) => p.id));
+        const newP = seeded.pathways.filter((p) => !have.has(p.id));
+        const newIds = new Set(newP.map((p) => p.id));
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathways: [...s.db.pathways, ...newP],
+            pathwayStages: [...s.db.pathwayStages, ...seeded.pathwayStages.filter((x) => newIds.has(x.pathwayId))],
+            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => !!x.pathwayId && newIds.has(x.pathwayId))],
+          },
+        }));
+      },
+
+      addStage: (pathwayId, input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const order = get().db.pathwayStages.filter((s) => s.pathwayId === pathwayId).length;
+        const stage: PathwayStage = {
+          id: newId(),
+          pathwayId,
+          code: input.code.trim() || 'New',
+          title: input.title.trim(),
+          group: input.group?.trim() || undefined,
+          intro: input.intro?.trim() || undefined,
+          order,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        set((s) => ({ db: { ...s.db, pathwayStages: [...s.db.pathwayStages, stage] } }));
+        return stage.id;
+      },
+
+      updateStage: (id, patch) => {
+        const now = new Date();
+        set((s) => ({
+          db: { ...s.db, pathwayStages: s.db.pathwayStages.map((st) => (st.id === id ? touch({ ...st, ...patch }, now) : st)) },
+        }));
+      },
+
+      deleteStage: (id) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayStages: s.db.pathwayStages.filter((st) => st.id !== id),
+            // Stage deletion is not pathway deletion — the routine keeps its
+            // pathwayId and only stageId is cleared.
+            pathwayRoutines: detachRoutinesFromStage(s.db.pathwayRoutines, id, now),
+            // Items stay — they just leave the stage.
+            items: s.db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
+            // Un-pin any pathway pointing at the removed stage.
+            pathways: s.db.pathways.map((p) =>
+              p.currentStageId === id ? touch({ ...p, currentStageId: undefined }, now) : p,
+            ),
+          },
+        }));
+      },
+
+      renameSection: (pathwayId, oldGroup, newGroup) => {
+        const now = new Date();
+        const next = newGroup.trim() || undefined;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayStages: s.db.pathwayStages.map((st) =>
+              st.pathwayId === pathwayId && (st.group ?? undefined) === (oldGroup ?? undefined)
+                ? touch({ ...st, group: next }, now)
+                : st,
+            ),
+          },
+        }));
+      },
+
+      moveStage: (id, dir) => {
+        set((s) => {
+          const stage = s.db.pathwayStages.find((x) => x.id === id);
+          if (!stage) return s;
+          const sibs = s.db.pathwayStages
+            .filter((x) => x.pathwayId === stage.pathwayId)
+            .sort((a, b) => a.order - b.order);
+          const idx = sibs.findIndex((x) => x.id === id);
+          const swap = sibs[idx + dir];
+          if (!swap) return s;
+          const now = new Date();
+          return {
+            db: {
+              ...s.db,
+              pathwayStages: s.db.pathwayStages.map((x) =>
+                x.id === stage.id ? touch({ ...x, order: swap.order }, now) : x.id === swap.id ? touch({ ...x, order: stage.order }, now) : x,
+              ),
+            },
+          };
+        });
+      },
+
+      // --- Routines ----------------------------------------------------------
+
+      addRoutine: (input) => {
+        const now = new Date();
+        const ts = nowISO(now);
+        const draft: PathwayRoutine = {
+          id: newId(),
+          instrumentId: input.instrumentId,
+          pathwayId: input.pathwayId,
+          stageId: input.stageId,
+          name: input.name.trim() || 'New routine',
+          segments: input.segments ?? [],
+          order: get().db.pathwayRoutines.length,
+          createdAt: ts,
+          updatedAt: ts,
+        };
+        // Never trust the caller's bindings/placement on faith — the same
+        // invariant enforcement updateRoutine applies on every save.
+        const { db } = get();
+        const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
+        const stage = draft.stageId ? db.pathwayStages.find((st) => st.id === draft.stageId) : undefined;
+        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, stage, now);
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
+        return routine.id;
+      },
+
+      updateRoutine: (id, patch) => {
+        const now = new Date();
+        const { db } = get();
+        const current = db.pathwayRoutines.find((r) => r.id === id);
+        if (!current) return;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathwayRoutines: s.db.pathwayRoutines.map((r) => {
+              if (r.id !== id) return r;
+              const merged: PathwayRoutine = {
+                ...r,
+                name: patch.name.trim() || r.name,
+                segments: patch.segments,
+                instrumentId: patch.instrumentId,
+                pathwayId: patch.pathwayId,
+                stageId: patch.stageId,
+              };
+              // Always re-enforce the binding + placement invariants against
+              // the instrument actually being saved — whether or not it
+              // changed — rather than trusting whatever the form happened to
+              // submit.
+              const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
+              const stage = merged.stageId ? s.db.pathwayStages.find((st) => st.id === merged.stageId) : undefined;
+              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, stage, now);
+            }),
+          },
+        }));
+      },
+
+      deleteRoutine: (id) => {
+        // Deleting the routine currently running must not strand
+        // `activeRoutine` pointing at a now-dead id (every other routine's
+        // Start would then redirect to a "Routine not found" dead end with
+        // no way back). Finish it first — honestly saving whatever bound-item
+        // time has genuinely elapsed, same as any other early finish — rather
+        // than silently discarding it.
+        if (get().activeRoutine?.routineId === id) get().finishRoutine();
+        set((s) => ({ db: { ...s.db, pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.id !== id) } }));
+      },
+
+      duplicateRoutine: (id) => {
+        const now = new Date();
+        const { db } = get();
+        const routine = db.pathwayRoutines.find((r) => r.id === id);
+        if (!routine) return '';
+        const copy = duplicateRoutineData(routine, db.pathwayRoutines.length, now);
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, copy] } }));
+        return copy.id;
+      },
+
+      startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
+        const { activeRoutine, active } = get();
+        // Same guard as startSession, in the other direction: an ordinary
+        // block already running must be resolved before a routine can start.
+        if (active) return;
+        if (activeRoutine && activeRoutine.routineId !== routineId) return;
+        set({
+          activeRoutine: {
+            routineId,
+            shortOnTime,
+            authoredSegments,
+            segs: toRunSegments(authoredSegments),
+            accumulatedSeconds: 0,
+            running: true,
+            runningSince: nowISO(),
+          },
+        });
+      },
+
+      pauseRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine?.running) return;
+        set({
+          activeRoutine: {
+            ...activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, true, new Date()),
+            running: false,
+            runningSince: undefined,
+          },
+        });
+      },
+
+      resumeRoutineRun: () => {
+        const { activeRoutine, active } = get();
+        if (!activeRoutine || activeRoutine.running) return;
+        // Same guard as resumeSession, in the other direction.
+        if (active) return;
+        set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
+      },
+
+      // Mutates segs only — never decides the run is over. Whether a skip
+      // lands on the final segment (locateClock's `finished` flips true) is
+      // detected uniformly by RoutineRunner's one completion effect, the same
+      // place natural (tick/background-catch-up) completion is detected. A
+      // second "did this finish it" branch here previously called
+      // finishRoutine() directly, bypassing the component's result snapshot
+      // and leaving the screen blank once activeRoutine was cleared out from
+      // under it.
+      skipRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
+        const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
+        // Skip clamps the boundary onto elapsed itself — acknowledge it silently
+        // (never nextSignal's announcing path), or the very next render would
+        // see a freshly-passed boundary and announce a segment the user just
+        // chose to end themselves.
+        const signalledThrough = acknowledgeThrough(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
+        set({ activeRoutine: { ...activeRoutine, segs, signalledThrough } });
+      },
+
+      setRoutineSignal: (marker) => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        set({ activeRoutine: { ...activeRoutine, signalledThrough: marker } });
+      },
+
+      finishRoutine: () => {
+        const { activeRoutine, db } = get();
+        if (!activeRoutine) return;
+        const now = new Date();
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, now);
+        const outcome = applyRoutineRun(activeRoutine.segs, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
+        const updatedById = new Map(outcome.items.map((i) => [i.id, i]));
+        set((s) => ({
+          activeRoutine: null,
+          db: {
+            ...s.db,
+            blocks: outcome.blocks.length > 0 ? [...s.db.blocks, ...outcome.blocks] : s.db.blocks,
+            items: s.db.items.map((i) => updatedById.get(i.id) ?? i),
+          },
+        }));
+      },
+
+      exportDB: () => get().db,
+
+      // The three — and only three — places a new `db` object is installed.
+      // Each is a single `set()` of `installDatabase`, which returns the new
+      // database TOGETHER WITH the ephemeral reset: no path can install a
+      // database while leaving the running plan, today's dismissed reviews or
+      // a now-dangling session instrument pointing at the one it replaced.
+      // (resetDemo and clearAll never pass through importFullBackup, so a fix
+      // that lived only there would silently miss two of the three.)
+      importDB: (raw) => {
+        set((s) => installDatabase({ db: validateDB(raw), sessionInstrumentId: s.sessionInstrumentId }));
+      },
+
+      resetDemo: () => {
+        void clearBlobs();
+        set((s) => installDatabase({ db: createSeedDB(), sessionInstrumentId: s.sessionInstrumentId }));
+      },
+
+      clearAll: () => {
+        void clearBlobs();
+        set((s) => installDatabase({ db: emptyDB(), sessionInstrumentId: s.sessionInstrumentId }));
+      },
+    })),
+    {
+      name: 'practice-compass',
+      version: SCHEMA_VERSION,
+      storage: createJSONStorage(() => idbStorage),
+      partialize: (s) => ({
+        db: s.db,
+        rev: s.rev,
+        active: s.active,
+        theme: s.theme,
+        sessionInstrumentId: s.sessionInstrumentId,
+        notNow: s.notNow,
+        activePlan: s.activePlan,
+        planMinutesByInstrument: s.planMinutesByInstrument,
+        activeRoutine: s.activeRoutine,
+      }),
+      // Every other inbound door — manual import, sync pull, Keep remote,
+      // archive restore — installs a database only through `validateDB`
+      // (§C7): it refuses a newer-than-supported schema outright instead of
+      // relabelling it down, runs the shared migration chain, and rejects
+      // structurally/semantically invalid data (an impossible calendar date,
+      // a dangling live reference) with actionable detail. Hydration used to
+      // call `migrateToCurrent` directly instead, which does none of that —
+      // a persisted schema newer than this build understands got silently
+      // stamped down to SCHEMA_VERSION (migrations.ts's own final line) and
+      // hydrated anyway, and already-current-but-invalid data sailed
+      // straight into live state. Routing both hooks below through
+      // `validateDB` closes that gap at the one place ALL persisted state
+      // re-enters live state, rather than teaching every UI caller to check
+      // it separately.
+      //
+      // Letting `validateDB` THROW here (never caught) is deliberate, not an
+      // oversight: zustand's own hydrate() only calls `merge` — and only
+      // persists the result back to storage — once `migrate` has RETURNED,
+      // and only calls its raw internal `set()` once `merge` has returned. A
+      // thrown validation error rejects that promise chain before either
+      // happens (see zustand's `middleware.js`), so the previously live AND
+      // the previously persisted state are both left exactly as they were:
+      // no partial hydration, no silent downgrade-and-relabel, no
+      // destructive write-back of a refused newer snapshot. This trades away
+      // opening the app's hydration gate on a refusal (zustand's own
+      // `hasHydrated`/`onFinishHydration` are wired to the success path
+      // only) — a deliberate choice, not an oversight: EVERY external call
+      // to `useStore.setState` — which is the only way to flip that gate —
+      // is itself wrapped by this same persist middleware to write straight
+      // back to storage afterwards, so forcing the gate open here would
+      // re-persist whatever `db` is currently live and silently destroy the
+      // very data a refusal (most of all a genuinely newer schema) exists to
+      // protect. `getLastHydrationError()` below still surfaces WHY, without
+      // that write.
+      migrate: (persisted) => {
+        const state = persisted as { db?: PracticeDB; active?: unknown } | undefined;
+        // `validateDB` reads the schema version off `state.db` itself (the
+        // same source of truth every other inbound door uses) rather than
+        // the envelope-level version zustand would pass as a second
+        // argument here — the two are always kept in sync by this app's own
+        // writes, and deriving from one place avoids two version signals
+        // that could ever disagree.
+        if (state?.db) state.db = validateDB(state.db);
+        // `active` lives OUTSIDE PracticeDB, so `validateDB` cannot see its
+        // scratch observation — yet it reaches live state through this very
+        // boundary and is rendered the moment the practice screen opens.
+        const unfinished = validateUnfinishedText((persisted as { active?: unknown } | undefined)?.active);
+        if (unfinished) throw new Error(unfinished);
+        return state as unknown;
+      },
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<StoreState>;
+        // Zustand only calls `migrate` above when the persisted version
+        // differs from the current one — a persisted database that ALREADY
+        // claims the current schema never reaches it, even when it carries a
+        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
+        // left behind, or genuinely invalid current-schema data a corrupt
+        // write produced. `merge` is the one place ALL persisted state
+        // re-enters live state regardless of whether `migrate` ran (the same
+        // reasoning the active/activeRoutine freeze below relies on), so it
+        // is where both the idempotent legacy conversion AND the §C7
+        // validation close for good: run the SAME `validateDB` call
+        // `migrate` makes, unconditionally. Calling it again on state
+        // `migrate` already validated is safe and cheap — it is pure and
+        // `migrateToV12`'s own docstring guarantees its tail step is a no-op
+        // wherever no legacy field survives — and throwing here on invalid
+        // current-version data is exactly as safe as throwing in `migrate`:
+        // `set()` is never reached, and this branch never queues a persist
+        // write-back regardless (zustand only writes back after a
+        // version-mismatched `migrate` ran).
+        const db = p.db ? validateDB(p.db) : current.db;
+        const unfinished = validateUnfinishedText(p.active);
+        if (unfinished) throw new Error(unfinished);
+        const merged = { ...current, ...p, db };
+        // The start/resume guards keep active/activeRoutine from BOTH being
+        // set going forward, but a device that persisted a dual-running
+        // state before those guards existed reaches this merge unchecked —
+        // hydration is the one place ALL persisted state re-enters the
+        // store, so it's the one place left to close. Passing both straight
+        // through would let each keep ticking live from its own timestamp
+        // and double-log the same wall-clock interval, exactly the bug the
+        // guards exist to prevent. Freeze both (the same transform
+        // pauseSession/pauseRoutineRun already do) rather than discarding
+        // either: nothing already elapsed is lost, neither clock advances
+        // further on its own, and the ordinary finish/discard flow is what
+        // the user resolves one with before the guards allow resuming or
+        // starting the other.
+        if (merged.active && merged.activeRoutine) {
+          const now = new Date();
+          merged.active = {
+            ...merged.active,
+            accumulatedSeconds: sessionElapsedSeconds(merged.active, now),
+            running: false,
+            segmentStartedAt: undefined,
+          };
+          merged.activeRoutine = {
+            ...merged.activeRoutine,
+            accumulatedSeconds: runElapsedSeconds(
+              merged.activeRoutine.accumulatedSeconds,
+              merged.activeRoutine.runningSince,
+              merged.activeRoutine.running,
+              now,
+            ),
+            running: false,
+            runningSince: undefined,
+          };
+        }
+        return merged;
+      },
+      // A thrown `migrate`/`merge` above rejects zustand's internal hydration
+      // promise before it ever calls its OWN raw `set()` — correct, and the
+      // whole point: it's what leaves both live and persisted state
+      // untouched. Recording the reason here must not undo that: EVERY
+      // external call to `useStore.setState` (any ordinary store action
+      // included) is itself wrapped by this same persist middleware to
+      // write straight back to storage afterwards — see `setItem()` below
+      // this config and its unconditional call from `api.setState`. Calling
+      // it here to flip a "hydration failed" flag would immediately
+      // re-persist whatever `db` happens to be live, silently overwriting
+      // the very data this refusal exists to protect (a genuinely newer
+      // schema this build cannot read, most of all). `lastHydrationError` is
+      // therefore a plain module variable, never store state — but a cold
+      // start (nothing has ever hydrated successfully) needs a REACTIVE
+      // signal too, or the UI has no way to notice the refusal and stays on
+      // "Loading…" forever: `useHydrationStatus` below is a separate,
+      // unpersisted store (the same shape `useSyncStatus` already uses for
+      // sync phase), so writing to IT never touches `useStore`'s persist
+      // middleware and can never become the destructive write-back this
+      // guard exists to prevent.
+      onRehydrateStorage: () => (_state, error) => {
+        lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
+        useHydrationStatus.setState(
+          error
+            ? { refused: true, message: lastHydrationError, tooNew: error instanceof SchemaTooNewError }
+            : { refused: false, message: null, tooNew: false },
+        );
+      },
+    },
+  ),
+);
+
+/**
+ * The message from the most recent REFUSED hydration attempt (§C7), or null
+ * if the last attempt installed cleanly. Deliberately not store state: see
+ * `onRehydrateStorage` above for why recording it through `useStore.setState`
+ * would itself trigger the exact destructive write-back this guard exists to
+ * prevent.
+ */
+let lastHydrationError: string | null = null;
+export function getLastHydrationError(): string | null {
+  return lastHydrationError;
+}
+
+export interface HydrationStatus {
+  /** True from the moment a hydration attempt is refused (§C7) — including
+   *  the very first one this device ever makes, so a cold start with already
+   *  invalid persisted bytes is never silently indistinguishable from an
+   *  ordinary in-flight load. */
+  refused: boolean;
+  /** The refusal's human-readable message, or null when not refused. */
+  message: string | null;
+  /** True when the refusal was specifically a newer-than-supported schema —
+   *  an app update fixes this, not a data restore. */
+  tooNew: boolean;
+}
+/**
+ * The reactive counterpart to `getLastHydrationError()`: what `App.tsx`
+ * actually subscribes to so a refused cold start can render an explanation
+ * instead of staying on "Loading…" indefinitely (`hydrated` never turns
+ * true on a refusal, and zustand's own `onFinishHydration` is wired to the
+ * success path only). Never persisted, never derived from `useStore` —
+ * see `onRehydrateStorage` above for why.
+ */
+export const useHydrationStatus = create<HydrationStatus>(() => ({
+  refused: false,
+  message: null,
+  tooNew: false,
+}));
+
+// Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
+function finishHydration() {
+  if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
+    useStore.setState({ db: createSeedDB(), hydrated: true });
+  } else {
+    useStore.setState({ hydrated: true });
+  }
+}
+if (useStore.persist.hasHydrated()) finishHydration();
+else useStore.persist.onFinishHydration(finishHydration);
+```
+
+### tests/practiceBrowser.ts
+
+```
+import { readFile } from 'node:fs/promises';
+import { createServer, type ViteDevServer } from 'vite';
+import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
+
+// ---------------------------------------------------------------------------
+// A small harness for driving the REAL app in a real browser from an ordinary
+// Vitest test.
+//
+// Deliberately a LIBRARY, not a second test runner: the installed check engine
+// traces acceptance through the Vitest report, so a standalone Playwright exit
+// code would prove nothing to it. Each journey gets its own Vite dev server and
+// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
+// localStorage — no fixture from one journey can reach the other, and neither
+// can touch the owner's real data, GitHub or NAS.
+//
+// A missing browser is a FAILURE with a setup message, never a skip: a check
+// that quietly passes because it did not run is worse than no check at all.
+// ---------------------------------------------------------------------------
+
+/** The two engines this app is actually used in: Chrome on the Mac, Safari on the iPhone. */
+export type Engine = 'chromium' | 'webkit';
+
+const ENGINES: Record<Engine, BrowserType> = { chromium, webkit };
+
+const installHint = (engine: Engine) =>
+  `The Playwright ${engine} browser is not installed. Run \`npx playwright install ${engine}\` ` +
+  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
+  'and an engine quietly missed is the same thing as an engine never checked.';
+
+export interface PracticeApp {
+  page: Page;
+  /** The dev server origin this journey is isolated on. */
+  origin: string;
+  /** Which engine this journey is actually running in. */
+  engine: Engine;
+  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
+  pageErrors: Error[];
+  close(): Promise<void>;
+}
+
+/**
+ * Start the app and open it in a fresh, isolated browser context.
+ *
+ * `now` fixes the browser's clock before any script runs, so every date the
+ * app derives — due reviews, lesson deadlines, the local calendar day a block
+ * belongs to — is deterministic. `page.clock` can then move it forward within
+ * a journey (across local midnight, for instance) exactly as a real device
+ * left open overnight would experience it.
+ */
+export async function openPracticeApp(options: {
+  now: Date;
+  viewport?: { width: number; height: number };
+  /** Which engine to drive. Defaults to Chromium; ac-14 drives both. */
+  engine?: Engine;
+  /**
+   * Serve a DIFFERENT checkout of this app — used to stand up a disposable
+   * copy of an older release (a git worktree at an earlier commit) so a
+   * rollback can be tested against the app that actually wrote the backup,
+   * rather than against a description of it. Defaults to this checkout.
+   */
+  root?: string;
+}): Promise<PracticeApp> {
+  const engine = options.engine ?? 'chromium';
+  const server: ViteDevServer = await createServer({
+    ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
+    logLevel: 'error',
+    server: { port: 0, strictPort: false },
+  });
+  await server.listen();
+  const origin = server.resolvedUrls?.local[0];
+  if (!origin) {
+    await server.close();
+    throw new Error('The dev server started but reported no local URL.');
+  }
+
+  let browser: Browser;
+  try {
+    browser = await ENGINES[engine].launch();
+  } catch (e) {
+    await server.close();
+    throw new Error(installHint(engine), { cause: e });
+  }
+
+  let context: BrowserContext;
+  let page: Page;
+  const pageErrors: Error[] = [];
+  try {
+    context = await browser.newContext({
+      viewport: options.viewport ?? { width: 390, height: 844 },
+      // The owner's phone. Deliberately the constraint the product is held to.
+      deviceScaleFactor: 2,
+    });
+    page = await context.newPage();
+    // ONE handler for the whole journey. The app's destructive actions ask
+    // first with confirm(); an unanswered dialog blocks every later command,
+    // and registering a second handler makes the first one's accept() throw.
+    page.on('dialog', (d) => {
+      void d.accept().catch(() => {});
+    });
+    // Surface a page-level error instead of letting it become a silently
+    // wrong assertion later.
+    page.on('pageerror', (e) => pageErrors.push(e));
+    await page.clock.install({ time: options.now });
+    await page.goto(origin);
+    // The store hydrates from IndexedDB before anything renders. The ceiling is
+    // generous because this is the COLD start: five journeys run concurrently,
+    // each starting its own dev server and browser, so the first paint of the
+    // last one to launch competes with four others compiling modules. A longer
+    // wait cannot hide a real failure — it only refuses to call contention one.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
+  } catch (e) {
+    await browser.close();
+    await server.close();
+    throw e;
+  }
+
+  return {
+    page,
+    origin,
+    engine,
+    pageErrors,
+    async close() {
+      await browser.close();
+      await server.close();
+    },
+  };
+}
+
+/**
+ * Import a backup through the REAL Settings control — the same path the owner
+ * uses, file picker and confirmation included. No debug hook, no direct store
+ * access: a journey that seeded itself through a back door would prove nothing
+ * about the door the owner actually walks through.
+ */
+export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
+  const { page } = app;
+  await openSettings(app);
+  await page.getByLabel('Import backup file').setInputFiles({
+    name,
+    mimeType: 'application/json',
+    buffer: Buffer.from(json, 'utf8'),
+  });
+  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
+}
+
+/**
+ * Reach Settings the way the owner does — More → Settings. The practice
+ * screens hide the tab bar (they are the one place the app asks for undivided
+ * attention), so from one of those this takes the route directly instead of
+ * waiting forever for a nav that is deliberately not there.
+ */
+export async function openSettings(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  if (await page.getByRole('navigation', { name: 'Primary' }).isVisible()) {
+    await page.getByRole('link', { name: 'More' }).click();
+    // "Settings" also names a link inside Settings' own copy once the page is
+    // open, so take the one on the More menu — the first in the document.
+    await page.getByRole('link', { name: 'Settings' }).first().click();
+  } else {
+    await goTo(app, '/settings');
+  }
+  await page.getByLabel('Import backup file').waitFor({ state: 'attached', timeout: 20_000 });
+}
+
+/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
+export async function importOutcome(app: PracticeApp): Promise<string> {
+  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
+}
+
+/**
+ * Go to a route the way the owner does, then wait for the app to settle.
+ *
+ * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
+ * the tab bar — they are the one place the app asks for undivided attention —
+ * so those routes wait on their own first control instead.
+ */
+const FOCUSED_ROUTES = /^\/(active|close|routine)/;
+
+export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
+  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
+  if (FOCUSED_ROUTES.test(hashPath)) {
+    await app.page.locator('main').waitFor({ timeout: 20_000 });
+    await app.page.waitForFunction(() => (document.querySelector('main')?.textContent ?? '').length > 0);
+    return;
+  }
+  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+}
+
+/** Reload, proving a claim survived in IndexedDB rather than in React state. */
+export async function reload(app: PracticeApp): Promise<void> {
+  // The store persists to IndexedDB asynchronously (that is the whole reason
+  // App gates render on `hydrated`), so a reload fired in the same tick as the
+  // click can outrun the write. This wait is about the storage platform, not
+  // about the app: it is real wall-clock time in Node, unaffected by the
+  // page's faked clock.
+  await app.page.waitForTimeout(400);
+  await app.page.reload();
+  await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
+}
+
+const KV_KEY = 'practice-compass';
+
+/**
+ * Read the raw bytes the app's own persist middleware would read on the next
+ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
+ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
+ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
+ */
+export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
+  return app.page.evaluate(
+    (key) =>
+      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readonly');
+          const get = tx.objectStore('kv').get(key);
+          get.onsuccess = () => {
+            db.close();
+            resolve(JSON.parse((get.result as { value: string }).value));
+          };
+          get.onerror = () => reject(get.error);
+        };
+      }),
+    KV_KEY,
+  );
+}
+
+/**
+ * Write directly into the app's own IndexedDB `kv` store — the way an
+ * ALREADY-hydrated device holds its persisted state — bypassing every
+ * import/migration door entirely. The one way to reach the "persisted
+ * version already matches the current schema" hydration path: Zustand's
+ * persist middleware only calls `migrate` when the persisted version differs
+ * from the current one, and every JSON-import door runs `validateDB`
+ * regardless of what version a FILE claims.
+ */
+export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
+  await app.page.evaluate(
+    ({ key, state, version }) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    { key: KV_KEY, state, version },
+  );
+}
+
+/**
+ * Export a full backup through the REAL Settings control and return its text.
+ * Same button the owner presses, same file the browser would save — the point
+ * of a rollback test is the artefact the app actually produces, not one a test
+ * rebuilt from the store.
+ */
+export async function exportBackup(app: PracticeApp): Promise<string> {
+  const { page } = app;
+  await openSettings(app);
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30_000 }),
+    page.getByRole('button', { name: /Export backup/ }).click(),
+  ]);
+  const path = await download.path();
+  return readFile(path, 'utf8');
+}
+
+/**
+ * Wait until the app's OWN persisted bytes satisfy a predicate — a real
+ * IndexedDB acknowledgement of a write, never a sleep. A timeout fails with
+ * the state actually found, so a slow write and a missing write look different.
+ */
+export async function persistedUntil<T>(
+  app: PracticeApp,
+  read: (state: { state: unknown; version: number }) => T,
+  predicate: (value: T) => boolean,
+  timeoutMs = 10_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: T | undefined;
+  for (;;) {
+    last = read(await readPersistedState(app));
+    if (predicate(last)) return last;
+    if (Date.now() > deadline) {
+      throw new Error(`Persisted state never satisfied the check. Last value: ${JSON.stringify(last)}`);
+    }
+    await app.page.waitForTimeout(50);
+  }
+}
+
+/** The database as the app has actually PERSISTED it, not as it is rendering it. */
+export async function persistedDb(app: PracticeApp): Promise<{
+  items: Record<string, unknown>[];
+  blocks: Record<string, unknown>[];
+  reviews: Record<string, unknown>[];
+  lessonAgenda: Record<string, unknown>[];
+  schemaVersion: number;
+}> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: never }).db;
+}
+
+// ---------------------------------------------------------------------------
+// A GitHub data repo that lives in this test process.
+//
+// It is installed at the REAL transport boundary — the `fetch` calls
+// `gitRemote.ts` makes to api.github.com — so everything above it runs for
+// real: `syncNow`, `resolveConflict`, `runSync`, `decideSync`, the pre-sync
+// archive, and `importFullBackup`'s own guards. Nothing in the app is stubbed
+// or bypassed, and no request ever leaves the machine.
+// ---------------------------------------------------------------------------
+
+export interface FakeRemote {
+  /** The snapshot the repo currently holds, or null for an empty repo. */
+  snapshot: { stateText: string; hash: string; rev: number; deviceName?: string; savedAt: string } | null;
+  /** Every ref this repo has, so an archive branch is observable. */
+  refs: string[];
+  /** How many times each endpoint was called, so "it really went there" is checkable. */
+  calls: string[];
+  /**
+   * The published Setar source index — the ONE file on the source-index
+   * branch that the NAS scanner writes and the app only ever GETs. Null until
+   * something publishes it.
+   */
+  sourceIndex: { text: string; commit: string } | null;
+}
+
+export function newFakeRemote(): FakeRemote {
+  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
+}
+
+/** Put a snapshot in the repo as if another device had pushed it. */
+export function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
+  remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
+  if (!remote.refs.includes('main')) remote.refs.push('main');
+}
+
+/**
+ * Re-stamp an index with the digest the SCANNER would have written for it.
+ *
+ * The app recomputes this digest at its reader boundary and refuses an index
+ * whose content and hash disagree, so a journey that edits a fixture index must
+ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
+ * ONE implementation, here beside `publishSourceIndex`, so no journey can
+ * quietly hand-edit a hash instead.
+ */
+export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
+  const body = { ...index };
+  delete body.contentHash;
+  delete body.generatedAt;
+  const sorted = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sorted);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[k];
+        if (v !== undefined) out[k] = sorted(v);
+      }
+      return out;
+    }
+    return value;
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({ ...index, contentHash });
+}
+
+/** Put a source index on the source-index branch, as the NAS publisher would. */
+export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
+  remote.sourceIndex = { text, commit };
+  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
+}
+
+export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
+  let headCounter = 0;
+  const blobs = new Map<string, string>();
+
+  await page.route('https://api.github.com/**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    // /repos/<owner>/<name>/<rest…>
+    const rest = url.pathname.split('/').slice(4).join('/');
+    const method = req.method();
+    remote.calls.push(`${method} ${rest}`);
+    // A FULFILLED response is still subject to the browser's own CORS check.
+    // Chromium lets a routed cross-origin request through; WebKit does not, and
+    // an unadorned reply surfaces as "Fetch API cannot load … due to access
+    // control checks" — a harness artefact that looks exactly like an app bug.
+    // The real api.github.com sends these headers, so sending them here is the
+    // fake behaving like the thing it stands in for.
+    const CORS = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
+    };
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
+    const json = (body: unknown, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
+    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
+    const head = () => `head-${headCounter}`;
+
+    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
+    // the file "on the branch" instead would be a second, later state.
+    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
+      if (!remote.sourceIndex) return json({}, 404);
+      return json({ object: { sha: remote.sourceIndex.commit } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
+      const ref = url.searchParams.get('ref');
+      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
+      return json({
+        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
+        encoding: 'base64',
+        size: remote.sourceIndex.text.length,
+      });
+    }
+    if (method === 'GET' && rest === 'git/ref/heads/main') {
+      if (!remote.snapshot) return json({}, 404);
+      return json({ object: { sha: head() } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
+      if (!remote.snapshot) return json({}, 404);
+      return raw(
+        JSON.stringify({
+          formatVersion: 2,
+          hash: remote.snapshot.hash,
+          rev: remote.snapshot.rev,
+          deviceName: remote.snapshot.deviceName,
+          savedAt: remote.snapshot.savedAt,
+          attachments: [],
+        }),
+      );
+    }
+    if (method === 'GET' && rest.startsWith('contents/state.json')) {
+      if (!remote.snapshot) return json({}, 404);
+      return raw(remote.snapshot.stateText);
+    }
+    if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
+    if (method === 'GET' && rest.startsWith('git/blobs/')) {
+      return json({ content: blobs.get(rest.slice('git/blobs/'.length)) ?? '' });
+    }
+    if (method === 'PUT' && rest.startsWith('contents/README.md')) {
+      headCounter += 1;
+      if (!remote.refs.includes('main')) remote.refs.push('main');
+      return json({ commit: { sha: head() } });
+    }
+    if (method === 'POST' && rest === 'git/blobs') {
+      const body = req.postDataJSON() as { content: string };
+      const sha = `blob-${blobs.size}`;
+      blobs.set(sha, body.content);
+      return json({ sha });
+    }
+    if (method === 'POST' && rest === 'git/trees') return json({ sha: 'tree-1' });
+    if (method === 'POST' && rest === 'git/commits') {
+      headCounter += 1;
+      return json({ sha: head() });
+    }
+    if (method === 'POST' && rest === 'git/refs') {
+      const body = req.postDataJSON() as { ref: string };
+      remote.refs.push(body.ref.replace('refs/heads/', ''));
+      return json({});
+    }
+    if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
+    return json({ message: 'not routed' }, 404);
+  });
+}
+
+/**
+ * Wrap a database in the shape `state.json` holds: a full backup with NO file
+ * payloads (attachments travel as separate git blobs).
+ */
+export function remoteStateText(db: unknown, deviceName = 'the other device'): string {
+  return JSON.stringify({
+    app: 'practice-compass',
+    schemaVersion: (db as { schemaVersion?: number }).schemaVersion ?? 13,
+    exportedAt: new Date().toISOString(),
+    deviceName,
+    data: db,
+    files: [],
+  });
+}
+
+/** Connect sync through the REAL Settings form and run the first sync. */
+export async function connectSync(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  await goTo(app, '/settings');
+  // The sync form's fields sit inside a labelled group rather than carrying
+  // their own accessible names. That is pre-existing Settings markup this lane
+  // is explicitly not reshaping, so this reaches them the way they actually
+  // are rather than pretending otherwise.
+  await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
+  await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
+  await page.getByRole('button', { name: 'Connect & sync' }).click();
+  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
+}
+
+/** The sync section's own status line, whatever it currently says. */
+export async function syncMessage(page: Page): Promise<string> {
+  return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
+}
+```
+
+### tests/setarArchive.browser.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import {
+  connectSync,
+  goTo,
+  importBackup,
+  installFakeGitHub,
+  newFakeRemote,
+  openPracticeApp,
+  persistedUntil,
+  publishSourceIndex,
+  readPersistedState,
+  stampSourceIndex,
+  reload,
+  type Engine,
+  type PracticeApp,
+} from './practiceBrowser';
+
+// ---------------------------------------------------------------------------
+// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
+//
+// Refresh → a historical class with its real material → a canonical piece →
+// the material that is genuinely useful for it → Start → open a file, with the
+// practice clock untouched. The corpus is the checked-in index derived from the
+// real archive, the clock is frozen, and every control is reached by its
+// accessible name — no debug hook, no source regex.
+//
+// A missing engine FAILS with an install instruction; it never skips.
+// ---------------------------------------------------------------------------
+
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 900 };
+
+interface Db {
+  items: {
+    id: string;
+    title: string;
+    status: string;
+    persian?: { composer?: string };
+    source?: { pieceKey: string };
+  }[];
+  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
+  blocks: unknown[];
+  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
+}
+
+async function db(app: PracticeApp): Promise<Db> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: Db }).db;
+}
+
+/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
+async function setUp(app: PracticeApp, indexText: string) {
+  const remote = newFakeRemote();
+  await installFakeGitHub(app.page, remote);
+  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+  await connectSync(app);
+  publishSourceIndex(remote, indexText);
+  return remote;
+}
+
+async function refresh(app: PracticeApp) {
+  await goTo(app, '/settings');
+  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
+}
+
+/**
+ * An index with one more class than the corpus — the delta a refresh applies.
+ *
+ * Re-STAMPED with the digest the scanner itself would have written: the app
+ * recomputes that digest and refuses an index whose content and hash disagree,
+ * so a journey may not hand-edit a hash to fake a new scan.
+ */
+async function withSession40(text: string): Promise<string> {
+  const index = JSON.parse(text) as {
+    contentHash: string;
+    sessions: unknown[];
+    pieces: { key: string; composer: string }[];
+  };
+  index.sessions = [
+    ...index.sessions,
+    {
+      n: 40,
+      date: '2026-09-29',
+      folder: 'session-40-29-09-2026',
+      roster: [index.pieces[0]!.key],
+      rosterTrusted: true,
+      hasClassRecording: true,
+      resources: [
+        {
+          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
+          role: 'ضبط-کلاس',
+          kind: 'video',
+          title: 'ضبط کلاس',
+          part: null,
+          pieces: [],
+          group: null,
+        },
+      ],
+      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
+    },
+  ];
+  return stampSourceIndex(index as unknown as Record<string, unknown>);
+}
+
+/** The composer this journey's re-scanned registry proposes for one piece. */
+const NEW_COMPOSER = 'میرزا-عبدالله';
+
+/**
+ * A re-scanned index whose REGISTRY has improved: one piece the owner already
+ * has now names a different composer. That is a suggestion, never a write.
+ */
+async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
+  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
+  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
+  const was = target.composer;
+  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
+  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
+}
+
+describe('the Setar archive, rendered', () => {
+  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const viewport of [PHONE, DESKTOP]) {
+        const app = await openPracticeApp({ now: NOW, viewport, engine });
+        try {
+          const { page } = app;
+          const remote = await setUp(app, INDEX_TEXT);
+
+          // --- REFRESH: one action, a readable summary, no crawler output ---
+          await refresh(app);
+          const summary = await page.locator('main').innerText();
+          // Four of the owner's own legacy classes carry EXACT source-path evidence,
+          // so they are adopted rather than duplicated; the other 35 are new.
+          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
+          // It says the index CHANGED or was FETCHED — never that a scan ran.
+          expect(summary).not.toMatch(/last scanned/i);
+          expect(summary).toMatch(/needing attention/);
+          // Import policy is stated BEFORE the import, not discovered after.
+          expect(summary).toMatch(/New pieces arrive resting/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+
+          const after = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 40 && d.items.length === 96,
+          );
+          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+          expect(after.items.filter((i) => i.source)).toHaveLength(94);
+          // The owner's own upcoming class 38 and the archive's class 38 both
+          // exist, on their own dates.
+          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
+            '2026-08-04',
+            '2026-09-27',
+          ]);
+
+          // --- A HISTORICAL CLASS, with its real material -------------------
+          // Lessons is a two-pane list at 1000px and stacked cards below it, so
+          // this journey drives whichever the viewport actually renders.
+          await goTo(app, '/lessons');
+          const wide = viewport.width >= 1000;
+          let lessonText: string;
+          if (wide) {
+            await page.getByRole('button', { name: /Class 13 · 2024-09-03/ }).first().click();
+            await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+            lessonText = await page.locator('main').innerText();
+          } else {
+            const class13 = page.getByRole('article').filter({ hasText: 'Class 13 · 2024-09-03' });
+            await class13.first().waitFor({ timeout: 20_000 });
+            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
+            // all open at once just because none of them has notes yet.
+            expect(await class13.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
+            await class13.getByRole('button', { name: /Class 13/ }).first().click();
+            await class13.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+            lessonText = await class13.innerText();
+          }
+          // The class recording is here, with its part numbers; a named score
+          // is here; nothing claims a demonstration belongs to the class alone.
+          expect(lessonText).toContain('ضبط کلاس');
+          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
+
+          // --- A CANONICAL PIECE, and the material that is useful for it ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
+          // through the existing Farsi matcher.
+          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
+          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
+          await found.waitFor({ timeout: 20_000 });
+          await found.click();
+          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
+
+          const itemText = await page.locator('main').innerText();
+          // Its OWN notation, with provenance…
+          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
+          // …the demonstration that covers its session…
+          expect(itemText).toContain('teacher’s demonstration');
+          // …and NOT the class recording, and NOT anyone's practice takes.
+          expect(itemText).not.toContain('class recording');
+          expect(itemText).not.toContain('تمرین من');
+          // Imported pieces arrive resting.
+          expect(itemText).toMatch(/Resting/);
+
+          // --- DIRECT START, and opening material with the clock untouched --
+          await page.getByRole('button', { name: 'Start a block' }).click();
+          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+          const clockBefore = await page.locator('main').innerText();
+          // Material on the practice screen is ONE CLOSED disclosure.
+          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
+          // CLOSED until asked for: nothing is listed before the tap.
+          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
+          await materialToggle.click();
+          const openButtons = page.getByRole('button', { name: 'Open' });
+          expect(await openButtons.count()).toBeGreaterThan(0);
+          // Every control has an accessible name and is reachable by keyboard.
+          await page.keyboard.press('Tab');
+          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
+          // Opening a file never disturbs the running block.
+          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
+            clockBefore.includes('Finish'),
+          );
+          const blocksBefore = (await db(app)).blocks.length;
+          // The harness accepts the confirm() for the whole journey.
+          await page.getByRole('button', { name: 'Discard block' }).click();
+          expect((await db(app)).blocks).toHaveLength(blocksBefore);
+
+          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
+          const wrapped = await page.evaluate(() => {
+            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
+              /[؀-ۿ]/.test(n.textContent ?? ''),
+            );
+            if (!el) return null;
+            const box = el.getBoundingClientRect();
+            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
+          });
+          expect(wrapped).not.toBeNull();
+          expect(wrapped!.rtl).toBe('rtl');
+          expect(wrapped!.overflows).toBe(false);
+
+          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: 'Already current' }).click();
+          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
+
+          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
+          await refresh(app);
+          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const delta = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 41,
+          );
+          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
+
+          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
+          // The registry improves. That is an OFFER, field by field: nothing
+          // about the owner's own piece changes until they say so, and the
+          // choice must survive the commit even when the index behind it is
+          // already the one installed.
+          const better = await withBetterComposer(INDEX_TEXT);
+          publishSourceIndex(remote, better.text, 'source-index-commit-4');
+          await refresh(app);
+          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
+          await offerRow.first().waitFor({ timeout: 20_000 });
+          const offerText = await page.locator('main').innerText();
+          // The section label is rendered uppercase by the stylesheet, and
+          // innerText returns what is actually rendered.
+          expect(offerText).toMatch(/the archive knows more about these/i);
+          expect(offerText).toContain(better.key);
+          expect(offerText).toContain(NEW_COMPOSER);
+          // Applying WITHOUT answering updates the source graph and leaves the
+          // owner's own piece exactly as it was.
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const unanswered = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
+          );
+          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
+
+          // THE SAME INDEX, a NEW answer. The graph is already current, so a
+          // refresh judged by the index hash alone called this "Already
+          // current" and threw the answer away unwritten.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const answeredDb = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
+          );
+          // Only that field moved: the piece keeps its title and its history.
+          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
+          expect(answeredDb.blocks).toHaveLength(1);
+          // …and the offer is gone, because it has been taken.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+
+          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
+          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
+          await goTo(app, '/settings');
+          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
+          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
+
+          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
+          await reload(app);
+          const persisted = await db(app);
+          expect(persisted.lessons).toHaveLength(41);
+          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
+          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
+          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
+          expect(persisted.blocks).toHaveLength(1);
+          expect(app.pageErrors).toEqual([]);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  });
+});
+```
+
+### tests/setarInbound.browser.test.ts
+
+```
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  connectSync,
+  exportBackup,
+  goTo,
+  importBackup,
+  importOutcome,
+  installFakeGitHub,
+  newFakeRemote,
+  openPracticeApp,
+  persistedDb,
+  publishRemote,
+  readPersistedState,
+  reload,
+  remoteStateText,
+  syncMessage,
+  writePersistedState,
+} from './practiceBrowser';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import { SCHEMA_VERSION, type PracticeDB } from '../src/domain/types';
+import { validateDB, serializeExport } from '../src/domain/io';
+import { decodeSourceIndex } from '../src/domain/sourceArchive';
+import { applyArchiveImport, planArchiveImport } from '../src/domain/sourceReconcile';
+import { hashState } from '../src/domain/canonical';
+
+// ---------------------------------------------------------------------------
+// ac-16 — the archive graph through every door an inbound database uses.
+//
+// Settings import (full and state-only), an automatic sync pull, "Take the
+// GitHub copy", the archive restore, BOTH hydration branches and the cold-start
+// recovery control all run the same `validateDB`. A malformed source relation
+// has to be refused at every one of them with the previous database AND the
+// previous attachment bytes exactly as they were; a valid one has to survive
+// all of them with the owner's own bindings, suppressions and fields intact.
+// ---------------------------------------------------------------------------
+
+const CLOCK = new Date('2026-09-17T09:00:00');
+const SETAR = 'inst-setar';
+
+/** The owner's v13 data with a real, accepted graph in it — built by the real planner. */
+function v14Database(): PracticeDB {
+  const base = validateDB(JSON.parse(V13_SETAR_TEXT));
+  const index = decodeSourceIndex(JSON.parse(INDEX_TEXT));
+  const plan = planArchiveImport({ db: base, index, instrumentId: SETAR, now: CLOCK });
+  const db = applyArchiveImport(base, plan);
+  // An owner decision that every door must carry through untouched.
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((s) => ({
+      ...s,
+      suppressions: [{ kind: 'piece' as const, ref: 'عراق', at: '2026-09-17T09:05:00.000Z' }],
+    })),
+    items: db.items.filter((i) => i.source?.pieceKey !== 'عراق'),
+  };
+}
+
+const V14_DB = v14Database();
+const V14_TEXT = serializeExport(V14_DB, CLOCK);
+
+/**
+ * The same database with ONE nested value inside the graph made malformed.
+ *
+ * `members[].roles` is what `repeatChains` calls `.includes` on to render an
+ * item's material, so a door that accepts this persists a database whose first
+ * reader throws. It is the sharpest member of the family — the nested fields a
+ * production reader dereferences — and every door below is given the identical
+ * bytes rather than a door-specific approximation of them.
+ */
+function withMalformedRoles<T extends PracticeDB>(db: T): T {
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((src, i) =>
+      i === 0
+        ? {
+            ...src,
+            sessions: src.sessions.map((sess, j) =>
+              j === 0
+                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
+                : sess,
+            ),
+          }
+        : src,
+    ),
+  } as unknown as T;
+}
+
+const wrap = (data: unknown, files?: unknown) =>
+  JSON.stringify({
+    app: 'practice-compass',
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: CLOCK.toISOString(),
+    data,
+    ...(files === undefined ? {} : { files }),
+  });
+
+/**
+ * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
+ * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+ * and the rename log moves it here. Repair produces PERSISTED archive state, so
+ * it has to cross these doors like everything else.
+ */
+const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+
+interface Shape {
+  items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
+  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
+  blocks: unknown[];
+  archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
+  schemaVersion: number;
+}
+
+const shape = async (app: Parameters<typeof persistedDb>[0]) => (await persistedDb(app)) as unknown as Shape;
+
+describe('the archive graph at every inbound door', () => {
+  it('archive state crosses all real inbound doors without partial installation', async () => {
+    const app = await openPracticeApp({ now: CLOCK });
+    const { page } = app;
+    try {
+      // --- a real v14 database, through the real Settings importer --------
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(app)).toContain('Imported');
+      await reload(app);
+      let db = await shape(app);
+      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+      // The owner's suppression came through, and the piece it names is absent.
+      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+      // …as did their own untouched records.
+      expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
+      expect(db.blocks).toHaveLength(1);
+      // The REPAIRED reference survived the door, with the row the owner wrote.
+      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      const goodBytes = JSON.stringify(await readPersistedState(app));
+
+      // --- MALFORMED SOURCE RELATIONS, refused at the import door ---------
+      const bad = V14_DB;
+      const cases: { name: string; text: string; says: RegExp }[] = [
+        {
+          name: 'two sources share an id',
+          text: wrap({ ...bad, archiveSources: [bad.archiveSources[0], bad.archiveSources[0]] }),
+          says: /share the id/,
+        },
+        {
+          name: 'a source bound to no instrument',
+          text: wrap({
+            ...bad,
+            archiveSources: [{ ...bad.archiveSources[0]!, instrumentId: 'nobody' }],
+          }),
+          says: /instrument that does not exist/,
+        },
+        {
+          name: 'a dangling item binding',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-dashti' ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'nope' } } : i,
+            ),
+          }),
+          says: /does not describe/,
+        },
+        {
+          name: 'two items bound to one piece',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-iraq' ? { ...i, source: bad.items.find((x) => x.source)!.source } : i,
+            ),
+          }),
+          says: /Two items are bound/,
+        },
+        {
+          name: 'a lesson bound to a session the source does not describe',
+          text: wrap({
+            ...bad,
+            lessons: bad.lessons.map((l) =>
+              l.id === 'L-38-upcoming' ? { ...l, source: { archiveId: 'setar-classes', sessionN: 4242 } } : l,
+            ),
+          }),
+          says: /does not describe/,
+        },
+        {
+          name: 'an unsafe resource path',
+          text: wrap({
+            ...bad,
+            archiveSources: [
+              {
+                ...bad.archiveSources[0]!,
+                sessions: bad.archiveSources[0]!.sessions.map((s, i) =>
+                  i === 0 ? { ...s, resources: [{ ...s.resources[0], path: '../../etc/passwd' }] } : s,
+                ),
+              },
+            ],
+          }),
+          says: /unsafe resource path/,
+        },
+        {
+          name: 'an unsafe direct item reference',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-iraq'
+                ? {
+                    ...i,
+                    references: [
+                      { id: 'r', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: CLOCK.toISOString() },
+                    ],
+                  }
+                : i,
+            ),
+          }),
+          says: /unsafe reference path/,
+        },
+        {
+          // The sealed counterexample: a nested value no door used to check.
+          name: 'a membership with an unreadable role list',
+          text: wrap(withMalformedRoles(bad)),
+          says: /unreadable role list/,
+        },
+        {
+          name: 'a newer schema',
+          text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
+          says: /newer version/i,
+        },
+      ];
+
+      for (const c of cases) {
+        await importBackup(app, 'bad.json', c.text);
+        expect(await importOutcome(app), c.name).toMatch(/Import failed/);
+        expect(await importOutcome(app), c.name).toMatch(c.says);
+        // NOTHING was written — not a partial graph, not a partial database.
+        expect(JSON.stringify(await readPersistedState(app)), c.name).toBe(goodBytes);
+      }
+
+      // --- a STATE-ONLY import carries the graph too ----------------------
+      const renamed = {
+        ...V14_DB,
+        items: V14_DB.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'state-only import' } : i)),
+      };
+      await importBackup(app, 'state-only.json', wrap(renamed));
+      expect(await importOutcome(app)).toContain('Imported');
+      // A v14 database is 94 pieces, 39 sessions and the whole graph, and the
+      // importer validates and migrates all of it before it writes. Polled at
+      // half a second rather than the shared helper's 50ms: a continuous stream
+      // of read transactions on the same object store delays the very write
+      // this is waiting for.
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('state-only import');
+      expect((await shape(app)).archiveSources).toHaveLength(1);
+
+      // --- A SYNC PULL installs the same validated model -------------------
+      const remote = newFakeRemote();
+      await installFakeGitHub(page, remote);
+      // The first sync PUSHES what this device holds, so the pull below is a
+      // clean one-sided change rather than a conflict.
+      await connectSync(app);
+      const local = await persistedDb(app);
+      const pulled = {
+        ...local,
+        items: local.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'from the other device' } : i)),
+      };
+      publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9999);
+      await goTo(app, '/settings');
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('from the other device');
+      db = await shape(app);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      // --- A MALFORMED remote snapshot is refused, and installs nothing ----
+      const beforePull = JSON.stringify(await readPersistedState(app));
+      const brokenRemote = { ...pulled, archiveSources: [{ ...V14_DB.archiveSources[0]!, instrumentId: 'nobody' }] };
+      publishRemote(remote, remoteStateText(brokenRemote), await hashState(brokenRemote), 10_000);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // …and the NESTED malformation is refused by this door too, not only by
+      // the import one. A pull that installed it would leave a database whose
+      // own material reader throws, with nothing to undo it.
+      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
+      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
+      await goTo(app, '/items/own-dashti');
+      await page.getByRole('button', { name: 'Edit' }).first().click();
+      await goTo(app, '/settings');
+      const keepRemote = {
+        ...pulled,
+        items: pulled.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'the GitHub copy' } : i)),
+      };
+      publishRemote(remote, remoteStateText(keepRemote), await hashState(keepRemote), 11_000);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      const takeRemote = page.getByRole('button', { name: /Take the GitHub copy|Keep the GitHub copy/ });
+      if ((await takeRemote.count()) > 0) {
+        await takeRemote.first().click();
+        await expect
+          .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+            timeout: 60_000,
+            interval: 500,
+          })
+          .toBe('the GitHub copy');
+        expect((await shape(app)).archiveSources).toHaveLength(1);
+      }
+
+      // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
+      await goTo(app, '/items/own-dashti');
+      await page.getByRole('button', { name: 'Start a block' }).click();
+      await goTo(app, '/active');
+      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+      const duringPractice = JSON.stringify(await readPersistedState(app));
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(app)).toMatch(/Import failed/);
+      expect(await importOutcome(app)).toMatch(/unfinished|practice/i);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(duringPractice);
+      await goTo(app, '/active');
+      // The harness accepts the confirm() for the whole journey.
+      await page.getByRole('button', { name: 'Discard block' }).click();
+
+      // --- A FULL EXPORT: metadata for NAS refs, no bytes ------------------
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      await reload(app);
+      const exported = await exportBackup(app);
+      const parsed = JSON.parse(exported) as { data: Shape; files?: unknown[] };
+      expect(parsed.data.archiveSources).toHaveLength(1);
+      expect(parsed.data.items.filter((i) => i.source)).toHaveLength(93);
+      // The archive is DESCRIBED, never carried: no NAS bytes, and only real
+      // local attachments appear in `files` (there are none here).
+      expect(parsed.files ?? []).toEqual([]);
+      expect(exported).toContain('session-13-03-09-2024');
+      // A repaired path is exported as the archive-relative text it now is —
+      // no device base, no legacy folder prefix, and no bytes.
+      expect(exported).toContain(REPAIRED_PATH);
+      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
+      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      // --- BOTH HYDRATION BRANCHES ----------------------------------------
+      // `migrate`: a persisted database declaring the OLD version.
+      const current = await readPersistedState(app);
+      await writePersistedState(app, { ...(current.state as object), db: JSON.parse(V13_SETAR_TEXT).data }, 13);
+      await reload(app);
+      db = await shape(app);
+      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(db.archiveSources).toEqual([]);
+
+      // `merge`: a persisted database declaring the CURRENT version, carrying
+      // an invalid relation. Zustand skips `migrate` entirely here, which is
+      // exactly why the check cannot live only there.
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      await reload(app);
+      const valid = await readPersistedState(app);
+      const validDb = (valid.state as { db: Shape }).db;
+      await writePersistedState(
+        app,
+        {
+          ...(valid.state as object),
+          db: {
+            ...validDb,
+            archiveSources: [{ ...validDb.archiveSources[0]!, instrumentId: 'nobody' }],
+          },
+        },
+        SCHEMA_VERSION,
+      );
+      const refusedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/instrument that does not exist/);
+      // Rendering the refusal writes nothing at all.
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
+
+      // The same hydration branch, given the NESTED malformation instead: this
+      // is the door the sealed counterexample actually walked through, and a
+      // database it accepted would crash the first material render.
+      await writePersistedState(
+        app,
+        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
+        SCHEMA_VERSION,
+      );
+      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
+
+      // --- COLD-START RECOVERY gets the owner back in ----------------------
+      await page.getByLabel('Restore backup file').setInputFiles({
+        name: 'recover.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(V14_TEXT, 'utf8'),
+      });
+      await page.locator('main').waitFor({ timeout: 20_000 });
+      await goTo(app, '/');
+      await reload(app);
+      db = await shape(app);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  }, 240_000);
+});
+
+// ---------------------------------------------------------------------------
+// The rollback route: the baseline app, not a description of it.
+// ---------------------------------------------------------------------------
+
+const BASELINE_COMMIT = 'b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417';
+
+function checkoutBaselineApp(): { root: string; dispose: () => void } {
+  const root = join(mkdtempSync(join(tmpdir(), 'pc-setar-baseline-')), 'app');
+  execFileSync('git', ['worktree', 'add', '--detach', root, BASELINE_COMMIT], { stdio: 'pipe' });
+  // `package.json` here gained two scripts and nothing else; `package-lock.json`
+  // is a forbidden path and is byte-identical, so the baseline's dependency
+  // tree is this checkout's. Linking is exact and far cheaper than installing.
+  symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules'));
+  return {
+    root,
+    dispose: () => {
+      try {
+        execFileSync('git', ['worktree', 'remove', '--force', root], { stdio: 'pipe' });
+      } catch {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  };
+}
+
+describe('rolling back past the archive schema', () => {
+  it('the baseline app refuses a v14 file and restores its own retained backup', async () => {
+    const baseline = checkoutBaselineApp();
+    const old = await openPracticeApp({ now: CLOCK, root: baseline.root });
+    try {
+      // The v13 app holds the owner's real v13 data, and exports it itself.
+      await importBackup(old, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+      expect(await importOutcome(old)).toContain('Imported');
+      await reload(old);
+      const oldDb = await persistedDb(old);
+      expect(oldDb.schemaVersion).toBe(13);
+      const retainedV13 = await exportBackup(old);
+      expect(JSON.parse(retainedV13).schemaVersion).toBe(13);
+
+      // IT REFUSES A v14 FILE, and writes nothing.
+      const before = JSON.stringify(await readPersistedState(old));
+      await importBackup(old, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(old)).toMatch(/Import failed/);
+      expect(await importOutcome(old)).toMatch(/newer version/i);
+      expect(JSON.stringify(await readPersistedState(old))).toBe(before);
+
+      // …and the retained v13 backup restores INTO the baseline app, which is
+      // what a rollback actually is. There is no down-migration and none is
+      // pretended: the v14 file still says 14 and still carries its graph.
+      await importBackup(old, 'retained-v13.json', retainedV13);
+      expect(await importOutcome(old)).toContain('Imported');
+      await reload(old);
+      const restored = await persistedDb(old);
+      expect(restored.schemaVersion).toBe(13);
+      expect(restored.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+        'Teacher: keep the mezrab light on the return.',
+      );
+      expect(JSON.parse(V14_TEXT).schemaVersion).toBe(SCHEMA_VERSION);
+      expect(JSON.parse(V14_TEXT).data.archiveSources).toHaveLength(1);
+      expect(old.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await old.close();
+      baseline.dispose();
+    }
+  }, 240_000);
+});
+```
 
 ## Check against the contract
 
