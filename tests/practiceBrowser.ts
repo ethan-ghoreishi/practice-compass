@@ -56,7 +56,13 @@ export interface CancelledRequest {
  * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
  * one cancellation excuses exactly one error.
  *  - the message is the DIAGNOSED wording, so an error of any other shape
- *    (a render crash, a thrown TypeError) is never excused;
+ *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
+ *    for a fetch AND for an XHR, so the two words both spellings share are
+ *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
+ *    where this wording comes from, and the next intermittent "CORS" failure
+ *    belongs here before it is diagnosed from scratch. Getting the wording
+ *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
+ *    below is what stops a real failure being excused;
  *  - it names that request's host AND path — WebKit spells the URL with the
  *    scheme separated from the host, so the comparison is on the parts both
  *    spellings carry verbatim;
@@ -69,7 +75,7 @@ export interface CancelledRequest {
 export const CANCELLED_EXCUSE_MS = 30_000;
 
 export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
-  if (!/Fetch API cannot load/.test(message) || !/access control checks/.test(message)) return false;
+  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
   const i = pending.findIndex((c) => {
     if (at - c.at > CANCELLED_EXCUSE_MS) return false;
     const url = new URL(c.url);

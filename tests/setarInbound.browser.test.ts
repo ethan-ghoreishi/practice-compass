@@ -538,6 +538,11 @@ describe('the journey harness itself', () => {
     expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
     expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
 
+    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
+    // both are the same cancelled request.
+    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
+    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
+
     // Only the DIAGNOSED wording is ever excused: a real render crash naming
     // the same URL is a page error, not a cancellation.
     expect(

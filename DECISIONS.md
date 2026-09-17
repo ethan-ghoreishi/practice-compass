@@ -26,6 +26,9 @@ next to the new one.
   change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
   decoder and at the persisted door — and ac-12's named test now drives the downstream
   reference and suppression transitions from the scanner's ACTUAL output for a forked log.
+  It changes nothing the operator publishes TODAY, and that is checked rather than assumed:
+  the corpus baseline records 257 rows in RENAME-LOG.csv and the index carries 257 mappings,
+  so no row of the real log is dropped for any reason — there is no fork in it to drop.
 - **The harness's excuse for a cancelled request was permanent.** The WebKit
   cancelled-request diagnosis recorded in the previous round was implemented as a permanent
   set of cancelled URLs, with any later page error whose message merely CONTAINED that

@@ -723,6 +723,10 @@ describe('reconciling the archive with the owner’s own records', () => {
     // maps through the rename log EXACTLY. No title, size or modification-time
     // matching is involved anywhere, and none of the 67 is left to a guess.
     expect(LEGACY_SEED_PATHS).toHaveLength(67);
+    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
+    // and 257 mappings out: no row of the REAL log is dropped for any reason —
+    // not unsafe, not empty, not a loop and not a fork — so the rule below
+    // changes nothing the operator actually publishes today.
     expect(INDEX.renames).toHaveLength(257);
     const repairedPaths = new Map<string, string>();
     for (const p of LEGACY_SEED_PATHS) {
