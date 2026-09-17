@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
+import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
 import { serializeExport, validateDB, parseImport } from './io';
 import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
+import { decodeSourceIndex } from './sourceArchive';
+import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
 import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
@@ -779,5 +783,167 @@ describe('the documented rollback route', () => {
     // An old v11 build can only restore an explicitly chosen PRE-upgrade
     // backup — which still exists, unchanged, and still says 11.
     expect((JSON.parse(V11_TEXT) as { schemaVersion: number }).schemaVersion).toBe(11);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-15 — the v14 source graph across the migration and validation boundary.
+// ---------------------------------------------------------------------------
+
+describe('the v14 source graph at the schema boundary', () => {
+  const NOW = new Date('2026-09-17T09:00:00.000Z');
+  const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
+
+  /** A database with a real accepted graph in it, built by the real planner. */
+  function withGraph(): PracticeDB {
+    const base = validateDB(legacy());
+    const index = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT));
+    const plan = planArchiveImport({ db: base, index, instrumentId: 'inst-setar', now: NOW });
+    return applyArchiveImport(base, plan);
+  }
+
+  it('archive schema migration and validation preserve the whole source graph', () => {
+    // --- v13 -> v14 is ADDITIVE ---------------------------------------------
+    const source = legacy().data;
+    const migrated = validateDB(legacy());
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migrated.archiveSources).toEqual([]);
+    // Every legacy field comes through unchanged apart from the schema number
+    // and the new, empty collection.
+    const strip = (db: PracticeDB) => JSON.stringify({ ...db, schemaVersion: 0, archiveSources: [] });
+    expect(strip(migrated)).toBe(strip({ ...source, archiveSources: [] } as PracticeDB));
+    expect(migrated.blocks).toEqual(source.blocks);
+    expect(migrated.reviews).toEqual(source.reviews);
+    expect(migrated.lessonAgenda).toEqual(source.lessonAgenda);
+    expect(migrated.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+
+    // The WHOLE chain from the oldest supported version, and a repeat of it.
+    const fromOldest = migrateToCurrent(source, 2);
+    expect(Array.isArray(fromOldest.archiveSources)).toBe(true);
+    expect(migrateToCurrent(fromOldest, SCHEMA_VERSION)).toEqual(fromOldest);
+    // A database DECLARING the current schema but carrying no collection at
+    // all is still given one — gating on the version would hydrate an app with
+    // no source state and no way to say so.
+    const stray = { ...source, schemaVersion: SCHEMA_VERSION } as unknown as Record<string, unknown>;
+    delete stray.archiveSources;
+    expect(validateDB(stray).archiveSources).toEqual([]);
+    // ...and a stray LEGACY field on a current-declared database does not slip
+    // past validation just because the version says it should not be there.
+    expect(() =>
+      validateDB({
+        ...source,
+        schemaVersion: SCHEMA_VERSION,
+        lessonAgenda: [{ id: 'bad', kind: 'question', instrumentId: 'inst-setar', text: '' }],
+      }),
+    ).toThrow();
+
+    // --- the collection is RECONSTRUCTED, not merely accepted ---------------
+    const graphed = withGraph();
+    expect(graphed.archiveSources).toHaveLength(1);
+    const roundTripped = validateDB(JSON.parse(serializeExport(graphed, NOW)));
+    expect(roundTripped.archiveSources).toEqual(graphed.archiveSources);
+    expect(roundTripped.items.filter((i) => i.source).length).toBe(94);
+    expect(roundTripped.lessons.filter((l) => l.source).length).toBeGreaterThan(0);
+    // Revalidating its own output changes nothing, and an export round trip is
+    // byte-identical.
+    expect(serializeExport(validateDB(roundTripped), NOW)).toBe(serializeExport(graphed, NOW));
+
+    // --- every new persisted field is CHECKED --------------------------------
+    const mutate = (fn: (db: PracticeDB) => void): unknown => {
+      const copy = JSON.parse(JSON.stringify(graphed)) as PracticeDB;
+      fn(copy);
+      return copy;
+    };
+    const refuses = (fn: (db: PracticeDB) => void, pattern: RegExp) =>
+      expect(() => validateDB(mutate(fn))).toThrow(pattern);
+
+    refuses((d) => {
+      d.archiveSources.push({ ...d.archiveSources[0]! });
+    }, /Two archive sources share the id/);
+    refuses((d) => {
+      d.archiveSources[0]!.pieces.push({ ...d.archiveSources[0]!.pieces[0]! });
+    }, /two pieces keyed/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions.push({ ...d.archiveSources[0]!.sessions[0]! });
+    }, /two entries for session/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { indexHash: unknown }).indexHash = 42;
+    }, /no index hash/);
+    refuses((d) => {
+      d.archiveSources[0]!.instrumentId = 'no-such-instrument';
+    }, /instrument that does not exist/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.path = '../../etc/passwd';
+    }, /unsafe resource path/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.pieces = ['not-a-registry-key'];
+    }, /which this source does not describe/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { group: unknown }).group = { n: 1 };
+    }, /invalid part group/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.date = '2026-02-30';
+    }, /unreadable date/);
+    refuses((d) => {
+      d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
+    }, /suppression of an unknown kind/);
+
+    // Bindings: dangling, duplicated, or on the wrong instrument.
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'setar-classes', pieceKey: 'not-in-the-registry' };
+    }, /which archive "setar-classes" does not describe/);
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'no-such-archive', pieceKey: 'عراق' };
+    }, /which is not present/);
+    refuses((d) => {
+      const bound = d.items.find((i) => i.source)!;
+      // 'own-iraq' carries no binding of its own, so this is a genuine second
+      // claim on one canonical piece.
+      d.items.find((i) => i.id === 'own-iraq')!.source = { ...bound.source! };
+    }, /Two items are bound to piece/);
+    refuses((d) => {
+      d.instruments.push({ ...d.instruments[0]!, id: 'inst-tar', name: 'Tar' });
+      d.items.find((i) => i.source)!.instrumentId = 'inst-tar';
+    }, /belongs to another instrument/);
+    refuses((d) => {
+      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { archiveId: 'setar-classes', sessionN: 4242 };
+    }, /which archive "setar-classes" does not describe/);
+    refuses((d) => {
+      const bound = d.lessons.find((l) => l.source)!;
+      // The owner's own upcoming class 38 — deliberately an UNBOUND record, so
+      // this really is a second claim on one session rather than a no-op.
+      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { ...bound.source! };
+    }, /Two lessons are bound to session/);
+    // Manual direct item references obey the same path rules.
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.references = [
+        { id: 'x', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: '2026-01-01T00:00:00.000Z' },
+      ];
+    }, /unsafe reference path/);
+
+    // --- a MISSING FILE is a valid state, not a broken graph ----------------
+    const unavailable = mutate((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.unavailable = true;
+      d.archiveSources[0]!.pieces[0]!.unavailable = true;
+    }) as PracticeDB;
+    expect(() => validateDB(unavailable)).not.toThrow();
+    expect(validateDB(unavailable).archiveSources[0]!.pieces[0]!.unavailable).toBe(true);
+
+    // --- a newer schema, and an unknown index format, are refused -----------
+    expect(() => validateDB({ ...graphed, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+    expect(() => decodeSourceIndex({ format: 'something-else', version: 1 })).toThrow(/not a Setar archive index/);
+    expect(() => decodeSourceIndex({ ...JSON.parse(SETAR_INDEX_TEXT), version: 99 })).toThrow(/newer scanner/);
+
+    // --- nothing above disturbed practice text or the attachment rules ------
+    expect(roundTripped.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+    expect(roundTripped.blocks[0]!.observation).toBe('The return is still heavy.');
+    expect(roundTripped.attachments).toEqual(graphed.attachments);
+    expect(() =>
+      validateDB({ ...graphed, attachments: [graphed.attachments[0]!, graphed.attachments[0]!] }),
+    ).toThrow(/share the id/);
   });
 });

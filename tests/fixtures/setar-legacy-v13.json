@@ -1,0 +1,229 @@
+{
+  "app": "practice-compass",
+  "schemaVersion": 13,
+  "exportedAt": "2026-09-10T19:00:00.000Z",
+  "data": {
+    "schemaVersion": 13,
+    "instruments": [
+      {
+        "id": "inst-setar",
+        "name": "Setar",
+        "family": "Persian",
+        "active": true,
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      }
+    ],
+    "materials": [],
+    "items": [
+      {
+        "id": "own-dashti",
+        "instrumentId": "inst-setar",
+        "title": "چهارمضراب اول دشتی",
+        "itemType": "full_piece",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 7,
+        "totalMinutes": 145,
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z",
+        "notes": "Teacher: keep the mezrab light on the return.",
+        "lastPractisedAt": "2026-09-14T18:30:00.000Z",
+        "lastResult": "slightly_better",
+        "nextReviewDate": "2026-09-24",
+        "reviewMode": "auto",
+        "nextReviewSource": "auto",
+        "srReps": 3,
+        "srEase": 2.5,
+        "srIntervalDays": 10,
+        "srLastProgressDay": "2026-09-14"
+      },
+      {
+        "id": "own-iraq",
+        "instrumentId": "inst-setar",
+        "title": "Iraq",
+        "itemType": "full_piece",
+        "status": "fragile",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 2,
+        "totalMinutes": 30,
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z",
+        "catalogKey": "iraq"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "blk-1",
+        "practiceItemId": "own-dashti",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-09-14T18:00:00.000Z",
+        "endedAt": "2026-09-14T18:30:00.000Z",
+        "durationMinutes": 30,
+        "mode": "repair",
+        "focus": "tone",
+        "result": "slightly_better",
+        "observation": "The return is still heavy.",
+        "nextAction": "Half tempo, four bars at a time.",
+        "createdReview": false,
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": "rev-1",
+        "practiceItemId": "own-dashti",
+        "dueDate": "2026-09-24",
+        "reviewType": "retention",
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      }
+    ],
+    "pathways": [],
+    "pathwayStages": [],
+    "pathwayRoutines": [],
+    "attachments": [
+      {
+        "id": "att-1",
+        "ownerType": "lesson",
+        "ownerId": "L-38-upcoming",
+        "name": "handout.pdf",
+        "mime": "application/pdf",
+        "size": 2048,
+        "kind": "pdf",
+        "createdAt": "2026-09-10T19:00:00.000Z"
+      }
+    ],
+    "lessons": [
+      {
+        "id": "L-1",
+        "instrumentId": "inst-setar",
+        "date": "2023-09-26",
+        "number": 1,
+        "itemIds": [],
+        "recordings": [
+          {
+            "id": "r-1a",
+            "title": "Class 1 recording",
+            "path": "setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-10T19:00:00.000Z"
+          },
+          {
+            "id": "r-1b",
+            "title": "First Dashti score",
+            "path": "setar-classes/session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf",
+            "kind": "pdf",
+            "createdAt": "2026-09-10T19:00:00.000Z",
+            "notes": "Teacher marked bar 12."
+          }
+        ],
+        "notes": "Started the first chahārmezrāb.",
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      },
+      {
+        "id": "L-13",
+        "instrumentId": "inst-setar",
+        "date": "2024-09-03",
+        "number": 13,
+        "itemIds": [],
+        "recordings": [
+          {
+            "id": "r-13a",
+            "title": "Class 13 recording",
+            "path": "setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-10T19:00:00.000Z"
+          },
+          {
+            "id": "r-13b",
+            "title": "Araq score",
+            "path": "setar-classes/session-13-03-09-2024/aragh-mirzahoseyngholi.pdf",
+            "kind": "pdf",
+            "createdAt": "2026-09-10T19:00:00.000Z"
+          }
+        ],
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      },
+      {
+        "id": "L-28",
+        "instrumentId": "inst-setar",
+        "date": "2025-10-28",
+        "number": 28,
+        "itemIds": [],
+        "recordings": [
+          {
+            "id": "r-28a",
+            "title": "Class 28 recording",
+            "path": "setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-10T19:00:00.000Z"
+          }
+        ],
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      },
+      {
+        "id": "L-25",
+        "instrumentId": "inst-setar",
+        "date": "2025-08-05",
+        "number": 25,
+        "itemIds": [],
+        "recordings": [
+          {
+            "id": "r-25a",
+            "title": "My take, 3 August",
+            "path": "setar-classes/session-25-05-08-2025/mine-1.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-10T19:00:00.000Z",
+            "notes": "Slow but even."
+          },
+          {
+            "id": "r-25b",
+            "title": "My take, 4 August",
+            "path": "setar-classes/session-25-05-08-2025/mine-2.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-10T19:00:00.000Z"
+          },
+          {
+            "id": "r-25c",
+            "title": "My take, 5 August",
+            "path": "setar-classes/session-25-05-08-2025/mine-3.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-10T19:00:00.000Z"
+          }
+        ],
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      },
+      {
+        "id": "L-38-upcoming",
+        "instrumentId": "inst-setar",
+        "date": "2026-09-27",
+        "number": 38,
+        "itemIds": [],
+        "recordings": [],
+        "notes": "Ask about the right-hand angle.",
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      }
+    ],
+    "lessonAgenda": [
+      {
+        "id": "q-1",
+        "kind": "question",
+        "text": "How fast should the return actually be?",
+        "itemId": "own-dashti",
+        "instrumentId": "inst-setar",
+        "lessonId": "L-38-upcoming",
+        "createdAt": "2026-09-10T19:00:00.000Z",
+        "updatedAt": "2026-09-10T19:00:00.000Z"
+      }
+    ]
+  }
+}

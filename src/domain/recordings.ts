@@ -50,7 +50,26 @@ export type RecordingResolution =
   | { status: 'ok'; url: string }
   | { status: 'no-base' }
   | { status: 'bad-base' }
+  | { status: 'unsafe' }
   | { status: 'empty' };
+
+/**
+ * A stored RELATIVE reference is a path of plain segments under the media
+ * base, and nothing else. Traversal, an absolute path, a backslash, an
+ * embedded credential and a percent-encoded separator are all REFUSED rather
+ * than escaped into something that resolves: each of them is an attempt to
+ * leave the base the owner configured, and `encodeURIComponent` would turn
+ * `../` into a literal segment that silently 404s instead of saying so.
+ */
+function isSafeRelativeReference(p: string): boolean {
+  if (/%2f|%5c/i.test(p)) return false;
+  if (p.includes('\\') || p.includes('@')) return false;
+  return p
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter(Boolean)
+    .every((seg) => seg !== '.' && seg !== '..');
+}
 
 /**
  * Resolve a recording reference to an openable URL, distinguishing WHY it
@@ -81,6 +100,7 @@ export function resolveRecording(
   if (!raw) return { status: 'no-base' };
   const base = normalizeBaseUrl(raw);
   if (!base) return { status: 'bad-base' };
+  if (!isSafeRelativeReference(p)) return { status: 'unsafe' };
 
   const rel = p
     .replace(/^\/+/, '')
@@ -154,5 +174,65 @@ export function relativizeReference(baseUrl: string | undefined, pasted: string)
   const prefix = `${base}/`;
   const abs = url.toString();
   if (!abs.startsWith(prefix)) return raw;
-  return decodeSegments(abs.slice(prefix.length)) || raw;
+  const relative = decodeSegments(abs.slice(prefix.length));
+  // DECODING CAN CREATE A PATH THE RAW URL DID NOT HAVE. `…%2F..%2Fx.mp4` is
+  // ONE segment in the URL and three after decoding, the middle one being a
+  // step out of the base — storing that would be storing a reference to a file
+  // outside the archive the owner configured. It is not rewritten into
+  // something safe (that would name a different file again): the pasted value
+  // is kept exactly as given, and `resolveRecording` refuses to open it.
+  if (!relative || !isSafeRelativeReference(relative)) return raw;
+  return relative;
+}
+
+// ---------------------------------------------------------------------------
+// Archive media access, stated honestly.
+// ---------------------------------------------------------------------------
+
+/**
+ * The archive ROOT for a configured base — what "Open archive root" opens.
+ *
+ * Deliberately NOT a media filename. Probing one particular clip proves only
+ * that that clip exists: it fails for a file that was renamed, and it passes
+ * for a base whose other thousand files are unreachable. The root is the thing
+ * the owner actually configured, so it is the thing to open.
+ */
+export function archiveRootUrl(baseUrl: string | undefined): string | null {
+  const base = normalizeBaseUrl(baseUrl);
+  return base ? `${base}/` : null;
+}
+
+export interface ArchiveAccess {
+  /** What is KNOWN about the published index — this app fetched it, or did not. */
+  index: string;
+  /** What is known about the MEDIA — which, from here, is almost nothing. */
+  media: string;
+}
+
+/**
+ * Two separate statements, because they are two separate facts.
+ *
+ * Reading the index proves GitHub answered; it says nothing whatever about
+ * whether the NAS is reachable from this device. And a failed media request
+ * from a web page cannot tell a certificate rejection, a CORS refusal and a
+ * network outage apart from a missing file — so this never calls any of them
+ * absence. The honest report is "the app cannot check this from here; open the
+ * archive root and see".
+ */
+export function describeArchiveAccess(input: {
+  indexFetchedAt?: string | null;
+  indexChangedAt?: string | null;
+  baseUrl?: string;
+}): ArchiveAccess {
+  const base = normalizeBaseUrl(input.baseUrl);
+  return {
+    index: input.indexFetchedAt
+      ? `Index last fetched ${input.indexFetchedAt}${input.indexChangedAt ? `; last changed ${input.indexChangedAt}` : ''}.`
+      : 'No index has been fetched on this device yet.',
+    media: !input.baseUrl?.trim()
+      ? 'No media base is set on this device, so files cannot be opened here.'
+      : !base
+        ? 'This device’s media base is not a usable http(s) address.'
+        : 'Files open directly from this device’s media base. The app cannot verify from here that the archive is reachable — open the archive root to check.',
+  };
 }

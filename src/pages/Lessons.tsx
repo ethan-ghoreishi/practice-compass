@@ -10,6 +10,7 @@ import {
   ITEM_STATUS_LABELS,
   LESSON_FILE_KIND_ORDER,
   lessonsForInstrument,
+  isUpcomingLesson,
   nextLessonFor,
   nextLessonNumber,
   normalizeBaseUrl,
@@ -119,7 +120,7 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
     return db.lessons.filter((l) => ids.has(l.instrumentId)).sort((a, b) => b.date.localeCompare(a.date));
   }, [db.lessons, instruments]);
   const defaultSelection = useMemo(() => {
-    const upcoming = [...allLessons].reverse().find((l) => l.date >= todayISODate(now));
+    const upcoming = [...allLessons].reverse().find((l) => isUpcomingLesson(l, todayISODate(now)));
     return upcoming?.id ?? allLessons[0]?.id ?? null;
   }, [allLessons, now]);
   const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
@@ -181,7 +182,9 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
                     onClick={() => setSelectedId(l.id)}
                   >
                     <span className="grow">{lessonLabel(l)}</span>
-                    <span className="tiny faint">{l.notes ? 'notes ✓' : l.date >= todayISODate(now) ? 'upcoming' : '—'}</span>
+                    <span className="tiny faint">
+                      {l.notes ? 'notes ✓' : isUpcomingLesson(l, todayISODate(now)) ? 'upcoming' : '—'}
+                    </span>
                   </button>
                 ))}
                 {lessons.length === 0 && <div className="list-row tiny faint">No classes logged.</div>}
@@ -360,8 +363,12 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 }
 
 function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDelete: () => void }) {
-  const upcoming = lesson.date >= todayISODate(now);
-  const [open, setOpen] = useState(upcoming || !lesson.notes);
+  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
+  // "No notes yet" opens a card the owner is about to write in. An IMPORTED
+  // class has no notes by construction, and thirty-nine of them opening at once
+  // turns the phone list into a wall — history starts COMPACT, and the owner
+  // opens what they want to read.
+  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || !lesson.notes);
 
   return (
     <article className="card stack-sm">
@@ -401,7 +408,7 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
     if ((lesson.notes ?? undefined) !== next) updateLesson(lesson.id, { notes: next });
   }
 
-  const upcoming = lesson.date >= todayISODate(now);
+  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
   // BY LESSON ID, never by instrument: every future class used to show the
   // identical list, so a question meant for one class appeared on all of them.
   const questions = useMemo(
