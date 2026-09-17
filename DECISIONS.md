@@ -2,6 +2,70 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## The archive describes; it never testifies (2026-09-17)
+
+The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,
+normalised so that every filename parses. Turning that into lessons, repertoire items and
+material raised one question over and over, and the answer is always the same shape:
+**archive evidence may establish membership, provenance and material. It may never
+establish practice.**
+
+**The scanner is on the NAS, and the app reads a published index.** Four architectures were
+weighed. Browser filesystem access is Mac-only and useless on the phone. A bundled
+TypeScript array (what the old `scan:setar` produced) needs a rebuild and a deploy for every
+new class. Browser crawling of a NAS directory listing means dozens of requests, fragile
+HTML, a CORS refusal, a CSP change and a certificate problem — and `no-cors` cannot produce
+readable data at all. A live scan service is a new authenticated runtime nobody asked for.
+So: a read-only Node scanner on the NAS emits a deterministic JSON index; the publisher
+commits it to a SEPARATE branch of the existing private data repo; the app GETs it with the
+GitHub connection it already has. Both devices get the same small file with no NAS fetch
+permission, no new service and no large-file storage, and media still opens directly from
+each device's own base.
+
+**A separate branch, not a sidecar.** `gitRemote.createTree` builds `main`'s whole tree with
+no `base_tree`, so anything placed beside `state.json` is deleted by the next sync. That is a
+fact about the sync engine, and the answer is to stay out of its way — not to change the one
+part of this app whose job is never losing data.
+
+**The token is repository-scoped, and saying otherwise would be a lie.** GitHub does not
+issue branch-scoped tokens. `publish-setar-index.mjs` refuses every target but
+`source-index`/`setar/index.json`, and that is a property of the CODE. The docs say so in
+those words, because "the credential can only touch the index branch" is exactly the kind of
+comfortable sentence that turns into a breach.
+
+**Identity is byte-exact and archive-relative.** `canonical_fa` is the join key, unfolded and
+untransliterated; `aliases_seen` is literal SEARCH data and is never consulted to decide
+which piece a record is. App ids are deterministic hashes of the source identity, so two
+devices importing the same index independently agree on which record is which. Paths are
+stored relative to the archive root, so changing the transport — LAN today, Tailscale on the
+phone, something else later — rewrites no stored record.
+
+**Weak equivalences ask; they do not merge.** A legacy class is auto-adopted only on
+instrument + date + number + exact source-path evidence. The owner's real upcoming class 38
+(2026‑09‑27) and archive session 38 (2026‑08‑04) are a live counterexample to merging on a
+number. An exact title or alias match produces Link / Create separately / Skip; a catalogue
+slug (`iraq`) is never equated with a canonical Farsi key (عراق), however obviously they
+"mean" the same thing.
+
+**Imported pieces arrive resting.** Ninety-four live candidates would flood every
+recommendation and every session plan on the day of the import. Resting is an administrative
+import policy, stated before the import — the items stay searchable, stay in My repertoire,
+and start directly whenever the owner wants.
+
+**History is history, whatever the clock says.** The archive runs to September 2026, so on a
+device whose clock is behind it an imported class is dated in the FUTURE. `date >= today`
+would turn thirty-nine records of classes that already happened into thirty-nine deadlines.
+`isUpcomingLesson` checks `origin === 'archive'` FIRST, and all four next-class selectors
+plus every Lessons badge go through it.
+
+**The bug that was not in the editor.** Lesson notes could not be cleared. The editor was
+blameless: `updateLesson` read `patch.notes ?? l.notes`, which cannot tell an omitted field
+from a deliberately empty one, so deleting the text wrote the old text straight back. Fixed
+at the patch boundary, on the PRESENCE of the key — the same distinction `resolveReviewDate`
+already makes for a date — and the lesson editor now shares `ItemNotes`' durability model
+(explicit Done, tagged draft, acknowledged persistence, retry) through one extracted
+component rather than a second copy of it.
+
 ## A check that lives in one door is a check with five doors missing (2026-09-16)
 
 Two more sealed findings, and the same shape underneath both: a rule that was genuinely

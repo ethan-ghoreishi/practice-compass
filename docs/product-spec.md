@@ -163,6 +163,26 @@ choose), Manual (you set each date yourself). Handing an item to Auto is an
 ADMINISTRATIVE transfer: it KEEPS the date you already had, records no practice and
 invents no result. The engine simply owns that date from then on.
 
+## A source archive describes; it never testifies
+
+The Setar class archive is the first SOURCE the app reads: a normalised folder tree the
+owner already had, scanned read-only and published as a small deterministic index the app
+fetches. It answers three questions and no others — which pieces exist, which classes
+happened, and which file is material for what.
+
+It cannot answer the fourth. **No archive evidence ever becomes practice.** An imported
+piece has zero minutes, no result, no review date and no spacing state; an imported class
+carries no deadline even when its date is ahead of this device's clock; the owner's own
+practice recordings contribute their membership and their role and nothing else. That line
+is the whole reason a source can be trusted next to real history: nothing in the app has to
+wonder whether a number came from something that was actually played.
+
+Everything it DOES establish is reversible and owner-owned. A deletion, an unlink or a hide
+is recorded as a suppression in the same write, so refreshing, reloading or syncing never
+resurrects what was removed. Titles, notes, status and every scheduling field are seeded
+once and then never written again — a later registry improvement is OFFERED, field by
+field, and applied only when the owner says so.
+
 ## Why the recommendation engine is deterministic
 
 It must be explainable and trustworthy. Every card states its reason in one sentence,

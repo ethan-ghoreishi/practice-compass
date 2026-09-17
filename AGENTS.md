@@ -1636,6 +1636,148 @@ action — never an error state, and never anything that blocks practising. Ever
 still works fully offline; the base URL stays per-device in localStorage, out of
 exports, backups and synced data.
 
+## The Setar archive is a SOURCE: it describes, it never testifies
+
+A read-only Node scanner on the NAS (`scripts/scan-setar-classes.mjs`, stdlib only) turns
+the normalised Setar class archive into a deterministic, CLOCK-FREE JSON index;
+`scripts/publish-setar-index.mjs` commits it to ONE file on ONE branch of the existing
+private data repo (`source-index` / `setar/index.json`); the app GETs it with the GitHub
+connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
+runbook, the corpus baseline and the recorded source hashes.
+
+**THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
+trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
+token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
+consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes and
+validates that index; a version newer than this build understands is REFUSED rather than
+read leniently.
+
+**ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
+SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
+COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
+`lastPractisedAt`, no result, no review row, no SM-2 state, no pathway placement and no
+catalogue identity. The owner's own `تمرین-من` recordings are the sharpest case: their
+membership and role survive in the graph as provenance (the six-session
+`پیش-درامد-سه-گاه-فروتن` chain is six CLASSES, never six weeks and never practice), and the
+files themselves are never a resource anywhere.
+
+**A CLASS RECORDING BELONGS TO ITS LESSON; A NAMED SCORE BELONGS TO ITS PIECE; AN UNNAMED
+DEMONSTRATION BELONGS TO EVERY CANONICAL MEMBER OF ITS SESSION.** That last one is the
+archive's own rule (`CRAWLER-BRIEF.md` §4): the teacher records the week's pieces in one
+take, so there is no single piece to attribute it to and the information simply does not
+exist in the filename. The ROSTER is the registry's answer to "what was assigned at class
+N", never a set inferred from the files present — and when the two disagree, the unnamed
+demo is NOT expanded across a guessed set; the disagreement is reported instead.
+
+**IDENTITY IS BYTE-EXACT AND TRANSPORT-INDEPENDENT.** `canonical_fa` is the join key,
+unfolded and untransliterated; `aliases_seen` is literal SEARCH data (`itemMatchesSearch`
+takes them, `persianSearchMatch` unchanged) and is NEVER consulted to decide which piece a
+record is. App ids are deterministic hashes of the source identity (`sourceItemId`,
+`sourceLessonId`), so two devices importing the same index separately agree on which record
+is which. Asset paths are stored RELATIVE TO THE ARCHIVE ROOT, so changing the transport
+rewrites no stored record; each device configures its own base once.
+
+**EXACT BINDINGS WIN; WEAK EQUIVALENCES ASK.** A record already bound to a source identity
+IS that entity, whatever its title or date has since been edited to. A legacy class is
+auto-adopted only on instrument + date + number + EXACT source-path evidence — the owner's
+real upcoming class 38 (2026‑09‑27) and archive session 38 (2026‑08‑04) are the live
+counterexample to merging on a number. An exact title or literal-alias match produces
+Link / Create separately / Skip, never an automatic merge and never "pick the first
+candidate"; a built-in `catalogKey` (`iraq`) is never equated with a canonical key (عراق).
+
+**NEW IMPORTED PIECES ARRIVE RESTING** (`status: 'dormant'`), as an administrative import
+policy stated BEFORE the import: ninety-four live candidates would flood Today and every
+session plan. They stay searchable, stay in My repertoire and start directly.
+
+**AN IMPORTED CLASS IS HISTORY EVEN WHEN ITS DATE IS IN THE FUTURE.** The archive runs to
+September 2026, so a device whose clock is behind it holds future-dated records of classes
+that already happened. `isUpcomingLesson` (`sourceArchive.ts`) checks `origin === 'archive'`
+BEFORE the date, and it is the ONE predicate `nextLessonFor`, `nextLessonDates`,
+`defaultTargetLesson`, `preparationDatesByItem` and every Lessons badge / default selection /
+question sheet go through. A plain `date >= today` anywhere here turns thirty-nine pieces of
+history into thirty-nine deadlines.
+
+**THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
+`commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
+saved or a block finished while the index was being fetched is never lost — refuses with
+`stale` when the rebase raises a NEW question, runs the whole proposed database through
+`validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
+write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
+matches, because "Already current" over data that was never saved is the lie this guards.
+It never calls `importDB`/`installDatabase`/`resetDemo`/`clearAll` and never touches a blob:
+a refresh ADDS to the database, it does not replace it, so the running clock, the routine,
+the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
+the SAME database object, so it cannot bump the revision or churn a timestamp.
+
+**A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
+`deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
+alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
+than resurrecting what the owner removed. Hiding a resource carries the ITEM id, so a
+demonstration shared by eight pieces stays available to the other seven. Lifting a
+suppression (`resetArchiveSuppression`) permits reimport. Moving an archive-bound item to
+another instrument is REFUSED with an actionable message rather than emitting a graph
+`validateDB` would reject at every door.
+
+**ONE COMPOSITION FOR MATERIAL, SCOPED BY THE GRAPH.** `itemFiles` (`itemFiles.ts`) now
+composes, in order: what the archive scopes to this piece (corrections first, clean scores
+retained, demonstration parts as one ordered group, each row carrying its session and role
+as provenance), then the owner's own DIRECT item references, then the references of LINKED
+lessons that are NOT archive-bound. An archive-bound lesson contributes nothing through the
+link route — its files reached the list already, correctly scoped — which is what stops a
+class recording and someone's practice takes from landing on a piece. A manual, unclassified
+lesson still contributes everything it has, because nothing knows the scope and inventing
+one would be a guess. `lessonFiles` is the same composition for a lesson.
+
+**SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
+`migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
+and idempotent for the reason `migrateToV12` and `retirePracticeText` already are.
+`archiveSources` is in `validateDB`'s ARRAY_KEYS *and* in its reconstructed return value — a
+new collection left out of that object literal is silently dropped on the way in.
+`validateArchiveSources` refuses duplicate source ids, duplicate piece keys, duplicate
+session numbers, wrong types, unsafe paths, invalid part groups, dangling or duplicated
+item/lesson bindings, an instrument mismatch and an unsafe direct reference, naming the
+record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
+its provenance is kept — not a dangling reference.
+
+**TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
+ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
+(`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+the same stored path with each one's own path prefix preserved. `relativizeReference` will
+not store a pasted URL whose decoded form steps OUT of the base — it keeps the pasted text
+exactly as given instead. The arbitrary-clip "Test link" is gone: a single clip proves
+nothing (it fails for a renamed file and passes for a base whose other thousand files are
+unreachable), so Settings opens the ARCHIVE ROOT and `describeArchiveAccess` states the
+index and the media as two separate facts. Reading the index proves GitHub answered and
+says nothing about the NAS; a certificate rejection, a blocked cross-origin request and an
+outage are indistinguishable from a web page, so none of them is ever called absence.
+
+**THE 67 LEGACY PATHS ARE REPAIRED EXACTLY, OR DIAGNOSED.** `src/domain/setarClasses.ts` is
+FROZEN — no longer a workflow, now the ledger of what the old bundled importer wrote — and
+`repairReferencePath` maps all 67 through the archive's own 257-row rename log. No fuzzy
+matching by title, size or modification time; a cycle, a missing target or an ambiguous
+mapping is reported. A full URL converts only under a VERIFIED base, and one carrying a
+query or fragment is left alone. Where an old and a current row now point at one physical
+file, BOTH rows survive with their own titles and notes: deleting one deletes something the
+owner wrote.
+
+**LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
+(exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
+with the record it was typed for, "Saved." only after IndexedDB acknowledges, retry and copy
+on failure, and an in-flight write that never owns the textarea — and `LessonNotes.tsx` is a
+thin wrapper over it. The defect it fixes was NOT in an editor: `updateLesson` read
+`patch.notes ?? l.notes`, which cannot tell an OMITTED patch field from a deliberately empty
+one, so clearing a class's notes wrote the previous notes straight back. The store decides
+on the PRESENCE of the key now, the same distinction `resolveReviewDate` already makes for a
+date.
+
+**SECRETS.** The NAS publisher's credential is a SEPARATE, repository-scoped token
+(Contents write + metadata read, no workflow or admin scope) living only in the NAS
+runtime's protected configuration. GitHub does not issue branch-scoped tokens: the
+branch/path restriction is a property of `publish-setar-index.mjs`, and must never be
+described as credential isolation. The app's own browser token and each device's media base
+stay device-local exactly as before. No credential and no archive root enters a source
+archive, a committed file, a manifest, app data, a log, sync or a backup.
+
 ## Review scheduling stays explainable
 
 `decideReview` (in `scheduling.ts`) is the ONE pure decision behind closing a block: the

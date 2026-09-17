@@ -37,6 +37,13 @@ vi.mock('./idb', async (importOriginal) => {
   let settle: Promise<void> = Promise.resolve();
   return {
     ...actual,
+    // Dexie itself has no IndexedDB to talk to in this environment, and
+    // `clearAll` reaches for the blob store. Stubbed so a deliberate erasure
+    // does not raise an unhandled rejection that would mask a real one.
+    clearBlobs: async () => undefined,
+    deleteBlob: async () => undefined,
+    allBlobs: async () => [],
+    heldBlobIds: async () => new Set<string>(),
     storageSettled: () => settle,
     idbStorage: {
       getItem: async () => fakeStorage.get(),
