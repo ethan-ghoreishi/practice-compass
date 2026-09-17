@@ -326,16 +326,28 @@ export interface FakeRemote {
   refs: string[];
   /** How many times each endpoint was called, so "it really went there" is checkable. */
   calls: string[];
+  /**
+   * The published Setar source index — the ONE file on the source-index
+   * branch that the NAS scanner writes and the app only ever GETs. Null until
+   * something publishes it.
+   */
+  sourceIndex: { text: string; commit: string } | null;
 }
 
 export function newFakeRemote(): FakeRemote {
-  return { snapshot: null, refs: [], calls: [] };
+  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
 }
 
 /** Put a snapshot in the repo as if another device had pushed it. */
 export function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
   remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
   if (!remote.refs.includes('main')) remote.refs.push('main');
+}
+
+/** Put a source index on the source-index branch, as the NAS publisher would. */
+export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
+  remote.sourceIndex = { text, commit };
+  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
 }
 
 export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
@@ -354,6 +366,23 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
     const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', body });
     const head = () => `head-${headCounter}`;
 
+    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
+    // the file "on the branch" instead would be a second, later state.
+    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
+      if (!remote.sourceIndex) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      return json({ object: { sha: remote.sourceIndex.commit } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
+      const ref = url.searchParams.get('ref');
+      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) {
+        return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      }
+      return json({
+        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
+        encoding: 'base64',
+        size: remote.sourceIndex.text.length,
+      });
+    }
     if (method === 'GET' && rest === 'git/ref/heads/main') {
       if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
       return json({ object: { sha: head() } });

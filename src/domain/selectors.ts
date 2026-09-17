@@ -6,6 +6,7 @@ import type {
   LessonAgendaEntry,
   Pathway,
   PracticeBlock,
+  PracticeDB,
   PracticeItem,
   Review,
 } from './types';
@@ -26,8 +27,30 @@ import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISOD
  * an iOS Arabic keyboard emits. Delegates to the existing, tested matcher: this
  * is the WIRING that was missing, not a second matcher.
  */
-export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string): boolean {
-  return persianSearchMatch(item.title, query);
+export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string, aliases?: string[]): boolean {
+  if (persianSearchMatch(item.title, query)) return true;
+  // A piece the archive knows carries the literal spellings it used to be
+  // filed under, so typing an old name still finds it. SEARCH ONLY — an alias
+  // is never consulted to decide WHICH piece a record is; that is identity,
+  // and identity is byte-exact (see `planArchiveImport`).
+  return (aliases ?? []).some((a) => persianSearchMatch(a, query));
+}
+
+/**
+ * Every literal alias each bound item can be searched by, keyed by item id.
+ * Derived from the accepted graph, never stored on the item.
+ */
+export function archiveSearchAliases(db: PracticeDB): Map<ID, string[]> {
+  const out = new Map<ID, string[]>();
+  for (const item of db.items) {
+    const ref = item.source;
+    if (!ref) continue;
+    const piece = db.archiveSources
+      ?.find((a) => a.id === ref.archiveId)
+      ?.pieces.find((p) => p.key === ref.pieceKey);
+    if (piece && piece.aliases.length > 0) out.set(item.id, piece.aliases);
+  }
+  return out;
 }
 
 /**

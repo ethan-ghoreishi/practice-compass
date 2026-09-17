@@ -85,18 +85,7 @@
     "pathways": [],
     "pathwayStages": [],
     "pathwayRoutines": [],
-    "attachments": [
-      {
-        "id": "att-1",
-        "ownerType": "lesson",
-        "ownerId": "L-38-upcoming",
-        "name": "handout.pdf",
-        "mime": "application/pdf",
-        "size": 2048,
-        "kind": "pdf",
-        "createdAt": "2026-09-10T19:00:00.000Z"
-      }
-    ],
+    "attachments": [],
     "lessons": [
       {
         "id": "L-1",

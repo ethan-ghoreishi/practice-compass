@@ -8,6 +8,7 @@ import {
   defaultModeForStatus,
   FOCUS_LABELS,
   ITEM_TYPE_LABELS,
+  archiveSearchAliases,
   itemMatchesSearch,
   type BlockMode,
   type FocusArea,
@@ -60,7 +61,11 @@ export default function StartBlock() {
   const items = useMemo(() => itemsForInstrument(db, instrumentId), [db, instrumentId]);
   // Farsi-aware: an Arabic kaf from the iOS keyboard finds a Persian kaf, and
   // "daramad" finds درآمد.
-  const filtered = useMemo(() => items.filter((i) => itemMatchesSearch(i, search)), [items, search]);
+  const aliases = useMemo(() => archiveSearchAliases(db), [db]);
+  const filtered = useMemo(
+    () => items.filter((i) => itemMatchesSearch(i, search, aliases.get(i.id))),
+    [items, search, aliases],
+  );
   const selectedItem = items.find((i) => i.id === selectedItemId) ?? null;
 
   function pickInstrument(id: string) {
