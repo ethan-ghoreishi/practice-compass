@@ -20,6 +20,7 @@ import {
   reload,
   remoteStateText,
   syncMessage,
+  type TrackedRequestFailure,
   writePersistedState,
 } from './practiceBrowser';
 import INDEX_TEXT from './fixtures/setar-archive.json?raw';
@@ -508,59 +509,109 @@ describe('the journey harness itself', () => {
   // The harness must not be able to hide the very failure a journey exists to
   // catch. A request the browser CANCELLED (because the test navigated away
   // mid-flight) produces a WebKit error that reads exactly like a CORS
-  // failure; excusing it used to mean adding its URL to a PERMANENT set and
-  // discarding every later page error whose message merely contained that
-  // pathname. So a genuine failure at the same path, later in the same
-  // journey, was swallowed — and `pageErrors` said nothing.
-  it('a cancelled request excuses its own error once, and never a later real one', () => {
-    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
-    const spurious =
-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-    const at = 1_000_000;
+  // failure. Excusing it has failed two different ways so far, and each test
+  // below is named for the specific way:
+  //  - a PERMANENT set of cancelled URLs discarded every later page error
+  //    whose message merely contained that pathname, so a genuine failure at
+  //    the same path, later in the same journey, was swallowed and
+  //    `pageErrors` said nothing;
+  //  - even made CONSUMING (one cancellation, one error) and bounded by a
+  //    generous time window, an unconsumed cancellation — one that produced
+  //    no page error of its own — stayed a live "credit" for up to that whole
+  //    window, spendable by a genuine, later failure to the same URL that had
+  //    nothing to do with it. A window can never tell the two apart, because
+  //    a cancellation's error and a genuine one read identically; only ORDER
+  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
+  const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+  const spurious =
+    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+  const at = 1_000_000;
+  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
+  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
 
-    // The cancellation's OWN error is excused — and CONSUMED. The identical
-    // message arriving again has no cancellation left to account for it, which
-    // is exactly the reviewer's counterexample: cancel a request to a path,
-    // then let a later one to that path fail for real.
-    // Spending it is the function's OWN job — a caller cannot forget to, which
-    // is precisely what the permanent set was.
-    const pending = [{ url, at }];
-    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
+  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
+    const pending = [cancelled()];
+    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
+    // CONSUMED — the identical message arriving again has no cancellation
+    // left to account for it, which is the ORIGINAL reviewer counterexample.
     expect(pending).toEqual([]);
-    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
+    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
 
-    // Two cancellations excuse two errors and no more.
-    const twice = [
-      { url, at },
-      { url, at: at + 10 },
-    ];
-    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
-
-    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
-    // both are the same cancelled request.
+    // WebKit spells the same diagnosis for an XHR as well as for a fetch.
     const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
-    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
+    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
 
     // Only the DIAGNOSED wording is ever excused: a real render crash naming
     // the same URL is a page error, not a cancellation.
-    expect(
-      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
-    ).toBe(false);
+    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
+      false,
+    );
+  });
 
-    // It names that request, not merely its path: another host, and another
-    // path on the same host, both stay errors.
+  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
+    const twice = [cancelled(), cancelled(10)];
+    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+  });
+
+  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
+    // This is the sealed finding: the cancellation happens and nothing ever
+    // reports its own page error for it — exactly the case the harness must
+    // tolerate without turning it into a standing credit for something else.
+    const events = [cancelled()];
+    // A genuine failure to the SAME url follows moments later, and IS
+    // tracked — this is what makes it outrank the stale cancellation next.
+    events.push(genuine(50));
+    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
+    // The stale cancellation is untouched: it lost to the more recent
+    // genuine failure, it was never spent.
+    expect(events).toContainEqual(cancelled());
+  });
+
+  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
+    // Genuine failure arrives FIRST, with no cancellation recorded at all.
+    const events = [genuine()];
+    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
+
+    // A real cancellation follows and correctly excuses its OWN error.
+    events.push(cancelled(100));
+    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
+
+    // Another genuine failure follows the (now-consumed) cancellation and is
+    // never excused by it either — there is nothing left pending to excuse
+    // it with, and it would not have qualified anyway.
+    events.push(genuine(200));
+    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
+  });
+
+  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
+    // A substring test cannot tell these apart from the genuine host/path;
+    // only structural URL equality can. Each of these contains the real
+    // host or path as a substring while naming a DIFFERENT resource.
+    const hostPrefixTrap =
+      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
+
+    const hostSuffixTrap =
+      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
+    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
+
+    const pathSuffixTrap =
+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
+    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
+
+    // Another host entirely, and another path on the same host, both stay errors.
     const elsewhere =
       'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
-    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
+    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
     const otherPath =
       'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
-    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
+    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
+  });
 
-    // And an unconsumed cancellation does not stand for the whole journey: the
-    // ceiling is generous (the spurious error is emitted in the same tick), but
-    // it is a ceiling.
-    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
   });
 });

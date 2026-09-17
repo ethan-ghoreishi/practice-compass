@@ -1522,11 +1522,31 @@ message merely CONTAINED that pathname discarded — so a genuine failure at the
 later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
 (`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
 excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
-naming the same URL is never excused), names that request's HOST as well as its path, and
-arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
-ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
-tick, and a tight window would trade an over-broad filter for a flaky one under the
-contention five concurrent dev servers already create.
+naming the same URL is never excused).
+
+**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
+ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
+host+path ALONE: a cancellation that produced no page error of its own stayed a live,
+unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
+a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
+the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
+cancellation's spurious error and a real access-control failure are worded the same on
+purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
+(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
+tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
+that URL always fires its own `requestfailed` before its own page error, so the instant one
+happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
+by anything but the specific error it was actually waiting for — which is what makes leaving
+it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
+now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
+servers create, never the correlation itself.
+
+A second, independent hole lived in the same function: `message.includes(url.host)` and
+`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
+one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
+(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
+WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
+the ambiguity structurally rather than adding more boundary characters to a string test.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the

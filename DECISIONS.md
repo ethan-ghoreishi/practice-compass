@@ -2,6 +2,37 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
+
+A fifth sealed review rejected the harness's cancellation excuse again. The previous round
+(below) made it CONSUMING and bounded by a generous ceiling, but the ceiling was still the
+whole bound, matched by host+path alone — and a cancellation that never produced its own page
+error stayed a live, unconsumed "credit" for the full ceiling, spendable by ANY later error to
+the same URL, including a genuine one that had nothing to do with it. Wording and URL cannot
+tell a cancellation's spurious error apart from a real access-control failure — they read
+identically by design (that is the whole diagnosis) — so no window, however short, can be the
+thing that distinguishes them. Only ORDER can: `excusedCancellation` now tracks EVERY
+`requestfailed`, not only cancelled ones, and excuses a page error only when the temporally
+NEAREST tracked request to the exact host+path it names is itself a cancellation. A genuine
+failure to that URL always fires its own `requestfailed` first, so it automatically becomes the
+nearer candidate the instant it happens — a stale cancellation with no error of its own is
+never reachable by anything but the error it was actually waiting for. The ceiling
+(`CANCELLED_EXCUSE_MS`, shrunk from 30s to 2s) is now purely DEFENSIVE headroom against
+delivery lag under contention, not the correlation itself.
+
+A second, independent hole in the same function was found and closed in the same pass:
+`message.includes(url.host)` and `message.includes(url.pathname)` are substring tests, and a
+crafted host (`evil-api.github.com`, `api.github.com.evil.test`) or path (`state.json.bak`)
+that merely CONTAINS the genuine value as a substring passed them. The message is now parsed
+into a real `URL` (stripping the space WebKit inserts after the scheme) and compared to each
+candidate by `host`/`pathname` EQUALITY, which removes the ambiguity structurally instead of
+trying to add more boundary characters to a string test.
+
+Six mutations were run and all six fail their named acceptance test: nearest-event selection
+reverted to first-match, the consuming `splice` removed, host/path equality loosened back to
+substring `includes`, the diagnosed-wording anchor dropped, the cancelled-type requirement
+dropped (any nearest match excuses), and the ceiling check removed outright.
+
 ## Rejection: two rules that held for one shape of the same defect (2026-09-17)
 
 A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
