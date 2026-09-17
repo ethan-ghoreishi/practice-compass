@@ -1810,7 +1810,11 @@ unavailable. Re-keying it is not editing an owner decision — it is the same de
 the same bytes said in the archive's current words, the `itemId` scope carried untouched and
 `suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
 from the retained graph instead of flagged `unavailable`: the log says exactly where the
-bytes went, so that file moved, it did not disappear. Safe to drop, where a piece or a
+bytes went, so that file moved, it did not disappear. The comparison is against every path
+the incoming graph describes, ACROSS sessions — a rename can move a file into a DIFFERENT
+session (the log's own A→B→C shape does exactly that), and asking only "is it still in this
+session" flagged such a file as gone while the same bytes sat in the graph under their new
+name. Safe to drop, where a piece or a
 session would not be: only those carry item/lesson bindings, so no binding can dangle on a
 resource row, and a manual unclassified lesson's own reference reaches material through the
 LESSON, never through this graph. A file that really is gone still keeps its provenance,

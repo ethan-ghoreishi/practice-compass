@@ -216,7 +216,9 @@ applies the lot in one store mutation.
   future relative to this device's clock.
 - Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
   same mutation, so a refresh, a reload and a sync all respect it. A hide follows
-  its file through the rename log, so a renamed resource does not reappear.
+  its file through the rename log, so a renamed resource does not reappear —
+  including when the rename moves it into a different session's folder, where
+  the old row is dropped rather than reported missing.
 - **A decision is about the state you saw.** If the value you chose the archive's
   over has changed since — or a record you chose to link has been deleted, bound
   elsewhere or moved instrument — the commit refuses and re-previews rather than

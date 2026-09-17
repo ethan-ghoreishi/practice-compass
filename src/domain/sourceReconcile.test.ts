@@ -907,6 +907,38 @@ describe('reconciling the archive with the owner’s own records', () => {
     const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
     expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
     expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
+    // ACROSS sessions too — a rename can move a file into a different session,
+    // which is exactly the shape of the A -> B -> C log above. Asking only
+    // "is it still in THIS session" flagged the old row as missing while the
+    // very same bytes sat in the graph under their new name.
+    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
+    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
+    const crossSession: SourceIndex = {
+      ...INDEX,
+      contentHash: '4'.repeat(64),
+      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1
+          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
+          : sess.n === 5
+            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
+            : sess,
+      ),
+    };
+    const afterCross = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
+    );
+    const crossSource = afterCross.archiveSources[0]!;
+    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
+    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
+    // The hide went WITH it, into the other session, still scoped to one item.
+    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
+      ref: crossTo,
+      itemId: 'item-x',
+    });
+    expect(validateArchiveSources(afterCross)).toBeNull();
+
     // A file that really IS gone still keeps its provenance, flagged.
     const removed: SourceIndex = {
       ...INDEX,
