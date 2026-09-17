@@ -1,60 +1,63 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: b051ae0884ca52c4906fb6a5d837571dd97a0e8a
+patchId: 1dbf0c29bf236d471394c93ce06483edf6ab462f
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: Complete source scans before publishing
-    summary: "P1: scanToIndex checks PIECES.csv twice but reads RENAME-LOG.csv and
-      the media inventory once; it can publish a partial NAS view as a valid
-      removal (ac-4/ac-7, scripts/scan-setar-classes.mjs:524-540)."
-    counterexample: During a non-atomic NAS copy, move a resource out before
-      scanArchive enumerates its folder and restore it while later folders are
-      scanned. PIECES.csv remains unchanged, so scanToIndex emits an index
-      omitting the file; Refresh marks the still-present material unavailable.
-  - family: Archive graph validation at both reader and inbound doors
-    summary: "P1: The published decoder checks a normalised graph, while inbound
-      validation omits acceptedAt; malformed source facts can be silently erased
-      or installed to crash a reader (ac-15/ac-16,
-      src/domain/sourceArchive.ts:337-406,729-750)."
-    counterexample: "In the corpus fixture, set sessions[0].resources to null and
-      recompute the scanner-defined digest: parseSourceIndex accepts it and
-      turns six resources into zero. Separately, a v14 import with
-      archiveSources[0].acceptedAt=null passes validateDB; ArchiveRefresh then
-      throws on acceptedAt.slice while Settings renders."
+    summary: "P1: readSource treats every RENAME-LOG.csv read failure as an empty
+      log, so two failed reads look like a consistent complete scan and can
+      publish a false source view (scripts/scan-setar-classes.mjs:528-565)."
+    counterexample: Make RENAME-LOG.csv temporarily unreadable for both reads while
+      PIECES.csv and media remain readable. Both snapshots contain
+      renameLogText='', so scanToIndex builds an index without the exact
+      renames. If a copied file changed path during that window, Refresh flags
+      its old resource unavailable and cannot repair saved references.
+  - family: Archive graph validation at reader and inbound doors
+    summary: "P1: the decoder still normalises present null source facts, and the
+      shared graph check validates types but not resource ownership by session
+      or valid group relationships
+      (src/domain/sourceArchive.ts:348-401,642-756)."
+    counterexample: "Set a resource title to null in an index and recompute
+      contentHash: parseSourceIndex accepts an empty title. Put a resource whose
+      path is under session 2's folder into session 1's resources and recompute
+      the digest: the decoder and validateDB accept it, so material attributes
+      that file to class 1. A non-demo resource with an arbitrary demo group
+      also passes."
   - family: Owner reconciliation choices across revision rebase
-    summary: "P1: commitArchiveImport rebases old apply-field decisions after rev
-      changes and refuses only new questions; it can overwrite a newer owner
-      edit (ac-7/ac-11, src/store/useStore.ts:977-995;
-      src/domain/sourceReconcile.ts:633-670)."
-    counterexample: Preview an empty composer and choose the archive's value. Before
-      Apply, edit the same composer to 'Owner wrote this during refresh'. Rebase
-      finds zero questions and commits the old choice, replacing that newer text
-      with the registry value; reproduced with current pure plan/apply
-      functions.
+    summary: "P1: decisions do not retain the bound record identity, and
+      already-bound loops skip Link decisions before stale checking; a rebase
+      can redirect or ignore the owner's choice
+      (src/domain/sourceReconcile.ts:89,449-450,526-539,657-665)."
+    counterexample: "Preview applying a composer to item A when it is empty. Before
+      Apply, sync a valid database where the same piece is bound to item B, also
+      with an empty composer. The old choice applies to B. Likewise, preview
+      Link item A, then bind that piece to B before Apply: the early continue
+      leaves staleDecisions empty and commit can report success without linking
+      A."
   - family: Exact rename identity through adoption and suppression
-    summary: "P1: adoption follows only one rename hop while repair follows the
-      chain, and resource suppressions remain keyed to the old path; a logged
-      rename can misattribute a class or resurrect hidden material
-      (ac-8/ac-12/ac-13, src/domain/sourceReconcile.ts:260-265,282-310;
-      src/domain/sourceArchive.ts:544-553)."
-    counterexample: "Add A->B->C to the exact log, with B in session 1 and C an
-      existing session 2 file: a unique legacy session-1 lesson is adopted, then
-      its reference is repaired to session 2. In a separate same-session rename,
-      a resource hidden for one item reappears under its new path while the old
-      row remains unavailable; both reproduced against current pure functions."
-  - family: Device media base URL safety
-    summary: "P2: normalizeBaseUrl accepts credentials and query or fragment data as
-      a valid NAS base, then archiveRootUrl and resolveRecording append paths
-      after that data (ac-14, src/domain/recordings.ts:32-47,200-203)."
-    counterexample: The base https://user:pass@nas.example/media?token=secret is
-      accepted and stored; Open archive root becomes ...?token=secret/ and a
-      file URL becomes ...?token=secret/session-1/x.mp4, exposing a password in
-      a device URL and failing to address the requested file.
-createdAt: 2026-09-17T14:01:07.857Z
-sealedAt: 2026-09-17T14:28:42.253Z
+    summary: "P1: a cyclic rename log is accepted, but suppression re-keying ignores
+      followRenames' cycle verdict and moves an owner hide to an intermediate
+      path (scripts/scan-setar-classes.mjs:425-450;
+      src/domain/sourceReconcile.ts:161-168,649-653)."
+    counterexample: Keep resources A and B, hide A for one item, then publish exact
+      rows A->B and B->A. The scanner emits the cycle without a diagnostic.
+      followRenames(A) returns {path:B,cycle:true}; Refresh stores the hide for
+      B, so A reappears and the wrong file is hidden.
+  - family: Lesson material and rendered journey
+    summary: "P2: LessonDetail renders composed material and the old reference and
+      attachment lists together, duplicating manual files and showing an
+      empty-recordings prompt beside imported class videos
+      (src/pages/Lessons.tsx:438-449,538-541; src/domain/itemFiles.ts:288-320)."
+    counterexample: "Open a lesson with one authored NAS reference and one local
+      attachment: both appear in LessonMaterial and again in LessonRecordings or
+      Attachments. Open an imported historical class with a graph class video
+      but no authored recordings: the video is shown, followed by a prompt to
+      add a class recording."
+createdAt: 2026-09-17T17:10:42.033Z
+sealedAt: 2026-09-17T17:33:40.233Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -68,7 +71,7 @@ sealedAt: 2026-09-17T14:28:42.253Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `b051ae0884ca52c4906fb6a5d837571dd97a0e8a`
+- **Diff patch-id:** `1dbf0c29bf236d471394c93ce06483edf6ab462f`
 
 ## The Delta this change was framed from
 
@@ -111,1628 +114,1170 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Archive graph validation across all inbound doors** — P1: validateArchiveSources accepts malformed nested fields used by production readers. Rework complete persisted graph validation across all inbound doors; ac-15/ac-16, src/domain/sourceArchive.ts:590.
-  _counterexample:_ Set archiveSources[0].sessions[0].members[0].roles to null in an imported fixture database. validateDB accepts and preserves it; repeatChains then throws reading includes, crashing ItemMaterial. Reproduced against HEAD 781f1d40083d4e47a1c98202b5cf4fc13d888d8c.
-- **Legacy reference repair through the real refresh transaction** — P1: Reference repair helpers have no production caller. Wire repair and diagnostics into preview/commit while preserving authored rows; ac-12, src/domain/sourceReconcile.ts:447.
-  _counterexample:_ A uniquely adoptable legacy lesson with an obsolete path covered by the exact rename log is adopted by planArchiveImport/applyArchiveImport but retains the obsolete path. The named acceptance test calls repairLessonReferences directly, bypassing Refresh.
-- **Owner reconciliation choices from rendered controls through durable refresh** — P1: Skip is transient, Create separately for lessons is ignored, and metadata application is unreachable or skipped as Already current. Rework every choice through UI, commit, reload and repeat refresh; ac-6/ac-7/ac-11.
-  _counterexample:_ Skip an exact-title candidate, apply, JSON-round-trip and refresh: the question returns and suppressions are empty. With two exact legacy lesson candidates, create-lesson leaves the question unresolved. Metadata suggestions are never rendered; same-index apply-field decisions are discarded by useStore.ts:982.
-- **Published index content integrity and refresh identity** — P2: The decoder validates digest format but never agreement with content. Verify the scanner-defined digest at the shared reader boundary before using it as identity; ac-5, src/domain/sourceArchive.ts:287.
-  _counterexample:_ Change a fixture composer without changing contentHash. decodeSourceIndex accepts it. Against an already installed copy with that hash, the plan reports unchanged and commit returns Already current, ignoring changed facts. Fetch and file fallback share this decoder.
+- **Complete source scans before publishing** — P1: scanToIndex checks PIECES.csv twice but reads RENAME-LOG.csv and the media inventory once; it can publish a partial NAS view as a valid removal (ac-4/ac-7, scripts/scan-setar-classes.mjs:524-540).
+  _counterexample:_ During a non-atomic NAS copy, move a resource out before scanArchive enumerates its folder and restore it while later folders are scanned. PIECES.csv remains unchanged, so scanToIndex emits an index omitting the file; Refresh marks the still-present material unavailable.
+- **Archive graph validation at both reader and inbound doors** — P1: The published decoder checks a normalised graph, while inbound validation omits acceptedAt; malformed source facts can be silently erased or installed to crash a reader (ac-15/ac-16, src/domain/sourceArchive.ts:337-406,729-750).
+  _counterexample:_ In the corpus fixture, set sessions[0].resources to null and recompute the scanner-defined digest: parseSourceIndex accepts it and turns six resources into zero. Separately, a v14 import with archiveSources[0].acceptedAt=null passes validateDB; ArchiveRefresh then throws on acceptedAt.slice while Settings renders.
+- **Owner reconciliation choices across revision rebase** — P1: commitArchiveImport rebases old apply-field decisions after rev changes and refuses only new questions; it can overwrite a newer owner edit (ac-7/ac-11, src/store/useStore.ts:977-995; src/domain/sourceReconcile.ts:633-670).
+  _counterexample:_ Preview an empty composer and choose the archive's value. Before Apply, edit the same composer to 'Owner wrote this during refresh'. Rebase finds zero questions and commits the old choice, replacing that newer text with the registry value; reproduced with current pure plan/apply functions.
+- **Exact rename identity through adoption and suppression** — P1: adoption follows only one rename hop while repair follows the chain, and resource suppressions remain keyed to the old path; a logged rename can misattribute a class or resurrect hidden material (ac-8/ac-12/ac-13, src/domain/sourceReconcile.ts:260-265,282-310; src/domain/sourceArchive.ts:544-553).
+  _counterexample:_ Add A->B->C to the exact log, with B in session 1 and C an existing session 2 file: a unique legacy session-1 lesson is adopted, then its reference is repaired to session 2. In a separate same-session rename, a resource hidden for one item reappears under its new path while the old row remains unavailable; both reproduced against current pure functions.
+- **Device media base URL safety** — P2: normalizeBaseUrl accepts credentials and query or fragment data as a valid NAS base, then archiveRootUrl and resolveRecording append paths after that data (ac-14, src/domain/recordings.ts:32-47,200-203).
+  _counterexample:_ The base https://user:pass@nas.example/media?token=secret is accepted and stored; Open archive root becomes ...?token=secret/ and a file URL becomes ...?token=secret/session-1/x.mp4, exposing a password in a device URL and failing to address the requested file.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 943254d..fb6f835 100644
+index fb6f835..2859fd5 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1652,6 +1652,19 @@ consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes
- validates that index; a version newer than this build understands is REFUSED rather than
- read leniently.
+@@ -1645,6 +1645,19 @@ private data repo (`source-index` / `setar/index.json`); the app GETs it with th
+ connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
+ runbook, the corpus baseline and the recorded source hashes.
  
-+**AND THE DECLARED DIGEST IS RECOMPUTED, NEVER TAKEN ON FAITH.** `contentHash` is not a
-+checksum the app may skip past: it is the REFRESH IDENTITY. `planArchiveImport` compares it
-+with the hash already accepted to conclude nothing has changed, so content altered under a
-+RETAINED old hash was reported "Already current" and its changed facts silently ignored —
-+a sealed review reproduced it by editing one composer. `parseSourceIndex` (now async)
-+recomputes the SCANNER's own digest — SHA-256 over `canonicalStringify` of the body minus
-+`contentHash` and `generatedAt`, byte-for-byte `scan-setar-classes.mjs`'s `contentHash` /
-+`canonicalJson` — and refuses a mismatch. It is the ONE boundary the GitHub fetch and the
-+file fallback both pass through, so neither door can be given the check separately and miss
-+it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
-+decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
-+broken file reports the error the owner can act on rather than a hash mismatch.
++**AND ONE SCAN IS ONE CONSISTENT VIEW OF EVERY INPUT, OR NONE.** The registry was the only
++input re-read after the walk, which made the guarantee exactly as narrow as the file it
++named — and the MEDIA is what a non-atomic NAS copy actually perturbs. Move a resource out
++before its folder is enumerated and put it back while later folders are walked: PIECES.csv
++never changes, the scan publishes an index that omits the file, and the next Refresh marks
++still-present material `unavailable`. The rename log had the identical exposure, read once
++and compared against nothing. `readSource` is now every input in ONE place, the whole of it
++is read TWICE and the two readings compared (sizes included, so a file still being copied is
++caught too), and any difference refuses before anything is written. It is a CONSISTENCY
++check, not atomicity: a perturbation stable across both readings agrees with itself and is
++indistinguishable from the archive genuinely being in that state. What it removes is the
++transient, which is what a copy in flight looks like.
++
+ **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
+ trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
+ token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
+@@ -1665,6 +1678,17 @@ it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
+ decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
+ broken file reports the error the owner can act on rather than a hash mismatch.
+ 
++**AND A VALID DIGEST SAYS THE FILE IS THE ONE THE SCANNER WROTE — NEVER THAT IT IS WELL
++FORMED.** The decoder NORMALISES before the graph's grammar runs, so the grammar only ever
++sees the decoder's own output: `resources: null` decoded to a session with no resources —
++a perfectly valid EMPTY LIST by the time the grammar saw it — and six files became zero
++behind a correct hash. Every absent-tolerant read had that shape, the scalars included
++(`part: "3"` became `null`, a wrong-typed `size` vanished, `rosterTrusted: 'yes'` became a
++boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`) are the
++one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
++the same treatment `validatePracticeText` gives the owner's own words, and never a
++coercion.
 +
  **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
  SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
  COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
-@@ -1709,6 +1722,39 @@ a refresh ADDS to the database, it does not replace it, so the running clock, th
- the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
- the SAME database object, so it cannot bump the revision or churn a timestamp.
+@@ -1713,7 +1737,8 @@ history into thirty-nine deadlines.
+ **THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
+ `commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
+ saved or a block finished while the index was being fetched is never lost — refuses with
+-`stale` when the rebase raises a NEW question, runs the whole proposed database through
++`stale` when the rebase raises a NEW question OR when a DECISION'S OWN PREMISE HAS MOVED,
++runs the whole proposed database through
+ `validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
+ write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
+ matches, because "Already current" over data that was never saved is the lie this guards.
+@@ -1747,6 +1772,23 @@ and the value an applied field writes — never the in-flight selection itself:
+ suggestion is component state, and it is re-derived from the graph on the next refresh
+ precisely because nothing about it was stored.
  
-+**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND A SKIP IS PERSISTED.** A sealed
-+review found three halves of this missing. SKIP lived only in the preview's own `decisions`
-+argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
-+the next refresh, asked the identical question again with nothing in the database to show it
-+had ever been answered; `planArchiveImport` writes a `piece`/`session` suppression for it
-+now, the same record every other deliberate removal writes, which a refresh, a reload and a
-+sync all already respect (idempotent, so answering twice does not grow the list). CREATE
-+SEPARATELY was honoured for an item and silently dropped for a LESSON, so two
-+indistinguishable legacy classes re-asked for ever. And a decision taken against an
-+ALREADY-CURRENT index — a skip, or one registry field applied — was reported "Already
-+current" and thrown away unwritten, because `commitArchiveImport` judged it by
-+`summary.unchanged`, which answers about the INDEX alone. The store asks
-+`applyArchiveImport` itself now (it returns the SAME OBJECT when a plan changes nothing),
-+so there is one source of truth for that question and it is the function that does the
-+writing. `applyArchiveImport` counts a field decision only when the plan actually OFFERS
-+that field, so both sides of the preview/commit boundary mean the same thing by "nothing to
-+do". An OFFER is not a change: an unanswered suggestion writes nothing and says so.
-+Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
-+current value and the archive's proposal each resolving their own direction — and a decision
-+is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
-+dastgāh choice made a moment earlier. What is DURABLE here is the suppression a skip writes
-+and the value an applied field writes — never the in-flight selection itself: an unpressed
-+suggestion is component state, and it is re-derived from the graph on the next refresh
-+precisely because nothing about it was stored.
++**AND A DECISION IS ABOUT THE STATE THE OWNER SAW, NOT MERELY ABOUT ITS TARGET.** A new
++QUESTION is not the only way a rebase invalidates an answer, and refusing only on that let
++the opposite case through silently: choose the archive's composer over an EMPTY field, then
++type one of your own before pressing Apply, and the rebase found nothing to ask about and
++wrote the registry value over the words just written. An `apply-field` decision therefore
++carries `from` — the value of the owner's it was chosen against — and
++`decisionMatchesSuggestion` is the ONE test both the plan's summary and
++`applyArchiveImport`'s write use, so a preview and a commit cannot mean different things by
++"this still applies". A LINK decision has a premise too: `link-item`/`link-lesson` may only
++adopt a record that is still UNBOUND and still this instrument's — the same conditions the
++candidate list was built from — because a target bound elsewhere, moved or deleted since
++would otherwise be silently rebound, or fall through and CREATE a record instead of linking
++one, which is not the action the owner chose. Both kinds land in `plan.staleDecisions`, one
++channel rather than two, and the commit refuses on either whether or not `rev` moved. The
++screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
++question, or the suggestion's real current value, is shown as it is now.
 +
-+**AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
-+decide what file a stored reference names, and they used to decide it differently:
-+`hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
-+`repairReferencePath` also understood a full URL under this device's verified base. So a
-+class whose references were saved as full links carried perfectly good evidence that
-+nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
-+is that one reading, and both go through it.
+ **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
+ decide what file a stored reference names, and they used to decide it differently:
+ `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
+@@ -1755,6 +1797,29 @@ class whose references were saved as full links carried perfectly good evidence
+ nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
+ is that one reading, and both go through it.
+ 
++**AND THAT WAS ONLY HALF OF IT: THE RENAME CHAIN HAD THREE READINGS.** Repair followed the
++whole logged chain, adoption took a SINGLE HOP, and a suppression took none at all — so one
++log gave three different answers about one file. With A→B→C logged, B in session 1 and C in
++session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B and then had
++that very reference repaired into session 2: bound to one class, pointing at another's
++files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
++that loops says nothing about where the file is), and three things use it: evidence, repair,
++and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
++a hidden file simply reappeared under the new one while the old row sat there flagged
++unavailable. Re-keying it is not editing an owner decision — it is the same decision about
++the same bytes said in the archive's current words, the `itemId` scope carried untouched and
++`suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
++from the retained graph instead of flagged `unavailable`: the log says exactly where the
++bytes went, so that file moved, it did not disappear. The comparison is against every path
++the incoming graph describes, ACROSS sessions — a rename can move a file into a DIFFERENT
++session (the log's own A→B→C shape does exactly that), and asking only "is it still in this
++session" flagged such a file as gone while the same bytes sat in the graph under their new
++name. Safe to drop, where a piece or a
++session would not be: only those carry item/lesson bindings, so no binding can dangle on a
++resource row, and a manual unclassified lesson's own reference reaches material through the
++LESSON, never through this graph. A file that really is gone still keeps its provenance,
++flagged, exactly as before.
 +
  **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
  `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
  alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
-@@ -1739,6 +1785,23 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
+@@ -1785,7 +1850,10 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
  record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
  its provenance is kept — not a dangling reference.
  
-+**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
-+`validateArchiveSources` used to state the shape separately, and the second stated LESS of
-+it: it checked a resource's path and its part group and walked straight past
-+`members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
-+`folder` and `roster`, and the rename and diagnostic rows entirely. A sealed review set
-+`members[0].roles` to `null` in an imported file: every door ACCEPTED and PERSISTED it, and
-+the first production reader to touch it — `repeatChains`, doing `m.roles.includes(...)` —
-+threw while rendering material. `planArchiveImport` had the identical exposure through
-+`new Set([piece.key, ...piece.aliases])`. `checkSourceGraph` (`sourceArchive.ts`) is that
-+grammar in ONE place; the decoder runs it over its own normalised output and
-+`validateArchiveSources` runs it over every persisted source, so a reader may dereference
-+any field the grammar admits and nothing else can reach the database. The fix is the
-+GRAMMAR, never a defensive guard in a component: a reader written against a validated graph
-+is the point of validating it. `unavailable` stays legal on a piece, a session and a
-+resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
-+silently widens a hide scoped to ONE item.
+-**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
++**THE NESTED GRAPH HAS ONE GRAMMAR — AND THE DECODER RUNS IT OVER ITS OWN OUTPUT, WHICH IS
++NOT THE SAME CLAIM AS RUNNING IT OVER WHAT ARRIVED.** (A later sealed review found exactly
++that gap; the `list`/`num`/`bool` rule above is what closes it, and the grammar below is
++what the decoder's OUTPUT and every persisted graph are both held to.) `decodeSourceIndex` and
+ `validateArchiveSources` used to state the shape separately, and the second stated LESS of
+ it: it checked a resource's path and its part group and walked straight past
+ `members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
+@@ -1802,6 +1870,32 @@ is the point of validating it. `unavailable` stays legal on a piece, a session a
+ resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
+ silently widens a hide scoped to ONE item.
+ 
++**AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
++the one persisted field with no check at all, while Settings renders it
++(`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
++`acceptedAt: null` was accepted, persisted, and then threw while the screen drew. It is
++held to a REAL calendar instant (`isValidSourceDateTime`, a local sibling of
++`isValidSourceDate` rather than a shared import, for the reason `askedAt` and `dueDate`
++already keep their checks one per file): a shape regex matches
++`"2026-02-30T12:00:00.000Z"` and `Date.parse` silently normalises it into March. `renames`
++and `diagnostics` are required AT REST where the grammar tolerates them absent, because the
++decoder always emits both and the planner reads them unguarded. A suppression's `at` is
++provenance only — nothing reads it back as a date — so it is held to being real text and no
++further. The fix is this DOOR, never a guard in `ArchiveRefresh.tsx`.
++
++**A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE.** Everything appends a path AFTER the
++base, so a credential, a query or a fragment in it is not untidiness:
++`https://user:pass@nas.example/media?token=secret` made "Open archive root"
++`…?token=secret/` and a file `…?token=secret/session-1/x.mp4` — a password on screen in
++every device URL, addressing no file at all. `normalizeBaseUrl` REFUSES all four
++(`username`, `password`, `search`, `hash`) rather than stripping them, because a rewritten
++base names a different server and only the owner can say what they meant; the media
++sentence says WHY. That is the whole family in one place: `resolveRecording`,
++`relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the reconciler's
++`verifiedBase` (through `archiveRootUrl`) all pass through it. A stored ABSOLUTE url is
++still opened as the owner saved it — their own authored link, not this device's configured
++base, and nothing here mints one.
 +
  **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
  ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
  (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
-@@ -1760,6 +1823,24 @@ query or fragment is left alone. Where an old and a current row now point at one
- file, BOTH rows survive with their own titles and notes: deleting one deletes something the
- owner wrote.
- 
-+**AND THE REFRESH ITSELF DOES IT — a helper with no production caller repairs nothing.**
-+The rename log is published WITH the index, so the one moment the app can repair a stored
-+path is the moment it accepts a new graph; a sealed review found a uniquely adoptable
-+legacy class being adopted and left pointing at names the archive renamed years ago — bound
-+and broken. `planArchiveImport` now runs `repairLessonReferences` in ONE pass over the
-+lessons this archive OWNS: the ones this plan adopts and the ones already bound. A lesson
-+the archive has no claim on is not something a refresh may rewrite. The pass produces the
-+objects the plan SHOWS (`adoptedLessons`) and the ones it installs (`repairedLessons`), so a
-+preview cannot display an old path while the commit writes a new one. `verifiedBase` is
-+threaded from the device's own configured media base, so a stored full URL under it converts
-+and everything else stays exactly as the owner saved it.
-+A cycle, a rename whose destination is gone and an unsafe path become plan `attention`
-+rows — but `not-described` does NOT (see `RepairReason`): the index deliberately describes
-+only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
-+own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
-+renamed is outside what it knows, never evidence that the file is gone. Those three personal
-+references are retained historical links, untouched and unflagged.
-+
- **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
- (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
- with the record it was typed for, "Saved." only after IndexedDB acknowledges, retry and copy
 diff --git a/DECISIONS.md b/DECISIONS.md
-index 782e2f2..5e9bb79 100644
+index 5e9bb79..214880a 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
-@@ -2,6 +2,43 @@
+@@ -2,6 +2,56 @@
  
  Durable record of non-obvious choices. Newest first.
  
-+## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
++## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
 +
-+A sealed review rejected the first Setar-archive diff with four findings. Each was reported
-+as one counterexample; each was really a FAMILY, and the fixes are family-shaped.
++A second sealed review rejected the reworked Setar-archive diff with five findings. Every
++one of them was a rule that genuinely existed and covered LESS than it read as covering, so
++each fix is the boundary all the callers share rather than the caller the counterexample
++named.
 +
-+- **The nested graph had two grammars.** `decodeSourceIndex` stated the shape of a session;
-+  `validateArchiveSources` stated LESS of it and was the one every inbound door ran. So
-+  `members[0].roles: null` was accepted, persisted, and thrown on by `repeatChains` while
-+  rendering material — and `piece.aliases` had the identical exposure through
-+  `planArchiveImport`'s own spread. `checkSourceGraph` is now that grammar in ONE place,
-+  run by both callers. The alternative — guarding the reader — was rejected outright: a
-+  reader written against a validated graph is the whole point of validating it, and a guard
-+  in `ItemMaterial` would leave the invalid data on disk for the next reader.
-+- **The reference repair had no production caller.** The 67-path mapping was proved against
-+  the real rename log and then never wired in, so a uniquely adoptable legacy class was
-+  adopted and left pointing at names the archive renamed. The repair runs inside
-+  `planArchiveImport` now, in ONE pass whose output is both what the preview shows and what
-+  the commit installs. Scope is the lessons the archive owns; `not-described` is deliberately
-+  NOT reported, because the index omits 125 of 258 files by construction and "I have never
-+  heard of this path" is not "this file is gone".
-+- **Owner answers were transient.** Skip lived only in the preview's argument list; Create
-+  separately was honoured for items and dropped for lessons; and any decision taken against
-+  an already-current index was reported "Already current" and discarded. Skip writes a
-+  suppression, the lesson branch exists, and `commitArchiveImport` asks `applyArchiveImport`
-+  itself — which returns the same object when a plan changes nothing — instead of keeping a
-+  second opinion about what "unchanged" means.
-+- **The digest was format-checked, never verified.** `contentHash` is the refresh IDENTITY,
-+  so altered content under a retained hash was reported unchanged and its facts ignored.
-+  `parseSourceIndex` recomputes the scanner's own digest at the one boundary both readers
-+  share. It is async because the platform's SHA-256 is; a hand-rolled synchronous one to
-+  avoid two `await`s would be a second implementation of a primitive the app already has.
++- **One scan was one consistent view of the registry only.** PIECES.csv was re-read after
++  the walk; the rename log and the media inventory were read once and compared against
++  nothing — and the media is what a non-atomic NAS copy actually perturbs. A resource moved
++  out before its folder is enumerated and restored while later folders are walked produces a
++  valid index that omits it, and the next Refresh marks still-present material unavailable.
++  `readSource` is now every input in one place, read twice and compared. It is a CONSISTENCY
++  check and the comment says so: a perturbation stable across both readings is
++  indistinguishable, from here, from the archive genuinely being in that state.
++- **The decoder normalised before the grammar ran.** `checkSourceGraph` was made the one
++  grammar in the previous rework — but the decoder hands it the decoder's OWN output, so
++  `resources: null` became a valid empty list before the grammar ever saw it, and six files
++  became zero behind a correct digest. The scalars had the same shape (`part: "3"` → `null`,
++  a wrong-typed `size` dropped, `rosterTrusted: 'yes'` → a boolean). `list`/`num`/`bool`
++  replace every absent-tolerant read: absent is a default, present-and-wrong is a refusal
++  naming the record. Separately, `acceptedAt` was the one persisted field with no check at
++  all while Settings renders it — validated at the door, never guarded in the component.
++- **A decision was matched to its target, not to its premise.** The rebase refused only on a
++  NEW question, so choosing the archive's composer over an empty field and then typing your
++  own before Apply raised nothing to ask about and overwrote the new words. An `apply-field`
++  decision carries `from` now, `decisionMatchesSuggestion` is the one test the summary and
++  the write share, and a link may only adopt a record that is still unbound and still this
++  instrument's. Both land in `plan.staleDecisions` — ONE channel — and the commit refuses on
++  either, whether or not `rev` moved. Silently creating a record instead of linking one was
++  rejected as an answer: it is not the action the owner chose.
++- **The rename chain had three readings.** Repair followed the whole chain, adoption took one
++  hop, a suppression took none. A→B→C with B in session 1 and C in session 2 adopted a class
++  as session 1 and then repaired its reference into session 2. `followRenames` is the one
++  reading; a resource suppression is re-keyed through it (the same decision about the same
++  bytes, in the archive's current words), and a renamed row is dropped from the retained
++  graph rather than flagged `unavailable` — the log says where the bytes went. Dropping is
++  safe for a RESOURCE specifically: only pieces and sessions carry bindings.
++- **A media base was validated as a URL, not as a base.** Everything appends a path after it,
++  so `https://user:pass@nas/media?token=secret` put a password in every device URL and
++  addressed no file. `normalizeBaseUrl` refuses credentials, query and fragment — refuses,
++  not strips, because a rewritten base names a different server — and every caller,
++  `verifiedBase` included, already passes through it.
 +
-+Each fix was mutation-checked: the roles check, the `create-lesson` branch, the suppression
-+write and the digest comparison were each reverted in turn and confirmed to fail the named
-+acceptance test — the suppression one failing specifically AFTER a reload, which is where
-+the defect actually lived.
++Fifteen mutations were run and all fifteen fail their named acceptance test: each decoder
++site reverted INDIVIDUALLY (a single-site test would have passed a partial fix), the
++scanner's second reading, the `acceptedAt` and rename-log checks, the one-hop evidence, the
++un-migrated suppression ref, the re-flagged renamed row, `from` dropped from the predicate,
++the staleness detector disabled, the bound-target link guard, and the base-URL refusal.
 +
- ## The archive describes; it never testifies (2026-09-17)
+ ## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
  
- The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,
+ A sealed review rejected the first Setar-archive diff with four findings. Each was reported
+diff --git a/docs/setar-archive.md b/docs/setar-archive.md
+index c707be9..efd7ab0 100644
+--- a/docs/setar-archive.md
++++ b/docs/setar-archive.md
+@@ -53,7 +53,14 @@ byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
+ 
+ What it refuses outright (and produces no index for): a malformed or ambiguous
+ registry, a duplicate canonical key, two folders claiming one session number, an
+-unsafe path, more than 5000 files, a registry that changed during the scan.
++unsafe path, more than 5000 files, **any input that changed during the scan** —
++the registry, the rename log or the media inventory, all three read twice and
++compared, sizes included, so a file still being copied is caught too. That is a
++CONSISTENCY check, not atomicity: a perturbation that is stable across both
++readings agrees with itself, and from here is indistinguishable from the archive
++genuinely being in that state. What it removes is the transient — which is what a
++copy in flight looks like, and what would otherwise publish an index missing a
++file that is still there.
+ What it reports and skips: a file with no known role, an unknown piece, an
+ unsupported extension, a class recording claiming a piece, an unnamed demo in a
+ session whose roster and filenames disagree.
+@@ -208,7 +215,17 @@ applies the lot in one store mutation.
+   date, no SM‑2 state. An imported class is history even when its date is in the
+   future relative to this device's clock.
+ - Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
+-  same mutation, so a refresh, a reload and a sync all respect it.
++  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
++  its file through the rename log, so a renamed resource does not reappear —
++  including when the rename moves it into a different session's folder, where
++  the old row is dropped rather than reported missing.
++- **A decision is about the state you saw.** If the value you chose the archive's
++  over has changed since — or a record you chose to link has been deleted, bound
++  elsewhere or moved instrument — the commit refuses and re-previews rather than
++  applying an answer to a question that no longer stands.
++- **Your media base is an address and a folder.** A base carrying a username,
++  password, `?query` or `#fragment` is refused, not silently cleaned up: every
++  file URL is built by appending a path to it.
+ 
+ The owner's own `تمرین-من` recordings are evidence, not material: their
+ membership and role survive in the graph, the files themselves never become a
+diff --git a/scripts/scan-setar-classes.mjs b/scripts/scan-setar-classes.mjs
+index cb51f77..af3a245 100644
+--- a/scripts/scan-setar-classes.mjs
++++ b/scripts/scan-setar-classes.mjs
+@@ -521,9 +521,11 @@ export function writeIndexAtomically(outPath, text, root) {
+   return out;
+ }
+ 
+-/** Read the archive and build its index. The scan itself reads nothing twice. */
+-export function scanToIndex(root) {
+-  const base = resolve(root);
++/**
++ * EVERY input this scanner reads, in one place — so "read it twice and compare"
++ * below covers all of them by construction, including one added later.
++ */
++export function readSource(base) {
+   const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
+   let renameLogText = '';
+   try {
+@@ -531,13 +533,36 @@ export function scanToIndex(root) {
+   } catch {
+     renameLogText = '';
+   }
+-  const inventory = scanArchive(base);
+-  // Re-read the registry AFTER the walk: a registry edited mid-scan would
+-  // otherwise pair old identities with new files, and the index is supposed to
+-  // be one consistent view or none at all.
+-  const registryAfter = readFileSync(join(base, 'PIECES.csv'), 'utf8');
+-  if (registryAfter !== registryText) throw new Error('PIECES.csv changed during the scan; no index was produced.');
+-  return buildIndex({ registryText, inventory, renameLogText });
++  return { registryText, renameLogText, inventory: scanArchive(base) };
++}
++
++/**
++ * Read the archive and build its index — from ONE consistent view, or none.
++ *
++ * The registry used to be the only input re-read after the walk, which made
++ * the guarantee exactly as narrow as the file it named: the MEDIA is what a
++ * non-atomic NAS copy actually perturbs. Move a resource out before its folder
++ * is enumerated and put it back while later folders are walked, and PIECES.csv
++ * never changes — the scan publishes an index missing that file, and the next
++ * Refresh marks still-present material unavailable. The rename log had the
++ * same exposure, read once and never checked.
++ *
++ * So the whole source is read TWICE and the two readings compared. `size` is
++ * part of the comparison, so a file still being copied is caught too.
++ *
++ * This is a CONSISTENCY check, not atomicity: a perturbation that is stable
++ * across both readings agrees with itself and is indistinguishable, from here,
++ * from the archive genuinely being in that state. What it removes is the
++ * transient, which is what a copy in flight actually looks like.
++ */
++export function scanToIndex(root) {
++  const base = resolve(root);
++  const before = readSource(base);
++  const after = readSource(base);
++  if (canonicalJson(before) !== canonicalJson(after)) {
++    throw new Error('The archive changed during the scan; no index was produced.');
++  }
++  return buildIndex(before);
+ }
+ 
+ function main() {
 diff --git a/src/components/ArchiveRefresh.tsx b/src/components/ArchiveRefresh.tsx
-index 303e0a8..cc8a7aa 100644
+index cc8a7aa..b7c58f8 100644
 --- a/src/components/ArchiveRefresh.tsx
 +++ b/src/components/ArchiveRefresh.tsx
-@@ -8,6 +8,7 @@ import {
+@@ -7,6 +7,7 @@ import {
+   archiveFor,
    describeArchiveAccess,
    archiveRootUrl,
++  decisionMatchesSuggestion,
    type ImportPlan,
-+  type MetadataField,
+   type MetadataField,
    type ReconcileDecision,
- } from '../domain';
- 
-@@ -57,7 +58,12 @@ export default function ArchiveRefresh() {
-   const rootUrl = archiveRootUrl(getNasBaseUrl());
- 
-   function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[]) {
--    const { plan, rev } = preview({ index: fetched.index, instrumentId: chosen, decisions: nextDecisions });
-+    const { plan, rev } = preview({
-+      index: fetched.index,
-+      instrumentId: chosen,
-+      decisions: nextDecisions,
-+      verifiedBase: rootUrl ?? undefined,
-+    });
-     setPhase({ kind: 'preview', fetched, rev, plan });
-   }
- 
-@@ -87,7 +93,13 @@ export default function ArchiveRefresh() {
-     if (phase.kind !== 'preview') return;
-     const { fetched, rev } = phase;
-     setPhase({ kind: 'working' });
--    const result = await commit({ index: fetched.index, instrumentId: chosen, decisions, decidedFromRev: rev });
-+    const result = await commit({
-+      index: fetched.index,
-+      instrumentId: chosen,
-+      decisions,
-+      verifiedBase: rootUrl ?? undefined,
-+      decidedFromRev: rev,
-+    });
+@@ -103,8 +104,15 @@ export default function ArchiveRefresh() {
      if (!result.ok) {
        if (result.status === 'stale') {
          // Something changed underneath; look again rather than apply a plan
-@@ -230,6 +242,43 @@ export default function ArchiveRefresh() {
-             </div>
-           )}
- 
-+          {phase.plan.suggestions.length > 0 && (
-+            <div className="stack-sm">
-+              <div className="section-label">The archive knows more about these</div>
-+              {/* A registry improvement to a piece the owner ALREADY has. It is
-+                  offered field by field and applied only when asked — never
-+                  written behind them, and never near their notebook. */}
-+              {phase.plan.suggestions.map((sg) => {
-+                const applied = decisions.some(
-+                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
-+                );
-+                return (
-+                  <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
-+                    <div dir="auto" style={{ textAlign: 'start' }}>
-+                      <strong>{sg.pieceKey}</strong>
-+                      <div className="tiny faint">
-+                        <span dir="ltr">{FIELD_LABELS[sg.field]}: </span>
-+                        <span dir="auto">{sg.from || '—'}</span>
-+                        <span dir="ltr"> → </span>
-+                        <span dir="auto">{sg.to}</span>
-+                      </div>
-+                    </div>
-+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-+                      <button
-+                        type="button"
-+                        className="btn btn-sm"
-+                        aria-pressed={applied}
-+                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
-+                      >
-+                        {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
-+                      </button>
-+                    </div>
-+                  </div>
-+                );
-+              })}
-+            </div>
-+          )}
-+
-           <div className="row" style={{ gap: 8 }}>
-             <button type="button" className="btn btn-primary" onClick={() => void apply()}>
-               {phase.plan.summary.unchanged ? 'Already current' : 'Apply'}
-@@ -269,8 +318,8 @@ function Summary({ plan }: { plan: ImportPlan }) {
-           </button>
-           {open && (
-             <ul className="tiny faint stack-sm" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
--              {plan.attention.map((d) => (
--                <li key={d.path} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
-+              {plan.attention.map((d, i) => (
-+                <li key={`${d.path}-${i}`} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
-                   <span>{d.path}</span>
-                   <span dir="ltr">— {d.reason}</span>
-                 </li>
-@@ -284,9 +333,26 @@ function Summary({ plan }: { plan: ImportPlan }) {
- }
- 
- function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
-+  // A FIELD decision is keyed by its field, not merely its piece: keyed by
-+  // piece alone, choosing a composer evicted the dastgāh choice made a moment
-+  // earlier, and either one evicted a Link/Skip answer about the same piece.
-   const key = (d: ReconcileDecision) =>
--    'pieceKey' in d ? `piece:${d.pieceKey}` : 'sessionN' in d ? `session:${d.sessionN}` : '';
-+    d.kind === 'apply-field'
-+      ? `field:${d.pieceKey}:${d.field}`
-+      : 'pieceKey' in d
-+        ? `piece:${d.pieceKey}`
-+        : 'sessionN' in d
-+          ? `session:${d.sessionN}`
-+          : '';
-   return key(a) === key(b) && key(a) !== '';
- }
- 
- const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
-+
-+/** Plain names for the registry fields an improvement can touch. */
-+const FIELD_LABELS: Record<MetadataField, string> = {
-+  dastgahAvaz: 'dastgāh',
-+  gusheh: 'gusheh',
-+  form: 'form',
-+  composer: 'composer',
-+};
-diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
-index fabcede..7305f6d 100644
---- a/src/components/direction.test.ts
-+++ b/src/components/direction.test.ts
-@@ -144,6 +144,13 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
-  */
- const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
-   { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
-+  // The metadata-suggestion row: the piece's own name groups with the change
-+  // proposed for it, and the owner's CURRENT value and the archive's PROPOSED
-+  // one each resolve from their own content — either may be Farsi or Latin,
-+  // and neither follows from the other.
-+  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
-+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
-+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
-   { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
-   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
-   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
-@@ -598,6 +605,10 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-   { file: 'components/ItemNotes.tsx', snippet: '<div className="small notes-read" dir="auto"' },
-   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.observation}</span>' },
-   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
-+  // A registry improvement offered on Refresh: the value the owner has and the
-+  // value the archive proposes are authored independently of each other.
-+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
-+  { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
-   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
-   // Instrument names used to be tracked here too, one exact snippet per site.
-   // A sealed review found that shape structurally insufficient FOUR times
+-        // that was decided against a database that has moved on.
+-        showPlan(fetched, decisions);
++        // that was decided against a database that has moved on. A decision
++        // whose premise moved is DROPPED here — keeping it would re-submit the
++        // same invalid answer for ever — and the fresh preview shows the
++        // question, or the suggestion's real current value, as it is now.
++        const kept = result.staleDecisions?.length
++          ? decisions.filter((d) => !result.staleDecisions!.includes(d))
++          : decisions;
++        setDecisions(kept);
++        showPlan(fetched, kept);
+         setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
+         return;
+       }
+@@ -249,9 +257,10 @@ export default function ArchiveRefresh() {
+                   offered field by field and applied only when asked — never
+                   written behind them, and never near their notebook. */}
+               {phase.plan.suggestions.map((sg) => {
+-                const applied = decisions.some(
+-                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
+-                );
++                // The PREMISE is part of the match: a choice made against a
++                // value the owner has since edited is no longer this
++                // suggestion's answer, so the button reads unpressed again.
++                const applied = decisions.some((d) => decisionMatchesSuggestion(d, sg));
+                 return (
+                   <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
+                     <div dir="auto" style={{ textAlign: 'start' }}>
+@@ -268,7 +277,7 @@ export default function ArchiveRefresh() {
+                         type="button"
+                         className="btn btn-sm"
+                         aria-pressed={applied}
+-                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
++                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
+                       >
+                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
+                       </button>
 diff --git a/src/domain/io.test.ts b/src/domain/io.test.ts
-index 9bd2bf7..3e3cfc2 100644
+index 3e3cfc2..06d1b7e 100644
 --- a/src/domain/io.test.ts
 +++ b/src/domain/io.test.ts
-@@ -6,7 +6,14 @@ import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
- import { serializeExport, validateDB, parseImport } from './io';
- import { migrateToCurrent } from './migrations';
- import { createSeedDB } from './seed';
--import { decodeSourceIndex } from './sourceArchive';
-+import {
-+  decodeSourceIndex,
-+  membersForSession,
-+  repeatChains,
-+  resourceReference,
-+  resourcesForPiece,
-+  resourcesForSession,
-+} from './sourceArchive';
- import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
- import { createBlock, createItem, createLesson } from './factories';
- import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-@@ -890,6 +897,115 @@ describe('the v14 source graph at the schema boundary', () => {
-       d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
-     }, /suppression of an unknown kind/);
+@@ -987,6 +987,24 @@ describe('the v14 source graph at the schema boundary', () => {
+       (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
+     }, /suppression with no timestamp/);
  
-+    // --- EVERY NESTED FIELD A PRODUCTION READER DEREFERENCES ----------------
-+    // The validator used to check a resource's path and its part group and
-+    // walk straight past the rest of the graph, so a malformed nested value
-+    // was accepted, persisted, and then thrown on by the first reader to
-+    // touch it. These are that whole family, not one counterexample: the
-+    // roles list `repeatChains` calls `.includes` on, the alias list
-+    // `planArchiveImport` spreads, the kind/title `resourceReference` reads,
-+    // and the session fields `sessionsForPiece` and the material composition
-+    // walk.
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { roles: unknown }).roles = null;
-+    }, /unreadable role list/);
-+    refuses((d) => {
-+      d.archiveSources[0]!.sessions[0]!.members[0]!.roles = ['not-a-real-role'];
-+    }, /unknown role/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { key: unknown }).key = null;
-+    }, /claims an unknown piece/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = null;
-+    }, /unreadable alias list/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = [1, 2];
-+    }, /unreadable alias list/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.pieces[0] as unknown as { composer: unknown }).composer = { name: 'x' };
-+    }, /unreadable composer/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.pieces[0] as unknown as { sessions: unknown }).sessions = ['13'];
-+    }, /invalid session number/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.pieces[0] as unknown as { provisional: unknown }).provisional = 'yes';
-+    }, /unreadable flag/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { kind: unknown }).kind = 'executable';
-+    }, /unknown kind/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { role: unknown }).role = null;
-+    }, /unknown role/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { title: unknown }).title = 42;
-+    }, /unreadable title/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { pieces: unknown }).pieces = null;
-+    }, /unreadable piece list/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { part: unknown }).part = '2';
-+    }, /unreadable part number/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { size: unknown }).size = '10mb';
-+    }, /unreadable size/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0] as unknown as { resources: unknown }).resources = null;
-+    }, /no resource list/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0] as unknown as { members: unknown }).members = null;
-+    }, /no membership list/);
-+    refuses((d) => {
-+      d.archiveSources[0]!.sessions[0]!.folder = '../elsewhere';
-+    }, /unsafe folder path/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0] as unknown as { roster: unknown }).roster = null;
-+    }, /unreadable roster/);
-+    refuses((d) => {
-+      d.archiveSources[0]!.sessions[0]!.roster = ['not-in-the-registry'];
-+    }, /which it does not describe/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.sessions[0] as unknown as { rosterTrusted: unknown }).rosterTrusted = 'maybe';
-+    }, /unreadable flag/);
-+    refuses((d) => {
-+      d.archiveSources[0]!.renames = [{ from: '../secret', to: 'x' }];
-+    }, /rename with an unsafe path/);
-+    refuses((d) => {
-+      d.archiveSources[0]!.renames = [
-+        { from: 'a/b.mp4', to: 'a/c.mp4' },
-+        { from: 'a/b.mp4', to: 'a/d.mp4' },
-+      ];
-+    }, /more than one destination/);
-+    refuses((d) => {
-+      (d.archiveSources[0] as unknown as { diagnostics: unknown }).diagnostics = [{ path: 'x' }];
-+    }, /unreadable diagnostic entry/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.suppressions as unknown[]) = [
-+        { kind: 'resource', ref: 'x', itemId: 42, at: '2026-01-01T00:00:00.000Z' },
-+      ];
-+    }, /suppression with an unreadable item/);
-+    refuses((d) => {
-+      (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
-+    }, /suppression with no timestamp/);
-+
-+    // The POSITIVE half: a graph this door ACCEPTS is one every production
-+    // reader can walk without throwing. The counterexample above reached
-+    // `repeatChains` and crashed the material list; this asserts the whole
-+    // reader surface over the whole accepted graph, not one call.
-+    const accepted = validateDB(graphed);
-+    const live = accepted.archiveSources[0]!;
-+    for (const piece of live.pieces) {
-+      expect(Array.isArray(repeatChains(live, piece.key))).toBe(true);
-+      expect(Array.isArray(resourcesForPiece(live, piece.key))).toBe(true);
-+      for (const r of resourcesForPiece(live, piece.key)) {
-+        expect(typeof resourceReference(live.id, r).title).toBe('string');
-+      }
-+      expect([...new Set([piece.key, ...piece.aliases])].length).toBeGreaterThan(0);
++    // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
++    // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
++    // when the index last changed. It was the one persisted field with no
++    // check at all: a v14 import carrying `acceptedAt: null` was accepted and
++    // then threw while the screen rendered. The fix is this door, never a
++    // guard in the component.
++    for (const bad of [null, 42, '', 'yesterday', '2026-02-30T12:00:00.000Z', '2026-09-17']) {
++      refuses((d) => {
++        (d.archiveSources[0] as unknown as { acceptedAt: unknown }).acceptedAt = bad;
++      }, /unreadable accepted time/);
 +    }
-+    for (const sess of live.sessions) {
-+      expect(Array.isArray(membersForSession(live, sess.n))).toBe(true);
-+      expect(Array.isArray(resourcesForSession(live, sess.n))).toBe(true);
-+    }
++    refuses((d) => {
++      delete (d.archiveSources[0] as unknown as { renames?: unknown }).renames;
++    }, /no rename log/);
++    refuses((d) => {
++      (d.archiveSources[0] as unknown as { diagnostics?: unknown }).diagnostics = null;
++    }, /no diagnostic list/);
 +
-     // Bindings: dangling, duplicated, or on the wrong instrument.
-     refuses((d) => {
-       d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'setar-classes', pieceKey: 'not-in-the-registry' };
+     // The POSITIVE half: a graph this door ACCEPTS is one every production
+     // reader can walk without throwing. The counterexample above reached
+     // `repeatChains` and crashed the material list; this asserts the whole
+diff --git a/src/domain/recordings.test.ts b/src/domain/recordings.test.ts
+index c54289e..27d9ccb 100644
+--- a/src/domain/recordings.test.ts
++++ b/src/domain/recordings.test.ts
+@@ -286,5 +286,39 @@ describe('archive transport', () => {
+     expect(noIndex.index).toMatch(/No index has been fetched/);
+     expect(describeArchiveAccess({ indexFetchedAt: 'x' }).media).toMatch(/No media base is set/);
+     expect(describeArchiveAccess({ indexFetchedAt: 'x', baseUrl: 'ftp://nas' }).media).toMatch(/not a usable/);
++
++    // --- A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE -------------------
++    // Everything appends a path AFTER the base, so a credential, a query or a
++    // fragment in it is not merely untidy: the password ends up on screen in
++    // every device URL, and `…/media?token=secret` + `/session-1/x.mp4`
++    // addresses no file at all. Refused at the ONE boundary they all share —
++    // never stripped, because a rewritten base names a different server.
++    const leaky = 'https://user:pass@nas.example/media?token=secret';
++    for (const bad of [
++      leaky,
++      'https://user:pass@nas.example/media',
++      'https://nas.example/media?token=secret',
++      'https://nas.example/media#frag',
++      'user:pass@nas.example/media',
++    ]) {
++      expect(normalizeBaseUrl(bad)).toBeNull();
++      expect(archiveRootUrl(bad)).toBeNull();
++      expect(resolveRecording(bad, ref).status).toBe('bad-base');
++      expect(resolveRecordingUrl(bad, ref)).toBeNull();
++      // Nothing is relativised against a base that was never usable…
++      expect(relativizeReference(bad, `${leaky}/session-1/x.mp4`)).toBe(`${leaky}/session-1/x.mp4`);
++      // …and the owner is told WHY, not merely that it failed.
++      const said = describeArchiveAccess({ baseUrl: bad }).media;
++      expect(said).toMatch(/not a usable/);
++      expect(said).toMatch(/password/);
++    }
++    // No secret ever reaches a resolved URL through the base.
++    expect(JSON.stringify([archiveRootUrl(leaky), resolveRecording(leaky, ref)])).not.toContain('secret');
++    // The reconciler reads its `verifiedBase` from `archiveRootUrl`, so the
++    // same refusal covers path repair: with no verified base, a full URL is
++    // left exactly as the owner saved it.
++    expect(archiveRootUrl(leaky) ?? undefined).toBeUndefined();
++    // An ordinary base with a port, a path and a trailing slash still works.
++    expect(normalizeBaseUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes');
+   });
+ });
+diff --git a/src/domain/recordings.ts b/src/domain/recordings.ts
+index 634c3ac..a6d5045 100644
+--- a/src/domain/recordings.ts
++++ b/src/domain/recordings.ts
+@@ -26,6 +26,17 @@ export function formatFileSize(bytes: number | undefined): string | null {
+  * - Validates with `new URL`; only http/https accepted.
+  * - Strips a trailing slash.
+  * Returns null when the value is blank or unparseable.
++ *
++ * A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE. A credential, a query or a
++ * fragment is REFUSED here rather than carried, because every caller appends a
++ * path AFTER whatever this returns: `https://user:pass@nas/media?token=secret`
++ * would make "Open archive root" `…?token=secret/` and a file
++ * `…?token=secret/session-1/x.mp4` — a password on screen in a device URL, and
++ * a URL that addresses no file. It is not STRIPPED into something openable
++ * either: a rewritten base names a different server, and the owner is the only
++ * one who can say what they meant. This is the ONE boundary — `resolveRecording`,
++ * `relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the
++ * reconciler's `verifiedBase` (through `archiveRootUrl`) all pass through it.
+  */
+ const ANY_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+ 
+@@ -43,6 +54,7 @@ export function normalizeBaseUrl(raw: string | undefined): string | null {
+     return null;
+   }
+   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
++  if (url.username || url.password || url.search || url.hash) return null;
+   return url.toString().replace(/\/+$/, '');
+ }
+ 
+@@ -81,6 +93,11 @@ function isSafeRelativeReference(p: string): boolean {
+  * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
+  * paths join under the normalised base with each segment URL-encoded (spaces,
+  * Farsi filenames).
++ *
++ * A stored ABSOLUTE url is opened as the owner saved it, credentials included:
++ * that is their own authored link, not this device's configured base, and
++ * nothing here mints one (`isSafeRelativeReference` refuses `@`, and
++ * `relativizeReference` only ever writes a path beneath a base that has none).
+  */
+ export function resolveRecording(
+   baseUrl: string | undefined,
+@@ -232,7 +249,7 @@ export function describeArchiveAccess(input: {
+     media: !input.baseUrl?.trim()
+       ? 'No media base is set on this device, so files cannot be opened here.'
+       : !base
+-        ? 'This device’s media base is not a usable http(s) address.'
++        ? 'This device’s media base is not a usable http(s) address. A base is a plain http(s) address and folder — it may not carry a username, a password, a query or a #fragment.'
+         : 'Files open directly from this device’s media base. The app cannot verify from here that the archive is reachable — open the archive root to check.',
+   };
+ }
+diff --git a/src/domain/scanSetarClasses.test.ts b/src/domain/scanSetarClasses.test.ts
+index 4f3cde7..0369642 100644
+--- a/src/domain/scanSetarClasses.test.ts
++++ b/src/domain/scanSetarClasses.test.ts
+@@ -58,6 +58,8 @@ interface Scanner {
+   parseSessionFolderName(name: string): { n: number; date: string } | null;
+   scanArchive(root: string): Entry[];
+   scanToIndex(root: string): Index;
++  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
++  canonicalJson(value: unknown): string;
+   writeIndexAtomically(outPath: string, text: string, root?: string): string;
+   isSafeRelativePath(p: string): boolean;
+   displayTitle(stem: string): string;
+@@ -73,6 +75,8 @@ const {
+   parseSessionFolderName,
+   scanArchive,
+   scanToIndex,
++  readSource,
++  canonicalJson,
+   writeIndexAtomically,
+   isSafeRelativePath,
+   displayTitle,
+@@ -518,6 +522,53 @@ describe('scanning the archive', () => {
+       const target = join(out, 'index.json');
+       writeIndexAtomically(target, 'last good\n', root);
+       expect(() => writeIndexAtomically(join(root, 'index.json'), 'x', root)).toThrow(/inside the archive/);
++      // --- ONE CONSISTENT VIEW, OF EVERY INPUT, NOT JUST THE REGISTRY -------
++      // The registry used to be the only input re-read after the walk, so the
++      // one thing a non-atomic NAS copy actually perturbs — THE MEDIA — was
++      // never checked: move a resource out before its folder is enumerated and
++      // put it back while later folders are walked, and the scan publishes an
++      // index that omits it while PIECES.csv never changes. The next Refresh
++      // then marks still-present material unavailable.
++      const renameLog = 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\n';
++      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
++      const settled = readSource(root);
++      // Every input this scanner reads is in the reading that gets compared.
++      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
++      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
++
++      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
++      const moved = INVENTORY[0]!.path;
++      const bytes = readFileSync(join(root, moved));
++      rmSync(join(root, moved));
++      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
++      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
++      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
++      // A file still being COPIED is a size change, and is caught the same way.
++      writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
++      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
++      writeFileSync(join(root, moved), bytes);
++      writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
++      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
++      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
++      writeFileSync(join(root, 'PIECES.csv'), `${REGISTRY}\n`);
++      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
++      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
++      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
++
++      // And the scan itself reads the WHOLE source twice and refuses on any
++      // difference. Nothing can mutate a filesystem between two synchronous
++      // reads from inside this process, so the WIRING is held structurally —
++      // the same way `commitArchiveImport`'s "no whole-DB import" is.
++      const scannerSrc = readFileSync('scripts/scan-setar-classes.mjs', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
++      const scanBody = scannerSrc.slice(
++        scannerSrc.indexOf('export function scanToIndex'),
++        scannerSrc.indexOf('function main('),
++      );
++      expect(scanBody.match(/readSource\(base\)/g) ?? []).toHaveLength(2);
++      expect(scanBody).toMatch(/canonicalJson\(before\) !== canonicalJson\(after\)/);
++      expect(scanBody).toMatch(/changed during the scan/);
++      rmSync(join(root, 'RENAME-LOG.csv'));
++
+       // A scan that cannot produce a complete consistent view throws BEFORE
+       // anything is written, so the last good output still stands.
+       rmSync(join(root, 'PIECES.csv'));
 diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
-index 7f54487..afe9b20 100644
+index afe9b20..82a0108 100644
 --- a/src/domain/sourceArchive.ts
 +++ b/src/domain/sourceArchive.ts
-@@ -1,4 +1,5 @@
- import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
-+import { canonicalStringify, sha256Hex } from './canonical';
+@@ -251,6 +251,38 @@ function strList(v: unknown, what: string): string[] {
+   return v as string[];
+ }
  
- // ---------------------------------------------------------------------------
- // The Setar class archive as the APP sees it.
-@@ -399,6 +400,12 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
++/**
++ * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
++ *
++ * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
++ * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
++ * not a tolerance but a silent erasure: a session whose `resources` arrived as
++ * `null` decoded to a session with NO resources, passed the grammar (it is a
++ * valid empty list by then) and turned six files into zero. The same held for
++ * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
++ * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
++ *
++ * These three are that rule in one place, and they throw NAMING the record —
++ * the same treatment `validatePracticeText` gives the owner's own words.
++ */
++function list(v: unknown, what: string): unknown[] {
++  if (v === undefined) return [];
++  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
++  return v;
++}
++
++function num(v: unknown, what: string): number | null {
++  if (v === undefined || v === null) return null;
++  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
++  return v;
++}
++
++function bool(v: unknown, what: string, fallback: boolean): boolean {
++  if (v === undefined) return fallback;
++  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
++  return v;
++}
++
+ /** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
+ export function isValidSourceDate(v: unknown): v is ISODate {
+   if (typeof v !== 'string') return false;
+@@ -261,6 +293,15 @@ export function isValidSourceDate(v: unknown): v is ISODate {
+   return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
+ }
+ 
++/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
++export function isValidSourceDateTime(v: unknown): v is ISODateTime {
++  if (typeof v !== 'string') return false;
++  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
++  if (!m) return false;
++  if (!isValidSourceDate(v.slice(0, 10))) return false;
++  return !Number.isNaN(Date.parse(v));
++}
++
+ /**
+  * Validate an unknown published index into a {@link SourceIndex}, or throw with
+  * a message the owner can act on.
+@@ -300,7 +341,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+     if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
+     if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
+     keys.add(key);
+-    const sessions = Array.isArray(raw.sessions) ? raw.sessions : [];
++    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
+     if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
+       throw new Error(`Registry entry "${key}" has an invalid session number.`);
+     }
+@@ -313,8 +354,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
+       sessions: sessions as number[],
+       notes: str(raw.notes ?? '', 'notes'),
+-      ...(raw.provisional ? { provisional: true } : {}),
+-      ...(raw.mediumConfidence ? { mediumConfidence: true } : {}),
++      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
++      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
      });
    }
  
-+  // The decoder's own normalisation, held to the SAME grammar the persisted
-+  // graph is held to. Every field below has just been built here, so this can
-+  // only fail if the two ever drift — which is exactly what it exists to stop.
-+  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
-+  if (bad) throw new Error(bad);
-+
-   return {
-     format: INDEX_FORMAT,
-     version: INDEX_VERSION,
-@@ -411,8 +418,39 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-   };
- }
+@@ -335,7 +376,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+       if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
+     }
+     const resources: SourceResource[] = [];
+-    for (const r of Array.isArray(raw.resources) ? raw.resources : []) {
++    for (const r of list(raw.resources, `Session ${n} resources`)) {
+       if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
+       const path = r.path;
+       if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
+@@ -354,14 +395,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+         role,
+         kind: kind as SourceKind,
+         title: str(r.title ?? '', 'A resource title'),
+-        part: typeof r.part === 'number' ? r.part : null,
+-        ...(typeof r.size === 'number' ? { size: r.size } : {}),
++        part: num(r.part, `Resource "${path}" part`),
++        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
+         pieces: forPieces,
+-        group: typeof r.group === 'string' ? r.group : null,
++        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
+       });
+     }
+     const members: SourceMember[] = [];
+-    for (const m of Array.isArray(raw.members) ? raw.members : []) {
++    for (const m of list(raw.members, `Session ${n} members`)) {
+       if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
+       const key = str(m.key, 'A membership key');
+       if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
+@@ -374,8 +415,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+       date: raw.date as ISODate,
+       folder,
+       roster,
+-      rosterTrusted: raw.rosterTrusted !== false,
+-      hasClassRecording: raw.hasClassRecording === true,
++      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
++      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
+       resources,
+       members,
+     });
+@@ -383,7 +424,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
  
--/** Parse and decode published index TEXT, refusing anything oversized. */
--export function parseSourceIndex(text: string): SourceIndex {
-+/**
-+ * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
-+ * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
-+ * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
-+ * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
-+ * that serialisation for JSON-derived data.
-+ */
-+async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
-+  const body = { ...parsed };
-+  delete body.contentHash;
-+  delete body.generatedAt;
-+  return sha256Hex(canonicalStringify(body));
-+}
-+
-+/**
-+ * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
-+ *
-+ * `contentHash` is not a checksum the app may take on faith — it is the
-+ * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
-+ * accepted to decide that nothing has changed, so content altered in transit
-+ * (or in the repository) under a retained old hash would be reported "Already
-+ * current" and the changed facts silently ignored. Recomputing it here, at the
-+ * ONE boundary both the GitHub fetch and the file fallback pass through, makes
-+ * that fail closed instead.
-+ *
-+ * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
-+ * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
-+ * that build an index object in memory call it directly and have no transport.
-+ *
-+ * Order matters: size → parse → structure → digest, so a structurally broken
-+ * file reports the error the owner can act on rather than a hash mismatch.
-+ */
-+export async function parseSourceIndex(text: string): Promise<SourceIndex> {
-   if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
-   let parsed: unknown;
-   try {
-@@ -420,7 +458,14 @@ export function parseSourceIndex(text: string): SourceIndex {
-   } catch {
-     throw new Error('That file is not valid JSON.');
+   const renames: SourceRename[] = [];
+   const froms = new Set<string>();
+-  for (const r of Array.isArray(input.renames) ? input.renames : []) {
++  for (const r of list(input.renames, 'The rename log')) {
+     if (!isRecord(r)) throw new Error('A rename entry is not an object.');
+     if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
+     if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
+@@ -392,7 +433,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
    }
--  return decodeSourceIndex(parsed);
-+  const index = decodeSourceIndex(parsed);
-+  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
-+  if (actual !== index.contentHash) {
-+    throw new Error(
-+      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
-+    );
-+  }
-+  return index;
- }
  
- // --- what counts as an UPCOMING class ---------------------------------------
-@@ -530,6 +575,146 @@ export function resourceReference(archiveId: string, r: SourceResource, date?: I
-   };
- }
- 
-+// --- the graph's own grammar, in ONE place ---------------------------------
-+
-+/**
-+ * THE grammar of a source graph — every nested field, one definition.
-+ *
-+ * `decodeSourceIndex` and `validateArchiveSources` used to state this
-+ * separately, and the second stated LESS of it: it checked a resource's path
-+ * and its part group and then walked straight past `members[].roles`,
-+ * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
-+ * `folder` and `roster`, and the rename and diagnostic rows entirely. A
-+ * database carrying `members[0].roles: null` was therefore accepted and
-+ * PERSISTED by every inbound door, and the first production reader to touch it
-+ * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
-+ * material. `planArchiveImport` had the same exposure through
-+ * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
-+ *
-+ * Both callers run THIS function now, so the decoder and the persisted-graph
-+ * validator cannot drift apart again: a reader may dereference any field this
-+ * grammar admits, and nothing else can reach the database.
-+ *
-+ * `unavailable` stays legal on a piece, a session and a resource — a file gone
-+ * from the NAS with its provenance kept is a VALID state, not a broken graph.
-+ */
-+function checkSourceGraph(
-+  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
-+  label: string,
-+): string | null {
-+  const text = (v: unknown) => typeof v === 'string';
-+  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
-+  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
-+
-+  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
-+  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
-+
-+  const keys = new Set<string>();
-+  for (const raw of graph.pieces) {
-+    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
-+    const p = raw as Partial<SourcePiece>;
-+    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
-+    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
-+    keys.add(p.key);
-+    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
-+      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
-+    }
-+    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
-+    // that is not a list of text takes the whole refresh down with a TypeError.
-+    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
-+    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
-+      return `Piece "${p.key}" has an invalid session number.`;
-+    }
-+    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
-+      return `Piece "${p.key}" has an unreadable flag.`;
-+    }
-+  }
-+
-+  const ns = new Set<number>();
-+  const paths = new Set<string>();
-+  for (const raw of graph.sessions) {
-+    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
-+    const sess = raw as Partial<SourceSession>;
-+    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
-+      return `${label} has a session with no number.`;
-+    }
-+    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
-+    ns.add(sess.n);
-+    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
-+    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
-+    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
-+    for (const k of sess.roster as string[]) {
-+      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
-+    }
-+    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
-+      return `${label} session ${sess.n} has an unreadable flag.`;
-+    }
-+
-+    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
-+    for (const rawRes of sess.resources) {
-+      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
-+      const r = rawRes as Partial<SourceResource>;
-+      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
-+      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
-+      paths.add(r.path);
-+      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
-+      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
-+      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
-+      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
-+        return `Resource "${r.path}" has an unreadable part number.`;
-+      }
-+      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
-+      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
-+      for (const k of r.pieces as string[]) {
-+        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
-+      }
-+      // A demonstration's parts form ONE group; anything but a plain label
-+      // here would let a part claim membership of an arbitrary structure.
-+      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
-+        return `Resource "${r.path}" has an invalid part group.`;
-+      }
-+      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
-+    }
-+
-+    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
-+    for (const rawMember of sess.members) {
-+      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
-+      const m = rawMember as Partial<SourceMember>;
-+      if (typeof m.key !== 'string' || !keys.has(m.key)) {
-+        return `${label} session ${sess.n} claims an unknown piece.`;
-+      }
-+      // `repeatChains` reads `roles.includes(...)` on every one of these.
-+      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
-+      for (const role of m.roles as string[]) {
-+        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
-+      }
-+    }
-+  }
-+
-+  if (graph.renames !== undefined) {
-+    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
-+    const froms = new Set<string>();
-+    for (const rawRename of graph.renames) {
-+      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
-+      const r = rawRename as Partial<SourceRename>;
-+      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
-+      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
-+      froms.add(r.from);
-+    }
-+  }
-+
-+  if (graph.diagnostics !== undefined) {
-+    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
-+    for (const rawDiag of graph.diagnostics) {
-+      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
-+      const d = rawDiag as Partial<SourceDiagnostic>;
-+      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
-+    }
-+  }
-+
-+  return null;
-+}
-+
- // --- inbound validation (C7) -----------------------------------------------
- 
- /**
-@@ -559,43 +744,22 @@ export function validateArchiveSources(db: PracticeDB): string | null {
+   const diagnostics: SourceDiagnostic[] = [];
+-  for (const d of Array.isArray(input.diagnostics) ? input.diagnostics : []) {
++  for (const d of list(input.diagnostics, 'The diagnostic list')) {
+     if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
+     diagnostics.push({
+       path: str(d.path ?? '', 'A diagnostic path'),
+@@ -741,7 +782,21 @@ export function validateArchiveSources(db: PracticeDB): string | null {
+       return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
+     }
+     if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
++    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
++    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
++    // last changed, so a non-string here crashes the screen that renders it —
++    // and the fix belongs at this door, never as a guard in the component.
++    // Checked for REAL validity for the same reason `askedAt` is: a shape
++    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
++    // normalises it into March. Deliberately a local check beside
++    // `isValidSourceDate` rather than an import — this file's own pattern.
++    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
      if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
++    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
++    // decoder always emits both, and `planArchiveImport` reads
++    // `index.renames`/`source.renames` unguarded.
++    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
++    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
      if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
  
--    const keys = new Set<string>();
--    for (const p of s.pieces) {
--      if (typeof p?.key !== 'string' || !p.key) return `Archive source "${s.id}" has a piece with no canonical key.`;
--      if (keys.has(p.key)) return `Archive source "${s.id}" has two pieces keyed "${p.key}".`;
--      keys.add(p.key);
--    }
--    const ns = new Set<number>();
--    const paths = new Set<string>();
--    for (const sess of s.sessions) {
--      if (typeof sess?.n !== 'number' || !Number.isInteger(sess.n)) {
--        return `Archive source "${s.id}" has a session with no number.`;
--      }
--      if (ns.has(sess.n)) return `Archive source "${s.id}" has two entries for session ${sess.n}.`;
--      ns.add(sess.n);
--      if (!isValidSourceDate(sess.date)) return `Archive source "${s.id}" session ${sess.n} has an unreadable date.`;
--      for (const r of sess.resources ?? []) {
--        if (!isSafeSourcePath(r?.path)) return `Archive source "${s.id}" has an unsafe resource path.`;
--        if (paths.has(r.path)) return `Archive source "${s.id}" lists "${r.path}" twice.`;
--        paths.add(r.path);
--        for (const k of r.pieces ?? []) {
--          if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
--        }
--        // A demonstration's parts form ONE group; anything but a plain label
--        // here would let a part claim membership of an arbitrary structure.
--        if (r.group !== null && r.group !== undefined && typeof r.group !== 'string') {
--          return `Resource "${r.path}" has an invalid part group.`;
--        }
--      }
--      for (const m of sess.members ?? []) {
--        if (!keys.has(m?.key)) return `Archive source "${s.id}" session ${sess.n} claims an unknown piece.`;
--      }
--    }
-+    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
-+    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
-+    if (bad) return bad;
-+
-     for (const sup of s.suppressions) {
-       if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
-         return `Archive source "${s.id}" has a suppression of an unknown kind.`;
+     // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
+@@ -759,6 +814,8 @@ export function validateArchiveSources(db: PracticeDB): string | null {
+       if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
+         return `Archive source "${s.id}" has a suppression with an unreadable item.`;
        }
-       if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
-+      // An owner decision carries the id it was scoped to and the moment it
-+      // was taken; both are read back — a resource hidden on ONE item is
-+      // decided by comparing `itemId`, so a non-string silently widens it.
-+      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
-+        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
-+      }
-+      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
++      // `at` is provenance only — nothing reads it back as a date — so it is
++      // held to being real text and no further.
+       if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
      }
    }
- 
 diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
-index 8f54d54..baa2040 100644
+index baa2040..ddf4032 100644
 --- a/src/domain/sourceReconcile.test.ts
 +++ b/src/domain/sourceReconcile.test.ts
-@@ -15,6 +15,7 @@ import {
+@@ -14,6 +14,7 @@ import {
+   repairLessonReferences,
    toArchiveRelative,
    withSuppression,
++  followRenames,
  } from './sourceReconcile';
-+import { archiveRootUrl } from './recordings';
+ import { archiveRootUrl } from './recordings';
  import { emptyDB } from './seed';
- import { LEGACY_SEED_PATHS } from './setarClasses';
- import { createItem, createLesson } from './factories';
-@@ -195,6 +196,63 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-     expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
+@@ -340,7 +341,7 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(suggestion.from).toBe('');
+     expect(suggestion.to).toBe('میرزا-حسینقلی');
+     const selective = applyArchiveImport(owned, delta, [
+-      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer' },
++      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
+     ]);
+     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
+     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
+@@ -357,7 +358,7 @@ describe('reconciling the archive with the owner’s own records', () => {
+     // The suggestion stands until it is answered, and it may be answered days
+     // later against the very same published index. Judging "already current"
+     // by the index hash alone reported exactly that and discarded the answer.
+-    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
++    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
+     const lateDecision = planArchiveImport({
+       db: refreshed,
+       index: next,
+@@ -379,11 +380,83 @@ describe('reconciling the archive with the owner’s own records', () => {
+     // Applied, the suggestion is gone: the next refresh has nothing to offer.
+     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
+     // A decision for a field with NO suggestion changes nothing at all.
+-    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
++    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
+     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
+     expect(noop.summary.unchanged).toBe(true);
+     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
  
-+    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
-+    // It used to live only in the preview's own `decisions` argument, so "no,
-+    // not this one" survived exactly as long as the screen did: a reload, or
-+    // simply the next refresh, asked the identical question again with nothing
-+    // in the database to show it had ever been answered.
-+    const skipDb = baseDB({ items: [sameTitle] });
-+    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
-+    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
-+    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-+    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
-+    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
-+    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-+    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
-+    expect(validateArchiveSources(afterSkip)).toBeNull();
-+    // ...and it survives the persisted shape. A LATER refresh, carrying no
-+    // decisions at all, neither asks nor re-creates.
-+    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
-+    const afterReload = plan(reloaded);
-+    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-+    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-+    expect(afterReload.summary.unchanged).toBe(true);
-+    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
-+    // Skipping the same thing twice does not grow the list either.
-+    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
-+    expect(skipTwice.source.suppressions).toHaveLength(1);
-+    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
-+
-+    // The same holds for a CLASS the owner skips.
-+    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
-+    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
-+    expect(lessonSkipped.newLessons).toHaveLength(38);
-+    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
-+    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
-+    expect(plan(lessonReloaded).newLessons).toEqual([]);
-+    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-+
-+    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
-+    // Two indistinguishable candidates; the owner says neither of them is this
-+    // session. The decision used to be dropped on the floor for lessons — the
-+    // item side had it from the start — and the question came back for ever.
-+    const twinDb = baseDB({ lessons: [evidence, twin] });
-+    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
-+    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
-+    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
-+    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-+    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
-+    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
-+    // Three records for that day now: the archive's own, and BOTH of the
-+    // owner's, each keeping its id, its notes and its unbound status.
-+    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
-+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
-+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
-+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
-+    expect(validateArchiveSources(afterCreate)).toBeNull();
-+    // ...and the binding it did create is the archive's own deterministic one.
-+    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
-+
-     // --- the source/instrument binding is explicit and validated -----------
-     expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
-     expect(after.archiveSources[0]!.id).toBe('setar-classes');
-@@ -295,6 +353,37 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(same.summary.unchanged).toBe(true);
-     expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
- 
-+    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
-+    // The suggestion stands until it is answered, and it may be answered days
-+    // later against the very same published index. Judging "already current"
-+    // by the index hash alone reported exactly that and discarded the answer.
-+    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
-+    const lateDecision = planArchiveImport({
-+      db: refreshed,
++    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
++    // Choose the archive's composer over an EMPTY field, then write one of
++    // your own before the plan is applied. The choice was an answer about the
++    // empty field; it is not an instruction to replace the new words.
++    const ownWrote = {
++      ...refreshed,
++      items: refreshed.items.map((i) =>
++        i.source?.pieceKey === 'عراق'
++          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
++          : i,
++      ),
++    };
++    const rebased = planArchiveImport({
++      db: ownWrote,
 +      index: next,
 +      instrumentId: SETAR,
 +      decisions: lateField,
 +      now: NOW,
 +    });
-+    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
-+    expect(lateDecision.summary.unchanged).toBe(false);
-+    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
-+    expect(lateApplied).not.toBe(refreshed);
-+    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
-+    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
-+    // Only that field: the notebook, the title and the status are the owner's.
-+    expect(lateItem.notes).toBe('my notes');
-+    expect(lateItem.title).toBe('My own title');
-+    expect(lateItem.status).toBe('usable');
-+    expect(lateApplied.blocks).toEqual(refreshed.blocks);
-+    // Applied, the suggestion is gone: the next refresh has nothing to offer.
-+    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
-+    // A decision for a field with NO suggestion changes nothing at all.
-+    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
-+    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
-+    expect(noop.summary.unchanged).toBe(true);
-+    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
++    expect(rebased.staleDecisions).toEqual(lateField);
++    // Not applied, and not counted as a change either: both sides of the
++    // preview/commit boundary agree that this decision no longer stands.
++    expect(rebased.summary.unchanged).toBe(true);
++    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
++    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
++      'Owner wrote this during refresh',
++    );
++    // The suggestion is re-offered against what is there NOW, so the owner can
++    // answer the question that actually stands.
++    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
++      'Owner wrote this during refresh',
++    );
++    // A decision carrying the CURRENT value still applies, on the same data.
++    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
++    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
++    expect(fresh.staleDecisions).toEqual([]);
++    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
++      ?.composer).toBe('میرزا-حسینقلی');
++
++    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
++    // Bound elsewhere, moved instrument or deleted: never silently turned into
++    // "create a new record instead".
++    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
++    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
++    const unbound: PracticeDB = {
++      ...owned,
++      items: owned.items.map((i) => {
++        const { source, ...rest } = i;
++        void source;
++        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
++      }),
++    };
++    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
++    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
++    expect(linkable.staleDecisions).toEqual([]);
++    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
++    const takenElsewhere: PracticeDB = {
++      ...unbound,
++      items: unbound.items.map((i) =>
++        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
++      ),
++    };
++    const stalelink = planArchiveImport({
++      db: takenElsewhere,
++      index: next,
++      instrumentId: SETAR,
++      decisions: linkDecision,
++      now: NOW,
++    });
++    expect(stalelink.staleDecisions).toEqual(linkDecision);
++    expect(stalelink.adoptedItems).toEqual([]);
 +
      // --- a missing FILE keeps its provenance, flagged ----------------------
      const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
      const shrunk: SourceIndex = {
-@@ -528,6 +617,156 @@ describe('reconciling the archive with the owner’s own records', () => {
-     // The archive never offers a personal recording as material for a piece.
-     const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
-     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+@@ -767,6 +840,122 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
+     const afterBroken = applyArchiveImport(installedLegacy, broken);
+     expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
 +
-+    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
-+    // The helper above proves the mapping. THIS proves the production journey:
-+    // the rename log arrives WITH the index, so the one moment the app can
-+    // repair a stored path is the moment it accepts a new graph — and a lesson
-+    // adopted with its own references still pointing at names the archive
-+    // renamed is half a job, bound and broken.
-+    const ownPersonal = lesson({
-+      id: 'L25',
-+      date: '2025-08-05',
-+      number: 25,
-+      recordings: [
-+        {
-+          id: 'mine-1',
-+          title: 'My take, August',
-+          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
-+          kind: 'video',
-+          notes: 'Slow but even.',
-+          createdAt: '2025-08-06T00:00:00.000Z',
-+        },
-+      ],
-+    });
-+    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
-+    const refresh = plan(legacyDb);
-+    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
-+    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
-+    // The PLAN already shows the repaired paths, so the preview and the commit
-+    // cannot disagree about what is about to be written.
-+    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
-+    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
-+    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
-+
-+    const installedLegacy = applyArchiveImport(legacyDb, refresh);
-+    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
-+    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
-+    // BOTH rows of each collision survive, with everything the owner wrote.
-+    expect(storedOne.recordings).toHaveLength(4);
-+    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
-+    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
-+    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
-+    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
-+    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
-+    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
-+    expect(validateArchiveSources(installedLegacy)).toBeNull();
-+
-+    // The owner's own practice takes are RETAINED, untouched — and never
-+    // reported missing. The index describes only material scoped to pieces and
-+    // classes, so a path it does not name is outside what it knows, never
-+    // evidence that the file is gone.
-+    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
-+    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
-+    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
-+    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
-+
-+    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
-+    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
-+    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
-+    // literal: a trailing-slash or prefix mismatch between the two would fail
-+    // silently, leaving the link exactly as it was with nothing to show why.
-+    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
-+    const absolute = lesson({
-+      id: 'L-abs',
++    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
++    // Adoption took a single hop while repair followed the whole chain, so one
++    // rename log gave two different answers about the same file. With
++    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
++    // class was adopted AS SESSION 1 on the strength of B, and then had that
++    // very reference repaired into session 2's folder: bound to one class,
++    // pointing at another's files.
++    const hopA = 'session-1-26-09-2023/first-name.mp4';
++    const hopB = 'session-1-26-09-2023/second-name.mp4';
++    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
++    expect(known.has(hopC)).toBe(true);
++    const chained: SourceIndex = {
++      ...INDEX,
++      contentHash: '7'.repeat(64),
++      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
++    };
++    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
++    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
++    const legacyClass = lesson({
++      id: 'L-chain',
 +      date: '2023-09-26',
 +      number: 1,
-+      recordings: [
-+        {
-+          id: 'abs-1',
-+          title: 'Class 1, saved as a full link',
-+          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
-+          kind: 'video',
-+          notes: 'Typed in from the browser bar.',
-+          createdAt: '2023-09-27T00:00:00.000Z',
-+        },
-+        {
-+          id: 'foreign',
-+          title: 'Somewhere else entirely',
-+          path: 'https://elsewhere.example/x.mp4',
-+          kind: 'video',
-+          createdAt: '2023-09-27T00:00:00.000Z',
-+        },
-+      ],
++      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
 +    });
-+    const absDb = baseDB({ lessons: [absolute] });
-+    const urlRepaired = applyArchiveImport(
-+      absDb,
-+      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
-+    );
-+    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
-+    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
-+    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
-+    // A link to somewhere else is not this archive's to rewrite.
-+    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
-+    // WITHOUT a base, nothing is converted and nothing is mangled.
-+    const noBase = applyArchiveImport(absDb, plan(absDb));
-+    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
-+    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
-+    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
-+
-+    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
-+    const again = plan(installedLegacy);
-+    expect(again.repairedLessons).toEqual([]);
-+    expect(again.summary.unchanged).toBe(true);
-+    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
-+
-+    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
-+    // The archive moves a file the owner's bound class already points at. The
-+    // next refresh follows the log; the row, its title and its notes stay.
-+    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
-+    const moved: SourceIndex = {
++    const chainDb = baseDB({ lessons: [legacyClass] });
++    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
++    // Its ONLY reference now points into session 5, so it is NOT evidence of
++    // session 1 — and the class is not adopted on it.
++    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
++    // A CYCLE is no reading at all, so it is no evidence either.
++    const cyclicIndex: SourceIndex = {
 +      ...INDEX,
-+      contentHash: '9'.repeat(64),
-+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
++      contentHash: '6'.repeat(64),
++      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
++    };
++    expect(
++      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
++        (l) => l.id === 'L-chain',
++      ),
++    ).toBe(false);
++
++    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
++    // A resource suppression is keyed BY PATH. Left on the old name, the file
++    // came back into view under its new one while the old row sat there
++    // flagged unavailable — the owner's decision silently undone by a rename.
++    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
++    const hidden: PracticeDB = {
++      ...installedLegacy,
++      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
++        kind: 'resource',
++        ref: hiddenPath,
++        itemId: 'item-x',
++        at: NOW.toISOString(),
++      }),
++    };
++    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
++    const renamedSource = afterRename.archiveSources[0]!;
++    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
++    expect(hide.ref).toBe(movedTo);
++    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
++    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
++    // And the old row is GONE rather than retained-and-flagged: the log says
++    // exactly where the bytes went, so this file moved, it did not disappear.
++    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
++    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
++    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
++    // ACROSS sessions too — a rename can move a file into a different session,
++    // which is exactly the shape of the A -> B -> C log above. Asking only
++    // "is it still in THIS session" flagged the old row as missing while the
++    // very same bytes sat in the graph under their new name.
++    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
++    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
++    const crossSession: SourceIndex = {
++      ...INDEX,
++      contentHash: '4'.repeat(64),
++      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
 +      sessions: INDEX.sessions.map((sess) =>
 +        sess.n === 1
-+          ? {
-+              ...sess,
-+              resources: sess.resources.map((r) =>
-+                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
-+              ),
-+            }
-+          : sess,
++          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
++          : sess.n === 5
++            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
++            : sess,
 +      ),
 +    };
-+    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
-+    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
-+    const afterMove = applyArchiveImport(installedLegacy, later);
-+    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
-+    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
-+    expect(movedRows.get('old-video')!.path).toBe(movedTo);
-+    expect(movedRows.get('current-video')!.path).toBe(movedTo);
-+    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
-+    // The score, which did not move, is exactly as it was.
-+    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
-+    // Nothing about practice moved with it.
-+    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
-+    expect(validateArchiveSources(afterMove)).toBeNull();
++    const afterCross = applyArchiveImport(
++      hidden,
++      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
++    );
++    const crossSource = afterCross.archiveSources[0]!;
++    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
++    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
++    // The hide went WITH it, into the other session, still scoped to one item.
++    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
++      ref: crossTo,
++      itemId: 'item-x',
++    });
++    expect(validateArchiveSources(afterCross)).toBeNull();
 +
-+    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
-+    // A rename whose destination the archive no longer has: the stored path is
-+    // left exactly as it is, and the owner is told which file and why.
-+    const dangling: SourceIndex = {
++    // A file that really IS gone still keeps its provenance, flagged.
++    const removed: SourceIndex = {
 +      ...INDEX,
-+      contentHash: '8'.repeat(64),
-+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
++      contentHash: '5'.repeat(64),
++      sessions: INDEX.sessions.map((sess) =>
++        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
++      ),
 +    };
-+    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
-+    expect(broken.repairedLessons).toEqual([]);
-+    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
-+    const afterBroken = applyArchiveImport(installedLegacy, broken);
-+    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
++    const afterRemoval = applyArchiveImport(
++      installedLegacy,
++      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
++    );
++    expect(
++      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
++        ?.unavailable,
++    ).toBe(true);
++    expect(validateArchiveSources(afterRename)).toBeNull();
    });
  });
  
 diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
-index 067e2b5..4b1d659 100644
+index 4b1d659..3ee50c6 100644
 Binary files a/src/domain/sourceReconcile.ts and b/src/domain/sourceReconcile.ts differ
 diff --git a/src/store/archiveIndex.test.ts b/src/store/archiveIndex.test.ts
-index a1c184e..c80d5d7 100644
+index c80d5d7..8467fe9 100644
 --- a/src/store/archiveIndex.test.ts
 +++ b/src/store/archiveIndex.test.ts
-@@ -1,6 +1,9 @@
- import { describe, expect, it, vi } from 'vitest';
- // @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
- import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
-+// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
-+// against the real producer rather than a restatement of it in the test.
-+import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
- import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
- import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
- import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
-@@ -319,11 +322,69 @@ describe('publishing and reading the source index', () => {
-     expect(everything).not.toContain('/Volumes/');
- 
-     // The file-import fallback goes through the SAME decoder.
--    expect(readIndexFile(rival).ok).toBe(true);
--    const badFile = readIndexFile('{"format":"setar-archive-index","version":99}');
-+    expect((await readIndexFile(rival)).ok).toBe(true);
-+    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
-     expect(badFile.ok).toBe(false);
-     if (badFile.ok) throw new Error('expected refusal');
-     expect(badFile.error).toMatch(/newer scanner/);
+@@ -385,6 +385,71 @@ describe('publishing and reading the source index', () => {
+     expect(brokenStructure.ok).toBe(false);
+     if (brokenStructure.ok) throw new Error('expected refusal');
+     expect(brokenStructure.error).toMatch(/no sessions/);
 +
-+    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
-+    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
-+    // against the hash already accepted to conclude that nothing has changed.
-+    // So content altered under a RETAINED old hash would be reported "Already
-+    // current" and its changed facts silently ignored. Both doors recompute
-+    // the scanner's own digest and fail closed.
-+    const original = JSON.parse(rival) as typeof indexFixture;
-+    const altered = {
-+      ...original,
-+      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
-+    };
-+    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
-+    expect(altered.contentHash).toBe(original.contentHash);
-+    const alteredText = JSON.stringify(altered);
-+    const tampered = await readIndexFile(alteredText);
-+    expect(tampered.ok).toBe(false);
-+    if (tampered.ok) throw new Error('expected refusal');
-+    expect(tampered.error).toMatch(/does not match its own content hash/);
-+
-+    // The GitHub door refuses the identical bytes, through the same boundary.
-+    const tamperedFetch = async (url: string | URL | Request) => {
-+      const href = String(url);
-+      if (href.includes('/git/ref/heads/')) {
-+        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
-+      }
-+      return new Response(
-+        JSON.stringify({
-+          content: Buffer.from(alteredText, 'utf8').toString('base64'),
-+          encoding: 'base64',
-+          size: alteredText.length,
-+        }),
-+        { status: 200 },
++    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
++    // A digest proves the file is the one the scanner wrote; it says nothing
++    // about the file being well formed. The decoder normalises BEFORE the
++    // graph's grammar runs, so `resources: null` decoded to a session with no
++    // resources — a perfectly valid empty list by the time the grammar saw it
++    // — and six files became zero with a VALID digest on the front. Every
++    // absent-tolerant read in the decoder had the same shape.
++    const withDigest = (body: Record<string, unknown>) =>
++      JSON.stringify({ ...body, contentHash: indexDigest(body) });
++    const sessionZero = original.sessions[0]!;
++    const erasures: [string, Record<string, unknown>][] = [
++      ['must be a list', { ...sessionZero, resources: null }],
++      ['must be a list', { ...sessionZero, members: null }],
++      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
++      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
++    ];
++    for (const [message, session0] of erasures) {
++      const bad = await readIndexFile(
++        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
 +      );
-+    };
-+    const fetchedTampered = await fetchPublishedIndex({
-+      repo: 'owner/data',
-+      token: 'device-token',
-+      fetchImpl: tamperedFetch as typeof fetch,
++      expect(bad.ok).toBe(false);
++      if (bad.ok) throw new Error('expected refusal');
++      expect(bad.error).toContain(message);
++    }
++    const withResource = (over: Record<string, unknown>) => ({
++      ...original,
++      sessions: [
++        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
++        ...original.sessions.slice(1),
++      ],
 +    });
-+    expect(fetchedTampered.ok).toBe(false);
-+    if (fetchedTampered.ok) throw new Error('expected refusal');
-+    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
-+
-+    // Re-scanned content — a NEW digest for the new facts — is accepted, so
-+    // this is an integrity gate and not a freeze on the archive ever changing.
-+    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
-+    expect(rescanned.ok).toBe(true);
-+    if (!rescanned.ok) throw new Error(rescanned.error);
-+    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
-+    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
-+
-+    // A STRUCTURALLY broken file still reports the structural error rather
-+    // than a hash mismatch: the owner can act on the first, never the second.
-+    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
-+    expect(brokenStructure.ok).toBe(false);
-+    if (brokenStructure.ok) throw new Error('expected refusal');
-+    expect(brokenStructure.error).toMatch(/no sessions/);
++    for (const [message, over] of [
++      ['must be a number', { part: '2' }],
++      ['must be a number', { size: '10mb' }],
++      ['must be text', { group: 42 }],
++    ] as [string, Record<string, unknown>][]) {
++      const bad = await readIndexFile(withDigest(withResource(over)));
++      expect(bad.ok).toBe(false);
++      if (bad.ok) throw new Error('expected refusal');
++      expect(bad.error).toContain(message);
++    }
++    for (const [message, over] of [
++      ['must be a list', { sessions: null }],
++      ['must be true or false', { provisional: 'yes' }],
++    ] as [string, Record<string, unknown>][]) {
++      const bad = await readIndexFile(
++        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
++      );
++      expect(bad.ok).toBe(false);
++      if (bad.ok) throw new Error('expected refusal');
++      expect(bad.error).toContain(message);
++    }
++    for (const over of [{ renames: null }, { diagnostics: null }]) {
++      const bad = await readIndexFile(withDigest({ ...original, ...over }));
++      expect(bad.ok).toBe(false);
++      if (bad.ok) throw new Error('expected refusal');
++      expect(bad.error).toContain('must be a list');
++    }
++    // ABSENT still reads as absent: the tolerance that was correct stays.
++    const withoutOptional = { ...(original as Record<string, unknown>) };
++    delete withoutOptional.renames;
++    delete withoutOptional.diagnostics;
++    const lean = await readIndexFile(withDigest(withoutOptional));
++    expect(lean.ok).toBe(true);
    });
  });
  
-@@ -479,6 +540,84 @@ describe('committing an archive import', () => {
-     expect(refusedGraph.status).toBe('refused');
-     expect(useStore.getState().db.archiveSources).toEqual([]);
+@@ -593,7 +658,7 @@ describe('committing an archive import', () => {
+     const answered2 = useStore.getState().previewArchiveImport({
+       index: INDEX,
+       instrumentId: SETAR,
+-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
++      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+       now: NOW,
+     });
+     expect(answered2.plan.summary.unchanged).toBe(false);
+@@ -605,7 +670,7 @@ describe('committing an archive import', () => {
+     const appliedField = await useStore.getState().commitArchiveImport({
+       index: INDEX,
+       instrumentId: SETAR,
+-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
++      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+       decidedFromRev: useStore.getState().rev,
+       now: NOW,
+     });
+@@ -618,6 +683,44 @@ describe('committing an archive import', () => {
+     );
+     expect(useStore.getState().db.blocks).toHaveLength(1);
  
-+    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
-+    // The whole lifecycle, not the helper: a rendered choice becomes a
-+    // decision, the commit persists it, a real rehydration reads it back, and
-+    // the NEXT refresh — carrying no decisions at all — honours it.
-+    loadOwnerData();
-+    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
-+    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-+    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
-+    const skipped = await useStore.getState().commitArchiveImport({
++    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
++    // The counterexample, through the REAL store: preview an empty composer,
++    // choose the archive's value, then write your own before pressing Apply.
++    // No new QUESTION appears, so the rebase guard alone let this through and
++    // the registry value replaced the words just typed.
++    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
++    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
++    const secondKey = second.source!.pieceKey;
++    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
++    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
++    useStore.getState().updateItem(second.id, {
++      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
++    });
++    const refusedStale = await useStore.getState().commitArchiveImport({
 +      index: INDEX,
 +      instrumentId: SETAR,
-+      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
-+      decidedFromRev: asked.rev,
++      decisions: choice,
++      decidedFromRev: seen.rev,
 +      now: NOW,
 +    });
-+    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
-+
-+    // Reload: the bytes actually on disk, back through the app's hydration.
-+    const skipDisk = fakeStorage.get()!;
-+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-+    fakeStorage.set(skipDisk);
-+    await useStore.persist.rehydrate();
-+    const reloadedSource = useStore.getState().db.archiveSources[0]!;
-+    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
-+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-+    // The owner's own record is untouched and still theirs.
-+    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
-+
-+    // The NEXT refresh asks nothing and writes nothing.
-+    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-+    expect(afterReload.plan.questions).toEqual([]);
-+    const quiet = await commit(afterReload.rev);
-+    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
-+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-+
-+    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
-+    // The index has not moved; the owner has only just answered. Judging
-+    // "Already current" by the index hash alone reported exactly that and
-+    // dropped the answer before it could ever be written.
-+    const boundWithComposer = useStore
-+      .getState()
-+      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
-+    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
-+    const composer = boundWithComposer.persian!.composer!;
-+    const pieceKey = boundWithComposer.source!.pieceKey;
-+    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-+    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
-+    // An OFFER is not a change: unanswered, this refresh genuinely writes
-+    // nothing, and says so. The owner's DECISION is what makes it a write.
-+    expect(offered.plan.summary.unchanged).toBe(true);
-+    const answered2 = useStore.getState().previewArchiveImport({
++    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
++    expect(refusedStale.staleDecisions).toEqual(choice);
++    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
++      'Owner wrote this during refresh',
++    );
++    // Re-answered against what is actually there now, it applies.
++    const reAnswered = await useStore.getState().commitArchiveImport({
 +      index: INDEX,
 +      instrumentId: SETAR,
-+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
-+      now: NOW,
-+    });
-+    expect(answered2.plan.summary.unchanged).toBe(false);
-+    // Left unanswered, the same refresh really is a no-op.
-+    const declined = await commit(useStore.getState().rev);
-+    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
-+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
-+    // Answered, it is applied — and acknowledged by storage.
-+    const appliedField = await useStore.getState().commitArchiveImport({
-+      index: INDEX,
-+      instrumentId: SETAR,
-+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
++      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
 +      decidedFromRev: useStore.getState().rev,
 +      now: NOW,
 +    });
-+    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
-+    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-+    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
-+    // Nothing else moved with it.
-+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
-+      boundWithComposer.title,
++    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
++    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
++      second.persian!.composer,
 +    );
-+    expect(useStore.getState().db.blocks).toHaveLength(1);
 +
      // --- refresh NEVER runs a whole-database import or reset ---------------
      // `importDB`, `resetDemo` and `clearAll` each null the active session and
      // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
-diff --git a/src/store/archiveIndex.ts b/src/store/archiveIndex.ts
-index 2ea5eb1..6789442 100644
---- a/src/store/archiveIndex.ts
-+++ b/src/store/archiveIndex.ts
-@@ -98,7 +98,7 @@ export async function fetchPublishedIndex(
-   try {
-     return {
-       ok: true,
--      value: { index: parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
-+      value: { index: await parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
-     };
-   } catch (e) {
-     return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
-@@ -109,9 +109,9 @@ export async function fetchPublishedIndex(
-  * The file-import fallback. The SAME decoder, so a hand-copied index is held to
-  * exactly the rules a fetched one is.
-  */
--export function readIndexFile(text: string, now: Date = new Date()): IndexFetchResult {
-+export async function readIndexFile(text: string, now: Date = new Date()): Promise<IndexFetchResult> {
-   try {
--    return { ok: true, value: { index: parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
-+    return { ok: true, value: { index: await parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
-   } catch (e) {
-     return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
-   }
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index ecd581e..ffe4752 100644
+index ffe4752..9c3da10 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
-@@ -370,6 +370,8 @@ interface StoreState {
-     index: SourceIndex;
-     instrumentId: ID;
-     decisions?: ReconcileDecision[];
-+    /** This device's own media base, for converting a stored full URL. */
-+    verifiedBase?: string;
-     now?: Date;
-   }) => { plan: ImportPlan; rev: number };
-   /** Apply a previewed plan in ONE mutation, and wait for IndexedDB to say so. */
-@@ -377,6 +379,7 @@ interface StoreState {
-     index: SourceIndex;
-     instrumentId: ID;
-     decisions?: ReconcileDecision[];
-+    verifiedBase?: string;
-     decidedFromRev: number;
-     now?: Date;
-   }) => Promise<ArchiveCommitResult>;
-@@ -954,14 +957,17 @@ export const useStore = create<StoreState>()(
-         }));
-       },
+@@ -119,6 +119,8 @@ export interface ArchiveCommitResult {
+   status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
+   message: string;
+   summary?: ImportSummary;
++  /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
++  staleDecisions?: ReconcileDecision[];
+ }
  
--      previewArchiveImport: ({ index, instrumentId, decisions, now }) => {
-+      previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
-         // ONE statement, so the plan and the revision it was decided against
-         // cannot drift apart across an await that does not exist yet.
-         const { db, rev } = get();
--        return { plan: planArchiveImport({ db, index, instrumentId, decisions, now: now ?? new Date() }), rev };
-+        return {
-+          plan: planArchiveImport({ db, index, instrumentId, decisions, verifiedBase, now: now ?? new Date() }),
-+          rev,
-+        };
-       },
- 
--      commitArchiveImport: async ({ index, instrumentId, decisions = [], decidedFromRev, now }) => {
-+      commitArchiveImport: async ({ index, instrumentId, decisions = [], verifiedBase, decidedFromRev, now }) => {
-         const at = now ?? new Date();
-         // REBASE, never overwrite. A block finished, a note saved or an item
-         // deleted while the index was being fetched has bumped `rev`; the plan
-@@ -970,7 +976,7 @@ export const useStore = create<StoreState>()(
-         // decide on the owner's behalf — it goes back for another look.
-         const before = get();
-         const rebased = before.rev !== decidedFromRev;
--        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, now: at });
-+        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
-         if (rebased && plan.questions.length > 0) {
-           return {
-             ok: false,
-@@ -979,13 +985,21 @@ export const useStore = create<StoreState>()(
+ /**
+@@ -984,6 +986,22 @@ export const useStore = create<StoreState>()(
+             message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
            };
          }
- 
--        const nothingToDo = plan.summary.unchanged && !archivePersistFailed;
--        if (nothingToDo) return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
-+        // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
-+        // It returns the SAME OBJECT when a plan changes nothing, so asking it
-+        // is one source of truth for the question. The summary's own
-+        // `unchanged` was a second, and it answered about the INDEX alone: an
-+        // owner decision taken against an already-current index — skipping a
-+        // candidate, applying one registry field, a path the rename log moved —
-+        // was reported "Already current" and thrown away unwritten.
-+        const proposed = applyArchiveImport(before.db, plan, decisions);
-+        if (proposed === before.db && !archivePersistFailed) {
-+          return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
++        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
++        // QUESTION is not the only way a rebase invalidates an answer: the
++        // owner choosing the archive's composer over an empty field, then
++        // typing one of their own before pressing Apply, raised no question at
++        // all and overwrote the words they had just written. The plan reports
++        // both kinds of premise now — a moved value and a link target that has
++        // been deleted, bound elsewhere or moved instrument — and this refuses
++        // on either, whether or not `rev` moved.
++        if (plan.staleDecisions.length > 0) {
++          return {
++            ok: false,
++            status: 'stale',
++            message: 'Something you had already decided about has changed since. Look again before applying.',
++            staleDecisions: plan.staleDecisions,
++          };
 +        }
  
-         // VALIDATE THE WHOLE PROPOSED DATABASE BEFORE INSTALLING ANY OF IT —
-         // the same function every inbound door runs. A graph this device would
-         // refuse to import is a graph it must not write.
--        const proposed = applyArchiveImport(before.db, plan, decisions);
-         try {
-           validateDB(proposed);
-         } catch (e) {
-diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index bc29586..bb4f97a 100644
---- a/tests/practiceBrowser.ts
-+++ b/tests/practiceBrowser.ts
-@@ -344,6 +344,37 @@ export function publishRemote(remote: FakeRemote, stateText: string, hash: strin
-   if (!remote.refs.includes('main')) remote.refs.push('main');
- }
- 
-+/**
-+ * Re-stamp an index with the digest the SCANNER would have written for it.
-+ *
-+ * The app recomputes this digest at its reader boundary and refuses an index
-+ * whose content and hash disagree, so a journey that edits a fixture index must
-+ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
-+ * ONE implementation, here beside `publishSourceIndex`, so no journey can
-+ * quietly hand-edit a hash instead.
-+ */
-+export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
-+  const body = { ...index };
-+  delete body.contentHash;
-+  delete body.generatedAt;
-+  const sorted = (value: unknown): unknown => {
-+    if (Array.isArray(value)) return value.map(sorted);
-+    if (value && typeof value === 'object') {
-+      const out: Record<string, unknown> = {};
-+      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
-+        const v = (value as Record<string, unknown>)[k];
-+        if (v !== undefined) out[k] = sorted(v);
-+      }
-+      return out;
-+    }
-+    return value;
-+  };
-+  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
-+  const digest = await crypto.subtle.digest('SHA-256', bytes);
-+  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-+  return JSON.stringify({ ...index, contentHash });
-+}
-+
- /** Put a source index on the source-index branch, as the NAS publisher would. */
- export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
-   remote.sourceIndex = { text, commit };
-diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
-index a15befe..273ec33 100644
---- a/tests/setarArchive.browser.test.ts
-+++ b/tests/setarArchive.browser.test.ts
-@@ -11,6 +11,7 @@ import {
-   persistedUntil,
-   publishSourceIndex,
-   readPersistedState,
-+  stampSourceIndex,
-   reload,
-   type Engine,
-   type PracticeApp,
-@@ -33,7 +34,13 @@ const PHONE = { width: 390, height: 844 };
- const DESKTOP = { width: 1280, height: 900 };
- 
- interface Db {
--  items: { id: string; title: string; status: string; source?: { pieceKey: string } }[];
-+  items: {
-+    id: string;
-+    title: string;
-+    status: string;
-+    persian?: { composer?: string };
-+    source?: { pieceKey: string };
-+  }[];
-   lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
-   blocks: unknown[];
-   archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
-@@ -60,12 +67,18 @@ async function refresh(app: PracticeApp) {
-   await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
- }
- 
--/** An index with one more class than the corpus — the delta a refresh applies. */
--function withSession40(text: string): string {
-+/**
-+ * An index with one more class than the corpus — the delta a refresh applies.
-+ *
-+ * Re-STAMPED with the digest the scanner itself would have written: the app
-+ * recomputes that digest and refuses an index whose content and hash disagree,
-+ * so a journey may not hand-edit a hash to fake a new scan.
-+ */
-+async function withSession40(text: string): Promise<string> {
-   const index = JSON.parse(text) as {
-     contentHash: string;
-     sessions: unknown[];
--    pieces: { key: string }[];
-+    pieces: { key: string; composer: string }[];
-   };
-   index.sessions = [
-     ...index.sessions,
-@@ -90,8 +103,22 @@ function withSession40(text: string): string {
-       members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
-     },
-   ];
--  index.contentHash = index.contentHash.replace(/^../, 'ff');
--  return JSON.stringify(index);
-+  return stampSourceIndex(index as unknown as Record<string, unknown>);
-+}
-+
-+/** The composer this journey's re-scanned registry proposes for one piece. */
-+const NEW_COMPOSER = 'میرزا-عبدالله';
-+
-+/**
-+ * A re-scanned index whose REGISTRY has improved: one piece the owner already
-+ * has now names a different composer. That is a suggestion, never a write.
-+ */
-+async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
-+  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
-+  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
-+  const was = target.composer;
-+  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
-+  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
- }
- 
- describe('the Setar archive, rendered', () => {
-@@ -223,7 +250,7 @@ describe('the Setar archive, rendered', () => {
-           await page.getByRole('button', { name: 'Already current' }).click();
-           await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
- 
--          publishSourceIndex(remote, withSession40(INDEX_TEXT), 'source-index-commit-2');
-+          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
-           await refresh(app);
-           expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
-           await page.getByRole('button', { name: 'Apply' }).click();
-@@ -235,6 +262,55 @@ describe('the Setar archive, rendered', () => {
-           );
-           expect(delta.items.filter((i) => i.source)).toHaveLength(94);
- 
-+          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
-+          // The registry improves. That is an OFFER, field by field: nothing
-+          // about the owner's own piece changes until they say so, and the
-+          // choice must survive the commit even when the index behind it is
-+          // already the one installed.
-+          const better = await withBetterComposer(INDEX_TEXT);
-+          publishSourceIndex(remote, better.text, 'source-index-commit-4');
-+          await refresh(app);
-+          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
-+          await offerRow.first().waitFor({ timeout: 20_000 });
-+          const offerText = await page.locator('main').innerText();
-+          // The section label is rendered uppercase by the stylesheet, and
-+          // innerText returns what is actually rendered.
-+          expect(offerText).toMatch(/the archive knows more about these/i);
-+          expect(offerText).toContain(better.key);
-+          expect(offerText).toContain(NEW_COMPOSER);
-+          // Applying WITHOUT answering updates the source graph and leaves the
-+          // owner's own piece exactly as it was.
-+          await page.getByRole('button', { name: 'Apply' }).click();
-+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-+          const unanswered = await persistedUntil(
-+            app,
-+            (s) => (s.state as { db: Db }).db,
-+            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
-+          );
-+          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
-+
-+          // THE SAME INDEX, a NEW answer. The graph is already current, so a
-+          // refresh judged by the index hash alone called this "Already
-+          // current" and threw the answer away unwritten.
-+          await refresh(app);
-+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-+          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
-+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
-+          await page.getByRole('button', { name: 'Apply' }).click();
-+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-+          const answeredDb = await persistedUntil(
-+            app,
-+            (s) => (s.state as { db: Db }).db,
-+            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
-+          );
-+          // Only that field moved: the piece keeps its title and its history.
-+          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
-+          expect(answeredDb.blocks).toHaveLength(1);
-+          // …and the offer is gone, because it has been taken.
-+          await refresh(app);
-+          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
-+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-+
-           // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
-           publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
-           await goTo(app, '/settings');
-diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
-index ea5c08b..ca649cc 100644
---- a/tests/setarInbound.browser.test.ts
-+++ b/tests/setarInbound.browser.test.ts
-@@ -62,6 +62,33 @@ function v14Database(): PracticeDB {
- const V14_DB = v14Database();
- const V14_TEXT = serializeExport(V14_DB, CLOCK);
- 
-+/**
-+ * The same database with ONE nested value inside the graph made malformed.
-+ *
-+ * `members[].roles` is what `repeatChains` calls `.includes` on to render an
-+ * item's material, so a door that accepts this persists a database whose first
-+ * reader throws. It is the sharpest member of the family — the nested fields a
-+ * production reader dereferences — and every door below is given the identical
-+ * bytes rather than a door-specific approximation of them.
-+ */
-+function withMalformedRoles<T extends PracticeDB>(db: T): T {
-+  return {
-+    ...db,
-+    archiveSources: db.archiveSources.map((src, i) =>
-+      i === 0
-+        ? {
-+            ...src,
-+            sessions: src.sessions.map((sess, j) =>
-+              j === 0
-+                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
-+                : sess,
-+            ),
-+          }
-+        : src,
-+    ),
-+  } as unknown as T;
-+}
-+
- const wrap = (data: unknown, files?: unknown) =>
-   JSON.stringify({
-     app: 'practice-compass',
-@@ -71,9 +98,17 @@ const wrap = (data: unknown, files?: unknown) =>
-     ...(files === undefined ? {} : { files }),
-   });
- 
-+/**
-+ * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
-+ * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
-+ * and the rename log moves it here. Repair produces PERSISTED archive state, so
-+ * it has to cross these doors like everything else.
-+ */
-+const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
-+
- interface Shape {
-   items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
--  lessons: { id: string; source?: { sessionN: number }; origin?: string }[];
-+  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
-   blocks: unknown[];
-   archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
-   schemaVersion: number;
-@@ -101,6 +136,9 @@ describe('the archive graph at every inbound door', () => {
-       // …as did their own untouched records.
-       expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
-       expect(db.blocks).toHaveLength(1);
-+      // The REPAIRED reference survived the door, with the row the owner wrote.
-+      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
-+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
- 
-       const goodBytes = JSON.stringify(await readPersistedState(app));
- 
-@@ -182,6 +220,12 @@ describe('the archive graph at every inbound door', () => {
-           }),
-           says: /unsafe reference path/,
-         },
-+        {
-+          // The sealed counterexample: a nested value no door used to check.
-+          name: 'a membership with an unreadable role list',
-+          text: wrap(withMalformedRoles(bad)),
-+          says: /unreadable role list/,
-+        },
-         {
-           name: 'a newer schema',
-           text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
-@@ -241,6 +285,7 @@ describe('the archive graph at every inbound door', () => {
-       db = await shape(app);
-       expect(db.archiveSources).toHaveLength(1);
-       expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
-+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
- 
-       // --- A MALFORMED remote snapshot is refused, and installs nothing ----
-       const beforePull = JSON.stringify(await readPersistedState(app));
-@@ -255,6 +300,20 @@ describe('the archive graph at every inbound door', () => {
-         .toBe(true);
-       expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
- 
-+      // …and the NESTED malformation is refused by this door too, not only by
-+      // the import one. A pull that installed it would leave a database whose
-+      // own material reader throws, with nothing to undo it.
-+      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
-+      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
-+      await page.getByRole('button', { name: 'Sync now' }).click();
-+      await expect
-+        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
-+          timeout: 60_000,
-+          interval: 500,
-+        })
-+        .toBe(true);
-+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
-+
-       // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
-       await goTo(app, '/items/own-dashti');
-       await page.getByRole('button', { name: 'Edit' }).first().click();
-@@ -302,6 +361,11 @@ describe('the archive graph at every inbound door', () => {
-       // local attachments appear in `files` (there are none here).
-       expect(parsed.files ?? []).toEqual([]);
-       expect(exported).toContain('session-13-03-09-2024');
-+      // A repaired path is exported as the archive-relative text it now is —
-+      // no device base, no legacy folder prefix, and no bytes.
-+      expect(exported).toContain(REPAIRED_PATH);
-+      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
-+      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
- 
-       // --- BOTH HYDRATION BRANCHES ----------------------------------------
-       // `migrate`: a persisted database declaring the OLD version.
-@@ -337,6 +401,20 @@ describe('the archive graph at every inbound door', () => {
-       // Rendering the refusal writes nothing at all.
-       expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
- 
-+      // The same hydration branch, given the NESTED malformation instead: this
-+      // is the door the sealed counterexample actually walked through, and a
-+      // database it accepted would crash the first material render.
-+      await writePersistedState(
-+        app,
-+        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
-+        SCHEMA_VERSION,
-+      );
-+      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
-+      await page.reload();
-+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
-+      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
-+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
-+
-       // --- COLD-START RECOVERY gets the owner back in ----------------------
-       await page.getByLabel('Restore backup file').setInputFiles({
-         name: 'recover.json',
-@@ -349,6 +427,7 @@ describe('the archive graph at every inbound door', () => {
-       db = await shape(app);
-       expect(db.archiveSources).toHaveLength(1);
-       expect(db.items.filter((i) => i.source)).toHaveLength(93);
-+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
-       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-     } finally {
-       await app.close();
+         // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
+         // It returns the SAME OBJECT when a plan changes nothing, so asking it
 ```
 
 **Full current text of every file the rework touched:**
@@ -3387,6 +2932,19 @@ private data repo (`source-index` / `setar/index.json`); the app GETs it with th
 connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
 runbook, the corpus baseline and the recorded source hashes.
 
+**AND ONE SCAN IS ONE CONSISTENT VIEW OF EVERY INPUT, OR NONE.** The registry was the only
+input re-read after the walk, which made the guarantee exactly as narrow as the file it
+named — and the MEDIA is what a non-atomic NAS copy actually perturbs. Move a resource out
+before its folder is enumerated and put it back while later folders are walked: PIECES.csv
+never changes, the scan publishes an index that omits the file, and the next Refresh marks
+still-present material `unavailable`. The rename log had the identical exposure, read once
+and compared against nothing. `readSource` is now every input in ONE place, the whole of it
+is read TWICE and the two readings compared (sizes included, so a file still being copied is
+caught too), and any difference refuses before anything is written. It is a CONSISTENCY
+check, not atomicity: a perturbation stable across both readings agrees with itself and is
+indistinguishable from the archive genuinely being in that state. What it removes is the
+transient, which is what a copy in flight looks like.
+
 **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
 trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
 token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
@@ -3406,6 +2964,17 @@ file fallback both pass through, so neither door can be given the check separate
 it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
 decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
 broken file reports the error the owner can act on rather than a hash mismatch.
+
+**AND A VALID DIGEST SAYS THE FILE IS THE ONE THE SCANNER WROTE — NEVER THAT IT IS WELL
+FORMED.** The decoder NORMALISES before the graph's grammar runs, so the grammar only ever
+sees the decoder's own output: `resources: null` decoded to a session with no resources —
+a perfectly valid EMPTY LIST by the time the grammar saw it — and six files became zero
+behind a correct hash. Every absent-tolerant read had that shape, the scalars included
+(`part: "3"` became `null`, a wrong-typed `size` vanished, `rosterTrusted: 'yes'` became a
+boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`) are the
+one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
+the same treatment `validatePracticeText` gives the owner's own words, and never a
+coercion.
 
 **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
 SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
@@ -3455,7 +3024,8 @@ history into thirty-nine deadlines.
 **THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
 `commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
 saved or a block finished while the index was being fetched is never lost — refuses with
-`stale` when the rebase raises a NEW question, runs the whole proposed database through
+`stale` when the rebase raises a NEW question OR when a DECISION'S OWN PREMISE HAS MOVED,
+runs the whole proposed database through
 `validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
 write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
 matches, because "Already current" over data that was never saved is the lie this guards.
@@ -3489,6 +3059,23 @@ and the value an applied field writes — never the in-flight selection itself: 
 suggestion is component state, and it is re-derived from the graph on the next refresh
 precisely because nothing about it was stored.
 
+**AND A DECISION IS ABOUT THE STATE THE OWNER SAW, NOT MERELY ABOUT ITS TARGET.** A new
+QUESTION is not the only way a rebase invalidates an answer, and refusing only on that let
+the opposite case through silently: choose the archive's composer over an EMPTY field, then
+type one of your own before pressing Apply, and the rebase found nothing to ask about and
+wrote the registry value over the words just written. An `apply-field` decision therefore
+carries `from` — the value of the owner's it was chosen against — and
+`decisionMatchesSuggestion` is the ONE test both the plan's summary and
+`applyArchiveImport`'s write use, so a preview and a commit cannot mean different things by
+"this still applies". A LINK decision has a premise too: `link-item`/`link-lesson` may only
+adopt a record that is still UNBOUND and still this instrument's — the same conditions the
+candidate list was built from — because a target bound elsewhere, moved or deleted since
+would otherwise be silently rebound, or fall through and CREATE a record instead of linking
+one, which is not the action the owner chose. Both kinds land in `plan.staleDecisions`, one
+channel rather than two, and the commit refuses on either whether or not `rev` moved. The
+screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
+question, or the suggestion's real current value, is shown as it is now.
+
 **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
 decide what file a stored reference names, and they used to decide it differently:
 `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
@@ -3496,6 +3083,29 @@ decide what file a stored reference names, and they used to decide it differentl
 class whose references were saved as full links carried perfectly good evidence that
 nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
 is that one reading, and both go through it.
+
+**AND THAT WAS ONLY HALF OF IT: THE RENAME CHAIN HAD THREE READINGS.** Repair followed the
+whole logged chain, adoption took a SINGLE HOP, and a suppression took none at all — so one
+log gave three different answers about one file. With A→B→C logged, B in session 1 and C in
+session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B and then had
+that very reference repaired into session 2: bound to one class, pointing at another's
+files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
+that loops says nothing about where the file is), and three things use it: evidence, repair,
+and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+a hidden file simply reappeared under the new one while the old row sat there flagged
+unavailable. Re-keying it is not editing an owner decision — it is the same decision about
+the same bytes said in the archive's current words, the `itemId` scope carried untouched and
+`suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
+from the retained graph instead of flagged `unavailable`: the log says exactly where the
+bytes went, so that file moved, it did not disappear. The comparison is against every path
+the incoming graph describes, ACROSS sessions — a rename can move a file into a DIFFERENT
+session (the log's own A→B→C shape does exactly that), and asking only "is it still in this
+session" flagged such a file as gone while the same bytes sat in the graph under their new
+name. Safe to drop, where a piece or a
+session would not be: only those carry item/lesson bindings, so no binding can dangle on a
+resource row, and a manual unclassified lesson's own reference reaches material through the
+LESSON, never through this graph. A file that really is gone still keeps its provenance,
+flagged, exactly as before.
 
 **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
 `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
@@ -3527,7 +3137,10 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
 record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
 its provenance is kept — not a dangling reference.
 
-**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
+**THE NESTED GRAPH HAS ONE GRAMMAR — AND THE DECODER RUNS IT OVER ITS OWN OUTPUT, WHICH IS
+NOT THE SAME CLAIM AS RUNNING IT OVER WHAT ARRIVED.** (A later sealed review found exactly
+that gap; the `list`/`num`/`bool` rule above is what closes it, and the grammar below is
+what the decoder's OUTPUT and every persisted graph are both held to.) `decodeSourceIndex` and
 `validateArchiveSources` used to state the shape separately, and the second stated LESS of
 it: it checked a resource's path and its part group and walked straight past
 `members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
@@ -3543,6 +3156,32 @@ GRAMMAR, never a defensive guard in a component: a reader written against a vali
 is the point of validating it. `unavailable` stays legal on a piece, a session and a
 resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
 silently widens a hide scoped to ONE item.
+
+**AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
+the one persisted field with no check at all, while Settings renders it
+(`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
+`acceptedAt: null` was accepted, persisted, and then threw while the screen drew. It is
+held to a REAL calendar instant (`isValidSourceDateTime`, a local sibling of
+`isValidSourceDate` rather than a shared import, for the reason `askedAt` and `dueDate`
+already keep their checks one per file): a shape regex matches
+`"2026-02-30T12:00:00.000Z"` and `Date.parse` silently normalises it into March. `renames`
+and `diagnostics` are required AT REST where the grammar tolerates them absent, because the
+decoder always emits both and the planner reads them unguarded. A suppression's `at` is
+provenance only — nothing reads it back as a date — so it is held to being real text and no
+further. The fix is this DOOR, never a guard in `ArchiveRefresh.tsx`.
+
+**A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE.** Everything appends a path AFTER the
+base, so a credential, a query or a fragment in it is not untidiness:
+`https://user:pass@nas.example/media?token=secret` made "Open archive root"
+`…?token=secret/` and a file `…?token=secret/session-1/x.mp4` — a password on screen in
+every device URL, addressing no file at all. `normalizeBaseUrl` REFUSES all four
+(`username`, `password`, `search`, `hash`) rather than stripping them, because a rewritten
+base names a different server and only the owner can say what they meant; the media
+sentence says WHY. That is the whole family in one place: `resolveRecording`,
+`relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the reconciler's
+`verifiedBase` (through `archiveRootUrl`) all pass through it. A stored ABSOLUTE url is
+still opened as the owner saved it — their own authored link, not this device's configured
+base, and nothing here mints one.
 
 **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
 ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
@@ -4060,6 +3699,56 @@ from the user, recorded here.
 # Decisions
 
 Durable record of non-obvious choices. Newest first.
+
+## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
+
+A second sealed review rejected the reworked Setar-archive diff with five findings. Every
+one of them was a rule that genuinely existed and covered LESS than it read as covering, so
+each fix is the boundary all the callers share rather than the caller the counterexample
+named.
+
+- **One scan was one consistent view of the registry only.** PIECES.csv was re-read after
+  the walk; the rename log and the media inventory were read once and compared against
+  nothing — and the media is what a non-atomic NAS copy actually perturbs. A resource moved
+  out before its folder is enumerated and restored while later folders are walked produces a
+  valid index that omits it, and the next Refresh marks still-present material unavailable.
+  `readSource` is now every input in one place, read twice and compared. It is a CONSISTENCY
+  check and the comment says so: a perturbation stable across both readings is
+  indistinguishable, from here, from the archive genuinely being in that state.
+- **The decoder normalised before the grammar ran.** `checkSourceGraph` was made the one
+  grammar in the previous rework — but the decoder hands it the decoder's OWN output, so
+  `resources: null` became a valid empty list before the grammar ever saw it, and six files
+  became zero behind a correct digest. The scalars had the same shape (`part: "3"` → `null`,
+  a wrong-typed `size` dropped, `rosterTrusted: 'yes'` → a boolean). `list`/`num`/`bool`
+  replace every absent-tolerant read: absent is a default, present-and-wrong is a refusal
+  naming the record. Separately, `acceptedAt` was the one persisted field with no check at
+  all while Settings renders it — validated at the door, never guarded in the component.
+- **A decision was matched to its target, not to its premise.** The rebase refused only on a
+  NEW question, so choosing the archive's composer over an empty field and then typing your
+  own before Apply raised nothing to ask about and overwrote the new words. An `apply-field`
+  decision carries `from` now, `decisionMatchesSuggestion` is the one test the summary and
+  the write share, and a link may only adopt a record that is still unbound and still this
+  instrument's. Both land in `plan.staleDecisions` — ONE channel — and the commit refuses on
+  either, whether or not `rev` moved. Silently creating a record instead of linking one was
+  rejected as an answer: it is not the action the owner chose.
+- **The rename chain had three readings.** Repair followed the whole chain, adoption took one
+  hop, a suppression took none. A→B→C with B in session 1 and C in session 2 adopted a class
+  as session 1 and then repaired its reference into session 2. `followRenames` is the one
+  reading; a resource suppression is re-keyed through it (the same decision about the same
+  bytes, in the archive's current words), and a renamed row is dropped from the retained
+  graph rather than flagged `unavailable` — the log says where the bytes went. Dropping is
+  safe for a RESOURCE specifically: only pieces and sessions carry bindings.
+- **A media base was validated as a URL, not as a base.** Everything appends a path after it,
+  so `https://user:pass@nas/media?token=secret` put a password in every device URL and
+  addressed no file. `normalizeBaseUrl` refuses credentials, query and fragment — refuses,
+  not strips, because a rewritten base names a different server — and every caller,
+  `verifiedBase` included, already passes through it.
+
+Fifteen mutations were run and all fifteen fail their named acceptance test: each decoder
+site reverted INDIVIDUALLY (a single-site test would have passed a partial fix), the
+scanner's second reading, the `acceptedAt` and rename-log checks, the one-hop evidence, the
+un-migrated suppression ref, the re-flagged renamed row, `from` dropped from the predicate,
+the staleness detector disabled, the bound-target link guard, and the base-URL refusal.
 
 ## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
 
@@ -5069,6 +4758,866 @@ recommendation engine's `scoreItems` — no second ranking — and is pure and d
 No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.
 ```
 
+### docs/setar-archive.md
+
+````
+# The Setar archive: scanner, index and refresh
+
+How the normalised Setar class archive becomes historical lessons, canonical
+repertoire items and useful practice material — and exactly how the unattended
+part of it is installed, run and rolled back.
+
+Nothing here writes to the archive. Ever.
+
+---
+
+## 1. The shape of it
+
+```
+NAS (read-only)                     GitHub (private data repo)        App
+┌────────────────────────┐          ┌───────────────────────┐        ┌──────────────┐
+│ setar-classes/         │  scan    │ branch: source-index  │  GET   │ Refresh      │
+│   session-N-DD-MM-YYYY │ ───────▶ │   setar/index.json    │ ─────▶ │ Setar archive│
+│   PIECES.csv           │ publish  └───────────────────────┘        └──────────────┘
+│   RENAME-LOG.csv       │                     ▲                            │
+└────────────────────────┘                     │                            ▼
+         ▲                            branch: main (app data)     one validated
+         │ media, opened directly              UNTOUCHED           store mutation
+         └──────────────────────────────────────────────────────────────┘
+```
+
+Three separations do the work:
+
+- **The app never parses a filename.** The grammar lives once, in the scanner.
+- **The index is on its OWN branch.** The app's sync writes `main`'s whole tree
+  with no `base_tree`, so a sidecar next to `state.json` would disappear on the
+  next sync. `source-index` is outside that, and outside `archive/…` recovery
+  branches too.
+- **Media never travels.** Only paths do. Each device resolves them through its
+  own base URL, so changing the transport rewrites no stored record.
+
+---
+
+## 2. The scanner
+
+`scripts/scan-setar-classes.mjs` — Node stdlib only, no dependencies, read-only
+over the archive.
+
+```sh
+node scripts/scan-setar-classes.mjs --root /volume1/media/setar-classes --out /volume1/practice-compass-index/setar-index.json
+node scripts/scan-setar-classes.mjs --root <archive>            # to stdout
+```
+
+It reads `PIECES.csv` (the canonical registry) with a real quoting-aware CSV
+parser, walks the `session-N-DD-MM-YYYY` folders, applies the filename grammar
+from the archive's own `CRAWLER-BRIEF.md`, and emits a **clock-free** JSON index
+with a `contentHash` over its semantic body. The same archive always produces
+byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
+
+What it refuses outright (and produces no index for): a malformed or ambiguous
+registry, a duplicate canonical key, two folders claiming one session number, an
+unsafe path, more than 5000 files, **any input that changed during the scan** —
+the registry, the rename log or the media inventory, all three read twice and
+compared, sizes included, so a file still being copied is caught too. That is a
+CONSISTENCY check, not atomicity: a perturbation that is stable across both
+readings agrees with itself, and from here is indistinguishable from the archive
+genuinely being in that state. What it removes is the transient — which is what a
+copy in flight looks like, and what would otherwise publish an index missing a
+file that is still there.
+What it reports and skips: a file with no known role, an unknown piece, an
+unsupported extension, a class recording claiming a piece, an unnamed demo in a
+session whose roster and filenames disagree.
+
+The output is written **outside the archive** via a temp file + rename, and the
+scanner refuses an `--out` path inside `--root`.
+
+### Corpus baseline
+
+Verified directly against the real archive on 2026‑09‑17:
+
+| | |
+|---|---|
+| sessions | 39 |
+| files in session folders | 258 |
+| parseable | 257 |
+| known exception | 1 (`session-16-26-11-2024/video-2024-10-29-15-32-35.mp4`) |
+| canonical pieces | 94 |
+| personal recordings (`تمرین-من`) | 125 |
+| useful resources | 132 (45 class · 57 demo clips · 24 notation · 6 corrections) |
+| logical demonstrations | 37 |
+| rename-log rows | 257 |
+
+Source hashes (sha256), so a changed input is visible rather than assumed:
+
+```
+PIECES.csv        1f68366e32f0f5ddc8b8db0c1027893b724e16d496f0dca0502fa0a0cd133524
+RENAME-PLAN.csv   795faf11c1538e69905e245e9c45d0b13ebcd3469a1b18a2db097786e576b39c
+RENAME-LOG.csv    0c276d5e50fc93904ecfb76c71b1c78dca1cda2610f1569f28c9828013278373
+CRAWLER-BRIEF.md  ee76dbc17351fdcc33662b7c467652f5b90728005ef48071bdb35bcf8843a9bc
+sorted path inventory (LF-joined, trailing newline)
+                  0286b07549ad55b0f84166dc2c7b8c2d5949f96a282f03ebaa5837ebf5b22ae7
+```
+
+These are evidence of one corpus, not a limit: sessions 40+ need no code change.
+
+---
+
+## 3. The publisher
+
+`scripts/publish-setar-index.mjs` writes **one file on one branch**:
+`source-index` / `setar/index.json`. Both are fixed in the code, and every other
+target is refused before a request is made.
+
+- **Unchanged content makes no commit.** The index is clock-free, so identical
+  bytes mean an identical archive.
+- The branch ref advances **non-force** from the commit that was read, with
+  `expected_head_sha`, so a racing publisher loses the update rather than
+  overwriting it; the retry re-reads before deciding anything.
+- An interruption before the ref advances leaves the previous index published —
+  a blob and a commit nothing points at are invisible.
+- Error messages are built from the HTTP status and the endpoint name only.
+  **No token, no repository URL and no archive path ever reaches a log.**
+
+### The credential
+
+A GitHub token scoped to **this one private repository**, with **Contents:
+write** and **Metadata: read**, and no workflow or admin permission.
+
+> GitHub does not issue branch-scoped tokens. The branch and path restriction is
+> a property of *this code* (and, optionally, of repository rules). It must not
+> be described as credential isolation.
+
+It lives in the NAS runtime's own protected configuration file and nowhere
+else — never in the archive, the app, a backup, sync, a commit or a log line.
+The app's own GitHub connection (Settings → Sync) is a *different* credential and
+is used here for **GETs only**.
+
+---
+
+## 4. Installing the unattended job on the NAS
+
+The production host is the Synology NAS, not the Mac. The Mac can run the same
+two scripts by hand; that is the development fallback, not the deployment.
+
+1. **Runtime.** Install a supported Node runtime (Package Center → Node.js).
+   Record the actual binary path — `which node` under the task's own shell — and
+   set `PC_NODE` if it is not on `PATH`.
+2. **Directories.** Create a runtime/output directory *outside* the archive,
+   e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
+   Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
+   `scripts/run-setar-index.sh` into it.
+3. **Permissions.** Give that user **read-only** access to the archive share and
+   read/write to the runtime directory only.
+4. **Configuration.** Create `config.env` in the runtime directory, `chmod 600`:
+
+   ```sh
+   PC_ARCHIVE_ROOT=/volume1/<share>/setar-classes   # the REAL mount, not /Volumes/…
+   PC_INDEX_REPO=<owner>/practice-compass-data
+   PC_INDEX_TOKEN=<the publisher token>
+   ```
+
+   The real internal mount path is discovered during installation. **Do not
+   assume the Mac's `/Volumes/...` path exists on DSM.**
+5. **Schedule.** DSM → Control Panel → Task Scheduler → Create → Scheduled Task
+   → User-defined script. Run as the service user, every **15 minutes**, command:
+
+   ```sh
+   sh /volume1/practice-compass-index/run-setar-index.sh
+   ```
+
+   Enable "Send run details by email" only on error: the script prints counts and
+   a truncated commit id, never a secret.
+6. **Verify.** Run the task once by hand and confirm: a commit on `source-index`,
+   `main` unchanged (`git log --oneline main` has no new entry), and the app's
+   Refresh finding the new index. Then confirm an **unattended** run with the Mac
+   off.
+
+### What has been exercised, and what only the owner can
+
+`run-setar-index.sh` was run end to end on the Mac against the real archive with a
+deliberately invalid `PC_INDEX_TOKEN` (2026‑09‑17). It scanned the live corpus to the same
+content hash as every other run (`924125427f61`), wrote `setar-index.json` into the runtime
+directory, failed the publish with `GitHub refused the branch reference (HTTP 401)`, exited
+non-zero so a scheduler reports it, and left the archive byte-for-byte untouched. The
+output contains **no token, no repository name, no API URL and no archive path** — checked,
+not assumed.
+
+What that cannot prove, and what the OWNER has to confirm on the NAS itself: the real
+internal mount path, the DSM Node runtime, the service user's read-only permissions, the
+scheduled task firing unattended with the Mac off, a real publish landing on `source-index`
+with `main` unchanged, and the behaviour when the token is revoked.
+
+### Rollback
+
+Disable the scheduled task. The app keeps the source graph it last accepted and
+goes on working offline from it. To go back to an earlier index,
+`git push --force-with-lease` an earlier `source-index` commit. Neither touches
+the app's own data on `main`. Revoking the token stops publication and leaves the
+last good index exactly where it is.
+
+---
+
+## 5. What the app does with it
+
+**Refresh Setar archive** (Settings, reachable from Lessons) fetches the branch
+ref, then the file **at that commit**, validates it, shows what would change, and
+applies the lot in one store mutation.
+
+- **Refresh means "the latest published index", not "rescan the NAS now."** The
+  UI says when the index was last *fetched* and last *changed*. It never says
+  "last scanned", because nothing here can know that.
+- **Exact source binding wins.** A record already bound to a source identity *is*
+  that entity, whatever its title or date has since been edited to.
+- A legacy class is auto-adopted only on **instrument + date + number + exact
+  source-path evidence**. Date alone, number alone or title alone cannot merge.
+- An exact title or literal alias match produces **Link / Create separately /
+  Skip** — never an automatic merge, and never "pick the first candidate".
+- New pieces arrive **resting**, by explicit import policy, so ninety-four items
+  do not flood Today. They stay searchable and directly startable.
+- **Nothing about practice is ever seeded**: no minutes, no result, no review
+  date, no SM‑2 state. An imported class is history even when its date is in the
+  future relative to this device's clock.
+- Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
+  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
+  its file through the rename log, so a renamed resource does not reappear —
+  including when the rename moves it into a different session's folder, where
+  the old row is dropped rather than reported missing.
+- **A decision is about the state you saw.** If the value you chose the archive's
+  over has changed since — or a record you chose to link has been deleted, bound
+  elsewhere or moved instrument — the commit refuses and re-previews rather than
+  applying an answer to a question that no longer stands.
+- **Your media base is an address and a folder.** A base carrying a username,
+  password, `?query` or `#fragment` is refused, not silently cleaned up: every
+  file URL is built by appending a path to it.
+
+The owner's own `تمرین-من` recordings are evidence, not material: their
+membership and role survive in the graph, the files themselves never become a
+piece's material.
+
+---
+
+## 6. Notes for whoever changes this next
+
+- **`scripts/setar-index.test.mjs` is deliberately absent.** Vitest's `include`
+  is `src/**/*.test.ts` and `tests/**/*.test.ts` (and `vite.config.ts` is a
+  forbidden path in the lane that built this), so a test file under `scripts/`
+  would never run. The scanner and publisher are tested from
+  `src/domain/scanSetarClasses.test.ts` and `src/store/archiveIndex.test.ts`,
+  which import the `.mjs` modules directly.
+- **`src/domain/sourceArchive.test.ts` is deliberately absent too.** The decoder, the
+  deterministic ids, the suppression queries and `validateArchiveSources` are all exercised
+  where they are actually used — `scanSetarClasses.test.ts` (the grammar that feeds it),
+  `io.test.ts` (the validation boundary every door runs), `sourceReconcile.test.ts` and
+  `archiveIndex.test.ts` (the store). A fourth file asserting the same functions in
+  isolation would add a place to forget, not a place to look.
+- **`src/domain/setarClasses.ts` is frozen.** It is no longer a workflow; it is
+  the ledger of the 67 obsolete paths the old bundled importer wrote, and the
+  reference-repair check runs against all 67 of them.
+- `npm test` must never need the NAS, the Sandisk drive or the network. The
+  checked-in fixture `tests/fixtures/setar-archive.json` is the real corpus with
+  registry notes trimmed to their first sentence.
+````
+
+### scripts/scan-setar-classes.mjs
+
+```
+#!/usr/bin/env node
+// Scan the normalised Setar class archive into a deterministic JSON index.
+//
+//   node scripts/scan-setar-classes.mjs --root <archive> --out <file>
+//   node scripts/scan-setar-classes.mjs --root <archive>          # stdout
+//
+// READ-ONLY over the archive: nothing is written, renamed or deleted inside
+// `--root`, and the output must live outside it. Node stdlib only — the app's
+// dependencies are not available to an operator running this on a NAS.
+//
+// The app never parses a filename: it consumes the published index. That is
+// the whole reason this grammar lives here once rather than twice.
+//
+// Source contract: <ARCHIVE_ROOT>/CRAWLER-BRIEF.md.
+
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, renameSync, readdirSync, lstatSync } from 'node:fs';
+import { join, resolve, sep } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { parseArgs } from 'node:util';
+
+export const ARCHIVE_ID = 'setar-classes';
+export const INDEX_FORMAT = 'setar-archive-index';
+export const INDEX_VERSION = 1;
+
+/**
+ * Roles are NOT single hyphen-tokens — "ضبط-کلاس" and "تمرین-من" each contain
+ * one — so a role is matched as a LONGEST prefix at a hyphen boundary, never
+ * by splitting the stem on "-" and taking token 0 (which yields "تمرین" for
+ * تمرین-من-عراق.mp4).
+ */
+export const ROLES = ['ضبط-کلاس', 'تمرین-من', 'تصحیح', 'تکلیف', 'جزوه', 'نمونه', 'نت'];
+
+/** The student's own recordings: real evidence of work, never useful material. */
+export const PERSONAL_ROLE = 'تمرین-من';
+/** The teacher's demonstration. See §4 of the brief — its attribution is special. */
+export const DEMO_ROLE = 'نمونه';
+/** The whole class recording. Attaches to the SESSION; never carries a piece. */
+export const CLASS_ROLE = 'ضبط-کلاس';
+
+const KIND_BY_EXT = { '.mp4': 'video', '.pdf': 'score', '.jpg': 'photo' };
+
+/** NAS housekeeping and dotfiles are never archive content. */
+const IGNORED_DIRS = new Set(['@eaDir', '#recycle']);
+
+// Bounds. A runaway mount or a wrong --root must fail loudly, not be indexed.
+const MAX_FILES = 5000;
+const MAX_CSV_BYTES = 4 * 1024 * 1024;
+
+// ---------------------------------------------------------------------------
+// CSV
+// ---------------------------------------------------------------------------
+
+/**
+ * Quoting-aware CSV reader. The registry's `notes` column carries commas and
+ * doubled quotes inside quoted fields, so splitting on "," loses rows and
+ * silently shifts every column after it.
+ *
+ * Malformed quoting (a quoted field that never closes, or a stray quote after
+ * a closing one) THROWS — a half-read registry is an ambiguous identity table,
+ * which is exactly what this lane may not guess at.
+ */
+export function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = '';
+  let quoted = false;
+  let started = false; // this field opened with a quote
+  let i = 0;
+  const src = text.replace(/^﻿/, '');
+
+  const endField = () => {
+    row.push(field);
+    field = '';
+    started = false;
+  };
+  const endRow = () => {
+    endField();
+    rows.push(row);
+    row = [];
+  };
+
+  while (i < src.length) {
+    const c = src[i];
+    if (quoted) {
+      if (c === '"') {
+        if (src[i + 1] === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        quoted = false;
+        i += 1;
+        continue;
+      }
+      field += c;
+      i += 1;
+      continue;
+    }
+    if (c === '"') {
+      if (field !== '' || started) throw new Error(`Malformed CSV: unexpected quote at offset ${i}.`);
+      quoted = true;
+      started = true;
+      i += 1;
+      continue;
+    }
+    if (c === ',') {
+      endField();
+      i += 1;
+      continue;
+    }
+    if (c === '\r') {
+      i += 1;
+      continue;
+    }
+    if (c === '\n') {
+      endRow();
+      i += 1;
+      continue;
+    }
+    field += c;
+    i += 1;
+  }
+  if (quoted) throw new Error('Malformed CSV: a quoted field is never closed.');
+  if (field !== '' || row.length > 0) endRow();
+  return rows.filter((r) => r.length > 1 || r[0] !== '');
+}
+
+/** Rows as objects, checked against the exact headers a caller requires. */
+export function readTable(text, requiredHeaders) {
+  if (text.length > MAX_CSV_BYTES) throw new Error('CSV is larger than this scanner accepts.');
+  const rows = parseCsv(text);
+  if (rows.length === 0) throw new Error('CSV is empty.');
+  const header = rows[0].map((h) => h.trim());
+  for (const h of requiredHeaders) {
+    if (!header.includes(h)) throw new Error(`CSV is missing the "${h}" column.`);
+  }
+  return rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])));
+}
+
+// ---------------------------------------------------------------------------
+// PIECES.csv — the canonical registry
+// ---------------------------------------------------------------------------
+
+const REGISTRY_HEADERS = ['canonical_fa', 'form', 'piece', 'dastgah', 'composer', 'aliases_seen', 'sessions', 'notes'];
+
+/**
+ * `canonical_fa` is the BYTE-EXACT join key: it is the `<piece>` segment of
+ * every filename, unchanged. Nothing here folds spellings, transliterates or
+ * normalises it — `aliases_seen` is literal SEARCH data and is never consulted
+ * for identity.
+ */
+export function parseRegistry(text) {
+  const rows = readTable(text, REGISTRY_HEADERS);
+  const pieces = [];
+  const seen = new Set();
+  for (const r of rows) {
+    const key = r.canonical_fa;
+    if (!key || !key.trim()) throw new Error('Registry has a row with an empty canonical_fa.');
+    if (seen.has(key)) throw new Error(`Registry has two rows for the canonical piece "${key}".`);
+    seen.add(key);
+    const sessions = [];
+    for (const raw of r.sessions.split(',')) {
+      const s = raw.trim();
+      if (!s) continue;
+      if (!/^\d+$/.test(s)) throw new Error(`Registry row "${key}" has an invalid session number "${s}".`);
+      const n = Number(s);
+      if (n < 1) throw new Error(`Registry row "${key}" has an invalid session number "${s}".`);
+      if (!sessions.includes(n)) sessions.push(n);
+    }
+    sessions.sort((a, b) => a - b);
+    const notes = r.notes ?? '';
+    pieces.push({
+      key,
+      form: r.form ?? '',
+      piece: r.piece ?? '',
+      dastgah: r.dastgah ?? '',
+      composer: r.composer ?? '',
+      aliases: r.aliases_seen ? r.aliases_seen.split('|').map((a) => a.trim()).filter(Boolean) : [],
+      sessions,
+      notes,
+      // Caveats are SOURCE evidence, surfaced as flags — never a licence to
+      // invent a category or to merge one piece into another.
+      provisional: /PROVISIONAL/.test(notes),
+      mediumConfidence: /MEDIUM confidence/i.test(notes),
+    });
+  }
+  pieces.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return pieces;
+}
+
+// ---------------------------------------------------------------------------
+// Filenames and folders
+// ---------------------------------------------------------------------------
+
+/** "session-12-06-08-2024" → { n: 12, date: "2024-08-06" }, else null. */
+export function parseSessionFolderName(name) {
+  const m = /^session-(\d+)-(\d{2})-(\d{2})-(\d{4})$/.exec(name);
+  if (!m) return null;
+  const [, n, dd, mm, yyyy] = m;
+  // Round-trip through Date.UTC: /^\d{2}$/ happily matches "30-02-2024".
+  const d = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
+  if (
+    d.getUTCFullYear() !== Number(yyyy) ||
+    d.getUTCMonth() !== Number(mm) - 1 ||
+    d.getUTCDate() !== Number(dd)
+  ) {
+    return null;
+  }
+  return { n: Number(n), date: `${yyyy}-${mm}-${dd}` };
+}
+
+/** File extension, lowercased, including the dot ("" when there is none). */
+export function fileExt(name) {
+  const i = name.lastIndexOf('.');
+  return i <= 0 ? '' : name.slice(i).toLowerCase();
+}
+
+/**
+ * `<role>-<canonical_piece>[-<n>]` — the exact algorithm from §2 of the brief.
+ * Returns null when no role matches: an unparseable file is SURFACED, never
+ * guessed at.
+ */
+export function parseAssetStem(stem) {
+  let role = null;
+  for (const r of ROLES) {
+    if (stem === r || stem.startsWith(`${r}-`)) {
+      if (!role || r.length > role.length) role = r;
+    }
+  }
+  if (!role) return null;
+  const rest = stem.slice(role.length).replace(/^-+/, '');
+  // A TRAILING "-<digits>" is always a part number: no canonical piece name
+  // ends in a digit, so this cannot eat one. An EMBEDDED digit
+  // (تمرین-دشتی-1-علیزاده) is piece identity and stays.
+  let piece = null;
+  let part = null;
+  const trailing = /^(.*?)-(\d+)$/.exec(rest);
+  if (trailing) {
+    piece = trailing[1] || null;
+    part = Number(trailing[2]);
+  } else if (/^\d+$/.test(rest)) {
+    part = Number(rest);
+  } else {
+    piece = rest || null;
+  }
+  return { role, piece, part };
+}
+
+/** Display title: the stem with "-"/"_" as spaces. Never used as identity. */
+export function displayTitle(stem) {
+  return stem.replace(/[-_]+/g, ' ').trim();
+}
+
+/**
+ * A path is only ever an archive-relative POSIX path of plain segments.
+ * Traversal, absolute paths, backslashes, URL schemes and percent-encoded
+ * separators are refused rather than sanitised — a rewritten path is a
+ * DIFFERENT file, and this index is an identity table.
+ */
+export function isSafeRelativePath(p) {
+  if (typeof p !== 'string' || !p) return false;
+  if (p.length > 1024) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(p)) return false; // http:, file:, data:…
+  if (p.startsWith('/') || p.includes('\\')) return false;
+  if (/%2f|%5c/i.test(p)) return false;
+  const segs = p.split('/');
+  return segs.every((s) => s !== '' && s !== '.' && s !== '..');
+}
+
+// ---------------------------------------------------------------------------
+// Index
+// ---------------------------------------------------------------------------
+
+const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Build the semantic index from the registry text and a flat inventory of
+ * `{ path, size }` entries (archive-relative). PURE and clock-free: the same
+ * inventory in any order, with any mtimes, produces byte-identical output.
+ *
+ * Throws only for input that makes the whole index untrustworthy (a malformed
+ * or ambiguous registry, a duplicate identity, an unsafe path, too many
+ * files). Individual unhandled FILES are reported in `diagnostics` and left
+ * out — surfaced for the owner, never relabelled.
+ */
+export function buildIndex({ registryText, inventory, renameLogText }) {
+  const pieces = parseRegistry(registryText);
+  const byKey = new Map(pieces.map((p) => [p.key, p]));
+
+  if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
+
+  const diagnostics = [];
+  const diag = (path, reason) => diagnostics.push({ path, reason });
+
+  // --- sessions -----------------------------------------------------------
+  const sessions = new Map(); // n -> { n, date, folder, assets: [] }
+  const seenPaths = new Set();
+  for (const entry of inventory) {
+    const path = entry.path;
+    if (!isSafeRelativePath(path)) throw new Error(`Refusing an unsafe archive path: ${JSON.stringify(path)}`);
+    if (seenPaths.has(path)) throw new Error(`Two inventory entries share the path "${path}".`);
+    seenPaths.add(path);
+
+    const segs = path.split('/');
+    if (segs.length !== 2) {
+      diag(path, 'Outside a session folder — not indexed.');
+      continue;
+    }
+    const [folder, name] = segs;
+    const parsed = parseSessionFolderName(folder);
+    if (!parsed) {
+      diag(path, 'Not in a session-N-DD-MM-YYYY folder — not indexed.');
+      continue;
+    }
+    const existing = sessions.get(parsed.n);
+    if (existing && existing.folder !== folder) {
+      throw new Error(`Two folders claim session ${parsed.n}: "${existing.folder}" and "${folder}".`);
+    }
+    const session = existing ?? { n: parsed.n, date: parsed.date, folder, assets: [] };
+    sessions.set(parsed.n, session);
+
+    const ext = fileExt(name);
+    const kind = KIND_BY_EXT[ext];
+    const stem = ext ? name.slice(0, -ext.length) : name;
+    const parsedName = parseAssetStem(stem);
+    if (!parsedName) {
+      diag(path, 'Filename carries no known role — left for the owner to name or move.');
+      continue;
+    }
+    if (!kind) {
+      diag(path, `Unsupported file type "${ext || '(none)'}" — not indexed.`);
+      continue;
+    }
+    if (parsedName.piece && !byKey.has(parsedName.piece)) {
+      diag(path, `Piece "${parsedName.piece}" is not in the registry — not indexed.`);
+      continue;
+    }
+    if (parsedName.piece && parsedName.role === CLASS_ROLE) {
+      diag(path, 'A class recording covers the whole lesson and cannot name a piece.');
+      continue;
+    }
+    session.assets.push({
+      path,
+      role: parsedName.role,
+      piece: parsedName.piece,
+      part: parsedName.part,
+      kind,
+      title: displayTitle(stem),
+      size: entry.size ?? 0,
+    });
+  }
+
+  const ordered = [...sessions.values()].sort((a, b) => a.n - b.n);
+
+  // --- attribution --------------------------------------------------------
+  const out = [];
+  for (const s of ordered) {
+    s.assets.sort((a, b) => cmp(a.role, b.role) || cmp(a.piece ?? '', b.piece ?? '') || (a.part ?? 0) - (b.part ?? 0) || cmp(a.path, b.path));
+
+    // The ROSTER is the registry's own answer to "which pieces were assigned
+    // at class N" — never a set inferred from the filenames present.
+    const roster = pieces.filter((p) => p.sessions.includes(s.n)).map((p) => p.key);
+    const named = [...new Set(s.assets.map((a) => a.piece).filter(Boolean))];
+    const strays = named.filter((k) => !roster.includes(k));
+    // A named piece the roster does not claim means the two halves of the
+    // source disagree. An unnamed demo expands across the roster, so expanding
+    // it here would spread a guess: block that one inference and say so.
+    const rosterTrusted = strays.length === 0;
+    for (const k of strays) diag(`${s.folder}`, `Piece "${k}" appears in this folder but the registry does not list session ${s.n} for it.`);
+
+    const resources = [];
+    const memberships = new Map(); // pieceKey -> Set(role)
+    const member = (key, role) => {
+      if (!memberships.has(key)) memberships.set(key, new Set());
+      memberships.get(key).add(role);
+    };
+
+    for (const a of s.assets) {
+      if (a.piece) member(a.piece, a.role);
+      // The student's own playing is EVIDENCE, not material: its membership
+      // and role survive, the individual file does not.
+      if (a.role === PERSONAL_ROLE) continue;
+      const pieces_ =
+        a.role === DEMO_ROLE && !a.piece
+          ? rosterTrusted
+            ? roster
+            : []
+          : a.piece
+            ? [a.piece]
+            : [];
+      if (a.role === DEMO_ROLE && !a.piece && !rosterTrusted) {
+        diag(a.path, `Unnamed demonstration not attributed: session ${s.n}'s roster disagrees with its filenames.`);
+      }
+      for (const k of pieces_) member(k, a.role);
+      resources.push({
+        path: a.path,
+        role: a.role,
+        kind: a.kind,
+        title: a.title,
+        part: a.part,
+        size: a.size,
+        // A class recording, an unnamed handout and an unattributed demo stay
+        // with the LESSON. Only a resource that names its pieces is scoped.
+        pieces: a.role === CLASS_ROLE ? [] : pieces_,
+        // Parts of one demonstration are ONE logical resource, ordered by part.
+        group: a.role === DEMO_ROLE ? `${DEMO_ROLE}:${a.piece ?? ''}` : null,
+      });
+    }
+
+    out.push({
+      n: s.n,
+      date: s.date,
+      folder: s.folder,
+      roster,
+      rosterTrusted,
+      hasClassRecording: s.assets.some((a) => a.role === CLASS_ROLE),
+      resources: resources.sort((a, b) => cmp(a.role, b.role) || cmp(a.group ?? '', b.group ?? '') || (a.part ?? 0) - (b.part ?? 0) || cmp(a.path, b.path)),
+      members: [...memberships.entries()]
+        .map(([key, roles]) => ({ key, roles: [...roles].sort(cmp) }))
+        .sort((a, b) => cmp(a.key, b.key)),
+    });
+  }
+
+  // --- rename provenance --------------------------------------------------
+  // EXACT old→new pairs only. This is path provenance, not a similarity model:
+  // an old path with two destinations is reported, never resolved by guessing.
+  const renames = [];
+  if (renameLogText) {
+    const rows = readTable(renameLogText, ['old_path', 'new_path']);
+    const dest = new Map();
+    for (const r of rows) {
+      const from = r.old_path.trim();
+      const to = r.new_path.trim();
+      if (!from || !to) continue;
+      if (!isSafeRelativePath(from) || !isSafeRelativePath(to)) {
+        diag(from, 'Rename row carries an unsafe path — ignored.');
+        continue;
+      }
+      const prior = dest.get(from);
+      if (prior && prior !== to) {
+        diag(from, `Rename log maps this path to both "${prior}" and "${to}" — not applied.`);
+        continue;
+      }
+      if (prior === to) continue;
+      dest.set(from, to);
+      renames.push({ from, to });
+    }
+    renames.sort((a, b) => cmp(a.from, b.from));
+  }
+
+  const body = {
+    format: INDEX_FORMAT,
+    version: INDEX_VERSION,
+    archiveId: ARCHIVE_ID,
+    pieces,
+    sessions: out,
+    renames,
+    diagnostics: diagnostics.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason)),
+  };
+  return { ...body, contentHash: contentHash(body) };
+}
+
+/** Stable digest of the SEMANTIC body — no clock, no mtimes, no ordering luck. */
+export function contentHash(body) {
+  const { contentHash: _ignored, generatedAt: _also, ...rest } = body;
+  return createHash('sha256').update(canonicalJson(rest)).digest('hex');
+}
+
+/** Key-sorted JSON, so an object-literal reordering cannot change the hash. */
+export function canonicalJson(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const keys = Object.keys(value).filter((k) => value[k] !== undefined).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+// ---------------------------------------------------------------------------
+// Filesystem (the only impure part)
+// ---------------------------------------------------------------------------
+
+/**
+ * Inventory the archive: one pass, session folders only, dotfiles and NAS
+ * housekeeping skipped, symlinks never followed (a link out of the archive is
+ * a path this scanner has no authority over). Read-only by construction —
+ * nothing here opens a file for writing.
+ */
+export function scanArchive(root) {
+  const base = resolve(root);
+  const inventory = [];
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
+    if (!entry.isDirectory()) continue;
+    if (!parseSessionFolderName(entry.name)) continue; // root folders out of scope
+    const dir = join(base, entry.name);
+    for (const f of readdirSync(dir, { withFileTypes: true })) {
+      if (f.name.startsWith('.') || IGNORED_DIRS.has(f.name)) continue;
+      const full = join(dir, f.name);
+      const st = lstatSync(full);
+      if (st.isSymbolicLink() || !st.isFile()) continue;
+      if (!full.startsWith(base + sep)) continue;
+      inventory.push({ path: `${entry.name}/${f.name}`, size: st.size });
+      if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
+    }
+  }
+  inventory.sort((a, b) => cmp(a.path, b.path));
+  return inventory;
+}
+
+/** Write via a temp file + rename, so a reader never sees a half-written index. */
+export function writeIndexAtomically(outPath, text, root) {
+  const out = resolve(outPath);
+  if (root && (out === resolve(root) || out.startsWith(resolve(root) + sep))) {
+    throw new Error('Refusing to write the index inside the archive it describes.');
+  }
+  const tmp = `${out}.tmp-${process.pid}`;
+  writeFileSync(tmp, text);
+  renameSync(tmp, out);
+  return out;
+}
+
+/**
+ * EVERY input this scanner reads, in one place — so "read it twice and compare"
+ * below covers all of them by construction, including one added later.
+ */
+export function readSource(base) {
+  const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
+  let renameLogText = '';
+  try {
+    renameLogText = readFileSync(join(base, 'RENAME-LOG.csv'), 'utf8');
+  } catch {
+    renameLogText = '';
+  }
+  return { registryText, renameLogText, inventory: scanArchive(base) };
+}
+
+/**
+ * Read the archive and build its index — from ONE consistent view, or none.
+ *
+ * The registry used to be the only input re-read after the walk, which made
+ * the guarantee exactly as narrow as the file it named: the MEDIA is what a
+ * non-atomic NAS copy actually perturbs. Move a resource out before its folder
+ * is enumerated and put it back while later folders are walked, and PIECES.csv
+ * never changes — the scan publishes an index missing that file, and the next
+ * Refresh marks still-present material unavailable. The rename log had the
+ * same exposure, read once and never checked.
+ *
+ * So the whole source is read TWICE and the two readings compared. `size` is
+ * part of the comparison, so a file still being copied is caught too.
+ *
+ * This is a CONSISTENCY check, not atomicity: a perturbation that is stable
+ * across both readings agrees with itself and is indistinguishable, from here,
+ * from the archive genuinely being in that state. What it removes is the
+ * transient, which is what a copy in flight actually looks like.
+ */
+export function scanToIndex(root) {
+  const base = resolve(root);
+  const before = readSource(base);
+  const after = readSource(base);
+  if (canonicalJson(before) !== canonicalJson(after)) {
+    throw new Error('The archive changed during the scan; no index was produced.');
+  }
+  return buildIndex(before);
+}
+
+function main() {
+  const { values } = parseArgs({
+    options: { root: { type: 'string' }, out: { type: 'string' } },
+  });
+  if (!values.root) {
+    console.error('Usage: scan-setar-classes.mjs --root <archive> [--out <file>]');
+    process.exit(2);
+  }
+  let index;
+  try {
+    index = scanToIndex(values.root);
+  } catch (err) {
+    console.error(`Scan failed: ${err.message}`);
+    console.error('The last published index is left exactly as it is.');
+    process.exit(1);
+  }
+  const text = `${JSON.stringify(index, null, 2)}\n`;
+  if (values.out) {
+    const written = writeIndexAtomically(values.out, text, values.root);
+    const files = index.sessions.reduce((n, s) => n + s.resources.length, 0);
+    console.error(`${index.sessions.length} sessions, ${index.pieces.length} pieces, ${files} useful resources, ${index.diagnostics.length} needing attention.`);
+    console.error(`Wrote ${written} (${index.contentHash.slice(0, 12)}).`);
+  } else {
+    process.stdout.write(text);
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+```
+
 ### src/components/ArchiveRefresh.tsx
 
 ```
@@ -5081,6 +5630,7 @@ import {
   archiveFor,
   describeArchiveAccess,
   archiveRootUrl,
+  decisionMatchesSuggestion,
   type ImportPlan,
   type MetadataField,
   type ReconcileDecision,
@@ -5177,8 +5727,15 @@ export default function ArchiveRefresh() {
     if (!result.ok) {
       if (result.status === 'stale') {
         // Something changed underneath; look again rather than apply a plan
-        // that was decided against a database that has moved on.
-        showPlan(fetched, decisions);
+        // that was decided against a database that has moved on. A decision
+        // whose premise moved is DROPPED here — keeping it would re-submit the
+        // same invalid answer for ever — and the fresh preview shows the
+        // question, or the suggestion's real current value, as it is now.
+        const kept = result.staleDecisions?.length
+          ? decisions.filter((d) => !result.staleDecisions!.includes(d))
+          : decisions;
+        setDecisions(kept);
+        showPlan(fetched, kept);
         setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
         return;
       }
@@ -5323,9 +5880,10 @@ export default function ArchiveRefresh() {
                   offered field by field and applied only when asked — never
                   written behind them, and never near their notebook. */}
               {phase.plan.suggestions.map((sg) => {
-                const applied = decisions.some(
-                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
-                );
+                // The PREMISE is part of the match: a choice made against a
+                // value the owner has since edited is no longer this
+                // suggestion's answer, so the button reads unpressed again.
+                const applied = decisions.some((d) => decisionMatchesSuggestion(d, sg));
                 return (
                   <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
                     <div dir="auto" style={{ textAlign: 'start' }}>
@@ -5342,7 +5900,7 @@ export default function ArchiveRefresh() {
                         type="button"
                         className="btn btn-sm"
                         aria-pressed={applied}
-                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
+                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
                       >
                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
                       </button>
@@ -5430,1661 +5988,6 @@ const FIELD_LABELS: Record<MetadataField, string> = {
   form: 'form',
   composer: 'composer',
 };
-```
-
-### src/components/direction.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-
-/**
- * Layout follows the direction of the content it shows.
- *
- * A title and the details that belong to it sit in ONE group that carries
- * `dir="auto"`, so a Persian item reads as one right-aligned block instead of
- * splitting across the card — the title hugging one edge while its own caption
- * hugs the other. Direction is resolved natively by the browser from the first
- * strong character; nothing here detects or reorders text in JavaScript.
- *
- * The completion boundary is mechanical, not a matter of care. After this lane
- * `dir="auto"` appears on GROUPS and on free-text FIELDS — never bare on a
- * title element. This test asserts BOTH halves, so a missed title fails and a
- * whole skipped file fails; "fixing" a file by DELETING the attribute fails
- * too, which is important because that would break Farsi rendering outright.
- *
- * jsdom cannot evaluate any of this — it resolves no `dir=auto` and computes no
- * `text-align` — so this reads the source instead, and the owner's device check
- * (ac-6) is what proves the rendering. This test proves COMPLETENESS.
- */
-
-/**
- * Every page and shared component, as source text. Read through Vite's raw
- * loader rather than node:fs: `src` is compiled without node types, and a glob
- * means a NEW file is swept in automatically rather than needing to be
- * remembered.
- */
-const under = (dir: string, modules: Record<string, unknown>): Record<string, string> =>
-  Object.fromEntries(
-    Object.entries(modules).map(([path, source]) => [`${dir}/${path.split('/').pop()}`, source as string]),
-  );
-
-const SOURCES: Record<string, string> = {
-  ...under('pages', import.meta.glob('../pages/*.tsx', { query: '?raw', import: 'default', eager: true })),
-  ...under('components', import.meta.glob('./*.tsx', { query: '?raw', import: 'default', eager: true })),
-};
-
-/** Classes that mark an element as a TITLE — direction may not sit on these. */
-const TITLE_CLASSES = ['truncate', 'title-md', 'page-title', 'stage-unit-title'];
-
-/** Native controls own their own text; direction on them is a FIELD, not a group. */
-const FIELD_TAGS = ['input', 'textarea', 'select'];
-
-/**
- * Every surface that renders user-authored text and must therefore carry
- * direction on at least one group. Recorded here (and in AGENTS.md) so the next
- * lane inherits the list rather than re-deriving it.
- */
-const SURFACES = [
-  'pages/Today.tsx',
-  'pages/StartBlock.tsx',
-  'pages/ActiveBlock.tsx',
-  'pages/CloseBlock.tsx',
-  'pages/Repertoire.tsx',
-  'pages/ItemDetail.tsx',
-  'pages/Lessons.tsx',
-  'pages/PathwayDetail.tsx',
-  'pages/StageDetail.tsx',
-  'pages/SessionPlan.tsx',
-  'pages/RoutineRunner.tsx',
-  'pages/Materials.tsx',
-  'pages/Insights.tsx',
-  'pages/TeacherReport.tsx',
-  'components/ItemCard.tsx',
-  'components/ItemMaterial.tsx',
-  'components/ClassQuestions.tsx',
-  'components/LessonAgenda.tsx',
-  'components/Attachments.tsx',
-];
-
-/**
- * Titles that genuinely have no group to join, listed so the exception is
- * VISIBLE to a reviewer rather than silently left behind. Each entry must still
- * match a real site — a stale entry fails the test below.
- */
-const ALLOWED_TITLE_SITES: { file: string; snippet: string; why: string }[] = [
-  // EMPTY, and that is the finding: every title on every surface turned out to
-  // have a group it could join — the catalogue row's own text column, the row a
-  // lone title shares with its badge, or a wrapper drawn around the title and
-  // the caption beneath it. An entry here would be a title the sweep could not
-  // reach; the list is kept (and asserted below) so the next one is visible
-  // rather than silent.
-];
-
-/**
- * Genuine exceptions to `unexemptedPhrase`'s 2+-token rule, visible for the
- * same reason `ALLOWED_TITLE_SITES` is: a stale entry (its `tagSnippet` no
- * longer found on the named group) fails the test below, so an exception
- * can't quietly outlive the code it was written for. Both entries here are
- * TWO+ opaque data expressions that read as a single compound VALUE, not a
- * title split from a foreign caption — the shape this whole family exists to
- * catch:
- * - `{sp.done}/{sp.total}` (PathwayDetail's stage progress) is a numeric
- *   counter ("3/5") — digits carry no bidi risk on their own, unlike an
- *   English WORD dropped into an RTL run.
- * - `` `${pathway.name} — ` `` followed by `{stage.code}` (ItemDetail's
- *   breadcrumb) is one continuous "Pathway — Stage" label built from two
- *   fields, exactly the same kind of compound anchor a lone title already
- *   forms with the badge it sits next to elsewhere in this file — there is
- *   no separate "caption" here to have its own opinion about direction.
- */
-const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: string }[] = [
-  {
-    file: 'pages/PathwayDetail.tsx',
-    tagSnippet: '<button className="grow" dir="auto"',
-    why: '{sp.done}/{sp.total} is a numeric progress counter, not English words',
-  },
-  {
-    file: 'pages/ItemDetail.tsx',
-    tagSnippet: 'stage.pathwayId',
-    why: 'pathway name + stage code is one compound breadcrumb label, not a title plus a foreign caption',
-  },
-  {
-    // The two "tokens" here are the bidi-neutral ordinal DIGIT and the
-    // QUESTION itself — not English words dropped into an RTL run. Both are
-    // bare BY CONSTRUCTION and must stay that way: the ninth finding above
-    // established that the <li>'s dir="auto" must resolve from the question
-    // (the only field guaranteed present), and dir="auto" skips any
-    // descendant carrying its own dir. Isolating either would put the ordinal
-    // back on the title's side — the exact bug this shape exists to fix.
-    file: 'components/ClassQuestions.tsx',
-    tagSnippet: 'key={q.id}',
-    why: 'a neutral ordinal digit plus the question that anchors the row — both bare on purpose',
-  },
-];
-
-/**
- * Every group-level `dir="auto"` site, recorded in source order — duplicates
- * included, because three bare `<div dir="auto">` in the same file (Today.tsx
- * has several) are three separate SITES, not one collapsed entry. This is
- * what "every listed surface has A group" (below) cannot see: a file keeps
- * passing that check as long as ONE of its groups survives, so deleting the
- * Practise-now card's own `dir="auto"` — the exact regression a rejected
- * review found — left Today.tsx's other, unrelated groups to vouch for it.
- * Comparing the WHOLE ordered inventory instead means removing any one of
- * these sites — anywhere in any file — shrinks or reorders the array and
- * fails here, whether or not that file has other groups left.
- *
- * Same visibility contract as ALLOWED_TITLE_SITES: this is a recorded ledger,
- * not a derivation, so a legitimate new group site must be added here (the
- * "keeps every recorded group site current" test below fails until it is),
- * exactly as a title exception must be added to the allowlist above.
- */
-const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
-  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
-  // The metadata-suggestion row: the piece's own name groups with the change
-  // proposed for it, and the owner's CURRENT value and the archive's PROPOSED
-  // one each resolve from their own content — either may be Farsi or Latin,
-  // and neither follows from the other.
-  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
-  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
-  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
-  { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
-  { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
-  { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
-  { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
-  { file: "components/ClassQuestions.tsx", tagName: "div", classValue: "small" },
-  { file: "components/ClassQuestions.tsx", tagName: "div", classValue: "tiny faint" },
-  { file: "components/ItemCard.tsx", tagName: "div", classValue: "grow" },
-  { file: "components/ItemCard.tsx", tagName: "span", classValue: "" },
-  { file: "components/ItemMaterial.tsx", tagName: "div", classValue: "grow" },
-  { file: "components/ItemMaterial.tsx", tagName: "div", classValue: "grow" },
-  { file: "components/ItemNotes.tsx", tagName: "div", classValue: "small notes-read" },
-  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "" },
-  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "small" },
-  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
-  { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
-  { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
-  { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
-  { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
-  { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
-  { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
-  { file: "pages/CloseBlock.tsx", tagName: "div", classValue: "eyebrow" },
-  { file: "pages/CloseBlock.tsx", tagName: "div", classValue: "stack-sm" },
-  { file: "pages/Insights.tsx", tagName: "th", classValue: "dim" },
-  { file: "pages/Insights.tsx", tagName: "div", classValue: "" },
-  { file: "pages/ItemDetail.tsx", tagName: "header", classValue: "stack-sm" },
-  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
-  { file: "pages/ItemDetail.tsx", tagName: "div", classValue: "" },
-  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "list-row card-link" },
-  { file: "pages/ItemDetail.tsx", tagName: "div", classValue: "list-row" },
-  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "link" },
-  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "dim" },
-  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "link" },
-  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
-  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
-  { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Lessons.tsx", tagName: "div", classValue: "row between" },
-  { file: "pages/Lessons.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Lessons.tsx", tagName: "div", classValue: "row between" },
-  { file: "pages/Lessons.tsx", tagName: "div", classValue: "grow" },
-  { file: "pages/Lessons.tsx", tagName: "div", classValue: "tiny dim" },
-  { file: "pages/Lessons.tsx", tagName: "link", classValue: "grow" },
-  { file: "pages/Materials.tsx", tagName: "section", classValue: "stack-sm" },
-  { file: "pages/Materials.tsx", tagName: "div", classValue: "grow" },
-  { file: "pages/PathwayDetail.tsx", tagName: "header", classValue: "stack-sm" },
-  { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
-  { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
-  { file: "pages/PathwayDetail.tsx", tagName: "p", classValue: "page-sub" },
-  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "card card-quiet small dim" },
-  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "small dim" },
-  { file: "pages/PathwayDetail.tsx", tagName: "button", classValue: "grow" },
-  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Repertoire.tsx", tagName: "section", classValue: "stack-sm" },
-  { file: "pages/Repertoire.tsx", tagName: "section", classValue: "stack-sm" },
-  { file: "pages/Repertoire.tsx", tagName: "div", classValue: "grow" },
-  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Repertoire.tsx", tagName: "link", classValue: "row between small card-link" },
-  { file: "pages/Repertoire.tsx", tagName: "div", classValue: "stack-sm" },
-  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
-  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "row between" },
-  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "" },
-  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
-  { file: "pages/RoutineRunner.tsx", tagName: "span", classValue: "" },
-  { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
-  { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
-  { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
-  { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
-  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "card card-quiet row between small" },
-  { file: "pages/StageDetail.tsx", tagName: "button", classValue: "stage-unit-text" },
-  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "" },
-  { file: "pages/StartBlock.tsx", tagName: "div", classValue: "grow" },
-  { file: "pages/TeacherReport.tsx", tagName: "pre", classValue: "pre" },
-  { file: "pages/Today.tsx", tagName: "button", classValue: "`option${!overview && selected?.id === i.id ? ' selected' : ''}`" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "button", classValue: "grow" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "link", classValue: "grow" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Today.tsx", tagName: "link", classValue: "list-row card-link" },
-  { file: "pages/Today.tsx", tagName: "div", classValue: "grow" },
-  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
-];
-
-// --- reading the source -----------------------------------------------------
-
-function sourceFiles(): string[] {
-  return Object.keys(SOURCES).sort();
-}
-
-interface Site {
-  file: string;
-  line: number;
-  tagName: string;
-  classValue: string;
-  text: string;
-  at: number;
-}
-
-/** The opening tag that an index sits inside, brace- and quote-aware. */
-function enclosingTag(src: string, at: number): string {
-  const start = src.lastIndexOf('<', at);
-  let depth = 0;
-  let i = start + 1;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '{') depth += 1;
-    else if (c === '}') depth -= 1;
-    else if (c === '"' || c === "'") {
-      const end = src.indexOf(c, i + 1);
-      if (end < 0) break;
-      i = end;
-    } else if (c === '>' && depth === 0) break;
-    i += 1;
-  }
-  return src.slice(start, i + 1);
-}
-
-/** The raw text of a tag's className attribute (string or expression). */
-function classNameOf(tag: string): string {
-  const at = tag.indexOf('className=');
-  if (at < 0) return '';
-  const from = at + 'className='.length;
-  const opener = tag[from];
-  if (opener === '"' || opener === "'") {
-    const end = tag.indexOf(opener, from + 1);
-    return end < 0 ? tag.slice(from + 1) : tag.slice(from + 1, end);
-  }
-  if (opener !== '{') return '';
-  let depth = 0;
-  for (let i = from; i < tag.length; i += 1) {
-    if (tag[i] === '{') depth += 1;
-    else if (tag[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return tag.slice(from + 1, i);
-    }
-  }
-  return tag.slice(from + 1);
-}
-
-/**
- * Blank out `//` and `/* *\/` comments before scanning — a prose comment that
- * mentions `dir="auto"` (this file is full of them, and rightly so) is not an
- * attribute, and matching it anyway produces a phantom site: at best one with
- * no enclosing tag, at worst `enclosingTag` walking backward out of the
- * comment and mis-picking an unrelated real tag from earlier in the file.
- * String and template literals are copied through verbatim — that is where a
- * REAL `dir="auto"` attribute value lives — and every character removed is
- * replaced with a space (newlines kept as newlines) so line numbers and
- * offsets into the rest of the source are unaffected.
- *
- * A `'`/`"` is treated as a real string delimiter only if its MATCHING quote
- * shows up before the next newline. A genuine JS string/JSX attribute value
- * in this codebase is always single-line, so this is a safe bound — and it
- * is a NECESSARY one: plain JSX text containing an apostrophe ("That stage
- * doesn't exist.") is not a string at all, and treating it as one made the
- * scanner consume every real comment and tag after it — including this
- * file's OWN prose, once a comment happened to quote `dir="ltr"` inside that
- * unterminated span — as literal, unstripped text. A backtick template
- * literal has no such single-line guarantee in general (this codebase's
- * few multi-line ones are template literals), so it keeps the unbounded
- * scan.
- */
-function stripComments(src: string): string {
-  let out = '';
-  let i = 0;
-  while (i < src.length) {
-    const two = src.slice(i, i + 2);
-    if (two === '//') {
-      while (i < src.length && src[i] !== '\n') {
-        out += ' ';
-        i += 1;
-      }
-    } else if (two === '/*') {
-      out += '  ';
-      i += 2;
-      while (i < src.length && src.slice(i, i + 2) !== '*/') {
-        out += src[i] === '\n' ? '\n' : ' ';
-        i += 1;
-      }
-      out += '  ';
-      i += 2;
-    } else if (src[i] === '"' || src[i] === "'") {
-      const quote = src[i];
-      const lineEnd = src.indexOf('\n', i + 1);
-      const searchEnd = lineEnd < 0 ? src.length : lineEnd;
-      const close = src.indexOf(quote, i + 1);
-      if (close < 0 || close > searchEnd) {
-        // No same-line match — an apostrophe/quote in plain text, not a
-        // real string. Pass it through and keep scanning normally right
-        // after it, so a later quote on the same or a later line gets its
-        // own fresh (and likely correct) chance to pair up.
-        out += src[i];
-        i += 1;
-        continue;
-      }
-      out += quote;
-      i += 1;
-      while (i < close) {
-        if (src[i] === '\\' && i + 1 < close) {
-          out += src[i] + src[i + 1];
-          i += 2;
-          continue;
-        }
-        out += src[i];
-        i += 1;
-      }
-      out += src[i];
-      i += 1;
-    } else if (src[i] === '`') {
-      const quote = src[i];
-      out += quote;
-      i += 1;
-      while (i < src.length && src[i] !== quote) {
-        if (src[i] === '\\' && i + 1 < src.length) {
-          out += src[i] + src[i + 1];
-          i += 2;
-          continue;
-        }
-        out += src[i];
-        i += 1;
-      }
-      if (i < src.length) {
-        out += src[i];
-        i += 1;
-      }
-    } else {
-      out += src[i];
-      i += 1;
-    }
-  }
-  return out;
-}
-
-function directionSites(file: string): Site[] {
-  const src = stripComments(SOURCES[file]);
-  const sites: Site[] = [];
-  for (const match of src.matchAll(/dir="auto"/g)) {
-    const at = match.index!;
-    const tag = enclosingTag(src, at);
-    sites.push({
-      file,
-      line: src.slice(0, at).split('\n').length,
-      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
-      classValue: classNameOf(tag),
-      text: tag,
-      at,
-    });
-  }
-  return sites;
-}
-
-const isTitle = (site: Site) => TITLE_CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(site.classValue));
-const isField = (site: Site) => FIELD_TAGS.includes(site.tagName);
-const isGroup = (site: Site) => !isTitle(site) && !isField(site);
-
-const allowed = (site: Site) =>
-  ALLOWED_TITLE_SITES.some((e) => e.file === site.file && site.text.includes(e.snippet));
-
-// --- mixed-content groups: a child's OWN bidi base, not just the group's ---
-//
-// A rejected review found that the inventory above proves a GROUP carries
-// direction, but nothing proved that a fixed English sentence or an
-// independently-authored value sitting INSIDE that group has a bidi base of
-// its own. A Farsi title makes the whole group resolve RTL; anything else in
-// that subtree with no `dir` of its own is exposed to that same RTL base —
-// which is exactly right for a caption that belongs to the title (that is
-// the whole point of grouping), but wrong for fixed page copy or a separately
-// authored value that could be a different script entirely.
-//
-// This can't be reduced to "no bare Latin text in a group": a short fixed
-// label immediately followed by its own isolate — `Constraint: ` before
-// `<span dir="auto">{value}</span>`, the established shape ActiveBlock set —
-// is deliberately left bare, and flagging it would force changes to an
-// already-correct, already-reviewed pattern. What actually breaks is a real
-// PHRASE (2+ words) that reaches the end of the group with nothing to isolate
-// it: `unexemptedPhrase` walks a group's body in source order, accumulating
-// exposed literal text (skipping `{…}` expressions, whose content is opaque
-// from source) into a run, and clears that run the moment it is immediately
-// followed by an element carrying its own `dir=` — the run is exempted
-// regardless of length, because whatever risk existed is now the isolate's
-// to own. Only a run that survives to the end of the group's body, and that
-// reads as a real phrase, is flagged.
-
-/**
- * The element's body span: from just after its own opening tag's `>` to just
- * after its matching closing tag (empty for a self-closing tag). Depth
- * tracking is generic — any opened tag increases it, any closed tag
- * decreases it — since well-formed JSX nests properly regardless of name.
- *
- * A React Fragment shorthand (`<>…</>`) is EVERY bit as much an opening/
- * closing pair as a named tag, and must be counted as one: `</>` starts with
- * `/` so the CLOSING branch below already matched it (correctly decrementing
- * depth), but `<>` starts with neither `/` nor a letter, so it fell through
- * unmatched and never incremented depth. Every `<>…</>` pair inside a body
- * therefore decremented depth ONE MORE TIME than it was ever incremented —
- * on a group whose conditional content used a fragment (`{cond && (<>…
- * </>)}`, the shape `{stage && (<><span>…</span><Link>…</Link></>)}` already
- * uses in this codebase), depth hit zero several tags before the group's
- * REAL close, silently truncating the body `unexemptedPhrase` scans and
- * hiding every violation after that point — exactly the kind of gap a
- * "detectable, not enumerated" claim must not have.
- */
-function elementBody(src: string, tag: string, openAt: number): { start: number; end: number } {
-  const start = openAt + tag.length;
-  if (tag.endsWith('/>')) return { start, end: start };
-  let depth = 1;
-  let i = start;
-  while (i < src.length && depth > 0) {
-    if (src[i] === '<') {
-      if (src[i + 1] === '/') {
-        const close = src.indexOf('>', i);
-        i = close < 0 ? src.length : close + 1;
-        depth -= 1;
-        continue;
-      }
-      if (src[i + 1] === '>') {
-        // Fragment shorthand open, <>. Its close, </>, is matched by the
-        // ordinary closing-tag branch above, so this one must increment.
-        i += 2;
-        depth += 1;
-        continue;
-      }
-      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
-        const inner = enclosingTag(src, i);
-        i += inner.length;
-        if (!inner.endsWith('/>')) depth += 1;
-        continue;
-      }
-    }
-    i += 1;
-  }
-  return { start, end: i };
-}
-
-/**
- * The first exposed, unexempted 2+-token run in a group's body, or null when
- * everything either belongs to an isolate or never accumulates a real phrase.
- * See the block comment above for what "exempted" means.
- *
- * A DATA expression (`{item.title}`, `{ITEM_TYPE_LABELS[item.itemType]}`,
- * `{formatBytes(a.size)}`) counts as ONE opaque token — its actual rendered
- * text is invisible from source, but its mere PRESENCE, unisolated, next to
- * other content is exactly the shape a rejected review found live in the
- * app: `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '}
- * {itemCount(...)} item{...}` reads as zero words to a scanner that only
- * counts literal text, yet renders three always-English fragments in a row.
- * Treating each such expression as a token turns that invisible run into a
- * 3+-token hit without ever needing to know what the labels actually say.
- * An expression that contains its own nested JSX (`{cond && <div dir="auto">
- * …</div>}`) is left fully opaque (zero contribution) as before — its
- * children are independent elements, already reachable by the outer scan
- * over the whole file, and forcing them through this same linear buffer
- * would require a real JSX parser this file deliberately doesn't have.
- */
-function unexemptedPhrase(src: string, bodyStart: number, bodyEnd: number): string | null {
-  let buffer = '';
-  // A run is judged at each TAG boundary (open or close) — two adjacent but
-  // unrelated elements (e.g. two one-word buttons, "Edit" and "Delete") must
-  // never concatenate into a false 2-word phrase. An EXPRESSION boundary does
-  // NOT judge the run: `{n} segments · {m} min` is one generated phrase split
-  // across two expressions, and judging at each `{` would fragment it into
-  // single, individually-innocent words, hiding the real violation.
-  const flush = (): string | null => {
-    const words = buffer.trim().match(/[A-Za-z]+/g) ?? [];
-    buffer = '';
-    return words.length >= 2 ? words.join(' ') : null;
-  };
-  let i = bodyStart;
-  while (i < bodyEnd) {
-    const c = src[i];
-    if (c === '{') {
-      const exprStart = i + 1;
-      let depth = 1;
-      i += 1;
-      while (i < bodyEnd && depth > 0) {
-        if (src[i] === '{') depth += 1;
-        else if (src[i] === '}') depth -= 1;
-        i += 1;
-      }
-      const exprText = src.slice(exprStart, i - 1);
-      if (!/<[A-Za-z]/.test(exprText)) buffer += ' X ';
-      continue;
-    }
-    if (c === '<') {
-      if (src[i + 1] === '/') {
-        const hit = flush();
-        if (hit) return hit;
-        const close = src.indexOf('>', i);
-        i = close < 0 ? bodyEnd : close + 1;
-        continue;
-      }
-      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
-        const hit = flush();
-        if (hit) return hit;
-        const tag = enclosingTag(src, i);
-        if (/\sdir="(auto|ltr|rtl)"/.test(tag)) {
-          const body = elementBody(src, tag, i);
-          i = body.end; // exempted: leads into its own isolate, whatever its length
-        } else {
-          i += tag.length; // transparent: its children are scanned in the same pass
-        }
-        continue;
-      }
-    }
-    buffer += c;
-    i += 1;
-  }
-  return flush();
-}
-
-/**
- * Independently-authored values (case ii: a question, a note, an observation
- * — content whose own language cannot be assumed from the title next to it)
- * that carry their own `dir=` isolate, so they resolve from their OWN content
- * rather than the group's. Unlike the fixed-copy phrases above, these are
- * plain expressions (`{q.currentProblem}`, `{pathway.note}`) — their value is
- * opaque from source, so completeness here is a recorded ledger, not a
- * derivation, exactly like ALLOWED_TITLE_SITES and GROUP_SITE_INVENTORY: a
- * legitimate new one must be added, visibly, rather than left silent.
- */
-const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{active.constraint}</span>' },
-  { file: 'pages/ActiveBlock.tsx', snippet: '<span dir="auto">{previousNextAction}</span>' },
-  { file: 'pages/PathwayDetail.tsx', snippet: '<p className="page-sub" dir="auto">' },
-  { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
-  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
-  { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
-  { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
-  {
-    file: 'components/ClassQuestions.tsx',
-    snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.lastObservation.text)}',
-  },
-  // The practice screen's Working notes and the block history's own free-text
-  // values: each is authored independently of whatever title sits above it, so
-  // each resolves from its OWN content.
-  { file: 'components/ItemNotes.tsx', snippet: '<div className="small notes-read" dir="auto"' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.observation}</span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
-  // A registry improvement offered on Refresh: the value the owner has and the
-  // value the archive proposes are authored independently of each other.
-  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
-  { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
-  // Instrument names used to be tracked here too, one exact snippet per site.
-  // A sealed review found that shape structurally insufficient FOUR times
-  // running: each rework closed only the sites a reviewer had named, while
-  // aliases, property access and names fused into template strings kept
-  // slipping through undetected. Instrument names are now covered by a
-  // dedicated, pattern-driven check below ('an instrument name resolves its
-  // own direction wherever it renders') that discovers every renderer of the
-  // name mechanically instead of requiring each one to be re-listed here —
-  // see that check for the full rationale.
-  //
-  // ClassQuestions' Problem:/Last time: rows used to be tracked here too, as
-  // a value wrapped in its own isolate span. A SEVENTH SEALED FINDING moved
-  // them to a "label-first auto row" shape (row carries dir="auto", label
-  // isolated dir="ltr" to take it out of the hunt, value left bare) covered
-  // by the dedicated shape check below instead of a snippet ledger. A TENTH
-  // finding found THAT shape puts the label at the wrong visual end whenever
-  // the row resolves RTL: isolating the label makes it an atomic run the
-  // bidi algorithm is free to reorder, so its trailing colon landed on the
-  // outer edge, detached from the value. The fix stacks caption over value
-  // instead of one inline line, which removes the single line the two ever
-  // had to contend a resolution source for — so the value is back to being a
-  // plain isolated value, tracked in ISOLATED_VALUE_SITES below, and the
-  // caption is back to being an ordinary LTR_ISOLATE_SITES entry.
-  //
-  // ClassQuestions' q.question used to be tracked here too, isolated with
-  // its own dir="auto" span while the title was left bare to anchor the
-  // <li>. An OWNER-observed regression found that backwards: the title is
-  // optional and independently authored, so anchoring the li on it split
-  // the ordinal from the question whenever the two differed in language.
-  // The roles are now reversed — title isolated, question bare — which
-  // makes the title's new dir="auto" a plain GROUP_SITE_INVENTORY entry
-  // (same tag/class as the old question entry, so that ledger needs no
-  // edit) rather than a value-ledger one, and adds a dedicated shape check
-  // below ('the question anchors the group's direction...') asserting the
-  // anchor is the question, not the title.
-];
-
-/**
- * Fixed English copy or generated metadata (case i: `buildReason`,
- * `relativeDay`, a hardcoded sentence) that is ALWAYS English by
- * construction, wrapped in its own `dir="ltr"` isolate so a Farsi title's RTL
- * base can't drag its trailing punctuation to the visual start. Recorded for
- * the same reason as ISOLATED_VALUE_SITES: a call like `StaleNote` renders
- * from a different function than its call site, so no source scan at the
- * call site can see whether its OWN return value is isolated.
- */
-const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
-  { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> plan running ▸</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
-  {
-    file: 'pages/Today.tsx',
-    snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
-  },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
-  {
-    file: 'pages/ItemDetail.tsx',
-    snippet: '<span className="tiny faint" dir="ltr">\n            {RATING_LABELS.difficulty.toLowerCase()} {item.difficulty}/5',
-  },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Noticed: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Decided to try next: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Constraint: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
-  { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
-  { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
-  { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },
-  { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
-  { file: 'pages/StageDetail.tsx', snippet: '<span dir="ltr">{meta.join(\' · \')}</span>' },
-  { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
-  { file: 'pages/PathwayDetail.tsx', snippet: "<span className=\"badge tone-progress\" dir=\"ltr\">{isPinned ? 'Current · pinned' : 'Current'}</span>" },
-  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="badge tone-good" dir="ltr">Done</span>' },
-  { file: 'pages/PathwayDetail.tsx', snippet: '<span className="tiny faint" dir="ltr">{sp.addedItems} item{sp.addedItems' },
-  { file: 'pages/PathwayDetail.tsx', snippet: "<span dir=\"ltr\">{sp.total} piece{sp.total === 1 ? '' : 's'}</span>" },
-  { file: 'pages/Lessons.tsx', snippet: '<span className="badge tone-progress" dir="ltr">' },
-  { file: 'pages/Lessons.tsx', snippet: '<span className="tiny faint" dir="ltr">no class planned</span>' },
-  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{meta}</span>' },
-  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Set your NAS base URL in' },
-  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Your NAS base URL isn’t a valid web address' },
-  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
-  { file: 'pages/RoutineRunner.tsx', snippet: '<span className="tiny faint" dir="ltr">{minutes} min</span>' },
-  { file: 'pages/StartBlock.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
-  { file: 'pages/Insights.tsx', snippet: '<span dir="ltr">{insight.body}</span>' },
-  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{BLOCK_MODE_LABELS[active.mode]}</span>' },
-  { file: 'pages/ActiveBlock.tsx', snippet: '<span className="chip" dir="ltr">{FOCUS_LABELS[active.focus]}</span>' },
-  {
-    file: 'pages/Repertoire.tsx',
-    snippet: '<span className="tiny faint" dir="ltr">\n              {g.works.length} work',
-  },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="ltr">\n                {work.lastPractisedAt' },
-  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n            On your NAS' },
-  { file: 'components/ItemMaterial.tsx', snippet: '<span dir="ltr">\n              On this device' },
-  { file: 'components/ClassQuestions.tsx', snippet: '<span dir="ltr">Last observed {q.lastObservation.at.slice(0, 10)}</span>' },
-  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
-  { file: 'components/ItemCard.tsx', snippet: '<span dir="ltr">{FOCUS_LABELS[item.primaryFocus]}</span>' },
-  { file: 'components/Attachments.tsx', snippet: '<span dir="ltr">\n            {att.kind} · {formatBytes(att.size)}' },
-  {
-    file: 'pages/Materials.tsx',
-    snippet: '<span dir="ltr">\n                          {MATERIAL_SOURCE_LABELS[m.sourceType]}',
-  },
-];
-
-// --- an isolate must be INLINE, never a block that resolves its own align --
-//
-// A rejected review found `ItemMaterial.tsx` fixing a Farsi title's detail
-// line with `<div className="tiny faint" dir="ltr">…</div>` — a BLOCK
-// carrying the isolate directly. `text-align: start`, inherited from the
-// group, is a per-BOX computed value: it resolves against that box's OWN
-// `direction`, not the group's. Give the block its own `dir="ltr"` and its
-// `text-align: start` resolves LEFT regardless of the group's (possibly RTL)
-// resolved direction — splitting the detail from a right-aligned Farsi title
-// exactly as before, just relocated. An INLINE isolate (`<span dir="ltr">`)
-// never has this problem: `text-align` is a block-level concept, so a span's
-// own `dir` only isolates the Unicode bidi algorithm's treatment of the text
-// inside it and never touches which edge the enclosing block aligns to. This
-// is therefore not a location to enumerate but a SHAPE to ban outright: no
-// `dir="ltr"`/`dir="rtl"` may ever sit on a tag other than `span`/`bdi`,
-// full stop, so this class of bug cannot come back in any file, named here
-// or not.
-const INLINE_ISOLATE_TAGS = ['span', 'bdi'];
-
-function isolateSites(file: string): Site[] {
-  const src = stripComments(SOURCES[file]);
-  const sites: Site[] = [];
-  for (const match of src.matchAll(/dir="(?:ltr|rtl)"/g)) {
-    const at = match.index!;
-    const tag = enclosingTag(src, at);
-    sites.push({
-      file,
-      line: src.slice(0, at).split('\n').length,
-      tagName: (/^<\s*([A-Za-z][\w.]*)/.exec(tag)?.[1] ?? '').toLowerCase(),
-      classValue: classNameOf(tag),
-      text: tag,
-      at,
-    });
-  }
-  return sites;
-}
-
-// --- a native list marker is never relied on for a direction-variable item -
-//
-// A rejected review found `ClassQuestions.tsx`'s `<ol>` reserving gutter
-// space with `paddingInlineStart` alone while its `<li>`s each resolve their
-// OWN direction via `dir="auto"`, and the first fix reserved symmetric
-// `paddingInline` instead, reasoning that a marker landing on either side
-// would then have room. A SIXTH SEALED FINDING, checked on the owner's own
-// iPhone, found the number still escaping the card even with that room
-// reserved: an outside `::marker`'s exact position for a direction-variable
-// list item is a browser implementation detail — exactly the class of thing
-// jsdom cannot compute either, which is why a padding measurement was ever
-// trusted to stand in for it — not a distance a gutter can be sized against.
-// The fix stops accommodating the native marker and removes it instead
-// (`listStyle: 'none'`), rendering the ordinal as a real element: the FIRST
-// child of a flex `<li dir="auto">`, so flexbox's own direction-aware row
-// axis (a spec-mandated behaviour, unlike marker positioning) puts it on the
-// correct side and keeps it inside the content box by construction — it can
-// no longer escape a card it is now genuinely inside of. This scans every
-// `<ol>`/`<ul>` in the app (not just the one known today) and asserts the
-// mechanism directly: a list containing a `dir="auto"` `<li>` must disable
-// the native marker outright, and that `<li>` must itself be a flex/grid
-// container able to reorder its own content — a shape check on the fix
-// itself, not a measurement around a browser behaviour nothing here can
-// verify.
-function listSites(file: string): { file: string; line: number; tag: string; autoLiTags: string[] }[] {
-  const src = stripComments(SOURCES[file]);
-  const sites: { file: string; line: number; tag: string; autoLiTags: string[] }[] = [];
-  for (const match of src.matchAll(/<(ol|ul)\b/g)) {
-    const at = match.index!;
-    const tag = enclosingTag(src, at);
-    if (tag.endsWith('/>')) continue;
-    const body = elementBody(src, tag, at);
-    const bodyText = src.slice(body.start, body.end);
-    sites.push({
-      file,
-      line: src.slice(0, at).split('\n').length,
-      tag,
-      autoLiTags: [...bodyText.matchAll(/<li\b[^>]*\sdir="auto"[^>]*>/g)].map((m) => m[0]),
-    });
-  }
-  return sites;
-}
-
-/** True when the list's own inline style disables the native marker outright
- *  (`listStyle`/`listStyleType: 'none'`) — the only thing about a marker's
- *  own rendered position a source scan can actually verify, unlike a
- *  padding measurement around a mechanism jsdom cannot compute either. */
-function disablesNativeMarker(tag: string): boolean {
-  const style = tag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
-  return /\blistStyle(?:Type)?\s*:\s*['"]none['"]/.test(style);
-}
-
-/** True when a `<li>` tag is itself a flex (or grid) container — the
- *  mechanism that lets its own content (an ordinal, a badge) reorder with
- *  its own resolved direction instead of depending on a static layout. */
-function isDirectionAwareContainer(liTag: string): boolean {
-  // `.row` is `display: flex` in global.css — this is a source scan trusting
-  // a fact declared in a different file; renaming or redefining that class
-  // would silently blind this check.
-  if (/\bclassName="[^"]*\brow\b[^"]*"/.test(liTag)) return true;
-  const style = liTag.match(/style=\{\{([^}]*)\}\}/)?.[1] ?? '';
-  return /display\s*:\s*['"](?:flex|grid)['"]/.test(style);
-}
-
-// --- a row's alignment comes from its value, never a label marked out of the hunt ---
-//
-// A SEVENTH SEALED FINDING found `ClassQuestions.tsx`'s Problem:/Last time:
-// rows still misaligned after the sixth rework: giving the VALUE its own
-// `dir="auto"` isolate (or later, `display: inline-block`) makes the value's
-// OWN characters shape correctly, but the ROW that positions "Label: value"
-// as a unit was left bare, inheriting whichever direction the TITLE above it
-// happened to resolve to — right for a Farsi title, left for an English one
-// — regardless of what script the value itself was written in. An
-// English-titled item with a Farsi problem note left the whole "Problem:
-// ..." row pinned to the left, exactly where the label's own inherited
-// direction put it, with the value's internal shaping correct but its
-// POSITION wrong.
-//
-// The fix gives the ROW itself `dir="auto"`, and marks the LABEL —
-// `Problem:`/`Last time:`, never the value — with its own `dir="ltr"`. This
-// is not because the label's text ever changes; it is because `dir="auto"`
-// skips a descendant that carries its own `dir` when hunting for a first
-// strong character (the same mechanism the group-vs-title rule above relies
-// on). Marking the label takes it OUT of that hunt, so the row's resolution
-// comes from whatever is left — the value, left deliberately BARE. Marking
-// the value too would take BOTH out, leaving the row with no candidate at
-// all and a silent fallback to LTR no matter what the value says — the
-// regression this check exists to catch. This is a SHAPE check, not a
-// ClassQuestions-specific one: it fires on any file using the same
-// label-first `dir="auto"` row pattern.
-function isLabelFirstAutoRow(file: string, site: Site): boolean {
-  const src = stripComments(SOURCES[file]);
-  const openAt = src.lastIndexOf('<', site.at);
-  const body = elementBody(src, site.text, openAt);
-  return /^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/.test(src.slice(body.start, body.end));
-}
-
-// --- an instrument name resolves its own direction, wherever it renders ----
-//
-// Four consecutive sealed reviews rejected this family for the same root
-// cause: every rework closed the handful of sites a reviewer had named by
-// file:line, while the same defect kept resurfacing in a shape the fix
-// hadn't covered — an alias, a property read, a name folded into a template
-// string before anything could render. A location list can only ever be as
-// complete as the audit that built it. This discovers every CURRENT
-// renderer of an instrument's name mechanically, from the shapes this
-// codebase actually uses to produce one, rather than requiring each to be
-// re-listed by hand:
-//   - the instrumentName(db, id) helper, called directly;
-//   - a bare `.instrumentName` property read (a selector row's own field);
-//   - a LOCAL ALIAS of either — a destructured, renamed prop
-//     (`instrumentName: name`), or a `const X = instrumentName(...)`
-//     binding — found by locating the alias's OWN declaration, then
-//     scanning the rest of the file for bare reads of it;
-//   - a direct `.name` read on an Instrument object bound by iterating
-//     `db.instruments` (a `.map`/`.filter().map` callback's own parameter,
-//     or an inline `instruments.find(...)?.name` with no variable at all).
-// An instrument is renameable in Settings, Farsi included, so every one of
-// these is the OWNER'S OWN editable text, never generated copy.
-//
-// The invariant asserted is the one BEHIND the fix, not the fix's own site
-// list: a rendered instrument name resolves its OWN direction — nothing may
-// fuse it into a plain string with other text before it renders, and its
-// nearest enclosing `dir` (searching outward through real ancestors, never
-// a neighbouring SIBLING) must be "auto", never absent and never forced to
-// "ltr"/"rtl". A declaration/binding site (the alias's own introduction) is
-// not itself a render and is excluded; so is a value forwarded as a JSX
-// ATTRIBUTE (`instrumentName={x}`) — that is prop-drilling, not a DOM text
-// render, and the component actually receiving it is checked wherever IT
-// renders the value (ClassQuestions never does — it only builds
-// clipboard/filename text with the prop, never a laid-out block).
-
-/** Index of the `)` matching the `(` at `openAt`, skipping over the contents
- *  of any string/template so a stray bracket character inside one (none
- *  exist in the callbacks this scans today) can never desync the count. */
-function matchingParenClose(src: string, openAt: number): number {
-  let depth = 0;
-  let i = openAt;
-  while (i < src.length) {
-    const c = src[i];
-    if (c === '(') depth += 1;
-    else if (c === ')') {
-      depth -= 1;
-      if (depth === 0) return i;
-    } else if (c === '"' || c === "'" || c === '`') {
-      const close = src.indexOf(c, i + 1);
-      i = close < 0 ? src.length : close;
-    }
-    i += 1;
-  }
-  return src.length;
-}
-
-/** Walks back over a receiver chain (`db.instruments` → the start of `db`)
- *  so a declaration check lands on the true start of the expression, not
- *  wherever a matched sub-pattern happens to begin inside it. */
-function receiverChainStart(src: string, at: number): number {
-  let i = at;
-  while (i > 0 && src[i - 1] === '.') {
-    let k = i - 1;
-    while (k > 0 && /[\w$]/.test(src[k - 1] ?? '')) k -= 1;
-    if (k === i - 1) break; // a bare '.' with no identifier before it
-    i = k;
-  }
-  return i;
-}
-
-/**
- * The tag name, dir value and own body-start offset of every element
- * enclosing position `at`, outermost first — the ANCESTOR chain, not just
- * the nearest opening tag. What resolves a name's direction is the nearest
- * ancestor carrying ANY dir at all, which is not necessarily the immediate
- * parent: ActiveBlock's/CloseBlock's eyebrow divs sit right next to (not
- * inside) the title's own dir="auto" group, so that group must never count
- * for them.
- */
-function ancestorChain(src: string, at: number): { tagName: string; dir: string | null; bodyStart: number }[] {
-  const stack: { tagName: string; dir: string | null; bodyStart: number }[] = [];
-  let i = 0;
-  while (i < at) {
-    if (src[i] === '<') {
-      if (src[i + 1] === '/') {
-        const close = src.indexOf('>', i);
-        i = close < 0 ? at : close + 1;
-        stack.pop();
-        continue;
-      }
-      if (src[i + 1] === '>') {
-        stack.push({ tagName: '', dir: null, bodyStart: i + 2 }); // fragment shorthand, never carries dir
-        i += 2;
-        continue;
-      }
-      if (/[A-Za-z]/.test(src[i + 1] ?? '')) {
-        const tag = enclosingTag(src, i);
-        const tagEnd = i + tag.length;
-        i = tagEnd;
-        if (!tag.endsWith('/>')) {
-          const dirMatch = /\sdir="(auto|ltr|rtl)"/.exec(tag);
-          const nameMatch = /^<\s*([A-Za-z][\w.]*)/.exec(tag);
-          stack.push({ tagName: (nameMatch?.[1] ?? '').toLowerCase(), dir: dirMatch ? dirMatch[1] : null, bodyStart: tagEnd });
-        }
-        continue;
-      }
-    }
-    i += 1;
-  }
-  return stack;
-}
-
-/**
- * Whatever renders BEFORE position `at` inside a body that runs from
- * `bodyStart` to `at` — real sibling content only, opaque-but-present
- * markers ('X') standing in for anything whose actual text isn't visible
- * from source. Two things are deliberately NOT "preceding content":
- *   - A bare `{` that is the START of the very expression `at` sits inside
- *     (`<span dir="auto">{instrumentName(...)}</span>` has no sibling
- *     before the call, just the brace opening its own container) — this
- *     function stops (returns what it has so far) the moment it finds the
- *     `{…}` or `<tag>…</tag>` that CONTAINS `at`, rather than descending
- *     through it as if it were a finished sibling.
- *   - A ternary/logical-AND's UNTAKEN branch or its own condition text
- *     (`{cond ? instrumentName(db, x) : 'General'}`) — these sit inside
- *     the SAME expression as `at`, never as separate rendered siblings, so
- *     stopping at that expression's boundary (rather than treating its
- *     condition as literal preceding text) is what keeps this from
- *     flagging PathwayDetail's and Repertoire's `cond ? instrumentName(...)
- *     : 'General'` pattern as though "cond ? " had rendered first.
- * A COMPLETE prior `{…}` expression or `<tag>…</tag>` element (one that
- * closes before `at`) DOES count, opaquely — an item's own title rendered
- * in an earlier sibling div is real content even though this text scan
- * can't see what the title actually says.
- */
-function contentBefore(src: string, bodyStart: number, at: number): string {
-  let i = bodyStart;
-  let out = '';
-  while (i < at) {
-    const c = src[i];
-    if (c === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
-      const tag = enclosingTag(src, i);
-      if (tag.endsWith('/>')) {
-        out += 'X'; // a self-closing element — opaque prior content
-        i += tag.length;
-        continue;
-      }
-      const body = elementBody(src, tag, i);
-      if (body.end <= at) {
-        out += 'X'; // this whole child closes before `at` — opaque prior content
-        i = body.end;
-      } else {
-        return out + contentBefore(src, body.start, at); // `at` is inside this child — descend, don't skip it
-      }
-      continue;
-    }
-    if (c === '{') {
-      const closeAt = matchingBraceClose(src, i);
-      if (closeAt <= at) {
-        out += 'X'; // a full sibling expression — opaque prior content
-        i = closeAt + 1;
-      } else {
-        return out; // `at` is inside THIS expression — its own condition/branches never count
-      }
-      continue;
-    }
-    if (!/\s/.test(c)) out += c; // literal JSX text
-    i += 1;
-  }
-  return out;
-}
-
-/**
- * Whether an occurrence at `at` resolves ITS OWN direction — the nearest
- * ancestor carrying any `dir` must be "auto", AND nothing else may render
- * before it within that SAME ancestor's body. A dir="auto" ancestor
- * resolves from whichever strong character comes FIRST in its subtree: if
- * an item's own title (or any other independently-authored value) precedes
- * the name inside the same auto ancestor, the ancestor's resolution belongs
- * to THAT value, not to the name riding along beside it — exactly the
- * classification mistake this whole family exists to catch (ItemCard's row
- * would silently regress this way if its instrument name ever lost its own
- * `<span dir="auto">` and merely sat inside the row's outer auto group).
- * Two real sites deliberately rely on being genuinely FIRST rather than
- * carrying their own isolate — Insights.tsx's `<th dir="auto">` and
- * Today.tsx's cross-instrument `{inst.name}` — and this still accepts both.
- */
-function resolvesOwnDirection(src: string, at: number): { ok: boolean; dir: string | null } {
-  const chain = ancestorChain(src, at);
-  for (let i = chain.length - 1; i >= 0; i -= 1) {
-    const entry = chain[i];
-    if (entry.dir === null) continue;
-    if (entry.dir !== 'auto') return { ok: false, dir: entry.dir };
-    return { ok: contentBefore(src, entry.bodyStart, at).length === 0, dir: 'auto' };
-  }
-  return { ok: false, dir: null };
-}
-
-/** `<option>` contents are excluded from this whole family by the contract:
- *  the native control owns their rendering, so no dir treatment applies. */
-function isInsideOption(src: string, at: number): boolean {
-  return ancestorChain(src, at).some((a) => a.tagName === 'option');
-}
-
-/** Index just past the matching `}` for the `{` at `openAt`. */
-function matchingBraceClose(src: string, openAt: number): number {
-  let depth = 0;
-  let i = openAt;
-  while (i < src.length) {
-    if (src[i] === '{') depth += 1;
-    else if (src[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return i;
-    }
-    i += 1;
-  }
-  return src.length;
-}
-
-/**
- * True when `matchStart` sits inside a `${…}` template substitution whose
- * enclosing backtick template also holds OTHER literal text — the shape
- * that fuses a name with fixed words into one string before anything can
- * render, so no isolate can ever wrap the name alone by the time it
- * reaches JSX (`Nothing for ${name} yet`, `${instrumentName(db, x)} plan`).
- * A template holding ONLY the one substitution has nothing fused into it.
- */
-function isFusedIntoTemplate(src: string, matchStart: number): boolean {
-  if (src.slice(matchStart - 2, matchStart) !== '${') return false;
-  const subClose = matchingBraceClose(src, matchStart - 1);
-  const openBacktick = src.lastIndexOf('`', matchStart);
-  const closeBacktick = src.indexOf('`', subClose);
-  if (openBacktick < 0 || closeBacktick < 0) return true; // malformed — be conservative
-  const body = src.slice(openBacktick + 1, closeBacktick).replace(/\$\{[^{}]*\}/g, '');
-  return body.trim().length > 0;
-}
-
-/** Every current DOM-text render of an instrument's name in `file`, as
- *  [start, end) spans into the (comment-stripped) source. See the block
- *  comment above for the shapes discovered and excluded. */
-function instrumentNameOccurrences(file: string): { at: number; end: number }[] {
-  const src = stripComments(SOURCES[file]);
-  const occurrences: { at: number; end: number }[] = [];
-
-  const isAttributeValue = (at: number): boolean =>
-    /[A-Za-z][\w-]*=\{\s*$/.test(src.slice(Math.max(0, at - 60), at));
-  const isDeclarationRhs = (at: number): boolean =>
-    /\b(?:const|let)\s+\w+\s*=\s*$/.test(src.slice(Math.max(0, at - 80), at));
-  const record = (at: number, end: number) => {
-    if (isAttributeValue(at)) return; // prop-drilling — the callee is checked separately
-    if (isInsideOption(src, at)) return; // native control owns its own rendering
-    occurrences.push({ at, end });
-  };
-
-  // instrumentName(db, EXPR) — direct calls. A call bound to a const is an
-  // alias, not itself a render; its later bare reads are tracked below.
-  for (const m of src.matchAll(/\binstrumentName\(([^()]*)\)/g)) {
-    if (isDeclarationRhs(m.index!)) continue;
-    record(m.index!, m.index! + m[0].length);
-  }
-
-  // X.instrumentName — property reads, receiver chain included so a
-  // declaration check lands before the whole expression, not mid-chain.
-  // `m.index` is the dot itself, so first step back over the identifier
-  // immediately before it (receiverChainStart expects to start AT an
-  // identifier, not at a dot).
-  for (const m of src.matchAll(/\.\s*instrumentName\b/g)) {
-    let idStart = m.index!;
-    while (idStart > 0 && /[\w$]/.test(src[idStart - 1] ?? '')) idStart -= 1;
-    const start = receiverChainStart(src, idStart);
-    if (isDeclarationRhs(start)) continue;
-    record(start, m.index! + m[0].length);
-  }
-
-  // Local aliases: a destructured, renamed prop (excluding the type
-  // annotation `instrumentName: string`, which reads identically), a
-  // `const X = instrumentName(...)` binding, or a `const X =
-  // …instruments….find(...)?.name` binding — the last generalised past the
-  // literal spelling "instrumentName" so a differently-named local (or a
-  // future one) is still caught.
-  const aliases = new Set<string>();
-  for (const m of src.matchAll(/\binstrumentName\s*:\s*(\w+)/g)) {
-    if (m[1] !== 'string') aliases.add(m[1]);
-  }
-  for (const m of src.matchAll(/\b(?:const|let)\s+(\w+)\s*=\s*instrumentName\(/g)) {
-    aliases.add(m[1]);
-  }
-  for (const m of src.matchAll(
-    /\b(?:const|let)\s+(\w+)\s*=\s*[^;\n]*?\binstruments\b[^;\n]*?\.find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
-  )) {
-    aliases.add(m[1]);
-  }
-  for (const alias of aliases) {
-    for (const m of src.matchAll(new RegExp(`\\b${alias}\\b`, 'g'))) {
-      const at = m.index!;
-      const end = at + alias.length;
-      const before = src.slice(Math.max(0, at - 20), at);
-      const after = src.slice(end, end + 20);
-      // A BARE alias is a standalone identifier — `.name` on some unrelated
-      // object (`routine.name`, `selected.name`) merely ENDS in the same
-      // letters and must never count just because a plain-text \b-bounded
-      // scan can't tell "name" the alias from "name" the property name.
-      if (before.endsWith('.')) continue;
-      const isBindingLhs = /\b(?:const|let)\s+$/.test(before) && /^\s*=(?!=)/.test(after);
-      const isRenameTarget = /\binstrumentName\s*:\s*$/.test(before);
-      // `<ClassQuestions instrumentName={instrumentName} />` — the KEY is
-      // this same word too (coincidentally, since the alias here happens to
-      // be spelled "instrumentName"); it is the attribute's NAME, not a
-      // value being read, and must not be confused with the VALUE right
-      // after it, which `record`'s own isAttributeValue check still catches.
-      const isAttributeName = /^\s*=\{/.test(after);
-      if (isBindingLhs || isRenameTarget || isAttributeName) continue; // the alias's own introduction, not a read
-      record(at, end);
-    }
-  }
-
-  // A per-item `.name` read inside a `db.instruments`/`instruments` iteration
-  // — `(?:\.\w+\([^()]*\))*` tolerates any number of chained hops
-  // (`.filter(...).map(...)`) before the `.map(` that actually binds a
-  // per-instrument callback parameter.
-  for (const m of src.matchAll(
-    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*map\(\s*\(?\s*(\w+)\s*\)?\s*=>/g,
-  )) {
-    const param = m[1];
-    const mapOpenParen = m.index! + m[0].lastIndexOf('map(') + 'map('.length - 1;
-    const bodyStart = m.index! + m[0].length;
-    const bodyEnd = matchingParenClose(src, mapOpenParen);
-    const scope = src.slice(bodyStart, bodyEnd);
-    for (const im of scope.matchAll(new RegExp(`\\b${param}\\.name\\b`, 'g'))) {
-      record(bodyStart + im.index!, bodyStart + im.index! + im[0].length);
-    }
-  }
-
-  // An inline `instruments.find(...)?.name` with no intermediate variable —
-  // the whole expression is the render candidate. One already bound to a
-  // `const` was tracked as an alias above instead. `(?:[^()]|\([^()]*\))*`
-  // (not the plain `[^()]*` the .map( pattern above gets away with) is
-  // needed here because .find's own callback is itself parenthesized —
-  // `.find((i) => i.id === x)` nests one paren level that a no-parens-
-  // allowed class can never get past.
-  for (const m of src.matchAll(
-    /\binstruments\b(?:\s*\.\s*\w+\([^()]*\))*\s*\.\s*find\((?:[^()]|\([^()]*\))*\)\s*\??\.\s*name\b/g,
-  )) {
-    const start = receiverChainStart(src, m.index!);
-    if (isDeclarationRhs(start)) continue;
-    record(start, m.index! + m[0].length);
-  }
-
-  return occurrences.sort((a, b) => a.at - b.at);
-}
-
-// --- a forced physical alignment never overrides a data title's own ------
-//
-// An EIGHTH SEALED FINDING found Repertoire's PathwayCard rendering a
-// user-authored pathway name inside a `<button style={{ textAlign: 'left' }}>`
-// with no direction-resolving group anywhere between them: a Farsi pathway
-// name shaped correctly (the browser's own bidi algorithm needs no help for
-// that) and then sat pinned to the English edge, split from the instrument /
-// stage caption underneath it. The inline instrument isolate already on that
-// caption could never fix it — `text-align` is a BLOCK concept, and this
-// file's own "an isolate must be inline" rule exists precisely because a
-// `<span>` never participates in one.
-//
-// Two things have to hold together, which is why this is ONE check rather
-// than two: the title needs a `dir="auto"` group to resolve from, AND that
-// group has to sit BELOW whatever is forcing a physical alignment and
-// re-declare `textAlign: 'start'`, or the direction it resolves never
-// reaches the alignment. Either half alone leaves the name exactly where it
-// was. `center` is deliberately NOT a forcing value: centred text points at
-// no edge, so it cannot misalign an RTL run — only `left`/`right` can, and
-// excluding `center` is also what keeps this from demanding an unrequested
-// layout change on the deliberately centred practice screens.
-//
-// The scan resolves a `style={CONST}` / `style={{ ...CONST, x }}` reference
-// against module-level `const NAME = { … }` declarations in the same file,
-// because that is how the real counterexample this found in Insights.tsx was
-// written (`<th style={CELL} dir="auto">{r.instrumentName}</th>`, with CELL
-// pinning `textAlign: 'left'`) — a scanner that only read inline literals
-// would have called that site clean.
-
-/** Module-level `const NAME = { … }` style objects, by name. */
-function styleConstants(src: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const m of src.matchAll(/const\s+([A-Za-z_$][\w$]*)\s*(?::\s*[\w.<>]+)?\s*=\s*\{([^{}]*)\}/g)) {
-    out[m[1]] = m[2];
-  }
-  return out;
-}
-
-/** The whole text of a tag's `style={…}` attribute value, with any
- *  module-level style constant it names spliced in. */
-function styleTextOf(tag: string, consts: Record<string, string>): string {
-  const at = tag.indexOf('style=');
-  if (at < 0) return '';
-  const from = tag.indexOf('{', at);
-  if (from < 0) return '';
-  let depth = 0;
-  let end = tag.length;
-  for (let i = from; i < tag.length; i += 1) {
-    if (tag[i] === '{') depth += 1;
-    else if (tag[i] === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        end = i + 1;
-        break;
-      }
-    }
-  }
-  const inline = tag.slice(from, end);
-  const referenced = [...inline.matchAll(/[A-Za-z_$][\w$]*/g)]
-    .map((m) => consts[m[0]])
-    .filter(Boolean)
-    .join(' ');
-  return `${inline} ${referenced}`;
-}
-
-/** 'left'/'right' when a tag forces a PHYSICAL alignment over its content
- *  (directly or through a style constant), null otherwise. 'center' points
- *  at no edge and never misaligns an RTL run, so it is not forcing. */
-function forcedAlign(tag: string, consts: Record<string, string>): string | null {
-  return /textAlign\s*:\s*['"](left|right)['"]/.exec(styleTextOf(tag, consts))?.[1] ?? null;
-}
-
-/** True when a tag re-declares the logical `textAlign: 'start'`. */
-function declaresStart(tag: string, consts: Record<string, string>): boolean {
-  return /textAlign\s*:\s*['"]start['"]/.test(styleTextOf(tag, consts));
-}
-
-/**
- * Every element carrying a TITLE class whose body renders an OPAQUE data
- * expression — the owner's own text, whose language cannot be known from
- * source. A title made only of literal copy ("Routine complete") is fixed
- * English and never needs a direction of its own.
- */
-function dataTitleSites(file: string): { line: number; tag: string; at: number }[] {
-  const src = stripComments(SOURCES[file]);
-  const out: { line: number; tag: string; at: number }[] = [];
-  for (const m of src.matchAll(/<[A-Za-z][\w.]*\s[^>]*className=/g)) {
-    const at = m.index!;
-    const tag = enclosingTag(src, at + 1);
-    if (!TITLE_CLASSES.some((c) => new RegExp(`\\b${c}\\b`).test(classNameOf(tag)))) continue;
-    if (tag.endsWith('/>')) continue;
-    const body = elementBody(src, tag, at);
-    if (!src.slice(body.start, body.end).includes('{')) continue;
-    out.push({ line: src.slice(0, at).split('\n').length, tag, at });
-  }
-  return out;
-}
-
-/**
- * The ancestor chain of a title, innermost FIRST, each entry carrying its own
- * opening tag text so this check can read both its `dir` and its alignment.
- */
-function ancestorTags(src: string, at: number): { tag: string; dir: string | null }[] {
-  return ancestorChain(src, at)
-    .map((e) => {
-      const tag = enclosingTag(src, e.bodyStart - 1);
-      return { tag, dir: e.dir };
-    })
-    .reverse();
-}
-
-// --- the check --------------------------------------------------------------
-
-describe('direction lives on the group', () => {
-  it('direction lives on the group: no title element carries dir="auto", and every listed surface has one', () => {
-    const all = sourceFiles().flatMap(directionSites);
-
-    // (a) A title that still carries direction is a site the sweep missed: its
-    //     own caption still aligns to the opposite edge.
-    const onTitles = all
-      .filter((s) => isTitle(s) && !allowed(s))
-      .map((s) => `${s.file}:${s.line} — dir="auto" on a title (class "${s.classValue.trim()}")`);
-    expect(onTitles).toEqual([]);
-
-    // (b) A surface with no group at all is a whole file the sweep skipped —
-    //     and deleting the attribute instead of moving it fails here too.
-    const withoutGroup = SURFACES.filter(
-      (file) => !all.some((s) => s.file === file && isGroup(s)),
-    ).map((file) => `${file} — renders user text but carries direction on no group`);
-    expect(withoutGroup).toEqual([]);
-  });
-
-  it('keeps every listed exception real, so the allowlist cannot rot', () => {
-    const all = sourceFiles().flatMap(directionSites);
-    for (const entry of ALLOWED_TITLE_SITES) {
-      const hit = all.some((s) => s.file === entry.file && s.text.includes(entry.snippet) && isTitle(s));
-      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.snippet})`).toBe(true);
-    }
-  });
-
-  it('keeps every recorded group site current — removing any ONE of them fails, even when its file has others', () => {
-    const inventory = sourceFiles()
-      .flatMap(directionSites)
-      .filter(isGroup)
-      .map(({ file, tagName, classValue }) => ({ file, tagName, classValue }));
-    expect(inventory).toEqual(GROUP_SITE_INVENTORY);
-  });
-
-  it('no fixed English phrase in a group inherits the title\'s bidi base unisolated', () => {
-    const exempt = (file: string, tagText: string) =>
-      UNEXEMPTED_PHRASE_ALLOWLIST.some((e) => e.file === file && tagText.includes(e.tagSnippet));
-    const violations: string[] = [];
-    for (const file of sourceFiles()) {
-      const src = stripComments(SOURCES[file]);
-      for (const site of directionSites(file).filter(isGroup)) {
-        if (exempt(file, site.text)) continue;
-        const openAt = src.lastIndexOf('<', site.at);
-        const body = elementBody(src, site.text, openAt);
-        const phrase = unexemptedPhrase(src, body.start, body.end);
-        if (phrase) violations.push(`${file}:${site.line} — "${phrase}" is exposed to the group's bidi base`);
-      }
-    }
-    expect(violations).toEqual([]);
-  });
-
-  it('keeps every listed unexempted-phrase exception real, so it cannot rot', () => {
-    for (const entry of UNEXEMPTED_PHRASE_ALLOWLIST) {
-      const hit = sourceFiles()
-        .filter((f) => f === entry.file)
-        .flatMap(directionSites)
-        .filter(isGroup)
-        .some((s) => s.text.includes(entry.tagSnippet));
-      expect(hit, `allowlisted exception no longer exists: ${entry.file} (${entry.tagSnippet})`).toBe(true);
-    }
-  });
-
-  it('keeps every independently-authored value isolated from the group it sits in', () => {
-    for (const entry of ISOLATED_VALUE_SITES) {
-      const hit = SOURCES[entry.file]?.includes(entry.snippet);
-      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
-    }
-  });
-
-  it('keeps every fixed-English / generated-metadata site isolated from the group it sits in', () => {
-    for (const entry of LTR_ISOLATE_SITES) {
-      const hit = SOURCES[entry.file]?.includes(entry.snippet);
-      expect(hit, `missing or moved: ${entry.file} — ${entry.snippet}`).toBe(true);
-    }
-  });
-
-  it('a bidi isolate is always inline (span/bdi), never a block that resolves its own alignment', () => {
-    const violations = sourceFiles()
-      .flatMap(isolateSites)
-      .filter((s) => !INLINE_ISOLATE_TAGS.includes(s.tagName))
-      .map((s) => `${s.file}:${s.line} — dir="ltr"/"rtl" on a <${s.tagName}>, not an inline span`);
-    expect(violations).toEqual([]);
-  });
-
-  // A sealed review found FOUR sites forcing an instrument name — the OWNER'S
-  // OWN editable text, never generated copy — under dir="ltr" as if it were
-  // metadata like ITEM_TYPE_LABELS sitting next to it. Auditing the rest of
-  // LTR_ISOLATE_SITES by hand found three more of the identical shape. A
-  // location list closes only the sites that happened to exist today; this
-  // bans the SHAPE, so a future dir="ltr"/"rtl" wrapped around an instrument
-  // name fails here regardless of which file it turns up in. The pattern is
-  // deliberately NOT anchored to a call — `\binstrumentName\(` alone missed
-  // `{b.instrumentName}` (a property access, no call, no parenthesis) in the
-  // very same audit that added this test — so it also matches a bare
-  // `instrumentName` identifier, covering a property access and a value
-  // passed through as a prop (e.g. `TeacherReport.tsx`'s local `instrumentName`
-  // variable), not just a direct call.
-  it('no dir="ltr"/"rtl" isolate wraps an instrument name', () => {
-    const violations: string[] = [];
-    for (const file of sourceFiles()) {
-      const src = stripComments(SOURCES[file]);
-      for (const site of isolateSites(file)) {
-        const openAt = src.lastIndexOf('<', site.at);
-        const body = elementBody(src, site.text, openAt);
-        const bodyText = src.slice(body.start, body.end);
-        if (/\binstrumentName\b|\{inst\}/.test(bodyText)) {
-          violations.push(`${file}:${site.line} — an instrument name sits inside a dir="ltr"/"rtl" isolate`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
-  });
-
-  // See the block comment above `instrumentNameOccurrences` for the full
-  // rationale and the shapes discovered. This supersedes the previous
-  // approach of listing each fixed site's exact snippet in
-  // ISOLATED_VALUE_SITES: that ledger could only ever vouch for sites a
-  // human had already found, and four rounds of rejection on this exact
-  // family showed that was never enough. Two real sites deliberately keep
-  // resolving from an ANCESTOR rather than their own isolate — Insights.tsx's
-  // `<th dir="auto">` and Today.tsx's cross-instrument `{inst.name}` — and
-  // this check accepts that (it asks about the name's own resolved
-  // direction, not the shape of the markup around it); wrapping either in a
-  // nested isolate later would silently regress the GROUP's own resolution
-  // instead (dir="auto" skips a descendant that carries its own dir when
-  // hunting for a first strong character), which is caught separately by
-  // `GROUP_SITE_INVENTORY`'s exhaustive equality against any new dir="auto"
-  // site, not by this check.
-  //
-  // Excluded: ItemForm.tsx, QuickAdd.tsx and RoutineEdit.tsx, the three
-  // files this lane's own contract puts out of scope ("their dir='auto'
-  // usage is already correct and must not be touched"). That claim turned
-  // out to be wrong for one of them — QuickAdd.tsx's instrument-picker
-  // button renders `{i.name}` with no dir anywhere — but fixing it means
-  // editing a forbidden file, so it is named here and in AGENTS.md instead
-  // of silently passing OR silently failing a check this lane cannot act on.
-  const OUT_OF_SCOPE_FOR_THIS_LANE = ['components/ItemForm.tsx', 'components/QuickAdd.tsx', 'pages/RoutineEdit.tsx'];
-  it('an instrument name resolves its own direction, wherever it renders', () => {
-    const violations: string[] = [];
-    let sitesSeen = 0;
-    for (const file of sourceFiles().filter((f) => !OUT_OF_SCOPE_FOR_THIS_LANE.includes(f))) {
-      const src = stripComments(SOURCES[file]);
-      const occurrences = instrumentNameOccurrences(file);
-      sitesSeen += occurrences.length;
-      for (const { at, end } of occurrences) {
-        if (isFusedIntoTemplate(src, at)) {
-          const line = src.slice(0, at).split('\n').length;
-          violations.push(`${file}:${line} — an instrument name is fused into a template string before it renders`);
-          continue;
-        }
-        const { ok, dir } = resolvesOwnDirection(src, at);
-        if (!ok) {
-          const line = src.slice(0, at).split('\n').length;
-          const found =
-            dir === null
-              ? 'no dir="" ancestor at all'
-              : dir === 'auto'
-                ? 'a dir="auto" ancestor whose resolution is already claimed by something preceding it'
-                : `an ancestor forces dir="${dir}"`;
-          violations.push(`${file}:${line} — "${src.slice(at, end)}" resolves its direction from ${found}`);
-        }
-      }
-    }
-    expect(violations).toEqual([]);
-    // A scanner that silently finds nothing is not proof of nothing being
-    // wrong — this fails if a regression in the discovery patterns above
-    // ever made them stop matching entirely (every shape they cover is
-    // exercised by real code in this app today).
-    expect(sitesSeen).toBeGreaterThan(0);
-  });
-
-  it('a list with a direction-variable item never relies on the native marker, and lays that item out as a direction-aware flex container', () => {
-    const violations: string[] = [];
-    for (const site of sourceFiles().flatMap(listSites)) {
-      if (site.autoLiTags.length === 0) continue;
-      if (!disablesNativeMarker(site.tag)) {
-        violations.push(`${site.file}:${site.line} — <ol>/<ul> relies on a native marker for an li whose direction can vary`);
-      }
-      for (const liTag of site.autoLiTags) {
-        if (!isDirectionAwareContainer(liTag)) {
-          violations.push(
-            `${site.file}:${site.line} — a dir="auto" <li> isn't itself a flex/grid container, so its own content can't reorder with its direction`,
-          );
-        }
-      }
-    }
-    expect(violations).toEqual([]);
-  });
-
-  it("a label-first auto row's value stays bare, so the row still has a direction to resolve from", () => {
-    const violations: string[] = [];
-    let rowsSeen = 0;
-    for (const file of sourceFiles()) {
-      const src = stripComments(SOURCES[file]);
-      for (const site of directionSites(file).filter(isGroup)) {
-        if (!isLabelFirstAutoRow(file, site)) continue;
-        rowsSeen += 1;
-        const openAt = src.lastIndexOf('<', site.at);
-        const body = elementBody(src, site.text, openAt);
-        const bodyText = src.slice(body.start, body.end);
-        const afterLabel = bodyText.replace(/^\s*<span[^>]*\sdir="ltr"[^>]*>[^<]*<\/span>/, '');
-        if (/\sdir="(?:auto|ltr|rtl)"/.test(afterLabel)) {
-          violations.push(
-            `${file}:${site.line} — the value in a label-first row carries its own dir, leaving the row with nothing left to resolve from`,
-          );
-        }
-      }
-    }
-    expect(violations).toEqual([]);
-    // Same discipline as the instrument-name check above: a scanner that
-    // silently matches nothing is not proof nothing needs checking.
-    expect(rowsSeen).toBeGreaterThan(0);
-  });
-
-  // An OWNER-observed regression found ClassQuestions' <li dir="auto">
-  // anchored on the wrong candidate: the title was left bare (leading the
-  // hunt) while the question carried its own isolate — so an item whose
-  // title and question differed in language put the ordinal on the
-  // title's side while the question (the only field questionsForNextClass
-  // actually guarantees is non-empty) resolved its own, different
-  // direction and landed on the opposite edge, unattached from the
-  // marker entirely. Matching-language seed data never exposed this: the
-  // bug only shows when the two differ. Fixed by reversing which one is
-  // bare — the question anchors the <li>, the title gets its own isolate
-  // — and asserted directly here rather than trusting seed data again.
-  it("the question anchors ClassQuestions' <li>, not the independently-authored title", () => {
-    const file = 'components/ClassQuestions.tsx';
-    const src = stripComments(SOURCES[file]);
-    // The item's own <li>, not one of renderFreeText's bullet rows (which
-    // now carry dir="auto" of their own and appear earlier in the file).
-    const liSite = directionSites(file).find((s) => s.tagName === 'li' && s.text.includes('key={q.id}'));
-    expect(liSite, 'ClassQuestions\' <li dir="auto"> site not found').toBeTruthy();
-    const openAt = src.lastIndexOf('<', liSite!.at);
-    const body = elementBody(src, liSite!.text, openAt);
-    const bodyText = src.slice(body.start, body.end);
-    const smallDivs = [...bodyText.matchAll(/<div className="small"[^>]*>/g)].map((m) => m[0]);
-    expect(smallDivs.length, 'expected a title div and a question div').toBeGreaterThanOrEqual(2);
-    const [titleTag, questionTag] = smallDivs;
-    expect(titleTag, 'the title must carry its own dir="auto" isolate, out of the <li>\'s hunt').toMatch(
-      /\sdir="auto"/,
-    );
-    expect(questionTag, "the question must stay bare so the <li> resolves from it").not.toMatch(/\sdir=/);
-  });
-
-  // An EIGHTH SEALED FINDING: Repertoire's PathwayCard forced a user-authored
-  // pathway name left (the button's own textAlign:'left') with no
-  // direction-resolving group anywhere above it, so a Persian pathway read
-  // against the English edge while its own caption sat beside it. The two
-  // halves are asserted together because either alone leaves the name where
-  // it was: a group to resolve the direction FROM, and that same group
-  // re-declaring the logical `textAlign: 'start'` below whatever pinned a
-  // physical one. Discovered mechanically from the shapes the app actually
-  // uses (a title class whose body renders an opaque data expression; an
-  // alignment pinned inline OR through a module-level style constant), not
-  // from a list of locations a reviewer happened to name.
-  it('no forced left/right alignment overrides a data title\'s own resolved direction', () => {
-    const violations: string[] = [];
-    let titlesSeen = 0;
-    for (const file of sourceFiles()) {
-      const src = stripComments(SOURCES[file]);
-      const consts = styleConstants(src);
-      for (const title of dataTitleSites(file)) {
-        // A title carrying its own dir is an isolate (fixed copy deliberately
-        // pinned), judged by the isolate rules above, not by this one.
-        if (/\sdir="(auto|ltr|rtl)"/.test(title.tag)) continue;
-        const chain = [{ tag: title.tag, dir: null as string | null }, ...ancestorTags(src, title.at + 1)];
-        const forcedAt = chain.findIndex((e) => forcedAlign(e.tag, consts) !== null);
-        if (forcedAt < 0) continue; // nothing forces a physical edge on this title
-        titlesSeen += 1;
-        const where = `${file}:${title.line} [${classNameOf(title.tag).trim()}]`;
-        // The group must sit strictly BELOW the forcing element (a smaller
-        // index is nearer the title), resolve direction, and restore start.
-        const group = chain.slice(0, forcedAt).find((e) => e.dir !== null);
-        if (!group) {
-          violations.push(`${where} — forced ${forcedAlign(chain[forcedAt].tag, consts)} with no dir group between`);
-        } else if (group.dir !== 'auto') {
-          violations.push(`${where} — the nearest group pins dir="${group.dir}" instead of resolving the title's own`);
-        } else if (!declaresStart(group.tag, consts)) {
-          violations.push(`${where} — its dir="auto" group never restores textAlign:'start', so the resolved direction never reaches the alignment`);
-        }
-      }
-      // The same defect one level up, in a shape no title-class filter can
-      // see: a group that resolves a direction and then pins a physical edge
-      // ON ITSELF. Insights' per-instrument <th style={CELL} dir="auto"> was
-      // exactly this — CELL pinning textAlign:'left' over the owner's own
-      // (renameable, Farsi-capable) instrument name.
-      for (const group of directionSites(file).filter(isGroup)) {
-        const forced = forcedAlign(group.text, consts);
-        if (forced) {
-          violations.push(
-            `${file}:${group.line} — a dir="auto" group pins textAlign:'${forced}', overriding the direction it just resolved`,
-          );
-        }
-      }
-    }
-    expect(violations).toEqual([]);
-    // Same discipline as the checks above: a scanner that silently matches
-    // nothing is not proof that nothing needed checking.
-    expect(titlesSeen).toBeGreaterThan(0);
-  });
-
-  // The same EIGHTH FINDING's second half: renderFreeText rendered every line
-  // of a multi-line question/problem/observation bare, so one Farsi line
-  // dragged every following English line RTL (and the reverse). Each line is
-  // independently authored and resolves its OWN direction — except the FIRST,
-  // which stays bare ON PURPOSE: it is the only strong text left for the
-  // enclosing dir="auto" (the item's <li>, the Problem/Last-time value
-  // wrapper) to resolve from, since the title is already isolated. Isolating
-  // it too would leave the whole item with no resolution source and a silent
-  // LTR fallback — the ninth finding, back again. Mutation-tested both ways:
-  // making the first line resolve its own direction fails here, and so does
-  // leaving the rest bare.
-  it('every line after the anchor of a multi-line free-text field resolves its own direction', () => {
-    const file = 'components/ClassQuestions.tsx';
-    const src = stripComments(SOURCES[file]);
-    const at = src.indexOf('function bullet(');
-    expect(at, 'renderFreeText\'s per-line renderer not found').toBeGreaterThan(-1);
-    const end = src.indexOf('\nfunction renderFreeText', at);
-    const liTags = [...src.slice(at, end).matchAll(/<li\b[^>]*>/g)].map((m) => m[0]);
-    expect(liTags.length, 'expected an anchor branch and an own-direction branch').toBe(2);
-    const bare = liTags.filter((t) => !/\sdir=/.test(t));
-    const own = liTags.filter((t) => /\sdir="auto"/.test(t));
-    expect(bare.length, 'exactly one line — the anchor — stays bare').toBe(1);
-    expect(own.length, 'every other line carries its own dir="auto"').toBe(1);
-    // …and the branch that gets the isolate is the one chosen for lines
-    // AFTER the first, never the first itself.
-    expect(src.slice(at, end)).toMatch(/return own \? \(\s*<li key=\{key\} dir="auto"/);
-    expect(src.slice(end)).toMatch(/bullet\(line, i, i > 0\)/);
-  });
-});
 ```
 
 ### src/domain/io.test.ts
@@ -8079,6 +6982,24 @@ describe('the v14 source graph at the schema boundary', () => {
       (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
     }, /suppression with no timestamp/);
 
+    // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
+    // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
+    // when the index last changed. It was the one persisted field with no
+    // check at all: a v14 import carrying `acceptedAt: null` was accepted and
+    // then threw while the screen rendered. The fix is this door, never a
+    // guard in the component.
+    for (const bad of [null, 42, '', 'yesterday', '2026-02-30T12:00:00.000Z', '2026-09-17']) {
+      refuses((d) => {
+        (d.archiveSources[0] as unknown as { acceptedAt: unknown }).acceptedAt = bad;
+      }, /unreadable accepted time/);
+    }
+    refuses((d) => {
+      delete (d.archiveSources[0] as unknown as { renames?: unknown }).renames;
+    }, /no rename log/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { diagnostics?: unknown }).diagnostics = null;
+    }, /no diagnostic list/);
+
     // The POSITIVE half: a graph this door ACCEPTS is one every production
     // reader can walk without throwing. The counterexample above reached
     // `repeatChains` and crashed the material list; this asserts the whole
@@ -8162,6 +7083,1184 @@ describe('the v14 source graph at the schema boundary', () => {
     };
     expect(validateDB({ ...graphed, attachments: [attachment] }).attachments).toEqual([attachment]);
     expect(() => validateDB({ ...graphed, attachments: [attachment, attachment] })).toThrow(/share the id/);
+  });
+});
+```
+
+### src/domain/recordings.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import {
+  archiveRootUrl,
+  describeArchiveAccess,
+  formatFileSize,
+  needsBaseUrl,
+  normalizeBaseUrl,
+  relativizeReference,
+  resolveRecording,
+  resolveRecordingUrl,
+} from './recordings';
+
+describe('resolveRecordingUrl', () => {
+  const base = 'https://nas.example.ts.net/media';
+
+  it('uses a full https URL as-is', () => {
+    expect(resolveRecordingUrl(undefined, { path: 'https://x.ts.net/a/b.mp4' })).toBe('https://x.ts.net/a/b.mp4');
+  });
+
+  it('joins a relative path under the base URL', () => {
+    expect(resolveRecordingUrl(base, { path: 'setar-classes/session-37/class.mp4' })).toBe(
+      'https://nas.example.ts.net/media/setar-classes/session-37/class.mp4',
+    );
+  });
+
+  it('URL-encodes spaces and Farsi filenames per segment', () => {
+    const url = resolveRecordingUrl(base, { path: 'setar-classes/session-36/2026-06-09 19.29.16.mp4' })!;
+    expect(url).toContain('2026-06-09%2019.29.16.mp4');
+    const farsi = resolveRecordingUrl(base, { path: 'setar-classes/چهارمضراب-صبا.pdf' })!;
+    expect(farsi).toContain('%D8%'); // percent-encoded Farsi
+    expect(farsi.startsWith(base)).toBe(true);
+  });
+
+  it('tolerates trailing/leading slashes', () => {
+    expect(resolveRecordingUrl('https://nas/media/', { path: '/a/b.mp4' })).toBe('https://nas/media/a/b.mp4');
+  });
+
+  it('returns null for a relative path with no base URL (must prompt)', () => {
+    expect(resolveRecordingUrl(undefined, { path: 'setar-classes/x.mp4' })).toBeNull();
+    expect(resolveRecordingUrl('', { path: 'setar-classes/x.mp4' })).toBeNull();
+  });
+
+  it('returns null for an empty path', () => {
+    expect(resolveRecordingUrl(base, { path: '  ' })).toBeNull();
+  });
+});
+
+describe('needsBaseUrl', () => {
+  it('is true only for a relative path without a base', () => {
+    expect(needsBaseUrl(undefined, { path: 'a/b.mp4' })).toBe(true);
+    expect(needsBaseUrl('https://nas', { path: 'a/b.mp4' })).toBe(false);
+    expect(needsBaseUrl(undefined, { path: 'https://nas/a.mp4' })).toBe(false);
+  });
+});
+
+describe('normalizeBaseUrl', () => {
+  it('prepends https:// to a scheme-less host (the reported bug)', () => {
+    expect(normalizeBaseUrl('ds220plus.taild1d1f7.ts.net')).toBe('https://ds220plus.taild1d1f7.ts.net');
+    expect(normalizeBaseUrl('ds220plus.taild1d1f7.ts.net/media')).toBe('https://ds220plus.taild1d1f7.ts.net/media');
+  });
+
+  it('keeps an explicit scheme and strips a trailing slash', () => {
+    expect(normalizeBaseUrl('https://nas.ts.net/media/')).toBe('https://nas.ts.net/media');
+    expect(normalizeBaseUrl('http://192.168.0.20:8080/x/')).toBe('http://192.168.0.20:8080/x');
+  });
+
+  it('returns null for blank or unparseable input', () => {
+    expect(normalizeBaseUrl('')).toBeNull();
+    expect(normalizeBaseUrl('   ')).toBeNull();
+    expect(normalizeBaseUrl(undefined)).toBeNull();
+    expect(normalizeBaseUrl('http://')).toBeNull();
+    expect(normalizeBaseUrl('not a url at all')).toBeNull();
+  });
+
+  it('rejects non-http(s) schemes', () => {
+    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
+    expect(normalizeBaseUrl('file:///Volumes/x')).toBeNull();
+  });
+});
+
+describe('resolveRecording (status-aware)', () => {
+  it('resolves a scheme-less base without collapsing to an in-app relative URL', () => {
+    const r = resolveRecording('ds220plus.taild1d1f7.ts.net/media', { path: 'setar-classes/session-1/a.mp4' });
+    expect(r).toEqual({ status: 'ok', url: 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-1/a.mp4' });
+  });
+
+  it('flags an unparseable base as bad-base (no silent wrong link)', () => {
+    expect(resolveRecording('http://', { path: 'a/b.mp4' })).toEqual({ status: 'bad-base' });
+  });
+
+  it('flags a missing base and an empty path distinctly', () => {
+    expect(resolveRecording('', { path: 'a/b.mp4' })).toEqual({ status: 'no-base' });
+    expect(resolveRecording('https://nas', { path: '  ' })).toEqual({ status: 'empty' });
+  });
+
+  it('passes a full https path through', () => {
+    expect(resolveRecording(undefined, { path: 'https://x.ts.net/a b/c.mp4' })).toEqual({
+      status: 'ok',
+      url: 'https://x.ts.net/a%20b/c.mp4',
+    });
+  });
+
+  it('opens a retained absolute URL unchanged, without double-encoding its existing escapes', () => {
+    // A foreign origin or a query-bearing URL is retained verbatim by
+    // relativizeReference (never rewritten). It must still open correctly:
+    // encodeURI() would turn an existing %20 into %2520 — a dead link.
+    expect(resolveRecording(undefined, { path: 'https://example.com/a%20b.pdf' })).toEqual({
+      status: 'ok',
+      url: 'https://example.com/a%20b.pdf',
+    });
+    // Percent-encoded Farsi, as a NAS directory listing would hand it out.
+    const farsi = 'https://example.com/setar-classes/' + encodeURIComponent('چهارمضراب.pdf');
+    expect(resolveRecording(undefined, { path: farsi })).toEqual({ status: 'ok', url: farsi });
+    // A retained query-bearing URL keeps its query string intact.
+    expect(resolveRecording(undefined, { path: 'https://example.com/class.mp4?download=1' })).toEqual({
+      status: 'ok',
+      url: 'https://example.com/class.mp4?download=1',
+    });
+  });
+});
+
+describe('formatFileSize', () => {
+  it('formats KB/MB/GB, and returns null for missing sizes', () => {
+    expect(formatFileSize(500 * 1024)).toBe('500 KB');
+    expect(formatFileSize(325 * 1024 * 1024)).toBe('325 MB');
+    expect(formatFileSize(686 * 1024 * 1024)).toBe('686 MB');
+    expect(formatFileSize(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
+    expect(formatFileSize(undefined)).toBeNull();
+    expect(formatFileSize(0)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Transport independence. What is STORED must not name one device's route to
+// the NAS, or every reference dies the day that route changes.
+// ---------------------------------------------------------------------------
+
+describe('relativizeReference', () => {
+  const base = 'https://192.168.0.20:5010';
+
+  it('stores a pasted URL under the base as relative, keeps a foreign origin absolute, and leaves a relative path alone', () => {
+    // Copied out of the NAS directory listing, so the Farsi filename arrives
+    // percent-encoded; storing it encoded would double-escape on resolve.
+    const pasted = `${base}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
+    expect(relativizeReference(base, pasted)).toBe('setar-classes/session-37/چهارمضراب.pdf');
+
+    const foreign = 'https://example.com/setar-classes/session-37/class.mp4';
+    expect(relativizeReference(base, foreign)).toBe(foreign);
+
+    expect(relativizeReference(base, 'setar-classes/session-37/class.mp4')).toBe(
+      'setar-classes/session-37/class.mp4',
+    );
+  });
+
+  it('requires the path boundary, so a sibling folder is not swallowed', () => {
+    const sibling = 'https://192.168.0.20:5010/mediaXYZ/class.mp4';
+    expect(relativizeReference('https://192.168.0.20:5010/media', sibling)).toBe(sibling);
+  });
+
+  it('stores a pasted URL unchanged when no usable base URL is configured', () => {
+    const pasted = `${base}/setar-classes/session-37/class.mp4`;
+    expect(relativizeReference(undefined, pasted)).toBe(pasted);
+    expect(relativizeReference('', pasted)).toBe(pasted);
+    expect(relativizeReference('   ', pasted)).toBe(pasted);
+    expect(relativizeReference('ftp://nas/media', pasted)).toBe(pasted);
+    expect(relativizeReference('http://[not a url', pasted)).toBe(pasted);
+  });
+
+  it('leaves a URL carrying a query or fragment absolute rather than guessing', () => {
+    const query = `${base}/setar-classes/class.mp4?download=1`;
+    expect(relativizeReference(base, query)).toBe(query);
+  });
+});
+
+describe('a stored reference survives a change of transport', () => {
+  it('resolves the same relative reference correctly under two different base URLs', () => {
+    const lan = 'https://192.168.0.20:5010';
+    const pasted = `${lan}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
+    const stored = relativizeReference(lan, pasted);
+
+    expect(resolveRecordingUrl(lan, { path: stored })).toBe(pasted);
+    // A completely different route to the same NAS — nothing stored changes.
+    expect(resolveRecordingUrl('https://ds220plus.taild1d1f7.ts.net/media', { path: stored })).toBe(
+      `https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`,
+    );
+  });
+});
+
+describe('the Browse target', () => {
+  it('offers a browse target for a valid base and none for a blank or unparseable one', () => {
+    // Settings' Browse action is gated on exactly this value.
+    expect(normalizeBaseUrl('https://192.168.0.20:5010/')).toBe('https://192.168.0.20:5010');
+    expect(normalizeBaseUrl('192.168.0.20:5010/media')).toBe('https://192.168.0.20:5010/media');
+    expect(normalizeBaseUrl('')).toBeNull();
+    expect(normalizeBaseUrl('   ')).toBeNull();
+    expect(normalizeBaseUrl(undefined)).toBeNull();
+    expect(normalizeBaseUrl('http://[not a url')).toBeNull();
+    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-14 — the archive's identity is the path; transport is per device.
+// ---------------------------------------------------------------------------
+
+describe('archive transport', () => {
+  it('source transport changes preserve archive identity and encode Farsi once', () => {
+    // ONE stored reference. Its path is archive-relative and is the identity.
+    const ref = { path: 'session-13-03-09-2024/نمونه-1.mp4' };
+    const mac = 'https://192.168.0.20:5010/setar-classes/';
+    const iphone = 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes/';
+    const future = 'https://nas.example.org/archives/v2/setar-classes';
+
+    const macUrl = resolveRecording(mac, ref);
+    const phoneUrl = resolveRecording(iphone, ref);
+    const futureUrl = resolveRecording(future, ref);
+    expect(macUrl.status).toBe('ok');
+    expect(phoneUrl.status).toBe('ok');
+    expect(futureUrl.status).toBe('ok');
+    if (macUrl.status !== 'ok' || phoneUrl.status !== 'ok' || futureUrl.status !== 'ok') throw new Error('unreachable');
+
+    // Each device's own BASE PATH PREFIX survives — `/media/`, `/archives/v2/`.
+    expect(macUrl.url).toBe(
+      'https://192.168.0.20:5010/setar-classes/session-13-03-09-2024/%D9%86%D9%85%D9%88%D9%86%D9%87-1.mp4',
+    );
+    expect(phoneUrl.url).toContain('/media/setar-classes/session-13-03-09-2024/');
+    expect(futureUrl.url).toContain('/archives/v2/setar-classes/session-13-03-09-2024/');
+
+    // FARSI IS ENCODED ONCE. Decoding each segment gives back the raw path, and
+    // no '%25' (a re-encoded '%') appears anywhere.
+    for (const resolved of [macUrl, phoneUrl, futureUrl]) {
+      expect(resolved.url).not.toContain('%25');
+      const tail = resolved.url.split('/').slice(-2).map(decodeURIComponent).join('/');
+      expect(tail).toBe(ref.path);
+    }
+
+    // THE STORED DATA NEVER MOVED. Three bases, one reference object — a base
+    // change rewrites no record, so no export and no content hash changes.
+    const before = JSON.stringify(ref);
+    resolveRecording(mac, ref);
+    resolveRecording(iphone, ref);
+    expect(JSON.stringify(ref)).toBe(before);
+    // ...and a pasted URL under either base is stored back as the same path.
+    expect(relativizeReference(mac, macUrl.url)).toBe(ref.path);
+    expect(relativizeReference(iphone, phoneUrl.url)).toBe(ref.path);
+    // A double-encoded separator decodes into a path that steps OUT of the
+    // base. That is not stored as a relative reference at all: the pasted text
+    // is kept exactly as given, and resolving it refuses rather than opening
+    // something outside the archive.
+    const smuggled = `${mac}session-13-03-09-2024%2F..%2Fx.mp4`;
+    expect(relativizeReference(mac, smuggled)).toBe(smuggled);
+    expect(resolveRecording(mac, { path: 'session-13-03-09-2024/../x.mp4' }).status).toBe('unsafe');
+
+    // --- refusals ------------------------------------------------------------
+    for (const path of ['../PIECES.csv', 'a/../../etc/passwd', 'a%2F..%2Fb.mp4', 'a\\b.mp4', 'user:pass@host/x.mp4']) {
+      expect(resolveRecording(mac, { path }).status).toBe('unsafe');
+      expect(resolveRecordingUrl(mac, { path })).toBeNull();
+    }
+    expect(resolveRecording('ftp://nas/setar', ref).status).toBe('bad-base');
+    expect(resolveRecording('not a url at all', ref).status).toBe('bad-base');
+    expect(resolveRecording(undefined, ref).status).toBe('no-base');
+    expect(resolveRecording(mac, { path: '   ' }).status).toBe('empty');
+
+    // --- the capability check never probes a media FILENAME ------------------
+    expect(archiveRootUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes/');
+    expect(archiveRootUrl(iphone)).toBe('https://ds220plus.taild1d1f7.ts.net/media/setar-classes/');
+    expect(archiveRootUrl('')).toBeNull();
+    expect(archiveRootUrl('ftp://nas')).toBeNull();
+    // A renamed or missing single clip cannot make the root check fail, because
+    // no clip is part of it.
+    expect(archiveRootUrl(mac)).not.toContain('.mp4');
+    expect(archiveRootUrl(mac)).not.toContain('نمونه');
+
+    // --- index readability and media reachability are TWO statements ---------
+    const fetched = describeArchiveAccess({ indexFetchedAt: '2026-09-17 09:00', indexChangedAt: '2026-09-16 04:15', baseUrl: mac });
+    expect(fetched.index).toContain('last fetched');
+    expect(fetched.index).toContain('last changed');
+    // Reading the index says NOTHING about the NAS, and the media sentence
+    // never claims a file is absent — a certificate, a CORS refusal and an
+    // outage are indistinguishable from here, so none of them is called
+    // absence.
+    expect(fetched.media).not.toContain('fetched');
+    expect(fetched.media).toMatch(/cannot verify/);
+    for (const word of ['missing', 'not found', 'absent', 'gone']) expect(fetched.media.toLowerCase()).not.toContain(word);
+    const noIndex = describeArchiveAccess({ baseUrl: mac });
+    expect(noIndex.index).toMatch(/No index has been fetched/);
+    expect(describeArchiveAccess({ indexFetchedAt: 'x' }).media).toMatch(/No media base is set/);
+    expect(describeArchiveAccess({ indexFetchedAt: 'x', baseUrl: 'ftp://nas' }).media).toMatch(/not a usable/);
+
+    // --- A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE -------------------
+    // Everything appends a path AFTER the base, so a credential, a query or a
+    // fragment in it is not merely untidy: the password ends up on screen in
+    // every device URL, and `…/media?token=secret` + `/session-1/x.mp4`
+    // addresses no file at all. Refused at the ONE boundary they all share —
+    // never stripped, because a rewritten base names a different server.
+    const leaky = 'https://user:pass@nas.example/media?token=secret';
+    for (const bad of [
+      leaky,
+      'https://user:pass@nas.example/media',
+      'https://nas.example/media?token=secret',
+      'https://nas.example/media#frag',
+      'user:pass@nas.example/media',
+    ]) {
+      expect(normalizeBaseUrl(bad)).toBeNull();
+      expect(archiveRootUrl(bad)).toBeNull();
+      expect(resolveRecording(bad, ref).status).toBe('bad-base');
+      expect(resolveRecordingUrl(bad, ref)).toBeNull();
+      // Nothing is relativised against a base that was never usable…
+      expect(relativizeReference(bad, `${leaky}/session-1/x.mp4`)).toBe(`${leaky}/session-1/x.mp4`);
+      // …and the owner is told WHY, not merely that it failed.
+      const said = describeArchiveAccess({ baseUrl: bad }).media;
+      expect(said).toMatch(/not a usable/);
+      expect(said).toMatch(/password/);
+    }
+    // No secret ever reaches a resolved URL through the base.
+    expect(JSON.stringify([archiveRootUrl(leaky), resolveRecording(leaky, ref)])).not.toContain('secret');
+    // The reconciler reads its `verifiedBase` from `archiveRootUrl`, so the
+    // same refusal covers path repair: with no verified base, a full URL is
+    // left exactly as the owner saved it.
+    expect(archiveRootUrl(leaky) ?? undefined).toBeUndefined();
+    // An ordinary base with a port, a path and a trailing slash still works.
+    expect(normalizeBaseUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes');
+  });
+});
+```
+
+### src/domain/recordings.ts
+
+```
+import type { LessonRecording } from './types';
+
+// ---------------------------------------------------------------------------
+// Class-recording references. The app stores WHERE a recording is, never the
+// bytes: a relative path under a NAS base URL (set in Settings) or a full
+// https:// URL. Resolving a reference is pure; the video is only ever fetched
+// when the user explicitly opens it, never at startup.
+// ---------------------------------------------------------------------------
+
+const HTTP_RE = /^https?:\/\//i;
+
+/** Format a byte count for display (e.g. "686 MB"). */
+export function formatFileSize(bytes: number | undefined): string | null {
+  if (!bytes || bytes <= 0) return null;
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) return `${Math.round(bytes / 1024)} KB`;
+  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/**
+ * Normalise a user-entered NAS base URL to a valid http(s) origin+path.
+ * - Missing scheme → assume `https://` (the app runs on an HTTPS origin, so a
+ *   bare host like `nas.example.ts.net` would otherwise be treated as a
+ *   relative path and every recording would resolve to the same in-app route).
+ * - Validates with `new URL`; only http/https accepted.
+ * - Strips a trailing slash.
+ * Returns null when the value is blank or unparseable.
+ *
+ * A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE. A credential, a query or a
+ * fragment is REFUSED here rather than carried, because every caller appends a
+ * path AFTER whatever this returns: `https://user:pass@nas/media?token=secret`
+ * would make "Open archive root" `…?token=secret/` and a file
+ * `…?token=secret/session-1/x.mp4` — a password on screen in a device URL, and
+ * a URL that addresses no file. It is not STRIPPED into something openable
+ * either: a rewritten base names a different server, and the owner is the only
+ * one who can say what they meant. This is the ONE boundary — `resolveRecording`,
+ * `relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the
+ * reconciler's `verifiedBase` (through `archiveRootUrl`) all pass through it.
+ */
+const ANY_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+
+export function normalizeBaseUrl(raw: string | undefined): string | null {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return null;
+  // A string that already carries a scheme must be http(s); don't silently
+  // rewrite ftp://, file://, etc. into https://.
+  if (ANY_SCHEME_RE.test(trimmed) && !HTTP_RE.test(trimmed)) return null;
+  const withScheme = HTTP_RE.test(trimmed) ? trimmed : `https://${trimmed}`;
+  let url: URL;
+  try {
+    url = new URL(withScheme);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password || url.search || url.hash) return null;
+  return url.toString().replace(/\/+$/, '');
+}
+
+export type RecordingResolution =
+  | { status: 'ok'; url: string }
+  | { status: 'no-base' }
+  | { status: 'bad-base' }
+  | { status: 'unsafe' }
+  | { status: 'empty' };
+
+/**
+ * A stored RELATIVE reference is a path of plain segments under the media
+ * base, and nothing else. Traversal, an absolute path, a backslash, an
+ * embedded credential and a percent-encoded separator are all REFUSED rather
+ * than escaped into something that resolves: each of them is an attempt to
+ * leave the base the owner configured, and `encodeURIComponent` would turn
+ * `../` into a literal segment that silently 404s instead of saying so.
+ */
+function isSafeRelativeReference(p: string): boolean {
+  if (/%2f|%5c/i.test(p)) return false;
+  if (p.includes('\\') || p.includes('@')) return false;
+  return p
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter(Boolean)
+    .every((seg) => seg !== '.' && seg !== '..');
+}
+
+/**
+ * Resolve a recording reference to an openable URL, distinguishing WHY it
+ * can't resolve so the UI can react (prompt for a base, warn about a bad one,
+ * etc.). Full http(s) paths pass through the `URL` parser rather than
+ * `encodeURI` — it escapes a raw unsafe character (a literal space) the same
+ * way, but leaves an already-valid `%XX` escape alone instead of re-encoding
+ * its `%` into `%25`, which is what a retained foreign or query-bearing URL
+ * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
+ * paths join under the normalised base with each segment URL-encoded (spaces,
+ * Farsi filenames).
+ *
+ * A stored ABSOLUTE url is opened as the owner saved it, credentials included:
+ * that is their own authored link, not this device's configured base, and
+ * nothing here mints one (`isSafeRelativeReference` refuses `@`, and
+ * `relativizeReference` only ever writes a path beneath a base that has none).
+ */
+export function resolveRecording(
+  baseUrl: string | undefined,
+  ref: Pick<LessonRecording, 'path'>,
+): RecordingResolution {
+  const p = ref.path.trim();
+  if (!p) return { status: 'empty' };
+  if (HTTP_RE.test(p)) {
+    try {
+      return { status: 'ok', url: new URL(p).toString() };
+    } catch {
+      return { status: 'ok', url: encodeURI(p) };
+    }
+  }
+
+  const raw = (baseUrl ?? '').trim();
+  if (!raw) return { status: 'no-base' };
+  const base = normalizeBaseUrl(raw);
+  if (!base) return { status: 'bad-base' };
+  if (!isSafeRelativeReference(p)) return { status: 'unsafe' };
+
+  const rel = p
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter(Boolean)
+    .map((seg) => encodeURIComponent(seg))
+    .join('/');
+  // `base` is a validated absolute URL; append the encoded relative path.
+  return { status: 'ok', url: `${base}/${rel}` };
+}
+
+/** Openable URL, or null. Thin wrapper over {@link resolveRecording}. */
+export function resolveRecordingUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): string | null {
+  const r = resolveRecording(baseUrl, ref);
+  return r.status === 'ok' ? r.url : null;
+}
+
+/** Whether opening this reference needs a NAS base URL that isn't set yet. */
+export function needsBaseUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): boolean {
+  return resolveRecording(baseUrl, ref).status === 'no-base';
+}
+
+/** Decode a stored-relative path segment-wise; `resolveRecording` re-encodes. */
+function decodeSegments(rel: string): string {
+  return rel
+    .split('/')
+    .map((seg) => {
+      try {
+        return decodeURIComponent(seg);
+      } catch {
+        return seg; // malformed %-escape: leave it exactly as given
+      }
+    })
+    .join('/');
+}
+
+/**
+ * Store a pasted reference TRANSPORT-INDEPENDENTLY.
+ *
+ * Browsing the NAS and pasting a file's URL is the whole point of the Browse
+ * link — but an absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS:
+ * it dies on a phone away from home, and everywhere at once if the base URL
+ * ever changes. So a URL that sits UNDER the configured base is stored as the
+ * path beneath it, which every device then resolves through its own base.
+ *
+ * Everything else is left EXACTLY as given, because guessing is worse than
+ * leaving it alone: a different origin is a deliberate external link, a URL
+ * carrying a query or fragment is not a plain file path, and a blank or
+ * unparseable base is not something to reason from at all.
+ *
+ * A stored path is decoded (`resolveRecording` encodes each segment on the way
+ * out), so a Farsi filename copied from a directory listing survives the round
+ * trip instead of being double-escaped into a dead link.
+ */
+export function relativizeReference(baseUrl: string | undefined, pasted: string): string {
+  const raw = pasted.trim();
+  if (!raw || !HTTP_RE.test(raw)) return raw; // already a relative path
+  const base = normalizeBaseUrl(baseUrl);
+  if (!base) return raw;
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  if (url.search || url.hash) return raw;
+
+  // Compare normalised forms (host case, default ports) and require the path
+  // BOUNDARY, so `…/media` never swallows `…/mediaXYZ/`.
+  const prefix = `${base}/`;
+  const abs = url.toString();
+  if (!abs.startsWith(prefix)) return raw;
+  const relative = decodeSegments(abs.slice(prefix.length));
+  // DECODING CAN CREATE A PATH THE RAW URL DID NOT HAVE. `…%2F..%2Fx.mp4` is
+  // ONE segment in the URL and three after decoding, the middle one being a
+  // step out of the base — storing that would be storing a reference to a file
+  // outside the archive the owner configured. It is not rewritten into
+  // something safe (that would name a different file again): the pasted value
+  // is kept exactly as given, and `resolveRecording` refuses to open it.
+  if (!relative || !isSafeRelativeReference(relative)) return raw;
+  return relative;
+}
+
+// ---------------------------------------------------------------------------
+// Archive media access, stated honestly.
+// ---------------------------------------------------------------------------
+
+/**
+ * The archive ROOT for a configured base — what "Open archive root" opens.
+ *
+ * Deliberately NOT a media filename. Probing one particular clip proves only
+ * that that clip exists: it fails for a file that was renamed, and it passes
+ * for a base whose other thousand files are unreachable. The root is the thing
+ * the owner actually configured, so it is the thing to open.
+ */
+export function archiveRootUrl(baseUrl: string | undefined): string | null {
+  const base = normalizeBaseUrl(baseUrl);
+  return base ? `${base}/` : null;
+}
+
+export interface ArchiveAccess {
+  /** What is KNOWN about the published index — this app fetched it, or did not. */
+  index: string;
+  /** What is known about the MEDIA — which, from here, is almost nothing. */
+  media: string;
+}
+
+/**
+ * Two separate statements, because they are two separate facts.
+ *
+ * Reading the index proves GitHub answered; it says nothing whatever about
+ * whether the NAS is reachable from this device. And a failed media request
+ * from a web page cannot tell a certificate rejection, a CORS refusal and a
+ * network outage apart from a missing file — so this never calls any of them
+ * absence. The honest report is "the app cannot check this from here; open the
+ * archive root and see".
+ */
+export function describeArchiveAccess(input: {
+  indexFetchedAt?: string | null;
+  indexChangedAt?: string | null;
+  baseUrl?: string;
+}): ArchiveAccess {
+  const base = normalizeBaseUrl(input.baseUrl);
+  return {
+    index: input.indexFetchedAt
+      ? `Index last fetched ${input.indexFetchedAt}${input.indexChangedAt ? `; last changed ${input.indexChangedAt}` : ''}.`
+      : 'No index has been fetched on this device yet.',
+    media: !input.baseUrl?.trim()
+      ? 'No media base is set on this device, so files cannot be opened here.'
+      : !base
+        ? 'This device’s media base is not a usable http(s) address. A base is a plain http(s) address and folder — it may not carry a username, a password, a query or a #fragment.'
+        : 'Files open directly from this device’s media base. The app cannot verify from here that the archive is reachable — open the archive root to check.',
+  };
+}
+```
+
+### src/domain/scanSetarClasses.test.ts
+
+```
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, utimesSync, readFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { describe, expect, it } from 'vitest';
+// The scanner is an operator-run Node tool (.mjs) so a NAS needs no bundler and
+// no app dependencies — but its grammar is the ONE place a filename becomes an
+// identity, so every rule in it is exercised here. The facade below is the
+// shape under test; the module itself carries no types.
+interface Piece {
+  key: string;
+  form: string;
+  piece: string;
+  dastgah: string;
+  composer: string;
+  aliases: string[];
+  sessions: number[];
+  notes: string;
+  provisional: boolean;
+  mediumConfidence: boolean;
+}
+interface Resource {
+  path: string;
+  role: string;
+  kind: string;
+  title: string;
+  part: number | null;
+  size: number;
+  pieces: string[];
+  group: string | null;
+}
+interface Session {
+  n: number;
+  date: string;
+  folder: string;
+  roster: string[];
+  rosterTrusted: boolean;
+  hasClassRecording: boolean;
+  resources: Resource[];
+  members: { key: string; roles: string[] }[];
+}
+interface Index {
+  pieces: Piece[];
+  sessions: Session[];
+  renames: { from: string; to: string }[];
+  diagnostics: { path: string; reason: string }[];
+  contentHash: string;
+}
+interface Entry {
+  path: string;
+  size: number;
+}
+interface Scanner {
+  buildIndex(input: { registryText: string; inventory: Entry[]; renameLogText?: string }): Index;
+  contentHash(body: unknown): string;
+  parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
+  parseCsv(text: string): string[][];
+  parseRegistry(text: string): Piece[];
+  parseSessionFolderName(name: string): { n: number; date: string } | null;
+  scanArchive(root: string): Entry[];
+  scanToIndex(root: string): Index;
+  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
+  canonicalJson(value: unknown): string;
+  writeIndexAtomically(outPath: string, text: string, root?: string): string;
+  isSafeRelativePath(p: string): boolean;
+  displayTitle(stem: string): string;
+}
+// @ts-expect-error — no type declarations for the .mjs operator tool.
+import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
+const {
+  buildIndex,
+  contentHash,
+  parseAssetStem,
+  parseCsv,
+  parseRegistry,
+  parseSessionFolderName,
+  scanArchive,
+  scanToIndex,
+  readSource,
+  canonicalJson,
+  writeIndexAtomically,
+  isSafeRelativePath,
+  displayTitle,
+} = scannerModule as Scanner;
+
+// ---------------------------------------------------------------------------
+// Real rows from the archive's own PIECES.csv. Registry notes are trimmed to
+// their first sentence — the caveat survives, the research prose does not
+// travel into a checked-in fixture — EXCEPT the one row kept verbatim because
+// its quoting is the thing under test.
+// ---------------------------------------------------------------------------
+
+const HEADER = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes';
+
+const REGISTRY_ROWS = [
+  'چهارمضراب-اول-دشتی-صبا,چهارمضراب,دشتی(اول),دشتی,صبا,chahar-mezarabe-avale-dashti|4mez-aval-dashti,1,Confirmed from PDF and jpg score.',
+  // Verbatim: embedded commas AND doubled quotes inside one quoted field.
+  'رنگ-ماهور-درویش-خان,رنگ,ماهور,ماهور,درویش-خان,renge-mahoor-darvish|renge-mahoor-darvish-sevom-1402-05-22,1,"Confirmed from PDF. ""sevom"" in filename is a version/take marker, not part of the name. Distinct from رنگ-ماهور-راک-برومند (session 21), a different arrangement."',
+  'تمرین-دشتی-1-علیزاده,تمرین,دشتی-1,دشتی,علیزاده,study-of-dashti-1-alizadeh|تمرین-دشتی-۳,"4,5",Repeat chain 4->5.',
+  'عراق,(standalone),عراق,,,araq,12,Matches the brief\'s own worked example exactly.',
+  'رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان,رنگ,اصفهان(پریچهر-و-پریزاد),اصفهان,درویش-خان,renge-esfehan-paricherandparizad-darvish,16,Confirmed from PDF.',
+  'پیش-درامد-ماهور-هرمزی,پیش-درامد,ماهور,ماهور,هرمزی,pishdaramade-mahur-hormozi,"16,17,18",Repeat chain 16->17->18 (3 sessions).',
+  'چهارمضراب-ماهور-صبا,چهارمضراب,ماهور,ماهور,صبا,chaharmezrabe-mahur-sabaa,"9,10,11,12,16",Repeat chain 9->10->11->12.',
+  'به-زندان-شوشتری,(قطعه),به-زندان,شوشتری,,be-zendan-shushtari,"28,29",Repeat chain 28->29 (2 parts).',
+  'ضربی-شکسته-لطفی,ضربی,شکسته,,لطفی,zarbiye-shekasteh-lotfi-1,"27,28",Repeat chain 27->28 (2 parts).',
+  'پیش-درامد-سه-گاه-فروتن,پیش-درامد,سه-گاه,سه-گاه,فروتن,pish-daramade-segah-forutan-1|pish-daramade-segah-forutan-6,"22,23,24,25,26,27","Longest repeat chain in the archive: 22->23->24->25->26->27 (6 sessions, only session 22 should get a نمونه)."',
+  'ماهور-ردیف-میرزاعبدالله,(ردیف),ماهور,ماهور,,movie-on-16-04-2024-at-*,7,PROVISIONAL dastgah-level name.',
+  'هفت-ضربی-چهارگاه-علیزاده,هفت-ضربی,چهارگاه,چهارگاه,علیزاده,haft-zarbi-chahargah-alizadeh-1,"5,6",Repeat chain 5->6 (2 parts).',
+  'چهار-پاره,چهارپاره,چهار-پاره,ابوعطا,,abouata-chaharpareh-1,"4,5",Repeat chain 4->5 (2 parts).',
+  'سیخی-ابوعطا,گوشه,سیخی,ابوعطا,,abouata-sayakhi,3,MEDIUM confidence.',
+  // Session 13's full roster: eight canonical pieces.
+  'ضربی-عراق-ماهور-میرزا-حسینقلی,ضربی,عراق,ماهور,میرزا-حسینقلی,zarbi-araaq-mahur-mirzahoseyngholi,13,Confirmed from PDF.',
+  'اصفهانک-در-عراق,گوشه,اصفهانک,عراق(ماهور),,esfahaanak-dar-araaq,13,Part of the عراق gusheh-sequence.',
+  'حزین-در-عراق,گوشه,حزین,عراق(ماهور),,hazin-dar-araaq,13,Confirmed via web search.',
+  'کرشمه-در-عراق,گوشه,کرشمه,عراق(ماهور),,kereshmeh-dar-araaq,13,Distinct from کرشمه-راک.',
+  'محیر-در-عراق,گوشه,محیر,عراق(ماهور),,mohayyer-dar-araaq,13,Confirmed spelling محیّر via web search.',
+  'نهیب-در-عراق,گوشه,نهیب,عراق(ماهور),,nahib-dar-araaq,13,Confirmed via web search.',
+  'زنگوله-در-عراق,گوشه,زنگوله,عراق(ماهور),,zanguleh-dar-araaq,13,Distinct from زنگوله-بیات-ترک.',
+  'آشوراوند,(standalone),آشوراوند,راک(ماهور),,ashur-aavand,13,Confirmed via web search as one solid word.',
+];
+
+const REGISTRY = [HEADER, ...REGISTRY_ROWS].join('\n') + '\n';
+
+/** A real slice of the archive: paths exactly as they are on disk. */
+const INVENTORY: Entry[] = [
+  { path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', size: 47_321_598 },
+  { path: 'session-1-26-09-2023/ضبط-کلاس-2.mp4', size: 41_770_634 },
+  { path: 'session-1-26-09-2023/ضبط-کلاس-3.mp4', size: 16_587_151 },
+  { path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf', size: 120_000 },
+  { path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.jpg', size: 90_000 },
+  { path: 'session-1-26-09-2023/نت-رنگ-ماهور-درویش-خان.pdf', size: 110_000 },
+  { path: 'session-1-26-09-2023/تمرین-من-رنگ-ماهور-درویش-خان.mp4', size: 15_200_000 },
+  { path: 'session-5-23-01-2024/تمرین-من-تمرین-دشتی-1-علیزاده.mp4', size: 9_000_000 },
+  { path: 'session-5-23-01-2024/تمرین-من-چهار-پاره.mp4', size: 8_000_000 },
+  { path: 'session-5-23-01-2024/تمرین-من-هفت-ضربی-چهارگاه-علیزاده.mp4', size: 7_000_000 },
+  { path: 'session-5-23-01-2024/نت-هفت-ضربی-چهارگاه-علیزاده.pdf', size: 100_000 },
+  { path: 'session-5-23-01-2024/ضبط-کلاس.mp4', size: 402_863_504 },
+  { path: 'session-5-23-01-2024/نمونه-1.mp4', size: 60_000_000 },
+  { path: 'session-5-23-01-2024/نمونه-2.mp4', size: 30_000_000 },
+  { path: 'session-9-14-05-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4', size: 5_000_000 },
+  { path: 'session-10-11-06-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4', size: 5_100_000 },
+  { path: 'session-12-06-08-2024/تمرین-من-عراق.mp4', size: 4_000_000 },
+  { path: 'session-12-06-08-2024/ضبط-کلاس.mp4', size: 99_765_911 },
+  { path: 'session-13-03-09-2024/ضبط-کلاس.mp4', size: 90_002_728 },
+  { path: 'session-13-03-09-2024/نمونه-1.mp4', size: 55_000_000 },
+  { path: 'session-13-03-09-2024/نمونه-2.mp4', size: 22_000_000 },
+  { path: 'session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf', size: 130_000 },
+  { path: 'session-13-03-09-2024/تمرین-من-کرشمه-در-عراق.mp4', size: 3_000_000 },
+  { path: 'session-16-26-11-2024/ضبط-کلاس.mp4', size: 84_518_794 },
+  { path: 'session-16-26-11-2024/تصحیح-پیش-درامد-ماهور-هرمزی.pdf', size: 210_000 },
+  { path: 'session-16-26-11-2024/تصحیح-چهارمضراب-ماهور-صبا.pdf', size: 190_000 },
+  { path: 'session-16-26-11-2024/نت-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.pdf', size: 150_000 },
+  { path: 'session-16-26-11-2024/تمرین-من-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.mp4', size: 6_000_000 },
+  // The one un-normalised file in the whole archive (brief §8.1).
+  { path: 'session-16-26-11-2024/video-2024-10-29-15-32-35.mp4', size: 12_000_000 },
+  { path: 'session-22-13-05-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_500_000 },
+  { path: 'session-22-13-05-2025/نمونه.mp4', size: 40_000_000 },
+  { path: 'session-23-10-06-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_600_000 },
+  { path: 'session-24-08-07-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_700_000 },
+  { path: 'session-25-05-08-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_800_000 },
+  { path: 'session-26-02-09-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_900_000 },
+  { path: 'session-27-30-09-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 4_100_000 },
+  { path: 'session-27-30-09-2025/تمرین-من-ضربی-شکسته-لطفی.mp4', size: 2_100_000 },
+  { path: 'session-27-30-09-2025/ضبط-کلاس-1.mp4', size: 50_000_000 },
+  { path: 'session-27-30-09-2025/ضبط-کلاس-2.mp4', size: 43_432_037 },
+  { path: 'session-27-30-09-2025/نمونه.mp4', size: 38_000_000 },
+  { path: 'session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4', size: 20_000_000 },
+  { path: 'session-28-28-10-2025/نت-به-زندان-شوشتری.pdf', size: 140_000 },
+  { path: 'session-28-28-10-2025/تمرین-من-به-زندان-شوشتری.mp4', size: 2_500_000 },
+  { path: 'session-28-28-10-2025/تمرین-من-ضربی-شکسته-لطفی.mp4', size: 2_600_000 },
+];
+
+const build = (over: Partial<{ registryText: string; inventory: Entry[] }> = {}): Index =>
+  buildIndex({ registryText: REGISTRY, inventory: INVENTORY, ...over });
+
+const session = (index: Index, n: number): Session => index.sessions.find((s) => s.n === n)!;
+
+const resource = (index: Index, path: string): Resource | undefined =>
+  index.sessions.flatMap((s) => s.resources).find((r) => r.path === path);
+
+// ---------------------------------------------------------------------------
+
+describe('the Setar source registry', () => {
+  it('setar registry keeps exact Farsi keys and rejects ambiguous CSV input', () => {
+    const pieces = parseRegistry(REGISTRY);
+    const byKey = new Map(pieces.map((p) => [p.key, p]));
+    const pieceOf = (k: string): Piece => byKey.get(k)!;
+
+    // A quoted field carrying commas AND doubled quotes stays ONE field, and
+    // every column after it stays in its own column. Splitting on "," would
+    // shift dastgah/composer/sessions onto fragments of this sentence.
+    const reng = pieceOf('رنگ-ماهور-درویش-خان');
+    expect(reng.composer).toBe('درویش-خان');
+    expect(reng.sessions).toEqual([1]);
+    expect(reng.notes).toContain('"sevom" in filename is a version/take marker');
+    expect(reng.notes).toContain('a different arrangement.');
+
+    // Byte identity. The key is the join key with the filenames: an embedded
+    // ASCII digit is piece identity, and "-و-" is INSIDE one name.
+    expect(byKey.has('تمرین-دشتی-1-علیزاده')).toBe(true);
+    expect(pieceOf('تمرین-دشتی-1-علیزاده').sessions).toEqual([4, 5]);
+    expect(byKey.has('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان')).toBe(true);
+    expect(pieces.every((p) => p.key === p.key.normalize('NFC'))).toBe(true);
+
+    // Real forms, carried verbatim. Neither is invented, folded into a
+    // neighbouring form, or turned into a categorical claim of its own.
+    expect(pieceOf('هفت-ضربی-چهارگاه-علیزاده').form).toBe('هفت-ضربی');
+    expect(pieceOf('چهار-پاره').form).toBe('چهارپاره');
+
+    // Caveats are flags on the source row, never a reason to merge or rename.
+    expect(pieceOf('ماهور-ردیف-میرزاعبدالله').provisional).toBe(true);
+    expect(pieceOf('سیخی-ابوعطا').mediumConfidence).toBe(true);
+    expect(pieceOf('چهارمضراب-ماهور-صبا').provisional).toBe(false);
+
+    // aliases_seen is LITERAL SEARCH DATA. It is split on "|" and stored as
+    // given — no wildcard is expanded, nothing is transliterated, and no alias
+    // is ever consulted to decide which piece a file belongs to.
+    expect(pieceOf('ماهور-ردیف-میرزاعبدالله').aliases).toEqual(['movie-on-16-04-2024-at-*']);
+    expect(pieceOf('چهارمضراب-اول-دشتی-صبا').aliases).toEqual([
+      'chahar-mezarabe-avale-dashti',
+      '4mez-aval-dashti',
+    ]);
+    // The alias "abouata-sayakhi" belongs to سیخی-ابوعطا and to nothing else —
+    // it never becomes a second key or a match for another row.
+    expect(pieces.filter((p) => p.aliases.includes('abouata-sayakhi'))).toHaveLength(1);
+
+    // --- refusals: an ambiguous registry is not a registry -----------------
+    const rowFor = (key: string) => REGISTRY_ROWS.find((r) => r.startsWith(`${key},`))!;
+    expect(() => parseRegistry([HEADER, rowFor('عراق'), rowFor('عراق')].join('\n'))).toThrow(
+      /two rows for the canonical piece/i,
+    );
+    expect(() => parseRegistry([HEADER, ',(standalone),x,,,,,12,'].join('\n'))).toThrow(/empty canonical_fa/i);
+    expect(() => parseRegistry(['canonical_fa,form,piece', 'x,y,z'].join('\n'))).toThrow(/missing the "dastgah" column/);
+    expect(() =>
+      parseRegistry([HEADER, 'ابوعطا-تست,گوشه,x,ابوعطا,,,"12,twelve",'].join('\n')),
+    ).toThrow(/invalid session number "twelve"/);
+    expect(() => parseRegistry([HEADER, 'x,y,z,,,,0,'].join('\n'))).toThrow(/invalid session number "0"/);
+    // Malformed quoting: a field that opens a quote and never closes it, and a
+    // stray quote in the middle of an unquoted field.
+    expect(() => parseCsv('a,b\n"never closed,c')).toThrow(/never closed/i);
+    expect(() => parseCsv('a,b\nx"y,c')).toThrow(/unexpected quote/i);
+  });
+});
+
+describe('the Setar filename grammar', () => {
+  it('setar filenames preserve compound roles and report unhandled assets', () => {
+    // All seven worked examples from the archive's own brief, asserted exactly.
+    expect(parseAssetStem('ضبط-کلاس-2')).toEqual({ role: 'ضبط-کلاس', piece: null, part: 2 });
+    expect(parseAssetStem('تمرین-من-عراق')).toEqual({ role: 'تمرین-من', piece: 'عراق', part: null });
+    expect(parseAssetStem('نمونه-1')).toEqual({ role: 'نمونه', piece: null, part: 1 });
+    expect(parseAssetStem('نمونه-به-زندان-شوشتری')).toEqual({
+      role: 'نمونه',
+      piece: 'به-زندان-شوشتری',
+      part: null,
+    });
+    expect(parseAssetStem('تصحیح-پیش-درامد-ماهور-هرمزی')).toEqual({
+      role: 'تصحیح',
+      piece: 'پیش-درامد-ماهور-هرمزی',
+      part: null,
+    });
+    // ROLE BOUNDARY, LONGEST MATCH: "تمرین-من" wins over nothing, and the
+    // piece keeps its own leading "تمرین" — token-0 splitting yields "تمرین".
+    expect(parseAssetStem('تمرین-من-تمرین-دشتی-1-علیزاده')).toEqual({
+      role: 'تمرین-من',
+      piece: 'تمرین-دشتی-1-علیزاده',
+      part: null,
+    });
+    // The embedded "-و-" stays INSIDE one canonical name; one file, one piece.
+    expect(parseAssetStem('تمرین-من-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان')).toEqual({
+      role: 'تمرین-من',
+      piece: 'رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان',
+      part: null,
+    });
+
+    // A part number is TRAILING digits only; an embedded digit is identity.
+    expect(parseAssetStem('نت-تمرین-دشتی-1-علیزاده')!.piece).toBe('تمرین-دشتی-1-علیزاده');
+    expect(parseAssetStem('نمونه')!.part).toBe(null);
+    expect(parseAssetStem('نمونه')!.piece).toBe(null);
+    expect(displayTitle('تمرین-من-عراق')).toBe('تمرین من عراق');
+
+    const index = build();
+
+    // The known exception: not parsed, not reassigned to session 15, and named
+    // in the diagnostics with something the owner can act on.
+    const exception = index.diagnostics.find((d) => d.path.endsWith('video-2024-10-29-15-32-35.mp4'))!;
+    expect(exception).toBeDefined();
+    expect(exception.reason).toMatch(/no known role/i);
+    expect(exception.path.startsWith('session-16-')).toBe(true);
+    expect(resource(index, 'session-16-26-11-2024/video-2024-10-29-15-32-35.mp4')).toBeUndefined();
+    expect(session(index, 15)).toBeUndefined();
+    // No role was guessed for it anywhere.
+    expect(
+      index.sessions.every((s: { resources: { path: string }[] }) =>
+        s.resources.every((r) => !r.path.includes('video-2024-10-29')),
+      ),
+    ).toBe(true);
+
+    // An unknown piece, an unknown role and an unsupported extension are each
+    // SURFACED rather than relabelled into something the archive didn't say.
+    const odd = build({
+      inventory: [
+        { path: 'session-1-26-09-2023/نت-یک-قطعه-ناشناخته.pdf', size: 10 },
+        { path: 'session-1-26-09-2023/راهنما-چیزی.pdf', size: 10 },
+        { path: 'session-1-26-09-2023/نت-عراق.txt', size: 10 },
+      ],
+    });
+    expect(odd.sessions[0].resources).toEqual([]);
+    expect(odd.diagnostics.map((d) => d.reason)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/not in the registry/),
+        expect.stringMatching(/no known role/),
+        expect.stringMatching(/Unsupported file type "\.txt"/),
+      ]),
+    );
+
+    // A class recording NEVER carries a piece: a filename claiming one is a
+    // contradiction in the source, reported instead of silently scoped.
+    const named = build({ inventory: [{ path: 'session-12-06-08-2024/ضبط-کلاس-عراق.mp4', size: 10 }] });
+    expect(named.sessions[0].resources).toEqual([]);
+    expect(named.diagnostics[0]!.reason).toMatch(/cannot name a piece/);
+
+    // NO LARGEST-FILE HEURISTIC anywhere: the class recording of session 5 is
+    // the one NAMED ضبط-کلاس, and the biggest file in session 13 is a demo.
+    const s5 = session(index, 5);
+    expect(s5.resources.filter((r) => r.role === 'ضبط-کلاس').map((r) => r.path)).toEqual([
+      'session-5-23-01-2024/ضبط-کلاس.mp4',
+    ]);
+    const s13 = session(index, 13);
+    const biggest = [...INVENTORY.filter((f) => f.path.startsWith('session-13-'))].sort((a, b) => b.size - a.size)[0]!;
+    expect(biggest.path).toBe('session-13-03-09-2024/ضبط-کلاس.mp4');
+    expect(s13.hasClassRecording).toBe(true);
+    // ...and session 28, whose biggest file is a demo, still has NO class
+    // recording rather than the largest video promoted into one.
+    const s28 = session(index, 28);
+    expect(s28.hasClassRecording).toBe(false);
+    expect(s28.resources.some((r) => r.role === 'ضبط-کلاس')).toBe(false);
+  });
+});
+
+describe('Setar session attribution', () => {
+  it('setar session material follows exact roster and demonstration attribution', () => {
+    const index = build();
+
+    // Session 13: an UNNAMED two-part demonstration belongs to every canonical
+    // member of that session — all eight — because there is no single piece to
+    // attribute it to and the information simply is not in the filename.
+    const s13 = session(index, 13);
+    expect(s13.roster).toHaveLength(8);
+    const demo13 = s13.resources.filter((r) => r.role === 'نمونه');
+    expect(demo13.map((r) => r.path)).toEqual([
+      'session-13-03-09-2024/نمونه-1.mp4',
+      'session-13-03-09-2024/نمونه-2.mp4',
+    ]);
+    for (const part of demo13) expect([...part.pieces].sort()).toEqual([...s13.roster].sort());
+    // Its numbered parts are ONE logical demonstration, ordered by part.
+    expect(new Set(demo13.map((r) => r.group)).size).toBe(1);
+    expect(demo13.map((r) => r.part)).toEqual([1, 2]);
+
+    // Session 28: a NAMED demo belongs to that piece only — never to its
+    // sibling ضربی-شکسته-لطفی, which is also a member of session 28.
+    const s28 = session(index, 28);
+    expect([...s28.roster].sort()).toEqual(['به-زندان-شوشتری', 'ضربی-شکسته-لطفی'].sort());
+    const demo28 = s28.resources.filter((r) => r.role === 'نمونه');
+    expect(demo28).toHaveLength(1);
+    expect(demo28[0].pieces).toEqual(['به-زندان-شوشتری']);
+    // ...and no class recording is fabricated for it.
+    expect(s28.hasClassRecording).toBe(false);
+
+    // Session 27: two class parts, ordered NUMERICALLY, and each stays with
+    // the lesson rather than being scoped to a piece.
+    const s27 = session(index, 27);
+    const class27 = s27.resources.filter((r) => r.role === 'ضبط-کلاس');
+    expect(class27.map((r) => r.part)).toEqual([1, 2]);
+    expect(class27.every((r) => r.pieces.length === 0)).toBe(true);
+
+    // FOLDER MEMBERSHIP, not mtime: session 9's and 10's practice recordings
+    // of one piece belong to their own folders, and nothing here reads a time.
+    expect(index.sessions.map((s) => s.n)).toEqual([...index.sessions.map((s) => s.n)].sort((a: number, b: number) => a - b));
+    expect(session(index, 9).members.map((m) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
+    expect(session(index, 10).members.map((m) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
+
+    // Provisional identities are REAL, linkable pieces that keep their caveat.
+    const provisional = index.pieces.find((p) => p.key === 'ماهور-ردیف-میرزاعبدالله')!;
+    expect(provisional.provisional).toBe(true);
+    expect(provisional.sessions).toEqual([7]);
+
+    // The six-session repeat chain is PROVENANCE: six sessions the piece was
+    // practised in, carried as membership and roles and nothing else. No
+    // resource, no minute, no result and no "six weeks" claim is produced.
+    const chain = [22, 23, 24, 25, 26, 27];
+    for (const n of chain) {
+      const s = session(index, n);
+      const member = s.members.find((m) => m.key === 'پیش-درامد-سه-گاه-فروتن')!;
+      expect(member.roles).toContain('تمرین-من');
+      // The student's own recording is evidence, never material: it is not a
+      // resource anywhere in the index.
+      expect(s.resources.some((r) => r.path.includes('تمرین-من'))).toBe(false);
+    }
+    expect(JSON.stringify(index)).not.toContain('week');
+    // Only the FIRST session of the chain has a demonstration for it.
+    expect(session(index, 22).resources.some((r) => r.role === 'نمونه')).toBe(true);
+    expect(session(index, 23).resources).toEqual([]);
+
+    // ROSTER DISAGREEMENT: a folder naming a piece the registry does not place
+    // in that session must NOT expand the unnamed demo across a guessed set.
+    const disputed = build({
+      inventory: [
+        { path: 'session-13-03-09-2024/نمونه-1.mp4', size: 10 },
+        // عراق is a real registry piece, but its only session is 12.
+        { path: 'session-13-03-09-2024/نت-عراق.pdf', size: 10 },
+      ],
+    });
+    const bad13 = session(disputed, 13);
+    expect(bad13.rosterTrusted).toBe(false);
+    expect(bad13.resources.find((r) => r.role === 'نمونه')!.pieces).toEqual([]);
+    expect(disputed.diagnostics.map((d) => d.reason)).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/registry does not list session 13/),
+        expect.stringMatching(/Unnamed demonstration not attributed/),
+      ]),
+    );
+    // The NAMED score still attaches to its own named piece — only the
+    // ambiguous inference is blocked.
+    expect(bad13.resources.find((r) => r.role === 'نت')!.pieces).toEqual(['عراق']);
+  });
+});
+
+describe('scanning the archive', () => {
+  it('setar scanning is bounded read-only and produces stable complete indexes', () => {
+    const root = mkdtempSync(join(tmpdir(), 'setar-scan-'));
+    const out = mkdtempSync(join(tmpdir(), 'setar-out-'));
+    try {
+      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
+      const folders = new Set(INVENTORY.map((f) => f.path.split('/')[0]));
+      for (const folder of folders) mkdirSync(join(root, folder));
+      for (const f of INVENTORY) writeFileSync(join(root, f.path), Buffer.alloc(Math.min(f.size, 16)));
+      // Things a scan must ignore, all real: a dotfile, NAS housekeeping, an
+      // out-of-scope root folder, and a symlink pointing outside the archive.
+      writeFileSync(join(root, 'session-1-26-09-2023/.DS_Store'), 'x');
+      mkdirSync(join(root, 'session-1-26-09-2023/@eaDir'), { recursive: true });
+      mkdirSync(join(root, 'practice'));
+      writeFileSync(join(root, 'practice/نت-عراق.pdf'), 'x');
+      writeFileSync(join(out, 'outside.mp4'), 'x');
+      symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
+
+      const first = scanArchive(root);
+      expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
+      expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
+      expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
+      // The symlink is not followed: its target is outside the archive root.
+      expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
+      expect(first).toHaveLength(INVENTORY.length);
+
+      // DETERMINISM. Shuffled directory order and altered mtimes produce a
+      // byte-identical semantic index: nothing here reads a time or trusts the
+      // order the filesystem happened to hand back.
+      const scanned = buildIndex({ registryText: REGISTRY, inventory: first });
+      const shuffled = [...first].reverse();
+      expect(buildIndex({ registryText: REGISTRY, inventory: shuffled }).contentHash).toBe(scanned.contentHash);
+      const old = new Date('2001-01-01T00:00:00Z');
+      for (const f of INVENTORY) utimesSync(join(root, f.path), old, old);
+      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root) }).contentHash).toBe(scanned.contentHash);
+      expect(contentHash(scanned)).toBe(scanned.contentHash);
+      // ...and the hash is not vacuous: a file whose SIZE changed is a changed
+      // archive, so the semantic index changes with it.
+      expect(buildIndex({ registryText: REGISTRY, inventory: INVENTORY }).contentHash).not.toBe(scanned.contentHash);
+
+      // Session 9 sorts BEFORE session 10 — numerically, never lexically.
+      const ns = scanned.sessions.map((s) => s.n);
+      expect(ns.indexOf(9)).toBeLessThan(ns.indexOf(10));
+      expect(ns).toEqual([1, 5, 9, 10, 12, 13, 16, 22, 23, 24, 25, 26, 27, 28]);
+
+      // COMPLETENESS: every parseable useful file is in the index exactly once,
+      // and the personal recordings are represented only as membership.
+      const useful = INVENTORY.filter(
+        (f) => !f.path.includes('تمرین-من') && !f.path.includes('video-2024-10-29'),
+      );
+      const indexed = scanned.sessions.flatMap((s: { resources: { path: string }[] }) => s.resources.map((r) => r.path));
+      expect([...indexed].sort()).toEqual(useful.map((f) => f.path).sort());
+
+      // --- refusals ---------------------------------------------------------
+      expect(isSafeRelativePath('session-1-26-09-2023/ضبط-کلاس.mp4')).toBe(true);
+      for (const unsafe of [
+        '../PIECES.csv',
+        'session-1/../../etc/passwd',
+        '/etc/passwd',
+        'session-1\\ضبط.mp4',
+        'https://nas.example/x.mp4',
+        'file:///etc/passwd',
+        'session-1%2F..%2Fx.mp4',
+        '',
+      ]) {
+        expect(isSafeRelativePath(unsafe)).toBe(false);
+        expect(() => buildIndex({ registryText: REGISTRY, inventory: [{ path: unsafe, size: 1 }] })).toThrow();
+      }
+      expect(() =>
+        buildIndex({
+          registryText: REGISTRY,
+          inventory: [
+            { path: 'session-1-26-09-2023/نمونه.mp4', size: 1 },
+            { path: 'session-1-26-09-2023/نمونه.mp4', size: 2 },
+          ],
+        }),
+      ).toThrow(/share the path/);
+      // Two folders claiming one session number are two different identities
+      // for one lesson — refused, never merged.
+      expect(() =>
+        buildIndex({
+          registryText: REGISTRY,
+          inventory: [
+            { path: 'session-1-26-09-2023/نمونه.mp4', size: 1 },
+            { path: 'session-1-27-09-2023/نمونه.mp4', size: 1 },
+          ],
+        }),
+      ).toThrow(/Two folders claim session 1/);
+      // A folder date that is not a real calendar day is not a session.
+      expect(parseSessionFolderName('session-3-30-02-2024')).toBeNull();
+      expect(parseSessionFolderName('session-9-14-05-2024')).toEqual({ n: 9, date: '2024-05-14' });
+      const oversize = Array.from({ length: 5001 }, (_, i) => ({ path: `session-1-26-09-2023/نمونه-${i}.mp4`, size: 1 }));
+      expect(() => buildIndex({ registryText: REGISTRY, inventory: oversize })).toThrow(/more than 5000 files/);
+
+      // --- publication is atomic, outside the archive, read-only over it ----
+      const target = join(out, 'index.json');
+      writeIndexAtomically(target, 'last good\n', root);
+      expect(() => writeIndexAtomically(join(root, 'index.json'), 'x', root)).toThrow(/inside the archive/);
+      // --- ONE CONSISTENT VIEW, OF EVERY INPUT, NOT JUST THE REGISTRY -------
+      // The registry used to be the only input re-read after the walk, so the
+      // one thing a non-atomic NAS copy actually perturbs — THE MEDIA — was
+      // never checked: move a resource out before its folder is enumerated and
+      // put it back while later folders are walked, and the scan publishes an
+      // index that omits it while PIECES.csv never changes. The next Refresh
+      // then marks still-present material unavailable.
+      const renameLog = 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\n';
+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+      const settled = readSource(root);
+      // Every input this scanner reads is in the reading that gets compared.
+      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+
+      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
+      const moved = INVENTORY[0]!.path;
+      const bytes = readFileSync(join(root, moved));
+      rmSync(join(root, moved));
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+      // A file still being COPIED is a size change, and is caught the same way.
+      writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, moved), bytes);
+      writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+      writeFileSync(join(root, 'PIECES.csv'), `${REGISTRY}\n`);
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+
+      // And the scan itself reads the WHOLE source twice and refuses on any
+      // difference. Nothing can mutate a filesystem between two synchronous
+      // reads from inside this process, so the WIRING is held structurally —
+      // the same way `commitArchiveImport`'s "no whole-DB import" is.
+      const scannerSrc = readFileSync('scripts/scan-setar-classes.mjs', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const scanBody = scannerSrc.slice(
+        scannerSrc.indexOf('export function scanToIndex'),
+        scannerSrc.indexOf('function main('),
+      );
+      expect(scanBody.match(/readSource\(base\)/g) ?? []).toHaveLength(2);
+      expect(scanBody).toMatch(/canonicalJson\(before\) !== canonicalJson\(after\)/);
+      expect(scanBody).toMatch(/changed during the scan/);
+      rmSync(join(root, 'RENAME-LOG.csv'));
+
+      // A scan that cannot produce a complete consistent view throws BEFORE
+      // anything is written, so the last good output still stands.
+      rmSync(join(root, 'PIECES.csv'));
+      expect(() => scanToIndex(root)).toThrow();
+      expect(readFileSync(target, 'utf8')).toBe('last good\n');
+      // And the archive itself is untouched by any of the above.
+      expect(scanArchive(root)).toHaveLength(INVENTORY.length);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(out, { recursive: true, force: true });
+    }
   });
 });
 ```
@@ -8422,6 +8521,38 @@ function strList(v: unknown, what: string): string[] {
   return v as string[];
 }
 
+/**
+ * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
+ *
+ * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
+ * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
+ * not a tolerance but a silent erasure: a session whose `resources` arrived as
+ * `null` decoded to a session with NO resources, passed the grammar (it is a
+ * valid empty list by then) and turned six files into zero. The same held for
+ * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
+ * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
+ *
+ * These three are that rule in one place, and they throw NAMING the record —
+ * the same treatment `validatePracticeText` gives the owner's own words.
+ */
+function list(v: unknown, what: string): unknown[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
+  return v;
+}
+
+function num(v: unknown, what: string): number | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+  return v;
+}
+
+function bool(v: unknown, what: string, fallback: boolean): boolean {
+  if (v === undefined) return fallback;
+  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
+  return v;
+}
+
 /** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
 export function isValidSourceDate(v: unknown): v is ISODate {
   if (typeof v !== 'string') return false;
@@ -8430,6 +8561,15 @@ export function isValidSourceDate(v: unknown): v is ISODate {
   const [, y, mo, d] = m;
   const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
   return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
+}
+
+/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
+export function isValidSourceDateTime(v: unknown): v is ISODateTime {
+  if (typeof v !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
+  if (!m) return false;
+  if (!isValidSourceDate(v.slice(0, 10))) return false;
+  return !Number.isNaN(Date.parse(v));
 }
 
 /**
@@ -8471,7 +8611,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
     if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
     keys.add(key);
-    const sessions = Array.isArray(raw.sessions) ? raw.sessions : [];
+    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
     if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
       throw new Error(`Registry entry "${key}" has an invalid session number.`);
     }
@@ -8484,8 +8624,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
       sessions: sessions as number[],
       notes: str(raw.notes ?? '', 'notes'),
-      ...(raw.provisional ? { provisional: true } : {}),
-      ...(raw.mediumConfidence ? { mediumConfidence: true } : {}),
+      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
+      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
     });
   }
 
@@ -8506,7 +8646,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
       if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
     }
     const resources: SourceResource[] = [];
-    for (const r of Array.isArray(raw.resources) ? raw.resources : []) {
+    for (const r of list(raw.resources, `Session ${n} resources`)) {
       if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
       const path = r.path;
       if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
@@ -8525,14 +8665,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
         role,
         kind: kind as SourceKind,
         title: str(r.title ?? '', 'A resource title'),
-        part: typeof r.part === 'number' ? r.part : null,
-        ...(typeof r.size === 'number' ? { size: r.size } : {}),
+        part: num(r.part, `Resource "${path}" part`),
+        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
         pieces: forPieces,
-        group: typeof r.group === 'string' ? r.group : null,
+        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
       });
     }
     const members: SourceMember[] = [];
-    for (const m of Array.isArray(raw.members) ? raw.members : []) {
+    for (const m of list(raw.members, `Session ${n} members`)) {
       if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
       const key = str(m.key, 'A membership key');
       if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
@@ -8545,8 +8685,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
       date: raw.date as ISODate,
       folder,
       roster,
-      rosterTrusted: raw.rosterTrusted !== false,
-      hasClassRecording: raw.hasClassRecording === true,
+      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
+      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
       resources,
       members,
     });
@@ -8554,7 +8694,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
 
   const renames: SourceRename[] = [];
   const froms = new Set<string>();
-  for (const r of Array.isArray(input.renames) ? input.renames : []) {
+  for (const r of list(input.renames, 'The rename log')) {
     if (!isRecord(r)) throw new Error('A rename entry is not an object.');
     if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
     if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
@@ -8563,7 +8703,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
   }
 
   const diagnostics: SourceDiagnostic[] = [];
-  for (const d of Array.isArray(input.diagnostics) ? input.diagnostics : []) {
+  for (const d of list(input.diagnostics, 'The diagnostic list')) {
     if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
     diagnostics.push({
       path: str(d.path ?? '', 'A diagnostic path'),
@@ -8912,7 +9052,21 @@ export function validateArchiveSources(db: PracticeDB): string | null {
       return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
     }
     if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
+    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
+    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
+    // last changed, so a non-string here crashes the screen that renders it —
+    // and the fix belongs at this door, never as a guard in the component.
+    // Checked for REAL validity for the same reason `askedAt` is: a shape
+    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
+    // normalises it into March. Deliberately a local check beside
+    // `isValidSourceDate` rather than an import — this file's own pattern.
+    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
     if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
+    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
+    // decoder always emits both, and `planArchiveImport` reads
+    // `index.renames`/`source.renames` unguarded.
+    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
+    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
     if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
 
     // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
@@ -8930,6 +9084,8 @@ export function validateArchiveSources(db: PracticeDB): string | null {
       if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
         return `Archive source "${s.id}" has a suppression with an unreadable item.`;
       }
+      // `at` is provenance only — nothing reads it back as a date — so it is
+      // held to being real text and no further.
       if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
     }
   }
@@ -9022,6 +9178,7 @@ import {
   repairLessonReferences,
   toArchiveRelative,
   withSuppression,
+  followRenames,
 } from './sourceReconcile';
 import { archiveRootUrl } from './recordings';
 import { emptyDB } from './seed';
@@ -9348,7 +9505,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(suggestion.from).toBe('');
     expect(suggestion.to).toBe('میرزا-حسینقلی');
     const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer' },
+      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
     ]);
     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
@@ -9365,7 +9522,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     // The suggestion stands until it is answered, and it may be answered days
     // later against the very same published index. Judging "already current"
     // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
+    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
     const lateDecision = planArchiveImport({
       db: refreshed,
       index: next,
@@ -9387,10 +9544,82 @@ describe('reconciling the archive with the owner’s own records', () => {
     // Applied, the suggestion is gone: the next refresh has nothing to offer.
     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
     // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
+    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
     expect(noop.summary.unchanged).toBe(true);
     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
+
+    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
+    // Choose the archive's composer over an EMPTY field, then write one of
+    // your own before the plan is applied. The choice was an answer about the
+    // empty field; it is not an instruction to replace the new words.
+    const ownWrote = {
+      ...refreshed,
+      items: refreshed.items.map((i) =>
+        i.source?.pieceKey === 'عراق'
+          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
+          : i,
+      ),
+    };
+    const rebased = planArchiveImport({
+      db: ownWrote,
+      index: next,
+      instrumentId: SETAR,
+      decisions: lateField,
+      now: NOW,
+    });
+    expect(rebased.staleDecisions).toEqual(lateField);
+    // Not applied, and not counted as a change either: both sides of the
+    // preview/commit boundary agree that this decision no longer stands.
+    expect(rebased.summary.unchanged).toBe(true);
+    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
+    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
+      'Owner wrote this during refresh',
+    );
+    // The suggestion is re-offered against what is there NOW, so the owner can
+    // answer the question that actually stands.
+    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
+      'Owner wrote this during refresh',
+    );
+    // A decision carrying the CURRENT value still applies, on the same data.
+    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
+    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
+    expect(fresh.staleDecisions).toEqual([]);
+    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
+      ?.composer).toBe('میرزا-حسینقلی');
+
+    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
+    // Bound elsewhere, moved instrument or deleted: never silently turned into
+    // "create a new record instead".
+    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
+    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
+    const unbound: PracticeDB = {
+      ...owned,
+      items: owned.items.map((i) => {
+        const { source, ...rest } = i;
+        void source;
+        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
+      }),
+    };
+    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
+    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
+    expect(linkable.staleDecisions).toEqual([]);
+    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
+    const takenElsewhere: PracticeDB = {
+      ...unbound,
+      items: unbound.items.map((i) =>
+        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
+      ),
+    };
+    const stalelink = planArchiveImport({
+      db: takenElsewhere,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(stalelink.staleDecisions).toEqual(linkDecision);
+    expect(stalelink.adoptedItems).toEqual([]);
 
     // --- a missing FILE keeps its provenance, flagged ----------------------
     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
@@ -9775,6 +10004,122 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
     const afterBroken = applyArchiveImport(installedLegacy, broken);
     expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+
+    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
+    // Adoption took a single hop while repair followed the whole chain, so one
+    // rename log gave two different answers about the same file. With
+    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
+    // class was adopted AS SESSION 1 on the strength of B, and then had that
+    // very reference repaired into session 2's folder: bound to one class,
+    // pointing at another's files.
+    const hopA = 'session-1-26-09-2023/first-name.mp4';
+    const hopB = 'session-1-26-09-2023/second-name.mp4';
+    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
+    expect(known.has(hopC)).toBe(true);
+    const chained: SourceIndex = {
+      ...INDEX,
+      contentHash: '7'.repeat(64),
+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
+    };
+    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
+    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
+    const legacyClass = lesson({
+      id: 'L-chain',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
+    });
+    const chainDb = baseDB({ lessons: [legacyClass] });
+    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
+    // Its ONLY reference now points into session 5, so it is NOT evidence of
+    // session 1 — and the class is not adopted on it.
+    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
+    // A CYCLE is no reading at all, so it is no evidence either.
+    const cyclicIndex: SourceIndex = {
+      ...INDEX,
+      contentHash: '6'.repeat(64),
+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
+    };
+    expect(
+      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
+        (l) => l.id === 'L-chain',
+      ),
+    ).toBe(false);
+
+    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
+    // A resource suppression is keyed BY PATH. Left on the old name, the file
+    // came back into view under its new one while the old row sat there
+    // flagged unavailable — the owner's decision silently undone by a rename.
+    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+    const hidden: PracticeDB = {
+      ...installedLegacy,
+      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
+        kind: 'resource',
+        ref: hiddenPath,
+        itemId: 'item-x',
+        at: NOW.toISOString(),
+      }),
+    };
+    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
+    const renamedSource = afterRename.archiveSources[0]!;
+    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
+    expect(hide.ref).toBe(movedTo);
+    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
+    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
+    // And the old row is GONE rather than retained-and-flagged: the log says
+    // exactly where the bytes went, so this file moved, it did not disappear.
+    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
+    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
+    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
+    // ACROSS sessions too — a rename can move a file into a different session,
+    // which is exactly the shape of the A -> B -> C log above. Asking only
+    // "is it still in THIS session" flagged the old row as missing while the
+    // very same bytes sat in the graph under their new name.
+    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
+    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
+    const crossSession: SourceIndex = {
+      ...INDEX,
+      contentHash: '4'.repeat(64),
+      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1
+          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
+          : sess.n === 5
+            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
+            : sess,
+      ),
+    };
+    const afterCross = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
+    );
+    const crossSource = afterCross.archiveSources[0]!;
+    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
+    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
+    // The hide went WITH it, into the other session, still scoped to one item.
+    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
+      ref: crossTo,
+      itemId: 'item-x',
+    });
+    expect(validateArchiveSources(afterCross)).toBeNull();
+
+    // A file that really IS gone still keeps its provenance, flagged.
+    const removed: SourceIndex = {
+      ...INDEX,
+      contentHash: '5'.repeat(64),
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
+      ),
+    };
+    const afterRemoval = applyArchiveImport(
+      installedLegacy,
+      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
+    );
+    expect(
+      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
+        ?.unavailable,
+    ).toBe(true);
+    expect(validateArchiveSources(afterRename)).toBeNull();
   });
 });
 
@@ -9858,7 +10203,16 @@ export type ReconcileDecision =
   | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
   | { kind: 'create-lesson'; sessionN: number }
   | { kind: 'skip-lesson'; sessionN: number }
-  | { kind: 'apply-field'; pieceKey: string; field: MetadataField };
+  /**
+   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `from`, the value of
+   * THEIRS it was chosen against. A decision is about the state the owner
+   * actually saw: the preview and the commit are two moments, and between them
+   * a note can be saved, a sync can land, another device can write. Without the
+   * premise, choosing the archive's composer over an empty field and then
+   * typing one yourself before pressing Apply replaced your own new words with
+   * the registry's.
+   */
+  | { kind: 'apply-field'; pieceKey: string; field: MetadataField; from: string };
 
 export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
 
@@ -9884,6 +10238,15 @@ export interface MetadataSuggestion {
   field: MetadataField;
   from: string;
   to: string;
+}
+
+/**
+ * Does this decision still describe THIS suggestion? The one answer, used by
+ * the plan's own summary and by `applyArchiveImport`'s write — a question with
+ * two answers is how a preview and a commit come to mean different things.
+ */
+export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSuggestion): boolean {
+  return d.kind === 'apply-field' && d.pieceKey === s.pieceKey && d.field === s.field && d.from === s.from;
 }
 
 export interface ImportSummary {
@@ -9916,6 +10279,14 @@ export interface ImportPlan {
   questions: ReconcileQuestion[];
   suggestions: MetadataSuggestion[];
   attention: SourceDiagnostic[];
+  /**
+   * Decisions whose PREMISE moved: the owner's value is no longer the one the
+   * choice was made against, or a link target has since been deleted, bound
+   * elsewhere or moved to another instrument. They are not applied and not
+   * quietly turned into some other action — the commit refuses and the owner
+   * looks again at what is actually there now.
+   */
+  staleDecisions: ReconcileDecision[];
   summary: ImportSummary;
 }
 
@@ -9928,6 +10299,34 @@ export function toArchiveRelative(path: string): string {
 
 function suppressionKey(s: SourceSuppression): string {
   return `${s.kind} ${s.ref} ${s.itemId ?? ''}`;
+}
+
+/**
+ * WHERE DOES THIS ARCHIVE PATH POINT NOW? One reading, for everything that
+ * uses a stored path as an IDENTITY.
+ *
+ * `repairReferencePath` followed the whole logged chain while adoption took a
+ * single hop and a suppression took none at all, so one rename log gave three
+ * different answers about the same file. With A -> B -> C logged, B in session
+ * 1 and C in session 2, a legacy class was adopted as session 1 on the
+ * strength of B and then had that very reference repaired into session 2 —
+ * bound to one class, pointing at another's files. A hidden resource,
+ * meanwhile, stayed keyed to the old path and simply reappeared under the new
+ * one.
+ *
+ * A CYCLE is reported, never walked: a log that loops says nothing about where
+ * the file is, and picking a stopping point would invent an identity.
+ */
+export function followRenames(path: string, renames: Map<string, string>): { path: string; cycle: boolean } {
+  let current = path;
+  const seen = new Set<string>([current]);
+  while (renames.has(current)) {
+    const next = renames.get(current)!;
+    if (seen.has(next)) return { path: current, cycle: true };
+    seen.add(next);
+    current = next;
+  }
+  return { path: current, cycle: false };
 }
 
 /** The registry facts an item is SEEDED from — identity, never working detail. */
@@ -10074,8 +10473,9 @@ function hasSourcePathEvidence(
   return (lesson.recordings ?? []).some((r) => {
     const read = readArchiveRelative(r.path.trim(), verifiedBase);
     if (!read.ok) return false;
-    const current = renames.get(read.relative) ?? read.relative;
-    return current.startsWith(`${folder}/`);
+    const moved = followRenames(read.relative, renames);
+    if (moved.cycle) return false; // no reading, therefore no evidence
+    return moved.path.startsWith(`${folder}/`);
   });
 }
 
@@ -10093,7 +10493,7 @@ function hasSourcePathEvidence(
  * deleted to make the two agree. A row that comes back is simply the incoming
  * row again, with no flag — the source is authoritative about what it HAS.
  */
-function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex) {
+function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex, renames: Map<string, string>) {
   if (!previous) return { pieces: index.pieces, sessions: index.sessions };
 
   const incomingKeys = new Set(index.pieces.map((p) => p.key));
@@ -10103,12 +10503,24 @@ function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex) 
   ];
 
   const incomingSessions = new Map(index.sessions.map((s) => [s.n, s]));
+  // Every path the incoming graph describes, ACROSS sessions: a rename can
+  // move a file into a different session (the log's own A -> B -> C shape), and
+  // asking only "is it still in THIS session" would flag such a file as gone
+  // while the very same bytes sit in the graph under their new name.
+  const anywhere = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
+  const movedNotGone = (path: string) => anywhere.has(followRenames(path, renames).path);
   const sessions = index.sessions.map((s) => {
     const before = previous.sessions.find((x) => x.n === s.n);
     if (!before) return s;
     const paths = new Set(s.resources.map((r) => r.path));
+    // A RENAMED FILE MOVED; IT DID NOT GO MISSING. Its old row is dropped
+    // rather than retained-and-flagged, because the log says exactly where the
+    // bytes went and the incoming row describes them. Safe to drop: only
+    // pieces and sessions carry item/lesson bindings, so no binding can dangle
+    // on a resource row, and a manual unclassified lesson's own reference
+    // reaches material through the LESSON, never through this graph.
     const gone = before.resources
-      .filter((r) => !paths.has(r.path))
+      .filter((r) => !paths.has(r.path) && !movedNotGone(r.path))
       .map((r) => ({ ...r, unavailable: true as const }));
     return gone.length > 0 ? { ...s, resources: [...s.resources, ...gone] } : s;
   });
@@ -10117,7 +10529,12 @@ function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex) 
     sessions.push({
       ...before,
       unavailable: true,
-      resources: before.resources.map((r) => ({ ...r, unavailable: true as const })),
+      // …and a file this vanished session's folder was renamed OUT of is in the
+      // graph already, under its new session. Keeping it here too would list
+      // one file twice, once falsely as missing.
+      resources: before.resources
+        .filter((r) => !movedNotGone(r.path))
+        .map((r) => ({ ...r, unavailable: true as const })),
     });
   }
   sessions.sort((a, b) => a.n - b.n);
@@ -10176,6 +10593,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   };
 
   const renames = new Map(index.renames.map((r) => [r.from, r.to]));
+  const staleDecisions: ReconcileDecision[] = [];
 
   // --- lessons ------------------------------------------------------------
   const boundLessons = new Map<number, Lesson>();
@@ -10211,11 +10629,16 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
       | undefined;
     if (linked) {
+      // The SAME conditions the candidate list is built from — a link may only
+      // adopt a record that is still unbound and still this instrument's.
+      // Deleted, bound elsewhere or moved since the preview, the decision is
+      // STALE, never silently turned into "create a new class instead".
       const target = db.lessons.find((l) => l.id === linked.lessonId);
-      if (target) {
+      if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
         continue;
       }
+      staleDecisions.push(linked);
     }
 
     // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
@@ -10285,10 +10708,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       | undefined;
     if (linked) {
       const target = db.items.find((i) => i.id === linked.itemId);
-      if (target && target.instrumentId === instrumentId) {
+      if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
         continue;
       }
+      staleDecisions.push(linked); // see the lesson branch above
     }
     const createNow = decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
 
@@ -10363,7 +10787,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   // What the source still describes, PLUS what it has stopped describing,
   // flagged. New records above were minted from `index.pieces` alone, so a
   // retained-but-unavailable piece never comes back as a fresh item.
-  const retained = retainMissing(existing, index);
+  const retained = retainMissing(existing, index, renames);
   const source: ArchiveSource = {
     id: archiveId,
     instrumentId,
@@ -10373,14 +10797,32 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     sessions: retained.sessions,
     renames: index.renames,
     diagnostics: index.diagnostics,
-    suppressions: [...suppressions, ...addedSuppressions],
+    // A HIDE FOLLOWS ITS FILE, exactly as a stored reference does. A resource
+    // suppression is keyed BY PATH, so a rename left the decision pointing at
+    // a name the archive no longer uses: the file came back into view under
+    // its new path while the old, hidden row sat there flagged unavailable.
+    // Rewriting the ref is not editing the owner's decision — it is the same
+    // decision about the same bytes, said in the archive's current words. The
+    // `itemId` scope is carried untouched, and re-keying cannot duplicate:
+    // `suppressionKey` de-duplicates the result.
+    suppressions: dedupeSuppressions([
+      ...suppressions.map((sup) =>
+        sup.kind === 'resource' ? { ...sup, ref: followRenames(sup.ref, renames).path } : sup,
+      ),
+      ...addedSuppressions,
+    ]),
   };
 
   // A field decision only counts as a change when there is a suggestion for it
   // to apply — a stale one left over from an earlier preview changes nothing.
-  const appliedFields = decisions.filter(
-    (d) => d.kind === 'apply-field' && suggestions.some((x) => x.pieceKey === d.pieceKey && x.field === d.field),
-  );
+  const appliedFields = decisions.filter((d) => suggestions.some((x) => decisionMatchesSuggestion(d, x)));
+  // …and a decision made against a value the owner has since CHANGED is not a
+  // leftover, it is an answer to a question that no longer stands.
+  for (const d of decisions) {
+    if (d.kind !== 'apply-field') continue;
+    const live = suggestions.find((x) => x.pieceKey === d.pieceKey && x.field === d.field);
+    if (live && live.from !== d.from) staleDecisions.push(d);
+  }
   const changesRecords =
     newItems.length > 0 ||
     newLessons.length > 0 ||
@@ -10405,6 +10847,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     questions,
     suggestions,
     attention,
+    staleDecisions,
     summary: {
       addedItems: newItems.length,
       addedLessons: newLessons.length,
@@ -10446,7 +10889,7 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
   // over from an earlier preview must not make an unchanged refresh a write.
   const applied = decisions.filter(
     (d): d is Extract<ReconcileDecision, { kind: 'apply-field' }> =>
-      d.kind === 'apply-field' && plan.suggestions.some((x) => x.pieceKey === d.pieceKey && x.field === d.field),
+      plan.suggestions.some((x) => decisionMatchesSuggestion(d, x)),
   );
   const nothingToDo =
     !graphChanged &&
@@ -10463,7 +10906,7 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
   const repairedById = new Map(plan.repairedLessons.map((l) => [l.id, l]));
   const fieldsByItem = new Map<ID, MetadataSuggestion[]>();
   for (const s of plan.suggestions) {
-    if (!applied.some((d) => d.pieceKey === s.pieceKey && d.field === s.field)) continue;
+    if (!applied.some((d) => decisionMatchesSuggestion(d, s))) continue;
     fieldsByItem.set(s.itemId, [...(fieldsByItem.get(s.itemId) ?? []), s]);
   }
 
@@ -10524,6 +10967,18 @@ export function withSuppression(
   });
 }
 
+/** Keep the FIRST of each distinct decision; re-keying two refs onto one path
+ * must not grow the list. */
+function dedupeSuppressions(list: SourceSuppression[]): SourceSuppression[] {
+  const seen = new Set<string>();
+  return list.filter((s) => {
+    const k = suppressionKey(s);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Lift a suppression, so the next refresh may import that entity again. */
 export function withoutSuppression(
   sources: ArchiveSource[],
@@ -10571,15 +11026,10 @@ export function repairReferencePath(
   if (!read.ok) return read.outcome;
   const { relative: stripped, wasUrl } = read;
 
-  // Follow the rename chain, refusing a cycle rather than looping.
-  let current = stripped;
-  const seen = new Set<string>([current]);
-  while (renames.has(current)) {
-    const next = renames.get(current)!;
-    if (seen.has(next)) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
-    seen.add(next);
-    current = next;
-  }
+  // Follow the rename chain — the SAME reading adoption and suppression use.
+  const moved = followRenames(stripped, renames);
+  if (moved.cycle) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
+  const current = moved.path;
   if (current === stripped) {
     if (known.has(current)) return !wasUrl && stripped === raw ? { status: 'unchanged' } : { status: 'repaired', path: current };
     return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
@@ -11007,6 +11457,71 @@ describe('publishing and reading the source index', () => {
     expect(brokenStructure.ok).toBe(false);
     if (brokenStructure.ok) throw new Error('expected refusal');
     expect(brokenStructure.error).toMatch(/no sessions/);
+
+    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
+    // A digest proves the file is the one the scanner wrote; it says nothing
+    // about the file being well formed. The decoder normalises BEFORE the
+    // graph's grammar runs, so `resources: null` decoded to a session with no
+    // resources — a perfectly valid empty list by the time the grammar saw it
+    // — and six files became zero with a VALID digest on the front. Every
+    // absent-tolerant read in the decoder had the same shape.
+    const withDigest = (body: Record<string, unknown>) =>
+      JSON.stringify({ ...body, contentHash: indexDigest(body) });
+    const sessionZero = original.sessions[0]!;
+    const erasures: [string, Record<string, unknown>][] = [
+      ['must be a list', { ...sessionZero, resources: null }],
+      ['must be a list', { ...sessionZero, members: null }],
+      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
+      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
+    ];
+    for (const [message, session0] of erasures) {
+      const bad = await readIndexFile(
+        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
+      );
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    const withResource = (over: Record<string, unknown>) => ({
+      ...original,
+      sessions: [
+        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
+        ...original.sessions.slice(1),
+      ],
+    });
+    for (const [message, over] of [
+      ['must be a number', { part: '2' }],
+      ['must be a number', { size: '10mb' }],
+      ['must be text', { group: 42 }],
+    ] as [string, Record<string, unknown>][]) {
+      const bad = await readIndexFile(withDigest(withResource(over)));
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    for (const [message, over] of [
+      ['must be a list', { sessions: null }],
+      ['must be true or false', { provisional: 'yes' }],
+    ] as [string, Record<string, unknown>][]) {
+      const bad = await readIndexFile(
+        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
+      );
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    for (const over of [{ renames: null }, { diagnostics: null }]) {
+      const bad = await readIndexFile(withDigest({ ...original, ...over }));
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain('must be a list');
+    }
+    // ABSENT still reads as absent: the tolerance that was correct stays.
+    const withoutOptional = { ...(original as Record<string, unknown>) };
+    delete withoutOptional.renames;
+    delete withoutOptional.diagnostics;
+    const lean = await readIndexFile(withDigest(withoutOptional));
+    expect(lean.ok).toBe(true);
   });
 });
 
@@ -11215,7 +11730,7 @@ describe('committing an archive import', () => {
     const answered2 = useStore.getState().previewArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
       now: NOW,
     });
     expect(answered2.plan.summary.unchanged).toBe(false);
@@ -11227,7 +11742,7 @@ describe('committing an archive import', () => {
     const appliedField = await useStore.getState().commitArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
       decidedFromRev: useStore.getState().rev,
       now: NOW,
     });
@@ -11239,6 +11754,44 @@ describe('committing an archive import', () => {
       boundWithComposer.title,
     );
     expect(useStore.getState().db.blocks).toHaveLength(1);
+
+    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
+    // The counterexample, through the REAL store: preview an empty composer,
+    // choose the archive's value, then write your own before pressing Apply.
+    // No new QUESTION appears, so the rebase guard alone let this through and
+    // the registry value replaced the words just typed.
+    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
+    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
+    const secondKey = second.source!.pieceKey;
+    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
+    useStore.getState().updateItem(second.id, {
+      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
+    });
+    const refusedStale = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: choice,
+      decidedFromRev: seen.rev,
+      now: NOW,
+    });
+    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
+    expect(refusedStale.staleDecisions).toEqual(choice);
+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
+      'Owner wrote this during refresh',
+    );
+    // Re-answered against what is actually there now, it applies.
+    const reAnswered = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
+      second.persian!.composer,
+    );
 
     // --- refresh NEVER runs a whole-database import or reset ---------------
     // `importDB`, `resetDemo` and `clearAll` each null the active session and
@@ -11504,136 +12057,6 @@ describe('deletions, unlinking and hiding', () => {
 });
 ```
 
-### src/store/archiveIndex.ts
-
-```
-import { getSyncConfig } from './githubSync';
-import { parseSourceIndex, MAX_INDEX_BYTES, type SourceIndex } from '../domain/sourceArchive';
-
-// ---------------------------------------------------------------------------
-// Reading the published source index.
-//
-// The app only ever GETs. The NAS publisher's credential never reaches the
-// browser — this reuses the device's OWN already-configured GitHub connection,
-// which is read/write for the app's data but is used here for reads alone.
-//
-// A separate branch, not a sidecar on main: the sync engine writes main's whole
-// tree with no base_tree, so anything placed beside state.json would vanish on
-// the next sync. That engine is not touched by any of this.
-// ---------------------------------------------------------------------------
-
-const API = 'https://api.github.com';
-/** The one branch and the one path the app reads. */
-export const SOURCE_INDEX_BRANCH = 'source-index';
-export const INDEX_PATH = 'setar/index.json';
-
-export interface FetchedIndex {
-  index: SourceIndex;
-  /** The commit the file was read AT — not merely the branch name. */
-  commitSha: string;
-  /** When THIS DEVICE fetched it. Transient, device-local, never synced. */
-  fetchedAt: string;
-}
-
-export type IndexFetchResult = { ok: true; value: FetchedIndex } | { ok: false; error: string };
-
-type Fetcher = typeof fetch;
-
-function decodeBase64Utf8(b64: string): string {
-  const binary = atob(b64.replace(/\s+/g, ''));
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-/**
- * Fetch the published index, PINNED to the commit the branch points at.
- *
- * Resolving the ref and then asking for the file "on that branch" would read
- * two different states when a publish lands between the two calls — half of an
- * older index with a newer hash. Reading the ref first and then the file AT
- * THAT SHA is one consistent snapshot.
- *
- * Every failure returns a message; nothing is thrown at the caller and nothing
- * is written. A network or auth failure leaves the last accepted graph exactly
- * as it is — the app keeps working offline from it.
- */
-export async function fetchPublishedIndex(
-  options: { repo?: string; token?: string; fetchImpl?: Fetcher; now?: Date } = {},
-): Promise<IndexFetchResult> {
-  const cfg = options.repo && options.token ? { repo: options.repo, token: options.token } : getSyncConfig();
-  if (!cfg) {
-    return { ok: false, error: 'Connect this device to your GitHub data repository in Sync first.' };
-  }
-  const doFetch = options.fetchImpl ?? fetch;
-  const headers = {
-    Authorization: `Bearer ${cfg.token}`,
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-
-  let commitSha: string;
-  try {
-    const res = await doFetch(`${API}/repos/${cfg.repo}/git/ref/heads/${SOURCE_INDEX_BRANCH}`, { headers });
-    if (res.status === 404 || res.status === 409) {
-      return { ok: false, error: 'No source index has been published yet. Run the archive scanner on the NAS.' };
-    }
-    if (!res.ok) return { ok: false, error: githubError(res.status) };
-    const body = (await res.json()) as { object?: { sha?: string } };
-    if (typeof body.object?.sha !== 'string') return { ok: false, error: 'The source index branch has no commit.' };
-    commitSha = body.object.sha;
-  } catch {
-    return { ok: false, error: 'Could not reach GitHub. The material already imported is unaffected.' };
-  }
-
-  let text: string;
-  try {
-    const res = await doFetch(`${API}/repos/${cfg.repo}/contents/${INDEX_PATH}?ref=${commitSha}`, { headers });
-    if (res.status === 404) {
-      return { ok: false, error: `The index branch exists but carries no ${INDEX_PATH}.` };
-    }
-    if (!res.ok) return { ok: false, error: githubError(res.status) };
-    const body = (await res.json()) as { content?: string; encoding?: string; size?: number };
-    if (typeof body.size === 'number' && body.size > MAX_INDEX_BYTES) {
-      return { ok: false, error: 'That index file is too large to be a Setar archive index.' };
-    }
-    if (typeof body.content !== 'string' || body.encoding !== 'base64') {
-      return { ok: false, error: 'GitHub returned the index in a shape this app cannot read.' };
-    }
-    text = decodeBase64Utf8(body.content);
-  } catch {
-    return { ok: false, error: 'Could not reach GitHub. The material already imported is unaffected.' };
-  }
-
-  try {
-    return {
-      ok: true,
-      value: { index: await parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
-    };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
-  }
-}
-
-/**
- * The file-import fallback. The SAME decoder, so a hand-copied index is held to
- * exactly the rules a fetched one is.
- */
-export async function readIndexFile(text: string, now: Date = new Date()): Promise<IndexFetchResult> {
-  try {
-    return { ok: true, value: { index: await parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
-  }
-}
-
-function githubError(status: number): string {
-  if (status === 401 || status === 403) {
-    return 'GitHub refused this device’s access token. Check Sync settings; nothing was changed.';
-  }
-  return `GitHub returned an error (HTTP ${status}). Nothing was changed.`;
-}
-```
-
 ### src/store/useStore.ts
 
 ```
@@ -11758,6 +12181,8 @@ export interface ArchiveCommitResult {
   status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
   message: string;
   summary?: ImportSummary;
+  /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
+  staleDecisions?: ReconcileDecision[];
 }
 
 /**
@@ -12621,6 +13046,22 @@ export const useStore = create<StoreState>()(
             ok: false,
             status: 'stale',
             message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
+          };
+        }
+        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
+        // QUESTION is not the only way a rebase invalidates an answer: the
+        // owner choosing the archive's composer over an empty field, then
+        // typing one of their own before pressing Apply, raised no question at
+        // all and overwrote the words they had just written. The plan reports
+        // both kinds of premise now — a moved value and a link target that has
+        // been deleted, bound elsewhere or moved instrument — and this refuses
+        // on either, whether or not `rev` moved.
+        if (plan.staleDecisions.length > 0) {
+          return {
+            ok: false,
+            status: 'stale',
+            message: 'Something you had already decided about has changed since. Look again before applying.',
+            staleDecisions: plan.staleDecisions,
           };
         }
 
@@ -13722,1370 +14163,6 @@ function finishHydration() {
 }
 if (useStore.persist.hasHydrated()) finishHydration();
 else useStore.persist.onFinishHydration(finishHydration);
-```
-
-### tests/practiceBrowser.ts
-
-```
-import { readFile } from 'node:fs/promises';
-import { createServer, type ViteDevServer } from 'vite';
-import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
-
-// ---------------------------------------------------------------------------
-// A small harness for driving the REAL app in a real browser from an ordinary
-// Vitest test.
-//
-// Deliberately a LIBRARY, not a second test runner: the installed check engine
-// traces acceptance through the Vitest report, so a standalone Playwright exit
-// code would prove nothing to it. Each journey gets its own Vite dev server and
-// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
-// localStorage — no fixture from one journey can reach the other, and neither
-// can touch the owner's real data, GitHub or NAS.
-//
-// A missing browser is a FAILURE with a setup message, never a skip: a check
-// that quietly passes because it did not run is worse than no check at all.
-// ---------------------------------------------------------------------------
-
-/** The two engines this app is actually used in: Chrome on the Mac, Safari on the iPhone. */
-export type Engine = 'chromium' | 'webkit';
-
-const ENGINES: Record<Engine, BrowserType> = { chromium, webkit };
-
-const installHint = (engine: Engine) =>
-  `The Playwright ${engine} browser is not installed. Run \`npx playwright install ${engine}\` ` +
-  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
-  'and an engine quietly missed is the same thing as an engine never checked.';
-
-export interface PracticeApp {
-  page: Page;
-  /** The dev server origin this journey is isolated on. */
-  origin: string;
-  /** Which engine this journey is actually running in. */
-  engine: Engine;
-  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
-  pageErrors: Error[];
-  close(): Promise<void>;
-}
-
-/**
- * Start the app and open it in a fresh, isolated browser context.
- *
- * `now` fixes the browser's clock before any script runs, so every date the
- * app derives — due reviews, lesson deadlines, the local calendar day a block
- * belongs to — is deterministic. `page.clock` can then move it forward within
- * a journey (across local midnight, for instance) exactly as a real device
- * left open overnight would experience it.
- */
-export async function openPracticeApp(options: {
-  now: Date;
-  viewport?: { width: number; height: number };
-  /** Which engine to drive. Defaults to Chromium; ac-14 drives both. */
-  engine?: Engine;
-  /**
-   * Serve a DIFFERENT checkout of this app — used to stand up a disposable
-   * copy of an older release (a git worktree at an earlier commit) so a
-   * rollback can be tested against the app that actually wrote the backup,
-   * rather than against a description of it. Defaults to this checkout.
-   */
-  root?: string;
-}): Promise<PracticeApp> {
-  const engine = options.engine ?? 'chromium';
-  const server: ViteDevServer = await createServer({
-    ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
-    logLevel: 'error',
-    server: { port: 0, strictPort: false },
-  });
-  await server.listen();
-  const origin = server.resolvedUrls?.local[0];
-  if (!origin) {
-    await server.close();
-    throw new Error('The dev server started but reported no local URL.');
-  }
-
-  let browser: Browser;
-  try {
-    browser = await ENGINES[engine].launch();
-  } catch (e) {
-    await server.close();
-    throw new Error(installHint(engine), { cause: e });
-  }
-
-  let context: BrowserContext;
-  let page: Page;
-  const pageErrors: Error[] = [];
-  try {
-    context = await browser.newContext({
-      viewport: options.viewport ?? { width: 390, height: 844 },
-      // The owner's phone. Deliberately the constraint the product is held to.
-      deviceScaleFactor: 2,
-    });
-    page = await context.newPage();
-    // ONE handler for the whole journey. The app's destructive actions ask
-    // first with confirm(); an unanswered dialog blocks every later command,
-    // and registering a second handler makes the first one's accept() throw.
-    page.on('dialog', (d) => {
-      void d.accept().catch(() => {});
-    });
-    // Surface a page-level error instead of letting it become a silently
-    // wrong assertion later.
-    page.on('pageerror', (e) => pageErrors.push(e));
-    await page.clock.install({ time: options.now });
-    await page.goto(origin);
-    // The store hydrates from IndexedDB before anything renders. The ceiling is
-    // generous because this is the COLD start: five journeys run concurrently,
-    // each starting its own dev server and browser, so the first paint of the
-    // last one to launch competes with four others compiling modules. A longer
-    // wait cannot hide a real failure — it only refuses to call contention one.
-    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
-  } catch (e) {
-    await browser.close();
-    await server.close();
-    throw e;
-  }
-
-  return {
-    page,
-    origin,
-    engine,
-    pageErrors,
-    async close() {
-      await browser.close();
-      await server.close();
-    },
-  };
-}
-
-/**
- * Import a backup through the REAL Settings control — the same path the owner
- * uses, file picker and confirmation included. No debug hook, no direct store
- * access: a journey that seeded itself through a back door would prove nothing
- * about the door the owner actually walks through.
- */
-export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
-  const { page } = app;
-  await openSettings(app);
-  await page.getByLabel('Import backup file').setInputFiles({
-    name,
-    mimeType: 'application/json',
-    buffer: Buffer.from(json, 'utf8'),
-  });
-  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
-}
-
-/**
- * Reach Settings the way the owner does — More → Settings. The practice
- * screens hide the tab bar (they are the one place the app asks for undivided
- * attention), so from one of those this takes the route directly instead of
- * waiting forever for a nav that is deliberately not there.
- */
-export async function openSettings(app: PracticeApp): Promise<void> {
-  const { page } = app;
-  if (await page.getByRole('navigation', { name: 'Primary' }).isVisible()) {
-    await page.getByRole('link', { name: 'More' }).click();
-    // "Settings" also names a link inside Settings' own copy once the page is
-    // open, so take the one on the More menu — the first in the document.
-    await page.getByRole('link', { name: 'Settings' }).first().click();
-  } else {
-    await goTo(app, '/settings');
-  }
-  await page.getByLabel('Import backup file').waitFor({ state: 'attached', timeout: 20_000 });
-}
-
-/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
-export async function importOutcome(app: PracticeApp): Promise<string> {
-  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
-}
-
-/**
- * Go to a route the way the owner does, then wait for the app to settle.
- *
- * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
- * the tab bar — they are the one place the app asks for undivided attention —
- * so those routes wait on their own first control instead.
- */
-const FOCUSED_ROUTES = /^\/(active|close|routine)/;
-
-export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
-  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
-  if (FOCUSED_ROUTES.test(hashPath)) {
-    await app.page.locator('main').waitFor({ timeout: 20_000 });
-    await app.page.waitForFunction(() => (document.querySelector('main')?.textContent ?? '').length > 0);
-    return;
-  }
-  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
-}
-
-/** Reload, proving a claim survived in IndexedDB rather than in React state. */
-export async function reload(app: PracticeApp): Promise<void> {
-  // The store persists to IndexedDB asynchronously (that is the whole reason
-  // App gates render on `hydrated`), so a reload fired in the same tick as the
-  // click can outrun the write. This wait is about the storage platform, not
-  // about the app: it is real wall-clock time in Node, unaffected by the
-  // page's faked clock.
-  await app.page.waitForTimeout(400);
-  await app.page.reload();
-  await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
-}
-
-const KV_KEY = 'practice-compass';
-
-/**
- * Read the raw bytes the app's own persist middleware would read on the next
- * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
- * the Settings importer. `{ state, version }` is exactly the shape Zustand's
- * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
- */
-export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
-  return app.page.evaluate(
-    (key) =>
-      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
-        const req = indexedDB.open('practice-compass');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('kv', 'readonly');
-          const get = tx.objectStore('kv').get(key);
-          get.onsuccess = () => {
-            db.close();
-            resolve(JSON.parse((get.result as { value: string }).value));
-          };
-          get.onerror = () => reject(get.error);
-        };
-      }),
-    KV_KEY,
-  );
-}
-
-/**
- * Write directly into the app's own IndexedDB `kv` store — the way an
- * ALREADY-hydrated device holds its persisted state — bypassing every
- * import/migration door entirely. The one way to reach the "persisted
- * version already matches the current schema" hydration path: Zustand's
- * persist middleware only calls `migrate` when the persisted version differs
- * from the current one, and every JSON-import door runs `validateDB`
- * regardless of what version a FILE claims.
- */
-export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
-  await app.page.evaluate(
-    ({ key, state, version }) =>
-      new Promise<void>((resolve, reject) => {
-        const req = indexedDB.open('practice-compass');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('kv', 'readwrite');
-          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
-          tx.oncomplete = () => {
-            db.close();
-            resolve();
-          };
-          tx.onerror = () => reject(tx.error);
-        };
-      }),
-    { key: KV_KEY, state, version },
-  );
-}
-
-/**
- * Export a full backup through the REAL Settings control and return its text.
- * Same button the owner presses, same file the browser would save — the point
- * of a rollback test is the artefact the app actually produces, not one a test
- * rebuilt from the store.
- */
-export async function exportBackup(app: PracticeApp): Promise<string> {
-  const { page } = app;
-  await openSettings(app);
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 30_000 }),
-    page.getByRole('button', { name: /Export backup/ }).click(),
-  ]);
-  const path = await download.path();
-  return readFile(path, 'utf8');
-}
-
-/**
- * Wait until the app's OWN persisted bytes satisfy a predicate — a real
- * IndexedDB acknowledgement of a write, never a sleep. A timeout fails with
- * the state actually found, so a slow write and a missing write look different.
- */
-export async function persistedUntil<T>(
-  app: PracticeApp,
-  read: (state: { state: unknown; version: number }) => T,
-  predicate: (value: T) => boolean,
-  timeoutMs = 10_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  let last: T | undefined;
-  for (;;) {
-    last = read(await readPersistedState(app));
-    if (predicate(last)) return last;
-    if (Date.now() > deadline) {
-      throw new Error(`Persisted state never satisfied the check. Last value: ${JSON.stringify(last)}`);
-    }
-    await app.page.waitForTimeout(50);
-  }
-}
-
-/** The database as the app has actually PERSISTED it, not as it is rendering it. */
-export async function persistedDb(app: PracticeApp): Promise<{
-  items: Record<string, unknown>[];
-  blocks: Record<string, unknown>[];
-  reviews: Record<string, unknown>[];
-  lessonAgenda: Record<string, unknown>[];
-  schemaVersion: number;
-}> {
-  const { state } = await readPersistedState(app);
-  return (state as { db: never }).db;
-}
-
-// ---------------------------------------------------------------------------
-// A GitHub data repo that lives in this test process.
-//
-// It is installed at the REAL transport boundary — the `fetch` calls
-// `gitRemote.ts` makes to api.github.com — so everything above it runs for
-// real: `syncNow`, `resolveConflict`, `runSync`, `decideSync`, the pre-sync
-// archive, and `importFullBackup`'s own guards. Nothing in the app is stubbed
-// or bypassed, and no request ever leaves the machine.
-// ---------------------------------------------------------------------------
-
-export interface FakeRemote {
-  /** The snapshot the repo currently holds, or null for an empty repo. */
-  snapshot: { stateText: string; hash: string; rev: number; deviceName?: string; savedAt: string } | null;
-  /** Every ref this repo has, so an archive branch is observable. */
-  refs: string[];
-  /** How many times each endpoint was called, so "it really went there" is checkable. */
-  calls: string[];
-  /**
-   * The published Setar source index — the ONE file on the source-index
-   * branch that the NAS scanner writes and the app only ever GETs. Null until
-   * something publishes it.
-   */
-  sourceIndex: { text: string; commit: string } | null;
-}
-
-export function newFakeRemote(): FakeRemote {
-  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
-}
-
-/** Put a snapshot in the repo as if another device had pushed it. */
-export function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
-  remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
-  if (!remote.refs.includes('main')) remote.refs.push('main');
-}
-
-/**
- * Re-stamp an index with the digest the SCANNER would have written for it.
- *
- * The app recomputes this digest at its reader boundary and refuses an index
- * whose content and hash disagree, so a journey that edits a fixture index must
- * publish a genuinely re-scanned one — exactly what the NAS publisher does.
- * ONE implementation, here beside `publishSourceIndex`, so no journey can
- * quietly hand-edit a hash instead.
- */
-export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
-  const body = { ...index };
-  delete body.contentHash;
-  delete body.generatedAt;
-  const sorted = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(sorted);
-    if (value && typeof value === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
-        const v = (value as Record<string, unknown>)[k];
-        if (v !== undefined) out[k] = sorted(v);
-      }
-      return out;
-    }
-    return value;
-  };
-  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  return JSON.stringify({ ...index, contentHash });
-}
-
-/** Put a source index on the source-index branch, as the NAS publisher would. */
-export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
-  remote.sourceIndex = { text, commit };
-  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
-}
-
-export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
-  let headCounter = 0;
-  const blobs = new Map<string, string>();
-
-  await page.route('https://api.github.com/**', async (route) => {
-    const req = route.request();
-    const url = new URL(req.url());
-    // /repos/<owner>/<name>/<rest…>
-    const rest = url.pathname.split('/').slice(4).join('/');
-    const method = req.method();
-    remote.calls.push(`${method} ${rest}`);
-    // A FULFILLED response is still subject to the browser's own CORS check.
-    // Chromium lets a routed cross-origin request through; WebKit does not, and
-    // an unadorned reply surfaces as "Fetch API cannot load … due to access
-    // control checks" — a harness artefact that looks exactly like an app bug.
-    // The real api.github.com sends these headers, so sending them here is the
-    // fake behaving like the thing it stands in for.
-    const CORS = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
-    };
-    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
-    const json = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
-    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
-    const head = () => `head-${headCounter}`;
-
-    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
-    // the file "on the branch" instead would be a second, later state.
-    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
-      if (!remote.sourceIndex) return json({}, 404);
-      return json({ object: { sha: remote.sourceIndex.commit } });
-    }
-    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
-      const ref = url.searchParams.get('ref');
-      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
-      return json({
-        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
-        encoding: 'base64',
-        size: remote.sourceIndex.text.length,
-      });
-    }
-    if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return json({}, 404);
-      return json({ object: { sha: head() } });
-    }
-    if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
-      if (!remote.snapshot) return json({}, 404);
-      return raw(
-        JSON.stringify({
-          formatVersion: 2,
-          hash: remote.snapshot.hash,
-          rev: remote.snapshot.rev,
-          deviceName: remote.snapshot.deviceName,
-          savedAt: remote.snapshot.savedAt,
-          attachments: [],
-        }),
-      );
-    }
-    if (method === 'GET' && rest.startsWith('contents/state.json')) {
-      if (!remote.snapshot) return json({}, 404);
-      return raw(remote.snapshot.stateText);
-    }
-    if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
-    if (method === 'GET' && rest.startsWith('git/blobs/')) {
-      return json({ content: blobs.get(rest.slice('git/blobs/'.length)) ?? '' });
-    }
-    if (method === 'PUT' && rest.startsWith('contents/README.md')) {
-      headCounter += 1;
-      if (!remote.refs.includes('main')) remote.refs.push('main');
-      return json({ commit: { sha: head() } });
-    }
-    if (method === 'POST' && rest === 'git/blobs') {
-      const body = req.postDataJSON() as { content: string };
-      const sha = `blob-${blobs.size}`;
-      blobs.set(sha, body.content);
-      return json({ sha });
-    }
-    if (method === 'POST' && rest === 'git/trees') return json({ sha: 'tree-1' });
-    if (method === 'POST' && rest === 'git/commits') {
-      headCounter += 1;
-      return json({ sha: head() });
-    }
-    if (method === 'POST' && rest === 'git/refs') {
-      const body = req.postDataJSON() as { ref: string };
-      remote.refs.push(body.ref.replace('refs/heads/', ''));
-      return json({});
-    }
-    if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
-    return json({ message: 'not routed' }, 404);
-  });
-}
-
-/**
- * Wrap a database in the shape `state.json` holds: a full backup with NO file
- * payloads (attachments travel as separate git blobs).
- */
-export function remoteStateText(db: unknown, deviceName = 'the other device'): string {
-  return JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: (db as { schemaVersion?: number }).schemaVersion ?? 13,
-    exportedAt: new Date().toISOString(),
-    deviceName,
-    data: db,
-    files: [],
-  });
-}
-
-/** Connect sync through the REAL Settings form and run the first sync. */
-export async function connectSync(app: PracticeApp): Promise<void> {
-  const { page } = app;
-  await goTo(app, '/settings');
-  // The sync form's fields sit inside a labelled group rather than carrying
-  // their own accessible names. That is pre-existing Settings markup this lane
-  // is explicitly not reshaping, so this reaches them the way they actually
-  // are rather than pretending otherwise.
-  await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
-  await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
-  await page.getByRole('button', { name: 'Connect & sync' }).click();
-  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
-}
-
-/** The sync section's own status line, whatever it currently says. */
-export async function syncMessage(page: Page): Promise<string> {
-  return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
-}
-```
-
-### tests/setarArchive.browser.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import INDEX_TEXT from './fixtures/setar-archive.json?raw';
-import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
-import {
-  connectSync,
-  goTo,
-  importBackup,
-  installFakeGitHub,
-  newFakeRemote,
-  openPracticeApp,
-  persistedUntil,
-  publishSourceIndex,
-  readPersistedState,
-  stampSourceIndex,
-  reload,
-  type Engine,
-  type PracticeApp,
-} from './practiceBrowser';
-
-// ---------------------------------------------------------------------------
-// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
-//
-// Refresh → a historical class with its real material → a canonical piece →
-// the material that is genuinely useful for it → Start → open a file, with the
-// practice clock untouched. The corpus is the checked-in index derived from the
-// real archive, the clock is frozen, and every control is reached by its
-// accessible name — no debug hook, no source regex.
-//
-// A missing engine FAILS with an install instruction; it never skips.
-// ---------------------------------------------------------------------------
-
-const NOW = new Date('2026-09-17T09:00:00.000Z');
-const PHONE = { width: 390, height: 844 };
-const DESKTOP = { width: 1280, height: 900 };
-
-interface Db {
-  items: {
-    id: string;
-    title: string;
-    status: string;
-    persian?: { composer?: string };
-    source?: { pieceKey: string };
-  }[];
-  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
-  blocks: unknown[];
-  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
-}
-
-async function db(app: PracticeApp): Promise<Db> {
-  const { state } = await readPersistedState(app);
-  return (state as { db: Db }).db;
-}
-
-/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
-async function setUp(app: PracticeApp, indexText: string) {
-  const remote = newFakeRemote();
-  await installFakeGitHub(app.page, remote);
-  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
-  await connectSync(app);
-  publishSourceIndex(remote, indexText);
-  return remote;
-}
-
-async function refresh(app: PracticeApp) {
-  await goTo(app, '/settings');
-  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
-  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
-}
-
-/**
- * An index with one more class than the corpus — the delta a refresh applies.
- *
- * Re-STAMPED with the digest the scanner itself would have written: the app
- * recomputes that digest and refuses an index whose content and hash disagree,
- * so a journey may not hand-edit a hash to fake a new scan.
- */
-async function withSession40(text: string): Promise<string> {
-  const index = JSON.parse(text) as {
-    contentHash: string;
-    sessions: unknown[];
-    pieces: { key: string; composer: string }[];
-  };
-  index.sessions = [
-    ...index.sessions,
-    {
-      n: 40,
-      date: '2026-09-29',
-      folder: 'session-40-29-09-2026',
-      roster: [index.pieces[0]!.key],
-      rosterTrusted: true,
-      hasClassRecording: true,
-      resources: [
-        {
-          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
-          role: 'ضبط-کلاس',
-          kind: 'video',
-          title: 'ضبط کلاس',
-          part: null,
-          pieces: [],
-          group: null,
-        },
-      ],
-      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
-    },
-  ];
-  return stampSourceIndex(index as unknown as Record<string, unknown>);
-}
-
-/** The composer this journey's re-scanned registry proposes for one piece. */
-const NEW_COMPOSER = 'میرزا-عبدالله';
-
-/**
- * A re-scanned index whose REGISTRY has improved: one piece the owner already
- * has now names a different composer. That is a suggestion, never a write.
- */
-async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
-  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
-  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
-  const was = target.composer;
-  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
-  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
-}
-
-describe('the Setar archive, rendered', () => {
-  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
-    for (const engine of ['chromium', 'webkit'] as Engine[]) {
-      for (const viewport of [PHONE, DESKTOP]) {
-        const app = await openPracticeApp({ now: NOW, viewport, engine });
-        try {
-          const { page } = app;
-          const remote = await setUp(app, INDEX_TEXT);
-
-          // --- REFRESH: one action, a readable summary, no crawler output ---
-          await refresh(app);
-          const summary = await page.locator('main').innerText();
-          // Four of the owner's own legacy classes carry EXACT source-path evidence,
-          // so they are adopted rather than duplicated; the other 35 are new.
-          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
-          // It says the index CHANGED or was FETCHED — never that a scan ran.
-          expect(summary).not.toMatch(/last scanned/i);
-          expect(summary).toMatch(/needing attention/);
-          // Import policy is stated BEFORE the import, not discovered after.
-          expect(summary).toMatch(/New pieces arrive resting/);
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-
-          const after = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.lessons.length === 40 && d.items.length === 96,
-          );
-          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-          expect(after.items.filter((i) => i.source)).toHaveLength(94);
-          // The owner's own upcoming class 38 and the archive's class 38 both
-          // exist, on their own dates.
-          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
-            '2026-08-04',
-            '2026-09-27',
-          ]);
-
-          // --- A HISTORICAL CLASS, with its real material -------------------
-          // Lessons is a two-pane list at 1000px and stacked cards below it, so
-          // this journey drives whichever the viewport actually renders.
-          await goTo(app, '/lessons');
-          const wide = viewport.width >= 1000;
-          let lessonText: string;
-          if (wide) {
-            await page.getByRole('button', { name: /Class 13 · 2024-09-03/ }).first().click();
-            await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-            lessonText = await page.locator('main').innerText();
-          } else {
-            const class13 = page.getByRole('article').filter({ hasText: 'Class 13 · 2024-09-03' });
-            await class13.first().waitFor({ timeout: 20_000 });
-            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
-            // all open at once just because none of them has notes yet.
-            expect(await class13.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
-            await class13.getByRole('button', { name: /Class 13/ }).first().click();
-            await class13.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-            lessonText = await class13.innerText();
-          }
-          // The class recording is here, with its part numbers; a named score
-          // is here; nothing claims a demonstration belongs to the class alone.
-          expect(lessonText).toContain('ضبط کلاس');
-          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
-
-          // --- A CANONICAL PIECE, and the material that is useful for it ----
-          await goTo(app, '/repertoire');
-          await page.getByRole('button', { name: 'Practice list' }).click();
-          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
-          // through the existing Farsi matcher.
-          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
-          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
-          await found.waitFor({ timeout: 20_000 });
-          await found.click();
-          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
-
-          const itemText = await page.locator('main').innerText();
-          // Its OWN notation, with provenance…
-          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
-          // …the demonstration that covers its session…
-          expect(itemText).toContain('teacher’s demonstration');
-          // …and NOT the class recording, and NOT anyone's practice takes.
-          expect(itemText).not.toContain('class recording');
-          expect(itemText).not.toContain('تمرین من');
-          // Imported pieces arrive resting.
-          expect(itemText).toMatch(/Resting/);
-
-          // --- DIRECT START, and opening material with the clock untouched --
-          await page.getByRole('button', { name: 'Start a block' }).click();
-          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
-          const clockBefore = await page.locator('main').innerText();
-          // Material on the practice screen is ONE CLOSED disclosure.
-          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
-          // CLOSED until asked for: nothing is listed before the tap.
-          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
-          await materialToggle.click();
-          const openButtons = page.getByRole('button', { name: 'Open' });
-          expect(await openButtons.count()).toBeGreaterThan(0);
-          // Every control has an accessible name and is reachable by keyboard.
-          await page.keyboard.press('Tab');
-          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
-          // Opening a file never disturbs the running block.
-          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
-            clockBefore.includes('Finish'),
-          );
-          const blocksBefore = (await db(app)).blocks.length;
-          // The harness accepts the confirm() for the whole journey.
-          await page.getByRole('button', { name: 'Discard block' }).click();
-          expect((await db(app)).blocks).toHaveLength(blocksBefore);
-
-          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
-          await goTo(app, '/repertoire');
-          await page.getByRole('button', { name: 'Practice list' }).click();
-          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
-          const wrapped = await page.evaluate(() => {
-            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
-              /[؀-ۿ]/.test(n.textContent ?? ''),
-            );
-            if (!el) return null;
-            const box = el.getBoundingClientRect();
-            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
-          });
-          expect(wrapped).not.toBeNull();
-          expect(wrapped!.rtl).toBe('rtl');
-          expect(wrapped!.overflows).toBe(false);
-
-          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
-          await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: 'Already current' }).click();
-          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
-
-          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
-          await refresh(app);
-          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const delta = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.lessons.length === 41,
-          );
-          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
-
-          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
-          // The registry improves. That is an OFFER, field by field: nothing
-          // about the owner's own piece changes until they say so, and the
-          // choice must survive the commit even when the index behind it is
-          // already the one installed.
-          const better = await withBetterComposer(INDEX_TEXT);
-          publishSourceIndex(remote, better.text, 'source-index-commit-4');
-          await refresh(app);
-          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
-          await offerRow.first().waitFor({ timeout: 20_000 });
-          const offerText = await page.locator('main').innerText();
-          // The section label is rendered uppercase by the stylesheet, and
-          // innerText returns what is actually rendered.
-          expect(offerText).toMatch(/the archive knows more about these/i);
-          expect(offerText).toContain(better.key);
-          expect(offerText).toContain(NEW_COMPOSER);
-          // Applying WITHOUT answering updates the source graph and leaves the
-          // owner's own piece exactly as it was.
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const unanswered = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
-          );
-          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
-
-          // THE SAME INDEX, a NEW answer. The graph is already current, so a
-          // refresh judged by the index hash alone called this "Already
-          // current" and threw the answer away unwritten.
-          await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
-          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const answeredDb = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
-          );
-          // Only that field moved: the piece keeps its title and its history.
-          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
-          expect(answeredDb.blocks).toHaveLength(1);
-          // …and the offer is gone, because it has been taken.
-          await refresh(app);
-          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-
-          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
-          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
-          await goTo(app, '/settings');
-          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
-          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
-          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
-
-          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
-          await reload(app);
-          const persisted = await db(app);
-          expect(persisted.lessons).toHaveLength(41);
-          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
-          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
-          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
-          expect(persisted.blocks).toHaveLength(1);
-          expect(app.pageErrors).toEqual([]);
-        } finally {
-          await app.close();
-        }
-      }
-    }
-  });
-});
-```
-
-### tests/setarInbound.browser.test.ts
-
-```
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import {
-  connectSync,
-  exportBackup,
-  goTo,
-  importBackup,
-  importOutcome,
-  installFakeGitHub,
-  newFakeRemote,
-  openPracticeApp,
-  persistedDb,
-  publishRemote,
-  readPersistedState,
-  reload,
-  remoteStateText,
-  syncMessage,
-  writePersistedState,
-} from './practiceBrowser';
-import INDEX_TEXT from './fixtures/setar-archive.json?raw';
-import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
-import { SCHEMA_VERSION, type PracticeDB } from '../src/domain/types';
-import { validateDB, serializeExport } from '../src/domain/io';
-import { decodeSourceIndex } from '../src/domain/sourceArchive';
-import { applyArchiveImport, planArchiveImport } from '../src/domain/sourceReconcile';
-import { hashState } from '../src/domain/canonical';
-
-// ---------------------------------------------------------------------------
-// ac-16 — the archive graph through every door an inbound database uses.
-//
-// Settings import (full and state-only), an automatic sync pull, "Take the
-// GitHub copy", the archive restore, BOTH hydration branches and the cold-start
-// recovery control all run the same `validateDB`. A malformed source relation
-// has to be refused at every one of them with the previous database AND the
-// previous attachment bytes exactly as they were; a valid one has to survive
-// all of them with the owner's own bindings, suppressions and fields intact.
-// ---------------------------------------------------------------------------
-
-const CLOCK = new Date('2026-09-17T09:00:00');
-const SETAR = 'inst-setar';
-
-/** The owner's v13 data with a real, accepted graph in it — built by the real planner. */
-function v14Database(): PracticeDB {
-  const base = validateDB(JSON.parse(V13_SETAR_TEXT));
-  const index = decodeSourceIndex(JSON.parse(INDEX_TEXT));
-  const plan = planArchiveImport({ db: base, index, instrumentId: SETAR, now: CLOCK });
-  const db = applyArchiveImport(base, plan);
-  // An owner decision that every door must carry through untouched.
-  return {
-    ...db,
-    archiveSources: db.archiveSources.map((s) => ({
-      ...s,
-      suppressions: [{ kind: 'piece' as const, ref: 'عراق', at: '2026-09-17T09:05:00.000Z' }],
-    })),
-    items: db.items.filter((i) => i.source?.pieceKey !== 'عراق'),
-  };
-}
-
-const V14_DB = v14Database();
-const V14_TEXT = serializeExport(V14_DB, CLOCK);
-
-/**
- * The same database with ONE nested value inside the graph made malformed.
- *
- * `members[].roles` is what `repeatChains` calls `.includes` on to render an
- * item's material, so a door that accepts this persists a database whose first
- * reader throws. It is the sharpest member of the family — the nested fields a
- * production reader dereferences — and every door below is given the identical
- * bytes rather than a door-specific approximation of them.
- */
-function withMalformedRoles<T extends PracticeDB>(db: T): T {
-  return {
-    ...db,
-    archiveSources: db.archiveSources.map((src, i) =>
-      i === 0
-        ? {
-            ...src,
-            sessions: src.sessions.map((sess, j) =>
-              j === 0
-                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
-                : sess,
-            ),
-          }
-        : src,
-    ),
-  } as unknown as T;
-}
-
-const wrap = (data: unknown, files?: unknown) =>
-  JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: SCHEMA_VERSION,
-    exportedAt: CLOCK.toISOString(),
-    data,
-    ...(files === undefined ? {} : { files }),
-  });
-
-/**
- * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
- * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
- * and the rename log moves it here. Repair produces PERSISTED archive state, so
- * it has to cross these doors like everything else.
- */
-const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
-
-interface Shape {
-  items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
-  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
-  blocks: unknown[];
-  archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
-  schemaVersion: number;
-}
-
-const shape = async (app: Parameters<typeof persistedDb>[0]) => (await persistedDb(app)) as unknown as Shape;
-
-describe('the archive graph at every inbound door', () => {
-  it('archive state crosses all real inbound doors without partial installation', async () => {
-    const app = await openPracticeApp({ now: CLOCK });
-    const { page } = app;
-    try {
-      // --- a real v14 database, through the real Settings importer --------
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      expect(await importOutcome(app)).toContain('Imported');
-      await reload(app);
-      let db = await shape(app);
-      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
-      expect(db.archiveSources).toHaveLength(1);
-      expect(db.items.filter((i) => i.source)).toHaveLength(93);
-      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-      // The owner's suppression came through, and the piece it names is absent.
-      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
-      expect(db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-      // …as did their own untouched records.
-      expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
-      expect(db.blocks).toHaveLength(1);
-      // The REPAIRED reference survived the door, with the row the owner wrote.
-      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
-      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
-
-      const goodBytes = JSON.stringify(await readPersistedState(app));
-
-      // --- MALFORMED SOURCE RELATIONS, refused at the import door ---------
-      const bad = V14_DB;
-      const cases: { name: string; text: string; says: RegExp }[] = [
-        {
-          name: 'two sources share an id',
-          text: wrap({ ...bad, archiveSources: [bad.archiveSources[0], bad.archiveSources[0]] }),
-          says: /share the id/,
-        },
-        {
-          name: 'a source bound to no instrument',
-          text: wrap({
-            ...bad,
-            archiveSources: [{ ...bad.archiveSources[0]!, instrumentId: 'nobody' }],
-          }),
-          says: /instrument that does not exist/,
-        },
-        {
-          name: 'a dangling item binding',
-          text: wrap({
-            ...bad,
-            items: bad.items.map((i) =>
-              i.id === 'own-dashti' ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'nope' } } : i,
-            ),
-          }),
-          says: /does not describe/,
-        },
-        {
-          name: 'two items bound to one piece',
-          text: wrap({
-            ...bad,
-            items: bad.items.map((i) =>
-              i.id === 'own-iraq' ? { ...i, source: bad.items.find((x) => x.source)!.source } : i,
-            ),
-          }),
-          says: /Two items are bound/,
-        },
-        {
-          name: 'a lesson bound to a session the source does not describe',
-          text: wrap({
-            ...bad,
-            lessons: bad.lessons.map((l) =>
-              l.id === 'L-38-upcoming' ? { ...l, source: { archiveId: 'setar-classes', sessionN: 4242 } } : l,
-            ),
-          }),
-          says: /does not describe/,
-        },
-        {
-          name: 'an unsafe resource path',
-          text: wrap({
-            ...bad,
-            archiveSources: [
-              {
-                ...bad.archiveSources[0]!,
-                sessions: bad.archiveSources[0]!.sessions.map((s, i) =>
-                  i === 0 ? { ...s, resources: [{ ...s.resources[0], path: '../../etc/passwd' }] } : s,
-                ),
-              },
-            ],
-          }),
-          says: /unsafe resource path/,
-        },
-        {
-          name: 'an unsafe direct item reference',
-          text: wrap({
-            ...bad,
-            items: bad.items.map((i) =>
-              i.id === 'own-iraq'
-                ? {
-                    ...i,
-                    references: [
-                      { id: 'r', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: CLOCK.toISOString() },
-                    ],
-                  }
-                : i,
-            ),
-          }),
-          says: /unsafe reference path/,
-        },
-        {
-          // The sealed counterexample: a nested value no door used to check.
-          name: 'a membership with an unreadable role list',
-          text: wrap(withMalformedRoles(bad)),
-          says: /unreadable role list/,
-        },
-        {
-          name: 'a newer schema',
-          text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
-          says: /newer version/i,
-        },
-      ];
-
-      for (const c of cases) {
-        await importBackup(app, 'bad.json', c.text);
-        expect(await importOutcome(app), c.name).toMatch(/Import failed/);
-        expect(await importOutcome(app), c.name).toMatch(c.says);
-        // NOTHING was written — not a partial graph, not a partial database.
-        expect(JSON.stringify(await readPersistedState(app)), c.name).toBe(goodBytes);
-      }
-
-      // --- a STATE-ONLY import carries the graph too ----------------------
-      const renamed = {
-        ...V14_DB,
-        items: V14_DB.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'state-only import' } : i)),
-      };
-      await importBackup(app, 'state-only.json', wrap(renamed));
-      expect(await importOutcome(app)).toContain('Imported');
-      // A v14 database is 94 pieces, 39 sessions and the whole graph, and the
-      // importer validates and migrates all of it before it writes. Polled at
-      // half a second rather than the shared helper's 50ms: a continuous stream
-      // of read transactions on the same object store delays the very write
-      // this is waiting for.
-      await expect
-        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe('state-only import');
-      expect((await shape(app)).archiveSources).toHaveLength(1);
-
-      // --- A SYNC PULL installs the same validated model -------------------
-      const remote = newFakeRemote();
-      await installFakeGitHub(page, remote);
-      // The first sync PUSHES what this device holds, so the pull below is a
-      // clean one-sided change rather than a conflict.
-      await connectSync(app);
-      const local = await persistedDb(app);
-      const pulled = {
-        ...local,
-        items: local.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'from the other device' } : i)),
-      };
-      publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9999);
-      await goTo(app, '/settings');
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
-      await expect
-        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe('from the other device');
-      db = await shape(app);
-      expect(db.archiveSources).toHaveLength(1);
-      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
-      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
-
-      // --- A MALFORMED remote snapshot is refused, and installs nothing ----
-      const beforePull = JSON.stringify(await readPersistedState(app));
-      const brokenRemote = { ...pulled, archiveSources: [{ ...V14_DB.archiveSources[0]!, instrumentId: 'nobody' }] };
-      publishRemote(remote, remoteStateText(brokenRemote), await hashState(brokenRemote), 10_000);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect
-        .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe(true);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
-
-      // …and the NESTED malformation is refused by this door too, not only by
-      // the import one. A pull that installed it would leave a database whose
-      // own material reader throws, with nothing to undo it.
-      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
-      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect
-        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe(true);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
-
-      // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
-      await goTo(app, '/items/own-dashti');
-      await page.getByRole('button', { name: 'Edit' }).first().click();
-      await goTo(app, '/settings');
-      const keepRemote = {
-        ...pulled,
-        items: pulled.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'the GitHub copy' } : i)),
-      };
-      publishRemote(remote, remoteStateText(keepRemote), await hashState(keepRemote), 11_000);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      const takeRemote = page.getByRole('button', { name: /Take the GitHub copy|Keep the GitHub copy/ });
-      if ((await takeRemote.count()) > 0) {
-        await takeRemote.first().click();
-        await expect
-          .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-            timeout: 60_000,
-            interval: 500,
-          })
-          .toBe('the GitHub copy');
-        expect((await shape(app)).archiveSources).toHaveLength(1);
-      }
-
-      // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
-      await goTo(app, '/items/own-dashti');
-      await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
-      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
-      const duringPractice = JSON.stringify(await readPersistedState(app));
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      expect(await importOutcome(app)).toMatch(/Import failed/);
-      expect(await importOutcome(app)).toMatch(/unfinished|practice/i);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(duringPractice);
-      await goTo(app, '/active');
-      // The harness accepts the confirm() for the whole journey.
-      await page.getByRole('button', { name: 'Discard block' }).click();
-
-      // --- A FULL EXPORT: metadata for NAS refs, no bytes ------------------
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      await reload(app);
-      const exported = await exportBackup(app);
-      const parsed = JSON.parse(exported) as { data: Shape; files?: unknown[] };
-      expect(parsed.data.archiveSources).toHaveLength(1);
-      expect(parsed.data.items.filter((i) => i.source)).toHaveLength(93);
-      // The archive is DESCRIBED, never carried: no NAS bytes, and only real
-      // local attachments appear in `files` (there are none here).
-      expect(parsed.files ?? []).toEqual([]);
-      expect(exported).toContain('session-13-03-09-2024');
-      // A repaired path is exported as the archive-relative text it now is —
-      // no device base, no legacy folder prefix, and no bytes.
-      expect(exported).toContain(REPAIRED_PATH);
-      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
-      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
-
-      // --- BOTH HYDRATION BRANCHES ----------------------------------------
-      // `migrate`: a persisted database declaring the OLD version.
-      const current = await readPersistedState(app);
-      await writePersistedState(app, { ...(current.state as object), db: JSON.parse(V13_SETAR_TEXT).data }, 13);
-      await reload(app);
-      db = await shape(app);
-      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
-      expect(db.archiveSources).toEqual([]);
-
-      // `merge`: a persisted database declaring the CURRENT version, carrying
-      // an invalid relation. Zustand skips `migrate` entirely here, which is
-      // exactly why the check cannot live only there.
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      await reload(app);
-      const valid = await readPersistedState(app);
-      const validDb = (valid.state as { db: Shape }).db;
-      await writePersistedState(
-        app,
-        {
-          ...(valid.state as object),
-          db: {
-            ...validDb,
-            archiveSources: [{ ...validDb.archiveSources[0]!, instrumentId: 'nobody' }],
-          },
-        },
-        SCHEMA_VERSION,
-      );
-      const refusedBytes = JSON.stringify(await readPersistedState(app));
-      await page.reload();
-      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
-      expect(await page.locator('body').innerText()).toMatch(/instrument that does not exist/);
-      // Rendering the refusal writes nothing at all.
-      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
-
-      // The same hydration branch, given the NESTED malformation instead: this
-      // is the door the sealed counterexample actually walked through, and a
-      // database it accepted would crash the first material render.
-      await writePersistedState(
-        app,
-        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
-        SCHEMA_VERSION,
-      );
-      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
-      await page.reload();
-      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
-      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
-
-      // --- COLD-START RECOVERY gets the owner back in ----------------------
-      await page.getByLabel('Restore backup file').setInputFiles({
-        name: 'recover.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(V14_TEXT, 'utf8'),
-      });
-      await page.locator('main').waitFor({ timeout: 20_000 });
-      await goTo(app, '/');
-      await reload(app);
-      db = await shape(app);
-      expect(db.archiveSources).toHaveLength(1);
-      expect(db.items.filter((i) => i.source)).toHaveLength(93);
-      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
-      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-    } finally {
-      await app.close();
-    }
-  }, 240_000);
-});
-
-// ---------------------------------------------------------------------------
-// The rollback route: the baseline app, not a description of it.
-// ---------------------------------------------------------------------------
-
-const BASELINE_COMMIT = 'b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417';
-
-function checkoutBaselineApp(): { root: string; dispose: () => void } {
-  const root = join(mkdtempSync(join(tmpdir(), 'pc-setar-baseline-')), 'app');
-  execFileSync('git', ['worktree', 'add', '--detach', root, BASELINE_COMMIT], { stdio: 'pipe' });
-  // `package.json` here gained two scripts and nothing else; `package-lock.json`
-  // is a forbidden path and is byte-identical, so the baseline's dependency
-  // tree is this checkout's. Linking is exact and far cheaper than installing.
-  symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules'));
-  return {
-    root,
-    dispose: () => {
-      try {
-        execFileSync('git', ['worktree', 'remove', '--force', root], { stdio: 'pipe' });
-      } catch {
-        rmSync(root, { recursive: true, force: true });
-      }
-    },
-  };
-}
-
-describe('rolling back past the archive schema', () => {
-  it('the baseline app refuses a v14 file and restores its own retained backup', async () => {
-    const baseline = checkoutBaselineApp();
-    const old = await openPracticeApp({ now: CLOCK, root: baseline.root });
-    try {
-      // The v13 app holds the owner's real v13 data, and exports it itself.
-      await importBackup(old, 'setar-legacy-v13.json', V13_SETAR_TEXT);
-      expect(await importOutcome(old)).toContain('Imported');
-      await reload(old);
-      const oldDb = await persistedDb(old);
-      expect(oldDb.schemaVersion).toBe(13);
-      const retainedV13 = await exportBackup(old);
-      expect(JSON.parse(retainedV13).schemaVersion).toBe(13);
-
-      // IT REFUSES A v14 FILE, and writes nothing.
-      const before = JSON.stringify(await readPersistedState(old));
-      await importBackup(old, 'setar-v14.json', V14_TEXT);
-      expect(await importOutcome(old)).toMatch(/Import failed/);
-      expect(await importOutcome(old)).toMatch(/newer version/i);
-      expect(JSON.stringify(await readPersistedState(old))).toBe(before);
-
-      // …and the retained v13 backup restores INTO the baseline app, which is
-      // what a rollback actually is. There is no down-migration and none is
-      // pretended: the v14 file still says 14 and still carries its graph.
-      await importBackup(old, 'retained-v13.json', retainedV13);
-      expect(await importOutcome(old)).toContain('Imported');
-      await reload(old);
-      const restored = await persistedDb(old);
-      expect(restored.schemaVersion).toBe(13);
-      expect(restored.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-        'Teacher: keep the mezrab light on the return.',
-      );
-      expect(JSON.parse(V14_TEXT).schemaVersion).toBe(SCHEMA_VERSION);
-      expect(JSON.parse(V14_TEXT).data.archiveSources).toHaveLength(1);
-      expect(old.pageErrors.map((e) => e.message)).toEqual([]);
-    } finally {
-      await old.close();
-      baseline.dispose();
-    }
-  }, 240_000);
-});
 ```
 
 ## Check against the contract
