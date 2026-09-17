@@ -97,9 +97,32 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
+    // A request the BROWSER cancelled because this test navigated away while it
+    // was in flight is not an application error. WebKit reports such a fetch as
+    // "Fetch API cannot load … due to access control checks", which reads
+    // exactly like a CORS problem and is not one: instrumented, the only
+    // difference between the passing and failing runs of the same journey is a
+    // single `requestfailed` with `errorText: 'cancelled'` for a request that
+    // is otherwise fulfilled with the right CORS headers every other time.
+    // A real person navigating mid-sync cancels the same request, so treating
+    // it as a page error makes a journey fail for driving the app quickly.
+    // Narrow by construction: only a URL this run actually saw cancelled is
+    // ever excused, and every other page error is recorded as before.
+    const cancelled = new Set<string>();
+    page.on('requestfailed', (r) => {
+      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
+    });
     // Surface a page-level error instead of letting it become a silently
     // wrong assertion later.
-    page.on('pageerror', (e) => pageErrors.push(e));
+    page.on('pageerror', (e) => {
+      const message = `${e.message}`;
+      // WebKit spells the URL with the scheme separated from the host, so the
+      // comparison is on the path, which both spellings carry verbatim.
+      for (const url of cancelled) {
+        if (message.includes(new URL(url).pathname)) return;
+      }
+      pageErrors.push(e);
+    });
     await page.clock.install({ time: options.now });
     await page.goto(origin);
     // The store hydrates from IndexedDB before anything renders. The ceiling is

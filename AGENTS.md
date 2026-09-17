@@ -1507,6 +1507,15 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
 automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
+A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
+while it was in flight is reported by WebKit as
+`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
+problem and is not one. Instrumented, the only difference between a passing and a failing run
+of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
+fulfilled with the right CORS headers every other time. A real person navigating mid-sync
+cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
+as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
+
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
 canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
@@ -1677,7 +1686,11 @@ this scanner has no authority over — and a session-named entry that is not a d
 still never opened; both are now `diagnostics` rows in the published index instead of
 vanishing, because an index quietly narrower than the archive is the same "partial view sold
 as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
-folders stay silent: they are not archive content, and saying so 258 times is noise.
+folders stay silent: they are not archive content, and saying so 258 times is noise. It is a
+DIAGNOSTIC and not a refusal for the same reason a rename cycle is: a symlink is a stable
+property of the archive, not a transient, so refusing would leave the archive permanently
+unindexable until the owner went and deleted it — where the two-read check refuses only what
+disagrees with itself between two readings a moment apart.
 Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
 a file edited IN PLACE at the same byte length changes no size and no CSV, and would
 otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
@@ -1721,7 +1734,8 @@ and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `
 the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
 a default, anything else that is not text is refused naming the record. `part` and `group`
 stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
-present null is refused with everything else.
+present null is refused BY THE DECODER rather than spread into its own output as a value the
+declared type does not admit and left for the grammar to catch downstream.
 
 **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
 SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW

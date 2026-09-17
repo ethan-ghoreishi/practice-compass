@@ -358,7 +358,7 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
   // earlier, and either one evicted a Link/Skip answer about the same piece.
   const key = (d: ReconcileDecision) =>
     d.kind === 'apply-field'
-      ? `field:${d.pieceKey}:${d.itemId}:${d.field}`
+      ? `field:${d.pieceKey}:${d.field}`
       : 'pieceKey' in d
         ? `piece:${d.pieceKey}`
         : 'sessionN' in d

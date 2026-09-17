@@ -54,6 +54,17 @@ left beside it.
   And "has a recording" is read through that composition, not `lesson.recordings`, so an
   imported class is no longer invited to add the video already playing above the prompt.
 
+A separate, reproduced HARNESS diagnosis came out of the same round and is recorded here
+because a flaky heavy check is worse than a missing one: WebKit reports a request the browser
+CANCELLED (because the test navigated away mid-flight) as "Fetch API cannot load … due to
+access control checks", which reads as a CORS failure and is not one. Instrumenting the
+journey showed the only difference between a passing and a failing run was one `requestfailed`
+with `errorText: 'cancelled'` against a request fulfilled with correct CORS headers every
+other time. `openPracticeApp` no longer counts such an error, narrowly and by URL. Filtering
+the wording alone, or seeding the fake remote so the bootstrap PUT never happens, were both
+rejected: the first excuses a real CORS bug, the second changes what the other journeys mean
+by an empty remote.
+
 Eight mutations were run and all eight fail their named acceptance test: the optional-read
 swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
 `itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson

@@ -291,6 +291,12 @@ function num(v: unknown, what: string): number | null {
   return v;
 }
 
+/** A number that is genuinely a number — no `null`, unlike an optional part. */
+function size(v: unknown, what: string): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+  return v;
+}
+
 function bool(v: unknown, what: string, fallback: boolean): boolean {
   if (v === undefined) return fallback;
   if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
@@ -412,8 +418,10 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
         part: num(r.part, `Resource "${path}" part`),
         // `part` and `group` are genuinely nullable in the published format —
         // the scanner emits `null` for both — so null stays legal THERE and
-        // nowhere else. `size` it always emits as a number.
-        ...(r.size === undefined ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
+        // nowhere else. `size` it always emits as a number, and a present null
+        // is refused HERE rather than spread into the output as a value the
+        // declared type does not admit and left for the grammar to catch.
+        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
         pieces: forPieces,
         group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
       });

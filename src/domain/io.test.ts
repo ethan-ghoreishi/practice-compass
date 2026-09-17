@@ -1050,11 +1050,12 @@ describe('the v14 source graph at the schema boundary', () => {
       g.pieces[0]!.composer = null;
     }, /composer must be text/);
     // `size` is genuinely optional, so ABSENT is a default here too — but a
-    // present null is still a value, and the shared grammar refuses it with
-    // the same message at both doors rather than dropping the field.
+    // present null is still a value, and the DECODER refuses it rather than
+    // spreading a type-violating value into its own output for the grammar to
+    // catch downstream. (The persisted door has its own `size` check above.)
     onIndexOnly((g) => {
       g.sessions[0]!.resources[0]!.size = null;
-    }, /unreadable size/);
+    }, /size must be a number/);
     onIndexOnly((g) => {
       g.diagnostics.push({ path: null, reason: 'x' });
     }, /diagnostic path must be text/);
