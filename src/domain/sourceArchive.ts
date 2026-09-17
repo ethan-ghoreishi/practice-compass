@@ -408,6 +408,27 @@ export function parseSourceIndex(text: string): SourceIndex {
   return decodeSourceIndex(parsed);
 }
 
+// --- what counts as an UPCOMING class ---------------------------------------
+
+/**
+ * THE one predicate for "is this lesson still ahead of me". Every caller that
+ * asks about the next class — the badges, the default question target, the
+ * commitment deadline that reaches practice priority — goes through this.
+ *
+ * A lesson imported from a source archive is a record of a class that ALREADY
+ * HAPPENED. Its date can still be in the future relative to this device's
+ * clock (the archive runs to September 2026 and a device may be behind it, or
+ * the owner may simply be importing early), and a plain `date >= today` then
+ * turns thirty-nine pieces of history into thirty-nine deadlines: urgency on
+ * items nobody committed to anything, and a question sheet defaulting to a
+ * class that is over. `origin: 'archive'` is checked FIRST, before the date,
+ * because no date can make history upcoming.
+ */
+export function isUpcomingLesson(lesson: { date: ISODate; origin?: string }, todayISO: ISODate): boolean {
+  if (lesson.origin === 'archive') return false;
+  return lesson.date >= todayISO;
+}
+
 // --- queries over the accepted graph ---------------------------------------
 
 export function archiveFor(db: PracticeDB, archiveId: string): ArchiveSource | undefined {
@@ -431,7 +452,15 @@ export function sessionsForPiece(source: ArchiveSource, pieceKey: string): Sourc
  * this app recorded.
  */
 export function repeatChains(source: ArchiveSource, pieceKey: string): number[][] {
-  const ns = sessionsForPiece(source, pieceKey).map((s) => s.n);
+  // A REPEAT is the student having been asked to play the piece again: its own
+  // practice recording, in consecutive sessions. Membership alone is the wrong
+  // input — an unnamed demonstration gives every piece in its session
+  // membership, so a chain read from membership would report a repeat nobody
+  // was asked for.
+  const ns = source.sessions
+    .filter((s) => s.members.some((m) => m.key === pieceKey && m.roles.includes(PERSONAL_ROLE)))
+    .sort((a, b) => a.n - b.n)
+    .map((s) => s.n);
   const chains: number[][] = [];
   for (const n of ns) {
     const last = chains[chains.length - 1];

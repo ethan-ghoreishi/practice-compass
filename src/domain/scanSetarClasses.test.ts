@@ -4,9 +4,67 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 // The scanner is an operator-run Node tool (.mjs) so a NAS needs no bundler and
 // no app dependencies — but its grammar is the ONE place a filename becomes an
-// identity, so every rule in it is exercised here.
-// @ts-expect-error — no types for the .mjs script; these are pure helpers.
-import {
+// identity, so every rule in it is exercised here. The facade below is the
+// shape under test; the module itself carries no types.
+interface Piece {
+  key: string;
+  form: string;
+  piece: string;
+  dastgah: string;
+  composer: string;
+  aliases: string[];
+  sessions: number[];
+  notes: string;
+  provisional: boolean;
+  mediumConfidence: boolean;
+}
+interface Resource {
+  path: string;
+  role: string;
+  kind: string;
+  title: string;
+  part: number | null;
+  size: number;
+  pieces: string[];
+  group: string | null;
+}
+interface Session {
+  n: number;
+  date: string;
+  folder: string;
+  roster: string[];
+  rosterTrusted: boolean;
+  hasClassRecording: boolean;
+  resources: Resource[];
+  members: { key: string; roles: string[] }[];
+}
+interface Index {
+  pieces: Piece[];
+  sessions: Session[];
+  renames: { from: string; to: string }[];
+  diagnostics: { path: string; reason: string }[];
+  contentHash: string;
+}
+interface Entry {
+  path: string;
+  size: number;
+}
+interface Scanner {
+  buildIndex(input: { registryText: string; inventory: Entry[]; renameLogText?: string }): Index;
+  contentHash(body: unknown): string;
+  parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
+  parseCsv(text: string): string[][];
+  parseRegistry(text: string): Piece[];
+  parseSessionFolderName(name: string): { n: number; date: string } | null;
+  scanArchive(root: string): Entry[];
+  scanToIndex(root: string): Index;
+  writeIndexAtomically(outPath: string, text: string, root?: string): string;
+  isSafeRelativePath(p: string): boolean;
+  displayTitle(stem: string): string;
+}
+// @ts-expect-error — no type declarations for the .mjs operator tool.
+import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
+const {
   buildIndex,
   contentHash,
   parseAssetStem,
@@ -18,7 +76,7 @@ import {
   writeIndexAtomically,
   isSafeRelativePath,
   displayTitle,
-} from '../../scripts/scan-setar-classes.mjs';
+} = scannerModule as Scanner;
 
 // ---------------------------------------------------------------------------
 // Real rows from the archive's own PIECES.csv. Registry notes are trimmed to
@@ -59,7 +117,7 @@ const REGISTRY_ROWS = [
 const REGISTRY = [HEADER, ...REGISTRY_ROWS].join('\n') + '\n';
 
 /** A real slice of the archive: paths exactly as they are on disk. */
-const INVENTORY: { path: string; size: number }[] = [
+const INVENTORY: Entry[] = [
   { path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', size: 47_321_598 },
   { path: 'session-1-26-09-2023/ضبط-کلاس-2.mp4', size: 41_770_634 },
   { path: 'session-1-26-09-2023/ضبط-کلاس-3.mp4', size: 16_587_151 },
@@ -107,28 +165,26 @@ const INVENTORY: { path: string; size: number }[] = [
   { path: 'session-28-28-10-2025/تمرین-من-ضربی-شکسته-لطفی.mp4', size: 2_600_000 },
 ];
 
-const build = (over: Record<string, unknown> = {}) =>
+const build = (over: Partial<{ registryText: string; inventory: Entry[] }> = {}): Index =>
   buildIndex({ registryText: REGISTRY, inventory: INVENTORY, ...over });
 
-const session = (index: { sessions: { n: number }[] }, n: number) =>
-  index.sessions.find((s: { n: number }) => s.n === n)!;
+const session = (index: Index, n: number): Session => index.sessions.find((s) => s.n === n)!;
 
-const resource = (index: unknown, path: string) =>
-  (index as { sessions: { resources: { path: string }[] }[] }).sessions
-    .flatMap((s) => s.resources)
-    .find((r) => r.path === path);
+const resource = (index: Index, path: string): Resource | undefined =>
+  index.sessions.flatMap((s) => s.resources).find((r) => r.path === path);
 
 // ---------------------------------------------------------------------------
 
 describe('the Setar source registry', () => {
   it('setar registry keeps exact Farsi keys and rejects ambiguous CSV input', () => {
     const pieces = parseRegistry(REGISTRY);
-    const byKey = new Map(pieces.map((p: { key: string }) => [p.key, p]));
+    const byKey = new Map(pieces.map((p) => [p.key, p]));
+    const pieceOf = (k: string): Piece => byKey.get(k)!;
 
     // A quoted field carrying commas AND doubled quotes stays ONE field, and
     // every column after it stays in its own column. Splitting on "," would
     // shift dastgah/composer/sessions onto fragments of this sentence.
-    const reng = byKey.get('رنگ-ماهور-درویش-خان');
+    const reng = pieceOf('رنگ-ماهور-درویش-خان');
     expect(reng.composer).toBe('درویش-خان');
     expect(reng.sessions).toEqual([1]);
     expect(reng.notes).toContain('"sevom" in filename is a version/take marker');
@@ -137,31 +193,31 @@ describe('the Setar source registry', () => {
     // Byte identity. The key is the join key with the filenames: an embedded
     // ASCII digit is piece identity, and "-و-" is INSIDE one name.
     expect(byKey.has('تمرین-دشتی-1-علیزاده')).toBe(true);
-    expect(byKey.get('تمرین-دشتی-1-علیزاده').sessions).toEqual([4, 5]);
+    expect(pieceOf('تمرین-دشتی-1-علیزاده').sessions).toEqual([4, 5]);
     expect(byKey.has('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان')).toBe(true);
-    expect(pieces.every((p: { key: string }) => p.key === p.key.normalize('NFC'))).toBe(true);
+    expect(pieces.every((p) => p.key === p.key.normalize('NFC'))).toBe(true);
 
     // Real forms, carried verbatim. Neither is invented, folded into a
     // neighbouring form, or turned into a categorical claim of its own.
-    expect(byKey.get('هفت-ضربی-چهارگاه-علیزاده').form).toBe('هفت-ضربی');
-    expect(byKey.get('چهار-پاره').form).toBe('چهارپاره');
+    expect(pieceOf('هفت-ضربی-چهارگاه-علیزاده').form).toBe('هفت-ضربی');
+    expect(pieceOf('چهار-پاره').form).toBe('چهارپاره');
 
     // Caveats are flags on the source row, never a reason to merge or rename.
-    expect(byKey.get('ماهور-ردیف-میرزاعبدالله').provisional).toBe(true);
-    expect(byKey.get('سیخی-ابوعطا').mediumConfidence).toBe(true);
-    expect(byKey.get('چهارمضراب-ماهور-صبا').provisional).toBe(false);
+    expect(pieceOf('ماهور-ردیف-میرزاعبدالله').provisional).toBe(true);
+    expect(pieceOf('سیخی-ابوعطا').mediumConfidence).toBe(true);
+    expect(pieceOf('چهارمضراب-ماهور-صبا').provisional).toBe(false);
 
     // aliases_seen is LITERAL SEARCH DATA. It is split on "|" and stored as
     // given — no wildcard is expanded, nothing is transliterated, and no alias
     // is ever consulted to decide which piece a file belongs to.
-    expect(byKey.get('ماهور-ردیف-میرزاعبدالله').aliases).toEqual(['movie-on-16-04-2024-at-*']);
-    expect(byKey.get('چهارمضراب-اول-دشتی-صبا').aliases).toEqual([
+    expect(pieceOf('ماهور-ردیف-میرزاعبدالله').aliases).toEqual(['movie-on-16-04-2024-at-*']);
+    expect(pieceOf('چهارمضراب-اول-دشتی-صبا').aliases).toEqual([
       'chahar-mezarabe-avale-dashti',
       '4mez-aval-dashti',
     ]);
     // The alias "abouata-sayakhi" belongs to سیخی-ابوعطا and to nothing else —
     // it never becomes a second key or a match for another row.
-    expect(pieces.filter((p: { aliases: string[] }) => p.aliases.includes('abouata-sayakhi'))).toHaveLength(1);
+    expect(pieces.filter((p) => p.aliases.includes('abouata-sayakhi'))).toHaveLength(1);
 
     // --- refusals: an ambiguous registry is not a registry -----------------
     const rowFor = (key: string) => REGISTRY_ROWS.find((r) => r.startsWith(`${key},`))!;
@@ -212,18 +268,16 @@ describe('the Setar filename grammar', () => {
     });
 
     // A part number is TRAILING digits only; an embedded digit is identity.
-    expect(parseAssetStem('نت-تمرین-دشتی-1-علیزاده').piece).toBe('تمرین-دشتی-1-علیزاده');
-    expect(parseAssetStem('نمونه').part).toBe(null);
-    expect(parseAssetStem('نمونه').piece).toBe(null);
+    expect(parseAssetStem('نت-تمرین-دشتی-1-علیزاده')!.piece).toBe('تمرین-دشتی-1-علیزاده');
+    expect(parseAssetStem('نمونه')!.part).toBe(null);
+    expect(parseAssetStem('نمونه')!.piece).toBe(null);
     expect(displayTitle('تمرین-من-عراق')).toBe('تمرین من عراق');
 
     const index = build();
 
     // The known exception: not parsed, not reassigned to session 15, and named
     // in the diagnostics with something the owner can act on.
-    const exception = index.diagnostics.find((d: { path: string }) =>
-      d.path.endsWith('video-2024-10-29-15-32-35.mp4'),
-    );
+    const exception = index.diagnostics.find((d) => d.path.endsWith('video-2024-10-29-15-32-35.mp4'))!;
     expect(exception).toBeDefined();
     expect(exception.reason).toMatch(/no known role/i);
     expect(exception.path.startsWith('session-16-')).toBe(true);
@@ -246,7 +300,7 @@ describe('the Setar filename grammar', () => {
       ],
     });
     expect(odd.sessions[0].resources).toEqual([]);
-    expect(odd.diagnostics.map((d: { reason: string }) => d.reason)).toEqual(
+    expect(odd.diagnostics.map((d) => d.reason)).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/not in the registry/),
         expect.stringMatching(/no known role/),
@@ -258,23 +312,23 @@ describe('the Setar filename grammar', () => {
     // contradiction in the source, reported instead of silently scoped.
     const named = build({ inventory: [{ path: 'session-12-06-08-2024/ضبط-کلاس-عراق.mp4', size: 10 }] });
     expect(named.sessions[0].resources).toEqual([]);
-    expect(named.diagnostics[0].reason).toMatch(/cannot name a piece/);
+    expect(named.diagnostics[0]!.reason).toMatch(/cannot name a piece/);
 
     // NO LARGEST-FILE HEURISTIC anywhere: the class recording of session 5 is
     // the one NAMED ضبط-کلاس, and the biggest file in session 13 is a demo.
     const s5 = session(index, 5);
-    expect(s5.resources.filter((r: { role: string }) => r.role === 'ضبط-کلاس').map((r: { path: string }) => r.path)).toEqual([
+    expect(s5.resources.filter((r) => r.role === 'ضبط-کلاس').map((r) => r.path)).toEqual([
       'session-5-23-01-2024/ضبط-کلاس.mp4',
     ]);
     const s13 = session(index, 13);
-    const biggest = [...INVENTORY.filter((f) => f.path.startsWith('session-13-'))].sort((a, b) => b.size - a.size)[0];
+    const biggest = [...INVENTORY.filter((f) => f.path.startsWith('session-13-'))].sort((a, b) => b.size - a.size)[0]!;
     expect(biggest.path).toBe('session-13-03-09-2024/ضبط-کلاس.mp4');
     expect(s13.hasClassRecording).toBe(true);
     // ...and session 28, whose biggest file is a demo, still has NO class
     // recording rather than the largest video promoted into one.
     const s28 = session(index, 28);
     expect(s28.hasClassRecording).toBe(false);
-    expect(s28.resources.some((r: { role: string }) => r.role === 'ضبط-کلاس')).toBe(false);
+    expect(s28.resources.some((r) => r.role === 'ضبط-کلاس')).toBe(false);
   });
 });
 
@@ -287,21 +341,21 @@ describe('Setar session attribution', () => {
     // attribute it to and the information simply is not in the filename.
     const s13 = session(index, 13);
     expect(s13.roster).toHaveLength(8);
-    const demo13 = s13.resources.filter((r: { role: string }) => r.role === 'نمونه');
-    expect(demo13.map((r: { path: string }) => r.path)).toEqual([
+    const demo13 = s13.resources.filter((r) => r.role === 'نمونه');
+    expect(demo13.map((r) => r.path)).toEqual([
       'session-13-03-09-2024/نمونه-1.mp4',
       'session-13-03-09-2024/نمونه-2.mp4',
     ]);
     for (const part of demo13) expect([...part.pieces].sort()).toEqual([...s13.roster].sort());
     // Its numbered parts are ONE logical demonstration, ordered by part.
-    expect(new Set(demo13.map((r: { group: string }) => r.group)).size).toBe(1);
-    expect(demo13.map((r: { part: number }) => r.part)).toEqual([1, 2]);
+    expect(new Set(demo13.map((r) => r.group)).size).toBe(1);
+    expect(demo13.map((r) => r.part)).toEqual([1, 2]);
 
     // Session 28: a NAMED demo belongs to that piece only — never to its
     // sibling ضربی-شکسته-لطفی, which is also a member of session 28.
     const s28 = session(index, 28);
     expect([...s28.roster].sort()).toEqual(['به-زندان-شوشتری', 'ضربی-شکسته-لطفی'].sort());
-    const demo28 = s28.resources.filter((r: { role: string }) => r.role === 'نمونه');
+    const demo28 = s28.resources.filter((r) => r.role === 'نمونه');
     expect(demo28).toHaveLength(1);
     expect(demo28[0].pieces).toEqual(['به-زندان-شوشتری']);
     // ...and no class recording is fabricated for it.
@@ -310,18 +364,18 @@ describe('Setar session attribution', () => {
     // Session 27: two class parts, ordered NUMERICALLY, and each stays with
     // the lesson rather than being scoped to a piece.
     const s27 = session(index, 27);
-    const class27 = s27.resources.filter((r: { role: string }) => r.role === 'ضبط-کلاس');
-    expect(class27.map((r: { part: number }) => r.part)).toEqual([1, 2]);
-    expect(class27.every((r: { pieces: string[] }) => r.pieces.length === 0)).toBe(true);
+    const class27 = s27.resources.filter((r) => r.role === 'ضبط-کلاس');
+    expect(class27.map((r) => r.part)).toEqual([1, 2]);
+    expect(class27.every((r) => r.pieces.length === 0)).toBe(true);
 
     // FOLDER MEMBERSHIP, not mtime: session 9's and 10's practice recordings
     // of one piece belong to their own folders, and nothing here reads a time.
-    expect(index.sessions.map((s: { n: number }) => s.n)).toEqual([...index.sessions.map((s: { n: number }) => s.n)].sort((a: number, b: number) => a - b));
-    expect(session(index, 9).members.map((m: { key: string }) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
-    expect(session(index, 10).members.map((m: { key: string }) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
+    expect(index.sessions.map((s) => s.n)).toEqual([...index.sessions.map((s) => s.n)].sort((a: number, b: number) => a - b));
+    expect(session(index, 9).members.map((m) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
+    expect(session(index, 10).members.map((m) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
 
     // Provisional identities are REAL, linkable pieces that keep their caveat.
-    const provisional = index.pieces.find((p: { key: string }) => p.key === 'ماهور-ردیف-میرزاعبدالله');
+    const provisional = index.pieces.find((p) => p.key === 'ماهور-ردیف-میرزاعبدالله')!;
     expect(provisional.provisional).toBe(true);
     expect(provisional.sessions).toEqual([7]);
 
@@ -331,15 +385,15 @@ describe('Setar session attribution', () => {
     const chain = [22, 23, 24, 25, 26, 27];
     for (const n of chain) {
       const s = session(index, n);
-      const member = s.members.find((m: { key: string }) => m.key === 'پیش-درامد-سه-گاه-فروتن');
+      const member = s.members.find((m) => m.key === 'پیش-درامد-سه-گاه-فروتن')!;
       expect(member.roles).toContain('تمرین-من');
       // The student's own recording is evidence, never material: it is not a
       // resource anywhere in the index.
-      expect(s.resources.some((r: { path: string }) => r.path.includes('تمرین-من'))).toBe(false);
+      expect(s.resources.some((r) => r.path.includes('تمرین-من'))).toBe(false);
     }
     expect(JSON.stringify(index)).not.toContain('week');
     // Only the FIRST session of the chain has a demonstration for it.
-    expect(session(index, 22).resources.some((r: { role: string }) => r.role === 'نمونه')).toBe(true);
+    expect(session(index, 22).resources.some((r) => r.role === 'نمونه')).toBe(true);
     expect(session(index, 23).resources).toEqual([]);
 
     // ROSTER DISAGREEMENT: a folder naming a piece the registry does not place
@@ -353,8 +407,8 @@ describe('Setar session attribution', () => {
     });
     const bad13 = session(disputed, 13);
     expect(bad13.rosterTrusted).toBe(false);
-    expect(bad13.resources.find((r: { role: string }) => r.role === 'نمونه').pieces).toEqual([]);
-    expect(disputed.diagnostics.map((d: { reason: string }) => d.reason)).toEqual(
+    expect(bad13.resources.find((r) => r.role === 'نمونه')!.pieces).toEqual([]);
+    expect(disputed.diagnostics.map((d) => d.reason)).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/registry does not list session 13/),
         expect.stringMatching(/Unnamed demonstration not attributed/),
@@ -362,7 +416,7 @@ describe('Setar session attribution', () => {
     );
     // The NAMED score still attaches to its own named piece — only the
     // ambiguous inference is blocked.
-    expect(bad13.resources.find((r: { role: string }) => r.role === 'نت').pieces).toEqual(['عراق']);
+    expect(bad13.resources.find((r) => r.role === 'نت')!.pieces).toEqual(['عراق']);
   });
 });
 
@@ -385,11 +439,11 @@ describe('scanning the archive', () => {
       symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
 
       const first = scanArchive(root);
-      expect(first.some((f: { path: string }) => f.path.includes('.DS_Store'))).toBe(false);
-      expect(first.some((f: { path: string }) => f.path.includes('@eaDir'))).toBe(false);
-      expect(first.some((f: { path: string }) => f.path.startsWith('practice/'))).toBe(false);
+      expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
+      expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
+      expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
       // The symlink is not followed: its target is outside the archive root.
-      expect(first.some((f: { path: string }) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
+      expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
       expect(first).toHaveLength(INVENTORY.length);
 
       // DETERMINISM. Shuffled directory order and altered mtimes produce a
@@ -407,7 +461,7 @@ describe('scanning the archive', () => {
       expect(buildIndex({ registryText: REGISTRY, inventory: INVENTORY }).contentHash).not.toBe(scanned.contentHash);
 
       // Session 9 sorts BEFORE session 10 — numerically, never lexically.
-      const ns = scanned.sessions.map((s: { n: number }) => s.n);
+      const ns = scanned.sessions.map((s) => s.n);
       expect(ns.indexOf(9)).toBeLessThan(ns.indexOf(10));
       expect(ns).toEqual([1, 5, 9, 10, 12, 13, 16, 22, 23, 24, 25, 26, 27, 28]);
 

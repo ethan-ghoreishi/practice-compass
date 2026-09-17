@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "deploy": "bash scripts/deploy-nas.sh",
     "gen:icons": "node scripts/gen-icons.mjs",
-    "scan:setar": "node scripts/scan-setar-classes.mjs",
+    "scan:setar": "node scripts/scan-setar-classes.mjs --root /Volumes/Sandisk/video-courses/setar-classes --out setar-index.json",
+    "publish:setar": "node scripts/publish-setar-index.mjs --index setar-index.json",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest"

@@ -10,6 +10,7 @@ import type {
   Review,
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
+import { isUpcomingLesson } from './sourceArchive';
 import { persianSearchMatch } from './farsi';
 import { isOpenQuestion, itemsPreparedForLesson } from './lessonAgenda';
 import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
@@ -61,11 +62,16 @@ export function pathwaysForInstrumentFilter(pathways: Pathway[], filterInstrumen
   return filterInstrumentId ? pathways.filter((p) => p.instrumentId === filterInstrumentId) : pathways;
 }
 
-/** The nearest upcoming (today or later) lesson for an instrument, if any. */
+/**
+ * The nearest upcoming (today or later) lesson for an instrument, if any.
+ * "Upcoming" is `isUpcomingLesson` (sourceArchive.ts) — the SAME predicate the
+ * other three next-class selectors use, so an imported historical class can
+ * never become the next one through whichever of them a screen happens to ask.
+ */
 export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
   const today = todayISODate(now);
   return lessons
-    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
+    .filter((l) => l.instrumentId === instrumentId && isUpcomingLesson(l, today))
     .sort((a, b) => a.date.localeCompare(b.date))[0];
 }
 
@@ -74,7 +80,7 @@ export function nextLessonDates(lessons: Lesson[], now: Date): Map<ID, ISODate> 
   const map = new Map<ID, ISODate>();
   const today = todayISODate(now);
   for (const l of lessons) {
-    if (l.date < today) continue;
+    if (!isUpcomingLesson(l, today)) continue;
     const cur = map.get(l.instrumentId);
     if (!cur || l.date < cur) map.set(l.instrumentId, l.date);
   }
