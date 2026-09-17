@@ -1,0 +1,5709 @@
+{
+ "format": "setar-archive-index",
+ "version": 1,
+ "archiveId": "setar-classes",
+ "pieces": [
+  {
+   "key": "آذربایجانی",
+   "form": "(standalone)",
+   "piece": "آذربایجانی",
+   "dastgah": "",
+   "composer": "",
+   "aliases": [
+    "azarbayjani"
+   ],
+   "sessions": [
+    10
+   ],
+   "notes": "MEDIUM confidence; dastgah context unclear from filename alone.",
+   "provisional": false,
+   "mediumConfidence": true
+  },
+  {
+   "key": "آشوراوند",
+   "form": "(standalone)",
+   "piece": "آشوراوند",
+   "dastgah": "راک(ماهور)",
+   "composer": "",
+   "aliases": [
+    "ashur-aavand"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Confirmed via web search as one solid word -- the climactic section of راک, not a \"dar araq\" sub-gusheh; kept without a dastgah suffix like other standalone terms.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "اتود-وزیری",
+   "form": "اتود",
+   "piece": "وزیری",
+   "dastgah": "",
+   "composer": "وزیری",
+   "aliases": [
+    "etod-vaziri"
+   ],
+   "sessions": [
+    3
+   ],
+   "notes": "MEDIUM confidence.",
+   "provisional": false,
+   "mediumConfidence": true
+  },
+  {
+   "key": "اصفهانک-در-عراق",
+   "form": "گوشه",
+   "piece": "اصفهانک",
+   "dastgah": "عراق(ماهور)",
+   "composer": "",
+   "aliases": [
+    "esfahaanak-dar-araaq"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Part of the عراق gusheh-sequence within ماهور covered in session 13.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "بسته-نگار-ابوعطا",
+   "form": "(standalone)",
+   "piece": "بسته-نگار",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-basteh-negar",
+    "تصحیح-نت-بسته-نگار"
+   ],
+   "sessions": [
+    4
+   ],
+   "notes": "Owner CONFIRMED distinct from بسته-نگار-بیات-ترک (session 25): this one is in ابوعطا.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "بسته-نگار-بیات-ترک",
+   "form": "(standalone)",
+   "piece": "بسته-نگار",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "basteh-negar-bayate-tork"
+   ],
+   "sessions": [
+    25
+   ],
+   "notes": "Owner CONFIRMED distinct from بسته-نگار-ابوعطا (session 4): this one is in بیات-ترک.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "به-زندان-شوشتری",
+   "form": "(قطعه)",
+   "piece": "به-زندان",
+   "dastgah": "شوشتری",
+   "composer": "",
+   "aliases": [
+    "be-zendan-shushtari",
+    "be-zendan-shushtari-1",
+    "be-zendan-shushtari-2"
+   ],
+   "sessions": [
+    28,
+    29
+   ],
+   "notes": "Repeat chain 28->29 (2 parts).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "به-یاد-گذشته-صبا",
+   "form": "(قطعه)",
+   "piece": "به-یاد-گذشته",
+   "dastgah": "",
+   "composer": "صبا",
+   "aliases": [
+    "be-yade-gozashte-saba",
+    "به-یاد-گذشته-صبا"
+   ],
+   "sessions": [
+    19,
+    38
+   ],
+   "notes": "Confirmed from PDF (session 19).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "بهار-مست-صبا",
+   "form": "(قطعه)",
+   "piece": "بهار-مست",
+   "dastgah": "",
+   "composer": "صبا",
+   "aliases": [
+    "bahar-mast-saba"
+   ],
+   "sessions": [
+    31
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "بیات-ترک-ردیف-میرزاعبدالله",
+   "form": "(ردیف)",
+   "piece": "بیات-ترک",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "(auto-named clips; piece from owner context)"
+   ],
+   "sessions": [
+    34,
+    35
+   ],
+   "notes": "PROVISIONAL dastgah-level name.",
+   "provisional": true,
+   "mediumConfidence": false
+  },
+  {
+   "key": "تمرین-دشتی-1-علیزاده",
+   "form": "تمرین",
+   "piece": "دشتی-1",
+   "dastgah": "دشتی",
+   "composer": "علیزاده",
+   "aliases": [
+    "study-of-dashti-1-alizadeh",
+    "تمرین-دشتی-۳"
+   ],
+   "sessions": [
+    4,
+    5
+   ],
+   "notes": "Repeat chain 4->5.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "جامه-دران-بیات-ترک",
+   "form": "گوشه",
+   "piece": "جامه-دران",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "jameh-daraan-bayate-tork"
+   ],
+   "sessions": [
+    26
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "جنگ-شهنازی",
+   "form": "(قطعه)",
+   "piece": "جنگ",
+   "dastgah": "",
+   "composer": "شهنازی",
+   "aliases": [
+    "jang-shahnazi"
+   ],
+   "sessions": [
+    33
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "حاجی-حسنی-بیات-ترک",
+   "form": "گوشه",
+   "piece": "حاجی-حسنی",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "haji-hasani-bayate-tork"
+   ],
+   "sessions": [
+    25
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "حجاز-ابوعطا",
+   "form": "گوشه",
+   "piece": "حجاز",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-hejaz"
+   ],
+   "sessions": [
+    3
+   ],
+   "notes": "Well-known gusheh of ابوعطا.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "حزین-در-عراق",
+   "form": "گوشه",
+   "piece": "حزین",
+   "dastgah": "عراق(ماهور)",
+   "composer": "",
+   "aliases": [
+    "hazin-dar-araaq"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Confirmed as part of the عراق gusheh-sequence via web search.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "حصار-ماهور",
+   "form": "(standalone)",
+   "piece": "حصار",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "hesare-mahur"
+   ],
+   "sessions": [
+    11
+   ],
+   "notes": "Known gusheh of ماهور.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "خاوران",
+   "form": "(standalone)",
+   "piece": "خاوران",
+   "dastgah": "دشتی/شور",
+   "composer": "",
+   "aliases": [
+    "xavaran"
+   ],
+   "sessions": [
+    8
+   ],
+   "notes": "Known gusheh of the شور/دشتی family.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "خسروانی-بیات-ترک",
+   "form": "(standalone)",
+   "piece": "خسروانی",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "xosravani",
+    "khosravani-bayate-tork"
+   ],
+   "sessions": [
+    8,
+    25
+   ],
+   "notes": "Same piece revisited in a later, non-consecutive session; dastgah confirmed by the session-25 filename.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "درامد-ابوعطا",
+   "form": "درامد",
+   "piece": "ابوعطا",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-daramad"
+   ],
+   "sessions": [
+    2
+   ],
+   "notes": "No composer credited; standard opening piece of the آواز.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "درامد-اول-بیات-ترک",
+   "form": "درامد",
+   "piece": "بیات-ترک(اول)",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "daramade-aval-bayate-tork"
+   ],
+   "sessions": [
+    24
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "درامد-دوم-بیات-ترک",
+   "form": "درامد",
+   "piece": "بیات-ترک(دوم)",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "daramade-dovvom-bayate-tork"
+   ],
+   "sessions": [
+    24
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "درامد-سوم-بیات-ترک",
+   "form": "درامد",
+   "piece": "بیات-ترک(سوم)",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "daramade-sevvom-bayate-tork"
+   ],
+   "sessions": [
+    25
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "دلکش",
+   "form": "(standalone)",
+   "piece": "دلکش",
+   "dastgah": "دشتی/شور",
+   "composer": "",
+   "aliases": [
+    "delkash"
+   ],
+   "sessions": [
+    8
+   ],
+   "notes": "Known gusheh of the شور/دشتی family.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "دوضربی-بیات-ترک-صبا",
+   "form": "دوضربی",
+   "piece": "بیات-ترک",
+   "dastgah": "بیات-ترک",
+   "composer": "صبا",
+   "aliases": [
+    "do-zarbye-bayate-tork-saba",
+    "do-zarbi-bayate-tork",
+    "dozarbi-bayate-tork",
+    "do-zarbi-bayate-tork-saba"
+   ],
+   "sessions": [
+    17,
+    18,
+    19,
+    20
+   ],
+   "notes": "Repeat chain 17->18->19->20 (4 sessions, only session 17 should get a نمونه).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "دوگاه-بیات-ترک",
+   "form": "گوشه",
+   "piece": "دوگاه",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "dogah-bayate-tork"
+   ],
+   "sessions": [
+    24
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "رامکلی-ابوعطا",
+   "form": "گوشه",
+   "piece": "رامکلی",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-ramkali"
+   ],
+   "sessions": [
+    2
+   ],
+   "notes": "Confirmed as a known gusheh of ابوعطا via web search (ردیف میرزاعبدالله/ردیف موسی معروفی).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "راک-عبدالله",
+   "form": "گوشه",
+   "piece": "عبدالله",
+   "dastgah": "راک(ماهور)",
+   "composer": "",
+   "aliases": [
+    "raak-e-abdollah"
+   ],
+   "sessions": [
+    14
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "راک-هندی",
+   "form": "گوشه",
+   "piece": "هندی",
+   "dastgah": "راک(ماهور)",
+   "composer": "",
+   "aliases": [
+    "raak-e-hendi"
+   ],
+   "sessions": [
+    14
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "راک-کشمیر",
+   "form": "گوشه",
+   "piece": "کشمیر",
+   "dastgah": "راک(ماهور)",
+   "composer": "",
+   "aliases": [
+    "raak-e-keshmir"
+   ],
+   "sessions": [
+    14
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان",
+   "form": "رنگ",
+   "piece": "اصفهان(پریچهر-و-پریزاد)",
+   "dastgah": "اصفهان",
+   "composer": "درویش-خان",
+   "aliases": [
+    "darvish-reng-esfehanparicherandparizad-1402-05-22",
+    "renge-esfehan-paricherandparizad-darvish"
+   ],
+   "sessions": [
+    16
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "رنگ-حربی",
+   "form": "رنگ",
+   "piece": "حربی",
+   "dastgah": "",
+   "composer": "",
+   "aliases": [
+    "renge-harbi"
+   ],
+   "sessions": [
+    15
+   ],
+   "notes": "MEDIUM confidence.",
+   "provisional": false,
+   "mediumConfidence": true
+  },
+  {
+   "key": "رنگ-شلاخو",
+   "form": "رنگ",
+   "piece": "شلاخو",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "renge-shalaxu"
+   ],
+   "sessions": [
+    15
+   ],
+   "notes": "Confirmed via web search (ردیف میرزاعبدالله).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "رنگ-ماهور-درویش-خان",
+   "form": "رنگ",
+   "piece": "ماهور",
+   "dastgah": "ماهور",
+   "composer": "درویش-خان",
+   "aliases": [
+    "renge-mahoor-darvish",
+    "renge-mahoor-darvish-sevom-1402-05-22"
+   ],
+   "sessions": [
+    1
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "رنگ-ماهور-راک-برومند",
+   "form": "رنگ",
+   "piece": "ماهور(راک)",
+   "dastgah": "ماهور",
+   "composer": "برومند",
+   "aliases": [
+    "renge-mahour-raak-boromand"
+   ],
+   "sessions": [
+    21
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "رنگ-یک-چوبه",
+   "form": "رنگ",
+   "piece": "یک-چوبه",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "reng-e-yekchubeh"
+   ],
+   "sessions": [
+    14
+   ],
+   "notes": "Confirmed via web search -- a known رنگ of دستگاه ماهور (اثر حسین علیزاده / ردیف میرزاعبدالله).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "روح-الارواح-بیات-ترک",
+   "form": "گوشه",
+   "piece": "روح-الارواح",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "ruh-ol-arvah-bayate-tork"
+   ],
+   "sessions": [
+    27
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "زنگ-شتر-صبا",
+   "form": "(قطعه)",
+   "piece": "زنگ-شتر",
+   "dastgah": "",
+   "composer": "صبا",
+   "aliases": [
+    "zange-shotor",
+    "zange-shotor-saba-1",
+    "zange-shotor-saba-2"
+   ],
+   "sessions": [
+    30,
+    31
+   ],
+   "notes": "Repeat chain 30->31 (2 parts).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "زنگوله-بیات-ترک",
+   "form": "گوشه",
+   "piece": "زنگوله",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "zanguleh-bayate-tork"
+   ],
+   "sessions": [
+    25
+   ],
+   "notes": "Distinct from زنگوله-در-عراق (session 13 -- different dastgah).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "زنگوله-در-عراق",
+   "form": "گوشه",
+   "piece": "زنگوله",
+   "dastgah": "عراق(ماهور)",
+   "composer": "",
+   "aliases": [
+    "zanguleh-dar-araaq"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Distinct from زنگوله-بیات-ترک (session 25 -- different dastgah).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "زیرافکند",
+   "form": "(standalone)",
+   "piece": "زیرافکند",
+   "dastgah": "",
+   "composer": "",
+   "aliases": [
+    "zir-afkand"
+   ],
+   "sessions": [
+    11
+   ],
+   "notes": "MEDIUM confidence; dastgah context unclear.",
+   "provisional": false,
+   "mediumConfidence": true
+  },
+  {
+   "key": "ساقی-نامه",
+   "form": "(standalone)",
+   "piece": "ساقی-نامه",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "saaqinaameh"
+   ],
+   "sessions": [
+    15
+   ],
+   "notes": "Traditionally placed in ماهور per web search; melodically related to صوفی-نامه and کشته.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "سامانی-صبا",
+   "form": "(قطعه)",
+   "piece": "سامانی",
+   "dastgah": "",
+   "composer": "صبا",
+   "aliases": [
+    "samaani-saba"
+   ],
+   "sessions": [
+    31
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "سیخی-ابوعطا",
+   "form": "گوشه",
+   "piece": "سیخی",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-sayakhi"
+   ],
+   "sessions": [
+    3
+   ],
+   "notes": "MEDIUM confidence.",
+   "provisional": false,
+   "mediumConfidence": true
+  },
+  {
+   "key": "شکسته-بیات-ترک",
+   "form": "(standalone)",
+   "piece": "شکسته",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "shekasteh-bayate-tork"
+   ],
+   "sessions": [
+    26
+   ],
+   "notes": "Owner CONFIRMED distinct from شکسته-ماهور (session 12): this one is in بیات-ترک.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "شکسته-ماهور",
+   "form": "(standalone)",
+   "piece": "شکسته",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "shekasteh"
+   ],
+   "sessions": [
+    12
+   ],
+   "notes": "Owner CONFIRMED distinct from شکسته-بیات-ترک (session 26): this one is in ماهور.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "صفیر-راک",
+   "form": "گوشه",
+   "piece": "صفیر",
+   "dastgah": "راک(ماهور)",
+   "composer": "",
+   "aliases": [
+    "safir-e-raak"
+   ],
+   "sessions": [
+    14
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "صلح-شهنازی",
+   "form": "(قطعه)",
+   "piece": "صلح",
+   "dastgah": "",
+   "composer": "شهنازی",
+   "aliases": [
+    "solh-shahnazi"
+   ],
+   "sessions": [
+    32
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "صوفی-نامه",
+   "form": "(standalone)",
+   "piece": "صوفی-نامه",
+   "dastgah": "همایون/اصفهان",
+   "composer": "",
+   "aliases": [
+    "sufinaameh"
+   ],
+   "sessions": [
+    15
+   ],
+   "notes": "Traditionally placed in همایون/اصفهان per web search.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "ضربی-سه-گاه-لطفی",
+   "form": "ضربی",
+   "piece": "سه-گاه",
+   "dastgah": "سه-گاه",
+   "composer": "لطفی",
+   "aliases": [
+    "(none — piece from owner context; both videos auto-named)"
+   ],
+   "sessions": [
+    39
+   ],
+   "notes": "New session 39 = ضربی سه‌گاه از لطفی (owner context).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "ضربی-شکسته-لطفی",
+   "form": "ضربی",
+   "piece": "شکسته",
+   "dastgah": "",
+   "composer": "لطفی",
+   "aliases": [
+    "zarbiye-shekasteh-lotfi-1",
+    "zarbiye-shekasteh-lotfi-2"
+   ],
+   "sessions": [
+    27,
+    28
+   ],
+   "notes": "Repeat chain 27->28 (2 parts).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "ضربی-شکسته-هرمزی",
+   "form": "ضربی",
+   "piece": "شکسته",
+   "dastgah": "",
+   "composer": "هرمزی",
+   "aliases": [
+    "zarbi-shekasteh"
+   ],
+   "sessions": [
+    12
+   ],
+   "notes": "Owner CONFIRMED distinct from ضربی-شکسته-لطفی (sessions 27-28): this one is by هرمزی.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "ضربی-عراق-ماهور-میرزا-حسینقلی",
+   "form": "ضربی",
+   "piece": "عراق",
+   "dastgah": "ماهور",
+   "composer": "میرزا-حسینقلی",
+   "aliases": [
+    "aragh-mirzahoseyngholi",
+    "zarbi-araaq-mahur-mirzahoseyngholi"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "طرب-انگیز",
+   "form": "(standalone)",
+   "piece": "طرب-انگیز",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "tarabangiz"
+   ],
+   "sessions": [
+    9
+   ],
+   "notes": "Gusheh of ماهور.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "عراق",
+   "form": "(standalone)",
+   "piece": "عراق",
+   "dastgah": "",
+   "composer": "",
+   "aliases": [
+    "araq"
+   ],
+   "sessions": [
+    12
+   ],
+   "notes": "Matches the task brief's own worked example exactly.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "فیلی-بیات-ترک",
+   "form": "(standalone)",
+   "piece": "فیلی",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "feili",
+    "feyli-bayate-tork"
+   ],
+   "sessions": [
+    10,
+    26
+   ],
+   "notes": "Same piece revisited in a later, non-consecutive session.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "قافله-سالار-لطفی",
+   "form": "(قطعه)",
+   "piece": "قافله-سالار",
+   "dastgah": "",
+   "composer": "لطفی",
+   "aliases": [
+    "فافله-سالار-لطفی"
+   ],
+   "sessions": [
+    38
+   ],
+   "notes": "New piece (session 38).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "قرایی-افشاری",
+   "form": "گوشه",
+   "piece": "قرایی",
+   "dastgah": "افشاری",
+   "composer": "",
+   "aliases": [
+    "qaraai-afshaari"
+   ],
+   "sessions": [
+    36
+   ],
+   "notes": "Confirmed via web search as a genuine gusheh name of افشاری.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "قطار-بیات-ترک",
+   "form": "گوشه",
+   "piece": "قطار",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "qataar-bayate-tork"
+   ],
+   "sessions": [
+    27
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "ماهور-ردیف-میرزاعبدالله",
+   "form": "(ردیف)",
+   "piece": "ماهور",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "movie-on-16-04-2024-at-*"
+   ],
+   "sessions": [
+    7
+   ],
+   "notes": "PROVISIONAL dastgah-level name.",
+   "provisional": true,
+   "mediumConfidence": false
+  },
+  {
+   "key": "ماهور-صغیر",
+   "form": "(standalone)",
+   "piece": "ماهور-صغیر",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "mahure-saqir"
+   ],
+   "sessions": [
+    10
+   ],
+   "notes": "MEDIUM confidence.",
+   "provisional": false,
+   "mediumConfidence": true
+  },
+  {
+   "key": "مجلس-افروز-افشاری",
+   "form": "گوشه",
+   "piece": "مجلس-افروز",
+   "dastgah": "افشاری",
+   "composer": "",
+   "aliases": [
+    "majlesafruz-afshaari"
+   ],
+   "sessions": [
+    36
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "محیر-در-عراق",
+   "form": "گوشه",
+   "piece": "محیر",
+   "dastgah": "عراق(ماهور)",
+   "composer": "",
+   "aliases": [
+    "mohayyer-dar-araaq"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Confirmed spelling محیّر via web search (part of the عراق gusheh-sequence).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "مهدی-ضرابی-بیات-ترک",
+   "form": "گوشه",
+   "piece": "مهدی-ضرابی",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "mehdi-zarrabi-bayate-tork"
+   ],
+   "sessions": [
+    27
+   ],
+   "notes": "Confirmed via web search as a genuine gusheh name of بیات-ترک (second-degree gusheh, Qajar-era).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "مهربانی-بیات-ترک",
+   "form": "گوشه",
+   "piece": "مهربانی",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "mehrabaani-bayate-tork"
+   ],
+   "sessions": [
+    26
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "نصیرخانی",
+   "form": "(standalone)",
+   "piece": "نصیرخانی",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "nasirxani"
+   ],
+   "sessions": [
+    9
+   ],
+   "notes": "Gusheh of ماهور (also called طوسی in راست-پنجگاه).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "نغمه-بیات-ترک",
+   "form": "گوشه",
+   "piece": "نغمه",
+   "dastgah": "بیات-ترک",
+   "composer": "",
+   "aliases": [
+    "naghmeh-bayate-tork"
+   ],
+   "sessions": [
+    26
+   ],
+   "notes": "",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "نهیب-در-عراق",
+   "form": "گوشه",
+   "piece": "نهیب",
+   "dastgah": "عراق(ماهور)",
+   "composer": "",
+   "aliases": [
+    "nahib-dar-araaq"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Confirmed as part of the عراق gusheh-sequence via web search.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "نی-ریز",
+   "form": "(standalone)",
+   "piece": "نی-ریز",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "neyriz"
+   ],
+   "sessions": [
+    11
+   ],
+   "notes": "Known gusheh of ماهور.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "نیشابورک",
+   "form": "(standalone)",
+   "piece": "نیشابورک",
+   "dastgah": "ماهور",
+   "composer": "",
+   "aliases": [
+    "neyshaburak"
+   ],
+   "sessions": [
+    9
+   ],
+   "notes": "MISSED in rev1 -- caught by the same audit.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "هفت-ضربی-چهارگاه-علیزاده",
+   "form": "هفت-ضربی",
+   "piece": "چهارگاه",
+   "dastgah": "چهارگاه",
+   "composer": "علیزاده",
+   "aliases": [
+    "7-zarbi-alizadeh-220304-183146-1",
+    "haft-zarbi-chahargah-alizadeh-1",
+    "haft-zarbi-chahargah-alizadeh-2"
+   ],
+   "sessions": [
+    5,
+    6
+   ],
+   "notes": "Repeat chain 5->6 (2 parts).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-بیات-ترک-ازری",
+   "form": "پیش-درامد",
+   "piece": "بیات-ترک",
+   "dastgah": "بیات-ترک",
+   "composer": "ازری",
+   "aliases": [
+    "پیش-درامد-بیات-ترک-tork-ozari",
+    "pish-daramade-bayate-tork-bigjekhani"
+   ],
+   "sessions": [
+    23
+   ],
+   "notes": "Score credits آهنگساز محمدحسن‌خان عذاری، روایت غلامحسین‌خان بیگجه‌خانی; \"عذاری\" normalized to the owner's preferred composer spelling \"ازری\".",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-بیات-ترک-لطفی",
+   "form": "پیش-درامد",
+   "piece": "بیات-ترک",
+   "dastgah": "بیات-ترک",
+   "composer": "لطفی",
+   "aliases": [
+    "pishdaramade-bayate-tork-lotfi"
+   ],
+   "sessions": [
+    24
+   ],
+   "notes": "Distinct from پیش-درامد-بیات-ترک-ازری (session 23) -- a different روایت/version.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-راک-ماهور-درویش-خان",
+   "form": "پیش-درامد",
+   "piece": "راک",
+   "dastgah": "ماهور",
+   "composer": "درویش-خان",
+   "aliases": [
+    "pishdaraamde-rak-mahur-darvish"
+   ],
+   "sessions": [
+    20
+   ],
+   "notes": "Confirmed from PDF; matches the task brief's own worked example exactly.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-سه-گاه-فروتن",
+   "form": "پیش-درامد",
+   "piece": "سه-گاه",
+   "dastgah": "سه-گاه",
+   "composer": "فروتن",
+   "aliases": [
+    "pish-daramade-segah-forutan-1",
+    "pish-daramade-segah-forutan-2",
+    "pish-daramade-segah-forutan-3",
+    "pish-daramade-segah-forutan-4",
+    "pish-daramade-segah-forutan-5",
+    "pish-daramade-segah-forutan-6"
+   ],
+   "sessions": [
+    22,
+    23,
+    24,
+    25,
+    26,
+    27
+   ],
+   "notes": "Longest repeat chain in the archive: 22->23->24->25->26->27 (6 sessions, only session 22 should get a نمونه).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-ماهور-هرمزی",
+   "form": "پیش-درامد",
+   "piece": "ماهور",
+   "dastgah": "ماهور",
+   "composer": "هرمزی",
+   "aliases": [
+    "pishdaramade-mahur-hormozi"
+   ],
+   "sessions": [
+    16,
+    17,
+    18
+   ],
+   "notes": "Repeat chain 16->17->18 (3 sessions).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-نوا-علیزاده",
+   "form": "پیش-درامد",
+   "piece": "نوا",
+   "dastgah": "نوا",
+   "composer": "علیزاده",
+   "aliases": [
+    "pishdaramad-nava-alizadeh"
+   ],
+   "sessions": [
+    18
+   ],
+   "notes": "Confirmed from PDF (title \"پیش‌درآمد نوا\").",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "پیش-درامد-چهارگاه-مختاری",
+   "form": "پیش-درامد",
+   "piece": "چهارگاه",
+   "dastgah": "چهارگاه",
+   "composer": "مختاری",
+   "aliases": [
+    "pish-chahargah-mokhtari-edited",
+    "pish-daramad-chahargah-mokhtari"
+   ],
+   "sessions": [
+    6
+   ],
+   "notes": "Confirmed from PDF (رکن‌الدین مختاری).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهار-پاره",
+   "form": "(standalone)",
+   "piece": "چهار-پاره",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-chaharpareh-1",
+    "abouata-chaharpareh-2",
+    "تصحیح-نت-چهار-پاره"
+   ],
+   "sessions": [
+    4,
+    5
+   ],
+   "notes": "Repeat chain 4->5 (2 parts).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-ابوعطا-صبا",
+   "form": "چهارمضراب",
+   "piece": "ابوعطا",
+   "dastgah": "ابوعطا",
+   "composer": "صبا",
+   "aliases": [
+    "chahar-mezrabe-abuataa-saba",
+    "چهارمضراب-ابوعطا-صبا"
+   ],
+   "sessions": [
+    19
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-افشاری-صبا",
+   "form": "چهارمضراب",
+   "piece": "افشاری",
+   "dastgah": "افشاری",
+   "composer": "صبا",
+   "aliases": [
+    "chahaar-mezrabe-afshaari-sabaa"
+   ],
+   "sessions": [
+    37
+   ],
+   "notes": "Confirmed from PDF; matches the task brief's own intro example exactly.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-اول-دشتی-صبا",
+   "form": "چهارمضراب",
+   "piece": "دشتی(اول)",
+   "dastgah": "دشتی",
+   "composer": "صبا",
+   "aliases": [
+    "chahar-mezarabe-avale-dashti",
+    "4mez-aval-dashti"
+   ],
+   "sessions": [
+    1
+   ],
+   "notes": "Confirmed from PDF and jpg score (title reads چهارمضراب اول دشتی، اثر ابوالحسن صبا).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-بیات-ترک-هرمزی",
+   "form": "چهارمضراب",
+   "piece": "بیات-ترک",
+   "dastgah": "بیات-ترک",
+   "composer": "هرمزی",
+   "aliases": [
+    "chaharmezrabe-bayate-tork-hormozi"
+   ],
+   "sessions": [
+    21
+   ],
+   "notes": "Confirmed from PDF.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-دوم-بیات-ترک-صبا",
+   "form": "چهارمضراب",
+   "piece": "بیات-ترک(دوم)",
+   "dastgah": "بیات-ترک",
+   "composer": "صبا",
+   "aliases": [
+    "chahar-mezrabe-dovome-bayate-tork-saba",
+    "chahar-mezrabe-dovome-bayate-tork-saba-1",
+    "chahar-mezrabe-dovvome-bayate-tork-saba-2"
+   ],
+   "sessions": [
+    29,
+    30
+   ],
+   "notes": "Repeat chain 29->30 (2 parts).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-ماهور-صبا",
+   "form": "چهارمضراب",
+   "piece": "ماهور",
+   "dastgah": "ماهور",
+   "composer": "صبا",
+   "aliases": [
+    "chaharmezrabe-mahur-saba-1",
+    "chaharmezrabe-mahur-saba-2",
+    "chaharmezrabe-mahur-saba-3",
+    "chaharmezrabe-mahur-saba-4",
+    "chaharmezrabe-mahur-sabaa"
+   ],
+   "sessions": [
+    9,
+    10,
+    11,
+    12,
+    16
+   ],
+   "notes": "Repeat chain 9->10->11->12 (4 parts, take numbers stripped).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-مخالف-سه-گاه-صبا",
+   "form": "چهارمضراب",
+   "piece": "مخالف-سه-گاه",
+   "dastgah": "سه-گاه",
+   "composer": "صبا",
+   "aliases": [
+    "chahar-mezrab-mokhalefe-segah-saba-lotfi"
+   ],
+   "sessions": [
+    22
+   ],
+   "notes": "Filename also references a \"لطفی\" performance reference alongside صبا; composer taken as صبا per the naming standard's single-composer pattern.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-نوا-علیزاده",
+   "form": "چهارمضراب",
+   "piece": "نوا",
+   "dastgah": "نوا",
+   "composer": "علیزاده",
+   "aliases": [
+    "chaharmezrab-nava-alizadeh"
+   ],
+   "sessions": [
+    18
+   ],
+   "notes": "Confirmed from PDF (book excerpt; dastgah/composer taken from filename since the page itself only shows a generic \"چهارمضراب\" header).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارمضراب-و-فرود",
+   "form": "چهارمضراب",
+   "piece": "و-فرود",
+   "dastgah": "",
+   "composer": "",
+   "aliases": [
+    "chaharmezran-va-forud"
+   ],
+   "sessions": [
+    8
+   ],
+   "notes": "LOW confidence -- reads as a generic exercise title (chahar-mezrab and cadence drill); no dastgah context available.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "چهارپاره-مرادخانی",
+   "form": "چهارپاره",
+   "piece": "مرادخانی",
+   "dastgah": "",
+   "composer": "مرادخانی",
+   "aliases": [
+    "chaharpareh-moradkhani"
+   ],
+   "sessions": [
+    10
+   ],
+   "notes": "Distinct from چهار-پاره (sessions 4-5, ابوعطا gusheh version) -- this one is explicitly credited to a composer مرادخانی in the filename.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "کرشمه-در-عراق",
+   "form": "گوشه",
+   "piece": "کرشمه",
+   "dastgah": "عراق(ماهور)",
+   "composer": "",
+   "aliases": [
+    "kereshmeh-dar-araaq"
+   ],
+   "sessions": [
+    13
+   ],
+   "notes": "Distinct from کرشمه-راک (session 14 -- different sub-family of ماهور).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "کرشمه-راک",
+   "form": "گوشه",
+   "piece": "کرشمه",
+   "dastgah": "راک(ماهور)",
+   "composer": "",
+   "aliases": [
+    "kereshmeh-ye-raak"
+   ],
+   "sessions": [
+    14
+   ],
+   "notes": "Distinct from کرشمه-در-عراق (session 13).",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "کشته",
+   "form": "(standalone)",
+   "piece": "کشته",
+   "dastgah": "ماهور/شکسته",
+   "composer": "",
+   "aliases": [
+    "koshteh"
+   ],
+   "sessions": [
+    15
+   ],
+   "notes": "Confirmed via web search -- melodically related to ساقی-نامه/صوفی-نامه, performed in the شکسته/افشاری mode.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "گبری-ابوعطا",
+   "form": "گوشه",
+   "piece": "گبری",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-gabri"
+   ],
+   "sessions": [
+    5
+   ],
+   "notes": "Known gusheh of ابوعطا.",
+   "provisional": false,
+   "mediumConfidence": false
+  },
+  {
+   "key": "یقولون-ابوعطا",
+   "form": "گوشه",
+   "piece": "یقولون",
+   "dastgah": "ابوعطا",
+   "composer": "",
+   "aliases": [
+    "abouata-yaghoolon"
+   ],
+   "sessions": [
+    4
+   ],
+   "notes": "MISSED in rev1 -- caught by auditing every named file against the registry.",
+   "provisional": false,
+   "mediumConfidence": false
+  }
+ ],
+ "sessions": [
+  {
+   "n": 1,
+   "date": "2023-09-26",
+   "folder": "session-1-26-09-2023",
+   "roster": [
+    "رنگ-ماهور-درویش-خان",
+    "چهارمضراب-اول-دشتی-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-1-26-09-2023/ضبط-کلاس-1.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 1",
+     "part": 1,
+     "size": 47321598,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-1-26-09-2023/ضبط-کلاس-2.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 2",
+     "part": 2,
+     "size": 41770634,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-1-26-09-2023/ضبط-کلاس-3.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 3",
+     "part": 3,
+     "size": 16587151,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-1-26-09-2023/نت-رنگ-ماهور-درویش-خان.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت رنگ ماهور درویش خان",
+     "part": null,
+     "size": 666419,
+     "pieces": [
+      "رنگ-ماهور-درویش-خان"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.jpg",
+     "role": "نت",
+     "kind": "photo",
+     "title": "نت چهارمضراب اول دشتی صبا",
+     "part": null,
+     "size": 577748,
+     "pieces": [
+      "چهارمضراب-اول-دشتی-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت چهارمضراب اول دشتی صبا",
+     "part": null,
+     "size": 778299,
+     "pieces": [
+      "چهارمضراب-اول-دشتی-صبا"
+     ],
+     "group": null
+    }
+   ],
+   "members": [
+    {
+     "key": "رنگ-ماهور-درویش-خان",
+     "roles": [
+      "تمرین-من",
+      "نت"
+     ]
+    },
+    {
+     "key": "چهارمضراب-اول-دشتی-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 2,
+   "date": "2023-10-24",
+   "folder": "session-2-24-10-2023",
+   "roster": [
+    "درامد-ابوعطا",
+    "رامکلی-ابوعطا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-2-24-10-2023/ضبط-کلاس-1.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 1",
+     "part": 1,
+     "size": 33933484,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-2-24-10-2023/ضبط-کلاس-2.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 2",
+     "part": 2,
+     "size": 36721950,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-2-24-10-2023/ضبط-کلاس-3.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 3",
+     "part": 3,
+     "size": 28058437,
+     "pieces": [],
+     "group": null
+    }
+   ],
+   "members": [
+    {
+     "key": "درامد-ابوعطا",
+     "roles": [
+      "تمرین-من"
+     ]
+    },
+    {
+     "key": "رامکلی-ابوعطا",
+     "roles": [
+      "تمرین-من"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 3,
+   "date": "2023-11-21",
+   "folder": "session-3-21-11-2023",
+   "roster": [
+    "اتود-وزیری",
+    "حجاز-ابوعطا",
+    "سیخی-ابوعطا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-3-21-11-2023/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 303022149,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-3-21-11-2023/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 32050051,
+     "pieces": [
+      "اتود-وزیری",
+      "حجاز-ابوعطا",
+      "سیخی-ابوعطا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-3-21-11-2023/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 20378951,
+     "pieces": [
+      "اتود-وزیری",
+      "حجاز-ابوعطا",
+      "سیخی-ابوعطا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "اتود-وزیری",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "حجاز-ابوعطا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "سیخی-ابوعطا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 4,
+   "date": "2023-12-22",
+   "folder": "session-4-22-12-2023",
+   "roster": [
+    "بسته-نگار-ابوعطا",
+    "تمرین-دشتی-1-علیزاده",
+    "چهار-پاره",
+    "یقولون-ابوعطا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-4-22-12-2023/تصحیح-بسته-نگار-ابوعطا.jpg",
+     "role": "تصحیح",
+     "kind": "photo",
+     "title": "تصحیح بسته نگار ابوعطا",
+     "part": null,
+     "size": 104280,
+     "pieces": [
+      "بسته-نگار-ابوعطا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-4-22-12-2023/تصحیح-چهار-پاره.jpg",
+     "role": "تصحیح",
+     "kind": "photo",
+     "title": "تصحیح چهار پاره",
+     "part": null,
+     "size": 63525,
+     "pieces": [
+      "چهار-پاره"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-4-22-12-2023/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 456964612,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-4-22-12-2023/نت-تمرین-دشتی-1-علیزاده.jpg",
+     "role": "نت",
+     "kind": "photo",
+     "title": "نت تمرین دشتی 1 علیزاده",
+     "part": null,
+     "size": 200287,
+     "pieces": [
+      "تمرین-دشتی-1-علیزاده"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-4-22-12-2023/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 47283702,
+     "pieces": [
+      "بسته-نگار-ابوعطا",
+      "تمرین-دشتی-1-علیزاده",
+      "چهار-پاره",
+      "یقولون-ابوعطا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-4-22-12-2023/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 35849207,
+     "pieces": [
+      "بسته-نگار-ابوعطا",
+      "تمرین-دشتی-1-علیزاده",
+      "چهار-پاره",
+      "یقولون-ابوعطا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "بسته-نگار-ابوعطا",
+     "roles": [
+      "تصحیح",
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "تمرین-دشتی-1-علیزاده",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهار-پاره",
+     "roles": [
+      "تصحیح",
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "یقولون-ابوعطا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 5,
+   "date": "2024-01-23",
+   "folder": "session-5-23-01-2024",
+   "roster": [
+    "تمرین-دشتی-1-علیزاده",
+    "هفت-ضربی-چهارگاه-علیزاده",
+    "چهار-پاره",
+    "گبری-ابوعطا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-5-23-01-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 402863504,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-5-23-01-2024/نت-هفت-ضربی-چهارگاه-علیزاده.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت هفت ضربی چهارگاه علیزاده",
+     "part": null,
+     "size": 878435,
+     "pieces": [
+      "هفت-ضربی-چهارگاه-علیزاده"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-5-23-01-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 32221924,
+     "pieces": [
+      "تمرین-دشتی-1-علیزاده",
+      "هفت-ضربی-چهارگاه-علیزاده",
+      "چهار-پاره",
+      "گبری-ابوعطا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-5-23-01-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 18862316,
+     "pieces": [
+      "تمرین-دشتی-1-علیزاده",
+      "هفت-ضربی-چهارگاه-علیزاده",
+      "چهار-پاره",
+      "گبری-ابوعطا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "تمرین-دشتی-1-علیزاده",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "هفت-ضربی-چهارگاه-علیزاده",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهار-پاره",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "گبری-ابوعطا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 6,
+   "date": "2024-02-20",
+   "folder": "session-6-20-02-2024",
+   "roster": [
+    "هفت-ضربی-چهارگاه-علیزاده",
+    "پیش-درامد-چهارگاه-مختاری"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-6-20-02-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 554276565,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-6-20-02-2024/نت-پیش-درامد-چهارگاه-مختاری.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت پیش درامد چهارگاه مختاری",
+     "part": null,
+     "size": 142335,
+     "pieces": [
+      "پیش-درامد-چهارگاه-مختاری"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-6-20-02-2024/نمونه-پیش-درامد-چهارگاه-مختاری.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه پیش درامد چهارگاه مختاری",
+     "part": null,
+     "size": 35943588,
+     "pieces": [
+      "پیش-درامد-چهارگاه-مختاری"
+     ],
+     "group": "نمونه:پیش-درامد-چهارگاه-مختاری"
+    }
+   ],
+   "members": [
+    {
+     "key": "هفت-ضربی-چهارگاه-علیزاده",
+     "roles": [
+      "تمرین-من"
+     ]
+    },
+    {
+     "key": "پیش-درامد-چهارگاه-مختاری",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 7,
+   "date": "2024-03-19",
+   "folder": "session-7-19-03-2024",
+   "roster": [
+    "ماهور-ردیف-میرزاعبدالله"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-7-19-03-2024/ضبط-کلاس-1.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 1",
+     "part": 1,
+     "size": 63623997,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-7-19-03-2024/ضبط-کلاس-2.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 2",
+     "part": 2,
+     "size": 65563765,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-7-19-03-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46486495,
+     "pieces": [
+      "ماهور-ردیف-میرزاعبدالله"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-7-19-03-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 27806679,
+     "pieces": [
+      "ماهور-ردیف-میرزاعبدالله"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "ماهور-ردیف-میرزاعبدالله",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 8,
+   "date": "2024-04-16",
+   "folder": "session-8-16-04-2024",
+   "roster": [
+    "خاوران",
+    "خسروانی-بیات-ترک",
+    "دلکش",
+    "چهارمضراب-و-فرود"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-8-16-04-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 123858602,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-8-16-04-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46534882,
+     "pieces": [
+      "خاوران",
+      "خسروانی-بیات-ترک",
+      "دلکش",
+      "چهارمضراب-و-فرود"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-8-16-04-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 34410136,
+     "pieces": [
+      "خاوران",
+      "خسروانی-بیات-ترک",
+      "دلکش",
+      "چهارمضراب-و-فرود"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "خاوران",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "خسروانی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "دلکش",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-و-فرود",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 9,
+   "date": "2024-05-14",
+   "folder": "session-9-14-05-2024",
+   "roster": [
+    "طرب-انگیز",
+    "نصیرخانی",
+    "نیشابورک",
+    "چهارمضراب-ماهور-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-9-14-05-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 54130300,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-9-14-05-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46510834,
+     "pieces": [
+      "طرب-انگیز",
+      "نصیرخانی",
+      "نیشابورک",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-9-14-05-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 41106104,
+     "pieces": [
+      "طرب-انگیز",
+      "نصیرخانی",
+      "نیشابورک",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "طرب-انگیز",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "نصیرخانی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "نیشابورک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-ماهور-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 10,
+   "date": "2024-06-11",
+   "folder": "session-10-11-06-2024",
+   "roster": [
+    "آذربایجانی",
+    "فیلی-بیات-ترک",
+    "ماهور-صغیر",
+    "چهارمضراب-ماهور-صبا",
+    "چهارپاره-مرادخانی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-10-11-06-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 96717520,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-10-11-06-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46529643,
+     "pieces": [
+      "آذربایجانی",
+      "فیلی-بیات-ترک",
+      "ماهور-صغیر",
+      "چهارمضراب-ماهور-صبا",
+      "چهارپاره-مرادخانی"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-10-11-06-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 17486339,
+     "pieces": [
+      "آذربایجانی",
+      "فیلی-بیات-ترک",
+      "ماهور-صغیر",
+      "چهارمضراب-ماهور-صبا",
+      "چهارپاره-مرادخانی"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "آذربایجانی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "فیلی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "ماهور-صغیر",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-ماهور-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارپاره-مرادخانی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 11,
+   "date": "2024-07-09",
+   "folder": "session-11-09-07-2024",
+   "roster": [
+    "حصار-ماهور",
+    "زیرافکند",
+    "نی-ریز",
+    "چهارمضراب-ماهور-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-11-09-07-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 74975726,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-11-09-07-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46500442,
+     "pieces": [
+      "حصار-ماهور",
+      "زیرافکند",
+      "نی-ریز",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-11-09-07-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 15990889,
+     "pieces": [
+      "حصار-ماهور",
+      "زیرافکند",
+      "نی-ریز",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "حصار-ماهور",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "زیرافکند",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "نی-ریز",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-ماهور-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 12,
+   "date": "2024-08-06",
+   "folder": "session-12-06-08-2024",
+   "roster": [
+    "شکسته-ماهور",
+    "ضربی-شکسته-هرمزی",
+    "عراق",
+    "چهارمضراب-ماهور-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-12-06-08-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 99765911,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-12-06-08-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46495762,
+     "pieces": [
+      "شکسته-ماهور",
+      "ضربی-شکسته-هرمزی",
+      "عراق",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-12-06-08-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 20119344,
+     "pieces": [
+      "شکسته-ماهور",
+      "ضربی-شکسته-هرمزی",
+      "عراق",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "شکسته-ماهور",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "ضربی-شکسته-هرمزی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-ماهور-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 13,
+   "date": "2024-09-03",
+   "folder": "session-13-03-09-2024",
+   "roster": [
+    "آشوراوند",
+    "اصفهانک-در-عراق",
+    "حزین-در-عراق",
+    "زنگوله-در-عراق",
+    "ضربی-عراق-ماهور-میرزا-حسینقلی",
+    "محیر-در-عراق",
+    "نهیب-در-عراق",
+    "کرشمه-در-عراق"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-13-03-09-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 90002728,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت ضربی عراق ماهور میرزا حسینقلی",
+     "part": null,
+     "size": 291643,
+     "pieces": [
+      "ضربی-عراق-ماهور-میرزا-حسینقلی"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-13-03-09-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 7669238,
+     "pieces": [
+      "آشوراوند",
+      "اصفهانک-در-عراق",
+      "حزین-در-عراق",
+      "زنگوله-در-عراق",
+      "ضربی-عراق-ماهور-میرزا-حسینقلی",
+      "محیر-در-عراق",
+      "نهیب-در-عراق",
+      "کرشمه-در-عراق"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-13-03-09-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 46430584,
+     "pieces": [
+      "آشوراوند",
+      "اصفهانک-در-عراق",
+      "حزین-در-عراق",
+      "زنگوله-در-عراق",
+      "ضربی-عراق-ماهور-میرزا-حسینقلی",
+      "محیر-در-عراق",
+      "نهیب-در-عراق",
+      "کرشمه-در-عراق"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "آشوراوند",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "اصفهانک-در-عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "حزین-در-عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "زنگوله-در-عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "ضربی-عراق-ماهور-میرزا-حسینقلی",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "محیر-در-عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "نهیب-در-عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "کرشمه-در-عراق",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 14,
+   "date": "2024-10-01",
+   "folder": "session-14-01-10-2024",
+   "roster": [
+    "راک-عبدالله",
+    "راک-هندی",
+    "راک-کشمیر",
+    "رنگ-یک-چوبه",
+    "صفیر-راک",
+    "کرشمه-راک"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-14-01-10-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 181698837,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-14-01-10-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46479800,
+     "pieces": [
+      "راک-عبدالله",
+      "راک-هندی",
+      "راک-کشمیر",
+      "رنگ-یک-چوبه",
+      "صفیر-راک",
+      "کرشمه-راک"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-14-01-10-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 40939070,
+     "pieces": [
+      "راک-عبدالله",
+      "راک-هندی",
+      "راک-کشمیر",
+      "رنگ-یک-چوبه",
+      "صفیر-راک",
+      "کرشمه-راک"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "راک-عبدالله",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "راک-هندی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "راک-کشمیر",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "رنگ-یک-چوبه",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "صفیر-راک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "کرشمه-راک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 15,
+   "date": "2024-10-29",
+   "folder": "session-15-29-10-2024",
+   "roster": [
+    "رنگ-حربی",
+    "رنگ-شلاخو",
+    "ساقی-نامه",
+    "صوفی-نامه",
+    "کشته"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-15-29-10-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 129106659,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-15-29-10-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46464972,
+     "pieces": [
+      "رنگ-حربی",
+      "رنگ-شلاخو",
+      "ساقی-نامه",
+      "صوفی-نامه",
+      "کشته"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-15-29-10-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 40824004,
+     "pieces": [
+      "رنگ-حربی",
+      "رنگ-شلاخو",
+      "ساقی-نامه",
+      "صوفی-نامه",
+      "کشته"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "رنگ-حربی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "رنگ-شلاخو",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "ساقی-نامه",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "صوفی-نامه",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "کشته",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 16,
+   "date": "2024-11-26",
+   "folder": "session-16-26-11-2024",
+   "roster": [
+    "رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان",
+    "پیش-درامد-ماهور-هرمزی",
+    "چهارمضراب-ماهور-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-16-26-11-2024/تصحیح-پیش-درامد-ماهور-هرمزی.pdf",
+     "role": "تصحیح",
+     "kind": "score",
+     "title": "تصحیح پیش درامد ماهور هرمزی",
+     "part": null,
+     "size": 3608547,
+     "pieces": [
+      "پیش-درامد-ماهور-هرمزی"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-16-26-11-2024/تصحیح-چهارمضراب-ماهور-صبا.pdf",
+     "role": "تصحیح",
+     "kind": "score",
+     "title": "تصحیح چهارمضراب ماهور صبا",
+     "part": null,
+     "size": 4003403,
+     "pieces": [
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-16-26-11-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 84518794,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-16-26-11-2024/نت-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت رنگ اصفهان پریچهر و پریزاد درویش خان",
+     "part": null,
+     "size": 574143,
+     "pieces": [
+      "رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-16-26-11-2024/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46486227,
+     "pieces": [
+      "رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان",
+      "پیش-درامد-ماهور-هرمزی",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-16-26-11-2024/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 20055497,
+     "pieces": [
+      "رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان",
+      "پیش-درامد-ماهور-هرمزی",
+      "چهارمضراب-ماهور-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-ماهور-هرمزی",
+     "roles": [
+      "تصحیح",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-ماهور-صبا",
+     "roles": [
+      "تصحیح",
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 17,
+   "date": "2024-12-26",
+   "folder": "session-17-26-12-2024",
+   "roster": [
+    "دوضربی-بیات-ترک-صبا",
+    "پیش-درامد-ماهور-هرمزی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-17-26-12-2024/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 135444541,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-17-26-12-2024/نت-دوضربی-بیات-ترک-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت دوضربی بیات ترک صبا",
+     "part": null,
+     "size": 978748,
+     "pieces": [
+      "دوضربی-بیات-ترک-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-17-26-12-2024/نمونه-دوضربی-بیات-ترک-صبا.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه دوضربی بیات ترک صبا",
+     "part": null,
+     "size": 35444463,
+     "pieces": [
+      "دوضربی-بیات-ترک-صبا"
+     ],
+     "group": "نمونه:دوضربی-بیات-ترک-صبا"
+    }
+   ],
+   "members": [
+    {
+     "key": "دوضربی-بیات-ترک-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-ماهور-هرمزی",
+     "roles": [
+      "تمرین-من"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 18,
+   "date": "2025-01-21",
+   "folder": "session-18-21-01-2025",
+   "roster": [
+    "دوضربی-بیات-ترک-صبا",
+    "پیش-درامد-ماهور-هرمزی",
+    "پیش-درامد-نوا-علیزاده",
+    "چهارمضراب-نوا-علیزاده"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-18-21-01-2025/تصحیح-پیش-درامد-ماهور-هرمزی.pdf",
+     "role": "تصحیح",
+     "kind": "score",
+     "title": "تصحیح پیش درامد ماهور هرمزی",
+     "part": null,
+     "size": 3608547,
+     "pieces": [
+      "پیش-درامد-ماهور-هرمزی"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-18-21-01-2025/تصحیح-چهارمضراب-نوا-علیزاده.pdf",
+     "role": "تصحیح",
+     "kind": "score",
+     "title": "تصحیح چهارمضراب نوا علیزاده",
+     "part": null,
+     "size": 1057717,
+     "pieces": [
+      "چهارمضراب-نوا-علیزاده"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-18-21-01-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 108378862,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-18-21-01-2025/نت-پیش-درامد-نوا-علیزاده.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت پیش درامد نوا علیزاده",
+     "part": null,
+     "size": 1047940,
+     "pieces": [
+      "پیش-درامد-نوا-علیزاده"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-18-21-01-2025/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46504214,
+     "pieces": [
+      "دوضربی-بیات-ترک-صبا",
+      "پیش-درامد-ماهور-هرمزی",
+      "پیش-درامد-نوا-علیزاده",
+      "چهارمضراب-نوا-علیزاده"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-18-21-01-2025/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 15617459,
+     "pieces": [
+      "دوضربی-بیات-ترک-صبا",
+      "پیش-درامد-ماهور-هرمزی",
+      "پیش-درامد-نوا-علیزاده",
+      "چهارمضراب-نوا-علیزاده"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "دوضربی-بیات-ترک-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-ماهور-هرمزی",
+     "roles": [
+      "تصحیح",
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-نوا-علیزاده",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-نوا-علیزاده",
+     "roles": [
+      "تصحیح",
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 19,
+   "date": "2025-02-18",
+   "folder": "session-19-18-02-2025",
+   "roster": [
+    "به-یاد-گذشته-صبا",
+    "دوضربی-بیات-ترک-صبا",
+    "چهارمضراب-ابوعطا-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-19-18-02-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 141510280,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-19-18-02-2025/نت-به-یاد-گذشته-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت به یاد گذشته صبا",
+     "part": null,
+     "size": 2236329,
+     "pieces": [
+      "به-یاد-گذشته-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-19-18-02-2025/نت-چهارمضراب-ابوعطا-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت چهارمضراب ابوعطا صبا",
+     "part": null,
+     "size": 1086999,
+     "pieces": [
+      "چهارمضراب-ابوعطا-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-19-18-02-2025/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 32955156,
+     "pieces": [
+      "به-یاد-گذشته-صبا",
+      "دوضربی-بیات-ترک-صبا",
+      "چهارمضراب-ابوعطا-صبا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-19-18-02-2025/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 15070736,
+     "pieces": [
+      "به-یاد-گذشته-صبا",
+      "دوضربی-بیات-ترک-صبا",
+      "چهارمضراب-ابوعطا-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "به-یاد-گذشته-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "دوضربی-بیات-ترک-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-ابوعطا-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 20,
+   "date": "2025-03-18",
+   "folder": "session-20-18-03-2025",
+   "roster": [
+    "دوضربی-بیات-ترک-صبا",
+    "پیش-درامد-راک-ماهور-درویش-خان"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-20-18-03-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 121103555,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-20-18-03-2025/نت-پیش-درامد-راک-ماهور-درویش-خان.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت پیش درامد راک ماهور درویش خان",
+     "part": null,
+     "size": 993421,
+     "pieces": [
+      "پیش-درامد-راک-ماهور-درویش-خان"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-20-18-03-2025/نمونه-پیش-درامد-راک-ماهور-درویش-خان.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه پیش درامد راک ماهور درویش خان",
+     "part": null,
+     "size": 36508974,
+     "pieces": [
+      "پیش-درامد-راک-ماهور-درویش-خان"
+     ],
+     "group": "نمونه:پیش-درامد-راک-ماهور-درویش-خان"
+    }
+   ],
+   "members": [
+    {
+     "key": "دوضربی-بیات-ترک-صبا",
+     "roles": [
+      "تمرین-من"
+     ]
+    },
+    {
+     "key": "پیش-درامد-راک-ماهور-درویش-خان",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 21,
+   "date": "2025-04-15",
+   "folder": "session-21-15-04-2025",
+   "roster": [
+    "رنگ-ماهور-راک-برومند",
+    "چهارمضراب-بیات-ترک-هرمزی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-21-15-04-2025/ضبط-کلاس-1.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 1",
+     "part": 1,
+     "size": 84851995,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-21-15-04-2025/ضبط-کلاس-2.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 2",
+     "part": 2,
+     "size": 27494963,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-21-15-04-2025/نت-رنگ-ماهور-راک-برومند.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت رنگ ماهور راک برومند",
+     "part": null,
+     "size": 711942,
+     "pieces": [
+      "رنگ-ماهور-راک-برومند"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-21-15-04-2025/نت-چهارمضراب-بیات-ترک-هرمزی.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت چهارمضراب بیات ترک هرمزی",
+     "part": null,
+     "size": 6141078,
+     "pieces": [
+      "چهارمضراب-بیات-ترک-هرمزی"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-21-15-04-2025/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46540583,
+     "pieces": [
+      "رنگ-ماهور-راک-برومند",
+      "چهارمضراب-بیات-ترک-هرمزی"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-21-15-04-2025/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 21732332,
+     "pieces": [
+      "رنگ-ماهور-راک-برومند",
+      "چهارمضراب-بیات-ترک-هرمزی"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "رنگ-ماهور-راک-برومند",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-بیات-ترک-هرمزی",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 22,
+   "date": "2025-05-13",
+   "folder": "session-22-13-05-2025",
+   "roster": [
+    "پیش-درامد-سه-گاه-فروتن",
+    "چهارمضراب-مخالف-سه-گاه-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-22-13-05-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 86780956,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-22-13-05-2025/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46548342,
+     "pieces": [
+      "پیش-درامد-سه-گاه-فروتن",
+      "چهارمضراب-مخالف-سه-گاه-صبا"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-22-13-05-2025/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 23359627,
+     "pieces": [
+      "پیش-درامد-سه-گاه-فروتن",
+      "چهارمضراب-مخالف-سه-گاه-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "پیش-درامد-سه-گاه-فروتن",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-مخالف-سه-گاه-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 23,
+   "date": "2025-06-10",
+   "folder": "session-23-10-06-2025",
+   "roster": [
+    "پیش-درامد-بیات-ترک-ازری",
+    "پیش-درامد-سه-گاه-فروتن"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-23-10-06-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 102414626,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-23-10-06-2025/نت-پیش-درامد-بیات-ترک-ازری.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت پیش درامد بیات ترک ازری",
+     "part": null,
+     "size": 82408,
+     "pieces": [
+      "پیش-درامد-بیات-ترک-ازری"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-23-10-06-2025/نمونه-پیش-درامد-بیات-ترک-ازری-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه پیش درامد بیات ترک ازری 1",
+     "part": 1,
+     "size": 32989477,
+     "pieces": [
+      "پیش-درامد-بیات-ترک-ازری"
+     ],
+     "group": "نمونه:پیش-درامد-بیات-ترک-ازری"
+    },
+    {
+     "path": "session-23-10-06-2025/نمونه-پیش-درامد-بیات-ترک-ازری-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه پیش درامد بیات ترک ازری 2",
+     "part": 2,
+     "size": 18507904,
+     "pieces": [
+      "پیش-درامد-بیات-ترک-ازری"
+     ],
+     "group": "نمونه:پیش-درامد-بیات-ترک-ازری"
+    }
+   ],
+   "members": [
+    {
+     "key": "پیش-درامد-بیات-ترک-ازری",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-سه-گاه-فروتن",
+     "roles": [
+      "تمرین-من"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 24,
+   "date": "2025-07-08",
+   "folder": "session-24-08-07-2025",
+   "roster": [
+    "درامد-اول-بیات-ترک",
+    "درامد-دوم-بیات-ترک",
+    "دوگاه-بیات-ترک",
+    "پیش-درامد-بیات-ترک-لطفی",
+    "پیش-درامد-سه-گاه-فروتن"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-24-08-07-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 89989581,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-24-08-07-2025/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 72073168,
+     "pieces": [
+      "درامد-اول-بیات-ترک",
+      "درامد-دوم-بیات-ترک",
+      "دوگاه-بیات-ترک",
+      "پیش-درامد-بیات-ترک-لطفی",
+      "پیش-درامد-سه-گاه-فروتن"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "درامد-اول-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "درامد-دوم-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "دوگاه-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-بیات-ترک-لطفی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-سه-گاه-فروتن",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 25,
+   "date": "2025-08-05",
+   "folder": "session-25-05-08-2025",
+   "roster": [
+    "بسته-نگار-بیات-ترک",
+    "حاجی-حسنی-بیات-ترک",
+    "خسروانی-بیات-ترک",
+    "درامد-سوم-بیات-ترک",
+    "زنگوله-بیات-ترک",
+    "پیش-درامد-سه-گاه-فروتن"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-25-05-08-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 274973302,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-25-05-08-2025/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 38955357,
+     "pieces": [
+      "بسته-نگار-بیات-ترک",
+      "حاجی-حسنی-بیات-ترک",
+      "خسروانی-بیات-ترک",
+      "درامد-سوم-بیات-ترک",
+      "زنگوله-بیات-ترک",
+      "پیش-درامد-سه-گاه-فروتن"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-25-05-08-2025/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 16814009,
+     "pieces": [
+      "بسته-نگار-بیات-ترک",
+      "حاجی-حسنی-بیات-ترک",
+      "خسروانی-بیات-ترک",
+      "درامد-سوم-بیات-ترک",
+      "زنگوله-بیات-ترک",
+      "پیش-درامد-سه-گاه-فروتن"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "بسته-نگار-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "حاجی-حسنی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "خسروانی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "درامد-سوم-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "زنگوله-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-سه-گاه-فروتن",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 26,
+   "date": "2025-09-02",
+   "folder": "session-26-02-09-2025",
+   "roster": [
+    "جامه-دران-بیات-ترک",
+    "شکسته-بیات-ترک",
+    "فیلی-بیات-ترک",
+    "مهربانی-بیات-ترک",
+    "نغمه-بیات-ترک",
+    "پیش-درامد-سه-گاه-فروتن"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-26-02-09-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 239395983,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-26-02-09-2025/نمونه-1.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 1",
+     "part": 1,
+     "size": 46437344,
+     "pieces": [
+      "جامه-دران-بیات-ترک",
+      "شکسته-بیات-ترک",
+      "فیلی-بیات-ترک",
+      "مهربانی-بیات-ترک",
+      "نغمه-بیات-ترک",
+      "پیش-درامد-سه-گاه-فروتن"
+     ],
+     "group": "نمونه:"
+    },
+    {
+     "path": "session-26-02-09-2025/نمونه-2.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه 2",
+     "part": 2,
+     "size": 12915874,
+     "pieces": [
+      "جامه-دران-بیات-ترک",
+      "شکسته-بیات-ترک",
+      "فیلی-بیات-ترک",
+      "مهربانی-بیات-ترک",
+      "نغمه-بیات-ترک",
+      "پیش-درامد-سه-گاه-فروتن"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "جامه-دران-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "شکسته-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "فیلی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "مهربانی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "نغمه-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-سه-گاه-فروتن",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 27,
+   "date": "2025-09-30",
+   "folder": "session-27-30-09-2025",
+   "roster": [
+    "روح-الارواح-بیات-ترک",
+    "ضربی-شکسته-لطفی",
+    "قطار-بیات-ترک",
+    "مهدی-ضرابی-بیات-ترک",
+    "پیش-درامد-سه-گاه-فروتن"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-27-30-09-2025/ضبط-کلاس-1.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 1",
+     "part": 1,
+     "size": 93432037,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-27-30-09-2025/ضبط-کلاس-2.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس 2",
+     "part": 2,
+     "size": 73809174,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-27-30-09-2025/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 45996216,
+     "pieces": [
+      "روح-الارواح-بیات-ترک",
+      "ضربی-شکسته-لطفی",
+      "قطار-بیات-ترک",
+      "مهدی-ضرابی-بیات-ترک",
+      "پیش-درامد-سه-گاه-فروتن"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "روح-الارواح-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "ضربی-شکسته-لطفی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "قطار-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "مهدی-ضرابی-بیات-ترک",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "پیش-درامد-سه-گاه-فروتن",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 28,
+   "date": "2025-10-28",
+   "folder": "session-28-28-10-2025",
+   "roster": [
+    "به-زندان-شوشتری",
+    "ضربی-شکسته-لطفی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": false,
+   "resources": [
+    {
+     "path": "session-28-28-10-2025/نت-به-زندان-شوشتری.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت به زندان شوشتری",
+     "part": null,
+     "size": 715204,
+     "pieces": [
+      "به-زندان-شوشتری"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه به زندان شوشتری",
+     "part": null,
+     "size": 57741062,
+     "pieces": [
+      "به-زندان-شوشتری"
+     ],
+     "group": "نمونه:به-زندان-شوشتری"
+    }
+   ],
+   "members": [
+    {
+     "key": "به-زندان-شوشتری",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "ضربی-شکسته-لطفی",
+     "roles": [
+      "تمرین-من"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 29,
+   "date": "2025-11-25",
+   "folder": "session-29-25-11-2025",
+   "roster": [
+    "به-زندان-شوشتری",
+    "چهارمضراب-دوم-بیات-ترک-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-29-25-11-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 180567343,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-29-25-11-2025/نت-چهارمضراب-دوم-بیات-ترک-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت چهارمضراب دوم بیات ترک صبا",
+     "part": null,
+     "size": 970359,
+     "pieces": [
+      "چهارمضراب-دوم-بیات-ترک-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-29-25-11-2025/نمونه-چهارمضراب-دوم-بیات-ترک-صبا.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه چهارمضراب دوم بیات ترک صبا",
+     "part": null,
+     "size": 58793283,
+     "pieces": [
+      "چهارمضراب-دوم-بیات-ترک-صبا"
+     ],
+     "group": "نمونه:چهارمضراب-دوم-بیات-ترک-صبا"
+    }
+   ],
+   "members": [
+    {
+     "key": "به-زندان-شوشتری",
+     "roles": [
+      "تمرین-من"
+     ]
+    },
+    {
+     "key": "چهارمضراب-دوم-بیات-ترک-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 30,
+   "date": "2025-12-23",
+   "folder": "session-30-23-12-2025",
+   "roster": [
+    "زنگ-شتر-صبا",
+    "چهارمضراب-دوم-بیات-ترک-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-30-23-12-2025/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 322997843,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-30-23-12-2025/نت-زنگ-شتر-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت زنگ شتر صبا",
+     "part": null,
+     "size": 289323,
+     "pieces": [
+      "زنگ-شتر-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-30-23-12-2025/نمونه-زنگ-شتر-صبا.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه زنگ شتر صبا",
+     "part": null,
+     "size": 71983033,
+     "pieces": [
+      "زنگ-شتر-صبا"
+     ],
+     "group": "نمونه:زنگ-شتر-صبا"
+    }
+   ],
+   "members": [
+    {
+     "key": "زنگ-شتر-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "چهارمضراب-دوم-بیات-ترک-صبا",
+     "roles": [
+      "تمرین-من"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 31,
+   "date": "2026-01-20",
+   "folder": "session-31-20-01-2026",
+   "roster": [
+    "بهار-مست-صبا",
+    "زنگ-شتر-صبا",
+    "سامانی-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-31-20-01-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 83747131,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-31-20-01-2026/نت-بهار-مست-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت بهار مست صبا",
+     "part": null,
+     "size": 81446,
+     "pieces": [
+      "بهار-مست-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-31-20-01-2026/نت-سامانی-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت سامانی صبا",
+     "part": null,
+     "size": 136157,
+     "pieces": [
+      "سامانی-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-31-20-01-2026/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 36701261,
+     "pieces": [
+      "بهار-مست-صبا",
+      "زنگ-شتر-صبا",
+      "سامانی-صبا"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "بهار-مست-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "زنگ-شتر-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "سامانی-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 32,
+   "date": "2026-02-17",
+   "folder": "session-32-17-02-2026",
+   "roster": [
+    "صلح-شهنازی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-32-17-02-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 170596853,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-32-17-02-2026/نت-صلح-شهنازی.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت صلح شهنازی",
+     "part": null,
+     "size": 820316,
+     "pieces": [
+      "صلح-شهنازی"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-32-17-02-2026/نمونه-صلح-شهنازی.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه صلح شهنازی",
+     "part": null,
+     "size": 44147040,
+     "pieces": [
+      "صلح-شهنازی"
+     ],
+     "group": "نمونه:صلح-شهنازی"
+    }
+   ],
+   "members": [
+    {
+     "key": "صلح-شهنازی",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 33,
+   "date": "2026-03-17",
+   "folder": "session-33-17-03-2026",
+   "roster": [
+    "جنگ-شهنازی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-33-17-03-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 176638832,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-33-17-03-2026/نت-جنگ-شهنازی.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت جنگ شهنازی",
+     "part": null,
+     "size": 770733,
+     "pieces": [
+      "جنگ-شهنازی"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-33-17-03-2026/نمونه-جنگ-شهنازی.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه جنگ شهنازی",
+     "part": null,
+     "size": 53301479,
+     "pieces": [
+      "جنگ-شهنازی"
+     ],
+     "group": "نمونه:جنگ-شهنازی"
+    }
+   ],
+   "members": [
+    {
+     "key": "جنگ-شهنازی",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 34,
+   "date": "2026-04-14",
+   "folder": "session-34-14-04-2026",
+   "roster": [
+    "بیات-ترک-ردیف-میرزاعبدالله"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-34-14-04-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 265468933,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-34-14-04-2026/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 57090302,
+     "pieces": [
+      "بیات-ترک-ردیف-میرزاعبدالله"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "بیات-ترک-ردیف-میرزاعبدالله",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 35,
+   "date": "2026-05-12",
+   "folder": "session-35-12-05-2026",
+   "roster": [
+    "بیات-ترک-ردیف-میرزاعبدالله"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-35-12-05-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 70290034,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-35-12-05-2026/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 28544603,
+     "pieces": [
+      "بیات-ترک-ردیف-میرزاعبدالله"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "بیات-ترک-ردیف-میرزاعبدالله",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 36,
+   "date": "2026-06-09",
+   "folder": "session-36-09-06-2026",
+   "roster": [
+    "قرایی-افشاری",
+    "مجلس-افروز-افشاری"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-36-09-06-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 325389004,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-36-09-06-2026/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 32023559,
+     "pieces": [
+      "قرایی-افشاری",
+      "مجلس-افروز-افشاری"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "قرایی-افشاری",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "مجلس-افروز-افشاری",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 37,
+   "date": "2026-07-09",
+   "folder": "session-37-09-07-2026",
+   "roster": [
+    "چهارمضراب-افشاری-صبا"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-37-09-07-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 686136347,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-37-09-07-2026/نت-چهارمضراب-افشاری-صبا.pdf",
+     "role": "نت",
+     "kind": "score",
+     "title": "نت چهارمضراب افشاری صبا",
+     "part": null,
+     "size": 1331993,
+     "pieces": [
+      "چهارمضراب-افشاری-صبا"
+     ],
+     "group": null
+    },
+    {
+     "path": "session-37-09-07-2026/نمونه-چهارمضراب-افشاری-صبا.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه چهارمضراب افشاری صبا",
+     "part": null,
+     "size": 20012229,
+     "pieces": [
+      "چهارمضراب-افشاری-صبا"
+     ],
+     "group": "نمونه:چهارمضراب-افشاری-صبا"
+    }
+   ],
+   "members": [
+    {
+     "key": "چهارمضراب-افشاری-صبا",
+     "roles": [
+      "تمرین-من",
+      "نت",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 38,
+   "date": "2026-08-04",
+   "folder": "session-38-04-08-2026",
+   "roster": [
+    "به-یاد-گذشته-صبا",
+    "قافله-سالار-لطفی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-38-04-08-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 247390828,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-38-04-08-2026/نمونه.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه",
+     "part": null,
+     "size": 72610390,
+     "pieces": [
+      "به-یاد-گذشته-صبا",
+      "قافله-سالار-لطفی"
+     ],
+     "group": "نمونه:"
+    }
+   ],
+   "members": [
+    {
+     "key": "به-یاد-گذشته-صبا",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    },
+    {
+     "key": "قافله-سالار-لطفی",
+     "roles": [
+      "تمرین-من",
+      "نمونه"
+     ]
+    }
+   ]
+  },
+  {
+   "n": 39,
+   "date": "2026-09-01",
+   "folder": "session-39-01-09-2026",
+   "roster": [
+    "ضربی-سه-گاه-لطفی"
+   ],
+   "rosterTrusted": true,
+   "hasClassRecording": true,
+   "resources": [
+    {
+     "path": "session-39-01-09-2026/ضبط-کلاس.mp4",
+     "role": "ضبط-کلاس",
+     "kind": "video",
+     "title": "ضبط کلاس",
+     "part": null,
+     "size": 330237952,
+     "pieces": [],
+     "group": null
+    },
+    {
+     "path": "session-39-01-09-2026/نمونه-ضربی-سه-گاه-لطفی.mp4",
+     "role": "نمونه",
+     "kind": "video",
+     "title": "نمونه ضربی سه گاه لطفی",
+     "part": null,
+     "size": 54212167,
+     "pieces": [
+      "ضربی-سه-گاه-لطفی"
+     ],
+     "group": "نمونه:ضربی-سه-گاه-لطفی"
+    }
+   ],
+   "members": [
+    {
+     "key": "ضربی-سه-گاه-لطفی",
+     "roles": [
+      "نمونه"
+     ]
+    }
+   ]
+  }
+ ],
+ "renames": [
+  {
+   "from": "session-1-26-09-2023/4mez-aval-dashti.1.jpg",
+   "to": "session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.jpg"
+  },
+  {
+   "from": "session-1-26-09-2023/chahar-mezarabe-avale-dashti-on-18-10-2023-at-13.29-2.mp4",
+   "to": "session-1-26-09-2023/تمرین-من-چهارمضراب-اول-دشتی-صبا.mp4"
+  },
+  {
+   "from": "session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf",
+   "to": "session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf"
+  },
+  {
+   "from": "session-1-26-09-2023/renge-mahoor-darvish-on-18-10-2023-at-11.25.mp4",
+   "to": "session-1-26-09-2023/تمرین-من-رنگ-ماهور-درویش-خان.mp4"
+  },
+  {
+   "from": "session-1-26-09-2023/renge-mahoor-darvish-sevom-1402-05-22.pdf",
+   "to": "session-1-26-09-2023/نت-رنگ-ماهور-درویش-خان.pdf"
+  },
+  {
+   "from": "session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4",
+   "to": "session-1-26-09-2023/ضبط-کلاس-1.mp4"
+  },
+  {
+   "from": "session-1-26-09-2023/video-2023-09-27-07-16-50-2.mp4",
+   "to": "session-1-26-09-2023/ضبط-کلاس-2.mp4"
+  },
+  {
+   "from": "session-1-26-09-2023/video-2023-09-27-07-18-12-3.mp4",
+   "to": "session-1-26-09-2023/ضبط-کلاس-3.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/azarbayjani.mp4",
+   "to": "session-10-11-06-2024/تمرین-من-آذربایجانی.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/chaharmezrabe-mahur-saba-2.mp4",
+   "to": "session-10-11-06-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/chaharpareh-moradkhani.mp4",
+   "to": "session-10-11-06-2024/تمرین-من-چهارپاره-مرادخانی.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/feili.mp4",
+   "to": "session-10-11-06-2024/تمرین-من-فیلی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/mahure-saqir.mp4",
+   "to": "session-10-11-06-2024/تمرین-من-ماهور-صغیر.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/video-2024-06-12-09-31-54.mp4",
+   "to": "session-10-11-06-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/video-2024-06-12-09-32-24.mp4",
+   "to": "session-10-11-06-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-10-11-06-2024/video-20240611-161735-meeting-recording.mp4",
+   "to": "session-10-11-06-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/chaharmezrabe-mahur-saba-3.mp4",
+   "to": "session-11-09-07-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/hesare-mahur.mp4",
+   "to": "session-11-09-07-2024/تمرین-من-حصار-ماهور.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/neyriz.mp4",
+   "to": "session-11-09-07-2024/تمرین-من-نی-ریز.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/video-2024-07-09-16-54-17.mp4",
+   "to": "session-11-09-07-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/video-2024-07-09-16-54-28.mp4",
+   "to": "session-11-09-07-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/video-20240709-155436-meeting-recording.mp4",
+   "to": "session-11-09-07-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-11-09-07-2024/zir-afkand.mp4",
+   "to": "session-11-09-07-2024/تمرین-من-زیرافکند.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/araq.mp4",
+   "to": "session-12-06-08-2024/تمرین-من-عراق.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/chaharmezrabe-mahur-saba-4.mp4",
+   "to": "session-12-06-08-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/shekasteh.mp4",
+   "to": "session-12-06-08-2024/تمرین-من-شکسته-ماهور.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/video-2024-08-06-16-54-01.mp4",
+   "to": "session-12-06-08-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/video-2024-08-06-16-54-21.mp4",
+   "to": "session-12-06-08-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/video-20240806-155650-meeting-recording.mp4",
+   "to": "session-12-06-08-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-12-06-08-2024/zarbi-shekasteh.mp4",
+   "to": "session-12-06-08-2024/تمرین-من-ضربی-شکسته-هرمزی.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/aragh-mirzahoseyngholi.pdf",
+   "to": "session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf"
+  },
+  {
+   "from": "session-13-03-09-2024/ashur-aavand.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-آشوراوند.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/esfahaanak-dar-araaq.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-اصفهانک-در-عراق.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/hazin-dar-araaq.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-حزین-در-عراق.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/kereshmeh-dar-araaq.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-کرشمه-در-عراق.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/mohayyer-dar-araaq.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-محیر-در-عراق.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/nahib-dar-araaq.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-نهیب-در-عراق.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/video-2024-09-03-16-23-27-2.mp4",
+   "to": "session-13-03-09-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/video-2024-09-03-16-23-27.mp4",
+   "to": "session-13-03-09-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4",
+   "to": "session-13-03-09-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/zanguleh-dar-araaq.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-زنگوله-در-عراق.mp4"
+  },
+  {
+   "from": "session-13-03-09-2024/zarbi-araaq-mahur-mirzahoseyngholi.mp4",
+   "to": "session-13-03-09-2024/تمرین-من-ضربی-عراق-ماهور-میرزا-حسینقلی.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/kereshmeh-ye-raak.mp4",
+   "to": "session-14-01-10-2024/تمرین-من-کرشمه-راک.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/raak-e-abdollah.mp4",
+   "to": "session-14-01-10-2024/تمرین-من-راک-عبدالله.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/raak-e-hendi.mp4",
+   "to": "session-14-01-10-2024/تمرین-من-راک-هندی.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/raak-e-keshmir.mp4",
+   "to": "session-14-01-10-2024/تمرین-من-راک-کشمیر.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/reng-e-yekchubeh.mp4",
+   "to": "session-14-01-10-2024/تمرین-من-رنگ-یک-چوبه.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/safir-e-raak.mp4",
+   "to": "session-14-01-10-2024/تمرین-من-صفیر-راک.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/video-2024-10-01-16-38-17.mp4",
+   "to": "session-14-01-10-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/video-2024-10-01-16-40-34.mp4",
+   "to": "session-14-01-10-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-14-01-10-2024/video-20241001-153602-meeting-recording.mp4",
+   "to": "session-14-01-10-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/koshteh.mp4",
+   "to": "session-15-29-10-2024/تمرین-من-کشته.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/renge-harbi.mp4",
+   "to": "session-15-29-10-2024/تمرین-من-رنگ-حربی.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/renge-shalaxu.mp4",
+   "to": "session-15-29-10-2024/تمرین-من-رنگ-شلاخو.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/saaqinaameh.mp4",
+   "to": "session-15-29-10-2024/تمرین-من-ساقی-نامه.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/sufinaameh.mp4",
+   "to": "session-15-29-10-2024/تمرین-من-صوفی-نامه.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/video-2024-10-29-15-29-18.mp4",
+   "to": "session-15-29-10-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/video-2024-10-29-15-31-27.mp4",
+   "to": "session-15-29-10-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-15-29-10-2024/video-20241029-153247-meeting-recording.mp4",
+   "to": "session-15-29-10-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-16-26-11-2024/chaharmezrabe-mahur-sabaa.mp4",
+   "to": "session-16-26-11-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4"
+  },
+  {
+   "from": "session-16-26-11-2024/chaharmezrabe-mahur-sabaa.pdf",
+   "to": "session-16-26-11-2024/تصحیح-چهارمضراب-ماهور-صبا.pdf"
+  },
+  {
+   "from": "session-16-26-11-2024/darvish-reng-esfehanparicherandparizad-1402-05-22.pdf",
+   "to": "session-16-26-11-2024/نت-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.pdf"
+  },
+  {
+   "from": "session-16-26-11-2024/pishdaramade-mahur-hormozi.pdf",
+   "to": "session-16-26-11-2024/تصحیح-پیش-درامد-ماهور-هرمزی.pdf"
+  },
+  {
+   "from": "session-16-26-11-2024/renge-esfehan-paricherandparizad-darvish.mp4",
+   "to": "session-16-26-11-2024/تمرین-من-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.mp4"
+  },
+  {
+   "from": "session-16-26-11-2024/video-2024-11-26-15-34-55.mp4",
+   "to": "session-16-26-11-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-16-26-11-2024/video-2024-11-26-15-35-44.mp4",
+   "to": "session-16-26-11-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-16-26-11-2024/video-20241126-153555-meeting-recording.mp4",
+   "to": "session-16-26-11-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-17-26-12-2024/do-zarbye-bayate-tork-saba.mp4",
+   "to": "session-17-26-12-2024/تمرین-من-دوضربی-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-17-26-12-2024/do-zarbye-bayate-tork-saba.pdf",
+   "to": "session-17-26-12-2024/نت-دوضربی-بیات-ترک-صبا.pdf"
+  },
+  {
+   "from": "session-17-26-12-2024/pishdaramade-mahur-hormozi.mp4",
+   "to": "session-17-26-12-2024/تمرین-من-پیش-درامد-ماهور-هرمزی.mp4"
+  },
+  {
+   "from": "session-17-26-12-2024/video-2024-12-24-15-29-37.mp4",
+   "to": "session-17-26-12-2024/نمونه-دوضربی-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-17-26-12-2024/video-20241224-153734-meeting-recording.mp4",
+   "to": "session-17-26-12-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/chaharmezrab-nava-alizadeh.mp4",
+   "to": "session-18-21-01-2025/تمرین-من-چهارمضراب-نوا-علیزاده.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/chaharmezrab-nava-alizadeh.pdf",
+   "to": "session-18-21-01-2025/تصحیح-چهارمضراب-نوا-علیزاده.pdf"
+  },
+  {
+   "from": "session-18-21-01-2025/dozarbi-bayate-tork.mp4",
+   "to": "session-18-21-01-2025/تمرین-من-دوضربی-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/pishdaramad-nava-alizadeh.mp4",
+   "to": "session-18-21-01-2025/تمرین-من-پیش-درامد-نوا-علیزاده.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/pishdaramad-nava-alizadeh.pdf",
+   "to": "session-18-21-01-2025/نت-پیش-درامد-نوا-علیزاده.pdf"
+  },
+  {
+   "from": "session-18-21-01-2025/pishdaramade-mahur-hormozi.mp4",
+   "to": "session-18-21-01-2025/تمرین-من-پیش-درامد-ماهور-هرمزی.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/pishdaramade-mahur-hormozi.pdf",
+   "to": "session-18-21-01-2025/تصحیح-پیش-درامد-ماهور-هرمزی.pdf"
+  },
+  {
+   "from": "session-18-21-01-2025/video-2025-01-21-15-34-29.mp4",
+   "to": "session-18-21-01-2025/نمونه-1.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/video-2025-01-21-15-35-20.mp4",
+   "to": "session-18-21-01-2025/نمونه-2.mp4"
+  },
+  {
+   "from": "session-18-21-01-2025/video-20250121-153528-meeting-recording.mp4",
+   "to": "session-18-21-01-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/be-yade-gozashte-saba.mp4",
+   "to": "session-19-18-02-2025/تمرین-من-به-یاد-گذشته-صبا.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/chahar-mezrabe-abuataa-saba.mp4",
+   "to": "session-19-18-02-2025/تمرین-من-چهارمضراب-ابوعطا-صبا.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/do-zarbi-bayate-tork.mp4",
+   "to": "session-19-18-02-2025/تمرین-من-دوضربی-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/video-2025-02-18-15-50-56.mp4",
+   "to": "session-19-18-02-2025/نمونه-1.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/video-2025-02-18-15-51-04.mp4",
+   "to": "session-19-18-02-2025/نمونه-2.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/video-20250218-155212-meeting-recording.mp4",
+   "to": "session-19-18-02-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-19-18-02-2025/به-یاد-گذشته-صبا.pdf",
+   "to": "session-19-18-02-2025/نت-به-یاد-گذشته-صبا.pdf"
+  },
+  {
+   "from": "session-19-18-02-2025/چهارمضراب-ابوعطا-صبا.pdf",
+   "to": "session-19-18-02-2025/نت-چهارمضراب-ابوعطا-صبا.pdf"
+  },
+  {
+   "from": "session-2-24-10-2023/abouata-daramad-on-21-11-2023-at-14.02.mp4",
+   "to": "session-2-24-10-2023/تمرین-من-درامد-ابوعطا.mp4"
+  },
+  {
+   "from": "session-2-24-10-2023/abouata-ramkali-on-21-11-2023-at-13.34.mp4",
+   "to": "session-2-24-10-2023/تمرین-من-رامکلی-ابوعطا.mp4"
+  },
+  {
+   "from": "session-2-24-10-2023/video-2023-10-24-20-06-43-1.mp4",
+   "to": "session-2-24-10-2023/ضبط-کلاس-1.mp4"
+  },
+  {
+   "from": "session-2-24-10-2023/video-2023-10-24-20-07-47-2.mp4",
+   "to": "session-2-24-10-2023/ضبط-کلاس-2.mp4"
+  },
+  {
+   "from": "session-2-24-10-2023/video-2023-10-24-20-08-29-3.mp4",
+   "to": "session-2-24-10-2023/ضبط-کلاس-3.mp4"
+  },
+  {
+   "from": "session-20-18-03-2025/do-zarbi-bayate-tork-saba.mp4",
+   "to": "session-20-18-03-2025/تمرین-من-دوضربی-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-20-18-03-2025/pishdaraamde-rak-mahur-darvish.mp4",
+   "to": "session-20-18-03-2025/تمرین-من-پیش-درامد-راک-ماهور-درویش-خان.mp4"
+  },
+  {
+   "from": "session-20-18-03-2025/pishdaraamde-rak-mahur-darvish.pdf",
+   "to": "session-20-18-03-2025/نت-پیش-درامد-راک-ماهور-درویش-خان.pdf"
+  },
+  {
+   "from": "session-20-18-03-2025/video-2025-03-18-16-44-36.mp4",
+   "to": "session-20-18-03-2025/نمونه-پیش-درامد-راک-ماهور-درویش-خان.mp4"
+  },
+  {
+   "from": "session-20-18-03-2025/video-20250318-165103-meeting-recording.mp4",
+   "to": "session-20-18-03-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-21-15-04-2025/chaharmezrabe-bayate-tork-hormozi.mp4",
+   "to": "session-21-15-04-2025/تمرین-من-چهارمضراب-بیات-ترک-هرمزی.mp4"
+  },
+  {
+   "from": "session-21-15-04-2025/chaharmezrabe-bayate-tork-hormozi.pdf",
+   "to": "session-21-15-04-2025/نت-چهارمضراب-بیات-ترک-هرمزی.pdf"
+  },
+  {
+   "from": "session-21-15-04-2025/renge-mahour-raak-boromand.mp4",
+   "to": "session-21-15-04-2025/تمرین-من-رنگ-ماهور-راک-برومند.mp4"
+  },
+  {
+   "from": "session-21-15-04-2025/renge-mahour-raak-boromand.pdf",
+   "to": "session-21-15-04-2025/نت-رنگ-ماهور-راک-برومند.pdf"
+  },
+  {
+   "from": "session-21-15-04-2025/video-2025-04-15-17-33-45.mp4",
+   "to": "session-21-15-04-2025/نمونه-1.mp4"
+  },
+  {
+   "from": "session-21-15-04-2025/video-2025-04-15-17-35-58.mp4",
+   "to": "session-21-15-04-2025/نمونه-2.mp4"
+  },
+  {
+   "from": "session-21-15-04-2025/video-20250415-162959-meeting-recording.mp4",
+   "to": "session-21-15-04-2025/ضبط-کلاس-1.mp4"
+  },
+  {
+   "from": "session-21-15-04-2025/video-20250415-163620-meeting-recording.mp4",
+   "to": "session-21-15-04-2025/ضبط-کلاس-2.mp4"
+  },
+  {
+   "from": "session-22-13-05-2025/chahar-mezrab-mokhalefe-segah-saba-lotfi.mp4",
+   "to": "session-22-13-05-2025/تمرین-من-چهارمضراب-مخالف-سه-گاه-صبا.mp4"
+  },
+  {
+   "from": "session-22-13-05-2025/pish-daramade-segah-forutan-1.mp4",
+   "to": "session-22-13-05-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4"
+  },
+  {
+   "from": "session-22-13-05-2025/screen-recording-2025-05-13-at-17.38.47.mp4",
+   "to": "session-22-13-05-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-22-13-05-2025/video-2025-05-13-18-08-00.mp4",
+   "to": "session-22-13-05-2025/نمونه-1.mp4"
+  },
+  {
+   "from": "session-22-13-05-2025/video-2025-05-13-18-08-21.mp4",
+   "to": "session-22-13-05-2025/نمونه-2.mp4"
+  },
+  {
+   "from": "session-23-10-06-2025/pish-daramade-bayate-tork-bigjekhani.mp4",
+   "to": "session-23-10-06-2025/تمرین-من-پیش-درامد-بیات-ترک-ازری.mp4"
+  },
+  {
+   "from": "session-23-10-06-2025/pish-daramade-segah-forutan-2.mp4",
+   "to": "session-23-10-06-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4"
+  },
+  {
+   "from": "session-23-10-06-2025/screen-recording-2025-06-10-at-18.41.13-ethans-mbp-jun-27-150429-2025.mp4",
+   "to": "session-23-10-06-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-23-10-06-2025/video-2025-06-10-19-09-16.mp4",
+   "to": "session-23-10-06-2025/نمونه-پیش-درامد-بیات-ترک-ازری-1.mp4"
+  },
+  {
+   "from": "session-23-10-06-2025/video-2025-06-10-19-12-07.mp4",
+   "to": "session-23-10-06-2025/نمونه-پیش-درامد-بیات-ترک-ازری-2.mp4"
+  },
+  {
+   "from": "session-23-10-06-2025/پیش-درامد-بیات-ترک-tork-ozari.pdf",
+   "to": "session-23-10-06-2025/نت-پیش-درامد-بیات-ترک-ازری.pdf"
+  },
+  {
+   "from": "session-24-08-07-2025/daramade-aval-bayate-tork.mp4",
+   "to": "session-24-08-07-2025/تمرین-من-درامد-اول-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-24-08-07-2025/daramade-dovvom-bayate-tork.mp4",
+   "to": "session-24-08-07-2025/تمرین-من-درامد-دوم-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-24-08-07-2025/dogah-bayate-tork.mp4",
+   "to": "session-24-08-07-2025/تمرین-من-دوگاه-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-24-08-07-2025/pish-daramade-segah-forutan-3.mp4",
+   "to": "session-24-08-07-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4"
+  },
+  {
+   "from": "session-24-08-07-2025/pishdaramade-bayate-tork-lotfi.mp4",
+   "to": "session-24-08-07-2025/تمرین-من-پیش-درامد-بیات-ترک-لطفی.mp4"
+  },
+  {
+   "from": "session-24-08-07-2025/screen-recording-2025-07-08-at-19.13.20.mp4",
+   "to": "session-24-08-07-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-24-08-07-2025/video-2025-07-08-20-12-36.mp4",
+   "to": "session-24-08-07-2025/نمونه.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/basteh-negar-bayate-tork.mp4",
+   "to": "session-25-05-08-2025/تمرین-من-بسته-نگار-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/daramade-sevvom-bayate-tork.mp4",
+   "to": "session-25-05-08-2025/تمرین-من-درامد-سوم-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/haji-hasani-bayate-tork.mp4",
+   "to": "session-25-05-08-2025/تمرین-من-حاجی-حسنی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/khosravani-bayate-tork.mp4",
+   "to": "session-25-05-08-2025/تمرین-من-خسروانی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/pish-daramade-segah-forutan-4.mp4",
+   "to": "session-25-05-08-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/rec-20250805184249.mp4",
+   "to": "session-25-05-08-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/video-2025-08-05-19-16-25.mp4",
+   "to": "session-25-05-08-2025/نمونه-1.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/video-2025-08-05-22-27-18.mp4",
+   "to": "session-25-05-08-2025/نمونه-2.mp4"
+  },
+  {
+   "from": "session-25-05-08-2025/zanguleh-bayate-tork.mp4",
+   "to": "session-25-05-08-2025/تمرین-من-زنگوله-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/feyli-bayate-tork.mp4",
+   "to": "session-26-02-09-2025/تمرین-من-فیلی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/jameh-daraan-bayate-tork.mp4",
+   "to": "session-26-02-09-2025/تمرین-من-جامه-دران-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/mehrabaani-bayate-tork.mp4",
+   "to": "session-26-02-09-2025/تمرین-من-مهربانی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/naghmeh-bayate-tork.mp4",
+   "to": "session-26-02-09-2025/تمرین-من-نغمه-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/pish-daramade-segah-forutan-5.mp4",
+   "to": "session-26-02-09-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/rec-20250902185621.mp4",
+   "to": "session-26-02-09-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/shekasteh-bayate-tork.mp4",
+   "to": "session-26-02-09-2025/تمرین-من-شکسته-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/video-2025-09-02-19-25-54.mp4",
+   "to": "session-26-02-09-2025/نمونه-1.mp4"
+  },
+  {
+   "from": "session-26-02-09-2025/video-2025-09-02-19-26-12.mp4",
+   "to": "session-26-02-09-2025/نمونه-2.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/mehdi-zarrabi-bayate-tork.mp4",
+   "to": "session-27-30-09-2025/تمرین-من-مهدی-ضرابی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/pish-daramade-segah-forutan-6.mp4",
+   "to": "session-27-30-09-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/qataar-bayate-tork.mp4",
+   "to": "session-27-30-09-2025/تمرین-من-قطار-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/rec-20250930190712-1.mp4",
+   "to": "session-27-30-09-2025/ضبط-کلاس-1.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/ruh-ol-arvah-bayate-tork.mp4",
+   "to": "session-27-30-09-2025/تمرین-من-روح-الارواح-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/screen-recording-2025-09-30-at-19.12.37-2.mp4",
+   "to": "session-27-30-09-2025/ضبط-کلاس-2.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/video-2025-09-30-19-37-52.mp4",
+   "to": "session-27-30-09-2025/نمونه.mp4"
+  },
+  {
+   "from": "session-27-30-09-2025/zarbiye-shekasteh-lotfi-1.mp4",
+   "to": "session-27-30-09-2025/تمرین-من-ضربی-شکسته-لطفی.mp4"
+  },
+  {
+   "from": "session-28-28-10-2025/be-zendan-shushtari-1.mp4",
+   "to": "session-28-28-10-2025/تمرین-من-به-زندان-شوشتری.mp4"
+  },
+  {
+   "from": "session-28-28-10-2025/be-zendan-shushtari.pdf",
+   "to": "session-28-28-10-2025/نت-به-زندان-شوشتری.pdf"
+  },
+  {
+   "from": "session-28-28-10-2025/video-2025-10-28-19-56-30.mp4",
+   "to": "session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4"
+  },
+  {
+   "from": "session-28-28-10-2025/zarbiye-shekasteh-lotfi-2.mp4",
+   "to": "session-28-28-10-2025/تمرین-من-ضربی-شکسته-لطفی.mp4"
+  },
+  {
+   "from": "session-29-25-11-2025/2025-11-25-18.59.30.mp4",
+   "to": "session-29-25-11-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-29-25-11-2025/be-zendan-shushtari-2.mp4",
+   "to": "session-29-25-11-2025/تمرین-من-به-زندان-شوشتری.mp4"
+  },
+  {
+   "from": "session-29-25-11-2025/chahar-mezrabe-dovome-bayate-tork-saba-1.mp4",
+   "to": "session-29-25-11-2025/تمرین-من-چهارمضراب-دوم-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-29-25-11-2025/chahar-mezrabe-dovome-bayate-tork-saba.pdf",
+   "to": "session-29-25-11-2025/نت-چهارمضراب-دوم-بیات-ترک-صبا.pdf"
+  },
+  {
+   "from": "session-29-25-11-2025/video-2025-11-25-19-34-31.mp4",
+   "to": "session-29-25-11-2025/نمونه-چهارمضراب-دوم-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-3-21-11-2023/abouata-hejaz-on-18-12-2023-at-15.41.mp4",
+   "to": "session-3-21-11-2023/تمرین-من-حجاز-ابوعطا.mp4"
+  },
+  {
+   "from": "session-3-21-11-2023/abouata-sayakhi-on-18-12-2023-at-14.41.mp4",
+   "to": "session-3-21-11-2023/تمرین-من-سیخی-ابوعطا.mp4"
+  },
+  {
+   "from": "session-3-21-11-2023/etod-vaziri-on-18-12-2023-at-15.12.mp4",
+   "to": "session-3-21-11-2023/تمرین-من-اتود-وزیری.mp4"
+  },
+  {
+   "from": "session-3-21-11-2023/video-2023-11-21-20-37-08-1.mp4",
+   "to": "session-3-21-11-2023/نمونه-1.mp4"
+  },
+  {
+   "from": "session-3-21-11-2023/video-2023-11-21-20-37-51-2.mp4",
+   "to": "session-3-21-11-2023/نمونه-2.mp4"
+  },
+  {
+   "from": "session-3-21-11-2023/video-20231121-160710-meeting-recording.mp4",
+   "to": "session-3-21-11-2023/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-30-23-12-2025/2025-12-23-19.11.42.mp4",
+   "to": "session-30-23-12-2025/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-30-23-12-2025/chahar-mezrabe-dovvome-bayate-tork-saba-2.mp4",
+   "to": "session-30-23-12-2025/تمرین-من-چهارمضراب-دوم-بیات-ترک-صبا.mp4"
+  },
+  {
+   "from": "session-30-23-12-2025/video-2025-12-23-19-36-14.mp4",
+   "to": "session-30-23-12-2025/نمونه-زنگ-شتر-صبا.mp4"
+  },
+  {
+   "from": "session-30-23-12-2025/zange-shotor-saba-1.mp4",
+   "to": "session-30-23-12-2025/تمرین-من-زنگ-شتر-صبا.mp4"
+  },
+  {
+   "from": "session-30-23-12-2025/zange-shotor.pdf",
+   "to": "session-30-23-12-2025/نت-زنگ-شتر-صبا.pdf"
+  },
+  {
+   "from": "session-31-20-01-2026/2026-01-20-20.08.43.mp4",
+   "to": "session-31-20-01-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-31-20-01-2026/bahar-mast-saba.mp4",
+   "to": "session-31-20-01-2026/تمرین-من-بهار-مست-صبا.mp4"
+  },
+  {
+   "from": "session-31-20-01-2026/bahar-mast-saba.pdf",
+   "to": "session-31-20-01-2026/نت-بهار-مست-صبا.pdf"
+  },
+  {
+   "from": "session-31-20-01-2026/samaani-saba.mp4",
+   "to": "session-31-20-01-2026/تمرین-من-سامانی-صبا.mp4"
+  },
+  {
+   "from": "session-31-20-01-2026/samaani-saba.pdf",
+   "to": "session-31-20-01-2026/نت-سامانی-صبا.pdf"
+  },
+  {
+   "from": "session-31-20-01-2026/video-2026-01-20-20-18-55.mp4",
+   "to": "session-31-20-01-2026/نمونه.mp4"
+  },
+  {
+   "from": "session-31-20-01-2026/zange-shotor-saba-2.mp4",
+   "to": "session-31-20-01-2026/تمرین-من-زنگ-شتر-صبا.mp4"
+  },
+  {
+   "from": "session-32-17-02-2026/2026-02-17-19.59.26.mp4",
+   "to": "session-32-17-02-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-32-17-02-2026/solh-shahnazi.mp4",
+   "to": "session-32-17-02-2026/تمرین-من-صلح-شهنازی.mp4"
+  },
+  {
+   "from": "session-32-17-02-2026/solh-shahnazi.pdf",
+   "to": "session-32-17-02-2026/نت-صلح-شهنازی.pdf"
+  },
+  {
+   "from": "session-32-17-02-2026/video-2026-02-17-20-26-35.mp4",
+   "to": "session-32-17-02-2026/نمونه-صلح-شهنازی.mp4"
+  },
+  {
+   "from": "session-33-17-03-2026/2026-03-17-19.05.40.mp4",
+   "to": "session-33-17-03-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-33-17-03-2026/2026-04-14-17.27.58.mp4",
+   "to": "session-33-17-03-2026/تمرین-من-جنگ-شهنازی-1.mp4"
+  },
+  {
+   "from": "session-33-17-03-2026/2026-04-14-17.37.47.mp4",
+   "to": "session-33-17-03-2026/تمرین-من-جنگ-شهنازی-2.mp4"
+  },
+  {
+   "from": "session-33-17-03-2026/jang-shahnazi.pdf",
+   "to": "session-33-17-03-2026/نت-جنگ-شهنازی.pdf"
+  },
+  {
+   "from": "session-33-17-03-2026/whatsapp-video-2026-03-17-at-19.32.56.mp4",
+   "to": "session-33-17-03-2026/نمونه-جنگ-شهنازی.mp4"
+  },
+  {
+   "from": "session-34-14-04-2026/2026-04-14-19.03.37.mp4",
+   "to": "session-34-14-04-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-34-14-04-2026/2026-05-12-17.19.25.mp4",
+   "to": "session-34-14-04-2026/تمرین-من-بیات-ترک-ردیف-میرزاعبدالله-1.mp4"
+  },
+  {
+   "from": "session-34-14-04-2026/2026-05-12-17.34.16.mp4",
+   "to": "session-34-14-04-2026/تمرین-من-بیات-ترک-ردیف-میرزاعبدالله-2.mp4"
+  },
+  {
+   "from": "session-34-14-04-2026/video-2026-04-14-20-01-05.mp4",
+   "to": "session-34-14-04-2026/نمونه.mp4"
+  },
+  {
+   "from": "session-35-12-05-2026/2026-05-12-20.35.19.mp4",
+   "to": "session-35-12-05-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-35-12-05-2026/2026-06-09 17.14.57.mp4",
+   "to": "session-35-12-05-2026/تمرین-من-بیات-ترک-ردیف-میرزاعبدالله-1.mp4"
+  },
+  {
+   "from": "session-35-12-05-2026/2026-06-09 17.48.52.mp4",
+   "to": "session-35-12-05-2026/تمرین-من-بیات-ترک-ردیف-میرزاعبدالله-2.mp4"
+  },
+  {
+   "from": "session-35-12-05-2026/whatsapp-video-2026-05-12-at-20.45.17.mp4",
+   "to": "session-35-12-05-2026/نمونه.mp4"
+  },
+  {
+   "from": "session-36-09-06-2026/2026-06-09 19.29.16.mp4",
+   "to": "session-36-09-06-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-36-09-06-2026/VIDEO-2026-06-09-19-51-01.mp4",
+   "to": "session-36-09-06-2026/نمونه.mp4"
+  },
+  {
+   "from": "session-36-09-06-2026/majlesafruz-afshaari.mp4",
+   "to": "session-36-09-06-2026/تمرین-من-مجلس-افروز-افشاری.mp4"
+  },
+  {
+   "from": "session-36-09-06-2026/qaraai-afshaari.mp4",
+   "to": "session-36-09-06-2026/تمرین-من-قرایی-افشاری.mp4"
+  },
+  {
+   "from": "session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4",
+   "to": "session-37-09-07-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-37-09-07-2026/2026-08-04 16.41.05.mp4",
+   "to": "session-37-09-07-2026/تمرین-من-چهارمضراب-افشاری-صبا.mp4"
+  },
+  {
+   "from": "session-37-09-07-2026/VIDEO-2026-07-09-17-48-00.mp4",
+   "to": "session-37-09-07-2026/نمونه-چهارمضراب-افشاری-صبا.mp4"
+  },
+  {
+   "from": "session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf",
+   "to": "session-37-09-07-2026/نت-چهارمضراب-افشاری-صبا.pdf"
+  },
+  {
+   "from": "session-38-04-08-2026/2026-08-04 19.36.50.mp4",
+   "to": "session-38-04-08-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-38-04-08-2026/VIDEO-2026-08-04-19-54-58.mp4",
+   "to": "session-38-04-08-2026/نمونه.mp4"
+  },
+  {
+   "from": "session-38-04-08-2026/به-یاد-گذشته-صبا.mp4",
+   "to": "session-38-04-08-2026/تمرین-من-به-یاد-گذشته-صبا.mp4"
+  },
+  {
+   "from": "session-38-04-08-2026/فافله-سالار-لطفی.mp4",
+   "to": "session-38-04-08-2026/تمرین-من-قافله-سالار-لطفی.mp4"
+  },
+  {
+   "from": "session-39-01-09-2026/2026-09-01 20.11.57.mp4",
+   "to": "session-39-01-09-2026/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-39-01-09-2026/VIDEO-2026-09-01-20-35-35.mp4",
+   "to": "session-39-01-09-2026/نمونه-ضربی-سه-گاه-لطفی.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/abouata-basteh-negar-on-09-01-2024-at-14.18.mp4",
+   "to": "session-4-22-12-2023/تمرین-من-بسته-نگار-ابوعطا.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/abouata-chaharpareh-1-on-09-01-2024-at-14.41.mp4",
+   "to": "session-4-22-12-2023/تمرین-من-چهار-پاره.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/abouata-yaghoolon-on-09-01-2024-at-14.24.mp4",
+   "to": "session-4-22-12-2023/تمرین-من-یقولون-ابوعطا.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/study-of-dashti-1-alizadeh-on-09-01-2024-at-15.24.mp4",
+   "to": "session-4-22-12-2023/تمرین-من-تمرین-دشتی-1-علیزاده.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/video-2023-12-22-20-04-51-1.mp4",
+   "to": "session-4-22-12-2023/نمونه-1.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/video-2023-12-22-20-06-24-2.mp4",
+   "to": "session-4-22-12-2023/نمونه-2.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/video-20231222-154903-meeting-recording.mp4",
+   "to": "session-4-22-12-2023/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-4-22-12-2023/تصحیح-نت-بسته-نگار.jpg",
+   "to": "session-4-22-12-2023/تصحیح-بسته-نگار-ابوعطا.jpg"
+  },
+  {
+   "from": "session-4-22-12-2023/تصحیح-نت-چهار-پاره.jpg",
+   "to": "session-4-22-12-2023/تصحیح-چهار-پاره.jpg"
+  },
+  {
+   "from": "session-4-22-12-2023/تمرین-دشتی-۳.jpg",
+   "to": "session-4-22-12-2023/نت-تمرین-دشتی-1-علیزاده.jpg"
+  },
+  {
+   "from": "session-5-23-01-2024/7-zarbi-alizadeh-220304-183146-1.pdf",
+   "to": "session-5-23-01-2024/نت-هفت-ضربی-چهارگاه-علیزاده.pdf"
+  },
+  {
+   "from": "session-5-23-01-2024/abouata-chaharpareh-2-on-20-02-2024-at-12.25.mp4",
+   "to": "session-5-23-01-2024/تمرین-من-چهار-پاره.mp4"
+  },
+  {
+   "from": "session-5-23-01-2024/abouata-gabri-on-20-02-2024-at-13.02.mp4",
+   "to": "session-5-23-01-2024/تمرین-من-گبری-ابوعطا.mp4"
+  },
+  {
+   "from": "session-5-23-01-2024/haft-zarbi-chahargah-alizadeh-1-on-20-02-2024-at-14.17.mp4",
+   "to": "session-5-23-01-2024/تمرین-من-هفت-ضربی-چهارگاه-علیزاده.mp4"
+  },
+  {
+   "from": "session-5-23-01-2024/study-of-dashti-1-alizadeh-on-20-02-2024-at-14.30.mp4",
+   "to": "session-5-23-01-2024/تمرین-من-تمرین-دشتی-1-علیزاده.mp4"
+  },
+  {
+   "from": "session-5-23-01-2024/video-2024-01-23-19-44-35-1.mp4",
+   "to": "session-5-23-01-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-5-23-01-2024/video-2024-01-23-19-45-13.mp4",
+   "to": "session-5-23-01-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-5-23-01-2024/video-20240123-161811-meeting-recording.mp4",
+   "to": "session-5-23-01-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-6-20-02-2024/haft-zarbi-chahargah-alizadeh-2-on-18-03-2024-at-14.40.mp4",
+   "to": "session-6-20-02-2024/تمرین-من-هفت-ضربی-چهارگاه-علیزاده.mp4"
+  },
+  {
+   "from": "session-6-20-02-2024/pish-chahargah-mokhtari-edited.pdf",
+   "to": "session-6-20-02-2024/نت-پیش-درامد-چهارگاه-مختاری.pdf"
+  },
+  {
+   "from": "session-6-20-02-2024/pish-daramad-chahargah-mokhtari-on-18-03-2024-at-13.48.mp4",
+   "to": "session-6-20-02-2024/تمرین-من-پیش-درامد-چهارگاه-مختاری.mp4"
+  },
+  {
+   "from": "session-6-20-02-2024/video-2024-02-20-19-44-35.mp4",
+   "to": "session-6-20-02-2024/نمونه-پیش-درامد-چهارگاه-مختاری.mp4"
+  },
+  {
+   "from": "session-6-20-02-2024/video-20240220-162309-meeting-recording.mp4",
+   "to": "session-6-20-02-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/movie-on-16-04-2024-at-10.40.mp4",
+   "to": "session-7-19-03-2024/تمرین-من-ماهور-ردیف-میرزاعبدالله-1.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/movie-on-16-04-2024-at-11.03.mp4",
+   "to": "session-7-19-03-2024/تمرین-من-ماهور-ردیف-میرزاعبدالله-2.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/movie-on-16-04-2024-at-11.39.mp4",
+   "to": "session-7-19-03-2024/تمرین-من-ماهور-ردیف-میرزاعبدالله-3.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/movie-on-16-04-2024-at-11.49.mp4",
+   "to": "session-7-19-03-2024/تمرین-من-ماهور-ردیف-میرزاعبدالله-4.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/movie-on-16-04-2024-at-11.58.mp4",
+   "to": "session-7-19-03-2024/تمرین-من-ماهور-ردیف-میرزاعبدالله-5.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/movie-on-16-04-2024-at-13.55.mp4",
+   "to": "session-7-19-03-2024/تمرین-من-ماهور-ردیف-میرزاعبدالله-6.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/video-2024-03-19-21-04-12-1.mp4",
+   "to": "session-7-19-03-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/video-2024-03-19-21-04-15-2.mp4",
+   "to": "session-7-19-03-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/video-20240319-155628-meeting-recording-1.mp4",
+   "to": "session-7-19-03-2024/ضبط-کلاس-1.mp4"
+  },
+  {
+   "from": "session-7-19-03-2024/video-20240319-164531-meeting-recording-2.mp4",
+   "to": "session-7-19-03-2024/ضبط-کلاس-2.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/chaharmezran-va-forud.mp4",
+   "to": "session-8-16-04-2024/تمرین-من-چهارمضراب-و-فرود.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/delkash.mp4",
+   "to": "session-8-16-04-2024/تمرین-من-دلکش.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/video-2024-04-17-06-51-25.mp4",
+   "to": "session-8-16-04-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/video-2024-04-17-06-52-53.mp4",
+   "to": "session-8-16-04-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/video-20240416-161648-meeting-recording.mp4",
+   "to": "session-8-16-04-2024/ضبط-کلاس.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/xavaran.mp4",
+   "to": "session-8-16-04-2024/تمرین-من-خاوران.mp4"
+  },
+  {
+   "from": "session-8-16-04-2024/xosravani.mp4",
+   "to": "session-8-16-04-2024/تمرین-من-خسروانی-بیات-ترک.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/chaharmezrabe-mahur-saba-1.mp4",
+   "to": "session-9-14-05-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/nasirxani.mp4",
+   "to": "session-9-14-05-2024/تمرین-من-نصیرخانی.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/neyshaburak.mp4",
+   "to": "session-9-14-05-2024/تمرین-من-نیشابورک.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/tarabangiz.mp4",
+   "to": "session-9-14-05-2024/تمرین-من-طرب-انگیز.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/video-2024-05-14-21-01-12.mp4",
+   "to": "session-9-14-05-2024/نمونه-1.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/video-2024-05-14-21-03-36.mp4",
+   "to": "session-9-14-05-2024/نمونه-2.mp4"
+  },
+  {
+   "from": "session-9-14-05-2024/video-20240514-155820-meeting-recording.mp4",
+   "to": "session-9-14-05-2024/ضبط-کلاس.mp4"
+  }
+ ],
+ "diagnostics": [
+  {
+   "path": "session-16-26-11-2024/video-2024-10-29-15-32-35.mp4",
+   "reason": "Filename carries no known role — left for the owner to name or move."
+  }
+ ],
+ "contentHash": "d6b4fcd1731bf28ca345329a032478161d0f21a0b050a927f8591a834ebdfb9e"
+}

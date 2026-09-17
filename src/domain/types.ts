@@ -7,6 +7,8 @@
 // local-first store and for export/import.
 // ---------------------------------------------------------------------------
 
+import type { ArchiveSource, ItemSourceRef, LessonSourceRef } from './sourceArchive';
+
 export type ID = string;
 export type ISODate = string; // "2026-06-18"
 export type ISODateTime = string; // "2026-06-18T09:30:00.000Z"
@@ -50,6 +52,18 @@ export interface Lesson {
    * the app only remembers where it is.
    */
   recordings?: LessonRecording[];
+  /**
+   * Binding to one session of an archive source (schema v14). Present only on
+   * a lesson the owner explicitly adopted or the import created.
+   */
+  source?: LessonSourceRef;
+  /**
+   * HISTORY MARKER. A lesson imported from the archive is a record of a class
+   * that already happened, and stays historical even when its date is in the
+   * future relative to this device's clock — it must never become the
+   * "upcoming class" that carries a deadline.
+   */
+  origin?: 'archive';
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -240,6 +254,18 @@ export interface PracticeItem {
   totalMinutes: number;
   lastResult?: BlockResult;
   saturationWarning?: boolean;
+  /**
+   * Binding to one canonical piece of an archive source (schema v14). The
+   * archive owns the piece's registry facts; everything else on this item is
+   * the owner's.
+   */
+  source?: ItemSourceRef;
+  /**
+   * Direct NAS references the owner attached to this item (schema v14) — so
+   * useful material needs no artificial lesson to hang from. The same shape and
+   * the same resolver as a lesson's references; never attachment bytes.
+   */
+  references?: LessonRecording[];
   // Instrument-specific metadata, nested to keep the core item readable.
   persian?: PersianFields;
   guitar?: GuitarFields;
@@ -560,7 +586,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -576,6 +602,13 @@ export interface PracticeDB {
   lessons: Lesson[];
   /** Lesson commitments and teacher questions (schema v12). */
   lessonAgenda: LessonAgendaEntry[];
+  /**
+   * Accepted archive source graphs (schema v14) — the ONE canonical home for
+   * registry facts, session facts, roles, memberships, resource availability,
+   * caveats and the owner's own suppression decisions. Items and lessons carry
+   * only a key into this, so a resource is never copied per item.
+   */
+  archiveSources: ArchiveSource[];
   /** Optional scheduling knobs; undefined ⇒ DEFAULT_SCHEDULING_PARAMS. */
   settings?: SchedulingParams;
 }

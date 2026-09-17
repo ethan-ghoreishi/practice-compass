@@ -311,6 +311,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     attachments: [],
     lessons,
     lessonAgenda,
+    archiveSources: [],
   };
 }
 
@@ -328,5 +329,6 @@ export function emptyDB(): PracticeDB {
     attachments: [],
     lessons: [],
     lessonAgenda: [],
+    archiveSources: [],
   };
 }

@@ -265,6 +265,27 @@ function migrateToV12(db: PracticeDB): PracticeDB {
   return { ...db, items, lessonAgenda: [...(existing as LessonAgendaEntry[]), ...added] };
 }
 
+/**
+ * v13 -> v14: ADDITIVE. The archive source graph starts EMPTY — there is no
+ * legacy data to convert, because nothing before v14 described a source at all
+ * — and every legacy field is left byte-for-byte alone apart from the schema
+ * number itself.
+ *
+ * Unconditional and idempotent for the same reason `migrateToV12` and
+ * `retirePracticeText` are: a database DECLARING the current schema can still
+ * arrive without the collection (a partial conversion, a hand-edited file), and
+ * gating on `fromVersion < 14` would hydrate that as an app with no source
+ * state and no way to say so. Keyed on the PRESENCE of the key, so a database
+ * that legitimately holds zero sources is never rewritten.
+ *
+ * It reads no clock, so two devices migrate the same database identically on
+ * different days.
+ */
+function migrateToV14(db: PracticeDB): PracticeDB {
+  if (Array.isArray(db.archiveSources)) return db;
+  return { ...db, archiveSources: [] };
+}
+
 /** The agenda as it may arrive: possibly absent, possibly partially migrated. */
 type LegacyAgenda = { id?: string; kind?: string; itemId?: string } | undefined;
 
@@ -294,5 +315,8 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   // canonical homes (`retirePracticeText`'s own docstring says which, and why
   // this too is unconditional rather than gated on `fromVersion < 13`).
   next = retirePracticeText(next);
+  // v13 -> v14: the archive source graph, empty. Unconditional for the reason
+  // migrateToV14's own docstring gives.
+  next = migrateToV14(next);
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

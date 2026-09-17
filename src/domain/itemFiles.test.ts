@@ -49,6 +49,7 @@ function db(partial: Partial<PracticeDB>): PracticeDB {
     // item's material) is untouched by it; the field is listed because
     // PracticeDB now requires it.
     lessonAgenda: [],
+    archiveSources: [],
     ...partial,
   };
 }
