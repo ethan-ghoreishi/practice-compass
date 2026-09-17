@@ -58,6 +58,8 @@ interface Scanner {
   parseSessionFolderName(name: string): { n: number; date: string } | null;
   scanArchive(root: string): Entry[];
   scanToIndex(root: string): Index;
+  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
+  canonicalJson(value: unknown): string;
   writeIndexAtomically(outPath: string, text: string, root?: string): string;
   isSafeRelativePath(p: string): boolean;
   displayTitle(stem: string): string;
@@ -73,6 +75,8 @@ const {
   parseSessionFolderName,
   scanArchive,
   scanToIndex,
+  readSource,
+  canonicalJson,
   writeIndexAtomically,
   isSafeRelativePath,
   displayTitle,
@@ -518,6 +522,53 @@ describe('scanning the archive', () => {
       const target = join(out, 'index.json');
       writeIndexAtomically(target, 'last good\n', root);
       expect(() => writeIndexAtomically(join(root, 'index.json'), 'x', root)).toThrow(/inside the archive/);
+      // --- ONE CONSISTENT VIEW, OF EVERY INPUT, NOT JUST THE REGISTRY -------
+      // The registry used to be the only input re-read after the walk, so the
+      // one thing a non-atomic NAS copy actually perturbs — THE MEDIA — was
+      // never checked: move a resource out before its folder is enumerated and
+      // put it back while later folders are walked, and the scan publishes an
+      // index that omits it while PIECES.csv never changes. The next Refresh
+      // then marks still-present material unavailable.
+      const renameLog = 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\n';
+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+      const settled = readSource(root);
+      // Every input this scanner reads is in the reading that gets compared.
+      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+
+      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
+      const moved = INVENTORY[0]!.path;
+      const bytes = readFileSync(join(root, moved));
+      rmSync(join(root, moved));
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+      // A file still being COPIED is a size change, and is caught the same way.
+      writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, moved), bytes);
+      writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+      writeFileSync(join(root, 'PIECES.csv'), `${REGISTRY}\n`);
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+
+      // And the scan itself reads the WHOLE source twice and refuses on any
+      // difference. Nothing can mutate a filesystem between two synchronous
+      // reads from inside this process, so the WIRING is held structurally —
+      // the same way `commitArchiveImport`'s "no whole-DB import" is.
+      const scannerSrc = readFileSync('scripts/scan-setar-classes.mjs', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const scanBody = scannerSrc.slice(
+        scannerSrc.indexOf('export function scanToIndex'),
+        scannerSrc.indexOf('function main('),
+      );
+      expect(scanBody.match(/readSource\(base\)/g) ?? []).toHaveLength(2);
+      expect(scanBody).toMatch(/canonicalJson\(before\) !== canonicalJson\(after\)/);
+      expect(scanBody).toMatch(/changed during the scan/);
+      rmSync(join(root, 'RENAME-LOG.csv'));
+
       // A scan that cannot produce a complete consistent view throws BEFORE
       // anything is written, so the last good output still stands.
       rmSync(join(root, 'PIECES.csv'));

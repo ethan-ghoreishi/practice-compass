@@ -385,6 +385,71 @@ describe('publishing and reading the source index', () => {
     expect(brokenStructure.ok).toBe(false);
     if (brokenStructure.ok) throw new Error('expected refusal');
     expect(brokenStructure.error).toMatch(/no sessions/);
+
+    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
+    // A digest proves the file is the one the scanner wrote; it says nothing
+    // about the file being well formed. The decoder normalises BEFORE the
+    // graph's grammar runs, so `resources: null` decoded to a session with no
+    // resources — a perfectly valid empty list by the time the grammar saw it
+    // — and six files became zero with a VALID digest on the front. Every
+    // absent-tolerant read in the decoder had the same shape.
+    const withDigest = (body: Record<string, unknown>) =>
+      JSON.stringify({ ...body, contentHash: indexDigest(body) });
+    const sessionZero = original.sessions[0]!;
+    const erasures: [string, Record<string, unknown>][] = [
+      ['must be a list', { ...sessionZero, resources: null }],
+      ['must be a list', { ...sessionZero, members: null }],
+      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
+      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
+    ];
+    for (const [message, session0] of erasures) {
+      const bad = await readIndexFile(
+        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
+      );
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    const withResource = (over: Record<string, unknown>) => ({
+      ...original,
+      sessions: [
+        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
+        ...original.sessions.slice(1),
+      ],
+    });
+    for (const [message, over] of [
+      ['must be a number', { part: '2' }],
+      ['must be a number', { size: '10mb' }],
+      ['must be text', { group: 42 }],
+    ] as [string, Record<string, unknown>][]) {
+      const bad = await readIndexFile(withDigest(withResource(over)));
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    for (const [message, over] of [
+      ['must be a list', { sessions: null }],
+      ['must be true or false', { provisional: 'yes' }],
+    ] as [string, Record<string, unknown>][]) {
+      const bad = await readIndexFile(
+        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
+      );
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    for (const over of [{ renames: null }, { diagnostics: null }]) {
+      const bad = await readIndexFile(withDigest({ ...original, ...over }));
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain('must be a list');
+    }
+    // ABSENT still reads as absent: the tolerance that was correct stays.
+    const withoutOptional = { ...(original as Record<string, unknown>) };
+    delete withoutOptional.renames;
+    delete withoutOptional.diagnostics;
+    const lean = await readIndexFile(withDigest(withoutOptional));
+    expect(lean.ok).toBe(true);
   });
 });
 
@@ -593,7 +658,7 @@ describe('committing an archive import', () => {
     const answered2 = useStore.getState().previewArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
       now: NOW,
     });
     expect(answered2.plan.summary.unchanged).toBe(false);
@@ -605,7 +670,7 @@ describe('committing an archive import', () => {
     const appliedField = await useStore.getState().commitArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
       decidedFromRev: useStore.getState().rev,
       now: NOW,
     });
@@ -617,6 +682,44 @@ describe('committing an archive import', () => {
       boundWithComposer.title,
     );
     expect(useStore.getState().db.blocks).toHaveLength(1);
+
+    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
+    // The counterexample, through the REAL store: preview an empty composer,
+    // choose the archive's value, then write your own before pressing Apply.
+    // No new QUESTION appears, so the rebase guard alone let this through and
+    // the registry value replaced the words just typed.
+    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
+    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
+    const secondKey = second.source!.pieceKey;
+    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
+    useStore.getState().updateItem(second.id, {
+      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
+    });
+    const refusedStale = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: choice,
+      decidedFromRev: seen.rev,
+      now: NOW,
+    });
+    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
+    expect(refusedStale.staleDecisions).toEqual(choice);
+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
+      'Owner wrote this during refresh',
+    );
+    // Re-answered against what is actually there now, it applies.
+    const reAnswered = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
+      second.persian!.composer,
+    );
 
     // --- refresh NEVER runs a whole-database import or reset ---------------
     // `importDB`, `resetDemo` and `clearAll` each null the active session and

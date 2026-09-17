@@ -987,6 +987,24 @@ describe('the v14 source graph at the schema boundary', () => {
       (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
     }, /suppression with no timestamp/);
 
+    // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
+    // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
+    // when the index last changed. It was the one persisted field with no
+    // check at all: a v14 import carrying `acceptedAt: null` was accepted and
+    // then threw while the screen rendered. The fix is this door, never a
+    // guard in the component.
+    for (const bad of [null, 42, '', 'yesterday', '2026-02-30T12:00:00.000Z', '2026-09-17']) {
+      refuses((d) => {
+        (d.archiveSources[0] as unknown as { acceptedAt: unknown }).acceptedAt = bad;
+      }, /unreadable accepted time/);
+    }
+    refuses((d) => {
+      delete (d.archiveSources[0] as unknown as { renames?: unknown }).renames;
+    }, /no rename log/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { diagnostics?: unknown }).diagnostics = null;
+    }, /no diagnostic list/);
+
     // The POSITIVE half: a graph this door ACCEPTS is one every production
     // reader can walk without throwing. The counterexample above reached
     // `repeatChains` and crashed the material list; this asserts the whole

@@ -53,7 +53,14 @@ byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
 
 What it refuses outright (and produces no index for): a malformed or ambiguous
 registry, a duplicate canonical key, two folders claiming one session number, an
-unsafe path, more than 5000 files, a registry that changed during the scan.
+unsafe path, more than 5000 files, **any input that changed during the scan** —
+the registry, the rename log or the media inventory, all three read twice and
+compared, sizes included, so a file still being copied is caught too. That is a
+CONSISTENCY check, not atomicity: a perturbation that is stable across both
+readings agrees with itself, and from here is indistinguishable from the archive
+genuinely being in that state. What it removes is the transient — which is what a
+copy in flight looks like, and what would otherwise publish an index missing a
+file that is still there.
 What it reports and skips: a file with no known role, an unknown piece, an
 unsupported extension, a class recording claiming a piece, an unnamed demo in a
 session whose roster and filenames disagree.
@@ -208,7 +215,15 @@ applies the lot in one store mutation.
   date, no SM‑2 state. An imported class is history even when its date is in the
   future relative to this device's clock.
 - Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
-  same mutation, so a refresh, a reload and a sync all respect it.
+  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
+  its file through the rename log, so a renamed resource does not reappear.
+- **A decision is about the state you saw.** If the value you chose the archive's
+  over has changed since — or a record you chose to link has been deleted, bound
+  elsewhere or moved instrument — the commit refuses and re-previews rather than
+  applying an answer to a question that no longer stands.
+- **Your media base is an address and a folder.** A base carrying a username,
+  password, `?query` or `#fragment` is refused, not silently cleaned up: every
+  file URL is built by appending a path to it.
 
 The owner's own `تمرین-من` recordings are evidence, not material: their
 membership and role survive in the graph, the files themselves never become a

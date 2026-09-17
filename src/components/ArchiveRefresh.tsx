@@ -7,6 +7,7 @@ import {
   archiveFor,
   describeArchiveAccess,
   archiveRootUrl,
+  decisionMatchesSuggestion,
   type ImportPlan,
   type MetadataField,
   type ReconcileDecision,
@@ -103,8 +104,15 @@ export default function ArchiveRefresh() {
     if (!result.ok) {
       if (result.status === 'stale') {
         // Something changed underneath; look again rather than apply a plan
-        // that was decided against a database that has moved on.
-        showPlan(fetched, decisions);
+        // that was decided against a database that has moved on. A decision
+        // whose premise moved is DROPPED here — keeping it would re-submit the
+        // same invalid answer for ever — and the fresh preview shows the
+        // question, or the suggestion's real current value, as it is now.
+        const kept = result.staleDecisions?.length
+          ? decisions.filter((d) => !result.staleDecisions!.includes(d))
+          : decisions;
+        setDecisions(kept);
+        showPlan(fetched, kept);
         setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
         return;
       }
@@ -249,9 +257,10 @@ export default function ArchiveRefresh() {
                   offered field by field and applied only when asked — never
                   written behind them, and never near their notebook. */}
               {phase.plan.suggestions.map((sg) => {
-                const applied = decisions.some(
-                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
-                );
+                // The PREMISE is part of the match: a choice made against a
+                // value the owner has since edited is no longer this
+                // suggestion's answer, so the button reads unpressed again.
+                const applied = decisions.some((d) => decisionMatchesSuggestion(d, sg));
                 return (
                   <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
                     <div dir="auto" style={{ textAlign: 'start' }}>
@@ -268,7 +277,7 @@ export default function ArchiveRefresh() {
                         type="button"
                         className="btn btn-sm"
                         aria-pressed={applied}
-                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
+                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
                       >
                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
                       </button>

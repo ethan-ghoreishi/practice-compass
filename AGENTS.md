@@ -1645,6 +1645,19 @@ private data repo (`source-index` / `setar/index.json`); the app GETs it with th
 connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
 runbook, the corpus baseline and the recorded source hashes.
 
+**AND ONE SCAN IS ONE CONSISTENT VIEW OF EVERY INPUT, OR NONE.** The registry was the only
+input re-read after the walk, which made the guarantee exactly as narrow as the file it
+named — and the MEDIA is what a non-atomic NAS copy actually perturbs. Move a resource out
+before its folder is enumerated and put it back while later folders are walked: PIECES.csv
+never changes, the scan publishes an index that omits the file, and the next Refresh marks
+still-present material `unavailable`. The rename log had the identical exposure, read once
+and compared against nothing. `readSource` is now every input in ONE place, the whole of it
+is read TWICE and the two readings compared (sizes included, so a file still being copied is
+caught too), and any difference refuses before anything is written. It is a CONSISTENCY
+check, not atomicity: a perturbation stable across both readings agrees with itself and is
+indistinguishable from the archive genuinely being in that state. What it removes is the
+transient, which is what a copy in flight looks like.
+
 **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
 trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
 token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
@@ -1664,6 +1677,17 @@ file fallback both pass through, so neither door can be given the check separate
 it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
 decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
 broken file reports the error the owner can act on rather than a hash mismatch.
+
+**AND A VALID DIGEST SAYS THE FILE IS THE ONE THE SCANNER WROTE — NEVER THAT IT IS WELL
+FORMED.** The decoder NORMALISES before the graph's grammar runs, so the grammar only ever
+sees the decoder's own output: `resources: null` decoded to a session with no resources —
+a perfectly valid EMPTY LIST by the time the grammar saw it — and six files became zero
+behind a correct hash. Every absent-tolerant read had that shape, the scalars included
+(`part: "3"` became `null`, a wrong-typed `size` vanished, `rosterTrusted: 'yes'` became a
+boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`) are the
+one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
+the same treatment `validatePracticeText` gives the owner's own words, and never a
+coercion.
 
 **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
 SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
@@ -1713,7 +1737,8 @@ history into thirty-nine deadlines.
 **THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
 `commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
 saved or a block finished while the index was being fetched is never lost — refuses with
-`stale` when the rebase raises a NEW question, runs the whole proposed database through
+`stale` when the rebase raises a NEW question OR when a DECISION'S OWN PREMISE HAS MOVED,
+runs the whole proposed database through
 `validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
 write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
 matches, because "Already current" over data that was never saved is the lie this guards.
@@ -1747,6 +1772,23 @@ and the value an applied field writes — never the in-flight selection itself: 
 suggestion is component state, and it is re-derived from the graph on the next refresh
 precisely because nothing about it was stored.
 
+**AND A DECISION IS ABOUT THE STATE THE OWNER SAW, NOT MERELY ABOUT ITS TARGET.** A new
+QUESTION is not the only way a rebase invalidates an answer, and refusing only on that let
+the opposite case through silently: choose the archive's composer over an EMPTY field, then
+type one of your own before pressing Apply, and the rebase found nothing to ask about and
+wrote the registry value over the words just written. An `apply-field` decision therefore
+carries `from` — the value of the owner's it was chosen against — and
+`decisionMatchesSuggestion` is the ONE test both the plan's summary and
+`applyArchiveImport`'s write use, so a preview and a commit cannot mean different things by
+"this still applies". A LINK decision has a premise too: `link-item`/`link-lesson` may only
+adopt a record that is still UNBOUND and still this instrument's — the same conditions the
+candidate list was built from — because a target bound elsewhere, moved or deleted since
+would otherwise be silently rebound, or fall through and CREATE a record instead of linking
+one, which is not the action the owner chose. Both kinds land in `plan.staleDecisions`, one
+channel rather than two, and the commit refuses on either whether or not `rev` moved. The
+screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
+question, or the suggestion's real current value, is shown as it is now.
+
 **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
 decide what file a stored reference names, and they used to decide it differently:
 `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
@@ -1754,6 +1796,25 @@ decide what file a stored reference names, and they used to decide it differentl
 class whose references were saved as full links carried perfectly good evidence that
 nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
 is that one reading, and both go through it.
+
+**AND THAT WAS ONLY HALF OF IT: THE RENAME CHAIN HAD THREE READINGS.** Repair followed the
+whole logged chain, adoption took a SINGLE HOP, and a suppression took none at all — so one
+log gave three different answers about one file. With A→B→C logged, B in session 1 and C in
+session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B and then had
+that very reference repaired into session 2: bound to one class, pointing at another's
+files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
+that loops says nothing about where the file is), and three things use it: evidence, repair,
+and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+a hidden file simply reappeared under the new one while the old row sat there flagged
+unavailable. Re-keying it is not editing an owner decision — it is the same decision about
+the same bytes said in the archive's current words, the `itemId` scope carried untouched and
+`suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
+from the retained graph instead of flagged `unavailable`: the log says exactly where the
+bytes went, so that file moved, it did not disappear. Safe to drop, where a piece or a
+session would not be: only those carry item/lesson bindings, so no binding can dangle on a
+resource row, and a manual unclassified lesson's own reference reaches material through the
+LESSON, never through this graph. A file that really is gone still keeps its provenance,
+flagged, exactly as before.
 
 **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
 `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
@@ -1785,7 +1846,10 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
 record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
 its provenance is kept — not a dangling reference.
 
-**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
+**THE NESTED GRAPH HAS ONE GRAMMAR — AND THE DECODER RUNS IT OVER ITS OWN OUTPUT, WHICH IS
+NOT THE SAME CLAIM AS RUNNING IT OVER WHAT ARRIVED.** (A later sealed review found exactly
+that gap; the `list`/`num`/`bool` rule above is what closes it, and the grammar below is
+what the decoder's OUTPUT and every persisted graph are both held to.) `decodeSourceIndex` and
 `validateArchiveSources` used to state the shape separately, and the second stated LESS of
 it: it checked a resource's path and its part group and walked straight past
 `members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
@@ -1801,6 +1865,32 @@ GRAMMAR, never a defensive guard in a component: a reader written against a vali
 is the point of validating it. `unavailable` stays legal on a piece, a session and a
 resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
 silently widens a hide scoped to ONE item.
+
+**AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
+the one persisted field with no check at all, while Settings renders it
+(`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
+`acceptedAt: null` was accepted, persisted, and then threw while the screen drew. It is
+held to a REAL calendar instant (`isValidSourceDateTime`, a local sibling of
+`isValidSourceDate` rather than a shared import, for the reason `askedAt` and `dueDate`
+already keep their checks one per file): a shape regex matches
+`"2026-02-30T12:00:00.000Z"` and `Date.parse` silently normalises it into March. `renames`
+and `diagnostics` are required AT REST where the grammar tolerates them absent, because the
+decoder always emits both and the planner reads them unguarded. A suppression's `at` is
+provenance only — nothing reads it back as a date — so it is held to being real text and no
+further. The fix is this DOOR, never a guard in `ArchiveRefresh.tsx`.
+
+**A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE.** Everything appends a path AFTER the
+base, so a credential, a query or a fragment in it is not untidiness:
+`https://user:pass@nas.example/media?token=secret` made "Open archive root"
+`…?token=secret/` and a file `…?token=secret/session-1/x.mp4` — a password on screen in
+every device URL, addressing no file at all. `normalizeBaseUrl` REFUSES all four
+(`username`, `password`, `search`, `hash`) rather than stripping them, because a rewritten
+base names a different server and only the owner can say what they meant; the media
+sentence says WHY. That is the whole family in one place: `resolveRecording`,
+`relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the reconciler's
+`verifiedBase` (through `archiveRootUrl`) all pass through it. A stored ABSOLUTE url is
+still opened as the owner saved it — their own authored link, not this device's configured
+base, and nothing here mints one.
 
 **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
 ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base

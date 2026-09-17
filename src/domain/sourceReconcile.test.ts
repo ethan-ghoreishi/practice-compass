@@ -14,6 +14,7 @@ import {
   repairLessonReferences,
   toArchiveRelative,
   withSuppression,
+  followRenames,
 } from './sourceReconcile';
 import { archiveRootUrl } from './recordings';
 import { emptyDB } from './seed';
@@ -340,7 +341,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(suggestion.from).toBe('');
     expect(suggestion.to).toBe('میرزا-حسینقلی');
     const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer' },
+      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
     ]);
     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
@@ -357,7 +358,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     // The suggestion stands until it is answered, and it may be answered days
     // later against the very same published index. Judging "already current"
     // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
+    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
     const lateDecision = planArchiveImport({
       db: refreshed,
       index: next,
@@ -379,10 +380,82 @@ describe('reconciling the archive with the owner’s own records', () => {
     // Applied, the suggestion is gone: the next refresh has nothing to offer.
     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
     // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
+    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
     expect(noop.summary.unchanged).toBe(true);
     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
+
+    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
+    // Choose the archive's composer over an EMPTY field, then write one of
+    // your own before the plan is applied. The choice was an answer about the
+    // empty field; it is not an instruction to replace the new words.
+    const ownWrote = {
+      ...refreshed,
+      items: refreshed.items.map((i) =>
+        i.source?.pieceKey === 'عراق'
+          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
+          : i,
+      ),
+    };
+    const rebased = planArchiveImport({
+      db: ownWrote,
+      index: next,
+      instrumentId: SETAR,
+      decisions: lateField,
+      now: NOW,
+    });
+    expect(rebased.staleDecisions).toEqual(lateField);
+    // Not applied, and not counted as a change either: both sides of the
+    // preview/commit boundary agree that this decision no longer stands.
+    expect(rebased.summary.unchanged).toBe(true);
+    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
+    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
+      'Owner wrote this during refresh',
+    );
+    // The suggestion is re-offered against what is there NOW, so the owner can
+    // answer the question that actually stands.
+    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
+      'Owner wrote this during refresh',
+    );
+    // A decision carrying the CURRENT value still applies, on the same data.
+    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
+    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
+    expect(fresh.staleDecisions).toEqual([]);
+    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
+      ?.composer).toBe('میرزا-حسینقلی');
+
+    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
+    // Bound elsewhere, moved instrument or deleted: never silently turned into
+    // "create a new record instead".
+    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
+    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
+    const unbound: PracticeDB = {
+      ...owned,
+      items: owned.items.map((i) => {
+        const { source, ...rest } = i;
+        void source;
+        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
+      }),
+    };
+    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
+    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
+    expect(linkable.staleDecisions).toEqual([]);
+    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
+    const takenElsewhere: PracticeDB = {
+      ...unbound,
+      items: unbound.items.map((i) =>
+        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
+      ),
+    };
+    const stalelink = planArchiveImport({
+      db: takenElsewhere,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(stalelink.staleDecisions).toEqual(linkDecision);
+    expect(stalelink.adoptedItems).toEqual([]);
 
     // --- a missing FILE keeps its provenance, flagged ----------------------
     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
@@ -767,6 +840,90 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
     const afterBroken = applyArchiveImport(installedLegacy, broken);
     expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+
+    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
+    // Adoption took a single hop while repair followed the whole chain, so one
+    // rename log gave two different answers about the same file. With
+    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
+    // class was adopted AS SESSION 1 on the strength of B, and then had that
+    // very reference repaired into session 2's folder: bound to one class,
+    // pointing at another's files.
+    const hopA = 'session-1-26-09-2023/first-name.mp4';
+    const hopB = 'session-1-26-09-2023/second-name.mp4';
+    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
+    expect(known.has(hopC)).toBe(true);
+    const chained: SourceIndex = {
+      ...INDEX,
+      contentHash: '7'.repeat(64),
+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
+    };
+    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
+    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
+    const legacyClass = lesson({
+      id: 'L-chain',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
+    });
+    const chainDb = baseDB({ lessons: [legacyClass] });
+    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
+    // Its ONLY reference now points into session 5, so it is NOT evidence of
+    // session 1 — and the class is not adopted on it.
+    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
+    // A CYCLE is no reading at all, so it is no evidence either.
+    const cyclicIndex: SourceIndex = {
+      ...INDEX,
+      contentHash: '6'.repeat(64),
+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
+    };
+    expect(
+      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
+        (l) => l.id === 'L-chain',
+      ),
+    ).toBe(false);
+
+    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
+    // A resource suppression is keyed BY PATH. Left on the old name, the file
+    // came back into view under its new one while the old row sat there
+    // flagged unavailable — the owner's decision silently undone by a rename.
+    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+    const hidden: PracticeDB = {
+      ...installedLegacy,
+      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
+        kind: 'resource',
+        ref: hiddenPath,
+        itemId: 'item-x',
+        at: NOW.toISOString(),
+      }),
+    };
+    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
+    const renamedSource = afterRename.archiveSources[0]!;
+    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
+    expect(hide.ref).toBe(movedTo);
+    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
+    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
+    // And the old row is GONE rather than retained-and-flagged: the log says
+    // exactly where the bytes went, so this file moved, it did not disappear.
+    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
+    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
+    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
+    // A file that really IS gone still keeps its provenance, flagged.
+    const removed: SourceIndex = {
+      ...INDEX,
+      contentHash: '5'.repeat(64),
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
+      ),
+    };
+    const afterRemoval = applyArchiveImport(
+      installedLegacy,
+      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
+    );
+    expect(
+      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
+        ?.unavailable,
+    ).toBe(true);
+    expect(validateArchiveSources(afterRename)).toBeNull();
   });
 });
 

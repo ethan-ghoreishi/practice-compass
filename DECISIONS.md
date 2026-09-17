@@ -2,6 +2,56 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
+
+A second sealed review rejected the reworked Setar-archive diff with five findings. Every
+one of them was a rule that genuinely existed and covered LESS than it read as covering, so
+each fix is the boundary all the callers share rather than the caller the counterexample
+named.
+
+- **One scan was one consistent view of the registry only.** PIECES.csv was re-read after
+  the walk; the rename log and the media inventory were read once and compared against
+  nothing — and the media is what a non-atomic NAS copy actually perturbs. A resource moved
+  out before its folder is enumerated and restored while later folders are walked produces a
+  valid index that omits it, and the next Refresh marks still-present material unavailable.
+  `readSource` is now every input in one place, read twice and compared. It is a CONSISTENCY
+  check and the comment says so: a perturbation stable across both readings is
+  indistinguishable, from here, from the archive genuinely being in that state.
+- **The decoder normalised before the grammar ran.** `checkSourceGraph` was made the one
+  grammar in the previous rework — but the decoder hands it the decoder's OWN output, so
+  `resources: null` became a valid empty list before the grammar ever saw it, and six files
+  became zero behind a correct digest. The scalars had the same shape (`part: "3"` → `null`,
+  a wrong-typed `size` dropped, `rosterTrusted: 'yes'` → a boolean). `list`/`num`/`bool`
+  replace every absent-tolerant read: absent is a default, present-and-wrong is a refusal
+  naming the record. Separately, `acceptedAt` was the one persisted field with no check at
+  all while Settings renders it — validated at the door, never guarded in the component.
+- **A decision was matched to its target, not to its premise.** The rebase refused only on a
+  NEW question, so choosing the archive's composer over an empty field and then typing your
+  own before Apply raised nothing to ask about and overwrote the new words. An `apply-field`
+  decision carries `from` now, `decisionMatchesSuggestion` is the one test the summary and
+  the write share, and a link may only adopt a record that is still unbound and still this
+  instrument's. Both land in `plan.staleDecisions` — ONE channel — and the commit refuses on
+  either, whether or not `rev` moved. Silently creating a record instead of linking one was
+  rejected as an answer: it is not the action the owner chose.
+- **The rename chain had three readings.** Repair followed the whole chain, adoption took one
+  hop, a suppression took none. A→B→C with B in session 1 and C in session 2 adopted a class
+  as session 1 and then repaired its reference into session 2. `followRenames` is the one
+  reading; a resource suppression is re-keyed through it (the same decision about the same
+  bytes, in the archive's current words), and a renamed row is dropped from the retained
+  graph rather than flagged `unavailable` — the log says where the bytes went. Dropping is
+  safe for a RESOURCE specifically: only pieces and sessions carry bindings.
+- **A media base was validated as a URL, not as a base.** Everything appends a path after it,
+  so `https://user:pass@nas/media?token=secret` put a password in every device URL and
+  addressed no file. `normalizeBaseUrl` refuses credentials, query and fragment — refuses,
+  not strips, because a rewritten base names a different server — and every caller,
+  `verifiedBase` included, already passes through it.
+
+Fifteen mutations were run and all fifteen fail their named acceptance test: each decoder
+site reverted INDIVIDUALLY (a single-site test would have passed a partial fix), the
+scanner's second reading, the `acceptedAt` and rename-log checks, the one-hop evidence, the
+un-migrated suppression ref, the re-flagged renamed row, `from` dropped from the predicate,
+the staleness detector disabled, the bound-target link guard, and the base-URL refusal.
+
 ## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
 
 A sealed review rejected the first Setar-archive diff with four findings. Each was reported

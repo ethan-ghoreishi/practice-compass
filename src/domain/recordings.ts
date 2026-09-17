@@ -26,6 +26,17 @@ export function formatFileSize(bytes: number | undefined): string | null {
  * - Validates with `new URL`; only http/https accepted.
  * - Strips a trailing slash.
  * Returns null when the value is blank or unparseable.
+ *
+ * A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE. A credential, a query or a
+ * fragment is REFUSED here rather than carried, because every caller appends a
+ * path AFTER whatever this returns: `https://user:pass@nas/media?token=secret`
+ * would make "Open archive root" `…?token=secret/` and a file
+ * `…?token=secret/session-1/x.mp4` — a password on screen in a device URL, and
+ * a URL that addresses no file. It is not STRIPPED into something openable
+ * either: a rewritten base names a different server, and the owner is the only
+ * one who can say what they meant. This is the ONE boundary — `resolveRecording`,
+ * `relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the
+ * reconciler's `verifiedBase` (through `archiveRootUrl`) all pass through it.
  */
 const ANY_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -43,6 +54,7 @@ export function normalizeBaseUrl(raw: string | undefined): string | null {
     return null;
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.username || url.password || url.search || url.hash) return null;
   return url.toString().replace(/\/+$/, '');
 }
 
@@ -81,6 +93,11 @@ function isSafeRelativeReference(p: string): boolean {
  * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
  * paths join under the normalised base with each segment URL-encoded (spaces,
  * Farsi filenames).
+ *
+ * A stored ABSOLUTE url is opened as the owner saved it, credentials included:
+ * that is their own authored link, not this device's configured base, and
+ * nothing here mints one (`isSafeRelativeReference` refuses `@`, and
+ * `relativizeReference` only ever writes a path beneath a base that has none).
  */
 export function resolveRecording(
   baseUrl: string | undefined,
@@ -232,7 +249,7 @@ export function describeArchiveAccess(input: {
     media: !input.baseUrl?.trim()
       ? 'No media base is set on this device, so files cannot be opened here.'
       : !base
-        ? 'This device’s media base is not a usable http(s) address.'
+        ? 'This device’s media base is not a usable http(s) address. A base is a plain http(s) address and folder — it may not carry a username, a password, a query or a #fragment.'
         : 'Files open directly from this device’s media base. The app cannot verify from here that the archive is reachable — open the archive root to check.',
   };
 }

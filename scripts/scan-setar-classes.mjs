@@ -521,9 +521,11 @@ export function writeIndexAtomically(outPath, text, root) {
   return out;
 }
 
-/** Read the archive and build its index. The scan itself reads nothing twice. */
-export function scanToIndex(root) {
-  const base = resolve(root);
+/**
+ * EVERY input this scanner reads, in one place — so "read it twice and compare"
+ * below covers all of them by construction, including one added later.
+ */
+export function readSource(base) {
   const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
   let renameLogText = '';
   try {
@@ -531,13 +533,36 @@ export function scanToIndex(root) {
   } catch {
     renameLogText = '';
   }
-  const inventory = scanArchive(base);
-  // Re-read the registry AFTER the walk: a registry edited mid-scan would
-  // otherwise pair old identities with new files, and the index is supposed to
-  // be one consistent view or none at all.
-  const registryAfter = readFileSync(join(base, 'PIECES.csv'), 'utf8');
-  if (registryAfter !== registryText) throw new Error('PIECES.csv changed during the scan; no index was produced.');
-  return buildIndex({ registryText, inventory, renameLogText });
+  return { registryText, renameLogText, inventory: scanArchive(base) };
+}
+
+/**
+ * Read the archive and build its index — from ONE consistent view, or none.
+ *
+ * The registry used to be the only input re-read after the walk, which made
+ * the guarantee exactly as narrow as the file it named: the MEDIA is what a
+ * non-atomic NAS copy actually perturbs. Move a resource out before its folder
+ * is enumerated and put it back while later folders are walked, and PIECES.csv
+ * never changes — the scan publishes an index missing that file, and the next
+ * Refresh marks still-present material unavailable. The rename log had the
+ * same exposure, read once and never checked.
+ *
+ * So the whole source is read TWICE and the two readings compared. `size` is
+ * part of the comparison, so a file still being copied is caught too.
+ *
+ * This is a CONSISTENCY check, not atomicity: a perturbation that is stable
+ * across both readings agrees with itself and is indistinguishable, from here,
+ * from the archive genuinely being in that state. What it removes is the
+ * transient, which is what a copy in flight actually looks like.
+ */
+export function scanToIndex(root) {
+  const base = resolve(root);
+  const before = readSource(base);
+  const after = readSource(base);
+  if (canonicalJson(before) !== canonicalJson(after)) {
+    throw new Error('The archive changed during the scan; no index was produced.');
+  }
+  return buildIndex(before);
 }
 
 function main() {

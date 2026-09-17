@@ -286,5 +286,39 @@ describe('archive transport', () => {
     expect(noIndex.index).toMatch(/No index has been fetched/);
     expect(describeArchiveAccess({ indexFetchedAt: 'x' }).media).toMatch(/No media base is set/);
     expect(describeArchiveAccess({ indexFetchedAt: 'x', baseUrl: 'ftp://nas' }).media).toMatch(/not a usable/);
+
+    // --- A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE -------------------
+    // Everything appends a path AFTER the base, so a credential, a query or a
+    // fragment in it is not merely untidy: the password ends up on screen in
+    // every device URL, and `…/media?token=secret` + `/session-1/x.mp4`
+    // addresses no file at all. Refused at the ONE boundary they all share —
+    // never stripped, because a rewritten base names a different server.
+    const leaky = 'https://user:pass@nas.example/media?token=secret';
+    for (const bad of [
+      leaky,
+      'https://user:pass@nas.example/media',
+      'https://nas.example/media?token=secret',
+      'https://nas.example/media#frag',
+      'user:pass@nas.example/media',
+    ]) {
+      expect(normalizeBaseUrl(bad)).toBeNull();
+      expect(archiveRootUrl(bad)).toBeNull();
+      expect(resolveRecording(bad, ref).status).toBe('bad-base');
+      expect(resolveRecordingUrl(bad, ref)).toBeNull();
+      // Nothing is relativised against a base that was never usable…
+      expect(relativizeReference(bad, `${leaky}/session-1/x.mp4`)).toBe(`${leaky}/session-1/x.mp4`);
+      // …and the owner is told WHY, not merely that it failed.
+      const said = describeArchiveAccess({ baseUrl: bad }).media;
+      expect(said).toMatch(/not a usable/);
+      expect(said).toMatch(/password/);
+    }
+    // No secret ever reaches a resolved URL through the base.
+    expect(JSON.stringify([archiveRootUrl(leaky), resolveRecording(leaky, ref)])).not.toContain('secret');
+    // The reconciler reads its `verifiedBase` from `archiveRootUrl`, so the
+    // same refusal covers path repair: with no verified base, a full URL is
+    // left exactly as the owner saved it.
+    expect(archiveRootUrl(leaky) ?? undefined).toBeUndefined();
+    // An ordinary base with a port, a path and a trailing slash still works.
+    expect(normalizeBaseUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes');
   });
 });

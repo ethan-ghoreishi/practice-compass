@@ -251,6 +251,38 @@ function strList(v: unknown, what: string): string[] {
   return v as string[];
 }
 
+/**
+ * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
+ *
+ * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
+ * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
+ * not a tolerance but a silent erasure: a session whose `resources` arrived as
+ * `null` decoded to a session with NO resources, passed the grammar (it is a
+ * valid empty list by then) and turned six files into zero. The same held for
+ * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
+ * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
+ *
+ * These three are that rule in one place, and they throw NAMING the record —
+ * the same treatment `validatePracticeText` gives the owner's own words.
+ */
+function list(v: unknown, what: string): unknown[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
+  return v;
+}
+
+function num(v: unknown, what: string): number | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+  return v;
+}
+
+function bool(v: unknown, what: string, fallback: boolean): boolean {
+  if (v === undefined) return fallback;
+  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
+  return v;
+}
+
 /** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
 export function isValidSourceDate(v: unknown): v is ISODate {
   if (typeof v !== 'string') return false;
@@ -259,6 +291,15 @@ export function isValidSourceDate(v: unknown): v is ISODate {
   const [, y, mo, d] = m;
   const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
   return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
+}
+
+/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
+export function isValidSourceDateTime(v: unknown): v is ISODateTime {
+  if (typeof v !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
+  if (!m) return false;
+  if (!isValidSourceDate(v.slice(0, 10))) return false;
+  return !Number.isNaN(Date.parse(v));
 }
 
 /**
@@ -300,7 +341,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
     if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
     keys.add(key);
-    const sessions = Array.isArray(raw.sessions) ? raw.sessions : [];
+    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
     if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
       throw new Error(`Registry entry "${key}" has an invalid session number.`);
     }
@@ -313,8 +354,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
       sessions: sessions as number[],
       notes: str(raw.notes ?? '', 'notes'),
-      ...(raw.provisional ? { provisional: true } : {}),
-      ...(raw.mediumConfidence ? { mediumConfidence: true } : {}),
+      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
+      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
     });
   }
 
@@ -335,7 +376,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
       if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
     }
     const resources: SourceResource[] = [];
-    for (const r of Array.isArray(raw.resources) ? raw.resources : []) {
+    for (const r of list(raw.resources, `Session ${n} resources`)) {
       if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
       const path = r.path;
       if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
@@ -354,14 +395,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
         role,
         kind: kind as SourceKind,
         title: str(r.title ?? '', 'A resource title'),
-        part: typeof r.part === 'number' ? r.part : null,
-        ...(typeof r.size === 'number' ? { size: r.size } : {}),
+        part: num(r.part, `Resource "${path}" part`),
+        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
         pieces: forPieces,
-        group: typeof r.group === 'string' ? r.group : null,
+        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
       });
     }
     const members: SourceMember[] = [];
-    for (const m of Array.isArray(raw.members) ? raw.members : []) {
+    for (const m of list(raw.members, `Session ${n} members`)) {
       if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
       const key = str(m.key, 'A membership key');
       if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
@@ -374,8 +415,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
       date: raw.date as ISODate,
       folder,
       roster,
-      rosterTrusted: raw.rosterTrusted !== false,
-      hasClassRecording: raw.hasClassRecording === true,
+      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
+      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
       resources,
       members,
     });
@@ -383,7 +424,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
 
   const renames: SourceRename[] = [];
   const froms = new Set<string>();
-  for (const r of Array.isArray(input.renames) ? input.renames : []) {
+  for (const r of list(input.renames, 'The rename log')) {
     if (!isRecord(r)) throw new Error('A rename entry is not an object.');
     if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
     if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
@@ -392,7 +433,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
   }
 
   const diagnostics: SourceDiagnostic[] = [];
-  for (const d of Array.isArray(input.diagnostics) ? input.diagnostics : []) {
+  for (const d of list(input.diagnostics, 'The diagnostic list')) {
     if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
     diagnostics.push({
       path: str(d.path ?? '', 'A diagnostic path'),
@@ -741,7 +782,21 @@ export function validateArchiveSources(db: PracticeDB): string | null {
       return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
     }
     if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
+    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
+    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
+    // last changed, so a non-string here crashes the screen that renders it —
+    // and the fix belongs at this door, never as a guard in the component.
+    // Checked for REAL validity for the same reason `askedAt` is: a shape
+    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
+    // normalises it into March. Deliberately a local check beside
+    // `isValidSourceDate` rather than an import — this file's own pattern.
+    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
     if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
+    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
+    // decoder always emits both, and `planArchiveImport` reads
+    // `index.renames`/`source.renames` unguarded.
+    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
+    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
     if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
 
     // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
@@ -759,6 +814,8 @@ export function validateArchiveSources(db: PracticeDB): string | null {
       if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
         return `Archive source "${s.id}" has a suppression with an unreadable item.`;
       }
+      // `at` is provenance only — nothing reads it back as a date — so it is
+      // held to being real text and no further.
       if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
     }
   }
