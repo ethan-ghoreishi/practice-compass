@@ -1,4 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
+import { lessonFiles, type ItemFileReference } from './itemFiles';
+import { decodeSourceIndex } from './sourceArchive';
+import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
+import { emptyDB } from './seed';
+import { createLesson } from './factories';
+import { resolveRecordingUrl } from './recordings';
 import { attachmentsOwnedBy, itemFiles, itemOwnedAttachments } from './itemFiles';
 import type { AttachmentMeta, Lesson, LessonRecording, PracticeDB } from './types';
 
@@ -203,5 +210,194 @@ describe('itemFiles', () => {
       'a-pdf': false,
       'a-audio': false,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-13 — one composition, correctly scoped, for the item screen and Active.
+// ---------------------------------------------------------------------------
+
+describe('archive material for a piece', () => {
+  const NOW = new Date('2026-09-17T09:00:00.000Z');
+  const SETAR = 'inst-setar';
+  const INDEX = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT) as unknown);
+
+  function imported(): PracticeDB {
+    const base: PracticeDB = {
+      ...emptyDB(),
+      instruments: [
+        {
+          id: SETAR,
+          name: 'Setar',
+          family: 'Persian',
+          active: true,
+          createdAt: '2023-01-01T00:00:00.000Z',
+          updatedAt: '2023-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    return applyArchiveImport(base, planArchiveImport({ db: base, index: INDEX, instrumentId: SETAR, now: NOW }));
+  }
+
+  const idFor = (db: PracticeDB, key: string) => db.items.find((i) => i.source?.pieceKey === key)!.id;
+
+  it('practice material shows only useful correctly scoped archive resources', () => {
+    const db = imported();
+
+    // --- a piece with a correction AND a clean score -------------------------
+    const mahur = itemFiles(db, idFor(db, 'پیش-درامد-ماهور-هرمزی')) as ItemFileReference[];
+    // The teacher's corrected copy leads, and nothing else the piece has is
+    // dropped to make room for it.
+    expect(mahur[0]!.archive!.role).toBe('تصحیح');
+    expect(mahur.filter((f) => f.path.includes('تصحیح-پیش-درامد-ماهور-هرمزی'))).toHaveLength(2);
+    expect(mahur.some((f) => f.archive!.role === 'نمونه')).toBe(true);
+
+    // No piece in the real corpus currently carries BOTH a correction and a
+    // clean score of its own, so the retention rule is exercised against a
+    // graph that does: the correction still leads, and the clean score is
+    // RETAINED below it rather than replaced by it.
+    const cleanScore = {
+      path: 'session-18-21-01-2025/نت-پیش-درامد-ماهور-هرمزی.pdf',
+      role: 'نت',
+      kind: 'score' as const,
+      title: 'نت پیش درامد ماهور هرمزی',
+      part: null,
+      pieces: ['پیش-درامد-ماهور-هرمزی'],
+      group: null,
+    };
+    const withClean: PracticeDB = {
+      ...db,
+      archiveSources: db.archiveSources.map((src) => ({
+        ...src,
+        sessions: src.sessions.map((sess) =>
+          sess.n === 18 ? { ...sess, resources: [...sess.resources, cleanScore] } : sess,
+        ),
+      })),
+    };
+    const bothKinds = itemFiles(withClean, idFor(db, 'پیش-درامد-ماهور-هرمزی')) as ItemFileReference[];
+    const roles = bothKinds.map((f) => f.archive!.role);
+    expect(roles[0]).toBe('تصحیح');
+    expect(roles).toContain('نت');
+    expect(roles.indexOf('تصحیح')).toBeLessThan(roles.indexOf('نت'));
+    expect(bothKinds.some((f) => f.path === cleanScore.path)).toBe(true);
+
+    // --- a class recording stays with the LESSON ----------------------------
+    expect(mahur.every((f) => f.archive?.role !== 'ضبط-کلاس')).toBe(true);
+    for (const item of db.items) {
+      for (const f of itemFiles(db, item.id)) {
+        if (f.source !== 'reference') continue;
+        expect(f.path).not.toContain('ضبط-کلاس');
+        // ...and the owner's own practice recordings are never material either.
+        expect(f.path).not.toContain('تمرین-من');
+      }
+    }
+    const lesson13 = db.lessons.find((l) => l.source?.sessionN === 13)!;
+    const lessonSide = lessonFiles(db, lesson13.id) as ItemFileReference[];
+    expect(lessonSide[0]!.path).toContain('ضبط-کلاس');
+    expect(lessonSide.every((f) => f.lessonId === lesson13.id)).toBe(true);
+
+    // --- an UNNAMED demonstration is one ordered logical group --------------
+    const araqGusheh = itemFiles(db, idFor(db, 'کرشمه-در-عراق')) as ItemFileReference[];
+    const demo = araqGusheh.filter((f) => f.archive?.role === 'نمونه' && f.archive.sessionN === 13);
+    expect(demo.map((f) => f.archive!.part)).toEqual([1, 2]);
+    expect(new Set(demo.map((f) => f.archive!.group)).size).toBe(1);
+    // It belongs to every canonical member of session 13 — all eight — and the
+    // eight are exactly the roster, not a guessed set.
+    const members = INDEX.sessions.find((s) => s.n === 13)!.roster;
+    expect(members).toHaveLength(8);
+    for (const key of members) {
+      const files = itemFiles(db, idFor(db, key)) as ItemFileReference[];
+      expect(files.some((f) => f.path === 'session-13-03-09-2024/نمونه-1.mp4')).toBe(true);
+    }
+
+    // --- a NAMED score or demo NEVER bleeds onto a sibling piece ------------
+    const zendan = itemFiles(db, idFor(db, 'به-زندان-شوشتری')) as ItemFileReference[];
+    expect(zendan.some((f) => f.path === 'session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4')).toBe(true);
+    const sibling = itemFiles(db, idFor(db, 'ضربی-شکسته-لطفی')) as ItemFileReference[];
+    expect(sibling.some((f) => f.path.includes('به-زندان'))).toBe(false);
+    // The session-13 notation names ONE piece and reaches only that one.
+    const named = 'session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf';
+    expect((itemFiles(db, idFor(db, 'ضربی-عراق-ماهور-میرزا-حسینقلی')) as ItemFileReference[]).some((f) => f.path === named)).toBe(true);
+    expect(araqGusheh.some((f) => f.path === named)).toBe(false);
+
+    // --- every session the piece appears in stays reachable -----------------
+    const chain = itemFiles(db, idFor(db, 'چهارمضراب-ماهور-صبا')) as ItemFileReference[];
+    const sessions = [...new Set(chain.map((f) => f.archive!.sessionN))].sort((a, b) => a - b);
+    // Its own registry row names sessions 9-12 and 16; the material from the
+    // EARLIER lessons of that run is still reachable, with its provenance.
+    expect(sessions).toContain(16);
+    expect(sessions.some((n) => n < 16)).toBe(true);
+    expect(chain.every((f) => f.archive!.date.length === 10)).toBe(true);
+
+    // --- a DIRECT item reference needs no lesson at all ----------------------
+    const target = idFor(db, 'عراق');
+    const direct: PracticeDB = {
+      ...db,
+      items: db.items.map((i) =>
+        i.id === target
+          ? {
+              ...i,
+              references: [
+                {
+                  id: 'own-1',
+                  title: 'My own copy of the score',
+                  path: 'session-12-06-08-2024/some-other-file.pdf',
+                  kind: 'pdf' as const,
+                  notes: 'Printed for the stand.',
+                  createdAt: '2026-09-01T00:00:00.000Z',
+                },
+              ],
+            }
+          : i,
+      ),
+    };
+    const withDirect = itemFiles(direct, target) as ItemFileReference[];
+    const mine = withDirect.find((f) => f.id === 'own-1')!;
+    expect(mine).toBeDefined();
+    expect(mine.lessonId).toBeUndefined();
+    expect(mine.archive).toBeUndefined();
+    expect(mine.notes).toBe('Printed for the stand.');
+    // It is a REFERENCE — the same resolver as every archive and legacy path,
+    // and never an attachment blob.
+    expect(mine.source).toBe('reference');
+    expect(resolveRecordingUrl('https://192.168.0.20:5010/setar-classes', mine)).toContain(
+      '/setar-classes/session-12-06-08-2024/',
+    );
+    expect(withDirect.every((f) => f.inline === false)).toBe(true);
+
+    // --- a MANUAL, unclassified lesson stays reachable, unscoped ------------
+    const manualLesson: Lesson = {
+      ...createLesson({ instrumentId: SETAR, date: '2026-02-02' }, NOW),
+      id: 'manual-lesson',
+      itemIds: [target],
+      recordings: [
+        {
+          id: 'manual-ref',
+          title: 'Something a teacher sent',
+          path: 'elsewhere/whatever.pdf',
+          kind: 'pdf',
+          createdAt: '2026-02-02T00:00:00.000Z',
+        },
+      ],
+    };
+    const withManual = itemFiles({ ...direct, lessons: [...direct.lessons, manualLesson] }, target) as ItemFileReference[];
+    const manual = withManual.find((f) => f.id === 'manual-ref')!;
+    expect(manual).toBeDefined();
+    expect(manual.lessonId).toBe('manual-lesson');
+    // Nothing invented a scope for it: it carries no archive provenance.
+    expect(manual.archive).toBeUndefined();
+
+    // --- an archive-bound lesson does not re-deliver its whole folder -------
+    // Linking the item to its own archive lesson must not drag the class
+    // recording back onto the piece through the lesson route.
+    const linked: PracticeDB = {
+      ...direct,
+      lessons: direct.lessons.map((l) =>
+        l.source?.sessionN === 12 ? { ...l, itemIds: [...(l.itemIds ?? []), target] } : l,
+      ),
+    };
+    const afterLink = itemFiles(linked, target) as ItemFileReference[];
+    expect(afterLink.some((f) => f.path.includes('ضبط-کلاس'))).toBe(false);
+    expect(afterLink.map((f) => f.path)).toEqual(withDirect.map((f) => f.path));
   });
 });
