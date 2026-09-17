@@ -428,9 +428,18 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
   }
 
   // --- rename provenance --------------------------------------------------
-  // EXACT old→new pairs only. This is path provenance, not a similarity model:
-  // an old path with two destinations is reported, never resolved by guessing.
-  const renames = [];
+  // EXACT old→new pairs only. This is path provenance, not a similarity model.
+  //
+  // ONE RULE, NOT TWO MECHANISMS: a path publishes a replacement name only
+  // when this log determines it UNIQUELY and TERMINALLY. A source named with
+  // two destinations does not say which file it became; a chain that walks
+  // into a loop — or into such a source — cannot say either. Every one of
+  // those publishes NOTHING and is diagnosed instead. The conflict case used
+  // to publish the FIRST destination and diagnose the second as "not
+  // applied", which is exactly backwards: the mapping the log cannot support
+  // was handed to the app as exact identity, and the app then repaired an
+  // authored reference onto it and re-keyed an owner's hide onto it.
+  let renames = [];
   // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
   // A present-but-empty log has no header and `readTable` says so, exactly as
   // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
@@ -438,6 +447,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
   if (renameLog && renameLog.present) {
     const rows = readTable(renameLog.text, ['old_path', 'new_path']);
     const dest = new Map();
+    const forks = new Map(); // from → every destination the log names for it
     for (const r of rows) {
       const from = r.old_path.trim();
       const to = r.new_path.trim();
@@ -447,41 +457,52 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
         continue;
       }
       const prior = dest.get(from);
-      if (prior && prior !== to) {
-        diag(from, `Rename log maps this path to both "${prior}" and "${to}" — not applied.`);
+      if (prior !== undefined && prior !== to) {
+        forks.set(from, (forks.get(from) ?? new Set([prior])).add(to));
         continue;
       }
-      if (prior === to) continue;
       dest.set(from, to);
-      renames.push({ from, to });
     }
-    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
-    // only that two names were swapped; picking a stopping point would invent
-    // an identity, and every path that LEADS INTO a loop is equally unusable.
-    // Those rows are dropped with a diagnostic rather than published: the app
-    // must never be handed a replacement identity this log cannot support.
-    const cyclic = new Set();
+    // A conflicted source stops being a mapping BEFORE anything walks the
+    // graph: left in `dest`, its first destination would still be published,
+    // and a chain ending there would publish a name on its strength too.
+    for (const from of forks.keys()) dest.delete(from);
+
+    // Each path is judged by ITS OWN walk, so the verdict does not depend on
+    // the order rows arrived in — `diagnostics` is inside `contentHash`, and
+    // ac-4's claim is that a shuffled source yields the same semantic index.
+    const unresolvable = new Map();
     for (const from of dest.keys()) {
-      const walked = new Set([from]);
+      const seen = new Set([from]);
       let cur = from;
+      let loops = false;
       while (dest.has(cur)) {
         const next = dest.get(cur);
-        if (walked.has(next)) {
-          for (const p of walked) cyclic.add(p);
-          cyclic.add(next);
+        if (seen.has(next)) {
+          loops = true;
           break;
         }
-        walked.add(next);
+        seen.add(next);
         cur = next;
       }
+      if (loops) {
+        unresolvable.set(from, 'Rename log loops through this path — no replacement name can be read from it.');
+      } else if (forks.has(cur)) {
+        unresolvable.set(
+          from,
+          `Rename log renames this path into "${cur}", which it names more than one destination for — no replacement name can be read from it.`,
+        );
+      }
     }
-    for (const from of cyclic) {
-      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
+    for (const [from, reason] of unresolvable) {
+      dest.delete(from);
+      diag(from, reason);
     }
-    const kept = renames.filter((r) => !cyclic.has(r.from));
-    renames.length = 0;
-    renames.push(...kept);
-    renames.sort((a, b) => cmp(a.from, b.from));
+    for (const [from, tos] of forks) {
+      const named = [...tos].sort(cmp).map((t) => `"${t}"`).join(' and ');
+      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`);
+    }
+    renames = [...dest].map(([from, to]) => ({ from, to })).sort((a, b) => cmp(a.from, b.from));
   }
 
   const body = {

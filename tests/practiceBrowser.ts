@@ -27,6 +27,63 @@ const installHint = (engine: Engine) =>
   '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
   'and an engine quietly missed is the same thing as an engine never checked.';
 
+/**
+ * ONE cancelled request, awaiting the ONE spurious error it produces.
+ *
+ * A request the BROWSER cancelled because the test navigated away while it was
+ * in flight is not an application error. WebKit reports such a fetch as
+ * "Fetch API cannot load … due to access control checks", which reads exactly
+ * like a CORS problem and is not one: instrumented, the only difference
+ * between the passing and failing runs of the same journey is a single
+ * `requestfailed` with `errorText: 'cancelled'` for a request that is
+ * otherwise fulfilled with the right CORS headers every other time. A real
+ * person navigating mid-sync cancels the same request, so treating it as a
+ * page error makes a journey fail for driving the app quickly.
+ */
+export interface CancelledRequest {
+  url: string;
+  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+  at: number;
+}
+
+/**
+ * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
+ * cancelled URL joined a permanent set, and every later page error whose
+ * message merely CONTAINED that pathname was discarded — so a genuine failure
+ * at the same path, later in the same journey, was swallowed and the journey's
+ * `pageErrors` assertion passed over it.
+ *
+ * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
+ * one cancellation excuses exactly one error.
+ *  - the message is the DIAGNOSED wording, so an error of any other shape
+ *    (a render crash, a thrown TypeError) is never excused;
+ *  - it names that request's host AND path — WebKit spells the URL with the
+ *    scheme separated from the host, so the comparison is on the parts both
+ *    spellings carry verbatim;
+ *  - it arrives inside a CEILING on how long an unconsumed cancellation may
+ *    stand. Deliberately generous rather than a timing correlation: the
+ *    spurious error is emitted in the same tick as the cancellation, and a
+ *    tight window would trade an over-broad filter for a flaky one under the
+ *    contention five concurrent dev servers already create.
+ */
+export const CANCELLED_EXCUSE_MS = 30_000;
+
+export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
+  if (!/Fetch API cannot load/.test(message) || !/access control checks/.test(message)) return false;
+  const i = pending.findIndex((c) => {
+    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
+    const url = new URL(c.url);
+    return message.includes(url.host) && message.includes(url.pathname);
+  });
+  if (i < 0) return false;
+  // CONSUMING the entry is this function's own job, not the caller's: the
+  // permanent-set version was a caller that simply never took anything out,
+  // and a boolean a caller can read without spending the cancellation would
+  // leave exactly that mistake available again.
+  pending.splice(i, 1);
+  return true;
+}
+
 export interface PracticeApp {
   page: Page;
   /** The dev server origin this journey is isolated on. */
@@ -97,30 +154,16 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
-    // A request the BROWSER cancelled because this test navigated away while it
-    // was in flight is not an application error. WebKit reports such a fetch as
-    // "Fetch API cannot load … due to access control checks", which reads
-    // exactly like a CORS problem and is not one: instrumented, the only
-    // difference between the passing and failing runs of the same journey is a
-    // single `requestfailed` with `errorText: 'cancelled'` for a request that
-    // is otherwise fulfilled with the right CORS headers every other time.
-    // A real person navigating mid-sync cancels the same request, so treating
-    // it as a page error makes a journey fail for driving the app quickly.
-    // Narrow by construction: only a URL this run actually saw cancelled is
-    // ever excused, and every other page error is recorded as before.
-    const cancelled = new Set<string>();
+    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
+    // every other page error is recorded exactly as before.
+    const cancelled: CancelledRequest[] = [];
     page.on('requestfailed', (r) => {
-      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
+      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
     });
     // Surface a page-level error instead of letting it become a silently
     // wrong assertion later.
     page.on('pageerror', (e) => {
-      const message = `${e.message}`;
-      // WebKit spells the URL with the scheme separated from the host, so the
-      // comparison is on the path, which both spellings carry verbatim.
-      for (const url of cancelled) {
-        if (message.includes(new URL(url).pathname)) return;
-      }
+      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
       pageErrors.push(e);
     });
     await page.clock.install({ time: options.now });

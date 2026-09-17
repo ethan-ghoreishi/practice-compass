@@ -19,6 +19,19 @@ import {
   followRenames,
 } from './sourceReconcile';
 import { archiveRootUrl } from './recordings';
+// The published log is the SCANNER's output, so the downstream transitions
+// below are driven by what it actually publishes for a forked log — never by
+// a hand-written approximation of it.
+// @ts-expect-error — no type declarations for the .mjs operator tool.
+import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
+const { buildIndex } = scannerModule as {
+  buildIndex(input: {
+    registryText: string;
+    inventory: never[];
+    renameLog: { present: true; text: string };
+  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
+};
+const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
 import { emptyDB } from './seed';
 import { LEGACY_SEED_PATHS } from './setarClasses';
 import { createItem, createLesson } from './factories';
@@ -1135,6 +1148,51 @@ describe('reconciling the archive with the owner’s own records', () => {
       planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
     ).lessons.find((l) => l.id === 'L1')!;
     expect(loopLesson.recordings).toEqual(storedOne.recordings);
+
+    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
+    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
+    // log does not determine what this file is called now. The scanner used to
+    // publish the FIRST destination and diagnose the second as "not applied",
+    // so the app was handed a mapping the log cannot support and used it as
+    // exact identity — repairing an authored reference onto it and re-keying
+    // an owner's hide onto it. What it publishes for a fork is nothing, and
+    // this drives the transitions from that real output rather than a guess
+    // at it. (A forked log reaching the app from anywhere else is REFUSED at
+    // every door by the one grammar — asserted in `io.test.ts` against the
+    // persisted door, and by `checkSourceGraph` for the decoder.)
+    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
+    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
+    const scanned = buildIndex({
+      registryText: EMPTY_REGISTRY,
+      inventory: [],
+      renameLog: {
+        present: true,
+        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
+      },
+    });
+    expect(scanned.renames).toEqual([]);
+    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
+    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
+    // The READING: the file keeps the only name this log establishes — its own.
+    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
+    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
+    // either destination.
+    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
+    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
+    const afterFork = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
+    );
+    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+    // The HIDE: exactly where the owner put it, still scoped to one item — so
+    // the file they hid is still hidden and neither destination went dark.
+    const forkedSource = afterFork.archiveSources[0]!;
+    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
+      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
+    ]);
+    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
+    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
+    expect(validateArchiveSources(afterFork)).toBeNull();
 
     // A file that really IS gone still keeps its provenance, flagged.
     const removed: SourceIndex = {

@@ -80,10 +80,16 @@ unsupported extension, a class recording claiming a piece, an unnamed demo in a
 session whose roster and filenames disagree, a symbolic link (never followed —
 but never silently dropped either, since two readings agree about a file neither
 of them looked at), a session-named entry that is not a real directory, and
-every row of a rename LOOP. A log that loops names no file, so those rows — and
-any row that walks into a loop — are dropped with a diagnostic rather than
-published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
-and out-of-scope root folders stay silent: they are not archive content.
+every rename row whose destination this log does not determine. That is ONE
+rule, not two: a replacement name is published only where the log names it
+UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
+destinations names no file either; and a chain walking into either of those
+cannot say where it ended. Every such row is dropped with a diagnostic rather
+than published — the fork case used to publish its FIRST destination and
+diagnose the second as "not applied", which handed the app an identity this log
+cannot support. An ordinary chain beside a loop or a fork still publishes.
+Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
+archive content.
 
 The output is written **outside the archive** via a temp file + rename, and the
 scanner refuses an `--out` path inside `--root`.

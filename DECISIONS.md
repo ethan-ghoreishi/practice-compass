@@ -2,6 +2,47 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Rejection: two rules that held for one shape of the same defect (2026-09-17)
+
+A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
+the previous fix covering one shape of a defect and not the shape beside it, so each fix
+here is the rule the shapes share — and the narrower mechanism is subsumed rather than left
+next to the new one.
+
+- **A rename source with two destinations still published its first one.** The loop rule
+  ("a log that loops names no file") had been closed at every consumer, and the fork sitting
+  beside it — `A→B` and `A→C` in the same log — was diagnosed as "not applied" while `A→B`
+  was published and used as exact identity: Refresh repaired an authored reference onto B and
+  re-keyed an owner's item-scoped hide onto B, although the log never established which file
+  A became. A fork and a loop are ONE defect said two ways, so the scanner now publishes a
+  replacement name only where the log determines it UNIQUELY and TERMINALLY — a fork
+  publishes nothing, a loop publishes nothing, and a chain walking into either publishes
+  nothing. The conflicted sources are removed from the map BEFORE the reachability walk, or
+  a chain ending at one would still publish a name on the strength of a mapping that was
+  meant to be gone. Its diagnostic names every destination seen, once and sorted, because
+  `diagnostics` is inside `contentHash` and ac-4's own claim is that a shuffled source yields
+  the same semantic index. Refusing the whole index was rejected for the reason the loop case
+  already records: an unimportable archive is a worse answer than an unrepaired path. No app
+  change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
+  decoder and at the persisted door — and ac-12's named test now drives the downstream
+  reference and suppression transitions from the scanner's ACTUAL output for a forked log.
+- **The harness's excuse for a cancelled request was permanent.** The WebKit
+  cancelled-request diagnosis recorded in the previous round was implemented as a permanent
+  set of cancelled URLs, with any later page error whose message merely CONTAINED that
+  pathname discarded — so a genuine failure at the same path, later in the same journey, was
+  swallowed and the journey's `pageErrors` assertion passed over it. A check that can hide
+  the failure it exists to catch is worse than no check. `excusedCancellation` is consuming
+  (one cancellation, one error) and additionally requires the diagnosed wording and the
+  request's host as well as its path, inside a generous ceiling on how long an unconsumed
+  cancellation may stand. The ceiling is not a timing correlation: the spurious error arrives
+  in the same tick, and a tight window would trade an over-broad filter for a flaky one under
+  the contention five concurrent dev servers already create. Matching the request's METHOD
+  was considered and is not possible — the page error carries no method.
+
+Four mutations were run and all four fail their named acceptance test: the fork's first
+destination published again, the walks-into-a-fork extension removed, the cancellation excuse
+made permanent (non-consuming), and the diagnosed-wording requirement dropped.
+
 ## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
 
 A third sealed review rejected the reworked Setar-archive diff. Each finding was the

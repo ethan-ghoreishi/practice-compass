@@ -666,14 +666,65 @@ describe('scanning the archive', () => {
         },
       });
       expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
-      // An old path with TWO destinations was already refused, and still is.
+      // AN OLD PATH WITH TWO DESTINATIONS PUBLISHES NEITHER. This used to
+      // publish the FIRST row and diagnose the second as "not applied", which
+      // is the same defect the loop rule exists to prevent, said the other way
+      // round: a log that cannot say which file A became was handed to the app
+      // as exact identity anyway. It is ONE rule now — a replacement name is
+      // published only where this log determines it uniquely and terminally.
+      const forkLog = 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n';
       const forked = buildIndex({
         registryText: REGISTRY,
         inventory: INVENTORY,
-        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
+        renameLog: { present: true, text: forkLog },
       });
-      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
-      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
+      expect(forked.renames).toEqual([]);
+      expect(forked.diagnostics.filter((d) => d.path === 'x/a.mp4')).toEqual([
+        {
+          path: 'x/a.mp4',
+          reason:
+            'Rename log names more than one destination for this path ("x/b.mp4" and "x/c.mp4") — no replacement name can be read from it.',
+        },
+      ]);
+      // ONE diagnostic naming its destinations in a stable order, whatever
+      // order the rows arrived in: `diagnostics` is inside `contentHash`, and
+      // a shuffled source must still yield the same semantic index. A third
+      // destination joins that one row rather than emitting a second pair.
+      const forkRowsSwapped = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/c.mp4\nx/a.mp4,x/b.mp4\n' },
+      });
+      expect(forkRowsSwapped.contentHash).toBe(forked.contentHash);
+      const three = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/d.mp4\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
+      });
+      expect(three.diagnostics.filter((d) => d.path === 'x/a.mp4')).toHaveLength(1);
+      expect(three.diagnostics.find((d) => d.path === 'x/a.mp4')!.reason).toContain(
+        '("x/b.mp4" and "x/c.mp4" and "x/d.mp4")',
+      );
+      // And a chain that walks INTO a forked path publishes nothing either —
+      // the same extension the loop rule already makes, for the same reason:
+      // x/z.mp4 became x/a.mp4, and what x/a.mp4 is called now is unreadable.
+      const intoFork = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: `old_path,new_path\nx/z.mp4,x/a.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
+      });
+      expect(intoFork.renames).toEqual([]);
+      expect(intoFork.diagnostics.find((d) => d.path === 'x/z.mp4')!.reason).toContain(
+        'renames this path into "x/a.mp4", which it names more than one destination for',
+      );
+      // An ordinary chain beside a FORK still publishes, exactly as one beside
+      // a loop does.
+      const besideFork = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: `old_path,new_path\nx/p.mp4,x/q.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
+      });
+      expect(besideFork.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
 
       // And the scan itself reads the WHOLE source twice and refuses on any
       // difference. Nothing can mutate a filesystem between two synchronous

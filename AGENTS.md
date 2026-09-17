@@ -1514,7 +1514,19 @@ problem and is not one. Instrumented, the only difference between a passing and 
 of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
 fulfilled with the right CORS headers every other time. A real person navigating mid-sync
 cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
-as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
+as a page error.
+
+**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
+It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
+message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
+later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
+(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
+excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
+naming the same URL is never excused), names that request's HOST as well as its path, and
+arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
+ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
+tick, and a tight window would trade an over-broad filter for a flaky one under the
+contention five concurrent dev servers already create.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -1885,12 +1897,21 @@ the owner's hide onto B: A came back into view and the wrong file went dark. It 
 stays exactly where the owner put it, a row the incoming index no longer lists keeps its
 provenance flagged rather than being deleted on the strength of a destination nothing can
 read, and repair says "the rename log loops on this path" instead of rewriting to an
-arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
-row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
-published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
-published index carries no cycle, and the app still refuses to read one from any other
-source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
-archive its good provenance.
+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place, and it is
+ONE rule rather than a mechanism per shape: A REPLACEMENT NAME IS PUBLISHED ONLY WHERE THE
+LOG DETERMINES IT UNIQUELY AND TERMINALLY. A loop names no file; a path given TWO
+destinations names no file either; and a chain walking into either cannot say where it
+ended. All of them are dropped with a diagnostic (ac-12's own rule: cycles and multiple
+destinations DIAGNOSE, never guess), so a published index carries neither, and the app still
+refuses to read one from any other source — `checkSourceGraph` rejects a second row for one
+`from` at the decoder AND at the persisted door. The fork case had exactly the defect the
+loop rule exists to prevent, said the other way round: the scanner published the FIRST
+destination and diagnosed the second as "not applied", so the app was handed a mapping the
+log cannot support and used it as EXACT IDENTITY — repairing an authored reference onto it
+and re-keying an owner's hide onto it. The diagnostic names every destination it saw, once
+and in sorted order, because `diagnostics` is inside `contentHash` and a shuffled log must
+still produce the same index. An ordinary chain beside a loop or a fork still publishes: one
+bad topology does not cost the archive its good provenance.
 
 A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
 a hidden file simply reappeared under the new one while the old row sat there flagged

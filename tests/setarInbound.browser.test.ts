@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  CANCELLED_EXCUSE_MS,
   connectSync,
   exportBackup,
   goTo,
@@ -11,6 +12,7 @@ import {
   importOutcome,
   installFakeGitHub,
   newFakeRemote,
+  excusedCancellation,
   openPracticeApp,
   persistedDb,
   publishRemote,
@@ -500,4 +502,60 @@ describe('rolling back past the archive schema', () => {
       baseline.dispose();
     }
   }, 240_000);
+});
+
+describe('the journey harness itself', () => {
+  // The harness must not be able to hide the very failure a journey exists to
+  // catch. A request the browser CANCELLED (because the test navigated away
+  // mid-flight) produces a WebKit error that reads exactly like a CORS
+  // failure; excusing it used to mean adding its URL to a PERMANENT set and
+  // discarding every later page error whose message merely contained that
+  // pathname. So a genuine failure at the same path, later in the same
+  // journey, was swallowed — and `pageErrors` said nothing.
+  it('a cancelled request excuses its own error once, and never a later real one', () => {
+    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+    const spurious =
+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+    const at = 1_000_000;
+
+    // The cancellation's OWN error is excused — and CONSUMED. The identical
+    // message arriving again has no cancellation left to account for it, which
+    // is exactly the reviewer's counterexample: cancel a request to a path,
+    // then let a later one to that path fail for real.
+    // Spending it is the function's OWN job — a caller cannot forget to, which
+    // is precisely what the permanent set was.
+    const pending = [{ url, at }];
+    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
+    expect(pending).toEqual([]);
+    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
+
+    // Two cancellations excuse two errors and no more.
+    const twice = [
+      { url, at },
+      { url, at: at + 10 },
+    ];
+    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+
+    // Only the DIAGNOSED wording is ever excused: a real render crash naming
+    // the same URL is a page error, not a cancellation.
+    expect(
+      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
+    ).toBe(false);
+
+    // It names that request, not merely its path: another host, and another
+    // path on the same host, both stay errors.
+    const elsewhere =
+      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
+    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
+    const otherPath =
+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
+    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
+
+    // And an unconsumed cancellation does not stand for the whole journey: the
+    // ceiling is generous (the spurious error is emitted in the same tick), but
+    // it is a ceiling.
+    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+  });
 });
