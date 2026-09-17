@@ -1,63 +1,31 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 1dbf0c29bf236d471394c93ce06483edf6ab462f
+patchId: 4c51d297d91dad90f20b2f9a8becf922c392a3a8
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Complete source scans before publishing
-    summary: "P1: readSource treats every RENAME-LOG.csv read failure as an empty
-      log, so two failed reads look like a consistent complete scan and can
-      publish a false source view (scripts/scan-setar-classes.mjs:528-565)."
-    counterexample: Make RENAME-LOG.csv temporarily unreadable for both reads while
-      PIECES.csv and media remain readable. Both snapshots contain
-      renameLogText='', so scanToIndex builds an index without the exact
-      renames. If a copied file changed path during that window, Refresh flags
-      its old resource unavailable and cannot repair saved references.
-  - family: Archive graph validation at reader and inbound doors
-    summary: "P1: the decoder still normalises present null source facts, and the
-      shared graph check validates types but not resource ownership by session
-      or valid group relationships
-      (src/domain/sourceArchive.ts:348-401,642-756)."
-    counterexample: "Set a resource title to null in an index and recompute
-      contentHash: parseSourceIndex accepts an empty title. Put a resource whose
-      path is under session 2's folder into session 1's resources and recompute
-      the digest: the decoder and validateDB accept it, so material attributes
-      that file to class 1. A non-demo resource with an arbitrary demo group
-      also passes."
-  - family: Owner reconciliation choices across revision rebase
-    summary: "P1: decisions do not retain the bound record identity, and
-      already-bound loops skip Link decisions before stale checking; a rebase
-      can redirect or ignore the owner's choice
-      (src/domain/sourceReconcile.ts:89,449-450,526-539,657-665)."
-    counterexample: "Preview applying a composer to item A when it is empty. Before
-      Apply, sync a valid database where the same piece is bound to item B, also
-      with an empty composer. The old choice applies to B. Likewise, preview
-      Link item A, then bind that piece to B before Apply: the early continue
-      leaves staleDecisions empty and commit can report success without linking
-      A."
-  - family: Exact rename identity through adoption and suppression
-    summary: "P1: a cyclic rename log is accepted, but suppression re-keying ignores
-      followRenames' cycle verdict and moves an owner hide to an intermediate
-      path (scripts/scan-setar-classes.mjs:425-450;
-      src/domain/sourceReconcile.ts:161-168,649-653)."
-    counterexample: Keep resources A and B, hide A for one item, then publish exact
-      rows A->B and B->A. The scanner emits the cycle without a diagnostic.
-      followRenames(A) returns {path:B,cycle:true}; Refresh stores the hide for
-      B, so A reappears and the wrong file is hidden.
-  - family: Lesson material and rendered journey
-    summary: "P2: LessonDetail renders composed material and the old reference and
-      attachment lists together, duplicating manual files and showing an
-      empty-recordings prompt beside imported class videos
-      (src/pages/Lessons.tsx:438-449,538-541; src/domain/itemFiles.ts:288-320)."
-    counterexample: "Open a lesson with one authored NAS reference and one local
-      attachment: both appear in LessonMaterial and again in LessonRecordings or
-      Attachments. Open an imported historical class with a graph class video
-      but no authored recordings: the video is shown, followed by a prompt to
-      add a class recording."
-createdAt: 2026-09-17T17:10:42.033Z
-sealedAt: 2026-09-17T17:33:40.233Z
+  - family: Exact rename identity across scanning, repair and suppression
+    summary: A rename source with two different destinations is diagnosed but its
+      first destination is still published and used as exact identity.
+    counterexample: Give RENAME-LOG.csv two rows A->B and A->C. buildIndex publishes
+      A->B, as the named test currently asserts. Refresh can repair an authored
+      A reference to B or move an item-scoped hide from A to B although the log
+      does not establish which file A became. Remove every conflicting source
+      mapping while retaining an actionable diagnostic, and check downstream
+      reference and suppression transitions.
+  - family: Browser journey error visibility after cancelled requests
+    summary: The WebKit harness can suppress a genuine later page error after an
+      unrelated or earlier cancellation with the same URL path.
+    counterexample: During one journey, cancel a PUT to a GitHub path, then cause a
+      later request to that path to fail genuinely. requestfailed adds the URL
+      to a permanent set; pageerror discards the later error whenever its
+      message contains the pathname, without checking request identity, method,
+      timing or the diagnosed cancellation error. The journey's pageErrors
+      assertion can pass despite the real failure.
+createdAt: 2026-09-17T19:43:34.587Z
+sealedAt: 2026-09-17T19:49:09.746Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -71,7 +39,7 @@ sealedAt: 2026-09-17T17:33:40.233Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `1dbf0c29bf236d471394c93ce06483edf6ab462f`
+- **Diff patch-id:** `4c51d297d91dad90f20b2f9a8becf922c392a3a8`
 
 ## The Delta this change was framed from
 
@@ -114,1170 +82,1735 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Complete source scans before publishing** — P1: scanToIndex checks PIECES.csv twice but reads RENAME-LOG.csv and the media inventory once; it can publish a partial NAS view as a valid removal (ac-4/ac-7, scripts/scan-setar-classes.mjs:524-540).
-  _counterexample:_ During a non-atomic NAS copy, move a resource out before scanArchive enumerates its folder and restore it while later folders are scanned. PIECES.csv remains unchanged, so scanToIndex emits an index omitting the file; Refresh marks the still-present material unavailable.
-- **Archive graph validation at both reader and inbound doors** — P1: The published decoder checks a normalised graph, while inbound validation omits acceptedAt; malformed source facts can be silently erased or installed to crash a reader (ac-15/ac-16, src/domain/sourceArchive.ts:337-406,729-750).
-  _counterexample:_ In the corpus fixture, set sessions[0].resources to null and recompute the scanner-defined digest: parseSourceIndex accepts it and turns six resources into zero. Separately, a v14 import with archiveSources[0].acceptedAt=null passes validateDB; ArchiveRefresh then throws on acceptedAt.slice while Settings renders.
-- **Owner reconciliation choices across revision rebase** — P1: commitArchiveImport rebases old apply-field decisions after rev changes and refuses only new questions; it can overwrite a newer owner edit (ac-7/ac-11, src/store/useStore.ts:977-995; src/domain/sourceReconcile.ts:633-670).
-  _counterexample:_ Preview an empty composer and choose the archive's value. Before Apply, edit the same composer to 'Owner wrote this during refresh'. Rebase finds zero questions and commits the old choice, replacing that newer text with the registry value; reproduced with current pure plan/apply functions.
-- **Exact rename identity through adoption and suppression** — P1: adoption follows only one rename hop while repair follows the chain, and resource suppressions remain keyed to the old path; a logged rename can misattribute a class or resurrect hidden material (ac-8/ac-12/ac-13, src/domain/sourceReconcile.ts:260-265,282-310; src/domain/sourceArchive.ts:544-553).
-  _counterexample:_ Add A->B->C to the exact log, with B in session 1 and C an existing session 2 file: a unique legacy session-1 lesson is adopted, then its reference is repaired to session 2. In a separate same-session rename, a resource hidden for one item reappears under its new path while the old row remains unavailable; both reproduced against current pure functions.
-- **Device media base URL safety** — P2: normalizeBaseUrl accepts credentials and query or fragment data as a valid NAS base, then archiveRootUrl and resolveRecording append paths after that data (ac-14, src/domain/recordings.ts:32-47,200-203).
-  _counterexample:_ The base https://user:pass@nas.example/media?token=secret is accepted and stored; Open archive root becomes ...?token=secret/ and a file URL becomes ...?token=secret/session-1/x.mp4, exposing a password in a device URL and failing to address the requested file.
+- **Complete source scans before publishing** — P1: readSource treats every RENAME-LOG.csv read failure as an empty log, so two failed reads look like a consistent complete scan and can publish a false source view (scripts/scan-setar-classes.mjs:528-565).
+  _counterexample:_ Make RENAME-LOG.csv temporarily unreadable for both reads while PIECES.csv and media remain readable. Both snapshots contain renameLogText='', so scanToIndex builds an index without the exact renames. If a copied file changed path during that window, Refresh flags its old resource unavailable and cannot repair saved references.
+- **Archive graph validation at reader and inbound doors** — P1: the decoder still normalises present null source facts, and the shared graph check validates types but not resource ownership by session or valid group relationships (src/domain/sourceArchive.ts:348-401,642-756).
+  _counterexample:_ Set a resource title to null in an index and recompute contentHash: parseSourceIndex accepts an empty title. Put a resource whose path is under session 2's folder into session 1's resources and recompute the digest: the decoder and validateDB accept it, so material attributes that file to class 1. A non-demo resource with an arbitrary demo group also passes.
+- **Owner reconciliation choices across revision rebase** — P1: decisions do not retain the bound record identity, and already-bound loops skip Link decisions before stale checking; a rebase can redirect or ignore the owner's choice (src/domain/sourceReconcile.ts:89,449-450,526-539,657-665).
+  _counterexample:_ Preview applying a composer to item A when it is empty. Before Apply, sync a valid database where the same piece is bound to item B, also with an empty composer. The old choice applies to B. Likewise, preview Link item A, then bind that piece to B before Apply: the early continue leaves staleDecisions empty and commit can report success without linking A.
+- **Exact rename identity through adoption and suppression** — P1: a cyclic rename log is accepted, but suppression re-keying ignores followRenames' cycle verdict and moves an owner hide to an intermediate path (scripts/scan-setar-classes.mjs:425-450; src/domain/sourceReconcile.ts:161-168,649-653).
+  _counterexample:_ Keep resources A and B, hide A for one item, then publish exact rows A->B and B->A. The scanner emits the cycle without a diagnostic. followRenames(A) returns {path:B,cycle:true}; Refresh stores the hide for B, so A reappears and the wrong file is hidden.
+- **Lesson material and rendered journey** — P2: LessonDetail renders composed material and the old reference and attachment lists together, duplicating manual files and showing an empty-recordings prompt beside imported class videos (src/pages/Lessons.tsx:438-449,538-541; src/domain/itemFiles.ts:288-320).
+  _counterexample:_ Open a lesson with one authored NAS reference and one local attachment: both appear in LessonMaterial and again in LessonRecordings or Attachments. Open an imported historical class with a graph class video but no authored recordings: the video is shown, followed by a prompt to add a class recording.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index fb6f835..2859fd5 100644
+index 2859fd5..d1fda0a 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1645,6 +1645,19 @@ private data repo (`source-index` / `setar/index.json`); the app GETs it with th
- connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
- runbook, the corpus baseline and the recorded source hashes.
+@@ -1507,6 +1507,15 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
+ automation driver (so that journey seeds state-only), and it reports
+ `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
  
-+**AND ONE SCAN IS ONE CONSISTENT VIEW OF EVERY INPUT, OR NONE.** The registry was the only
-+input re-read after the walk, which made the guarantee exactly as narrow as the file it
-+named — and the MEDIA is what a non-atomic NAS copy actually perturbs. Move a resource out
-+before its folder is enumerated and put it back while later folders are walked: PIECES.csv
-+never changes, the scan publishes an index that omits the file, and the next Refresh marks
-+still-present material `unavailable`. The rename log had the identical exposure, read once
-+and compared against nothing. `readSource` is now every input in ONE place, the whole of it
-+is read TWICE and the two readings compared (sizes included, so a file still being copied is
-+caught too), and any difference refuses before anything is written. It is a CONSISTENCY
-+check, not atomicity: a perturbation stable across both readings agrees with itself and is
-+indistinguishable from the archive genuinely being in that state. What it removes is the
-+transient, which is what a copy in flight looks like.
++A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
++while it was in flight is reported by WebKit as
++`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
++problem and is not one. Instrumented, the only difference between a passing and a failing run
++of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
++fulfilled with the right CORS headers every other time. A real person navigating mid-sync
++cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
++as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
++
+ **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
+ the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
+ canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
+@@ -1658,6 +1667,35 @@ check, not atomicity: a perturbation stable across both readings agrees with its
+ indistinguishable from the archive genuinely being in that state. What it removes is the
+ transient, which is what a copy in flight looks like.
+ 
++**AND A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA — WHICH IS WHAT MADE THE TWO-READ
++CHECK LOOK CLEAN OVER A FALSE VIEW.** `catch { renameLogText = '' }` turned every failure to
++read RENAME-LOG.csv — a permission change, an I/O error, a mount that went away mid-copy —
++into an archive that has no rename log. Both readings then AGREED, the consistency check
++passed, and the scan published an index with no renames at all: a file that moved during
++that window is flagged `unavailable` and its saved references can never be repaired. Absence
++is an OBSERVATION (`{present:false}`, ENOENT only) and travels in the compared reading as
++one; anything else fails the scan. A required input is required outright, so a missing or
++unreadable PIECES.csv refuses rather than yielding an empty registry, and a present-but-EMPTY
++log — what a zero-byte copy in flight looks like — is refused by `readTable` exactly as the
++registry would be.
++
++**AND THE WALK SAYS WHAT IT COULD NOT TAKE IN.** Two readings agree about a file neither of
++them looked at, so the consistency check is blind by construction to anything the walk drops
++in silence. A symbolic link is still never FOLLOWED — a link out of the archive is a path
++this scanner has no authority over — and a session-named entry that is not a directory is
++still never opened; both are now `diagnostics` rows in the published index instead of
++vanishing, because an index quietly narrower than the archive is the same "partial view sold
++as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
++folders stay silent: they are not archive content, and saying so 258 times is noise. It is a
++DIAGNOSTIC and not a refusal for the same reason a rename cycle is: a symlink is a stable
++property of the archive, not a transient, so refusing would leave the archive permanently
++unindexable until the owner went and deleted it — where the two-read check refuses only what
++disagrees with itself between two readings a moment apart.
++Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
++a file edited IN PLACE at the same byte length changes no size and no CSV, and would
++otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
++determinism rule is untouched: altered mtimes still produce a byte-identical index.
 +
  **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
  trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
  token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
-@@ -1665,6 +1678,17 @@ it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
- decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
- broken file reports the error the owner can act on rather than a hash mismatch.
+@@ -1689,6 +1727,16 @@ one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the
+ the same treatment `validatePracticeText` gives the owner's own words, and never a
+ coercion.
  
-+**AND A VALID DIGEST SAYS THE FILE IS THE ONE THE SCANNER WROTE — NEVER THAT IT IS WELL
-+FORMED.** The decoder NORMALISES before the graph's grammar runs, so the grammar only ever
-+sees the decoder's own output: `resources: null` decoded to a session with no resources —
-+a perfectly valid EMPTY LIST by the time the grammar saw it — and six files became zero
-+behind a correct hash. Every absent-tolerant read had that shape, the scalars included
-+(`part: "3"` became `null`, a wrong-typed `size` vanished, `rosterTrusted: 'yes'` became a
-+boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`) are the
-+one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
-+the same treatment `validatePracticeText` gives the owner's own words, and never a
-+coercion.
++**AND THAT RULE HAD TO REACH THE STRINGS TOO.** It closed the lists and the scalars and left
++every string field with a default exactly as it was: `str(raw.form ?? '')` still read ABSENT
++and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `form`,
++`composer` or `notes`, and a diagnostic's own `path` all decoded to `''` — an untitled row
++the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
++a default, anything else that is not text is refused naming the record. `part` and `group`
++stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
++present null is refused BY THE DECODER rather than spread into its own output as a value the
++declared type does not admit and left for the grammar to catch downstream.
 +
  **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
  SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
  COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
-@@ -1713,7 +1737,8 @@ history into thirty-nine deadlines.
- **THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
- `commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
- saved or a block finished while the index was being fetched is never lost — refuses with
--`stale` when the rebase raises a NEW question, runs the whole proposed database through
-+`stale` when the rebase raises a NEW question OR when a DECISION'S OWN PREMISE HAS MOVED,
-+runs the whole proposed database through
- `validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
- write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
- matches, because "Already current" over data that was never saved is the lie this guards.
-@@ -1747,6 +1772,23 @@ and the value an applied field writes — never the in-flight selection itself:
- suggestion is component state, and it is re-derived from the graph on the next refresh
- precisely because nothing about it was stored.
+@@ -1789,6 +1837,28 @@ channel rather than two, and the commit refuses on either whether or not `rev` m
+ screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
+ question, or the suggestion's real current value, is shown as it is now.
  
-+**AND A DECISION IS ABOUT THE STATE THE OWNER SAW, NOT MERELY ABOUT ITS TARGET.** A new
-+QUESTION is not the only way a rebase invalidates an answer, and refusing only on that let
-+the opposite case through silently: choose the archive's composer over an EMPTY field, then
-+type one of your own before pressing Apply, and the rebase found nothing to ask about and
-+wrote the registry value over the words just written. An `apply-field` decision therefore
-+carries `from` — the value of the owner's it was chosen against — and
-+`decisionMatchesSuggestion` is the ONE test both the plan's summary and
-+`applyArchiveImport`'s write use, so a preview and a commit cannot mean different things by
-+"this still applies". A LINK decision has a premise too: `link-item`/`link-lesson` may only
-+adopt a record that is still UNBOUND and still this instrument's — the same conditions the
-+candidate list was built from — because a target bound elsewhere, moved or deleted since
-+would otherwise be silently rebound, or fall through and CREATE a record instead of linking
-+one, which is not the action the owner chose. Both kinds land in `plan.staleDecisions`, one
-+channel rather than two, and the commit refuses on either whether or not `rev` moved. The
-+screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
-+question, or the suggestion's real current value, is shown as it is now.
++**AND A DECISION NAMES ITS RECORD, NOT ONLY ITS PIECE — AND EVERY DECISION IS ACCOUNTED
++FOR.** The premise rule above closed the case where the owner's VALUE moved and left the two
++cases where the RECORD did. Both loops open with "already bound? nothing to decide" /
++"already suppressed? nothing to decide", so a decision about a record that became bound
++between the preview and the commit was never looked at at all: no adoption, no question, and
++an EMPTY `staleDecisions`, so the commit reported success for an action it had not performed.
++An `apply-field` decision was worse than ignored — keyed by piece and value alone, it was
++REDIRECTED onto whichever record held that piece by commit time, and a sync installing a
++database where the same piece is bound to item B, also with an empty composer, took a choice
++made about A.
++
++So `apply-field` carries `itemId` (identity) as well as `from` (premise), and
++`decisionMatchesSuggestion` compares all four; and `planArchiveImport` marks every decision
++it ACTS on and sweeps the rest. An unmarked decision is either an action that has ALREADY
++HAPPENED — the same answer still in hand on the next preview — or an answer to a question
++that no longer stands, which is stale. That already-done branch is LOOP PREVENTION rather
++than politeness: `ArchiveRefresh` drops a stale decision and re-previews, and a realised
++action can never be consumed by a loop that skips its own record, so without it the same
++decision would go stale for ever. The sweep is why this holds for Link, Create, Skip and
++apply-field together instead of a stale check bolted inside each early return, and the
++premise rule above is now one of its outcomes rather than a second mechanism beside it.
 +
  **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
  decide what file a stored reference names, and they used to decide it differently:
  `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
-@@ -1755,6 +1797,29 @@ class whose references were saved as full links carried perfectly good evidence
- nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
- is that one reading, and both go through it.
- 
-+**AND THAT WAS ONLY HALF OF IT: THE RENAME CHAIN HAD THREE READINGS.** Repair followed the
-+whole logged chain, adoption took a SINGLE HOP, and a suppression took none at all — so one
-+log gave three different answers about one file. With A→B→C logged, B in session 1 and C in
-+session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B and then had
-+that very reference repaired into session 2: bound to one class, pointing at another's
-+files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
-+that loops says nothing about where the file is), and three things use it: evidence, repair,
-+and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
-+a hidden file simply reappeared under the new one while the old row sat there flagged
-+unavailable. Re-keying it is not editing an owner decision — it is the same decision about
-+the same bytes said in the archive's current words, the `itemId` scope carried untouched and
-+`suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
-+from the retained graph instead of flagged `unavailable`: the log says exactly where the
-+bytes went, so that file moved, it did not disappear. The comparison is against every path
-+the incoming graph describes, ACROSS sessions — a rename can move a file into a DIFFERENT
-+session (the log's own A→B→C shape does exactly that), and asking only "is it still in this
-+session" flagged such a file as gone while the same bytes sat in the graph under their new
-+name. Safe to drop, where a piece or a
-+session would not be: only those carry item/lesson bindings, so no binding can dangle on a
-+resource row, and a manual unclassified lesson's own reference reaches material through the
-+LESSON, never through this graph. A file that really is gone still keeps its provenance,
-+flagged, exactly as before.
+@@ -1804,7 +1874,25 @@ session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B a
+ that very reference repaired into session 2: bound to one class, pointing at another's
+ files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
+ that loops says nothing about where the file is), and three things use it: evidence, repair,
+-and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
++and the owner's own hides.
 +
- **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
- `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
- alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
-@@ -1785,7 +1850,10 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
- record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
- its provenance is kept — not a dangling reference.
++**AND "REPORTED" HAD TO BE UNIGNORABLE.** `followRenames` handed back
++`{ path, cycle: true }` — a perfectly usable-looking path beside a flag — and only ONE of its
++three callers read the flag: adoption refused it, while the suppression re-key and
++`retainMissing` walked straight past it. Hide A, publish A->B and B->A, and the re-key moved
++the owner's hide onto B: A came back into view and the wrong file went dark. It returns
++`string | null` now, so there is no way to drop the verdict and still have a path. A hide
++stays exactly where the owner put it, a row the incoming index no longer lists keeps its
++provenance flagged rather than being deleted on the strength of a destination nothing can
++read, and repair says "the rename log loops on this path" instead of rewriting to an
++arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
++row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
++published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
++published index carries no cycle, and the app still refuses to read one from any other
++source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
++archive its good provenance.
++
++A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+ a hidden file simply reappeared under the new one while the old row sat there flagged
+ unavailable. Re-keying it is not editing an owner decision — it is the same decision about
+ the same bytes said in the archive's current words, the `itemId` scope carried untouched and
+@@ -1837,7 +1925,27 @@ lessons that are NOT archive-bound. An archive-bound lesson contributes nothing
+ link route — its files reached the list already, correctly scoped — which is what stops a
+ class recording and someone's practice takes from landing on a piece. A manual, unclassified
+ lesson still contributes everything it has, because nothing knows the scope and inventing
+-one would be a guess. `lessonFiles` is the same composition for a lesson.
++one would be a guess.
++
++**A LESSON IS THE OPPOSITE CASE: EVERY FILE ON IT HAS EXACTLY ONE SECTION THAT RENDERS IT.**
++An ITEM's material is composed from OTHER records — linked lessons, the graph — that the
++item's own page has no section for, which is precisely why `itemFiles` must stay the whole
++composition. A LESSON owns its own references and its own attachments, and its page already
++renders each in the section that can edit and remove them. `lessonFiles` composed those as
++well, so an authored NAS reference the index describes nowhere — the owner's own practice
++takes on an adopted class — and every local attachment were rendered TWICE: once above,
++where nothing can be done with them, and once again where they live. `lessonFiles` is now
++the ARCHIVE's contribution alone (an archive-bound class keeps no copy of its session's
++files, so nothing else can show them); "Class recording & scores" keeps the owner's
++references, `Attachments` keeps the attachments, and each Remove button is NAMED after its
++own file rather than saying "Remove this link" three times over.
++
++**AND "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THAT ARRAY.** An imported historical
++class keeps no copy of its session's files, so `lesson.recordings` is empty and the
++empty-state card invited the owner to add a class recording directly beneath the one already
++playing above it. That state is read through the same composition the section above renders
++— not the session's `hasClassRecording` flag — so a class recording the owner has HIDDEN does
++not count as one that is there.
  
--**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
-+**THE NESTED GRAPH HAS ONE GRAMMAR — AND THE DECODER RUNS IT OVER ITS OWN OUTPUT, WHICH IS
-+NOT THE SAME CLAIM AS RUNNING IT OVER WHAT ARRIVED.** (A later sealed review found exactly
-+that gap; the `list`/`num`/`bool` rule above is what closes it, and the grammar below is
-+what the decoder's OUTPUT and every persisted graph are both held to.) `decodeSourceIndex` and
- `validateArchiveSources` used to state the shape separately, and the second stated LESS of
- it: it checked a resource's path and its part group and walked straight past
- `members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
-@@ -1802,6 +1870,32 @@ is the point of validating it. `unavailable` stays legal on a piece, a session a
+ **SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
+ `migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
+@@ -1870,6 +1978,25 @@ is the point of validating it. `unavailable` stays legal on a piece, a session a
  resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
  silently widens a hide scoped to ONE item.
  
-+**AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
-+the one persisted field with no check at all, while Settings renders it
-+(`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
-+`acceptedAt: null` was accepted, persisted, and then threw while the screen drew. It is
-+held to a REAL calendar instant (`isValidSourceDateTime`, a local sibling of
-+`isValidSourceDate` rather than a shared import, for the reason `askedAt` and `dueDate`
-+already keep their checks one per file): a shape regex matches
-+`"2026-02-30T12:00:00.000Z"` and `Date.parse` silently normalises it into March. `renames`
-+and `diagnostics` are required AT REST where the grammar tolerates them absent, because the
-+decoder always emits both and the planner reads them unguarded. A suppression's `at` is
-+provenance only — nothing reads it back as a date — so it is held to being real text and no
-+further. The fix is this DOOR, never a guard in `ArchiveRefresh.tsx`.
++**AND A GRAMMAR OF FIELD TYPES SAYS EVERY VALUE IS READABLE, NEVER THAT THE GRAPH AGREES
++WITH ITSELF.** A resource physically sitting in class 2's folder, listed under class 1, is
++type-perfect at every door and attributes someone else's file to the wrong class on every
++screen that reads it. So `checkSourceGraph` also checks the RELATIONS, and the same four at
++both doors: a resource's path is `<that session's folder>/<name>` and nothing else; a
++resource attributed to a piece has that piece's membership recorded for that ROLE, so no
++file can surface as a piece's material with nothing in the graph saying it belongs to it; a
++`group` belongs only to a demonstration, and the parts sharing one are material for the same
++pieces with distinct part numbers, so an arbitrary group cannot invent one logical resource
++out of unrelated files; and `hasClassRecording` agrees with whether a class-role resource is
++actually there, which itself may never name a piece.
 +
-+**A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE.** Everything appends a path AFTER the
-+base, so a credential, a query or a fragment in it is not untidiness:
-+`https://user:pass@nas.example/media?token=secret` made "Open archive root"
-+`…?token=secret/` and a file `…?token=secret/session-1/x.mp4` — a password on screen in
-+every device URL, addressing no file at all. `normalizeBaseUrl` REFUSES all four
-+(`username`, `password`, `search`, `hash`) rather than stripping them, because a rewritten
-+base names a different server and only the owner can say what they meant; the media
-+sentence says WHY. That is the whole family in one place: `resolveRecording`,
-+`relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the reconciler's
-+`verifiedBase` (through `archiveRootUrl`) all pass through it. A stored ABSOLUTE url is
-+still opened as the owner saved it — their own authored link, not this device's configured
-+base, and nothing here mints one.
++These run over what the source still DESCRIBES. `unavailable` is retained provenance about
++what it has STOPPED describing — a piece dropped from the registry, a file deleted from the
++NAS — so holding those rows to the current source's internal agreement is a category error,
++and would make every refresh after a removal refuse at every door. The group's LABEL format
++is deliberately not asserted: that is the scanner's grammar, and this file's own rule is
++that the grammar lives once.
 +
- **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
- ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
- (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+ **AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
+ the one persisted field with no check at all, while Settings renders it
+ (`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
 diff --git a/DECISIONS.md b/DECISIONS.md
-index 5e9bb79..214880a 100644
+index 214880a..decd7f0 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
-@@ -2,6 +2,56 @@
+@@ -2,6 +2,75 @@
  
  Durable record of non-obvious choices. Newest first.
  
-+## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
++## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
 +
-+A second sealed review rejected the reworked Setar-archive diff with five findings. Every
-+one of them was a rule that genuinely existed and covered LESS than it read as covering, so
-+each fix is the boundary all the callers share rather than the caller the counterexample
-+named.
++A third sealed review rejected the reworked Setar-archive diff. Each finding was the
++PREVIOUS fix holding for exactly the case it was written against, so each fix here is the
++rule the whole family shares — and the previous narrower mechanism is subsumed rather than
++left beside it.
 +
-+- **One scan was one consistent view of the registry only.** PIECES.csv was re-read after
-+  the walk; the rename log and the media inventory were read once and compared against
-+  nothing — and the media is what a non-atomic NAS copy actually perturbs. A resource moved
-+  out before its folder is enumerated and restored while later folders are walked produces a
-+  valid index that omits it, and the next Refresh marks still-present material unavailable.
-+  `readSource` is now every input in one place, read twice and compared. It is a CONSISTENCY
-+  check and the comment says so: a perturbation stable across both readings is
-+  indistinguishable, from here, from the archive genuinely being in that state.
-+- **The decoder normalised before the grammar ran.** `checkSourceGraph` was made the one
-+  grammar in the previous rework — but the decoder hands it the decoder's OWN output, so
-+  `resources: null` became a valid empty list before the grammar ever saw it, and six files
-+  became zero behind a correct digest. The scalars had the same shape (`part: "3"` → `null`,
-+  a wrong-typed `size` dropped, `rosterTrusted: 'yes'` → a boolean). `list`/`num`/`bool`
-+  replace every absent-tolerant read: absent is a default, present-and-wrong is a refusal
-+  naming the record. Separately, `acceptedAt` was the one persisted field with no check at
-+  all while Settings renders it — validated at the door, never guarded in the component.
-+- **A decision was matched to its target, not to its premise.** The rebase refused only on a
-+  NEW question, so choosing the archive's composer over an empty field and then typing your
-+  own before Apply raised nothing to ask about and overwrote the new words. An `apply-field`
-+  decision carries `from` now, `decisionMatchesSuggestion` is the one test the summary and
-+  the write share, and a link may only adopt a record that is still unbound and still this
-+  instrument's. Both land in `plan.staleDecisions` — ONE channel — and the commit refuses on
-+  either, whether or not `rev` moved. Silently creating a record instead of linking one was
-+  rejected as an answer: it is not the action the owner chose.
-+- **The rename chain had three readings.** Repair followed the whole chain, adoption took one
-+  hop, a suppression took none. A→B→C with B in session 1 and C in session 2 adopted a class
-+  as session 1 and then repaired its reference into session 2. `followRenames` is the one
-+  reading; a resource suppression is re-keyed through it (the same decision about the same
-+  bytes, in the archive's current words), and a renamed row is dropped from the retained
-+  graph rather than flagged `unavailable` — the log says where the bytes went. Dropping is
-+  safe for a RESOURCE specifically: only pieces and sessions carry bindings.
-+- **A media base was validated as a URL, not as a base.** Everything appends a path after it,
-+  so `https://user:pass@nas/media?token=secret` put a password in every device URL and
-+  addressed no file. `normalizeBaseUrl` refuses credentials, query and fragment — refuses,
-+  not strips, because a rewritten base names a different server — and every caller,
-+  `verifiedBase` included, already passes through it.
++- **A read failure was valid empty source data.** The two-read consistency check was
++  extended to every input, and `catch { renameLogText = '' }` then made an unreadable
++  RENAME-LOG.csv agree with itself: both readings held `''`, the check passed, and the scan
++  published an index with no renames — so a file that moved in that window is flagged
++  unavailable and its saved references can never be repaired. Absence is an OBSERVATION now
++  (`{present:false}`, ENOENT only) and travels in the compared reading; anything else fails
++  the scan. The walk had the deeper version of the same gap: two readings agree about a file
++  neither looked at, so a skipped symlink or a session-named non-directory is a published
++  diagnostic instead of a silent omission. The compared reading also carries `mtimeMs`,
++  which `buildIndex` never reads, so an in-place edit at the same byte length is visible to
++  the check and invisible to the index.
++- **The absent/present rule reached the lists and the scalars, not the strings.**
++  `str(raw.form ?? '')` still read absent and present-and-null alike, so a `title: null`
++  decoded to an untitled row behind a correct digest. `text()` is that rule for strings.
++  Separately, a grammar of FIELD TYPES says every value is readable and nothing about
++  whether the graph agrees with itself: a resource in class 2's folder listed under class 1
++  passed every door. `checkSourceGraph` now also checks path ownership, resource-to-member
++  agreement by role, demo-group coherence and `hasClassRecording` — over rows the source
++  still DESCRIBES, because holding retained `unavailable` provenance to the current
++  source's internal agreement would refuse every refresh after a removal.
++- **A decision named its piece, not its record.** Both reconciliation loops open with
++  "already bound? nothing to decide", so a decision about a record bound between the preview
++  and the commit was never examined: no adoption, no question, an EMPTY `staleDecisions`,
++  and a commit reporting success for an action it had not performed. `apply-field` was worse
++  than ignored — keyed by piece and value alone, it was redirected onto whichever record held
++  that piece by commit time. It carries `itemId` now, and `planArchiveImport` marks every
++  decision it acts on and sweeps the rest: unmarked is either already realised (loop
++  prevention — the screen drops a stale decision and re-previews) or stale. The `from`
++  premise rule is an outcome of that sweep rather than a second mechanism beside it.
++- **"A cycle is reported" was reported in a value callers could ignore.** `followRenames`
++  returned `{ path, cycle: true }` and only adoption read the flag; the suppression re-key
++  and `retainMissing` walked past it, so A→B plus B→A moved the owner's hide onto B and the
++  wrong file went dark. It returns `string | null`, so dropping the verdict and keeping a
++  path is unrepresentable. The scanner drops every row in a loop — and every row walking into
++  one — with a diagnostic, per ac-12's own "cycles diagnose, never guess"; refusing the whole
++  index was rejected, because a name swap is a legitimate archive operation and an
++  unimportable archive is a worse answer than an unrepaired path.
++- **One lesson file had two sections.** `lessonFiles` composed the lesson's own references
++  and attachments as well as the archive's, and the lesson page renders both in the sections
++  that can edit and remove them — so an authored file appeared twice, once where nothing
++  could be done with it. `lessonFiles` is the ARCHIVE's contribution alone; an ITEM keeps the
++  whole composition, because its material comes from records its own page has no section for.
++  And "has a recording" is read through that composition, not `lesson.recordings`, so an
++  imported class is no longer invited to add the video already playing above the prompt.
 +
-+Fifteen mutations were run and all fifteen fail their named acceptance test: each decoder
-+site reverted INDIVIDUALLY (a single-site test would have passed a partial fix), the
-+scanner's second reading, the `acceptedAt` and rename-log checks, the one-hop evidence, the
-+un-migrated suppression ref, the re-flagged renamed row, `from` dropped from the predicate,
-+the staleness detector disabled, the bound-target link guard, and the base-URL refusal.
++A separate, reproduced HARNESS diagnosis came out of the same round and is recorded here
++because a flaky heavy check is worse than a missing one: WebKit reports a request the browser
++CANCELLED (because the test navigated away mid-flight) as "Fetch API cannot load … due to
++access control checks", which reads as a CORS failure and is not one. Instrumenting the
++journey showed the only difference between a passing and a failing run was one `requestfailed`
++with `errorText: 'cancelled'` against a request fulfilled with correct CORS headers every
++other time. `openPracticeApp` no longer counts such an error, narrowly and by URL. Filtering
++the wording alone, or seeding the fake remote so the bootstrap PUT never happens, were both
++rejected: the first excuses a real CORS bug, the second changes what the other journeys mean
++by an empty remote.
 +
- ## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
++Eight mutations were run and all eight fail their named acceptance test: the optional-read
++swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
++`itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson
++composition's authored half (in the real browser, both engines), and the empty-recording
++prompt's guard.
++
+ ## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
  
- A sealed review rejected the first Setar-archive diff with four findings. Each was reported
+ A second sealed review rejected the reworked Setar-archive diff with five findings. Every
 diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index c707be9..efd7ab0 100644
+index efd7ab0..6d1f4be 100644
 --- a/docs/setar-archive.md
 +++ b/docs/setar-archive.md
-@@ -53,7 +53,14 @@ byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
- 
- What it refuses outright (and produces no index for): a malformed or ambiguous
- registry, a duplicate canonical key, two folders claiming one session number, an
--unsafe path, more than 5000 files, a registry that changed during the scan.
-+unsafe path, more than 5000 files, **any input that changed during the scan** —
-+the registry, the rename log or the media inventory, all three read twice and
-+compared, sizes included, so a file still being copied is caught too. That is a
-+CONSISTENCY check, not atomicity: a perturbation that is stable across both
-+readings agrees with itself, and from here is indistinguishable from the archive
-+genuinely being in that state. What it removes is the transient — which is what a
-+copy in flight looks like, and what would otherwise publish an index missing a
-+file that is still there.
+@@ -61,9 +61,29 @@ readings agrees with itself, and from here is indistinguishable from the archive
+ genuinely being in that state. What it removes is the transient — which is what a
+ copy in flight looks like, and what would otherwise publish an index missing a
+ file that is still there.
++
++A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
++stops it being read — missing, unreadable, a directory where a file should be —
++refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
++nothing else: it travels in the compared reading as `{present:false}`, never as
++empty text, because `catch { text = '' }` made a permission change or an I/O
++error agree with itself across both readings and publish an index with no
++renames at all. A present but EMPTY log is refused like an empty registry — a
++zero-byte file is what a copy in flight looks like.
++
++Each file's `mtimeMs` is part of the compared reading and is never read by the
++index builder, so a file edited IN PLACE at the same byte length fails the scan
++while altered mtimes still produce a byte-identical index.
++
  What it reports and skips: a file with no known role, an unknown piece, an
  unsupported extension, a class recording claiming a piece, an unnamed demo in a
- session whose roster and filenames disagree.
-@@ -208,7 +215,17 @@ applies the lot in one store mutation.
-   date, no SM‑2 state. An imported class is history even when its date is in the
-   future relative to this device's clock.
- - Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
--  same mutation, so a refresh, a reload and a sync all respect it.
-+  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
-+  its file through the rename log, so a renamed resource does not reappear —
-+  including when the rename moves it into a different session's folder, where
-+  the old row is dropped rather than reported missing.
-+- **A decision is about the state you saw.** If the value you chose the archive's
-+  over has changed since — or a record you chose to link has been deleted, bound
-+  elsewhere or moved instrument — the commit refuses and re-previews rather than
-+  applying an answer to a question that no longer stands.
-+- **Your media base is an address and a folder.** A base carrying a username,
-+  password, `?query` or `#fragment` is refused, not silently cleaned up: every
-+  file URL is built by appending a path to it.
+-session whose roster and filenames disagree.
++session whose roster and filenames disagree, a symbolic link (never followed —
++but never silently dropped either, since two readings agree about a file neither
++of them looked at), a session-named entry that is not a real directory, and
++every row of a rename LOOP. A log that loops names no file, so those rows — and
++any row that walks into a loop — are dropped with a diagnostic rather than
++published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
++and out-of-scope root folders stay silent: they are not archive content.
  
- The owner's own `تمرین-من` recordings are evidence, not material: their
- membership and role survive in the graph, the files themselves never become a
+ The output is written **outside the archive** via a temp file + rename, and the
+ scanner refuses an `--out` path inside `--root`.
+@@ -218,11 +238,18 @@ applies the lot in one store mutation.
+   same mutation, so a refresh, a reload and a sync all respect it. A hide follows
+   its file through the rename log, so a renamed resource does not reappear —
+   including when the rename moves it into a different session's folder, where
+-  the old row is dropped rather than reported missing.
+-- **A decision is about the state you saw.** If the value you chose the archive's
+-  over has changed since — or a record you chose to link has been deleted, bound
+-  elsewhere or moved instrument — the commit refuses and re-previews rather than
+-  applying an answer to a question that no longer stands.
++  the old row is dropped rather than reported missing. A rename LOOP names no
++  file, so a hide stays exactly where you put it and nothing is re-keyed.
++- **A decision is about the state you saw, and about the record you saw it on.**
++  If the value you chose the archive's over has changed since — or the record you
++  chose to link or apply a field to has been deleted, bound elsewhere or moved
++  instrument — the commit refuses and re-previews rather than applying an answer
++  to a question that no longer stands, or handing it to some other record.
++- **Every file on a class has exactly one section.** The archive's own session
++  material is composed for you (an imported class keeps no copy of it, so nothing
++  else can show it); your own links and attachments stay in the sections that can
++  edit and remove them, and are never repeated above. An imported class recording
++  counts as a recording, so you are not invited to add the video already playing.
+ - **Your media base is an address and a folder.** A base carrying a username,
+   password, `?query` or `#fragment` is refused, not silently cleaned up: every
+   file URL is built by appending a path to it.
 diff --git a/scripts/scan-setar-classes.mjs b/scripts/scan-setar-classes.mjs
-index cb51f77..af3a245 100644
+index af3a245..60a1e71 100644
 --- a/scripts/scan-setar-classes.mjs
 +++ b/scripts/scan-setar-classes.mjs
-@@ -521,9 +521,11 @@ export function writeIndexAtomically(outPath, text, root) {
-   return out;
+@@ -284,7 +284,7 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  * files). Individual unhandled FILES are reported in `diagnostics` and left
+  * out — surfaced for the owner, never relabelled.
+  */
+-export function buildIndex({ registryText, inventory, renameLogText }) {
++export function buildIndex({ registryText, inventory, renameLog, skipped = [] }) {
+   const pieces = parseRegistry(registryText);
+   const byKey = new Map(pieces.map((p) => [p.key, p]));
+ 
+@@ -292,6 +292,11 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
+ 
+   const diagnostics = [];
+   const diag = (path, reason) => diagnostics.push({ path, reason });
++  // Everything the WALK could not take in. A symlink is not followed and a
++  // device node is not a file, but dropping either in silence publishes an
++  // index that is quietly narrower than the archive — the same "partial view
++  // sold as complete" this scanner's two-read check exists to refuse.
++  for (const s of skipped) diag(s.path, s.reason);
+ 
+   // --- sessions -----------------------------------------------------------
+   const sessions = new Map(); // n -> { n, date, folder, assets: [] }
+@@ -426,8 +431,12 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
+   // EXACT old→new pairs only. This is path provenance, not a similarity model:
+   // an old path with two destinations is reported, never resolved by guessing.
+   const renames = [];
+-  if (renameLogText) {
+-    const rows = readTable(renameLogText, ['old_path', 'new_path']);
++  // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
++  // A present-but-empty log has no header and `readTable` says so, exactly as
++  // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
++  // like, and guessing "no renames" from it is the failure this lane closed.
++  if (renameLog && renameLog.present) {
++    const rows = readTable(renameLog.text, ['old_path', 'new_path']);
+     const dest = new Map();
+     for (const r of rows) {
+       const from = r.old_path.trim();
+@@ -446,6 +455,32 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
+       dest.set(from, to);
+       renames.push({ from, to });
+     }
++    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
++    // only that two names were swapped; picking a stopping point would invent
++    // an identity, and every path that LEADS INTO a loop is equally unusable.
++    // Those rows are dropped with a diagnostic rather than published: the app
++    // must never be handed a replacement identity this log cannot support.
++    const cyclic = new Set();
++    for (const from of dest.keys()) {
++      const walked = new Set([from]);
++      let cur = from;
++      while (dest.has(cur)) {
++        const next = dest.get(cur);
++        if (walked.has(next)) {
++          for (const p of walked) cyclic.add(p);
++          cyclic.add(next);
++          break;
++        }
++        walked.add(next);
++        cur = next;
++      }
++    }
++    for (const from of cyclic) {
++      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
++    }
++    const kept = renames.filter((r) => !cyclic.has(r.from));
++    renames.length = 0;
++    renames.push(...kept);
+     renames.sort((a, b) => cmp(a.from, b.from));
+   }
+ 
+@@ -490,23 +525,45 @@ export function canonicalJson(value) {
+ export function scanArchive(root) {
+   const base = resolve(root);
+   const inventory = [];
++  const skipped = [];
+   for (const entry of readdirSync(base, { withFileTypes: true })) {
+     if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
+-    if (!entry.isDirectory()) continue;
+     if (!parseSessionFolderName(entry.name)) continue; // root folders out of scope
++    if (!entry.isDirectory()) {
++      // It CLAIMS to be a session and this walk will not open it. Silence here
++      // would drop a whole class out of a "complete" index.
++      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.' });
++      continue;
++    }
+     const dir = join(base, entry.name);
+     for (const f of readdirSync(dir, { withFileTypes: true })) {
+       if (f.name.startsWith('.') || IGNORED_DIRS.has(f.name)) continue;
+       const full = join(dir, f.name);
+       const st = lstatSync(full);
+-      if (st.isSymbolicLink() || !st.isFile()) continue;
++      const path = `${entry.name}/${f.name}`;
++      if (st.isSymbolicLink()) {
++        // Never FOLLOWED — a link out of the archive is a path this scanner
++        // has no authority over — but always SAID, so the owner can see that
++        // the index is not describing something the folder holds.
++        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed.' });
++        continue;
++      }
++      if (!st.isFile()) {
++        skipped.push({ path, reason: 'Not a regular file — not indexed.' });
++        continue;
++      }
+       if (!full.startsWith(base + sep)) continue;
+-      inventory.push({ path: `${entry.name}/${f.name}`, size: st.size });
++      // `mtimeMs` is deliberately NOT semantic — `buildIndex` reads `size` and
++      // nothing else, so an altered time cannot change the published index. It
++      // is here for the two-read comparison below: a file edited IN PLACE at
++      // the same byte length is otherwise invisible to it.
++      inventory.push({ path, size: st.size, mtimeMs: st.mtimeMs });
+       if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
+     }
+   }
+   inventory.sort((a, b) => cmp(a.path, b.path));
+-  return inventory;
++  skipped.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason));
++  return { inventory, skipped };
  }
  
--/** Read the archive and build its index. The scan itself reads nothing twice. */
--export function scanToIndex(root) {
--  const base = resolve(root);
-+/**
-+ * EVERY input this scanner reads, in one place — so "read it twice and compare"
-+ * below covers all of them by construction, including one added later.
-+ */
-+export function readSource(base) {
-   const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
-   let renameLogText = '';
-   try {
-@@ -531,13 +533,36 @@ export function scanToIndex(root) {
-   } catch {
-     renameLogText = '';
-   }
--  const inventory = scanArchive(base);
--  // Re-read the registry AFTER the walk: a registry edited mid-scan would
--  // otherwise pair old identities with new files, and the index is supposed to
--  // be one consistent view or none at all.
--  const registryAfter = readFileSync(join(base, 'PIECES.csv'), 'utf8');
--  if (registryAfter !== registryText) throw new Error('PIECES.csv changed during the scan; no index was produced.');
--  return buildIndex({ registryText, inventory, renameLogText });
-+  return { registryText, renameLogText, inventory: scanArchive(base) };
+ /** Write via a temp file + rename, so a reader never sees a half-written index. */
+@@ -526,14 +583,39 @@ export function writeIndexAtomically(outPath, text, root) {
+  * below covers all of them by construction, including one added later.
+  */
+ export function readSource(base) {
+-  const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
+-  let renameLogText = '';
++  const registryText = readRequired(join(base, 'PIECES.csv'), 'PIECES.csv');
++  const renameLog = readOptional(join(base, 'RENAME-LOG.csv'), 'RENAME-LOG.csv');
++  const { inventory, skipped } = scanArchive(base);
++  return { registryText, renameLog, inventory, skipped };
++}
++
++/** A required input. Any failure to read it is a failure to scan. */
++function readRequired(path, label) {
++  try {
++    return readFileSync(path, 'utf8');
++  } catch (err) {
++    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
++  }
 +}
 +
 +/**
-+ * Read the archive and build its index — from ONE consistent view, or none.
++ * AN OPTIONAL INPUT IS ABSENT OR PRESENT — NEVER "EMPTY BECAUSE IT THREW".
 + *
-+ * The registry used to be the only input re-read after the walk, which made
-+ * the guarantee exactly as narrow as the file it named: the MEDIA is what a
-+ * non-atomic NAS copy actually perturbs. Move a resource out before its folder
-+ * is enumerated and put it back while later folders are walked, and PIECES.csv
-+ * never changes — the scan publishes an index missing that file, and the next
-+ * Refresh marks still-present material unavailable. The rename log had the
-+ * same exposure, read once and never checked.
-+ *
-+ * So the whole source is read TWICE and the two readings compared. `size` is
-+ * part of the comparison, so a file still being copied is caught too.
-+ *
-+ * This is a CONSISTENCY check, not atomicity: a perturbation that is stable
-+ * across both readings agrees with itself and is indistinguishable, from here,
-+ * from the archive genuinely being in that state. What it removes is the
-+ * transient, which is what a copy in flight actually looks like.
++ * `catch { text = '' }` made every failure to read RENAME-LOG.csv — a
++ * permission change, an I/O error, a mount that went away mid-copy — look
++ * exactly like an archive that has no rename log. Both readings then agreed
++ * with each other, so the consistency check below passed and the scan
++ * published an index with no renames at all: a file that moved during that
++ * window is flagged unavailable and its saved references can never be
++ * repaired. Only ENOENT is an observation; everything else is a failure.
 + */
-+export function scanToIndex(root) {
-+  const base = resolve(root);
-+  const before = readSource(base);
-+  const after = readSource(base);
-+  if (canonicalJson(before) !== canonicalJson(after)) {
-+    throw new Error('The archive changed during the scan; no index was produced.');
-+  }
-+  return buildIndex(before);
++function readOptional(path, label) {
+   try {
+-    renameLogText = readFileSync(join(base, 'RENAME-LOG.csv'), 'utf8');
+-  } catch {
+-    renameLogText = '';
++    return { present: true, text: readFileSync(path, 'utf8') };
++  } catch (err) {
++    if (err?.code === 'ENOENT') return { present: false };
++    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
+   }
+-  return { registryText, renameLogText, inventory: scanArchive(base) };
  }
  
- function main() {
+ /**
 diff --git a/src/components/ArchiveRefresh.tsx b/src/components/ArchiveRefresh.tsx
-index cc8a7aa..b7c58f8 100644
+index b7c58f8..7683adc 100644
 --- a/src/components/ArchiveRefresh.tsx
 +++ b/src/components/ArchiveRefresh.tsx
-@@ -7,6 +7,7 @@ import {
-   archiveFor,
-   describeArchiveAccess,
-   archiveRootUrl,
-+  decisionMatchesSuggestion,
-   type ImportPlan,
-   type MetadataField,
-   type ReconcileDecision,
-@@ -103,8 +104,15 @@ export default function ArchiveRefresh() {
-     if (!result.ok) {
-       if (result.status === 'stale') {
-         // Something changed underneath; look again rather than apply a plan
--        // that was decided against a database that has moved on.
--        showPlan(fetched, decisions);
-+        // that was decided against a database that has moved on. A decision
-+        // whose premise moved is DROPPED here — keeping it would re-submit the
-+        // same invalid answer for ever — and the fresh preview shows the
-+        // question, or the suggestion's real current value, as it is now.
-+        const kept = result.staleDecisions?.length
-+          ? decisions.filter((d) => !result.staleDecisions!.includes(d))
-+          : decisions;
-+        setDecisions(kept);
-+        showPlan(fetched, kept);
-         setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
-         return;
-       }
-@@ -249,9 +257,10 @@ export default function ArchiveRefresh() {
-                   offered field by field and applied only when asked — never
-                   written behind them, and never near their notebook. */}
-               {phase.plan.suggestions.map((sg) => {
--                const applied = decisions.some(
--                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
--                );
-+                // The PREMISE is part of the match: a choice made against a
-+                // value the owner has since edited is no longer this
-+                // suggestion's answer, so the button reads unpressed again.
-+                const applied = decisions.some((d) => decisionMatchesSuggestion(d, sg));
-                 return (
-                   <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
-                     <div dir="auto" style={{ textAlign: 'start' }}>
-@@ -268,7 +277,7 @@ export default function ArchiveRefresh() {
+@@ -277,7 +277,18 @@ export default function ArchiveRefresh() {
                          type="button"
                          className="btn btn-sm"
                          aria-pressed={applied}
--                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
-+                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
+-                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
++                        onClick={() =>
++                          decide({
++                            kind: 'apply-field',
++                            pieceKey: sg.pieceKey,
++                            // The RECORD the value was shown against, not just
++                            // the piece: a rebase must not hand the answer to
++                            // whichever item happens to hold that piece later.
++                            itemId: sg.itemId,
++                            field: sg.field,
++                            from: sg.from,
++                          })
++                        }
                        >
                          {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
                        </button>
 diff --git a/src/domain/io.test.ts b/src/domain/io.test.ts
-index 3e3cfc2..06d1b7e 100644
+index 06d1b7e..4568532 100644
 --- a/src/domain/io.test.ts
 +++ b/src/domain/io.test.ts
-@@ -987,6 +987,24 @@ describe('the v14 source graph at the schema boundary', () => {
+@@ -801,6 +801,37 @@ describe('the v14 source graph at the schema boundary', () => {
+   const NOW = new Date('2026-09-17T09:00:00.000Z');
+   const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
+ 
++  /**
++   * A source graph as it arrives — every value still `unknown`, because that is
++   * exactly what these mutations put into it. One shape for BOTH doors: the
++   * published index and a persisted `archiveSources` row carry the same graph,
++   * so one mutation can be handed to each and neither can be given a check the
++   * other misses.
++   */
++  type RawRow = Record<string, unknown>;
++  type RawSession = RawRow & { folder: string; resources: RawRow[]; members: RawRow[] };
++  type Graph = { pieces: RawRow[]; sessions: RawSession[]; diagnostics: RawRow[] };
++
++  /** First `[session, resource]` carrying a role, in the corpus fixture. */
++  function firstWithRole(g: Graph, role: string): [RawSession, RawRow] {
++    for (const sess of g.sessions) {
++      const res = sess.resources.find((r) => r.role === role);
++      if (res) return [sess, res];
++    }
++    throw new Error(`The corpus fixture has no "${role}" resource to mutate.`);
++  }
++
++  /** A demonstration group with at least TWO parts, and its session. */
++  function groupedDemo(g: Graph): [string, RawRow, RawSession] {
++    for (const sess of g.sessions) {
++      for (const r of sess.resources) {
++        if (!r.group) continue;
++        if (sess.resources.filter((x) => x.group === r.group).length > 1) return [r.group as string, r, sess];
++      }
++    }
++    throw new Error('The corpus fixture has no multi-part demonstration to mutate.');
++  }
++
+   /** A database with a real accepted graph in it, built by the real planner. */
+   function withGraph(): PracticeDB {
+     const base = validateDB(legacy());
+@@ -987,6 +1018,99 @@ describe('the v14 source graph at the schema boundary', () => {
        (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
      }, /suppression with no timestamp/);
  
-+    // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
-+    // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
-+    // when the index last changed. It was the one persisted field with no
-+    // check at all: a v14 import carrying `acceptedAt: null` was accepted and
-+    // then threw while the screen rendered. The fix is this door, never a
-+    // guard in the component.
-+    for (const bad of [null, 42, '', 'yesterday', '2026-02-30T12:00:00.000Z', '2026-09-17']) {
-+      refuses((d) => {
-+        (d.archiveSources[0] as unknown as { acceptedAt: unknown }).acceptedAt = bad;
-+      }, /unreadable accepted time/);
-+    }
-+    refuses((d) => {
-+      delete (d.archiveSources[0] as unknown as { renames?: unknown }).renames;
-+    }, /no rename log/);
-+    refuses((d) => {
-+      (d.archiveSources[0] as unknown as { diagnostics?: unknown }).diagnostics = null;
-+    }, /no diagnostic list/);
++    // --- ABSENT IS A DEFAULT; PRESENT-AND-NULL IS A REFUSAL ----------------
++    // The list/num/bool rule closed this for lists and scalars and left every
++    // STRING with a default behind: `str(raw.form ?? '')` read absent and
++    // present-and-null as the same thing, so a `title: null` in an index whose
++    // digest was recomputed decoded to an untitled row the grammar was
++    // perfectly happy with. Absent is a default; null is a value, and a wrong
++    // one. Proved at BOTH doors from ONE mutation, so the published decoder
++    // and the persisted-graph validator cannot be given it separately.
++    const refusesBothDoors = (fn: (g: Graph) => void, pattern: RegExp) => {
++      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
++      fn(index);
++      expect(() => decodeSourceIndex(index)).toThrow(pattern);
++      refuses((d) => fn(d.archiveSources[0] as unknown as Graph), pattern);
++    };
++    const onIndexOnly = (fn: (g: Graph) => void, pattern: RegExp) => {
++      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
++      fn(index);
++      expect(() => decodeSourceIndex(index)).toThrow(pattern);
++    };
++    onIndexOnly((g) => {
++      g.sessions[0]!.resources[0]!.title = null;
++    }, /title must be text/);
++    onIndexOnly((g) => {
++      g.pieces[0]!.form = null;
++    }, /form must be text/);
++    onIndexOnly((g) => {
++      g.pieces[0]!.notes = null;
++    }, /notes must be text/);
++    onIndexOnly((g) => {
++      g.pieces[0]!.composer = null;
++    }, /composer must be text/);
++    // `size` is genuinely optional, so ABSENT is a default here too — but a
++    // present null is still a value, and the DECODER refuses it rather than
++    // spreading a type-violating value into its own output for the grammar to
++    // catch downstream. (The persisted door has its own `size` check above.)
++    onIndexOnly((g) => {
++      g.sessions[0]!.resources[0]!.size = null;
++    }, /size must be a number/);
++    onIndexOnly((g) => {
++      g.diagnostics.push({ path: null, reason: 'x' });
++    }, /diagnostic path must be text/);
 +
-     // The POSITIVE half: a graph this door ACCEPTS is one every production
-     // reader can walk without throwing. The counterexample above reached
-     // `repeatChains` and crashed the material list; this asserts the whole
-diff --git a/src/domain/recordings.test.ts b/src/domain/recordings.test.ts
-index c54289e..27d9ccb 100644
---- a/src/domain/recordings.test.ts
-+++ b/src/domain/recordings.test.ts
-@@ -286,5 +286,39 @@ describe('archive transport', () => {
-     expect(noIndex.index).toMatch(/No index has been fetched/);
-     expect(describeArchiveAccess({ indexFetchedAt: 'x' }).media).toMatch(/No media base is set/);
-     expect(describeArchiveAccess({ indexFetchedAt: 'x', baseUrl: 'ftp://nas' }).media).toMatch(/not a usable/);
++    // --- SEMANTIC RELATIONS, NOT MERELY FIELD TYPES ------------------------
++    // A field-type grammar says every value is READABLE and nothing about
++    // whether the graph agrees with itself. A resource physically sitting in
++    // class 2's folder, listed under class 1, is type-perfect and attributes
++    // someone else's file to the wrong class on every screen that reads it;
++    // an arbitrary `group` on a non-demonstration invents one logical resource
++    // out of unrelated files. Both doors, one mutation, every time.
++    refusesBothDoors((g) => {
++      g.sessions[1]!.resources[0]!.path = `${g.sessions[0]!.folder}/smuggled.mp4`;
++    }, /not a file in its own folder/);
++    refusesBothDoors((g) => {
++      g.sessions[0]!.resources[0]!.path = `${g.sessions[0]!.folder}/deeper/x.mp4`;
++    }, /not a file in its own folder/);
++    refusesBothDoors((g) => {
++      // Attributed to a real registry piece that this session never records a
++      // membership for: the file would surface as that piece's material with
++      // nothing in the graph saying it belongs to it.
++      const [s0, res] = firstWithRole(g, 'نت');
++      const stranger = g.pieces.find((p) => !s0.members.some((m) => m.key === p.key))!;
++      res.pieces = [stranger.key];
++    }, /without recording that membership/);
++    refusesBothDoors((g) => {
++      const [, res] = firstWithRole(g, 'نت');
++      res.group = 'نمونه:invented';
++    }, /carries a part group but is not a demonstration/);
++    refusesBothDoors((g) => {
++      const [, res] = firstWithRole(g, 'ضبط-کلاس');
++      res.pieces = [g.pieces[0]!.key];
++    }, /class recording and cannot name a piece/);
++    refusesBothDoors((g) => {
++      const [sess] = firstWithRole(g, 'ضبط-کلاس');
++      sess.hasClassRecording = false;
++    }, /disagrees with itself about having a class recording/);
++    refusesBothDoors((g) => {
++      const sess = g.sessions.find((x) => !x.resources.some((r) => r.role === 'ضبط-کلاس'))!;
++      sess.hasClassRecording = true;
++    }, /disagrees with itself about having a class recording/);
++    // A demonstration's PARTS are one resource told in order. Parts that are
++    // material for different pieces are not one resource, and two parts
++    // numbered alike have no order to be read in.
++    refusesBothDoors((g) => {
++      const [, first, sess] = groupedDemo(g);
++      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
++      sibling.pieces = [];
++    }, /parts belong to different pieces/);
++    refusesBothDoors((g) => {
++      const [, first, sess] = groupedDemo(g);
++      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
++      sibling.part = first.part;
++    }, /two parts numbered alike/);
 +
-+    // --- A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE -------------------
-+    // Everything appends a path AFTER the base, so a credential, a query or a
-+    // fragment in it is not merely untidy: the password ends up on screen in
-+    // every device URL, and `…/media?token=secret` + `/session-1/x.mp4`
-+    // addresses no file at all. Refused at the ONE boundary they all share —
-+    // never stripped, because a rewritten base names a different server.
-+    const leaky = 'https://user:pass@nas.example/media?token=secret';
-+    for (const bad of [
-+      leaky,
-+      'https://user:pass@nas.example/media',
-+      'https://nas.example/media?token=secret',
-+      'https://nas.example/media#frag',
-+      'user:pass@nas.example/media',
-+    ]) {
-+      expect(normalizeBaseUrl(bad)).toBeNull();
-+      expect(archiveRootUrl(bad)).toBeNull();
-+      expect(resolveRecording(bad, ref).status).toBe('bad-base');
-+      expect(resolveRecordingUrl(bad, ref)).toBeNull();
-+      // Nothing is relativised against a base that was never usable…
-+      expect(relativizeReference(bad, `${leaky}/session-1/x.mp4`)).toBe(`${leaky}/session-1/x.mp4`);
-+      // …and the owner is told WHY, not merely that it failed.
-+      const said = describeArchiveAccess({ baseUrl: bad }).media;
-+      expect(said).toMatch(/not a usable/);
-+      expect(said).toMatch(/password/);
-+    }
-+    // No secret ever reaches a resolved URL through the base.
-+    expect(JSON.stringify([archiveRootUrl(leaky), resolveRecording(leaky, ref)])).not.toContain('secret');
-+    // The reconciler reads its `verifiedBase` from `archiveRootUrl`, so the
-+    // same refusal covers path repair: with no verified base, a full URL is
-+    // left exactly as the owner saved it.
-+    expect(archiveRootUrl(leaky) ?? undefined).toBeUndefined();
-+    // An ordinary base with a port, a path and a trailing slash still works.
-+    expect(normalizeBaseUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes');
-   });
- });
-diff --git a/src/domain/recordings.ts b/src/domain/recordings.ts
-index 634c3ac..a6d5045 100644
---- a/src/domain/recordings.ts
-+++ b/src/domain/recordings.ts
-@@ -26,6 +26,17 @@ export function formatFileSize(bytes: number | undefined): string | null {
-  * - Validates with `new URL`; only http/https accepted.
-  * - Strips a trailing slash.
-  * Returns null when the value is blank or unparseable.
-+ *
-+ * A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE. A credential, a query or a
-+ * fragment is REFUSED here rather than carried, because every caller appends a
-+ * path AFTER whatever this returns: `https://user:pass@nas/media?token=secret`
-+ * would make "Open archive root" `…?token=secret/` and a file
-+ * `…?token=secret/session-1/x.mp4` — a password on screen in a device URL, and
-+ * a URL that addresses no file. It is not STRIPPED into something openable
-+ * either: a rewritten base names a different server, and the owner is the only
-+ * one who can say what they meant. This is the ONE boundary — `resolveRecording`,
-+ * `relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the
-+ * reconciler's `verifiedBase` (through `archiveRootUrl`) all pass through it.
-  */
- const ANY_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+     // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
+     // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
+     // when the index last changed. It was the one persisted field with no
+diff --git a/src/domain/itemFiles.test.ts b/src/domain/itemFiles.test.ts
+index 592aebe..f3e4d35 100644
+--- a/src/domain/itemFiles.test.ts
++++ b/src/domain/itemFiles.test.ts
+@@ -296,6 +296,51 @@ describe('archive material for a piece', () => {
+     expect(lessonSide[0]!.path).toContain('ضبط-کلاس');
+     expect(lessonSide.every((f) => f.lessonId === lesson13.id)).toBe(true);
  
-@@ -43,6 +54,7 @@ export function normalizeBaseUrl(raw: string | undefined): string | null {
-     return null;
-   }
-   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-+  if (url.username || url.password || url.search || url.hash) return null;
-   return url.toString().replace(/\/+$/, '');
++    // --- EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT -----
++    // This composition used to include the owner's OWN references and the
++    // lesson's attachments as well. The lesson page renders both in their own
++    // editable sections, so each authored file appeared twice: once here, and
++    // once again where it can actually be removed. An ITEM is the opposite
++    // case and is unchanged — its material comes from records its own page has
++    // no section for, which is why `itemFiles` stays the whole composition.
++    const withOwnFiles: PracticeDB = {
++      ...db,
++      lessons: db.lessons.map((l) =>
++        l.id === lesson13.id
++          ? {
++              ...l,
++              recordings: [
++                {
++                  id: 'own-ref',
++                  title: 'My own link',
++                  path: 'session-13-03-09-2024/my-own-file.mp4',
++                  kind: 'video' as const,
++                  createdAt: '2026-01-01T00:00:00.000Z',
++                },
++              ],
++            }
++          : l,
++      ),
++      attachments: [
++        {
++          id: 'own-att',
++          ownerType: 'lesson' as const,
++          ownerId: lesson13.id,
++          name: 'handout.pdf',
++          mime: 'application/pdf',
++          size: 2048,
++          kind: 'pdf' as const,
++          createdAt: '2026-01-01T00:00:00.000Z',
++        },
++      ],
++    };
++    const composed = lessonFiles(withOwnFiles, lesson13.id);
++    expect(composed.every((f) => f.source === 'reference' && f.archive !== undefined)).toBe(true);
++    expect(composed.some((f) => f.title === 'My own link')).toBe(false);
++    expect(composed.some((f) => f.source === 'attachment')).toBe(false);
++    // The archive's own material is untouched by the owner's additions.
++    expect(composed.map((f) => f.id)).toEqual(lessonSide.map((f) => f.id));
++
+     // --- an UNNAMED demonstration is one ordered logical group --------------
+     const araqGusheh = itemFiles(db, idFor(db, 'کرشمه-در-عراق')) as ItemFileReference[];
+     const demo = araqGusheh.filter((f) => f.archive?.role === 'نمونه' && f.archive.sessionN === 13);
+diff --git a/src/domain/itemFiles.ts b/src/domain/itemFiles.ts
+index 0222517..8ebef18 100644
+--- a/src/domain/itemFiles.ts
++++ b/src/domain/itemFiles.ts
+@@ -239,14 +239,20 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
  }
  
-@@ -81,6 +93,11 @@ function isSafeRelativeReference(p: string): boolean {
-  * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
-  * paths join under the normalised base with each segment URL-encoded (spaces,
-  * Farsi filenames).
-+ *
-+ * A stored ABSOLUTE url is opened as the owner saved it, credentials included:
-+ * that is their own authored link, not this device's configured base, and
-+ * nothing here mints one (`isSafeRelativeReference` refuses `@`, and
-+ * `relativizeReference` only ever writes a path beneath a base that has none).
+ /**
+- * Everything a LESSON holds: the archive session's own files (the class
+- * recording, an unnamed handout — the material that belongs to the whole
+- * class rather than to one piece) followed by references the owner authored
+- * on the lesson itself, then its attachments.
++ * What the ARCHIVE gives a lesson: its session's own files — the class
++ * recording, an unnamed handout, the material that belongs to the whole class
++ * rather than to one piece. An archive-bound lesson keeps no copy of these, so
++ * reading its `recordings` array alone shows nothing at all; this is the only
++ * way they reach the screen.
+  *
+- * The same composition function family as `itemFiles`, for the same reason:
+- * an archive-bound lesson carries no copy of its session's resources, so
+- * reading its `recordings` array alone would show nothing at all.
++ * EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT. This used to
++ * compose the owner's own `recordings` and attachments too, and the lesson page
++ * renders those in their own editable sections — so one authored NAS reference
++ * and one local attachment each appeared TWICE, once here and once where they
++ * can actually be edited or removed. An item is the opposite case and stays as
++ * it is: its material is composed from OTHER records (linked lessons, the
++ * graph) that the item's own page has no section for, which is exactly why
++ * `itemFiles` must stay the whole composition.
   */
- export function resolveRecording(
-   baseUrl: string | undefined,
-@@ -232,7 +249,7 @@ export function describeArchiveAccess(input: {
-     media: !input.baseUrl?.trim()
-       ? 'No media base is set on this device, so files cannot be opened here.'
-       : !base
--        ? 'This device’s media base is not a usable http(s) address.'
-+        ? 'This device’s media base is not a usable http(s) address. A base is a plain http(s) address and folder — it may not carry a username, a password, a query or a #fragment.'
-         : 'Files open directly from this device’s media base. The app cannot verify from here that the archive is reachable — open the archive root to check.',
-   };
+ export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
+   const out: ItemFile[] = [];
+@@ -285,40 +291,5 @@ export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
+     }
+   }
+ 
+-  for (const rec of [...(lesson.recordings ?? [])].sort(
+-    (a, b) =>
+-      LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'] ||
+-      a.createdAt.localeCompare(b.createdAt),
+-  )) {
+-    const key = referenceKey(rec.path);
+-    if (!key || seen.has(key)) continue;
+-    seen.add(key);
+-    out.push({
+-      source: 'reference',
+-      id: rec.id,
+-      title: rec.title,
+-      path: rec.path,
+-      kind: rec.kind ?? 'video',
+-      lessonId,
+-      sizeBytes: rec.sizeBytes,
+-      notes: rec.notes,
+-      inline: false,
+-    });
+-  }
+-
+-  for (const a of attachmentsOwnedBy(db.attachments, 'lesson', lessonId).sort((x, y) =>
+-    x.createdAt.localeCompare(y.createdAt),
+-  )) {
+-    out.push({
+-      source: 'attachment',
+-      id: a.id,
+-      title: a.name,
+-      kind: a.kind,
+-      mime: a.mime,
+-      sizeBytes: a.size,
+-      inline: a.kind === 'image',
+-    });
+-  }
+-
+   return out;
  }
 diff --git a/src/domain/scanSetarClasses.test.ts b/src/domain/scanSetarClasses.test.ts
-index 4f3cde7..0369642 100644
+index 0369642..65559a3 100644
 --- a/src/domain/scanSetarClasses.test.ts
 +++ b/src/domain/scanSetarClasses.test.ts
-@@ -58,6 +58,8 @@ interface Scanner {
+@@ -48,17 +48,34 @@ interface Index {
+ interface Entry {
+   path: string;
+   size: number;
++  mtimeMs?: number;
+ }
++interface Skipped {
++  path: string;
++  reason: string;
++}
++/** An optional input is ABSENT or PRESENT — never "empty because it threw". */
++type OptionalInput = { present: false } | { present: true; text: string };
+ interface Scanner {
+-  buildIndex(input: { registryText: string; inventory: Entry[]; renameLogText?: string }): Index;
++  buildIndex(input: {
++    registryText: string;
++    inventory: Entry[];
++    renameLog?: OptionalInput;
++    skipped?: Skipped[];
++  }): Index;
+   contentHash(body: unknown): string;
+   parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
+   parseCsv(text: string): string[][];
+   parseRegistry(text: string): Piece[];
    parseSessionFolderName(name: string): { n: number; date: string } | null;
-   scanArchive(root: string): Entry[];
+-  scanArchive(root: string): Entry[];
++  scanArchive(root: string): { inventory: Entry[]; skipped: Skipped[] };
    scanToIndex(root: string): Index;
-+  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
-+  canonicalJson(value: unknown): string;
+-  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
++  readSource(root: string): {
++    registryText: string;
++    renameLog: OptionalInput;
++    inventory: Entry[];
++    skipped: Skipped[];
++  };
+   canonicalJson(value: unknown): string;
    writeIndexAtomically(outPath: string, text: string, root?: string): string;
    isSafeRelativePath(p: string): boolean;
-   displayTitle(stem: string): string;
-@@ -73,6 +75,8 @@ const {
-   parseSessionFolderName,
-   scanArchive,
-   scanToIndex,
-+  readSource,
-+  canonicalJson,
-   writeIndexAtomically,
-   isSafeRelativePath,
-   displayTitle,
-@@ -518,6 +522,53 @@ describe('scanning the archive', () => {
-       const target = join(out, 'index.json');
-       writeIndexAtomically(target, 'last good\n', root);
-       expect(() => writeIndexAtomically(join(root, 'index.json'), 'x', root)).toThrow(/inside the archive/);
-+      // --- ONE CONSISTENT VIEW, OF EVERY INPUT, NOT JUST THE REGISTRY -------
-+      // The registry used to be the only input re-read after the walk, so the
-+      // one thing a non-atomic NAS copy actually perturbs — THE MEDIA — was
-+      // never checked: move a resource out before its folder is enumerated and
-+      // put it back while later folders are walked, and the scan publishes an
-+      // index that omits it while PIECES.csv never changes. The next Refresh
-+      // then marks still-present material unavailable.
-+      const renameLog = 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\n';
-+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-+      const settled = readSource(root);
-+      // Every input this scanner reads is in the reading that gets compared.
-+      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
+@@ -442,13 +459,25 @@ describe('scanning the archive', () => {
+       writeFileSync(join(out, 'outside.mp4'), 'x');
+       symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
+ 
+-      const first = scanArchive(root);
++      const { inventory: first, skipped: firstSkipped } = scanArchive(root);
+       expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
+       expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
+       expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
+       // The symlink is not followed: its target is outside the archive root.
+       expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
+       expect(first).toHaveLength(INVENTORY.length);
++      // …but "not followed" is SAID, never silent. A walk that drops a file the
++      // folder really holds and reports nothing publishes an index that is
++      // quietly narrower than the archive — the same "partial view sold as
++      // complete" the two-read check below refuses, arriving through the door
++      // the two-read check cannot see, because BOTH readings agree on it.
++      expect(firstSkipped.map((x) => x.path)).toEqual(['session-1-26-09-2023/نت-عراق.pdf']);
++      expect(firstSkipped[0]!.reason).toMatch(/symbolic link/i);
++      expect(
++        buildIndex({ registryText: REGISTRY, inventory: first, skipped: firstSkipped }).diagnostics.some(
++          (d) => d.path === 'session-1-26-09-2023/نت-عراق.pdf' && /symbolic link/i.test(d.reason),
++        ),
++      ).toBe(true);
+ 
+       // DETERMINISM. Shuffled directory order and altered mtimes produce a
+       // byte-identical semantic index: nothing here reads a time or trusts the
+@@ -458,7 +487,7 @@ describe('scanning the archive', () => {
+       expect(buildIndex({ registryText: REGISTRY, inventory: shuffled }).contentHash).toBe(scanned.contentHash);
+       const old = new Date('2001-01-01T00:00:00Z');
+       for (const f of INVENTORY) utimesSync(join(root, f.path), old, old);
+-      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root) }).contentHash).toBe(scanned.contentHash);
++      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root).inventory }).contentHash).toBe(scanned.contentHash);
+       expect(contentHash(scanned)).toBe(scanned.contentHash);
+       // ...and the hash is not vacuous: a file whose SIZE changed is a changed
+       // archive, so the semantic index changes with it.
+@@ -533,20 +562,28 @@ describe('scanning the archive', () => {
+       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+       const settled = readSource(root);
+       // Every input this scanner reads is in the reading that gets compared.
+-      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
++      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLog', 'skipped']);
+       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+ 
+-      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
++      // Each of the inputs, perturbed in turn, is VISIBLE to that comparison.
+       const moved = INVENTORY[0]!.path;
+       const bytes = readFileSync(join(root, moved));
++      const when = new Date(settled.inventory.find((f) => f.path === moved)!.mtimeMs!);
++      // Put a file back EXACTLY as it was — bytes and metadata — or the
++      // restore is itself a mutation, which is the whole point of observing
++      // more than the size.
++      const restore = () => {
++        writeFileSync(join(root, moved), bytes);
++        utimesSync(join(root, moved), when, when);
++      };
+       rmSync(join(root, moved));
+       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+-      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
++      restore(); // …and back, as a copy would
+       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+       // A file still being COPIED is a size change, and is caught the same way.
+       writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
+       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+-      writeFileSync(join(root, moved), bytes);
++      restore();
+       writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
+       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+@@ -554,6 +591,89 @@ describe('scanning the archive', () => {
+       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+       writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
+       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
++      // A file edited IN PLACE at the same byte length changes no size and no
++      // CSV: `mtimeMs` is what makes that mutation visible to the comparison,
++      // and it is deliberately NOT semantic — the determinism check above
++      // altered every mtime in the archive and the index hash did not move.
++      const later = new Date(Date.now() + 60_000);
++      utimesSync(join(root, moved), later, later);
++      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
++      utimesSync(join(root, moved), when, when);
 +      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
 +
-+      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
-+      const moved = INVENTORY[0]!.path;
-+      const bytes = readFileSync(join(root, moved));
-+      rmSync(join(root, moved));
-+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-+      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
-+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-+      // A file still being COPIED is a size change, and is caught the same way.
-+      writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
-+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-+      writeFileSync(join(root, moved), bytes);
-+      writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
-+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-+      writeFileSync(join(root, 'PIECES.csv'), `${REGISTRY}\n`);
-+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-+      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
-+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-+
-+      // And the scan itself reads the WHOLE source twice and refuses on any
-+      // difference. Nothing can mutate a filesystem between two synchronous
-+      // reads from inside this process, so the WIRING is held structurally —
-+      // the same way `commitArchiveImport`'s "no whole-DB import" is.
-+      const scannerSrc = readFileSync('scripts/scan-setar-classes.mjs', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-+      const scanBody = scannerSrc.slice(
-+        scannerSrc.indexOf('export function scanToIndex'),
-+        scannerSrc.indexOf('function main('),
-+      );
-+      expect(scanBody.match(/readSource\(base\)/g) ?? []).toHaveLength(2);
-+      expect(scanBody).toMatch(/canonicalJson\(before\) !== canonicalJson\(after\)/);
-+      expect(scanBody).toMatch(/changed during the scan/);
++      // A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA. `catch { text = '' }`
++      // made an unreadable RENAME-LOG.csv indistinguishable from an archive
++      // that has none: both readings agreed, the consistency check passed, and
++      // the scan published an index with NO renames — so a file that moved in
++      // that window is flagged unavailable and its saved references can never
++      // be repaired. Absence is an OBSERVATION and is recorded as one;
++      // anything else fails the scan.
++      expect(settled.renameLog).toEqual({ present: true, text: renameLog });
 +      rmSync(join(root, 'RENAME-LOG.csv'));
++      expect(readSource(root).renameLog).toEqual({ present: false });
++      // …and the two are not the same reading, so a log that VANISHES between
++      // the readings is a change, not a quiet "there was never one".
++      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
++      // A present-but-EMPTY log is a zero-byte file — what a copy in flight
++      // looks like — and is refused exactly as PIECES.csv would be, rather
++      // than read as "no renames".
++      writeFileSync(join(root, 'RENAME-LOG.csv'), '');
++      expect(() => scanToIndex(root)).toThrow(/CSV is empty/);
++      // An unreadable required input fails the scan; it is never an empty one.
++      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
++      const hidden = join(root, 'PIECES.csv');
++      const registryBytes = readFileSync(hidden);
++      rmSync(hidden);
++      mkdirSync(hidden); // a directory where a file must be: EISDIR, not ENOENT
++      expect(() => readSource(root)).toThrow(/Could not read PIECES\.csv/);
++      expect(() => scanToIndex(root)).toThrow(/Could not read PIECES\.csv/);
++      rmSync(hidden, { recursive: true });
++      writeFileSync(hidden, registryBytes);
 +
-       // A scan that cannot produce a complete consistent view throws BEFORE
-       // anything is written, so the last good output still stands.
-       rmSync(join(root, 'PIECES.csv'));
++      // A RENAME LOOP NAMES NO FILE, and is dropped with a diagnostic rather
++      // than published. Every path that walks INTO the loop is equally
++      // unusable: A->B, B->C, C->B leaves no readable destination for A.
++      const swap = buildIndex({
++        registryText: REGISTRY,
++        inventory: INVENTORY,
++        renameLog: {
++          present: true,
++          text: 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\nsession-1-26-09-2023/b.mp4,session-1-26-09-2023/a.mp4\n',
++        },
++      });
++      expect(swap.renames).toEqual([]);
++      expect(swap.diagnostics.filter((d) => /loops through this path/.test(d.reason)).map((d) => d.path).sort()).toEqual([
++        'session-1-26-09-2023/a.mp4',
++        'session-1-26-09-2023/b.mp4',
++      ]);
++      const intoLoop = buildIndex({
++        registryText: REGISTRY,
++        inventory: INVENTORY,
++        renameLog: {
++          present: true,
++          text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/b.mp4,x/c.mp4\nx/c.mp4,x/b.mp4\n',
++        },
++      });
++      expect(intoLoop.renames).toEqual([]);
++      // An ordinary chain beside a loop still publishes — one bad topology
++      // does not cost the archive its good provenance.
++      const mixed = buildIndex({
++        registryText: REGISTRY,
++        inventory: INVENTORY,
++        renameLog: {
++          present: true,
++          text: 'old_path,new_path\nx/p.mp4,x/q.mp4\nx/a.mp4,x/b.mp4\nx/b.mp4,x/a.mp4\n',
++        },
++      });
++      expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
++      // An old path with TWO destinations was already refused, and still is.
++      const forked = buildIndex({
++        registryText: REGISTRY,
++        inventory: INVENTORY,
++        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
++      });
++      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
++      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
+ 
+       // And the scan itself reads the WHOLE source twice and refuses on any
+       // difference. Nothing can mutate a filesystem between two synchronous
+@@ -575,7 +695,7 @@ describe('scanning the archive', () => {
+       expect(() => scanToIndex(root)).toThrow();
+       expect(readFileSync(target, 'utf8')).toBe('last good\n');
+       // And the archive itself is untouched by any of the above.
+-      expect(scanArchive(root)).toHaveLength(INVENTORY.length);
++      expect(scanArchive(root).inventory).toHaveLength(INVENTORY.length);
+     } finally {
+       rmSync(root, { recursive: true, force: true });
+       rmSync(out, { recursive: true, force: true });
 diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
-index afe9b20..82a0108 100644
+index 82a0108..b156fab 100644
 --- a/src/domain/sourceArchive.ts
 +++ b/src/domain/sourceArchive.ts
-@@ -251,6 +251,38 @@ function strList(v: unknown, what: string): string[] {
-   return v as string[];
+@@ -271,12 +271,32 @@ function list(v: unknown, what: string): unknown[] {
+   return v;
  }
  
 +/**
-+ * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
-+ *
-+ * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
-+ * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
-+ * not a tolerance but a silent erasure: a session whose `resources` arrived as
-+ * `null` decoded to a session with NO resources, passed the grammar (it is a
-+ * valid empty list by then) and turned six files into zero. The same held for
-+ * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
-+ * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
-+ *
-+ * These three are that rule in one place, and they throw NAMING the record —
-+ * the same treatment `validatePracticeText` gives the owner's own words.
++ * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
++ * same thing and quietly produced `''` for both — the very normalisation the
++ * list/num/bool rule above exists to stop, left in place for every string
++ * field that has a default. A resource `title: null` became an untitled row
++ * the grammar was perfectly happy with. Absent is a default; null is a value,
++ * and a wrong one.
 + */
-+function list(v: unknown, what: string): unknown[] {
-+  if (v === undefined) return [];
-+  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
++function text(v: unknown, what: string): string {
++  if (v === undefined) return '';
++  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
 +  return v;
 +}
 +
-+function num(v: unknown, what: string): number | null {
-+  if (v === undefined || v === null) return null;
+ function num(v: unknown, what: string): number | null {
+   if (v === undefined || v === null) return null;
+   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+   return v;
+ }
+ 
++/** A number that is genuinely a number — no `null`, unlike an optional part. */
++function size(v: unknown, what: string): number {
 +  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
 +  return v;
 +}
 +
-+function bool(v: unknown, what: string, fallback: boolean): boolean {
-+  if (v === undefined) return fallback;
-+  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
-+  return v;
-+}
-+
- /** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
- export function isValidSourceDate(v: unknown): v is ISODate {
-   if (typeof v !== 'string') return false;
-@@ -261,6 +293,15 @@ export function isValidSourceDate(v: unknown): v is ISODate {
-   return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
- }
- 
-+/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
-+export function isValidSourceDateTime(v: unknown): v is ISODateTime {
-+  if (typeof v !== 'string') return false;
-+  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
-+  if (!m) return false;
-+  if (!isValidSourceDate(v.slice(0, 10))) return false;
-+  return !Number.isNaN(Date.parse(v));
-+}
-+
- /**
-  * Validate an unknown published index into a {@link SourceIndex}, or throw with
-  * a message the owner can act on.
-@@ -300,7 +341,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-     if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
-     if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
-     keys.add(key);
--    const sessions = Array.isArray(raw.sessions) ? raw.sessions : [];
-+    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
-     if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
-       throw new Error(`Registry entry "${key}" has an invalid session number.`);
+ function bool(v: unknown, what: string, fallback: boolean): boolean {
+   if (v === undefined) return fallback;
+   if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
+@@ -347,13 +367,13 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
      }
-@@ -313,8 +354,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+     pieces.push({
+       key,
+-      form: str(raw.form ?? '', 'form'),
+-      piece: str(raw.piece ?? '', 'piece'),
+-      dastgah: str(raw.dastgah ?? '', 'dastgah'),
+-      composer: str(raw.composer ?? '', 'composer'),
++      form: text(raw.form, `Registry entry "${key}" form`),
++      piece: text(raw.piece, `Registry entry "${key}" piece`),
++      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
++      composer: text(raw.composer, `Registry entry "${key}" composer`),
        aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
        sessions: sessions as number[],
-       notes: str(raw.notes ?? '', 'notes'),
--      ...(raw.provisional ? { provisional: true } : {}),
--      ...(raw.mediumConfidence ? { mediumConfidence: true } : {}),
-+      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
-+      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
+-      notes: str(raw.notes ?? '', 'notes'),
++      notes: text(raw.notes, `Registry entry "${key}" notes`),
+       ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
+       ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
      });
-   }
- 
-@@ -335,7 +376,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-       if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
-     }
-     const resources: SourceResource[] = [];
--    for (const r of Array.isArray(raw.resources) ? raw.resources : []) {
-+    for (const r of list(raw.resources, `Session ${n} resources`)) {
-       if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
-       const path = r.path;
-       if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
-@@ -354,14 +395,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+@@ -394,9 +414,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+         path,
          role,
          kind: kind as SourceKind,
-         title: str(r.title ?? '', 'A resource title'),
--        part: typeof r.part === 'number' ? r.part : null,
--        ...(typeof r.size === 'number' ? { size: r.size } : {}),
-+        part: num(r.part, `Resource "${path}" part`),
-+        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
+-        title: str(r.title ?? '', 'A resource title'),
++        title: text(r.title, `Resource "${path}" title`),
+         part: num(r.part, `Resource "${path}" part`),
+-        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
++        // `part` and `group` are genuinely nullable in the published format —
++        // the scanner emits `null` for both — so null stays legal THERE and
++        // nowhere else. `size` it always emits as a number, and a present null
++        // is refused HERE rather than spread into the output as a value the
++        // declared type does not admit and left for the grammar to catch.
++        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
          pieces: forPieces,
--        group: typeof r.group === 'string' ? r.group : null,
-+        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
+         group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
        });
-     }
-     const members: SourceMember[] = [];
--    for (const m of Array.isArray(raw.members) ? raw.members : []) {
-+    for (const m of list(raw.members, `Session ${n} members`)) {
-       if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
-       const key = str(m.key, 'A membership key');
-       if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
-@@ -374,8 +415,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-       date: raw.date as ISODate,
-       folder,
-       roster,
--      rosterTrusted: raw.rosterTrusted !== false,
--      hasClassRecording: raw.hasClassRecording === true,
-+      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
-+      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
-       resources,
-       members,
-     });
-@@ -383,7 +424,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
- 
-   const renames: SourceRename[] = [];
-   const froms = new Set<string>();
--  for (const r of Array.isArray(input.renames) ? input.renames : []) {
-+  for (const r of list(input.renames, 'The rename log')) {
-     if (!isRecord(r)) throw new Error('A rename entry is not an object.');
-     if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
-     if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
-@@ -392,7 +433,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-   }
- 
-   const diagnostics: SourceDiagnostic[] = [];
--  for (const d of Array.isArray(input.diagnostics) ? input.diagnostics : []) {
-+  for (const d of list(input.diagnostics, 'The diagnostic list')) {
+@@ -436,8 +461,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+   for (const d of list(input.diagnostics, 'The diagnostic list')) {
      if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
      diagnostics.push({
-       path: str(d.path ?? '', 'A diagnostic path'),
-@@ -741,7 +782,21 @@ export function validateArchiveSources(db: PracticeDB): string | null {
-       return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
-     }
-     if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
-+    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
-+    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
-+    // last changed, so a non-string here crashes the screen that renders it —
-+    // and the fix belongs at this door, never as a guard in the component.
-+    // Checked for REAL validity for the same reason `askedAt` is: a shape
-+    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
-+    // normalises it into March. Deliberately a local check beside
-+    // `isValidSourceDate` rather than an import — this file's own pattern.
-+    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
-     if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
-+    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
-+    // decoder always emits both, and `planArchiveImport` reads
-+    // `index.renames`/`source.renames` unguarded.
-+    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
-+    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
-     if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
- 
-     // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
-@@ -759,6 +814,8 @@ export function validateArchiveSources(db: PracticeDB): string | null {
-       if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
-         return `Archive source "${s.id}" has a suppression with an unreadable item.`;
-       }
-+      // `at` is provenance only — nothing reads it back as a date — so it is
-+      // held to being real text and no further.
-       if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
-     }
+-      path: str(d.path ?? '', 'A diagnostic path'),
+-      reason: str(d.reason ?? '', 'A diagnostic reason'),
++      path: text(d.path, 'A diagnostic path'),
++      reason: text(d.reason, 'A diagnostic reason'),
+     });
    }
+ 
+@@ -730,6 +755,65 @@ function checkSourceGraph(
+         if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
+       }
+     }
++
++    // --- SEMANTIC RELATIONS, not merely field types ------------------------
++    //
++    // A field-type grammar says every value is READABLE; it says nothing about
++    // whether the graph agrees with itself. A resource physically sitting in
++    // class 2's folder, listed under class 1, is type-perfect and attributes
++    // someone else's file to the wrong lesson on every screen that reads it —
++    // and an arbitrary `group` on a non-demonstration invents a logical
++    // resource out of unrelated files.
++    //
++    // Scoped to what the source still DESCRIBES. `unavailable` is retained
++    // provenance about what it has STOPPED describing — a piece dropped from
++    // the registry, a file deleted from the NAS — so holding those rows to the
++    // current source's internal agreement is a category error, and would make
++    // every refresh after a removal refuse at every door.
++    if (!sess.unavailable) {
++      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
++      const rolesFor = new Map<string, Set<string>>();
++      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
++      const groups = new Map<string, SourceResource[]>();
++      let classRecordings = 0;
++      for (const r of live) {
++        const segs = r.path.split('/');
++        if (segs.length !== 2 || segs[0] !== sess.folder) {
++          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
++        }
++        if (r.role === CLASS_ROLE) {
++          classRecordings += 1;
++          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
++        }
++        for (const k of r.pieces) {
++          if (!rolesFor.get(k)?.has(r.role)) {
++            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
++          }
++        }
++        if (r.group !== null && r.group !== undefined) {
++          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
++          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
++        }
++      }
++      if (classRecordings > 0 !== sess.hasClassRecording) {
++        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
++      }
++      // Parts of ONE demonstration: the same material, told in order. Parts
++      // that are material for different pieces are not one resource, and two
++      // parts with one number have no order to be read in.
++      for (const [g, parts] of groups) {
++        const pieces = [...parts[0]!.pieces].sort().join(NUL);
++        const numbers = new Set<number | null>();
++        for (const r of parts) {
++          if ([...r.pieces].sort().join(NUL) !== pieces) {
++            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
++          }
++          const part = r.part ?? null;
++          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
++          numbers.add(part);
++        }
++      }
++    }
+   }
+ 
+   if (graph.renames !== undefined) {
 diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
-index baa2040..ddf4032 100644
+index ddf4032..c795bc3 100644
 --- a/src/domain/sourceReconcile.test.ts
 +++ b/src/domain/sourceReconcile.test.ts
-@@ -14,6 +14,7 @@ import {
-   repairLessonReferences,
-   toArchiveRelative,
-   withSuppression,
-+  followRenames,
- } from './sourceReconcile';
- import { archiveRootUrl } from './recordings';
- import { emptyDB } from './seed';
-@@ -340,7 +341,7 @@ describe('reconciling the archive with the owner’s own records', () => {
+@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
+ import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+ import {
+   decodeSourceIndex,
++  resourcesForPiece,
++  resourcesForSession,
+   sourceItemId,
+   sourceLessonId,
+   validateArchiveSources,
+@@ -308,7 +310,24 @@ describe('reconciling the archive with the owner’s own records', () => {
+       ...INDEX,
+       contentHash: 'b'.repeat(64),
+       sessions: [
+-        ...INDEX.sessions.map((s) => (s.n === 12 ? { ...s, resources: [...s.resources, addedScore] } : s)),
++        // A scan records the MEMBERSHIP a new resource creates in the same
++        // pass that lists the resource, so a fixture that adds one without the
++        // other is a graph disagreeing with itself — refused at every door.
++        ...INDEX.sessions.map((s) =>
++          s.n === 12
++            ? {
++                ...s,
++                resources: [...s.resources, addedScore],
++                members: [
++                  ...s.members.filter((m) => m.key !== 'عراق'),
++                  {
++                    key: 'عراق',
++                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
++                  },
++                ],
++              }
++            : s,
++        ),
+         session40,
+       ],
+       // A later registry improvement on a piece already seeded.
+@@ -340,8 +359,12 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(suggestion).toBeDefined();
      expect(suggestion.from).toBe('');
      expect(suggestion.to).toBe('میرزا-حسینقلی');
++    // A field decision names the RECORD it was shown against, not just the
++    // piece: a rebase must not hand the answer to whichever item happens to
++    // hold that piece by the time Apply is pressed.
++    const araqItemId = suggestion.itemId;
      const selective = applyArchiveImport(owned, delta, [
--      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer' },
-+      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
+-      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
++      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
      ]);
      const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
      expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
-@@ -357,7 +358,7 @@ describe('reconciling the archive with the owner’s own records', () => {
+@@ -358,7 +381,9 @@ describe('reconciling the archive with the owner’s own records', () => {
      // The suggestion stands until it is answered, and it may be answered days
      // later against the very same published index. Judging "already current"
      // by the index hash alone reported exactly that and discarded the answer.
--    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
-+    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
+-    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
++    const lateField = [
++      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
++    ];
      const lateDecision = planArchiveImport({
        db: refreshed,
        index: next,
-@@ -379,11 +380,83 @@ describe('reconciling the archive with the owner’s own records', () => {
+@@ -380,7 +405,9 @@ describe('reconciling the archive with the owner’s own records', () => {
      // Applied, the suggestion is gone: the next refresh has nothing to offer.
      expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
      // A decision for a field with NO suggestion changes nothing at all.
--    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
-+    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
+-    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
++    const emptyField = [
++      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
++    ];
      const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
      expect(noop.summary.unchanged).toBe(true);
      expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
+@@ -457,12 +484,119 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(stalelink.staleDecisions).toEqual(linkDecision);
+     expect(stalelink.adoptedItems).toEqual([]);
  
-+    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
-+    // Choose the archive's composer over an EMPTY field, then write one of
-+    // your own before the plan is applied. The choice was an answer about the
-+    // empty field; it is not an instruction to replace the new words.
-+    const ownWrote = {
-+      ...refreshed,
-+      items: refreshed.items.map((i) =>
-+        i.source?.pieceKey === 'عراق'
-+          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
-+          : i,
-+      ),
-+    };
-+    const rebased = planArchiveImport({
-+      db: ownWrote,
-+      index: next,
-+      instrumentId: SETAR,
-+      decisions: lateField,
-+      now: NOW,
-+    });
-+    expect(rebased.staleDecisions).toEqual(lateField);
-+    // Not applied, and not counted as a change either: both sides of the
-+    // preview/commit boundary agree that this decision no longer stands.
-+    expect(rebased.summary.unchanged).toBe(true);
-+    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
-+    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
-+      'Owner wrote this during refresh',
-+    );
-+    // The suggestion is re-offered against what is there NOW, so the owner can
-+    // answer the question that actually stands.
-+    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
-+      'Owner wrote this during refresh',
-+    );
-+    // A decision carrying the CURRENT value still applies, on the same data.
-+    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
-+    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
-+    expect(fresh.staleDecisions).toEqual([]);
-+    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
-+      ?.composer).toBe('میرزا-حسینقلی');
-+
-+    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
-+    // Bound elsewhere, moved instrument or deleted: never silently turned into
-+    // "create a new record instead".
-+    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
-+    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
-+    const unbound: PracticeDB = {
-+      ...owned,
-+      items: owned.items.map((i) => {
-+        const { source, ...rest } = i;
-+        void source;
-+        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
-+      }),
-+    };
-+    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
-+    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
-+    expect(linkable.staleDecisions).toEqual([]);
-+    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
-+    const takenElsewhere: PracticeDB = {
++    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
++    //
++    // The loops start with "already bound? nothing to decide" / "already
++    // suppressed? nothing to decide", so a decision about a record that became
++    // bound between the preview and the commit was never looked at: no
++    // adoption, no question, and an EMPTY `staleDecisions` — the commit
++    // reported success for an action it had not performed. And a field
++    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
++    // onto whichever record held that piece by the time Apply ran.
++    const otherItemId = 'someone-elses-item';
++    const boundToAnother: PracticeDB = {
 +      ...unbound,
-+      items: unbound.items.map((i) =>
-+        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
-+      ),
++      items: [
++        ...unbound.items,
++        item({
++          id: otherItemId,
++          instrumentId: SETAR,
++          title: 'Another record',
++          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
++        }),
++      ],
 +    };
-+    const stalelink = planArchiveImport({
-+      db: takenElsewhere,
++    // LINK: the approved record is not the one holding the piece now, so the
++    // choice is stale — never quietly satisfied by the other record.
++    const redirectedLink = planArchiveImport({
++      db: boundToAnother,
 +      index: next,
 +      instrumentId: SETAR,
 +      decisions: linkDecision,
 +      now: NOW,
 +    });
-+    expect(stalelink.staleDecisions).toEqual(linkDecision);
-+    expect(stalelink.adoptedItems).toEqual([]);
++    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
++    expect(redirectedLink.adoptedItems).toEqual([]);
++    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
++      .toBeUndefined();
++    // APPLY-FIELD: the archive's composer, chosen against item A's empty
++    // field, must not be written to the item that holds the piece now — whose
++    // composer is also empty, so nothing about the VALUE would have caught it.
++    const fieldForA = [
++      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
++    ];
++    const redirectedField = planArchiveImport({
++      db: boundToAnother,
++      index: next,
++      instrumentId: SETAR,
++      decisions: fieldForA,
++      now: NOW,
++    });
++    expect(redirectedField.staleDecisions).toEqual(fieldForA);
++    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
++    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
++    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
++    // SKIP and CREATE are the same rule: an answer about a record that has
++    // since been bound is an answer to a question that no longer stands.
++    for (const decision of [
++      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
++      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
++    ]) {
++      const swept = planArchiveImport({
++        db: boundToAnother,
++        index: next,
++        instrumentId: SETAR,
++        decisions: decision,
++        now: NOW,
++      });
++      expect(swept.staleDecisions).toEqual(decision);
++      expect(swept.newItems).toEqual([]);
++    }
++    // …and LOOP PREVENTION: the action the owner approved, once it HAS
++    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
++    // re-previews, so a realised action that could never be consumed again
++    // would go stale for ever.
++    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
++    const again = planArchiveImport({
++      db: afterLink,
++      index: next,
++      instrumentId: SETAR,
++      decisions: linkDecision,
++      now: NOW,
++    });
++    expect(again.staleDecisions).toEqual([]);
++    const skipped = applyArchiveImport(
++      unbound,
++      planArchiveImport({
++        db: unbound,
++        index: next,
++        instrumentId: SETAR,
++        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
++        now: NOW,
++      }),
++    );
++    expect(
++      planArchiveImport({
++        db: skipped,
++        index: next,
++        instrumentId: SETAR,
++        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
++        now: NOW,
++      }).staleDecisions,
++    ).toEqual([]);
 +
      // --- a missing FILE keeps its provenance, flagged ----------------------
      const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
      const shrunk: SourceIndex = {
-@@ -767,6 +840,122 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
-     const afterBroken = applyArchiveImport(installedLegacy, broken);
-     expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
-+
-+    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
-+    // Adoption took a single hop while repair followed the whole chain, so one
-+    // rename log gave two different answers about the same file. With
-+    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
-+    // class was adopted AS SESSION 1 on the strength of B, and then had that
-+    // very reference repaired into session 2's folder: bound to one class,
-+    // pointing at another's files.
-+    const hopA = 'session-1-26-09-2023/first-name.mp4';
-+    const hopB = 'session-1-26-09-2023/second-name.mp4';
-+    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
-+    expect(known.has(hopC)).toBe(true);
-+    const chained: SourceIndex = {
-+      ...INDEX,
-+      contentHash: '7'.repeat(64),
-+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
-+    };
-+    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
-+    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
-+    const legacyClass = lesson({
-+      id: 'L-chain',
-+      date: '2023-09-26',
-+      number: 1,
-+      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
-+    });
-+    const chainDb = baseDB({ lessons: [legacyClass] });
-+    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
-+    // Its ONLY reference now points into session 5, so it is NOT evidence of
-+    // session 1 — and the class is not adopted on it.
-+    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
-+    // A CYCLE is no reading at all, so it is no evidence either.
-+    const cyclicIndex: SourceIndex = {
-+      ...INDEX,
-+      contentHash: '6'.repeat(64),
-+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
-+    };
-+    expect(
-+      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
-+        (l) => l.id === 'L-chain',
+       ...next,
+       contentHash: 'c'.repeat(64),
+-      sessions: next.sessions.map((s) => (s.n === 12 ? { ...s, resources: [] } : s)),
++      // A session that has lost every file has lost its class recording with
++      // them: a scan recomputes that flag, and a hand-built index that keeps
++      // it is a graph disagreeing with itself — which `checkSourceGraph` now
++      // refuses at every door, so it cannot be used to prove anything else.
++      sessions: next.sessions.map((s) =>
++        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
 +      ),
-+    ).toBe(false);
-+
-+    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
-+    // A resource suppression is keyed BY PATH. Left on the old name, the file
-+    // came back into view under its new one while the old row sat there
-+    // flagged unavailable — the owner's decision silently undone by a rename.
-+    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
-+    const hidden: PracticeDB = {
-+      ...installedLegacy,
-+      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
-+        kind: 'resource',
-+        ref: hiddenPath,
-+        itemId: 'item-x',
-+        at: NOW.toISOString(),
-+      }),
-+    };
-+    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
-+    const renamedSource = afterRename.archiveSources[0]!;
-+    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
-+    expect(hide.ref).toBe(movedTo);
-+    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
-+    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
-+    // And the old row is GONE rather than retained-and-flagged: the log says
-+    // exactly where the bytes went, so this file moved, it did not disappear.
-+    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
-+    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
-+    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
-+    // ACROSS sessions too — a rename can move a file into a different session,
-+    // which is exactly the shape of the A -> B -> C log above. Asking only
-+    // "is it still in THIS session" flagged the old row as missing while the
-+    // very same bytes sat in the graph under their new name.
-+    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
-+    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
-+    const crossSession: SourceIndex = {
+     };
+     const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
+     const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
+@@ -858,7 +992,7 @@ describe('reconciling the archive with the owner’s own records', () => {
+       renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
+     };
+     const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
+-    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
++    expect(followRenames(hopA, chainRenames)).toBe(hopC);
+     const legacyClass = lesson({
+       id: 'L-chain',
+       date: '2023-09-26',
+@@ -939,6 +1073,69 @@ describe('reconciling the archive with the owner’s own records', () => {
+     });
+     expect(validateArchiveSources(afterCross)).toBeNull();
+ 
++    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
++    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
++    // usable-looking path beside a flag — and only ONE of its three callers
++    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
++    // straight past the verdict and moved the owner's hide onto B, so A came
++    // back into view and the wrong file went dark. It returns `null` now, so
++    // there is no way to drop the verdict and still have a path.
++    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
++    const cyclicLog: SourceIndex = {
 +      ...INDEX,
-+      contentHash: '4'.repeat(64),
-+      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
-+      sessions: INDEX.sessions.map((sess) =>
-+        sess.n === 1
-+          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
-+          : sess.n === 5
-+            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
-+            : sess,
-+      ),
++      contentHash: '3'.repeat(64),
++      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
 +    };
-+    const afterCross = applyArchiveImport(
++    const afterCycle = applyArchiveImport(
 +      hidden,
-+      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
++      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
 +    );
-+    const crossSource = afterCross.archiveSources[0]!;
-+    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
-+    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
-+    // The hide went WITH it, into the other session, still scoped to one item.
-+    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
-+      ref: crossTo,
-+      itemId: 'item-x',
-+    });
-+    expect(validateArchiveSources(afterCross)).toBeNull();
++    const cycledSource = afterCycle.archiveSources[0]!;
++    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
++    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
++    expect(cycledHide.itemId).toBe('item-x');
++    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
++    // …so the file the owner hid is still hidden, and its sibling is not.
++    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
++    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
 +
-+    // A file that really IS gone still keeps its provenance, flagged.
-+    const removed: SourceIndex = {
-+      ...INDEX,
-+      contentHash: '5'.repeat(64),
-+      sessions: INDEX.sessions.map((sess) =>
++    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
++    // incoming index has dropped keeps its provenance flagged rather than
++    // being silently deleted on the strength of a destination nothing can read.
++    const cyclicAndRemoved: SourceIndex = {
++      ...cyclicLog,
++      contentHash: '2'.repeat(64),
++      sessions: cyclicLog.sessions.map((sess) =>
 +        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
 +      ),
 +    };
-+    const afterRemoval = applyArchiveImport(
-+      installedLegacy,
-+      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
++    const afterCyclicRemoval = applyArchiveImport(
++      hidden,
++      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
 +    );
 +    expect(
-+      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
-+        ?.unavailable,
++      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
++        (r) => r.path === hiddenPath,
++      )?.unavailable,
 +    ).toBe(true);
-+    expect(validateArchiveSources(afterRename)).toBeNull();
-   });
- });
- 
++    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
++
++    // REPAIR says so out loud rather than rewriting the path to a stop on the
++    // loop — and ADOPTION, which reads the same verdict, takes it as no
++    // evidence at all (asserted above for the same shape).
++    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
++    expect(followRenames(hiddenPath, loopMap)).toBeNull();
++    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
++      status: 'attention',
++      reason: 'The rename log loops on this path.',
++      code: 'cycle',
++    });
++    const loopLesson = applyArchiveImport(
++      hidden,
++      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
++    ).lessons.find((l) => l.id === 'L1')!;
++    expect(loopLesson.recordings).toEqual(storedOne.recordings);
++
+     // A file that really IS gone still keeps its provenance, flagged.
+     const removed: SourceIndex = {
+       ...INDEX,
 diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
-index 4b1d659..3ee50c6 100644
+index 3ee50c6..1ad0529 100644
 Binary files a/src/domain/sourceReconcile.ts and b/src/domain/sourceReconcile.ts differ
+diff --git a/src/pages/Lessons.tsx b/src/pages/Lessons.tsx
+index 0c3f449..124c564 100644
+--- a/src/pages/Lessons.tsx
++++ b/src/pages/Lessons.tsx
+@@ -5,10 +5,12 @@ import {
+   type PracticeItem,
+   cleanFileTitle,
+   daysUntil,
++  CLASS_ROLE,
+   defaultInstrumentFilter,
+   formatFileSize,
+   ITEM_STATUS_LABELS,
+   LESSON_FILE_KIND_ORDER,
++  lessonFiles,
+   lessonsForInstrument,
+   isUpcomingLesson,
+   nextLessonFor,
+@@ -435,9 +437,11 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
+         />
+       )}
+ 
+-      {/* Everything this class holds, composed once: an archive-bound class
+-          keeps no copy of its session's files, so its own `recordings` array
+-          is empty and only the graph can answer. */}
++      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
++          copy of its session's files, so only the graph can answer — and the
++          owner's OWN references and attachments are NOT repeated here: they
++          each have exactly one section on this page, the one that can also
++          edit and remove them. */}
+       <LessonMaterial lessonId={lesson.id} />
+ 
+       <LessonRecordings lesson={lesson} />
+@@ -483,6 +487,7 @@ function KindIcon({ kind }: { kind: LessonFileKind }) {
+  * reference never touches the NAS file. Video first, then scores/docs.
+  */
+ function LessonRecordings({ lesson }: { lesson: Lesson }) {
++  const db = useStore((s) => s.db);
+   const addLessonRecording = useStore((s) => s.addLessonRecording);
+   const removeLessonRecording = useStore((s) => s.removeLessonRecording);
+   const navigate = useNavigate();
+@@ -494,6 +499,16 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
+       ),
+     [lesson.recordings],
+   );
++  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
++  // historical class keeps no copy of its session's files, so `recordings` is
++  // empty and the empty-state card invited the owner to add a class recording
++  // directly beneath the one already playing above it. Read through the same
++  // composition the section above renders, so a recording the owner has HIDDEN
++  // does not count as one that is there.
++  const fromArchive = useMemo(
++    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
++    [db, lesson.id],
++  );
+ 
+   const browseUrl = normalizeBaseUrl(baseUrl);
+ 
+@@ -535,7 +550,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
+         </button>
+       </div>
+ 
+-      {recordings.length === 0 && !adding && (
++      {recordings.length === 0 && !fromArchive && !adding && (
+         <div className="card card-quiet small dim">
+           Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
+         </div>
+@@ -601,7 +616,10 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
+             </button>
+             <button
+               className="btn btn-ghost btn-sm"
+-              aria-label="Remove this link (the NAS file is kept)"
++              // Named, because a class holds several of these and "Remove this
++              // link" three times over tells a screen reader nothing about
++              // which file it is about to drop.
++              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
+               title="Remove link (the NAS file is kept)"
+               onClick={() => {
+                 if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
 diff --git a/src/store/archiveIndex.test.ts b/src/store/archiveIndex.test.ts
-index c80d5d7..8467fe9 100644
+index 8467fe9..e08aa95 100644
 --- a/src/store/archiveIndex.test.ts
 +++ b/src/store/archiveIndex.test.ts
-@@ -385,6 +385,71 @@ describe('publishing and reading the source index', () => {
-     expect(brokenStructure.ok).toBe(false);
-     if (brokenStructure.ok) throw new Error('expected refusal');
-     expect(brokenStructure.error).toMatch(/no sessions/);
-+
-+    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
-+    // A digest proves the file is the one the scanner wrote; it says nothing
-+    // about the file being well formed. The decoder normalises BEFORE the
-+    // graph's grammar runs, so `resources: null` decoded to a session with no
-+    // resources — a perfectly valid empty list by the time the grammar saw it
-+    // — and six files became zero with a VALID digest on the front. Every
-+    // absent-tolerant read in the decoder had the same shape.
-+    const withDigest = (body: Record<string, unknown>) =>
-+      JSON.stringify({ ...body, contentHash: indexDigest(body) });
-+    const sessionZero = original.sessions[0]!;
-+    const erasures: [string, Record<string, unknown>][] = [
-+      ['must be a list', { ...sessionZero, resources: null }],
-+      ['must be a list', { ...sessionZero, members: null }],
-+      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
-+      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
-+    ];
-+    for (const [message, session0] of erasures) {
-+      const bad = await readIndexFile(
-+        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
-+      );
-+      expect(bad.ok).toBe(false);
-+      if (bad.ok) throw new Error('expected refusal');
-+      expect(bad.error).toContain(message);
-+    }
-+    const withResource = (over: Record<string, unknown>) => ({
-+      ...original,
-+      sessions: [
-+        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
-+        ...original.sessions.slice(1),
-+      ],
-+    });
-+    for (const [message, over] of [
-+      ['must be a number', { part: '2' }],
-+      ['must be a number', { size: '10mb' }],
-+      ['must be text', { group: 42 }],
-+    ] as [string, Record<string, unknown>][]) {
-+      const bad = await readIndexFile(withDigest(withResource(over)));
-+      expect(bad.ok).toBe(false);
-+      if (bad.ok) throw new Error('expected refusal');
-+      expect(bad.error).toContain(message);
-+    }
-+    for (const [message, over] of [
-+      ['must be a list', { sessions: null }],
-+      ['must be true or false', { provisional: 'yes' }],
-+    ] as [string, Record<string, unknown>][]) {
-+      const bad = await readIndexFile(
-+        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
-+      );
-+      expect(bad.ok).toBe(false);
-+      if (bad.ok) throw new Error('expected refusal');
-+      expect(bad.error).toContain(message);
-+    }
-+    for (const over of [{ renames: null }, { diagnostics: null }]) {
-+      const bad = await readIndexFile(withDigest({ ...original, ...over }));
-+      expect(bad.ok).toBe(false);
-+      if (bad.ok) throw new Error('expected refusal');
-+      expect(bad.error).toContain('must be a list');
-+    }
-+    // ABSENT still reads as absent: the tolerance that was correct stays.
-+    const withoutOptional = { ...(original as Record<string, unknown>) };
-+    delete withoutOptional.renames;
-+    delete withoutOptional.diagnostics;
-+    const lean = await readIndexFile(withDigest(withoutOptional));
-+    expect(lean.ok).toBe(true);
-   });
- });
+@@ -9,6 +9,7 @@ import indexFixture from '../../tests/fixtures/setar-archive.json' with { type:
+ import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+ import { decodeSourceIndex } from '../domain/sourceArchive';
+ import { validateDB } from '../domain/io';
++import { createItem } from '../domain/factories';
+ import type { PracticeDB } from '../domain/types';
  
-@@ -593,7 +658,7 @@ describe('committing an archive import', () => {
+ // ---------------------------------------------------------------------------
+@@ -658,7 +659,7 @@ describe('committing an archive import', () => {
      const answered2 = useStore.getState().previewArchiveImport({
        index: INDEX,
        instrumentId: SETAR,
--      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
-+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
++      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
        now: NOW,
      });
      expect(answered2.plan.summary.unchanged).toBe(false);
-@@ -605,7 +670,7 @@ describe('committing an archive import', () => {
+@@ -670,7 +671,7 @@ describe('committing an archive import', () => {
      const appliedField = await useStore.getState().commitArchiveImport({
        index: INDEX,
        instrumentId: SETAR,
--      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
-+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
++      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
        decidedFromRev: useStore.getState().rev,
        now: NOW,
      });
-@@ -618,6 +683,44 @@ describe('committing an archive import', () => {
+@@ -692,7 +693,11 @@ describe('committing an archive import', () => {
+     useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
+     const secondKey = second.source!.pieceKey;
+     const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+-    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
++    const choice = [
++      // Bound to the RECORD as well as the piece and the premise: a rebase that
++      // finds the piece on a different item must not hand it that answer.
++      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
++    ];
+     useStore.getState().updateItem(second.id, {
+       persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
+     });
+@@ -721,6 +726,53 @@ describe('committing an archive import', () => {
+       second.persian!.composer,
      );
-     expect(useStore.getState().db.blocks).toHaveLength(1);
  
-+    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
-+    // The counterexample, through the REAL store: preview an empty composer,
-+    // choose the archive's value, then write your own before pressing Apply.
-+    // No new QUESTION appears, so the rebase guard alone let this through and
-+    // the registry value replaced the words just typed.
-+    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
-+    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
-+    const secondKey = second.source!.pieceKey;
-+    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-+    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
-+    useStore.getState().updateItem(second.id, {
-+      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
-+    });
-+    const refusedStale = await useStore.getState().commitArchiveImport({
-+      index: INDEX,
-+      instrumentId: SETAR,
-+      decisions: choice,
-+      decidedFromRev: seen.rev,
-+      now: NOW,
-+    });
-+    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
-+    expect(refusedStale.staleDecisions).toEqual(choice);
-+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
-+      'Owner wrote this during refresh',
-+    );
-+    // Re-answered against what is actually there now, it applies.
-+    const reAnswered = await useStore.getState().commitArchiveImport({
-+      index: INDEX,
-+      instrumentId: SETAR,
-+      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
-+      decidedFromRev: useStore.getState().rev,
-+      now: NOW,
-+    });
-+    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
-+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
-+      second.persian!.composer,
-+    );
++    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
++    // The other half of the same family, and the one an already-bound early
++    // `continue` hid completely: the piece is held by a DIFFERENT record by
++    // the time Apply runs. A field decision keyed by piece alone was written
++    // to that other record (its composer was empty too, so nothing about the
++    // VALUE would have caught it), and a Link decision was skipped in silence
++    // — `staleDecisions` empty, the commit reporting success for an action it
++    // never performed.
++    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
++    const movedKey = movedPiece.source!.pieceKey;
++    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
++    useStore.setState((st) => ({
++      db: {
++        ...st.db,
++        items: [
++          // The approved record loses the binding; another record takes it.
++          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
++          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
++        ],
++      },
++    }));
++    for (const decisions of [
++      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
++      [
++        {
++          kind: 'apply-field' as const,
++          pieceKey: movedKey,
++          itemId: movedPiece.id,
++          field: 'composer' as const,
++          from: movedPiece.persian?.composer ?? '',
++        },
++      ],
++    ]) {
++      const refused = await useStore.getState().commitArchiveImport({
++        index: INDEX,
++        instrumentId: SETAR,
++        decisions,
++        decidedFromRev: useStore.getState().rev,
++        now: NOW,
++      });
++      expect(refused).toMatchObject({ ok: false, status: 'stale' });
++      expect(refused.staleDecisions).toEqual(decisions);
++    }
++    // Neither record was touched by either refusal.
++    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
++    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
 +
      // --- refresh NEVER runs a whole-database import or reset ---------------
      // `importDB`, `resetDemo` and `clearAll` each null the active session and
      // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
-diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index ffe4752..9c3da10 100644
---- a/src/store/useStore.ts
-+++ b/src/store/useStore.ts
-@@ -119,6 +119,8 @@ export interface ArchiveCommitResult {
-   status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
-   message: string;
-   summary?: ImportSummary;
-+  /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
-+  staleDecisions?: ReconcileDecision[];
- }
- 
- /**
-@@ -984,6 +986,22 @@ export const useStore = create<StoreState>()(
-             message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
-           };
-         }
-+        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
-+        // QUESTION is not the only way a rebase invalidates an answer: the
-+        // owner choosing the archive's composer over an empty field, then
-+        // typing one of their own before pressing Apply, raised no question at
-+        // all and overwrote the words they had just written. The plan reports
-+        // both kinds of premise now — a moved value and a link target that has
-+        // been deleted, bound elsewhere or moved instrument — and this refuses
-+        // on either, whether or not `rev` moved.
-+        if (plan.staleDecisions.length > 0) {
-+          return {
-+            ok: false,
-+            status: 'stale',
-+            message: 'Something you had already decided about has changed since. Look again before applying.',
-+            staleDecisions: plan.staleDecisions,
+diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
+index bb4f97a..74e4c0e 100644
+--- a/tests/practiceBrowser.ts
++++ b/tests/practiceBrowser.ts
+@@ -97,9 +97,32 @@ export async function openPracticeApp(options: {
+     page.on('dialog', (d) => {
+       void d.accept().catch(() => {});
+     });
++    // A request the BROWSER cancelled because this test navigated away while it
++    // was in flight is not an application error. WebKit reports such a fetch as
++    // "Fetch API cannot load … due to access control checks", which reads
++    // exactly like a CORS problem and is not one: instrumented, the only
++    // difference between the passing and failing runs of the same journey is a
++    // single `requestfailed` with `errorText: 'cancelled'` for a request that
++    // is otherwise fulfilled with the right CORS headers every other time.
++    // A real person navigating mid-sync cancels the same request, so treating
++    // it as a page error makes a journey fail for driving the app quickly.
++    // Narrow by construction: only a URL this run actually saw cancelled is
++    // ever excused, and every other page error is recorded as before.
++    const cancelled = new Set<string>();
++    page.on('requestfailed', (r) => {
++      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
++    });
+     // Surface a page-level error instead of letting it become a silently
+     // wrong assertion later.
+-    page.on('pageerror', (e) => pageErrors.push(e));
++    page.on('pageerror', (e) => {
++      const message = `${e.message}`;
++      // WebKit spells the URL with the scheme separated from the host, so the
++      // comparison is on the path, which both spellings carry verbatim.
++      for (const url of cancelled) {
++        if (message.includes(new URL(url).pathname)) return;
++      }
++      pageErrors.push(e);
++    });
+     await page.clock.install({ time: options.now });
+     await page.goto(origin);
+     // The store hydrates from IndexedDB before anything renders. The ceiling is
+diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
+index 273ec33..53f895b 100644
+--- a/tests/setarArchive.browser.test.ts
++++ b/tests/setarArchive.browser.test.ts
+@@ -163,26 +163,59 @@ describe('the Setar archive, rendered', () => {
+           // this journey drives whichever the viewport actually renders.
+           await goTo(app, '/lessons');
+           const wide = viewport.width >= 1000;
+-          let lessonText: string;
+-          if (wide) {
+-            await page.getByRole('button', { name: /Class 13 · 2024-09-03/ }).first().click();
+-            await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+-            lessonText = await page.locator('main').innerText();
+-          } else {
+-            const class13 = page.getByRole('article').filter({ hasText: 'Class 13 · 2024-09-03' });
+-            await class13.first().waitFor({ timeout: 20_000 });
++          /**
++           * Open one class and read what it actually renders — the whole page
++           * on the wide two-pane layout, the card itself on the phone, where
++           * rows start compact and must be opened first.
++           */
++          const openClass = async (label: string, number: number): Promise<string> => {
++            if (wide) {
++              await page.getByRole('button', { name: new RegExp(label) }).first().click();
++              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
++              return page.locator('main').innerText();
++            }
++            const card = page.getByRole('article').filter({ hasText: label });
++            await card.first().waitFor({ timeout: 20_000 });
+             // PHONE ROWS START COMPACT: thirty-nine imported classes must not
+             // all open at once just because none of them has notes yet.
+-            expect(await class13.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
+-            await class13.getByRole('button', { name: /Class 13/ }).first().click();
+-            await class13.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+-            lessonText = await class13.innerText();
+-          }
++            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
++            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
++            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
++            return card.innerText();
 +          };
-+        }
++          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
+           // The class recording is here, with its part numbers; a named score
+           // is here; nothing claims a demonstration belongs to the class alone.
+           expect(lessonText).toContain('ضبط کلاس');
+           expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
  
-         // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
-         // It returns the SAME OBJECT when a plan changes nothing, so asking it
++          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
++          //
++          // Class 25 is an ADOPTED legacy class carrying three of the owner's
++          // OWN references — personal takes the index describes nowhere, by
++          // construction — beside the archive's session material. The composed
++          // list used to include the owner's rows as well, so each of them was
++          // rendered twice: once where it can be edited and removed, and once
++          // again above it.
++          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
++          const adopted = await openClass('Class 25 · 2025-08-05', 25);
++          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
++            expect(occurrences(adopted, authored)).toBe(1);
++          }
++          // …and they are still editable where they live: the section that owns
++          // them can still remove them, by name.
++          const owning = wide
++            ? page.locator('main')
++            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
++          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
++          // A class the archive gave a recording to is NOT invited to add one.
++          // Class 12 is a purely imported class: it keeps no copy of its
++          // session's files, so its own `recordings` array is empty and the
++          // empty-state card offered to add the very video playing above it.
++          const imported = await openClass('Class 12 · 2024-08-06', 12);
++          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
++          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
++
+           // --- A CANONICAL PIECE, and the material that is useful for it ----
+           await goTo(app, '/repertoire');
+           await page.getByRole('button', { name: 'Practice list' }).click();
 ```
 
 **Full current text of every file the rework touched:**
@@ -2794,6 +3327,15 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
 automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
+A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
+while it was in flight is reported by WebKit as
+`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
+problem and is not one. Instrumented, the only difference between a passing and a failing run
+of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
+fulfilled with the right CORS headers every other time. A real person navigating mid-sync
+cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
+as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
+
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
 canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
@@ -2945,6 +3487,35 @@ check, not atomicity: a perturbation stable across both readings agrees with its
 indistinguishable from the archive genuinely being in that state. What it removes is the
 transient, which is what a copy in flight looks like.
 
+**AND A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA — WHICH IS WHAT MADE THE TWO-READ
+CHECK LOOK CLEAN OVER A FALSE VIEW.** `catch { renameLogText = '' }` turned every failure to
+read RENAME-LOG.csv — a permission change, an I/O error, a mount that went away mid-copy —
+into an archive that has no rename log. Both readings then AGREED, the consistency check
+passed, and the scan published an index with no renames at all: a file that moved during
+that window is flagged `unavailable` and its saved references can never be repaired. Absence
+is an OBSERVATION (`{present:false}`, ENOENT only) and travels in the compared reading as
+one; anything else fails the scan. A required input is required outright, so a missing or
+unreadable PIECES.csv refuses rather than yielding an empty registry, and a present-but-EMPTY
+log — what a zero-byte copy in flight looks like — is refused by `readTable` exactly as the
+registry would be.
+
+**AND THE WALK SAYS WHAT IT COULD NOT TAKE IN.** Two readings agree about a file neither of
+them looked at, so the consistency check is blind by construction to anything the walk drops
+in silence. A symbolic link is still never FOLLOWED — a link out of the archive is a path
+this scanner has no authority over — and a session-named entry that is not a directory is
+still never opened; both are now `diagnostics` rows in the published index instead of
+vanishing, because an index quietly narrower than the archive is the same "partial view sold
+as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
+folders stay silent: they are not archive content, and saying so 258 times is noise. It is a
+DIAGNOSTIC and not a refusal for the same reason a rename cycle is: a symlink is a stable
+property of the archive, not a transient, so refusing would leave the archive permanently
+unindexable until the owner went and deleted it — where the two-read check refuses only what
+disagrees with itself between two readings a moment apart.
+Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
+a file edited IN PLACE at the same byte length changes no size and no CSV, and would
+otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
+determinism rule is untouched: altered mtimes still produce a byte-identical index.
+
 **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
 trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
 token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
@@ -2975,6 +3546,16 @@ boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`
 one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
 the same treatment `validatePracticeText` gives the owner's own words, and never a
 coercion.
+
+**AND THAT RULE HAD TO REACH THE STRINGS TOO.** It closed the lists and the scalars and left
+every string field with a default exactly as it was: `str(raw.form ?? '')` still read ABSENT
+and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `form`,
+`composer` or `notes`, and a diagnostic's own `path` all decoded to `''` — an untitled row
+the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
+a default, anything else that is not text is refused naming the record. `part` and `group`
+stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
+present null is refused BY THE DECODER rather than spread into its own output as a value the
+declared type does not admit and left for the grammar to catch downstream.
 
 **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
 SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
@@ -3076,6 +3657,28 @@ channel rather than two, and the commit refuses on either whether or not `rev` m
 screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
 question, or the suggestion's real current value, is shown as it is now.
 
+**AND A DECISION NAMES ITS RECORD, NOT ONLY ITS PIECE — AND EVERY DECISION IS ACCOUNTED
+FOR.** The premise rule above closed the case where the owner's VALUE moved and left the two
+cases where the RECORD did. Both loops open with "already bound? nothing to decide" /
+"already suppressed? nothing to decide", so a decision about a record that became bound
+between the preview and the commit was never looked at at all: no adoption, no question, and
+an EMPTY `staleDecisions`, so the commit reported success for an action it had not performed.
+An `apply-field` decision was worse than ignored — keyed by piece and value alone, it was
+REDIRECTED onto whichever record held that piece by commit time, and a sync installing a
+database where the same piece is bound to item B, also with an empty composer, took a choice
+made about A.
+
+So `apply-field` carries `itemId` (identity) as well as `from` (premise), and
+`decisionMatchesSuggestion` compares all four; and `planArchiveImport` marks every decision
+it ACTS on and sweeps the rest. An unmarked decision is either an action that has ALREADY
+HAPPENED — the same answer still in hand on the next preview — or an answer to a question
+that no longer stands, which is stale. That already-done branch is LOOP PREVENTION rather
+than politeness: `ArchiveRefresh` drops a stale decision and re-previews, and a realised
+action can never be consumed by a loop that skips its own record, so without it the same
+decision would go stale for ever. The sweep is why this holds for Link, Create, Skip and
+apply-field together instead of a stale check bolted inside each early return, and the
+premise rule above is now one of its outcomes rather than a second mechanism beside it.
+
 **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
 decide what file a stored reference names, and they used to decide it differently:
 `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
@@ -3091,7 +3694,25 @@ session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B a
 that very reference repaired into session 2: bound to one class, pointing at another's
 files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
 that loops says nothing about where the file is), and three things use it: evidence, repair,
-and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+and the owner's own hides.
+
+**AND "REPORTED" HAD TO BE UNIGNORABLE.** `followRenames` handed back
+`{ path, cycle: true }` — a perfectly usable-looking path beside a flag — and only ONE of its
+three callers read the flag: adoption refused it, while the suppression re-key and
+`retainMissing` walked straight past it. Hide A, publish A->B and B->A, and the re-key moved
+the owner's hide onto B: A came back into view and the wrong file went dark. It returns
+`string | null` now, so there is no way to drop the verdict and still have a path. A hide
+stays exactly where the owner put it, a row the incoming index no longer lists keeps its
+provenance flagged rather than being deleted on the strength of a destination nothing can
+read, and repair says "the rename log loops on this path" instead of rewriting to an
+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
+row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
+published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
+published index carries no cycle, and the app still refuses to read one from any other
+source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
+archive its good provenance.
+
+A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
 a hidden file simply reappeared under the new one while the old row sat there flagged
 unavailable. Re-keying it is not editing an owner decision — it is the same decision about
 the same bytes said in the archive's current words, the `itemId` scope carried untouched and
@@ -3124,7 +3745,27 @@ lessons that are NOT archive-bound. An archive-bound lesson contributes nothing 
 link route — its files reached the list already, correctly scoped — which is what stops a
 class recording and someone's practice takes from landing on a piece. A manual, unclassified
 lesson still contributes everything it has, because nothing knows the scope and inventing
-one would be a guess. `lessonFiles` is the same composition for a lesson.
+one would be a guess.
+
+**A LESSON IS THE OPPOSITE CASE: EVERY FILE ON IT HAS EXACTLY ONE SECTION THAT RENDERS IT.**
+An ITEM's material is composed from OTHER records — linked lessons, the graph — that the
+item's own page has no section for, which is precisely why `itemFiles` must stay the whole
+composition. A LESSON owns its own references and its own attachments, and its page already
+renders each in the section that can edit and remove them. `lessonFiles` composed those as
+well, so an authored NAS reference the index describes nowhere — the owner's own practice
+takes on an adopted class — and every local attachment were rendered TWICE: once above,
+where nothing can be done with them, and once again where they live. `lessonFiles` is now
+the ARCHIVE's contribution alone (an archive-bound class keeps no copy of its session's
+files, so nothing else can show them); "Class recording & scores" keeps the owner's
+references, `Attachments` keeps the attachments, and each Remove button is NAMED after its
+own file rather than saying "Remove this link" three times over.
+
+**AND "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THAT ARRAY.** An imported historical
+class keeps no copy of its session's files, so `lesson.recordings` is empty and the
+empty-state card invited the owner to add a class recording directly beneath the one already
+playing above it. That state is read through the same composition the section above renders
+— not the session's `hasClassRecording` flag — so a class recording the owner has HIDDEN does
+not count as one that is there.
 
 **SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
 `migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
@@ -3156,6 +3797,25 @@ GRAMMAR, never a defensive guard in a component: a reader written against a vali
 is the point of validating it. `unavailable` stays legal on a piece, a session and a
 resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
 silently widens a hide scoped to ONE item.
+
+**AND A GRAMMAR OF FIELD TYPES SAYS EVERY VALUE IS READABLE, NEVER THAT THE GRAPH AGREES
+WITH ITSELF.** A resource physically sitting in class 2's folder, listed under class 1, is
+type-perfect at every door and attributes someone else's file to the wrong class on every
+screen that reads it. So `checkSourceGraph` also checks the RELATIONS, and the same four at
+both doors: a resource's path is `<that session's folder>/<name>` and nothing else; a
+resource attributed to a piece has that piece's membership recorded for that ROLE, so no
+file can surface as a piece's material with nothing in the graph saying it belongs to it; a
+`group` belongs only to a demonstration, and the parts sharing one are material for the same
+pieces with distinct part numbers, so an arbitrary group cannot invent one logical resource
+out of unrelated files; and `hasClassRecording` agrees with whether a class-role resource is
+actually there, which itself may never name a piece.
+
+These run over what the source still DESCRIBES. `unavailable` is retained provenance about
+what it has STOPPED describing — a piece dropped from the registry, a file deleted from the
+NAS — so holding those rows to the current source's internal agreement is a category error,
+and would make every refresh after a removal refuse at every door. The group's LABEL format
+is deliberately not asserted: that is the scanner's grammar, and this file's own rule is
+that the grammar lives once.
 
 **AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
 the one persisted field with no check at all, while Settings renders it
@@ -3699,6 +4359,75 @@ from the user, recorded here.
 # Decisions
 
 Durable record of non-obvious choices. Newest first.
+
+## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
+
+A third sealed review rejected the reworked Setar-archive diff. Each finding was the
+PREVIOUS fix holding for exactly the case it was written against, so each fix here is the
+rule the whole family shares — and the previous narrower mechanism is subsumed rather than
+left beside it.
+
+- **A read failure was valid empty source data.** The two-read consistency check was
+  extended to every input, and `catch { renameLogText = '' }` then made an unreadable
+  RENAME-LOG.csv agree with itself: both readings held `''`, the check passed, and the scan
+  published an index with no renames — so a file that moved in that window is flagged
+  unavailable and its saved references can never be repaired. Absence is an OBSERVATION now
+  (`{present:false}`, ENOENT only) and travels in the compared reading; anything else fails
+  the scan. The walk had the deeper version of the same gap: two readings agree about a file
+  neither looked at, so a skipped symlink or a session-named non-directory is a published
+  diagnostic instead of a silent omission. The compared reading also carries `mtimeMs`,
+  which `buildIndex` never reads, so an in-place edit at the same byte length is visible to
+  the check and invisible to the index.
+- **The absent/present rule reached the lists and the scalars, not the strings.**
+  `str(raw.form ?? '')` still read absent and present-and-null alike, so a `title: null`
+  decoded to an untitled row behind a correct digest. `text()` is that rule for strings.
+  Separately, a grammar of FIELD TYPES says every value is readable and nothing about
+  whether the graph agrees with itself: a resource in class 2's folder listed under class 1
+  passed every door. `checkSourceGraph` now also checks path ownership, resource-to-member
+  agreement by role, demo-group coherence and `hasClassRecording` — over rows the source
+  still DESCRIBES, because holding retained `unavailable` provenance to the current
+  source's internal agreement would refuse every refresh after a removal.
+- **A decision named its piece, not its record.** Both reconciliation loops open with
+  "already bound? nothing to decide", so a decision about a record bound between the preview
+  and the commit was never examined: no adoption, no question, an EMPTY `staleDecisions`,
+  and a commit reporting success for an action it had not performed. `apply-field` was worse
+  than ignored — keyed by piece and value alone, it was redirected onto whichever record held
+  that piece by commit time. It carries `itemId` now, and `planArchiveImport` marks every
+  decision it acts on and sweeps the rest: unmarked is either already realised (loop
+  prevention — the screen drops a stale decision and re-previews) or stale. The `from`
+  premise rule is an outcome of that sweep rather than a second mechanism beside it.
+- **"A cycle is reported" was reported in a value callers could ignore.** `followRenames`
+  returned `{ path, cycle: true }` and only adoption read the flag; the suppression re-key
+  and `retainMissing` walked past it, so A→B plus B→A moved the owner's hide onto B and the
+  wrong file went dark. It returns `string | null`, so dropping the verdict and keeping a
+  path is unrepresentable. The scanner drops every row in a loop — and every row walking into
+  one — with a diagnostic, per ac-12's own "cycles diagnose, never guess"; refusing the whole
+  index was rejected, because a name swap is a legitimate archive operation and an
+  unimportable archive is a worse answer than an unrepaired path.
+- **One lesson file had two sections.** `lessonFiles` composed the lesson's own references
+  and attachments as well as the archive's, and the lesson page renders both in the sections
+  that can edit and remove them — so an authored file appeared twice, once where nothing
+  could be done with it. `lessonFiles` is the ARCHIVE's contribution alone; an ITEM keeps the
+  whole composition, because its material comes from records its own page has no section for.
+  And "has a recording" is read through that composition, not `lesson.recordings`, so an
+  imported class is no longer invited to add the video already playing above the prompt.
+
+A separate, reproduced HARNESS diagnosis came out of the same round and is recorded here
+because a flaky heavy check is worse than a missing one: WebKit reports a request the browser
+CANCELLED (because the test navigated away mid-flight) as "Fetch API cannot load … due to
+access control checks", which reads as a CORS failure and is not one. Instrumenting the
+journey showed the only difference between a passing and a failing run was one `requestfailed`
+with `errorText: 'cancelled'` against a request fulfilled with correct CORS headers every
+other time. `openPracticeApp` no longer counts such an error, narrowly and by URL. Filtering
+the wording alone, or seeding the fake remote so the bootstrap PUT never happens, were both
+rejected: the first excuses a real CORS bug, the second changes what the other journeys mean
+by an empty remote.
+
+Eight mutations were run and all eight fail their named acceptance test: the optional-read
+swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
+`itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson
+composition's authored half (in the real browser, both engines), and the empty-recording
+prompt's guard.
 
 ## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
 
@@ -4824,9 +5553,29 @@ readings agrees with itself, and from here is indistinguishable from the archive
 genuinely being in that state. What it removes is the transient — which is what a
 copy in flight looks like, and what would otherwise publish an index missing a
 file that is still there.
+
+A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
+stops it being read — missing, unreadable, a directory where a file should be —
+refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
+nothing else: it travels in the compared reading as `{present:false}`, never as
+empty text, because `catch { text = '' }` made a permission change or an I/O
+error agree with itself across both readings and publish an index with no
+renames at all. A present but EMPTY log is refused like an empty registry — a
+zero-byte file is what a copy in flight looks like.
+
+Each file's `mtimeMs` is part of the compared reading and is never read by the
+index builder, so a file edited IN PLACE at the same byte length fails the scan
+while altered mtimes still produce a byte-identical index.
+
 What it reports and skips: a file with no known role, an unknown piece, an
 unsupported extension, a class recording claiming a piece, an unnamed demo in a
-session whose roster and filenames disagree.
+session whose roster and filenames disagree, a symbolic link (never followed —
+but never silently dropped either, since two readings agree about a file neither
+of them looked at), a session-named entry that is not a real directory, and
+every row of a rename LOOP. A log that loops names no file, so those rows — and
+any row that walks into a loop — are dropped with a diagnostic rather than
+published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
+and out-of-scope root folders stay silent: they are not archive content.
 
 The output is written **outside the archive** via a temp file + rename, and the
 scanner refuses an `--out` path inside `--root`.
@@ -4981,11 +5730,18 @@ applies the lot in one store mutation.
   same mutation, so a refresh, a reload and a sync all respect it. A hide follows
   its file through the rename log, so a renamed resource does not reappear —
   including when the rename moves it into a different session's folder, where
-  the old row is dropped rather than reported missing.
-- **A decision is about the state you saw.** If the value you chose the archive's
-  over has changed since — or a record you chose to link has been deleted, bound
-  elsewhere or moved instrument — the commit refuses and re-previews rather than
-  applying an answer to a question that no longer stands.
+  the old row is dropped rather than reported missing. A rename LOOP names no
+  file, so a hide stays exactly where you put it and nothing is re-keyed.
+- **A decision is about the state you saw, and about the record you saw it on.**
+  If the value you chose the archive's over has changed since — or the record you
+  chose to link or apply a field to has been deleted, bound elsewhere or moved
+  instrument — the commit refuses and re-previews rather than applying an answer
+  to a question that no longer stands, or handing it to some other record.
+- **Every file on a class has exactly one section.** The archive's own session
+  material is composed for you (an imported class keeps no copy of it, so nothing
+  else can show it); your own links and attachments stay in the sections that can
+  edit and remove them, and are never repeated above. An imported class recording
+  counts as a recording, so you are not invited to add the video already playing.
 - **Your media base is an address and a folder.** A base carrying a username,
   password, `?query` or `#fragment` is refused, not silently cleaned up: every
   file URL is built by appending a path to it.
@@ -5307,7 +6063,7 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * files). Individual unhandled FILES are reported in `diagnostics` and left
  * out — surfaced for the owner, never relabelled.
  */
-export function buildIndex({ registryText, inventory, renameLogText }) {
+export function buildIndex({ registryText, inventory, renameLog, skipped = [] }) {
   const pieces = parseRegistry(registryText);
   const byKey = new Map(pieces.map((p) => [p.key, p]));
 
@@ -5315,6 +6071,11 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
 
   const diagnostics = [];
   const diag = (path, reason) => diagnostics.push({ path, reason });
+  // Everything the WALK could not take in. A symlink is not followed and a
+  // device node is not a file, but dropping either in silence publishes an
+  // index that is quietly narrower than the archive — the same "partial view
+  // sold as complete" this scanner's two-read check exists to refuse.
+  for (const s of skipped) diag(s.path, s.reason);
 
   // --- sessions -----------------------------------------------------------
   const sessions = new Map(); // n -> { n, date, folder, assets: [] }
@@ -5449,8 +6210,12 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
   // EXACT old→new pairs only. This is path provenance, not a similarity model:
   // an old path with two destinations is reported, never resolved by guessing.
   const renames = [];
-  if (renameLogText) {
-    const rows = readTable(renameLogText, ['old_path', 'new_path']);
+  // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
+  // A present-but-empty log has no header and `readTable` says so, exactly as
+  // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
+  // like, and guessing "no renames" from it is the failure this lane closed.
+  if (renameLog && renameLog.present) {
+    const rows = readTable(renameLog.text, ['old_path', 'new_path']);
     const dest = new Map();
     for (const r of rows) {
       const from = r.old_path.trim();
@@ -5469,6 +6234,32 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
       dest.set(from, to);
       renames.push({ from, to });
     }
+    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
+    // only that two names were swapped; picking a stopping point would invent
+    // an identity, and every path that LEADS INTO a loop is equally unusable.
+    // Those rows are dropped with a diagnostic rather than published: the app
+    // must never be handed a replacement identity this log cannot support.
+    const cyclic = new Set();
+    for (const from of dest.keys()) {
+      const walked = new Set([from]);
+      let cur = from;
+      while (dest.has(cur)) {
+        const next = dest.get(cur);
+        if (walked.has(next)) {
+          for (const p of walked) cyclic.add(p);
+          cyclic.add(next);
+          break;
+        }
+        walked.add(next);
+        cur = next;
+      }
+    }
+    for (const from of cyclic) {
+      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
+    }
+    const kept = renames.filter((r) => !cyclic.has(r.from));
+    renames.length = 0;
+    renames.push(...kept);
     renames.sort((a, b) => cmp(a.from, b.from));
   }
 
@@ -5513,23 +6304,45 @@ export function canonicalJson(value) {
 export function scanArchive(root) {
   const base = resolve(root);
   const inventory = [];
+  const skipped = [];
   for (const entry of readdirSync(base, { withFileTypes: true })) {
     if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
-    if (!entry.isDirectory()) continue;
     if (!parseSessionFolderName(entry.name)) continue; // root folders out of scope
+    if (!entry.isDirectory()) {
+      // It CLAIMS to be a session and this walk will not open it. Silence here
+      // would drop a whole class out of a "complete" index.
+      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.' });
+      continue;
+    }
     const dir = join(base, entry.name);
     for (const f of readdirSync(dir, { withFileTypes: true })) {
       if (f.name.startsWith('.') || IGNORED_DIRS.has(f.name)) continue;
       const full = join(dir, f.name);
       const st = lstatSync(full);
-      if (st.isSymbolicLink() || !st.isFile()) continue;
+      const path = `${entry.name}/${f.name}`;
+      if (st.isSymbolicLink()) {
+        // Never FOLLOWED — a link out of the archive is a path this scanner
+        // has no authority over — but always SAID, so the owner can see that
+        // the index is not describing something the folder holds.
+        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed.' });
+        continue;
+      }
+      if (!st.isFile()) {
+        skipped.push({ path, reason: 'Not a regular file — not indexed.' });
+        continue;
+      }
       if (!full.startsWith(base + sep)) continue;
-      inventory.push({ path: `${entry.name}/${f.name}`, size: st.size });
+      // `mtimeMs` is deliberately NOT semantic — `buildIndex` reads `size` and
+      // nothing else, so an altered time cannot change the published index. It
+      // is here for the two-read comparison below: a file edited IN PLACE at
+      // the same byte length is otherwise invisible to it.
+      inventory.push({ path, size: st.size, mtimeMs: st.mtimeMs });
       if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
     }
   }
   inventory.sort((a, b) => cmp(a.path, b.path));
-  return inventory;
+  skipped.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason));
+  return { inventory, skipped };
 }
 
 /** Write via a temp file + rename, so a reader never sees a half-written index. */
@@ -5549,14 +6362,39 @@ export function writeIndexAtomically(outPath, text, root) {
  * below covers all of them by construction, including one added later.
  */
 export function readSource(base) {
-  const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
-  let renameLogText = '';
+  const registryText = readRequired(join(base, 'PIECES.csv'), 'PIECES.csv');
+  const renameLog = readOptional(join(base, 'RENAME-LOG.csv'), 'RENAME-LOG.csv');
+  const { inventory, skipped } = scanArchive(base);
+  return { registryText, renameLog, inventory, skipped };
+}
+
+/** A required input. Any failure to read it is a failure to scan. */
+function readRequired(path, label) {
   try {
-    renameLogText = readFileSync(join(base, 'RENAME-LOG.csv'), 'utf8');
-  } catch {
-    renameLogText = '';
+    return readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
   }
-  return { registryText, renameLogText, inventory: scanArchive(base) };
+}
+
+/**
+ * AN OPTIONAL INPUT IS ABSENT OR PRESENT — NEVER "EMPTY BECAUSE IT THREW".
+ *
+ * `catch { text = '' }` made every failure to read RENAME-LOG.csv — a
+ * permission change, an I/O error, a mount that went away mid-copy — look
+ * exactly like an archive that has no rename log. Both readings then agreed
+ * with each other, so the consistency check below passed and the scan
+ * published an index with no renames at all: a file that moved during that
+ * window is flagged unavailable and its saved references can never be
+ * repaired. Only ENOENT is an observation; everything else is a failure.
+ */
+function readOptional(path, label) {
+  try {
+    return { present: true, text: readFileSync(path, 'utf8') };
+  } catch (err) {
+    if (err?.code === 'ENOENT') return { present: false };
+    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
+  }
 }
 
 /**
@@ -5900,7 +6738,18 @@ export default function ArchiveRefresh() {
                         type="button"
                         className="btn btn-sm"
                         aria-pressed={applied}
-                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
+                        onClick={() =>
+                          decide({
+                            kind: 'apply-field',
+                            pieceKey: sg.pieceKey,
+                            // The RECORD the value was shown against, not just
+                            // the piece: a rebase must not hand the answer to
+                            // whichever item happens to hold that piece later.
+                            itemId: sg.itemId,
+                            field: sg.field,
+                            from: sg.from,
+                          })
+                        }
                       >
                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
                       </button>
@@ -6796,6 +7645,37 @@ describe('the v14 source graph at the schema boundary', () => {
   const NOW = new Date('2026-09-17T09:00:00.000Z');
   const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
 
+  /**
+   * A source graph as it arrives — every value still `unknown`, because that is
+   * exactly what these mutations put into it. One shape for BOTH doors: the
+   * published index and a persisted `archiveSources` row carry the same graph,
+   * so one mutation can be handed to each and neither can be given a check the
+   * other misses.
+   */
+  type RawRow = Record<string, unknown>;
+  type RawSession = RawRow & { folder: string; resources: RawRow[]; members: RawRow[] };
+  type Graph = { pieces: RawRow[]; sessions: RawSession[]; diagnostics: RawRow[] };
+
+  /** First `[session, resource]` carrying a role, in the corpus fixture. */
+  function firstWithRole(g: Graph, role: string): [RawSession, RawRow] {
+    for (const sess of g.sessions) {
+      const res = sess.resources.find((r) => r.role === role);
+      if (res) return [sess, res];
+    }
+    throw new Error(`The corpus fixture has no "${role}" resource to mutate.`);
+  }
+
+  /** A demonstration group with at least TWO parts, and its session. */
+  function groupedDemo(g: Graph): [string, RawRow, RawSession] {
+    for (const sess of g.sessions) {
+      for (const r of sess.resources) {
+        if (!r.group) continue;
+        if (sess.resources.filter((x) => x.group === r.group).length > 1) return [r.group as string, r, sess];
+      }
+    }
+    throw new Error('The corpus fixture has no multi-part demonstration to mutate.');
+  }
+
   /** A database with a real accepted graph in it, built by the real planner. */
   function withGraph(): PracticeDB {
     const base = validateDB(legacy());
@@ -6982,6 +7862,99 @@ describe('the v14 source graph at the schema boundary', () => {
       (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
     }, /suppression with no timestamp/);
 
+    // --- ABSENT IS A DEFAULT; PRESENT-AND-NULL IS A REFUSAL ----------------
+    // The list/num/bool rule closed this for lists and scalars and left every
+    // STRING with a default behind: `str(raw.form ?? '')` read absent and
+    // present-and-null as the same thing, so a `title: null` in an index whose
+    // digest was recomputed decoded to an untitled row the grammar was
+    // perfectly happy with. Absent is a default; null is a value, and a wrong
+    // one. Proved at BOTH doors from ONE mutation, so the published decoder
+    // and the persisted-graph validator cannot be given it separately.
+    const refusesBothDoors = (fn: (g: Graph) => void, pattern: RegExp) => {
+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
+      fn(index);
+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
+      refuses((d) => fn(d.archiveSources[0] as unknown as Graph), pattern);
+    };
+    const onIndexOnly = (fn: (g: Graph) => void, pattern: RegExp) => {
+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
+      fn(index);
+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
+    };
+    onIndexOnly((g) => {
+      g.sessions[0]!.resources[0]!.title = null;
+    }, /title must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.form = null;
+    }, /form must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.notes = null;
+    }, /notes must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.composer = null;
+    }, /composer must be text/);
+    // `size` is genuinely optional, so ABSENT is a default here too — but a
+    // present null is still a value, and the DECODER refuses it rather than
+    // spreading a type-violating value into its own output for the grammar to
+    // catch downstream. (The persisted door has its own `size` check above.)
+    onIndexOnly((g) => {
+      g.sessions[0]!.resources[0]!.size = null;
+    }, /size must be a number/);
+    onIndexOnly((g) => {
+      g.diagnostics.push({ path: null, reason: 'x' });
+    }, /diagnostic path must be text/);
+
+    // --- SEMANTIC RELATIONS, NOT MERELY FIELD TYPES ------------------------
+    // A field-type grammar says every value is READABLE and nothing about
+    // whether the graph agrees with itself. A resource physically sitting in
+    // class 2's folder, listed under class 1, is type-perfect and attributes
+    // someone else's file to the wrong class on every screen that reads it;
+    // an arbitrary `group` on a non-demonstration invents one logical resource
+    // out of unrelated files. Both doors, one mutation, every time.
+    refusesBothDoors((g) => {
+      g.sessions[1]!.resources[0]!.path = `${g.sessions[0]!.folder}/smuggled.mp4`;
+    }, /not a file in its own folder/);
+    refusesBothDoors((g) => {
+      g.sessions[0]!.resources[0]!.path = `${g.sessions[0]!.folder}/deeper/x.mp4`;
+    }, /not a file in its own folder/);
+    refusesBothDoors((g) => {
+      // Attributed to a real registry piece that this session never records a
+      // membership for: the file would surface as that piece's material with
+      // nothing in the graph saying it belongs to it.
+      const [s0, res] = firstWithRole(g, 'نت');
+      const stranger = g.pieces.find((p) => !s0.members.some((m) => m.key === p.key))!;
+      res.pieces = [stranger.key];
+    }, /without recording that membership/);
+    refusesBothDoors((g) => {
+      const [, res] = firstWithRole(g, 'نت');
+      res.group = 'نمونه:invented';
+    }, /carries a part group but is not a demonstration/);
+    refusesBothDoors((g) => {
+      const [, res] = firstWithRole(g, 'ضبط-کلاس');
+      res.pieces = [g.pieces[0]!.key];
+    }, /class recording and cannot name a piece/);
+    refusesBothDoors((g) => {
+      const [sess] = firstWithRole(g, 'ضبط-کلاس');
+      sess.hasClassRecording = false;
+    }, /disagrees with itself about having a class recording/);
+    refusesBothDoors((g) => {
+      const sess = g.sessions.find((x) => !x.resources.some((r) => r.role === 'ضبط-کلاس'))!;
+      sess.hasClassRecording = true;
+    }, /disagrees with itself about having a class recording/);
+    // A demonstration's PARTS are one resource told in order. Parts that are
+    // material for different pieces are not one resource, and two parts
+    // numbered alike have no order to be read in.
+    refusesBothDoors((g) => {
+      const [, first, sess] = groupedDemo(g);
+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
+      sibling.pieces = [];
+    }, /parts belong to different pieces/);
+    refusesBothDoors((g) => {
+      const [, first, sess] = groupedDemo(g);
+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
+      sibling.part = first.part;
+    }, /two parts numbered alike/);
+
     // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
     // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
     // when the index last changed. It was the one persisted field with no
@@ -7087,592 +8060,756 @@ describe('the v14 source graph at the schema boundary', () => {
 });
 ```
 
-### src/domain/recordings.test.ts
+### src/domain/itemFiles.test.ts
 
 ```
 import { describe, expect, it } from 'vitest';
-import {
-  archiveRootUrl,
-  describeArchiveAccess,
-  formatFileSize,
-  needsBaseUrl,
-  normalizeBaseUrl,
-  relativizeReference,
-  resolveRecording,
-  resolveRecordingUrl,
-} from './recordings';
+import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
+import { lessonFiles, type ItemFileReference } from './itemFiles';
+import { decodeSourceIndex } from './sourceArchive';
+import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
+import { emptyDB } from './seed';
+import { createLesson } from './factories';
+import { resolveRecordingUrl } from './recordings';
+import { attachmentsOwnedBy, itemFiles, itemOwnedAttachments } from './itemFiles';
+import type { AttachmentMeta, Lesson, LessonRecording, PracticeDB } from './types';
 
-describe('resolveRecordingUrl', () => {
-  const base = 'https://nas.example.ts.net/media';
-
-  it('uses a full https URL as-is', () => {
-    expect(resolveRecordingUrl(undefined, { path: 'https://x.ts.net/a/b.mp4' })).toBe('https://x.ts.net/a/b.mp4');
-  });
-
-  it('joins a relative path under the base URL', () => {
-    expect(resolveRecordingUrl(base, { path: 'setar-classes/session-37/class.mp4' })).toBe(
-      'https://nas.example.ts.net/media/setar-classes/session-37/class.mp4',
-    );
-  });
-
-  it('URL-encodes spaces and Farsi filenames per segment', () => {
-    const url = resolveRecordingUrl(base, { path: 'setar-classes/session-36/2026-06-09 19.29.16.mp4' })!;
-    expect(url).toContain('2026-06-09%2019.29.16.mp4');
-    const farsi = resolveRecordingUrl(base, { path: 'setar-classes/چهارمضراب-صبا.pdf' })!;
-    expect(farsi).toContain('%D8%'); // percent-encoded Farsi
-    expect(farsi.startsWith(base)).toBe(true);
-  });
-
-  it('tolerates trailing/leading slashes', () => {
-    expect(resolveRecordingUrl('https://nas/media/', { path: '/a/b.mp4' })).toBe('https://nas/media/a/b.mp4');
-  });
-
-  it('returns null for a relative path with no base URL (must prompt)', () => {
-    expect(resolveRecordingUrl(undefined, { path: 'setar-classes/x.mp4' })).toBeNull();
-    expect(resolveRecordingUrl('', { path: 'setar-classes/x.mp4' })).toBeNull();
-  });
-
-  it('returns null for an empty path', () => {
-    expect(resolveRecordingUrl(base, { path: '  ' })).toBeNull();
-  });
-});
-
-describe('needsBaseUrl', () => {
-  it('is true only for a relative path without a base', () => {
-    expect(needsBaseUrl(undefined, { path: 'a/b.mp4' })).toBe(true);
-    expect(needsBaseUrl('https://nas', { path: 'a/b.mp4' })).toBe(false);
-    expect(needsBaseUrl(undefined, { path: 'https://nas/a.mp4' })).toBe(false);
-  });
-});
-
-describe('normalizeBaseUrl', () => {
-  it('prepends https:// to a scheme-less host (the reported bug)', () => {
-    expect(normalizeBaseUrl('ds220plus.taild1d1f7.ts.net')).toBe('https://ds220plus.taild1d1f7.ts.net');
-    expect(normalizeBaseUrl('ds220plus.taild1d1f7.ts.net/media')).toBe('https://ds220plus.taild1d1f7.ts.net/media');
-  });
-
-  it('keeps an explicit scheme and strips a trailing slash', () => {
-    expect(normalizeBaseUrl('https://nas.ts.net/media/')).toBe('https://nas.ts.net/media');
-    expect(normalizeBaseUrl('http://192.168.0.20:8080/x/')).toBe('http://192.168.0.20:8080/x');
-  });
-
-  it('returns null for blank or unparseable input', () => {
-    expect(normalizeBaseUrl('')).toBeNull();
-    expect(normalizeBaseUrl('   ')).toBeNull();
-    expect(normalizeBaseUrl(undefined)).toBeNull();
-    expect(normalizeBaseUrl('http://')).toBeNull();
-    expect(normalizeBaseUrl('not a url at all')).toBeNull();
-  });
-
-  it('rejects non-http(s) schemes', () => {
-    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
-    expect(normalizeBaseUrl('file:///Volumes/x')).toBeNull();
-  });
-});
-
-describe('resolveRecording (status-aware)', () => {
-  it('resolves a scheme-less base without collapsing to an in-app relative URL', () => {
-    const r = resolveRecording('ds220plus.taild1d1f7.ts.net/media', { path: 'setar-classes/session-1/a.mp4' });
-    expect(r).toEqual({ status: 'ok', url: 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-1/a.mp4' });
-  });
-
-  it('flags an unparseable base as bad-base (no silent wrong link)', () => {
-    expect(resolveRecording('http://', { path: 'a/b.mp4' })).toEqual({ status: 'bad-base' });
-  });
-
-  it('flags a missing base and an empty path distinctly', () => {
-    expect(resolveRecording('', { path: 'a/b.mp4' })).toEqual({ status: 'no-base' });
-    expect(resolveRecording('https://nas', { path: '  ' })).toEqual({ status: 'empty' });
-  });
-
-  it('passes a full https path through', () => {
-    expect(resolveRecording(undefined, { path: 'https://x.ts.net/a b/c.mp4' })).toEqual({
-      status: 'ok',
-      url: 'https://x.ts.net/a%20b/c.mp4',
-    });
-  });
-
-  it('opens a retained absolute URL unchanged, without double-encoding its existing escapes', () => {
-    // A foreign origin or a query-bearing URL is retained verbatim by
-    // relativizeReference (never rewritten). It must still open correctly:
-    // encodeURI() would turn an existing %20 into %2520 — a dead link.
-    expect(resolveRecording(undefined, { path: 'https://example.com/a%20b.pdf' })).toEqual({
-      status: 'ok',
-      url: 'https://example.com/a%20b.pdf',
-    });
-    // Percent-encoded Farsi, as a NAS directory listing would hand it out.
-    const farsi = 'https://example.com/setar-classes/' + encodeURIComponent('چهارمضراب.pdf');
-    expect(resolveRecording(undefined, { path: farsi })).toEqual({ status: 'ok', url: farsi });
-    // A retained query-bearing URL keeps its query string intact.
-    expect(resolveRecording(undefined, { path: 'https://example.com/class.mp4?download=1' })).toEqual({
-      status: 'ok',
-      url: 'https://example.com/class.mp4?download=1',
-    });
-  });
-});
-
-describe('formatFileSize', () => {
-  it('formats KB/MB/GB, and returns null for missing sizes', () => {
-    expect(formatFileSize(500 * 1024)).toBe('500 KB');
-    expect(formatFileSize(325 * 1024 * 1024)).toBe('325 MB');
-    expect(formatFileSize(686 * 1024 * 1024)).toBe('686 MB');
-    expect(formatFileSize(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
-    expect(formatFileSize(undefined)).toBeNull();
-    expect(formatFileSize(0)).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Transport independence. What is STORED must not name one device's route to
-// the NAS, or every reference dies the day that route changes.
-// ---------------------------------------------------------------------------
-
-describe('relativizeReference', () => {
-  const base = 'https://192.168.0.20:5010';
-
-  it('stores a pasted URL under the base as relative, keeps a foreign origin absolute, and leaves a relative path alone', () => {
-    // Copied out of the NAS directory listing, so the Farsi filename arrives
-    // percent-encoded; storing it encoded would double-escape on resolve.
-    const pasted = `${base}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
-    expect(relativizeReference(base, pasted)).toBe('setar-classes/session-37/چهارمضراب.pdf');
-
-    const foreign = 'https://example.com/setar-classes/session-37/class.mp4';
-    expect(relativizeReference(base, foreign)).toBe(foreign);
-
-    expect(relativizeReference(base, 'setar-classes/session-37/class.mp4')).toBe(
-      'setar-classes/session-37/class.mp4',
-    );
-  });
-
-  it('requires the path boundary, so a sibling folder is not swallowed', () => {
-    const sibling = 'https://192.168.0.20:5010/mediaXYZ/class.mp4';
-    expect(relativizeReference('https://192.168.0.20:5010/media', sibling)).toBe(sibling);
-  });
-
-  it('stores a pasted URL unchanged when no usable base URL is configured', () => {
-    const pasted = `${base}/setar-classes/session-37/class.mp4`;
-    expect(relativizeReference(undefined, pasted)).toBe(pasted);
-    expect(relativizeReference('', pasted)).toBe(pasted);
-    expect(relativizeReference('   ', pasted)).toBe(pasted);
-    expect(relativizeReference('ftp://nas/media', pasted)).toBe(pasted);
-    expect(relativizeReference('http://[not a url', pasted)).toBe(pasted);
-  });
-
-  it('leaves a URL carrying a query or fragment absolute rather than guessing', () => {
-    const query = `${base}/setar-classes/class.mp4?download=1`;
-    expect(relativizeReference(base, query)).toBe(query);
-  });
-});
-
-describe('a stored reference survives a change of transport', () => {
-  it('resolves the same relative reference correctly under two different base URLs', () => {
-    const lan = 'https://192.168.0.20:5010';
-    const pasted = `${lan}/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`;
-    const stored = relativizeReference(lan, pasted);
-
-    expect(resolveRecordingUrl(lan, { path: stored })).toBe(pasted);
-    // A completely different route to the same NAS — nothing stored changes.
-    expect(resolveRecordingUrl('https://ds220plus.taild1d1f7.ts.net/media', { path: stored })).toBe(
-      `https://ds220plus.taild1d1f7.ts.net/media/setar-classes/session-37/${encodeURIComponent('چهارمضراب.pdf')}`,
-    );
-  });
-});
-
-describe('the Browse target', () => {
-  it('offers a browse target for a valid base and none for a blank or unparseable one', () => {
-    // Settings' Browse action is gated on exactly this value.
-    expect(normalizeBaseUrl('https://192.168.0.20:5010/')).toBe('https://192.168.0.20:5010');
-    expect(normalizeBaseUrl('192.168.0.20:5010/media')).toBe('https://192.168.0.20:5010/media');
-    expect(normalizeBaseUrl('')).toBeNull();
-    expect(normalizeBaseUrl('   ')).toBeNull();
-    expect(normalizeBaseUrl(undefined)).toBeNull();
-    expect(normalizeBaseUrl('http://[not a url')).toBeNull();
-    expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-14 — the archive's identity is the path; transport is per device.
-// ---------------------------------------------------------------------------
-
-describe('archive transport', () => {
-  it('source transport changes preserve archive identity and encode Farsi once', () => {
-    // ONE stored reference. Its path is archive-relative and is the identity.
-    const ref = { path: 'session-13-03-09-2024/نمونه-1.mp4' };
-    const mac = 'https://192.168.0.20:5010/setar-classes/';
-    const iphone = 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes/';
-    const future = 'https://nas.example.org/archives/v2/setar-classes';
-
-    const macUrl = resolveRecording(mac, ref);
-    const phoneUrl = resolveRecording(iphone, ref);
-    const futureUrl = resolveRecording(future, ref);
-    expect(macUrl.status).toBe('ok');
-    expect(phoneUrl.status).toBe('ok');
-    expect(futureUrl.status).toBe('ok');
-    if (macUrl.status !== 'ok' || phoneUrl.status !== 'ok' || futureUrl.status !== 'ok') throw new Error('unreachable');
-
-    // Each device's own BASE PATH PREFIX survives — `/media/`, `/archives/v2/`.
-    expect(macUrl.url).toBe(
-      'https://192.168.0.20:5010/setar-classes/session-13-03-09-2024/%D9%86%D9%85%D9%88%D9%86%D9%87-1.mp4',
-    );
-    expect(phoneUrl.url).toContain('/media/setar-classes/session-13-03-09-2024/');
-    expect(futureUrl.url).toContain('/archives/v2/setar-classes/session-13-03-09-2024/');
-
-    // FARSI IS ENCODED ONCE. Decoding each segment gives back the raw path, and
-    // no '%25' (a re-encoded '%') appears anywhere.
-    for (const resolved of [macUrl, phoneUrl, futureUrl]) {
-      expect(resolved.url).not.toContain('%25');
-      const tail = resolved.url.split('/').slice(-2).map(decodeURIComponent).join('/');
-      expect(tail).toBe(ref.path);
-    }
-
-    // THE STORED DATA NEVER MOVED. Three bases, one reference object — a base
-    // change rewrites no record, so no export and no content hash changes.
-    const before = JSON.stringify(ref);
-    resolveRecording(mac, ref);
-    resolveRecording(iphone, ref);
-    expect(JSON.stringify(ref)).toBe(before);
-    // ...and a pasted URL under either base is stored back as the same path.
-    expect(relativizeReference(mac, macUrl.url)).toBe(ref.path);
-    expect(relativizeReference(iphone, phoneUrl.url)).toBe(ref.path);
-    // A double-encoded separator decodes into a path that steps OUT of the
-    // base. That is not stored as a relative reference at all: the pasted text
-    // is kept exactly as given, and resolving it refuses rather than opening
-    // something outside the archive.
-    const smuggled = `${mac}session-13-03-09-2024%2F..%2Fx.mp4`;
-    expect(relativizeReference(mac, smuggled)).toBe(smuggled);
-    expect(resolveRecording(mac, { path: 'session-13-03-09-2024/../x.mp4' }).status).toBe('unsafe');
-
-    // --- refusals ------------------------------------------------------------
-    for (const path of ['../PIECES.csv', 'a/../../etc/passwd', 'a%2F..%2Fb.mp4', 'a\\b.mp4', 'user:pass@host/x.mp4']) {
-      expect(resolveRecording(mac, { path }).status).toBe('unsafe');
-      expect(resolveRecordingUrl(mac, { path })).toBeNull();
-    }
-    expect(resolveRecording('ftp://nas/setar', ref).status).toBe('bad-base');
-    expect(resolveRecording('not a url at all', ref).status).toBe('bad-base');
-    expect(resolveRecording(undefined, ref).status).toBe('no-base');
-    expect(resolveRecording(mac, { path: '   ' }).status).toBe('empty');
-
-    // --- the capability check never probes a media FILENAME ------------------
-    expect(archiveRootUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes/');
-    expect(archiveRootUrl(iphone)).toBe('https://ds220plus.taild1d1f7.ts.net/media/setar-classes/');
-    expect(archiveRootUrl('')).toBeNull();
-    expect(archiveRootUrl('ftp://nas')).toBeNull();
-    // A renamed or missing single clip cannot make the root check fail, because
-    // no clip is part of it.
-    expect(archiveRootUrl(mac)).not.toContain('.mp4');
-    expect(archiveRootUrl(mac)).not.toContain('نمونه');
-
-    // --- index readability and media reachability are TWO statements ---------
-    const fetched = describeArchiveAccess({ indexFetchedAt: '2026-09-17 09:00', indexChangedAt: '2026-09-16 04:15', baseUrl: mac });
-    expect(fetched.index).toContain('last fetched');
-    expect(fetched.index).toContain('last changed');
-    // Reading the index says NOTHING about the NAS, and the media sentence
-    // never claims a file is absent — a certificate, a CORS refusal and an
-    // outage are indistinguishable from here, so none of them is called
-    // absence.
-    expect(fetched.media).not.toContain('fetched');
-    expect(fetched.media).toMatch(/cannot verify/);
-    for (const word of ['missing', 'not found', 'absent', 'gone']) expect(fetched.media.toLowerCase()).not.toContain(word);
-    const noIndex = describeArchiveAccess({ baseUrl: mac });
-    expect(noIndex.index).toMatch(/No index has been fetched/);
-    expect(describeArchiveAccess({ indexFetchedAt: 'x' }).media).toMatch(/No media base is set/);
-    expect(describeArchiveAccess({ indexFetchedAt: 'x', baseUrl: 'ftp://nas' }).media).toMatch(/not a usable/);
-
-    // --- A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE -------------------
-    // Everything appends a path AFTER the base, so a credential, a query or a
-    // fragment in it is not merely untidy: the password ends up on screen in
-    // every device URL, and `…/media?token=secret` + `/session-1/x.mp4`
-    // addresses no file at all. Refused at the ONE boundary they all share —
-    // never stripped, because a rewritten base names a different server.
-    const leaky = 'https://user:pass@nas.example/media?token=secret';
-    for (const bad of [
-      leaky,
-      'https://user:pass@nas.example/media',
-      'https://nas.example/media?token=secret',
-      'https://nas.example/media#frag',
-      'user:pass@nas.example/media',
-    ]) {
-      expect(normalizeBaseUrl(bad)).toBeNull();
-      expect(archiveRootUrl(bad)).toBeNull();
-      expect(resolveRecording(bad, ref).status).toBe('bad-base');
-      expect(resolveRecordingUrl(bad, ref)).toBeNull();
-      // Nothing is relativised against a base that was never usable…
-      expect(relativizeReference(bad, `${leaky}/session-1/x.mp4`)).toBe(`${leaky}/session-1/x.mp4`);
-      // …and the owner is told WHY, not merely that it failed.
-      const said = describeArchiveAccess({ baseUrl: bad }).media;
-      expect(said).toMatch(/not a usable/);
-      expect(said).toMatch(/password/);
-    }
-    // No secret ever reaches a resolved URL through the base.
-    expect(JSON.stringify([archiveRootUrl(leaky), resolveRecording(leaky, ref)])).not.toContain('secret');
-    // The reconciler reads its `verifiedBase` from `archiveRootUrl`, so the
-    // same refusal covers path repair: with no verified base, a full URL is
-    // left exactly as the owner saved it.
-    expect(archiveRootUrl(leaky) ?? undefined).toBeUndefined();
-    // An ordinary base with a port, a path and a trailing slash still works.
-    expect(normalizeBaseUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes');
-  });
-});
-```
-
-### src/domain/recordings.ts
-
-```
-import type { LessonRecording } from './types';
-
-// ---------------------------------------------------------------------------
-// Class-recording references. The app stores WHERE a recording is, never the
-// bytes: a relative path under a NAS base URL (set in Settings) or a full
-// https:// URL. Resolving a reference is pure; the video is only ever fetched
-// when the user explicitly opens it, never at startup.
-// ---------------------------------------------------------------------------
-
-const HTTP_RE = /^https?:\/\//i;
-
-/** Format a byte count for display (e.g. "686 MB"). */
-export function formatFileSize(bytes: number | undefined): string | null {
-  if (!bytes || bytes <= 0) return null;
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1) return `${Math.round(bytes / 1024)} KB`;
-  if (mb < 1024) return `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB`;
-  return `${(mb / 1024).toFixed(1)} GB`;
-}
-
-/**
- * Normalise a user-entered NAS base URL to a valid http(s) origin+path.
- * - Missing scheme → assume `https://` (the app runs on an HTTPS origin, so a
- *   bare host like `nas.example.ts.net` would otherwise be treated as a
- *   relative path and every recording would resolve to the same in-app route).
- * - Validates with `new URL`; only http/https accepted.
- * - Strips a trailing slash.
- * Returns null when the value is blank or unparseable.
- *
- * A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE. A credential, a query or a
- * fragment is REFUSED here rather than carried, because every caller appends a
- * path AFTER whatever this returns: `https://user:pass@nas/media?token=secret`
- * would make "Open archive root" `…?token=secret/` and a file
- * `…?token=secret/session-1/x.mp4` — a password on screen in a device URL, and
- * a URL that addresses no file. It is not STRIPPED into something openable
- * either: a rewritten base names a different server, and the owner is the only
- * one who can say what they meant. This is the ONE boundary — `resolveRecording`,
- * `relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the
- * reconciler's `verifiedBase` (through `archiveRootUrl`) all pass through it.
- */
-const ANY_SCHEME_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
-
-export function normalizeBaseUrl(raw: string | undefined): string | null {
-  const trimmed = (raw ?? '').trim();
-  if (!trimmed) return null;
-  // A string that already carries a scheme must be http(s); don't silently
-  // rewrite ftp://, file://, etc. into https://.
-  if (ANY_SCHEME_RE.test(trimmed) && !HTTP_RE.test(trimmed)) return null;
-  const withScheme = HTTP_RE.test(trimmed) ? trimmed : `https://${trimmed}`;
-  let url: URL;
-  try {
-    url = new URL(withScheme);
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-  if (url.username || url.password || url.search || url.hash) return null;
-  return url.toString().replace(/\/+$/, '');
-}
-
-export type RecordingResolution =
-  | { status: 'ok'; url: string }
-  | { status: 'no-base' }
-  | { status: 'bad-base' }
-  | { status: 'unsafe' }
-  | { status: 'empty' };
-
-/**
- * A stored RELATIVE reference is a path of plain segments under the media
- * base, and nothing else. Traversal, an absolute path, a backslash, an
- * embedded credential and a percent-encoded separator are all REFUSED rather
- * than escaped into something that resolves: each of them is an attempt to
- * leave the base the owner configured, and `encodeURIComponent` would turn
- * `../` into a literal segment that silently 404s instead of saying so.
- */
-function isSafeRelativeReference(p: string): boolean {
-  if (/%2f|%5c/i.test(p)) return false;
-  if (p.includes('\\') || p.includes('@')) return false;
-  return p
-    .replace(/^\/+/, '')
-    .split('/')
-    .filter(Boolean)
-    .every((seg) => seg !== '.' && seg !== '..');
-}
-
-/**
- * Resolve a recording reference to an openable URL, distinguishing WHY it
- * can't resolve so the UI can react (prompt for a base, warn about a bad one,
- * etc.). Full http(s) paths pass through the `URL` parser rather than
- * `encodeURI` — it escapes a raw unsafe character (a literal space) the same
- * way, but leaves an already-valid `%XX` escape alone instead of re-encoding
- * its `%` into `%25`, which is what a retained foreign or query-bearing URL
- * (percent-encoded Farsi filename, `?download=1`) already carries. Relative
- * paths join under the normalised base with each segment URL-encoded (spaces,
- * Farsi filenames).
- *
- * A stored ABSOLUTE url is opened as the owner saved it, credentials included:
- * that is their own authored link, not this device's configured base, and
- * nothing here mints one (`isSafeRelativeReference` refuses `@`, and
- * `relativizeReference` only ever writes a path beneath a base that has none).
- */
-export function resolveRecording(
-  baseUrl: string | undefined,
-  ref: Pick<LessonRecording, 'path'>,
-): RecordingResolution {
-  const p = ref.path.trim();
-  if (!p) return { status: 'empty' };
-  if (HTTP_RE.test(p)) {
-    try {
-      return { status: 'ok', url: new URL(p).toString() };
-    } catch {
-      return { status: 'ok', url: encodeURI(p) };
-    }
-  }
-
-  const raw = (baseUrl ?? '').trim();
-  if (!raw) return { status: 'no-base' };
-  const base = normalizeBaseUrl(raw);
-  if (!base) return { status: 'bad-base' };
-  if (!isSafeRelativeReference(p)) return { status: 'unsafe' };
-
-  const rel = p
-    .replace(/^\/+/, '')
-    .split('/')
-    .filter(Boolean)
-    .map((seg) => encodeURIComponent(seg))
-    .join('/');
-  // `base` is a validated absolute URL; append the encoded relative path.
-  return { status: 'ok', url: `${base}/${rel}` };
-}
-
-/** Openable URL, or null. Thin wrapper over {@link resolveRecording}. */
-export function resolveRecordingUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): string | null {
-  const r = resolveRecording(baseUrl, ref);
-  return r.status === 'ok' ? r.url : null;
-}
-
-/** Whether opening this reference needs a NAS base URL that isn't set yet. */
-export function needsBaseUrl(baseUrl: string | undefined, ref: Pick<LessonRecording, 'path'>): boolean {
-  return resolveRecording(baseUrl, ref).status === 'no-base';
-}
-
-/** Decode a stored-relative path segment-wise; `resolveRecording` re-encodes. */
-function decodeSegments(rel: string): string {
-  return rel
-    .split('/')
-    .map((seg) => {
-      try {
-        return decodeURIComponent(seg);
-      } catch {
-        return seg; // malformed %-escape: leave it exactly as given
-      }
-    })
-    .join('/');
-}
-
-/**
- * Store a pasted reference TRANSPORT-INDEPENDENTLY.
- *
- * Browsing the NAS and pasting a file's URL is the whole point of the Browse
- * link — but an absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS:
- * it dies on a phone away from home, and everywhere at once if the base URL
- * ever changes. So a URL that sits UNDER the configured base is stored as the
- * path beneath it, which every device then resolves through its own base.
- *
- * Everything else is left EXACTLY as given, because guessing is worse than
- * leaving it alone: a different origin is a deliberate external link, a URL
- * carrying a query or fragment is not a plain file path, and a blank or
- * unparseable base is not something to reason from at all.
- *
- * A stored path is decoded (`resolveRecording` encodes each segment on the way
- * out), so a Farsi filename copied from a directory listing survives the round
- * trip instead of being double-escaped into a dead link.
- */
-export function relativizeReference(baseUrl: string | undefined, pasted: string): string {
-  const raw = pasted.trim();
-  if (!raw || !HTTP_RE.test(raw)) return raw; // already a relative path
-  const base = normalizeBaseUrl(baseUrl);
-  if (!base) return raw;
-
-  let url: URL;
-  try {
-    url = new URL(raw);
-  } catch {
-    return raw;
-  }
-  if (url.search || url.hash) return raw;
-
-  // Compare normalised forms (host case, default ports) and require the path
-  // BOUNDARY, so `…/media` never swallows `…/mediaXYZ/`.
-  const prefix = `${base}/`;
-  const abs = url.toString();
-  if (!abs.startsWith(prefix)) return raw;
-  const relative = decodeSegments(abs.slice(prefix.length));
-  // DECODING CAN CREATE A PATH THE RAW URL DID NOT HAVE. `…%2F..%2Fx.mp4` is
-  // ONE segment in the URL and three after decoding, the middle one being a
-  // step out of the base — storing that would be storing a reference to a file
-  // outside the archive the owner configured. It is not rewritten into
-  // something safe (that would name a different file again): the pasted value
-  // is kept exactly as given, and `resolveRecording` refuses to open it.
-  if (!relative || !isSafeRelativeReference(relative)) return raw;
-  return relative;
-}
-
-// ---------------------------------------------------------------------------
-// Archive media access, stated honestly.
-// ---------------------------------------------------------------------------
-
-/**
- * The archive ROOT for a configured base — what "Open archive root" opens.
- *
- * Deliberately NOT a media filename. Probing one particular clip proves only
- * that that clip exists: it fails for a file that was renamed, and it passes
- * for a base whose other thousand files are unreachable. The root is the thing
- * the owner actually configured, so it is the thing to open.
- */
-export function archiveRootUrl(baseUrl: string | undefined): string | null {
-  const base = normalizeBaseUrl(baseUrl);
-  return base ? `${base}/` : null;
-}
-
-export interface ArchiveAccess {
-  /** What is KNOWN about the published index — this app fetched it, or did not. */
-  index: string;
-  /** What is known about the MEDIA — which, from here, is almost nothing. */
-  media: string;
-}
-
-/**
- * Two separate statements, because they are two separate facts.
- *
- * Reading the index proves GitHub answered; it says nothing whatever about
- * whether the NAS is reachable from this device. And a failed media request
- * from a web page cannot tell a certificate rejection, a CORS refusal and a
- * network outage apart from a missing file — so this never calls any of them
- * absence. The honest report is "the app cannot check this from here; open the
- * archive root and see".
- */
-export function describeArchiveAccess(input: {
-  indexFetchedAt?: string | null;
-  indexChangedAt?: string | null;
-  baseUrl?: string;
-}): ArchiveAccess {
-  const base = normalizeBaseUrl(input.baseUrl);
+function recording(partial: Partial<LessonRecording> & { id: string; path: string }): LessonRecording {
   return {
-    index: input.indexFetchedAt
-      ? `Index last fetched ${input.indexFetchedAt}${input.indexChangedAt ? `; last changed ${input.indexChangedAt}` : ''}.`
-      : 'No index has been fetched on this device yet.',
-    media: !input.baseUrl?.trim()
-      ? 'No media base is set on this device, so files cannot be opened here.'
-      : !base
-        ? 'This device’s media base is not a usable http(s) address. A base is a plain http(s) address and folder — it may not carry a username, a password, a query or a #fragment.'
-        : 'Files open directly from this device’s media base. The app cannot verify from here that the archive is reachable — open the archive root to check.',
+    title: partial.path,
+    kind: 'video',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...partial,
   };
+}
+
+function lesson(partial: Partial<Lesson> & { id: string; date: string }): Lesson {
+  return {
+    instrumentId: 'setar',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    ...partial,
+  };
+}
+
+function attachment(partial: Partial<AttachmentMeta> & { id: string; ownerId: string }): AttachmentMeta {
+  return {
+    ownerType: 'item',
+    name: partial.id,
+    mime: 'application/pdf',
+    size: 1024,
+    kind: 'pdf',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...partial,
+  };
+}
+
+function db(partial: Partial<PracticeDB>): PracticeDB {
+  return {
+    schemaVersion: 11,
+    instruments: [],
+    materials: [],
+    items: [],
+    blocks: [],
+    reviews: [],
+    pathways: [],
+    pathwayStages: [],
+    pathwayRoutines: [],
+    attachments: [],
+    lessons: [],
+    // Schema v12's lesson agenda. This file's own subject (composing an
+    // item's material) is untouched by it; the field is listed because
+    // PracticeDB now requires it.
+    lessonAgenda: [],
+    archiveSources: [],
+    ...partial,
+  };
+}
+
+describe('itemFiles', () => {
+  it("lists a linked lesson's references with the item's attachments, deduplicating references by path", () => {
+    const shared = 'setar-classes/session-37/score.pdf';
+    const state = db({
+      lessons: [
+        lesson({
+          id: 'l-37',
+          date: '2026-07-09',
+          itemIds: ['it'],
+          recordings: [
+            recording({ id: 'r-score', path: shared, kind: 'pdf', title: 'Score' }),
+            recording({ id: 'r-video', path: 'setar-classes/session-37/class.mp4', title: 'Class 37' }),
+          ],
+        }),
+        // An EARLIER lesson the item is also linked to, referencing the same
+        // score by a leading-slash spelling of the same path.
+        lesson({
+          id: 'l-36',
+          date: '2026-06-09',
+          itemIds: ['it'],
+          recordings: [recording({ id: 'r-score-again', path: `/${shared}`, kind: 'pdf', title: 'Score again' })],
+        }),
+      ],
+      attachments: [attachment({ id: 'a-photo', ownerId: 'it', name: 'page.jpg', kind: 'image', mime: 'image/jpeg' })],
+    });
+
+    const files = itemFiles(state, 'it');
+
+    // Newest lesson first, video before score within it, then attachments.
+    expect(files.map((f) => f.id)).toEqual(['r-video', 'r-score', 'a-photo']);
+    expect(files.filter((f) => f.source === 'reference' && f.path.endsWith('score.pdf'))).toHaveLength(1);
+  });
+
+  it("keeps a lesson-owned attachment out of an item's own attachments even when the item and a lesson it is linked to share an id", () => {
+    // Reviewer counterexample, reproduced exactly: a database containing an
+    // item AND a lesson with the same id, with an attachment whose ownerType
+    // is 'lesson' and ownerId is that shared id. ownerId alone is not a valid
+    // ownership test — it is only correct together with ownerType.
+    const sharedId = 'shared-id';
+    const attachments = [
+      attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
+      attachment({ id: 'a-lesson-own', ownerId: sharedId, ownerType: 'lesson', name: 'lesson-file.pdf' }),
+    ];
+
+    expect(itemOwnedAttachments(attachments, sharedId).map((a) => a.id)).toEqual(['a-item-own']);
+
+    // The item is genuinely linked to the colliding-id lesson, so its
+    // recording legitimately appears — only the lesson's ATTACHMENT must not.
+    const state = db({
+      lessons: [
+        lesson({
+          id: sharedId,
+          date: '2026-07-09',
+          itemIds: [sharedId],
+          recordings: [recording({ id: 'r-class', path: 'a/class.mp4' })],
+        }),
+      ],
+      attachments,
+    });
+    expect(itemFiles(state, sharedId).map((f) => f.id)).toEqual(['r-class', 'a-item-own']);
+  });
+
+  it("mirrors the collision the other way: a lesson's own attachments never include an item's, on the same shared id", () => {
+    // The surface this guards is the lesson Files section (Attachments.tsx,
+    // rendered with ownerType="lesson") and ItemCard's file-count badge
+    // (ownerType="item") — both must resolve through attachmentsOwnedBy
+    // rather than filtering ownerId alone, or a collision leaks across owners
+    // in both directions: the lesson's list would show/allow deleting the
+    // item's attachment, and the item's count would include the lesson's.
+    const sharedId = 'shared-id';
+    const attachments = [
+      attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
+      attachment({ id: 'a-lesson-own', ownerId: sharedId, ownerType: 'lesson', name: 'lesson-file.pdf' }),
+    ];
+
+    expect(attachmentsOwnedBy(attachments, 'lesson', sharedId).map((a) => a.id)).toEqual(['a-lesson-own']);
+    expect(attachmentsOwnedBy(attachments, 'item', sharedId).map((a) => a.id)).toEqual(['a-item-own']);
+  });
+
+  it('excludes references from lessons the item is not linked to and returns nothing when it has none', () => {
+    const state = db({
+      lessons: [
+        lesson({
+          id: 'l-other',
+          date: '2026-07-09',
+          itemIds: ['someone-else'],
+          recordings: [recording({ id: 'r-other', path: 'setar-classes/other/class.mp4' })],
+        }),
+      ],
+      attachments: [attachment({ id: 'a-other', ownerId: 'someone-else' })],
+    });
+
+    expect(itemFiles(state, 'it')).toEqual([]);
+    expect(itemFiles(state, 'someone-else').map((f) => f.id)).toEqual(['r-other', 'a-other']);
+  });
+
+  it('tags every entry with how it opens so a reference is never treated as an attachment', () => {
+    const state = db({
+      lessons: [
+        lesson({
+          id: 'l-37',
+          date: '2026-07-09',
+          itemIds: ['it'],
+          recordings: [recording({ id: 'r-video', path: 'setar-classes/session-37/class.mp4' })],
+        }),
+      ],
+      attachments: [attachment({ id: 'a-pdf', ownerId: 'it', name: 'handout.pdf' })],
+    });
+
+    const [ref, att] = itemFiles(state, 'it');
+    expect(ref.source).toBe('reference');
+    // A reference carries the path the NAS base URL resolves; an attachment
+    // carries none, because it opens as a blob and would 404 through the base.
+    expect(ref.source === 'reference' && ref.path).toBe('setar-classes/session-37/class.mp4');
+    expect(att.source).toBe('attachment');
+    expect('path' in att).toBe(false);
+  });
+
+  it('treats a local image as inline-renderable and every PDF, audio file and NAS reference as open-only', () => {
+    const state = db({
+      lessons: [
+        lesson({
+          id: 'l-37',
+          date: '2026-07-09',
+          itemIds: ['it'],
+          recordings: [
+            recording({ id: 'r-video', path: 'a/class.mp4', kind: 'video' }),
+            // `inferKind` maps jpg/png/heic to 'doc', so no NAS reference can
+            // ever be read as an image — and a remote origin could not render
+            // under the static production CSP anyway.
+            recording({ id: 'r-photo', path: 'a/page.jpg', kind: 'doc' }),
+          ],
+        }),
+      ],
+      attachments: [
+        attachment({ id: 'a-image', ownerId: 'it', name: 'page.jpg', kind: 'image', mime: 'image/jpeg' }),
+        attachment({ id: 'a-pdf', ownerId: 'it', name: 'score.pdf', kind: 'pdf' }),
+        attachment({ id: 'a-audio', ownerId: 'it', name: 'clip.m4a', kind: 'audio', mime: 'audio/mp4' }),
+      ],
+    });
+
+    const inline = Object.fromEntries(itemFiles(state, 'it').map((f) => [f.id, f.inline]));
+    expect(inline).toEqual({
+      'r-video': false,
+      'r-photo': false,
+      'a-image': true,
+      'a-pdf': false,
+      'a-audio': false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-13 — one composition, correctly scoped, for the item screen and Active.
+// ---------------------------------------------------------------------------
+
+describe('archive material for a piece', () => {
+  const NOW = new Date('2026-09-17T09:00:00.000Z');
+  const SETAR = 'inst-setar';
+  const INDEX = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT) as unknown);
+
+  function imported(): PracticeDB {
+    const base: PracticeDB = {
+      ...emptyDB(),
+      instruments: [
+        {
+          id: SETAR,
+          name: 'Setar',
+          family: 'Persian',
+          active: true,
+          createdAt: '2023-01-01T00:00:00.000Z',
+          updatedAt: '2023-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    return applyArchiveImport(base, planArchiveImport({ db: base, index: INDEX, instrumentId: SETAR, now: NOW }));
+  }
+
+  const idFor = (db: PracticeDB, key: string) => db.items.find((i) => i.source?.pieceKey === key)!.id;
+
+  it('practice material shows only useful correctly scoped archive resources', () => {
+    const db = imported();
+
+    // --- a piece with a correction AND a clean score -------------------------
+    const mahur = itemFiles(db, idFor(db, 'پیش-درامد-ماهور-هرمزی')) as ItemFileReference[];
+    // The teacher's corrected copy leads, and nothing else the piece has is
+    // dropped to make room for it.
+    expect(mahur[0]!.archive!.role).toBe('تصحیح');
+    expect(mahur.filter((f) => f.path.includes('تصحیح-پیش-درامد-ماهور-هرمزی'))).toHaveLength(2);
+    expect(mahur.some((f) => f.archive!.role === 'نمونه')).toBe(true);
+
+    // No piece in the real corpus currently carries BOTH a correction and a
+    // clean score of its own, so the retention rule is exercised against a
+    // graph that does: the correction still leads, and the clean score is
+    // RETAINED below it rather than replaced by it.
+    const cleanScore = {
+      path: 'session-18-21-01-2025/نت-پیش-درامد-ماهور-هرمزی.pdf',
+      role: 'نت',
+      kind: 'score' as const,
+      title: 'نت پیش درامد ماهور هرمزی',
+      part: null,
+      pieces: ['پیش-درامد-ماهور-هرمزی'],
+      group: null,
+    };
+    const withClean: PracticeDB = {
+      ...db,
+      archiveSources: db.archiveSources.map((src) => ({
+        ...src,
+        sessions: src.sessions.map((sess) =>
+          sess.n === 18 ? { ...sess, resources: [...sess.resources, cleanScore] } : sess,
+        ),
+      })),
+    };
+    const bothKinds = itemFiles(withClean, idFor(db, 'پیش-درامد-ماهور-هرمزی')) as ItemFileReference[];
+    const roles = bothKinds.map((f) => f.archive!.role);
+    expect(roles[0]).toBe('تصحیح');
+    expect(roles).toContain('نت');
+    expect(roles.indexOf('تصحیح')).toBeLessThan(roles.indexOf('نت'));
+    expect(bothKinds.some((f) => f.path === cleanScore.path)).toBe(true);
+
+    // --- a class recording stays with the LESSON ----------------------------
+    expect(mahur.every((f) => f.archive?.role !== 'ضبط-کلاس')).toBe(true);
+    for (const item of db.items) {
+      for (const f of itemFiles(db, item.id)) {
+        if (f.source !== 'reference') continue;
+        expect(f.path).not.toContain('ضبط-کلاس');
+        // ...and the owner's own practice recordings are never material either.
+        expect(f.path).not.toContain('تمرین-من');
+      }
+    }
+    const lesson13 = db.lessons.find((l) => l.source?.sessionN === 13)!;
+    const lessonSide = lessonFiles(db, lesson13.id) as ItemFileReference[];
+    expect(lessonSide[0]!.path).toContain('ضبط-کلاس');
+    expect(lessonSide.every((f) => f.lessonId === lesson13.id)).toBe(true);
+
+    // --- EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT -----
+    // This composition used to include the owner's OWN references and the
+    // lesson's attachments as well. The lesson page renders both in their own
+    // editable sections, so each authored file appeared twice: once here, and
+    // once again where it can actually be removed. An ITEM is the opposite
+    // case and is unchanged — its material comes from records its own page has
+    // no section for, which is why `itemFiles` stays the whole composition.
+    const withOwnFiles: PracticeDB = {
+      ...db,
+      lessons: db.lessons.map((l) =>
+        l.id === lesson13.id
+          ? {
+              ...l,
+              recordings: [
+                {
+                  id: 'own-ref',
+                  title: 'My own link',
+                  path: 'session-13-03-09-2024/my-own-file.mp4',
+                  kind: 'video' as const,
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                },
+              ],
+            }
+          : l,
+      ),
+      attachments: [
+        {
+          id: 'own-att',
+          ownerType: 'lesson' as const,
+          ownerId: lesson13.id,
+          name: 'handout.pdf',
+          mime: 'application/pdf',
+          size: 2048,
+          kind: 'pdf' as const,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    const composed = lessonFiles(withOwnFiles, lesson13.id);
+    expect(composed.every((f) => f.source === 'reference' && f.archive !== undefined)).toBe(true);
+    expect(composed.some((f) => f.title === 'My own link')).toBe(false);
+    expect(composed.some((f) => f.source === 'attachment')).toBe(false);
+    // The archive's own material is untouched by the owner's additions.
+    expect(composed.map((f) => f.id)).toEqual(lessonSide.map((f) => f.id));
+
+    // --- an UNNAMED demonstration is one ordered logical group --------------
+    const araqGusheh = itemFiles(db, idFor(db, 'کرشمه-در-عراق')) as ItemFileReference[];
+    const demo = araqGusheh.filter((f) => f.archive?.role === 'نمونه' && f.archive.sessionN === 13);
+    expect(demo.map((f) => f.archive!.part)).toEqual([1, 2]);
+    expect(new Set(demo.map((f) => f.archive!.group)).size).toBe(1);
+    // It belongs to every canonical member of session 13 — all eight — and the
+    // eight are exactly the roster, not a guessed set.
+    const members = INDEX.sessions.find((s) => s.n === 13)!.roster;
+    expect(members).toHaveLength(8);
+    for (const key of members) {
+      const files = itemFiles(db, idFor(db, key)) as ItemFileReference[];
+      expect(files.some((f) => f.path === 'session-13-03-09-2024/نمونه-1.mp4')).toBe(true);
+    }
+
+    // --- a NAMED score or demo NEVER bleeds onto a sibling piece ------------
+    const zendan = itemFiles(db, idFor(db, 'به-زندان-شوشتری')) as ItemFileReference[];
+    expect(zendan.some((f) => f.path === 'session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4')).toBe(true);
+    const sibling = itemFiles(db, idFor(db, 'ضربی-شکسته-لطفی')) as ItemFileReference[];
+    expect(sibling.some((f) => f.path.includes('به-زندان'))).toBe(false);
+    // The session-13 notation names ONE piece and reaches only that one.
+    const named = 'session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf';
+    expect((itemFiles(db, idFor(db, 'ضربی-عراق-ماهور-میرزا-حسینقلی')) as ItemFileReference[]).some((f) => f.path === named)).toBe(true);
+    expect(araqGusheh.some((f) => f.path === named)).toBe(false);
+
+    // --- every session the piece appears in stays reachable -----------------
+    const chain = itemFiles(db, idFor(db, 'چهارمضراب-ماهور-صبا')) as ItemFileReference[];
+    const sessions = [...new Set(chain.map((f) => f.archive!.sessionN))].sort((a, b) => a - b);
+    // Its own registry row names sessions 9-12 and 16; the material from the
+    // EARLIER lessons of that run is still reachable, with its provenance.
+    expect(sessions).toContain(16);
+    expect(sessions.some((n) => n < 16)).toBe(true);
+    expect(chain.every((f) => f.archive!.date.length === 10)).toBe(true);
+
+    // --- a DIRECT item reference needs no lesson at all ----------------------
+    const target = idFor(db, 'عراق');
+    const direct: PracticeDB = {
+      ...db,
+      items: db.items.map((i) =>
+        i.id === target
+          ? {
+              ...i,
+              references: [
+                {
+                  id: 'own-1',
+                  title: 'My own copy of the score',
+                  path: 'session-12-06-08-2024/some-other-file.pdf',
+                  kind: 'pdf' as const,
+                  notes: 'Printed for the stand.',
+                  createdAt: '2026-09-01T00:00:00.000Z',
+                },
+              ],
+            }
+          : i,
+      ),
+    };
+    const withDirect = itemFiles(direct, target) as ItemFileReference[];
+    const mine = withDirect.find((f) => f.id === 'own-1')!;
+    expect(mine).toBeDefined();
+    expect(mine.lessonId).toBeUndefined();
+    expect(mine.archive).toBeUndefined();
+    expect(mine.notes).toBe('Printed for the stand.');
+    // It is a REFERENCE — the same resolver as every archive and legacy path,
+    // and never an attachment blob.
+    expect(mine.source).toBe('reference');
+    expect(resolveRecordingUrl('https://192.168.0.20:5010/setar-classes', mine)).toContain(
+      '/setar-classes/session-12-06-08-2024/',
+    );
+    expect(withDirect.every((f) => f.inline === false)).toBe(true);
+
+    // --- a MANUAL, unclassified lesson stays reachable, unscoped ------------
+    const manualLesson: Lesson = {
+      ...createLesson({ instrumentId: SETAR, date: '2026-02-02' }, NOW),
+      id: 'manual-lesson',
+      itemIds: [target],
+      recordings: [
+        {
+          id: 'manual-ref',
+          title: 'Something a teacher sent',
+          path: 'elsewhere/whatever.pdf',
+          kind: 'pdf',
+          createdAt: '2026-02-02T00:00:00.000Z',
+        },
+      ],
+    };
+    const withManual = itemFiles({ ...direct, lessons: [...direct.lessons, manualLesson] }, target) as ItemFileReference[];
+    const manual = withManual.find((f) => f.id === 'manual-ref')!;
+    expect(manual).toBeDefined();
+    expect(manual.lessonId).toBe('manual-lesson');
+    // Nothing invented a scope for it: it carries no archive provenance.
+    expect(manual.archive).toBeUndefined();
+
+    // --- an archive-bound lesson does not re-deliver its whole folder -------
+    // Linking the item to its own archive lesson must not drag the class
+    // recording back onto the piece through the lesson route.
+    const linked: PracticeDB = {
+      ...direct,
+      lessons: direct.lessons.map((l) =>
+        l.source?.sessionN === 12 ? { ...l, itemIds: [...(l.itemIds ?? []), target] } : l,
+      ),
+    };
+    const afterLink = itemFiles(linked, target) as ItemFileReference[];
+    expect(afterLink.some((f) => f.path.includes('ضبط-کلاس'))).toBe(false);
+    expect(afterLink.map((f) => f.path)).toEqual(withDirect.map((f) => f.path));
+  });
+});
+```
+
+### src/domain/itemFiles.ts
+
+```
+import type { AttachmentKind, AttachmentMeta, AttachmentOwnerType, ID, ISODate, LessonFileKind, PracticeDB } from './types';
+import {
+  CLASS_ROLE,
+  CORRECTION_ROLE,
+  DEMO_ROLE,
+  NOTATION_ROLE,
+  archiveFor,
+  resourcesForPiece,
+  resourcesForSession,
+  resourceReference,
+} from './sourceArchive';
+
+// ---------------------------------------------------------------------------
+// An item's MATERIAL — composed, never stored.
+//
+// Everything a piece needs to be practised from is already linked in the data:
+// the lessons it came from hold NAS references (the class video, the score
+// PDF), and the item itself holds attachments. Nothing new is persisted to show
+// them together; this module is the composition that was always possible and
+// never made.
+//
+// The two kinds open by COMPLETELY DIFFERENT mechanisms — a reference resolves
+// through the configured NAS base URL, an attachment through a blob — so the
+// `source` discriminant is not decoration: it is what stops a reference being
+// opened as a blob or an attachment being pushed through the base URL. They
+// also share no identity field (a reference has a path, an attachment a name),
+// so they are never merged and deduplication is WITHIN a kind, never across.
+// ---------------------------------------------------------------------------
+
+/** Video first, then scores/docs, then audio — the order Lessons already shows. */
+export const LESSON_FILE_KIND_ORDER: Record<LessonFileKind, number> = {
+  video: 0,
+  pdf: 1,
+  doc: 2,
+  audio: 3,
+};
+
+/** Where a composed reference came from, so the UI can say so honestly. */
+export interface ItemFileProvenance {
+  sessionN: number;
+  date: ISODate;
+  /** The archive's own role word — a correction, a demonstration, notation. */
+  role: string;
+  /** Parts of ONE logical demonstration share this. */
+  group?: string | null;
+  part?: number | null;
+}
+
+export interface ItemFileReference {
+  source: 'reference';
+  id: ID;
+  title: string;
+  /** Relative NAS path or full https URL — resolve with `resolveRecording`. */
+  path: string;
+  kind: LessonFileKind;
+  /**
+   * The lesson this reference belongs to. ABSENT for a resource composed from
+   * the archive graph (which belongs to a session, not to a lesson record) and
+   * for a direct reference the owner attached to the item itself.
+   */
+  lessonId?: ID;
+  /** Present only for a resource the archive scoped to this piece. */
+  archive?: ItemFileProvenance;
+  /** The source no longer describes this file; its provenance is kept. */
+  unavailable?: boolean;
+  sizeBytes?: number;
+  notes?: string;
+  /**
+   * Never inline. A NAS origin is not knowable at build time, so a remote file
+   * could not render under the static production CSP in any case; opening it in
+   * a tab is the only honest option.
+   */
+  inline: false;
+}
+
+export interface ItemFileAttachment {
+  source: 'attachment';
+  id: ID;
+  title: string;
+  kind: AttachmentKind;
+  mime: string;
+  sizeBytes: number;
+  /** A local image renders inline (blob: is already permitted); nothing else does. */
+  inline: boolean;
+}
+
+export type ItemFile = ItemFileReference | ItemFileAttachment;
+
+/** Same file, whichever lesson referenced it: `/a/b` and `a/b` resolve alike. */
+function referenceKey(path: string): string {
+  return path.trim().replace(/^\/+/, '');
+}
+
+/**
+ * The single test for "this attachment belongs to this owner." `ownerId`
+ * alone is not enough — an item and a lesson can collide on id, since each
+ * has its own id space — so the check is only correct when `ownerType` and
+ * `ownerId` are checked TOGETHER. Every surface that lists, counts or removes
+ * attachments (an item's own files, a lesson's own Files section, ItemCard's
+ * file-count badge) calls this instead of re-deriving the predicate, so the
+ * invariant can't drift between call sites.
+ */
+export function attachmentsOwnedBy(
+  attachments: AttachmentMeta[],
+  ownerType: AttachmentOwnerType,
+  ownerId: ID,
+): AttachmentMeta[] {
+  return attachments.filter((a) => a.ownerType === ownerType && a.ownerId === ownerId);
+}
+
+/** `attachmentsOwnedBy` narrowed to an item — the common case at every item surface. */
+export function itemOwnedAttachments(attachments: AttachmentMeta[], itemId: ID): AttachmentMeta[] {
+  return attachmentsOwnedBy(attachments, 'item', itemId);
+}
+
+/**
+ * Every file that already belongs to an item: the NAS references of each lesson
+ * the item is LINKED to (deduplicated by path, so a file referenced from two of
+ * those lessons appears once), followed by the item's own attachments.
+ *
+ * Order is deterministic: lessons newest first, references within a lesson by
+ * kind then creation, then attachments oldest first (the order the Files
+ * section already lists them in).
+ */
+export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
+  const out: ItemFile[] = [];
+  const seen = new Set<string>();
+  const item = db.items.find((i) => i.id === itemId);
+
+  // 1. WHAT THE ARCHIVE SAYS IS MATERIAL FOR THIS PIECE.
+  //
+  // Scope comes from the graph, never from "everything the lesson happens to
+  // hold": a class recording covers a whole lesson and stays there, a named
+  // score belongs to its own piece and never bleeds onto a sibling, and the
+  // owner's own practice recordings were never resources to begin with.
+  const source = item?.source ? archiveFor(db, item.source.archiveId) : undefined;
+  if (source && item?.source) {
+    const scoped = resourcesForPiece(source, item.source.pieceKey, itemId);
+    // Corrections carry the teacher's own hand and are the most useful thing
+    // here, so they lead — but a clean score is still kept, not replaced by it.
+    const rank = (role: string) =>
+      role === CORRECTION_ROLE ? 0 : role === DEMO_ROLE ? 1 : role === NOTATION_ROLE ? 2 : 3;
+    const ordered = [...scoped].sort(
+      (a, b) =>
+        rank(a.role) - rank(b.role) ||
+        a.sessionN - b.sessionN ||
+        (a.group ?? '').localeCompare(b.group ?? '') ||
+        (a.part ?? 0) - (b.part ?? 0) ||
+        a.path.localeCompare(b.path),
+    );
+    for (const r of ordered) {
+      // Defensive, and cheap: the graph already excludes it, and a class
+      // recording must never become one piece's material by any route.
+      if (r.role === CLASS_ROLE) continue;
+      const key = referenceKey(r.path);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const ref = resourceReference(item.source.archiveId, r, r.sessionDate);
+      out.push({
+        source: 'reference',
+        id: ref.id,
+        title: ref.title,
+        path: ref.path,
+        kind: ref.kind ?? 'video',
+        archive: { sessionN: r.sessionN, date: r.sessionDate, role: r.role, group: r.group, part: r.part },
+        ...(r.unavailable ? { unavailable: true } : {}),
+        sizeBytes: ref.sizeBytes,
+        inline: false,
+      });
+    }
+  }
+
+  // 2. DIRECT references the owner attached to the item itself — useful
+  //    material that needs no artificial lesson to hang from.
+  for (const rec of item?.references ?? []) {
+    const key = referenceKey(rec.path);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      source: 'reference',
+      id: rec.id,
+      title: rec.title,
+      path: rec.path,
+      kind: rec.kind ?? 'video',
+      sizeBytes: rec.sizeBytes,
+      notes: rec.notes,
+      inline: false,
+    });
+  }
+
+  // 3. Lessons the item is LINKED to. An archive-bound lesson contributes
+  //    nothing here: its files reached this list above, correctly scoped.
+  //    A manual, unclassified lesson still contributes all of its references —
+  //    nothing knows their scope, and inventing one would be a guess.
+  const lessons = db.lessons
+    .filter((l) => (l.itemIds ?? []).includes(itemId) && !l.source)
+    .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+
+  for (const lesson of lessons) {
+    const recordings = [...(lesson.recordings ?? [])].sort(
+      (a, b) =>
+        LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'] ||
+        a.createdAt.localeCompare(b.createdAt),
+    );
+    for (const rec of recordings) {
+      const key = referenceKey(rec.path);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        source: 'reference',
+        id: rec.id,
+        title: rec.title,
+        path: rec.path,
+        kind: rec.kind ?? 'video',
+        lessonId: lesson.id,
+        sizeBytes: rec.sizeBytes,
+        notes: rec.notes,
+        inline: false,
+      });
+    }
+  }
+
+  const attachments = itemOwnedAttachments(db.attachments, itemId).sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  );
+  for (const a of attachments) {
+    out.push({
+      source: 'attachment',
+      id: a.id,
+      title: a.name,
+      kind: a.kind,
+      mime: a.mime,
+      sizeBytes: a.size,
+      inline: a.kind === 'image',
+    });
+  }
+
+  return out;
+}
+
+/**
+ * What the ARCHIVE gives a lesson: its session's own files — the class
+ * recording, an unnamed handout, the material that belongs to the whole class
+ * rather than to one piece. An archive-bound lesson keeps no copy of these, so
+ * reading its `recordings` array alone shows nothing at all; this is the only
+ * way they reach the screen.
+ *
+ * EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT. This used to
+ * compose the owner's own `recordings` and attachments too, and the lesson page
+ * renders those in their own editable sections — so one authored NAS reference
+ * and one local attachment each appeared TWICE, once here and once where they
+ * can actually be edited or removed. An item is the opposite case and stays as
+ * it is: its material is composed from OTHER records (linked lessons, the
+ * graph) that the item's own page has no section for, which is exactly why
+ * `itemFiles` must stay the whole composition.
+ */
+export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
+  const out: ItemFile[] = [];
+  const seen = new Set<string>();
+  const lesson = db.lessons.find((l) => l.id === lessonId);
+  if (!lesson) return out;
+
+  const source = lesson.source ? archiveFor(db, lesson.source.archiveId) : undefined;
+  if (source && lesson.source) {
+    const resources = resourcesForSession(source, lesson.source.sessionN).sort(
+      (a, b) =>
+        // The class recording first — it IS the lesson — then everything else
+        // in the archive's own role order, parts numerically.
+        (a.role === CLASS_ROLE ? 0 : 1) - (b.role === CLASS_ROLE ? 0 : 1) ||
+        a.role.localeCompare(b.role) ||
+        (a.part ?? 0) - (b.part ?? 0) ||
+        a.path.localeCompare(b.path),
+    );
+    for (const r of resources) {
+      const key = referenceKey(r.path);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      const ref = resourceReference(lesson.source.archiveId, r, lesson.date);
+      out.push({
+        source: 'reference',
+        id: ref.id,
+        title: ref.title,
+        path: ref.path,
+        kind: ref.kind ?? 'video',
+        lessonId,
+        archive: { sessionN: lesson.source.sessionN, date: lesson.date, role: r.role, group: r.group, part: r.part },
+        ...(r.unavailable ? { unavailable: true } : {}),
+        sizeBytes: ref.sizeBytes,
+        inline: false,
+      });
+    }
+  }
+
+  return out;
 }
 ```
 
@@ -7729,17 +8866,34 @@ interface Index {
 interface Entry {
   path: string;
   size: number;
+  mtimeMs?: number;
 }
+interface Skipped {
+  path: string;
+  reason: string;
+}
+/** An optional input is ABSENT or PRESENT — never "empty because it threw". */
+type OptionalInput = { present: false } | { present: true; text: string };
 interface Scanner {
-  buildIndex(input: { registryText: string; inventory: Entry[]; renameLogText?: string }): Index;
+  buildIndex(input: {
+    registryText: string;
+    inventory: Entry[];
+    renameLog?: OptionalInput;
+    skipped?: Skipped[];
+  }): Index;
   contentHash(body: unknown): string;
   parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
   parseCsv(text: string): string[][];
   parseRegistry(text: string): Piece[];
   parseSessionFolderName(name: string): { n: number; date: string } | null;
-  scanArchive(root: string): Entry[];
+  scanArchive(root: string): { inventory: Entry[]; skipped: Skipped[] };
   scanToIndex(root: string): Index;
-  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
+  readSource(root: string): {
+    registryText: string;
+    renameLog: OptionalInput;
+    inventory: Entry[];
+    skipped: Skipped[];
+  };
   canonicalJson(value: unknown): string;
   writeIndexAtomically(outPath: string, text: string, root?: string): string;
   isSafeRelativePath(p: string): boolean;
@@ -8123,13 +9277,25 @@ describe('scanning the archive', () => {
       writeFileSync(join(out, 'outside.mp4'), 'x');
       symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
 
-      const first = scanArchive(root);
+      const { inventory: first, skipped: firstSkipped } = scanArchive(root);
       expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
       expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
       expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
       // The symlink is not followed: its target is outside the archive root.
       expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
       expect(first).toHaveLength(INVENTORY.length);
+      // …but "not followed" is SAID, never silent. A walk that drops a file the
+      // folder really holds and reports nothing publishes an index that is
+      // quietly narrower than the archive — the same "partial view sold as
+      // complete" the two-read check below refuses, arriving through the door
+      // the two-read check cannot see, because BOTH readings agree on it.
+      expect(firstSkipped.map((x) => x.path)).toEqual(['session-1-26-09-2023/نت-عراق.pdf']);
+      expect(firstSkipped[0]!.reason).toMatch(/symbolic link/i);
+      expect(
+        buildIndex({ registryText: REGISTRY, inventory: first, skipped: firstSkipped }).diagnostics.some(
+          (d) => d.path === 'session-1-26-09-2023/نت-عراق.pdf' && /symbolic link/i.test(d.reason),
+        ),
+      ).toBe(true);
 
       // DETERMINISM. Shuffled directory order and altered mtimes produce a
       // byte-identical semantic index: nothing here reads a time or trusts the
@@ -8139,7 +9305,7 @@ describe('scanning the archive', () => {
       expect(buildIndex({ registryText: REGISTRY, inventory: shuffled }).contentHash).toBe(scanned.contentHash);
       const old = new Date('2001-01-01T00:00:00Z');
       for (const f of INVENTORY) utimesSync(join(root, f.path), old, old);
-      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root) }).contentHash).toBe(scanned.contentHash);
+      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root).inventory }).contentHash).toBe(scanned.contentHash);
       expect(contentHash(scanned)).toBe(scanned.contentHash);
       // ...and the hash is not vacuous: a file whose SIZE changed is a changed
       // archive, so the semantic index changes with it.
@@ -8214,20 +9380,28 @@ describe('scanning the archive', () => {
       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
       const settled = readSource(root);
       // Every input this scanner reads is in the reading that gets compared.
-      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
+      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLog', 'skipped']);
       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
 
-      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
+      // Each of the inputs, perturbed in turn, is VISIBLE to that comparison.
       const moved = INVENTORY[0]!.path;
       const bytes = readFileSync(join(root, moved));
+      const when = new Date(settled.inventory.find((f) => f.path === moved)!.mtimeMs!);
+      // Put a file back EXACTLY as it was — bytes and metadata — or the
+      // restore is itself a mutation, which is the whole point of observing
+      // more than the size.
+      const restore = () => {
+        writeFileSync(join(root, moved), bytes);
+        utimesSync(join(root, moved), when, when);
+      };
       rmSync(join(root, moved));
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
+      restore(); // …and back, as a copy would
       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
       // A file still being COPIED is a size change, and is caught the same way.
       writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      writeFileSync(join(root, moved), bytes);
+      restore();
       writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
@@ -8235,6 +9409,89 @@ describe('scanning the archive', () => {
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
       writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+      // A file edited IN PLACE at the same byte length changes no size and no
+      // CSV: `mtimeMs` is what makes that mutation visible to the comparison,
+      // and it is deliberately NOT semantic — the determinism check above
+      // altered every mtime in the archive and the index hash did not move.
+      const later = new Date(Date.now() + 60_000);
+      utimesSync(join(root, moved), later, later);
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      utimesSync(join(root, moved), when, when);
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+
+      // A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA. `catch { text = '' }`
+      // made an unreadable RENAME-LOG.csv indistinguishable from an archive
+      // that has none: both readings agreed, the consistency check passed, and
+      // the scan published an index with NO renames — so a file that moved in
+      // that window is flagged unavailable and its saved references can never
+      // be repaired. Absence is an OBSERVATION and is recorded as one;
+      // anything else fails the scan.
+      expect(settled.renameLog).toEqual({ present: true, text: renameLog });
+      rmSync(join(root, 'RENAME-LOG.csv'));
+      expect(readSource(root).renameLog).toEqual({ present: false });
+      // …and the two are not the same reading, so a log that VANISHES between
+      // the readings is a change, not a quiet "there was never one".
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      // A present-but-EMPTY log is a zero-byte file — what a copy in flight
+      // looks like — and is refused exactly as PIECES.csv would be, rather
+      // than read as "no renames".
+      writeFileSync(join(root, 'RENAME-LOG.csv'), '');
+      expect(() => scanToIndex(root)).toThrow(/CSV is empty/);
+      // An unreadable required input fails the scan; it is never an empty one.
+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+      const hidden = join(root, 'PIECES.csv');
+      const registryBytes = readFileSync(hidden);
+      rmSync(hidden);
+      mkdirSync(hidden); // a directory where a file must be: EISDIR, not ENOENT
+      expect(() => readSource(root)).toThrow(/Could not read PIECES\.csv/);
+      expect(() => scanToIndex(root)).toThrow(/Could not read PIECES\.csv/);
+      rmSync(hidden, { recursive: true });
+      writeFileSync(hidden, registryBytes);
+
+      // A RENAME LOOP NAMES NO FILE, and is dropped with a diagnostic rather
+      // than published. Every path that walks INTO the loop is equally
+      // unusable: A->B, B->C, C->B leaves no readable destination for A.
+      const swap = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: {
+          present: true,
+          text: 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\nsession-1-26-09-2023/b.mp4,session-1-26-09-2023/a.mp4\n',
+        },
+      });
+      expect(swap.renames).toEqual([]);
+      expect(swap.diagnostics.filter((d) => /loops through this path/.test(d.reason)).map((d) => d.path).sort()).toEqual([
+        'session-1-26-09-2023/a.mp4',
+        'session-1-26-09-2023/b.mp4',
+      ]);
+      const intoLoop = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: {
+          present: true,
+          text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/b.mp4,x/c.mp4\nx/c.mp4,x/b.mp4\n',
+        },
+      });
+      expect(intoLoop.renames).toEqual([]);
+      // An ordinary chain beside a loop still publishes — one bad topology
+      // does not cost the archive its good provenance.
+      const mixed = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: {
+          present: true,
+          text: 'old_path,new_path\nx/p.mp4,x/q.mp4\nx/a.mp4,x/b.mp4\nx/b.mp4,x/a.mp4\n',
+        },
+      });
+      expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
+      // An old path with TWO destinations was already refused, and still is.
+      const forked = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
+      });
+      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
+      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
 
       // And the scan itself reads the WHOLE source twice and refuses on any
       // difference. Nothing can mutate a filesystem between two synchronous
@@ -8256,7 +9513,7 @@ describe('scanning the archive', () => {
       expect(() => scanToIndex(root)).toThrow();
       expect(readFileSync(target, 'utf8')).toBe('last good\n');
       // And the archive itself is untouched by any of the above.
-      expect(scanArchive(root)).toHaveLength(INVENTORY.length);
+      expect(scanArchive(root).inventory).toHaveLength(INVENTORY.length);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(out, { recursive: true, force: true });
@@ -8541,8 +9798,28 @@ function list(v: unknown, what: string): unknown[] {
   return v;
 }
 
+/**
+ * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
+ * same thing and quietly produced `''` for both — the very normalisation the
+ * list/num/bool rule above exists to stop, left in place for every string
+ * field that has a default. A resource `title: null` became an untitled row
+ * the grammar was perfectly happy with. Absent is a default; null is a value,
+ * and a wrong one.
+ */
+function text(v: unknown, what: string): string {
+  if (v === undefined) return '';
+  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
+  return v;
+}
+
 function num(v: unknown, what: string): number | null {
   if (v === undefined || v === null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+  return v;
+}
+
+/** A number that is genuinely a number — no `null`, unlike an optional part. */
+function size(v: unknown, what: string): number {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
   return v;
 }
@@ -8617,13 +9894,13 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     }
     pieces.push({
       key,
-      form: str(raw.form ?? '', 'form'),
-      piece: str(raw.piece ?? '', 'piece'),
-      dastgah: str(raw.dastgah ?? '', 'dastgah'),
-      composer: str(raw.composer ?? '', 'composer'),
+      form: text(raw.form, `Registry entry "${key}" form`),
+      piece: text(raw.piece, `Registry entry "${key}" piece`),
+      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
+      composer: text(raw.composer, `Registry entry "${key}" composer`),
       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
       sessions: sessions as number[],
-      notes: str(raw.notes ?? '', 'notes'),
+      notes: text(raw.notes, `Registry entry "${key}" notes`),
       ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
       ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
     });
@@ -8664,9 +9941,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
         path,
         role,
         kind: kind as SourceKind,
-        title: str(r.title ?? '', 'A resource title'),
+        title: text(r.title, `Resource "${path}" title`),
         part: num(r.part, `Resource "${path}" part`),
-        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
+        // `part` and `group` are genuinely nullable in the published format —
+        // the scanner emits `null` for both — so null stays legal THERE and
+        // nowhere else. `size` it always emits as a number, and a present null
+        // is refused HERE rather than spread into the output as a value the
+        // declared type does not admit and left for the grammar to catch.
+        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
         pieces: forPieces,
         group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
       });
@@ -8706,8 +9988,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
   for (const d of list(input.diagnostics, 'The diagnostic list')) {
     if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
     diagnostics.push({
-      path: str(d.path ?? '', 'A diagnostic path'),
-      reason: str(d.reason ?? '', 'A diagnostic reason'),
+      path: text(d.path, 'A diagnostic path'),
+      reason: text(d.reason, 'A diagnostic reason'),
     });
   }
 
@@ -9000,6 +10282,65 @@ function checkSourceGraph(
         if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
       }
     }
+
+    // --- SEMANTIC RELATIONS, not merely field types ------------------------
+    //
+    // A field-type grammar says every value is READABLE; it says nothing about
+    // whether the graph agrees with itself. A resource physically sitting in
+    // class 2's folder, listed under class 1, is type-perfect and attributes
+    // someone else's file to the wrong lesson on every screen that reads it —
+    // and an arbitrary `group` on a non-demonstration invents a logical
+    // resource out of unrelated files.
+    //
+    // Scoped to what the source still DESCRIBES. `unavailable` is retained
+    // provenance about what it has STOPPED describing — a piece dropped from
+    // the registry, a file deleted from the NAS — so holding those rows to the
+    // current source's internal agreement is a category error, and would make
+    // every refresh after a removal refuse at every door.
+    if (!sess.unavailable) {
+      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
+      const rolesFor = new Map<string, Set<string>>();
+      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
+      const groups = new Map<string, SourceResource[]>();
+      let classRecordings = 0;
+      for (const r of live) {
+        const segs = r.path.split('/');
+        if (segs.length !== 2 || segs[0] !== sess.folder) {
+          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
+        }
+        if (r.role === CLASS_ROLE) {
+          classRecordings += 1;
+          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
+        }
+        for (const k of r.pieces) {
+          if (!rolesFor.get(k)?.has(r.role)) {
+            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
+          }
+        }
+        if (r.group !== null && r.group !== undefined) {
+          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
+          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
+        }
+      }
+      if (classRecordings > 0 !== sess.hasClassRecording) {
+        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
+      }
+      // Parts of ONE demonstration: the same material, told in order. Parts
+      // that are material for different pieces are not one resource, and two
+      // parts with one number have no order to be read in.
+      for (const [g, parts] of groups) {
+        const pieces = [...parts[0]!.pieces].sort().join(NUL);
+        const numbers = new Set<number | null>();
+        for (const r of parts) {
+          if ([...r.pieces].sort().join(NUL) !== pieces) {
+            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
+          }
+          const part = r.part ?? null;
+          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
+          numbers.add(part);
+        }
+      }
+    }
   }
 
   if (graph.renames !== undefined) {
@@ -9166,6 +10507,8 @@ import { describe, expect, it } from 'vitest';
 import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
 import {
   decodeSourceIndex,
+  resourcesForPiece,
+  resourcesForSession,
   sourceItemId,
   sourceLessonId,
   validateArchiveSources,
@@ -9472,7 +10815,24 @@ describe('reconciling the archive with the owner’s own records', () => {
       ...INDEX,
       contentHash: 'b'.repeat(64),
       sessions: [
-        ...INDEX.sessions.map((s) => (s.n === 12 ? { ...s, resources: [...s.resources, addedScore] } : s)),
+        // A scan records the MEMBERSHIP a new resource creates in the same
+        // pass that lists the resource, so a fixture that adds one without the
+        // other is a graph disagreeing with itself — refused at every door.
+        ...INDEX.sessions.map((s) =>
+          s.n === 12
+            ? {
+                ...s,
+                resources: [...s.resources, addedScore],
+                members: [
+                  ...s.members.filter((m) => m.key !== 'عراق'),
+                  {
+                    key: 'عراق',
+                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
+                  },
+                ],
+              }
+            : s,
+        ),
         session40,
       ],
       // A later registry improvement on a piece already seeded.
@@ -9504,8 +10864,12 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(suggestion).toBeDefined();
     expect(suggestion.from).toBe('');
     expect(suggestion.to).toBe('میرزا-حسینقلی');
+    // A field decision names the RECORD it was shown against, not just the
+    // piece: a rebase must not hand the answer to whichever item happens to
+    // hold that piece by the time Apply is pressed.
+    const araqItemId = suggestion.itemId;
     const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
+      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
     ]);
     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
@@ -9522,7 +10886,9 @@ describe('reconciling the archive with the owner’s own records', () => {
     // The suggestion stands until it is answered, and it may be answered days
     // later against the very same published index. Judging "already current"
     // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
+    const lateField = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
+    ];
     const lateDecision = planArchiveImport({
       db: refreshed,
       index: next,
@@ -9544,7 +10910,9 @@ describe('reconciling the archive with the owner’s own records', () => {
     // Applied, the suggestion is gone: the next refresh has nothing to offer.
     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
     // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
+    const emptyField = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
+    ];
     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
     expect(noop.summary.unchanged).toBe(true);
     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
@@ -9621,12 +10989,119 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(stalelink.staleDecisions).toEqual(linkDecision);
     expect(stalelink.adoptedItems).toEqual([]);
 
+    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
+    //
+    // The loops start with "already bound? nothing to decide" / "already
+    // suppressed? nothing to decide", so a decision about a record that became
+    // bound between the preview and the commit was never looked at: no
+    // adoption, no question, and an EMPTY `staleDecisions` — the commit
+    // reported success for an action it had not performed. And a field
+    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
+    // onto whichever record held that piece by the time Apply ran.
+    const otherItemId = 'someone-elses-item';
+    const boundToAnother: PracticeDB = {
+      ...unbound,
+      items: [
+        ...unbound.items,
+        item({
+          id: otherItemId,
+          instrumentId: SETAR,
+          title: 'Another record',
+          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
+        }),
+      ],
+    };
+    // LINK: the approved record is not the one holding the piece now, so the
+    // choice is stale — never quietly satisfied by the other record.
+    const redirectedLink = planArchiveImport({
+      db: boundToAnother,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
+    expect(redirectedLink.adoptedItems).toEqual([]);
+    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
+      .toBeUndefined();
+    // APPLY-FIELD: the archive's composer, chosen against item A's empty
+    // field, must not be written to the item that holds the piece now — whose
+    // composer is also empty, so nothing about the VALUE would have caught it.
+    const fieldForA = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
+    ];
+    const redirectedField = planArchiveImport({
+      db: boundToAnother,
+      index: next,
+      instrumentId: SETAR,
+      decisions: fieldForA,
+      now: NOW,
+    });
+    expect(redirectedField.staleDecisions).toEqual(fieldForA);
+    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
+    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
+    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
+    // SKIP and CREATE are the same rule: an answer about a record that has
+    // since been bound is an answer to a question that no longer stands.
+    for (const decision of [
+      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
+      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
+    ]) {
+      const swept = planArchiveImport({
+        db: boundToAnother,
+        index: next,
+        instrumentId: SETAR,
+        decisions: decision,
+        now: NOW,
+      });
+      expect(swept.staleDecisions).toEqual(decision);
+      expect(swept.newItems).toEqual([]);
+    }
+    // …and LOOP PREVENTION: the action the owner approved, once it HAS
+    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
+    // re-previews, so a realised action that could never be consumed again
+    // would go stale for ever.
+    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
+    const again = planArchiveImport({
+      db: afterLink,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(again.staleDecisions).toEqual([]);
+    const skipped = applyArchiveImport(
+      unbound,
+      planArchiveImport({
+        db: unbound,
+        index: next,
+        instrumentId: SETAR,
+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
+        now: NOW,
+      }),
+    );
+    expect(
+      planArchiveImport({
+        db: skipped,
+        index: next,
+        instrumentId: SETAR,
+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
+        now: NOW,
+      }).staleDecisions,
+    ).toEqual([]);
+
     // --- a missing FILE keeps its provenance, flagged ----------------------
     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
     const shrunk: SourceIndex = {
       ...next,
       contentHash: 'c'.repeat(64),
-      sessions: next.sessions.map((s) => (s.n === 12 ? { ...s, resources: [] } : s)),
+      // A session that has lost every file has lost its class recording with
+      // them: a scan recomputes that flag, and a hand-built index that keeps
+      // it is a graph disagreeing with itself — which `checkSourceGraph` now
+      // refuses at every door, so it cannot be used to prove anything else.
+      sessions: next.sessions.map((s) =>
+        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
+      ),
     };
     const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
     const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
@@ -10022,7 +11497,7 @@ describe('reconciling the archive with the owner’s own records', () => {
       renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
     };
     const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
-    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
+    expect(followRenames(hopA, chainRenames)).toBe(hopC);
     const legacyClass = lesson({
       id: 'L-chain',
       date: '2023-09-26',
@@ -10102,6 +11577,69 @@ describe('reconciling the archive with the owner’s own records', () => {
       itemId: 'item-x',
     });
     expect(validateArchiveSources(afterCross)).toBeNull();
+
+    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
+    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
+    // usable-looking path beside a flag — and only ONE of its three callers
+    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
+    // straight past the verdict and moved the owner's hide onto B, so A came
+    // back into view and the wrong file went dark. It returns `null` now, so
+    // there is no way to drop the verdict and still have a path.
+    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
+    const cyclicLog: SourceIndex = {
+      ...INDEX,
+      contentHash: '3'.repeat(64),
+      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
+    };
+    const afterCycle = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
+    );
+    const cycledSource = afterCycle.archiveSources[0]!;
+    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
+    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
+    expect(cycledHide.itemId).toBe('item-x');
+    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
+    // …so the file the owner hid is still hidden, and its sibling is not.
+    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
+    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
+
+    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
+    // incoming index has dropped keeps its provenance flagged rather than
+    // being silently deleted on the strength of a destination nothing can read.
+    const cyclicAndRemoved: SourceIndex = {
+      ...cyclicLog,
+      contentHash: '2'.repeat(64),
+      sessions: cyclicLog.sessions.map((sess) =>
+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
+      ),
+    };
+    const afterCyclicRemoval = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
+    );
+    expect(
+      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
+        (r) => r.path === hiddenPath,
+      )?.unavailable,
+    ).toBe(true);
+    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
+
+    // REPAIR says so out loud rather than rewriting the path to a stop on the
+    // loop — and ADOPTION, which reads the same verdict, takes it as no
+    // evidence at all (asserted above for the same shape).
+    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
+    expect(followRenames(hiddenPath, loopMap)).toBeNull();
+    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
+      status: 'attention',
+      reason: 'The rename log loops on this path.',
+      code: 'cycle',
+    });
+    const loopLesson = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
+    ).lessons.find((l) => l.id === 'L1')!;
+    expect(loopLesson.recordings).toEqual(storedOne.recordings);
 
     // A file that really IS gone still keeps its provenance, flagged.
     const removed: SourceIndex = {
@@ -10204,15 +11742,20 @@ export type ReconcileDecision =
   | { kind: 'create-lesson'; sessionN: number }
   | { kind: 'skip-lesson'; sessionN: number }
   /**
-   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `from`, the value of
-   * THEIRS it was chosen against. A decision is about the state the owner
-   * actually saw: the preview and the commit are two moments, and between them
-   * a note can be saved, a sync can land, another device can write. Without the
-   * premise, choosing the archive's composer over an empty field and then
-   * typing one yourself before pressing Apply replaced your own new words with
-   * the registry's.
+   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `itemId`, the RECORD
+   * it was shown against, and `from`, the value of theirs it was chosen
+   * against. A decision is about the state the owner actually saw: the preview
+   * and the commit are two moments, and between them a note can be saved, a
+   * sync can land, another device can write.
+   *
+   * Without the PREMISE, choosing the archive's composer over an empty field
+   * and then typing one yourself before pressing Apply replaced your own new
+   * words with the registry's. Without the IDENTITY, the same answer landed on
+   * whichever record happened to hold that piece at commit time: sync a
+   * database where the piece is bound to item B instead, also with an empty
+   * composer, and a choice made about A was written to B.
    */
-  | { kind: 'apply-field'; pieceKey: string; field: MetadataField; from: string };
+  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: string };
 
 export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
 
@@ -10246,7 +11789,15 @@ export interface MetadataSuggestion {
  * two answers is how a preview and a commit come to mean different things.
  */
 export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSuggestion): boolean {
-  return d.kind === 'apply-field' && d.pieceKey === s.pieceKey && d.field === s.field && d.from === s.from;
+  return (
+    d.kind === 'apply-field' &&
+    d.pieceKey === s.pieceKey &&
+    // IDENTITY and PREMISE together: which record, and what of theirs it was
+    // chosen against. Either one alone lets a rebase redirect the answer.
+    d.itemId === s.itemId &&
+    d.field === s.field &&
+    d.from === s.from
+  );
 }
 
 export interface ImportSummary {
@@ -10314,19 +11865,26 @@ function suppressionKey(s: SourceSuppression): string {
  * meanwhile, stayed keyed to the old path and simply reappeared under the new
  * one.
  *
- * A CYCLE is reported, never walked: a log that loops says nothing about where
- * the file is, and picking a stopping point would invent an identity.
+ * A CYCLE YIELDS NO IDENTITY AT ALL, and saying so is the whole return type.
+ * A log that loops says nothing about where the file is, and picking a
+ * stopping point would invent one. This used to hand back
+ * `{ path, cycle: true }` — a perfectly usable-looking path beside a flag —
+ * and only ONE of the three callers read the flag: `hasSourcePathEvidence`
+ * refused it, while the suppression re-key and `retainMissing` walked straight
+ * past it. With A->B and B->A logged, an owner's hide of A was re-keyed onto
+ * B, so A reappeared and the wrong file went dark. `null` is what makes that
+ * unrepresentable: there is no path to drop the verdict and still use.
  */
-export function followRenames(path: string, renames: Map<string, string>): { path: string; cycle: boolean } {
+export function followRenames(path: string, renames: Map<string, string>): string | null {
   let current = path;
   const seen = new Set<string>([current]);
   while (renames.has(current)) {
     const next = renames.get(current)!;
-    if (seen.has(next)) return { path: current, cycle: true };
+    if (seen.has(next)) return null;
     seen.add(next);
     current = next;
   }
-  return { path: current, cycle: false };
+  return current;
 }
 
 /** The registry facts an item is SEEDED from — identity, never working detail. */
@@ -10474,8 +12032,8 @@ function hasSourcePathEvidence(
     const read = readArchiveRelative(r.path.trim(), verifiedBase);
     if (!read.ok) return false;
     const moved = followRenames(read.relative, renames);
-    if (moved.cycle) return false; // no reading, therefore no evidence
-    return moved.path.startsWith(`${folder}/`);
+    if (moved === null) return false; // no reading, therefore no evidence
+    return moved.startsWith(`${folder}/`);
   });
 }
 
@@ -10508,7 +12066,13 @@ function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex, 
   // asking only "is it still in THIS session" would flag such a file as gone
   // while the very same bytes sit in the graph under their new name.
   const anywhere = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-  const movedNotGone = (path: string) => anywhere.has(followRenames(path, renames).path);
+  // A cycle is NOT a move: with no readable destination there is nothing to
+  // say the bytes are elsewhere in the graph, so the row keeps its provenance
+  // and its `unavailable` flag rather than being silently dropped.
+  const movedNotGone = (path: string) => {
+    const to = followRenames(path, renames);
+    return to !== null && anywhere.has(to);
+  };
   const sessions = index.sessions.map((s) => {
     const before = previous.sessions.find((x) => x.n === s.n);
     if (!before) return s;
@@ -10572,8 +12136,22 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   const isSuppressed = (kind: SourceSuppression['kind'], ref: string) =>
     suppressions.some((s) => s.kind === kind && s.ref === ref && s.itemId === undefined);
 
+  // EVERY DECISION IS ACCOUNTED FOR: applied, already realised, or STALE.
+  //
+  // The loops below start with `if (already bound) continue` / `if (already
+  // suppressed) continue`, which meant a decision about a record that had been
+  // bound between the preview and the commit was never looked at at all — no
+  // adoption, no question, and an EMPTY `staleDecisions`, so the commit
+  // reported success for an action it had not performed. Marking what is used
+  // and sweeping the rest closes that for every kind at once, rather than
+  // adding a stale check inside each early return.
+  const consumed = new Set<ReconcileDecision>();
   const decisionFor = <T extends ReconcileDecision['kind']>(kind: T, match: (d: ReconcileDecision) => boolean) =>
     decisions.find((d) => d.kind === kind && match(d));
+  const acted = <T,>(d: T): T => {
+    if (d) consumed.add(d as unknown as ReconcileDecision);
+    return d;
+  };
 
   // A SKIP IS A DECISION, AND A DECISION IS PERSISTED.
   //
@@ -10611,6 +12189,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
 
     const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
     if (skip) {
+      acted(skip);
       suppress('session', String(session.n));
       continue;
     }
@@ -10621,6 +12200,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     // ever — the item side had it from the start, and the lesson side did not.
     const createSeparately = decisionFor('create-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
     if (createSeparately) {
+      acted(createSeparately);
       newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
       continue;
     }
@@ -10633,6 +12213,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       // adopt a record that is still unbound and still this instrument's.
       // Deleted, bound elsewhere or moved since the preview, the decision is
       // STALE, never silently turned into "create a new class instead".
+      acted(linked);
       const target = db.lessons.find((l) => l.id === linked.lessonId);
       if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
@@ -10699,7 +12280,9 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     }
     if (isSuppressed('piece', piece.key)) continue;
 
-    if (decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key)) {
+    const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
+    if (skipItem) {
+      acted(skipItem);
       suppress('piece', piece.key);
       continue;
     }
@@ -10707,6 +12290,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       | { kind: 'link-item'; pieceKey: string; itemId: ID }
       | undefined;
     if (linked) {
+      acted(linked);
       const target = db.items.find((i) => i.id === linked.itemId);
       if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
@@ -10714,7 +12298,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       }
       staleDecisions.push(linked); // see the lesson branch above
     }
-    const createNow = decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
+    const createNow = acted(decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key));
 
     // CANDIDATES are EXACT equality only: the canonical key itself, or one of
     // the registry's own literal aliases. Nothing is normalised, folded or
@@ -10806,9 +12390,15 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     // `itemId` scope is carried untouched, and re-keying cannot duplicate:
     // `suppressionKey` de-duplicates the result.
     suppressions: dedupeSuppressions([
-      ...suppressions.map((sup) =>
-        sup.kind === 'resource' ? { ...sup, ref: followRenames(sup.ref, renames).path } : sup,
-      ),
+      ...suppressions.map((sup) => {
+        if (sup.kind !== 'resource') return sup;
+        // A HIDE FOLLOWS ITS FILE ONLY WHERE THE LOG SAYS WHERE THE FILE WENT.
+        // A cycle names no destination, so the decision stays exactly where the
+        // owner put it: moving it to an arbitrary stop on the loop would both
+        // un-hide what they hid and hide something they did not.
+        const to = followRenames(sup.ref, renames);
+        return to === null ? sup : { ...sup, ref: to };
+      }),
       ...addedSuppressions,
     ]),
   };
@@ -10816,12 +12406,47 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   // A field decision only counts as a change when there is a suggestion for it
   // to apply — a stale one left over from an earlier preview changes nothing.
   const appliedFields = decisions.filter((d) => suggestions.some((x) => decisionMatchesSuggestion(d, x)));
-  // …and a decision made against a value the owner has since CHANGED is not a
-  // leftover, it is an answer to a question that no longer stands.
+  for (const d of appliedFields) acted(d);
+
+  // THE SWEEP. Anything the loops above did not act on is either an action
+  // that has ALREADY HAPPENED — the owner pressed Apply, it was written, and
+  // the same decision is still in hand on the next preview — or an answer to a
+  // question that no longer stands.
+  //
+  // The already-done branch is LOOP PREVENTION, not politeness:
+  // `ArchiveRefresh` drops a stale decision and re-previews, and a realised
+  // action can never be consumed by a loop that skips its record, so without
+  // it the same decision would go stale for ever.
+  const realised = (d: ReconcileDecision): boolean => {
+    switch (d.kind) {
+      case 'skip-item':
+        return isSuppressed('piece', d.pieceKey);
+      case 'skip-lesson':
+        return isSuppressed('session', String(d.sessionN));
+      case 'link-item':
+        return boundItems.get(d.pieceKey)?.id === d.itemId;
+      case 'create-item':
+        return boundItems.get(d.pieceKey)?.id === sourceItemId(archiveId, d.pieceKey);
+      case 'link-lesson':
+        return boundLessons.get(d.sessionN)?.id === d.lessonId;
+      case 'create-lesson':
+        return boundLessons.get(d.sessionN)?.id === sourceLessonId(archiveId, d.sessionN);
+      case 'apply-field': {
+        // No live suggestion can mean two opposite things. The registry value
+        // is already in the owner's field — done — or the registry no longer
+        // proposes one, which is a premise that moved.
+        const piece = index.pieces.find((x) => x.key === d.pieceKey);
+        const item = boundItems.get(d.pieceKey);
+        if (!piece || !item || item.id !== d.itemId) return false;
+        const proposed = persianFromPiece(piece)[d.field] ?? '';
+        return proposed !== '' && (item.persian?.[d.field] ?? '') === proposed;
+      }
+    }
+  };
   for (const d of decisions) {
-    if (d.kind !== 'apply-field') continue;
-    const live = suggestions.find((x) => x.pieceKey === d.pieceKey && x.field === d.field);
-    if (live && live.from !== d.from) staleDecisions.push(d);
+    if (consumed.has(d) || staleDecisions.includes(d)) continue;
+    if (realised(d)) continue;
+    staleDecisions.push(d);
   }
   const changesRecords =
     newItems.length > 0 ||
@@ -11028,8 +12653,8 @@ export function repairReferencePath(
 
   // Follow the rename chain — the SAME reading adoption and suppression use.
   const moved = followRenames(stripped, renames);
-  if (moved.cycle) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
-  const current = moved.path;
+  if (moved === null) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
+  const current = moved;
   if (current === stripped) {
     if (known.has(current)) return !wasUrl && stripped === raw ? { status: 'unchanged' } : { status: 'repaired', path: current };
     return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
@@ -11067,6 +12692,788 @@ export function repairLessonReferences(
 }
 ```
 
+### src/pages/Lessons.tsx
+
+```
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  itemsCommittedForLesson,
+  type PracticeItem,
+  cleanFileTitle,
+  daysUntil,
+  CLASS_ROLE,
+  defaultInstrumentFilter,
+  formatFileSize,
+  ITEM_STATUS_LABELS,
+  LESSON_FILE_KIND_ORDER,
+  lessonFiles,
+  lessonsForInstrument,
+  isUpcomingLesson,
+  nextLessonFor,
+  nextLessonNumber,
+  normalizeBaseUrl,
+  openQuestionsForLessonId,
+  relativizeReference,
+  resolveRecording,
+  todayISODate,
+  type Instrument,
+  type Lesson,
+  type LessonFileKind,
+} from '../domain';
+import { useStore } from '../store/useStore';
+import { getNasBaseUrl } from '../store/backup';
+import { Field } from '../components/ui';
+import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/icons';
+import { relativeDay } from '../components/format';
+import Attachments from '../components/Attachments';
+import ClassQuestions from '../components/ClassQuestions';
+import LessonNotes from '../components/LessonNotes';
+import { LessonMaterial } from '../components/ItemMaterial';
+import { LessonAgendaPanel } from '../components/LessonAgenda';
+import QuickAdd from '../components/QuickAdd';
+
+/** "Class 37 · 2026-07-09" when numbered, else just the date. */
+function lessonLabel(lesson: Lesson): string {
+  return typeof lesson.number === 'number' ? `Class ${lesson.number} · ${lesson.date}` : lesson.date;
+}
+
+/**
+ * The class workflow: log each lesson's date, then — after rewatching your
+ * recording — write up what was said (Farsi welcome). The nearest upcoming
+ * lesson becomes the deadline that prioritises items flagged "for class".
+ */
+export default function Lessons() {
+  const db = useStore((s) => s.db);
+  const now = useMemo(() => new Date(), []);
+  const instruments = db.instruments.filter((i) => i.active);
+  const wide = useIsWide();
+
+  // Open on the instrument you are actually practising — 40-plus Setar classes
+  // stacked above Tar and Guitar is not a phone screen. Seeded from the same
+  // persisted session instrument every other screen reads, never written back,
+  // and always widenable to all.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, instruments),
+  );
+  const shown = instruments.filter((i) => !instrumentId || i.id === instrumentId);
+
+  return (
+    <div className="stack-lg">
+      <header className="stack-sm">
+        <h1 className="page-title">Lessons</h1>
+        <p className="page-sub">
+          Your classes, per instrument — dates and the notes you take when rewatching the recording.
+        </p>
+        {instruments.length > 1 && (
+          <select
+            className="select"
+            aria-label="Instrument"
+            style={{ width: 'fit-content' }}
+            value={instrumentId}
+            onChange={(e) => setInstrumentId(e.target.value)}
+          >
+            <option value="">All instruments</option>
+            {instruments.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </header>
+
+      {wide ? (
+        <WideLessons now={now} instruments={shown} />
+      ) : (
+        shown.map((inst) => (
+          <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function useIsWide(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1000px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+/**
+ * MacBook layout: lesson list on the left, the open lesson (long Farsi notes,
+ * linked items, files) with real room on the right. Phones keep the simple
+ * drill-down cards.
+ */
+function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[] }) {
+  const db = useStore((s) => s.db);
+  const addLesson = useStore((s) => s.addLesson);
+  const deleteLesson = useStore((s) => s.deleteLesson);
+
+  const allLessons = useMemo(() => {
+    const ids = new Set(instruments.map((i) => i.id));
+    return db.lessons.filter((l) => ids.has(l.instrumentId)).sort((a, b) => b.date.localeCompare(a.date));
+  }, [db.lessons, instruments]);
+  const defaultSelection = useMemo(() => {
+    const upcoming = [...allLessons].reverse().find((l) => isUpcomingLesson(l, todayISODate(now)));
+    return upcoming?.id ?? allLessons[0]?.id ?? null;
+  }, [allLessons, now]);
+  const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
+  // `selectedId` is state so a click sticks across re-renders, but narrowing
+  // (or a delete) can leave it pointing at a lesson `allLessons` no longer
+  // has — falling back to the same smart default keeps the detail pane and
+  // the sidebar highlight in sync instead of silently blanking.
+  const effectiveSelectedId = allLessons.some((l) => l.id === selectedId) ? selectedId : defaultSelection;
+  const selected = allLessons.find((l) => l.id === effectiveSelectedId) ?? null;
+
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISODate(now));
+  const [num, setNum] = useState('');
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
+      <div className="stack">
+        {instruments.map((inst) => {
+          const lessons = lessonsForInstrument(db.lessons, inst.id);
+          const next = nextLessonFor(db.lessons, inst.id, now);
+          const flagged = itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
+            (i: PracticeItem) => i.instrumentId === inst.id,
+          );
+          return (
+            <section key={inst.id} className="stack-sm">
+              {/* The instrument's own name leads this group (dir="auto"
+                  resolves from the first strong character), same shape as
+                  InstrumentLessons' identical row below — the badge gets its
+                  own dir="ltr" isolate so it can't inherit the name's base. */}
+              <div className="row between" dir="auto">
+                <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
+                  {inst.name}
+                </h2>
+                {next && (
+                  <span className="badge tone-progress" dir="ltr">
+                    next {relativeDay(next.date, now)}
+                  </span>
+                )}
+              </div>
+              {next && flagged.length > 0 && (
+                <div className="tiny dim">
+                  {flagged.length} item{flagged.length === 1 ? '' : 's'} to prepare · {daysUntil(next.date, now)} day
+                  {daysUntil(next.date, now) === 1 ? '' : 's'} left
+                </div>
+              )}
+              <div className="card card-flush list">
+                {lessons.map((l) => (
+                  <button
+                    key={l.id}
+                    className="list-row"
+                    style={{
+                      background: l.id === effectiveSelectedId ? 'var(--accent-soft)' : 'none',
+                      border: 'none',
+                      width: '100%',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: 'inherit',
+                    }}
+                    onClick={() => setSelectedId(l.id)}
+                  >
+                    <span className="grow">{lessonLabel(l)}</span>
+                    <span className="tiny faint">
+                      {l.notes ? 'notes ✓' : isUpcomingLesson(l, todayISODate(now)) ? 'upcoming' : '—'}
+                    </span>
+                  </button>
+                ))}
+                {lessons.length === 0 && <div className="list-row tiny faint">No classes logged.</div>}
+              </div>
+              {addingFor === inst.id ? (
+                <div className="row" style={{ gap: 8 }}>
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    aria-label="Class number (optional)"
+                    placeholder="No."
+                    value={num}
+                    onChange={(e) => setNum(e.target.value)}
+                    style={{ width: 72 }}
+                  />
+                  <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const id = addLesson({ instrumentId: inst.id, date, number: num.trim() ? Number(num) : undefined });
+                      setAddingFor(null);
+                      setNum('');
+                      setSelectedId(id);
+                    }}
+                  >
+                    Add
+                  </button>
+                  <button className="btn btn-sm" aria-label="Cancel" onClick={() => setAddingFor(null)}>
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ width: 'fit-content' }}
+                  onClick={() => {
+                    setNum(String(nextLessonNumber(db.lessons, inst.id)));
+                    setAddingFor(inst.id);
+                  }}
+                >
+                  <PlusIcon /> Add a class
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="card stack-sm" style={{ minHeight: 320 }}>
+        {selected ? (
+          <>
+            <div className="row between">
+              {/* The instrument name is the owner's own editable text — its
+                  own dir="auto" isolate. lessonLabel is always digits +
+                  English by construction ("Class N · date") — its own
+                  dir="ltr" isolate keeps the two from being fused into one
+                  bare, undirected string as they used to be. */}
+              <strong>
+                <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
+                <span dir="ltr"> · {lessonLabel(selected)}</span>
+              </strong>
+              <span className="tiny faint">{relativeDay(selected.date, now)}</span>
+            </div>
+            <LessonDetail lesson={selected} onDelete={() => deleteLesson(selected.id)} />
+          </>
+        ) : (
+          <div className="small dim">Pick a class on the left — or add one.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; name: string; now: Date }) {
+  const db = useStore((s) => s.db);
+  const addLesson = useStore((s) => s.addLesson);
+  const deleteLesson = useStore((s) => s.deleteLesson);
+
+  const lessons = useMemo(() => lessonsForInstrument(db.lessons, instrumentId), [db.lessons, instrumentId]);
+  const next = nextLessonFor(db.lessons, instrumentId, now);
+  const flagged = useMemo(
+    () =>
+      itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
+        (i: PracticeItem) => i.instrumentId === instrumentId,
+      ),
+    [db.items, db.lessonAgenda, db.lessons, now, instrumentId],
+  );
+
+  const [adding, setAdding] = useState(false);
+  const [date, setDate] = useState(todayISODate(now));
+  const [num, setNum] = useState('');
+
+  return (
+    <section className="stack-sm">
+      <div className="row between" dir="auto">
+        <h2 className="title-md">{name}</h2>
+        {/* Fixed English page copy / generated metadata, never user text —
+            its own dir="ltr" isolate keeps it from inheriting the
+            instrument name's RTL base. */}
+        {next ? (
+          <span className="badge tone-progress" dir="ltr">
+            next class {relativeDay(next.date, now)}
+          </span>
+        ) : (
+          <span className="tiny faint" dir="ltr">no class planned</span>
+        )}
+      </div>
+
+      {next && flagged.length > 0 && (
+        <div className="card card-quiet small dim">
+          {flagged.length} item{flagged.length === 1 ? '' : 's'} to complete before this class ·{' '}
+          {daysUntil(next.date, now)} day{daysUntil(next.date, now) === 1 ? '' : 's'} left —{' '}
+          <Link to="/repertoire" className="link">
+            see them
+          </Link>
+        </div>
+      )}
+
+      <div className="stack-sm">
+        {lessons.map((l) => (
+          <LessonCard key={l.id} lesson={l} now={now} onDelete={() => deleteLesson(l.id)} />
+        ))}
+        {lessons.length === 0 && !adding && (
+          <div className="card card-quiet small dim">No lessons logged yet.</div>
+        )}
+      </div>
+
+      {adding ? (
+        <div className="card row" style={{ gap: 8 }}>
+          <Field label="Class no.">
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              placeholder="No."
+              value={num}
+              onChange={(e) => setNum(e.target.value)}
+              style={{ width: 72 }}
+            />
+          </Field>
+          <Field label="Class date">
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <button
+            className="btn btn-primary"
+            style={{ alignSelf: 'flex-end' }}
+            onClick={() => {
+              addLesson({ instrumentId, date, number: num.trim() ? Number(num) : undefined });
+              setNum('');
+              setAdding(false);
+            }}
+          >
+            Add
+          </button>
+          <button className="btn" style={{ alignSelf: 'flex-end' }} onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn btn-sm"
+          style={{ width: 'fit-content' }}
+          onClick={() => {
+            setNum(String(nextLessonNumber(db.lessons, instrumentId)));
+            setAdding(true);
+          }}
+        >
+          <PlusIcon /> Add a class
+        </button>
+      )}
+    </section>
+  );
+}
+
+function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDelete: () => void }) {
+  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
+  // "No notes yet" opens a card the owner is about to write in. An IMPORTED
+  // class has no notes by construction, and thirty-nine of them opening at once
+  // turns the phone list into a wall — history starts COMPACT, and the owner
+  // opens what they want to read.
+  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || !lesson.notes);
+
+  return (
+    <article className="card stack-sm">
+      <button
+        className="row between"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="row" style={{ gap: 8 }}>
+          <strong>{lessonLabel(lesson)}</strong>
+          <span className="tiny faint">{relativeDay(lesson.date, now)}</span>
+          {upcoming && <span className="badge tone-progress">upcoming</span>}
+        </span>
+        <span className="tiny faint">{open ? 'close' : lesson.notes ? 'notes ✓' : 'add notes'}</span>
+      </button>
+
+      {open && <LessonDetail lesson={lesson} onDelete={onDelete} />}
+    </article>
+  );
+}
+
+/** Notes, linked items, files and delete — the body of an open lesson. */
+function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
+  const db = useStore((s) => s.db);
+  const now = useMemo(() => new Date(), []);
+
+  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
+  // BY LESSON ID, never by instrument: every future class used to show the
+  // identical list, so a question meant for one class appeared on all of them.
+  const questions = useMemo(
+    // `db.blocks` supplies each question's latest recorded observation, so the
+    // list has to recompute when a block is added.
+    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id, db.blocks),
+    [db.lessonAgenda, db.items, db.blocks, lesson.id],
+  );
+  const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
+
+  return (
+    <>
+      {/* The SAME durable editor as the item's notebook. Blur-only saving
+          made a stale copy authoritative the moment anything stole focus, and
+          could not clear the text at all. */}
+      <LessonNotes lessonId={lesson.id} />
+
+      <LessonItems lesson={lesson} />
+
+      {/* This class's OWN agenda: what is committed to it, what is still to
+          ask at it, and what was already asked — history that stays here
+          rather than being carried forward to the next class by itself. */}
+      <LessonAgendaPanel lessonId={lesson.id} />
+
+      {/* The take-into-the-room list: only this class's still-open questions,
+          selected by its id. A past class keeps its unasked questions on its
+          own page (above) rather than showing an export sheet for a class
+          that has already happened. */}
+      {upcoming && (
+        <ClassQuestions
+          title="Questions for this class"
+          instrumentName={instrumentName}
+          dateLabel={lessonLabel(lesson)}
+          questions={questions}
+        />
+      )}
+
+      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
+          copy of its session's files, so only the graph can answer — and the
+          owner's OWN references and attachments are NOT repeated here: they
+          each have exactly one section on this page, the one that can also
+          edit and remove them. */}
+      <LessonMaterial lessonId={lesson.id} />
+
+      <LessonRecordings lesson={lesson} />
+
+      <Attachments
+        ownerType="lesson"
+        ownerId={lesson.id}
+        emptyHint="Attach small hand-outs for this class — PDFs of pieces, photos of notation, short audio. Full class videos are too big for the app: add them as a Class recording above (a NAS link), not here."
+      />
+
+      <button
+        className="link tiny"
+        style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
+        onClick={() => {
+          if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
+        }}
+      >
+        Delete lesson
+      </button>
+    </>
+  );
+}
+
+/** Guess a reference's kind from its path extension (used when adding). */
+function inferKind(path: string): LessonFileKind {
+  const ext = (path.split('.').pop() ?? '').toLowerCase();
+  if (['mp4', 'mov', 'm4v', 'webm', 'mkv'].includes(ext)) return 'video';
+  if (ext === 'pdf') return 'pdf';
+  if (['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(ext)) return 'audio';
+  if (['doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'heic'].includes(ext)) return 'doc';
+  return 'video';
+}
+
+function KindIcon({ kind }: { kind: LessonFileKind }) {
+  if (kind === 'video') return <PlayIcon width={16} height={16} />;
+  if (kind === 'audio') return <MusicIcon width={16} height={16} />;
+  return <ReportIcon width={16} height={16} />; // pdf / doc
+}
+
+/**
+ * Lesson NAS references — the class video plus score PDFs/docs, all links,
+ * never the bytes. A file is only fetched when the user taps Open; deleting a
+ * reference never touches the NAS file. Video first, then scores/docs.
+ */
+function LessonRecordings({ lesson }: { lesson: Lesson }) {
+  const db = useStore((s) => s.db);
+  const addLessonRecording = useStore((s) => s.addLessonRecording);
+  const removeLessonRecording = useStore((s) => s.removeLessonRecording);
+  const navigate = useNavigate();
+  const baseUrl = getNasBaseUrl();
+  const recordings = useMemo(
+    () =>
+      [...(lesson.recordings ?? [])].sort(
+        (a, b) => LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'],
+      ),
+    [lesson.recordings],
+  );
+  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
+  // historical class keeps no copy of its session's files, so `recordings` is
+  // empty and the empty-state card invited the owner to add a class recording
+  // directly beneath the one already playing above it. Read through the same
+  // composition the section above renders, so a recording the owner has HIDDEN
+  // does not count as one that is there.
+  const fromArchive = useMemo(
+    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
+    [db, lesson.id],
+  );
+
+  const browseUrl = normalizeBaseUrl(baseUrl);
+
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [path, setPath] = useState('');
+  const [notes, setNotes] = useState('');
+
+  function add() {
+    if (!path.trim()) return;
+    // A URL pasted from the NAS listing is stored RELATIVE to the configured
+    // base, so the reference is not pinned to this device's route to the NAS.
+    const stored = relativizeReference(baseUrl, path);
+    addLessonRecording(lesson.id, {
+      title: title.trim() || cleanFileTitle(stored) || 'Class file',
+      path: stored,
+      kind: inferKind(stored),
+      date: lesson.date,
+      notes: notes.trim() || undefined,
+    });
+    setTitle('');
+    setPath('');
+    setNotes('');
+    setAdding(false);
+  }
+
+  function open(rec: (typeof recordings)[number]) {
+    const r = resolveRecording(baseUrl, rec);
+    if (r.status !== 'ok') return; // button is disabled unless resolvable
+    window.open(r.url, '_blank', 'noopener,noreferrer');
+  }
+
+  return (
+    <div className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Class recording &amp; scores</div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>
+          {adding ? 'Cancel' : <><PlusIcon /> Add link</>}
+        </button>
+      </div>
+
+      {recordings.length === 0 && !fromArchive && !adding && (
+        <div className="card card-quiet small dim">
+          Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
+        </div>
+      )}
+
+      {recordings.map((rec) => {
+        const resolution = resolveRecording(baseUrl, rec);
+        const kind = rec.kind ?? 'video';
+        const size = formatFileSize(rec.sizeBytes);
+        const meta = ['Stored on NAS', kind === 'video' ? null : kind.toUpperCase(), size, rec.durationLabel]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <div key={rec.id} className="card row between" style={{ gap: 10 }}>
+            <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
+              <KindIcon kind={kind} />
+            </span>
+            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+              <div className="truncate">
+                {rec.title}
+              </div>
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting a Farsi title's
+                  RTL base. */}
+              <div className="tiny faint">
+                <span dir="ltr">{meta}</span>
+              </div>
+              {rec.notes && (
+                <div className="tiny dim" dir="auto">
+                  {rec.notes}
+                </div>
+              )}
+              {/* Fixed English page copy, never user text — its own dir="ltr"
+                  isolate keeps it from inheriting a Farsi title's RTL base.
+                  Inline (span), not dir="ltr" on these blocks: a block
+                  isolate resolves its OWN text-align independently of the
+                  group, splitting it from a right-aligned Farsi title. */}
+              {resolution.status === 'no-base' && (
+                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
+                  <span dir="ltr">
+                    Set your NAS base URL in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>{' '}
+                    to open this.
+                  </span>
+                </div>
+              )}
+              {resolution.status === 'bad-base' && (
+                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+                  <span dir="ltr">
+                    Your NAS base URL isn’t a valid web address — fix it in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>
+                    .
+                  </span>
+                </div>
+              )}
+            </div>
+            <button className="btn btn-sm btn-primary" disabled={resolution.status !== 'ok'} onClick={() => open(rec)}>
+              Open
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              // Named, because a class holds several of these and "Remove this
+              // link" three times over tells a screen reader nothing about
+              // which file it is about to drop.
+              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
+              title="Remove link (the NAS file is kept)"
+              onClick={() => {
+                if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
+              }}
+            >
+              <XIcon width={14} height={14} />
+            </button>
+          </div>
+        );
+      })}
+
+      {adding && (
+        <div className="card stack-sm">
+          <input
+            className="input"
+            dir="auto"
+            placeholder="Title — e.g. Class recording"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="NAS path or https:// link — e.g. setar-classes/session-37/class.mp4 or …/score.pdf"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+          />
+          <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="row between" style={{ gap: 8 }}>
+            <div className="tiny faint">
+              Stop typing paths: browse your NAS, copy the file’s URL, paste it above.
+            </div>
+            <button
+              className="btn btn-sm"
+              style={{ flex: 'none' }}
+              disabled={!browseUrl}
+              onClick={() => browseUrl && window.open(`${browseUrl}/`, '_blank', 'noopener,noreferrer')}
+            >
+              Browse NAS
+            </button>
+          </div>
+          <div className="tiny faint">
+            Video, PDF or audio — the kind is detected from the file. A relative path resolves against your NAS base
+            URL (Settings); a URL you paste from that base is stored as a relative path so it keeps working on every
+            device. The file opens only when you tap “Open”.
+          </div>
+          <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
+            Add link
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The items worked on / created in this lesson: link, create, flag, unlink. */
+function LessonItems({ lesson }: { lesson: Lesson }) {
+  const db = useStore((s) => s.db);
+  const linkItemToLesson = useStore((s) => s.linkItemToLesson);
+  const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
+  const addLessonPreparation = useStore((s) => s.addLessonPreparation);
+  const removeAgendaEntry = useStore((s) => s.removeAgendaEntry);
+  const [linking, setLinking] = useState(false);
+
+  // "Worked on in this class" (lesson.itemIds) and "prepare this FOR this
+  // class" (a preparation entry) are separate facts, exactly as they always
+  // were — the button below toggles the second without touching the first.
+  const committedHere = new Map(
+    db.lessonAgenda
+      .filter((e) => e.kind === 'preparation' && e.lessonId === lesson.id)
+      .map((e) => [(e as { itemId: string }).itemId, e.id] as const),
+  );
+
+  const linked = (lesson.itemIds ?? [])
+    .map((id) => db.items.find((i) => i.id === id))
+    .filter((i): i is NonNullable<typeof i> => !!i);
+  const linkable = db.items.filter(
+    (i) => i.instrumentId === lesson.instrumentId && !(lesson.itemIds ?? []).includes(i.id),
+  );
+
+  return (
+    <div className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Worked on in this class</div>
+        {linkable.length > 0 && (
+          <button className="btn btn-ghost btn-sm" onClick={() => setLinking((v) => !v)}>
+            Link existing…
+          </button>
+        )}
+      </div>
+
+      {linking && (
+        <select
+          className="select"
+          aria-label="Link an existing item to this lesson"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              linkItemToLesson(lesson.id, e.target.value);
+              setLinking(false);
+            }
+          }}
+        >
+          <option value="">Choose an item…</option>
+          {linkable.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.title}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {linked.length > 0 && (
+        <div className="card card-flush list">
+          {linked.map((item) => (
+            <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
+              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                <div className="truncate">
+                  {item.title}
+                </div>
+                {/* Generated English metadata, never user text — its own
+                    dir="ltr" isolate keeps it from inheriting a Farsi
+                    title's RTL base. */}
+                <div className="tiny faint">
+                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
+                </div>
+              </Link>
+              <button
+                className={`btn btn-sm${committedHere.has(item.id) ? ' btn-primary' : ''}`}
+                aria-pressed={committedHere.has(item.id)}
+                title="Commit to preparing this before this class"
+                onClick={() => {
+                  const existing = committedHere.get(item.id);
+                  if (existing) removeAgendaEntry(existing);
+                  else addLessonPreparation(item.id, lesson.id);
+                }}
+              >
+                {committedHere.has(item.id) ? 'For this class ✓' : 'Prepare for this class'}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Unlink from this lesson (the item is kept)"
+                aria-label={`Unlink ${item.title} from this lesson — the item is kept`}
+                onClick={() => unlinkItemFromLesson(lesson.id, item.id)}
+              >
+                <XIcon width={14} height={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <QuickAdd lessonId={lesson.id} />
+    </div>
+  );
+}
+```
+
 ### src/store/archiveIndex.test.ts
 
 ```
@@ -11081,6 +13488,7 @@ import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 
 import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
 import { decodeSourceIndex } from '../domain/sourceArchive';
 import { validateDB } from '../domain/io';
+import { createItem } from '../domain/factories';
 import type { PracticeDB } from '../domain/types';
 
 // ---------------------------------------------------------------------------
@@ -11730,7 +14138,7 @@ describe('committing an archive import', () => {
     const answered2 = useStore.getState().previewArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
       now: NOW,
     });
     expect(answered2.plan.summary.unchanged).toBe(false);
@@ -11742,7 +14150,7 @@ describe('committing an archive import', () => {
     const appliedField = await useStore.getState().commitArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
       decidedFromRev: useStore.getState().rev,
       now: NOW,
     });
@@ -11764,7 +14172,11 @@ describe('committing an archive import', () => {
     useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
     const secondKey = second.source!.pieceKey;
     const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
+    const choice = [
+      // Bound to the RECORD as well as the piece and the premise: a rebase that
+      // finds the piece on a different item must not hand it that answer.
+      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
+    ];
     useStore.getState().updateItem(second.id, {
       persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
     });
@@ -11792,6 +14204,53 @@ describe('committing an archive import', () => {
     expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
       second.persian!.composer,
     );
+
+    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
+    // The other half of the same family, and the one an already-bound early
+    // `continue` hid completely: the piece is held by a DIFFERENT record by
+    // the time Apply runs. A field decision keyed by piece alone was written
+    // to that other record (its composer was empty too, so nothing about the
+    // VALUE would have caught it), and a Link decision was skipped in silence
+    // — `staleDecisions` empty, the commit reporting success for an action it
+    // never performed.
+    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
+    const movedKey = movedPiece.source!.pieceKey;
+    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
+    useStore.setState((st) => ({
+      db: {
+        ...st.db,
+        items: [
+          // The approved record loses the binding; another record takes it.
+          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
+          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
+        ],
+      },
+    }));
+    for (const decisions of [
+      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
+      [
+        {
+          kind: 'apply-field' as const,
+          pieceKey: movedKey,
+          itemId: movedPiece.id,
+          field: 'composer' as const,
+          from: movedPiece.persian?.composer ?? '',
+        },
+      ],
+    ]) {
+      const refused = await useStore.getState().commitArchiveImport({
+        index: INDEX,
+        instrumentId: SETAR,
+        decisions,
+        decidedFromRev: useStore.getState().rev,
+        now: NOW,
+      });
+      expect(refused).toMatchObject({ ok: false, status: 'stale' });
+      expect(refused.staleDecisions).toEqual(decisions);
+    }
+    // Neither record was touched by either refusal.
+    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
+    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
 
     // --- refresh NEVER runs a whole-database import or reset ---------------
     // `importDB`, `resetDemo` and `clearAll` each null the active session and
@@ -12057,2112 +14516,916 @@ describe('deletions, unlinking and hiding', () => {
 });
 ```
 
-### src/store/useStore.ts
+### tests/practiceBrowser.ts
 
 ```
-import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
-import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
-import { withRevision } from './revision';
-import {
-  acknowledgeThrough,
-  applyBlockStats,
-  applyRoutineRun,
-  catalogForStage,
-  isLosslesslyRemovable,
-  completeOpenReviewsFor,
-  computeReviewOutcome,
-  installDatabase,
-  createPreparation,
-  createQuestion,
-  detachItem as detachAgendaItem,
-  detachLesson as detachAgendaLesson,
-  markQuestionAsked as markAgendaQuestionAsked,
-  reopenQuestion as reopenAgendaQuestion,
-  retargetEntriesForItemInstrument,
-  retargetEntry as retargetAgendaEntry,
-  completePlanSegment,
-  planSegmentStartable,
-  scheduleAgainPlan,
-  transferToAutomaticReview,
-  AUTOMATIC_TRANSFER_REASON,
-  validateUnfinishedText,
-  skipPlanSegment as skipPlanSegmentRun,
-  setQuestionAnswer as setAgendaQuestionAnswer,
-  resolveReviewDate,
-  applyReviewDateToRows,
-  applyReviewDateToRow,
-  clampSchedulingParams,
-  createBlock,
-  createInstrument,
-  createItem,
-  createLesson,
-  createMaterial,
-  createReview,
-  createSeedDB,
-  detachIncompatibleRoutinesForPathway,
-  detachRoutinesFromPathway,
-  detachRoutinesFromStage,
-  duplicateRoutineData,
-  focusForItem,
-  groupBlocksByItem,
-  itemFromCatalogEntry,
-  itemOwnedAttachments,
-  retargetRoutineInstrument,
-  runElapsedSeconds,
-  segmentBoundaries,
-  skipCurrentSegment,
-  toRunSegments,
-  snoozePlan,
-  SNOOZE_DAYS_DEFAULT,
-  todayISODate,
-  unbindItemFromRoutines,
-  unbindItemWhereInstrumentMismatch,
-  defaultModeForStatus,
-  DEFAULT_DURATION_MINUTES,
-  emptyDB,
-  newId,
-  nowISO,
-  withSuppression,
-  withoutSuppression,
-  planArchiveImport,
-  applyArchiveImport,
-  type ImportPlan,
-  type ImportSummary,
-  type ReconcileDecision,
-  type SourceIndex,
-  SCHEMA_VERSION,
-  seedPathways,
-  validateDB,
-  SchemaTooNewError,
-  type BlockMode,
-  type BlockResult,
-  type FocusArea,
-  type GuitarFields,
-  type ID,
-  type Instrument,
-  type AttachmentMeta,
-  type ISODate,
-  type ItemStatus,
-  type LessonFileKind,
-  type LessonRecording,
-  type Material,
-  type MaterialSourceType,
-  type MaterialStatus,
-  type Pathway,
-  type PathwayRoutine,
-  type PathwayStage,
-  type PersianFields,
-  type PracticeDB,
-  type PracticeItem,
-  type Rating,
-  type ReviewAnswer,
-  type ReviewMode,
-  type ReviewType,
-  type RoutineSegment,
-  type RunSegment,
-  type PlanRunSegment,
-  type SchedulingParams,
-  type SessionPlan,
-} from '../domain';
-import type { CreateItemInput } from '../domain/factories';
+import { readFile } from 'node:fs/promises';
+import { createServer, type ViteDevServer } from 'vite';
+import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 
 // ---------------------------------------------------------------------------
-// The single app store. Holds the whole local database, the live practice
-// session, and a colour-scheme preference. Everything persists to
-// localStorage; domain logic stays pure and is called from the actions here.
+// A small harness for driving the REAL app in a real browser from an ordinary
+// Vitest test.
+//
+// Deliberately a LIBRARY, not a second test runner: the installed check engine
+// traces acceptance through the Vitest report, so a standalone Playwright exit
+// code would prove nothing to it. Each journey gets its own Vite dev server and
+// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
+// localStorage — no fixture from one journey can reach the other, and neither
+// can touch the owner's real data, GitHub or NAS.
+//
+// A missing browser is a FAILURE with a setup message, never a skip: a check
+// that quietly passes because it did not run is worse than no check at all.
 // ---------------------------------------------------------------------------
 
-export type ThemePref = 'system' | 'light' | 'dark';
+/** The two engines this app is actually used in: Chrome on the Mac, Safari on the iPhone. */
+export type Engine = 'chromium' | 'webkit';
 
-export interface ArchiveCommitResult {
-  ok: boolean;
-  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved'. */
-  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
-  message: string;
-  summary?: ImportSummary;
-  /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
-  staleDecisions?: ReconcileDecision[];
+const ENGINES: Record<Engine, BrowserType> = { chromium, webkit };
+
+const installHint = (engine: Engine) =>
+  `The Playwright ${engine} browser is not installed. Run \`npx playwright install ${engine}\` ` +
+  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
+  'and an engine quietly missed is the same thing as an engine never checked.';
+
+export interface PracticeApp {
+  page: Page;
+  /** The dev server origin this journey is isolated on. */
+  origin: string;
+  /** Which engine this journey is actually running in. */
+  engine: Engine;
+  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
+  pageErrors: Error[];
+  close(): Promise<void>;
 }
 
 /**
- * Module scope, for the same reason `githubSync`'s own `running` is: it
- * describes THIS DEVICE'S in-flight durability, not app data. A failed
- * IndexedDB write leaves the new graph in memory but not on disk, so the next
- * attempt must WRITE AGAIN even though nothing in the plan changed — otherwise
- * the retry says "Already current" over data that was never saved.
+ * Start the app and open it in a fresh, isolated browser context.
+ *
+ * `now` fixes the browser's clock before any script runs, so every date the
+ * app derives — due reviews, lesson deadlines, the local calendar day a block
+ * belongs to — is deterministic. `page.clock` can then move it forward within
+ * a journey (across local midnight, for instance) exactly as a real device
+ * left open overnight would experience it.
  */
-let archivePersistFailed = false;
-
-export interface ActiveSession {
-  itemId: ID;
-  instrumentId: ID;
-  materialId?: ID;
-  mode: BlockMode;
-  focus: FocusArea;
-  constraint?: string;
-  targetMinutes: number;
-  startedAt: string;
-  /** Seconds accumulated up to the last pause. */
-  accumulatedSeconds: number;
-  running: boolean;
-  /** When the current running segment began (if running). */
-  segmentStartedAt?: string;
-  /** A quick note jotted during practice; pre-fills the close screen. */
-  note?: string;
-  /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
-  signalledThrough?: number;
-}
-
-export function sessionElapsedSeconds(s: ActiveSession, now: Date = new Date()): number {
-  const live = s.running && s.segmentStartedAt
-    ? (now.getTime() - new Date(s.segmentStartedAt).getTime()) / 1000
-    : 0;
-  return Math.max(0, Math.floor(s.accumulatedSeconds + live));
-}
-
-/** A plan segment plus its live run status (the domain's own run shape). */
-export type PlanSegmentState = PlanRunSegment;
-
-/** The Session Plan currently being run (ephemeral — never in PracticeDB). */
-export interface ActivePlan {
-  instrumentId: ID;
-  budgetMinutes: number;
-  startedAt: string;
-  /** Index of the next segment to practise. */
-  pointer: number;
-  segments: PlanSegmentState[];
-}
-
-/**
- * A routine run in progress (ephemeral — never in PracticeDB). Same
- * accumulated-seconds-plus-live-since-timestamp shape as `ActiveSession`, for
- * the same reason: living in the store — not component state — means
- * navigating away (a nav-bar tap, browser back) never silently loses
- * genuinely-elapsed bound-item practice, exactly like an active block. Only
- * one routine can run at a time, matching `active`/`activePlan`.
- */
-export interface ActiveRoutine {
-  routineId: ID;
-  shortOnTime: boolean;
+export async function openPracticeApp(options: {
+  now: Date;
+  viewport?: { width: number; height: number };
+  /** Which engine to drive. Defaults to Chromium; ac-14 drives both. */
+  engine?: Engine;
   /**
-   * The segment list as it was AT START — label, essential, itemId — frozen
-   * here rather than re-derived live from the routine's current data. The
-   * routine can be edited (segments added/removed) while a run is in
-   * progress (Edit is reachable from StageDetail/PathwayDetail with no
-   * "is this active" guard); re-deriving from live data would desync this
-   * list's length from `segs` below and index past the end of one of them —
-   * a blank runner screen. A run's segments are what was actually started.
+   * Serve a DIFFERENT checkout of this app — used to stand up a disposable
+   * copy of an older release (a git worktree at an earlier commit) so a
+   * rollback can be tested against the app that actually wrote the backup,
+   * rather than against a description of it. Defaults to this checkout.
    */
-  authoredSegments: RoutineSegment[];
-  /** Same length/order as authoredSegments; .seconds mutates (Skip clamps it). */
-  segs: RunSegment[];
-  accumulatedSeconds: number;
-  running: boolean;
-  runningSince?: string;
-  /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
-  signalledThrough?: number;
-}
+  root?: string;
+}): Promise<PracticeApp> {
+  const engine = options.engine ?? 'chromium';
+  const server: ViteDevServer = await createServer({
+    ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
+    logLevel: 'error',
+    server: { port: 0, strictPort: false },
+  });
+  await server.listen();
+  const origin = server.resolvedUrls?.local[0];
+  if (!origin) {
+    await server.close();
+    throw new Error('The dev server started but reported no local URL.');
+  }
 
-/** Advance the pointer to the next still-pending segment (or one past the end). */
-export interface StartSessionInput {
-  itemId: ID;
-  instrumentId: ID;
-  materialId?: ID;
-  mode: BlockMode;
-  focus: FocusArea;
-  constraint?: string;
-  targetMinutes: number;
-}
+  let browser: Browser;
+  try {
+    browser = await ENGINES[engine].launch();
+  } catch (e) {
+    await server.close();
+    throw new Error(installHint(engine), { cause: e });
+  }
 
-export interface CloseSessionInput {
-  result: BlockResult;
-  durationMinutes: number;
-  observation?: string;
-  nextAction?: string;
-  newStatus?: ItemStatus;
-  /**
-   * What the close screen answered about the next review. 'unanswered' (no
-   * result chosen) must leave the item's date AND its open review row exactly
-   * as they are — see ReviewAnswer in scheduling.ts.
-   */
-  answer: ReviewAnswer;
-  nextReviewDate?: ISODate;
-  reviewType?: ReviewType;
-  /**
-   * A question raised during this close. It becomes its OWN agenda entry —
-   * it never overwrites an existing question, and it never marks the item as
-   * work committed for a class. Targetless means honestly unassigned.
-   */
-  newQuestion?: { text: string; lessonId?: ID };
-  /**
-   * The `now` the close screen actually PREVIEWED its decision with — never
-   * read from module scope inside `closeSession`. Recomputing a fresh
-   * `new Date()` here instead would let the saved date silently diverge from
-   * the one the screen just showed if the local day rolled between the
-   * screen's last render and this call; the caller (`CloseBlock`) is
-   * responsible for checking that first and refusing to call this while they
-   * disagree. Defaults to `new Date()` for callers with no decision to keep
-   * in step (there are none in-app; only tests omit it).
-   */
-  now?: Date;
-}
+  let context: BrowserContext;
+  let page: Page;
+  const pageErrors: Error[] = [];
+  try {
+    context = await browser.newContext({
+      viewport: options.viewport ?? { width: 390, height: 844 },
+      // The owner's phone. Deliberately the constraint the product is held to.
+      deviceScaleFactor: 2,
+    });
+    page = await context.newPage();
+    // ONE handler for the whole journey. The app's destructive actions ask
+    // first with confirm(); an unanswered dialog blocks every later command,
+    // and registering a second handler makes the first one's accept() throw.
+    page.on('dialog', (d) => {
+      void d.accept().catch(() => {});
+    });
+    // A request the BROWSER cancelled because this test navigated away while it
+    // was in flight is not an application error. WebKit reports such a fetch as
+    // "Fetch API cannot load … due to access control checks", which reads
+    // exactly like a CORS problem and is not one: instrumented, the only
+    // difference between the passing and failing runs of the same journey is a
+    // single `requestfailed` with `errorText: 'cancelled'` for a request that
+    // is otherwise fulfilled with the right CORS headers every other time.
+    // A real person navigating mid-sync cancels the same request, so treating
+    // it as a page error makes a journey fail for driving the app quickly.
+    // Narrow by construction: only a URL this run actually saw cancelled is
+    // ever excused, and every other page error is recorded as before.
+    const cancelled = new Set<string>();
+    page.on('requestfailed', (r) => {
+      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
+    });
+    // Surface a page-level error instead of letting it become a silently
+    // wrong assertion later.
+    page.on('pageerror', (e) => {
+      const message = `${e.message}`;
+      // WebKit spells the URL with the scheme separated from the host, so the
+      // comparison is on the path, which both spellings carry verbatim.
+      for (const url of cancelled) {
+        if (message.includes(new URL(url).pathname)) return;
+      }
+      pageErrors.push(e);
+    });
+    await page.clock.install({ time: options.now });
+    await page.goto(origin);
+    // The store hydrates from IndexedDB before anything renders. The ceiling is
+    // generous because this is the COLD start: five journeys run concurrently,
+    // each starting its own dev server and browser, so the first paint of the
+    // last one to launch competes with four others compiling modules. A longer
+    // wait cannot hide a real failure — it only refuses to call contention one.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
+  } catch (e) {
+    await browser.close();
+    await server.close();
+    throw e;
+  }
 
-export interface ItemPatch {
-  instrumentId?: ID;
-  title?: string;
-  itemType?: PracticeItem['itemType'];
-  materialId?: ID;
-  status?: ItemStatus;
-  importance?: Rating;
-  difficulty?: Rating;
-  primaryFocus?: FocusArea;
-  /** Working notes. `undefined` CLEARS them — emptying the notebook is deliberate. */
-  notes?: string;
-  /** `undefined` (key absent) keeps the schedule; `null` clears it; an ISODate moves it — and its open review row with it (§1.5). */
-  nextReviewDate?: ISODate | null;
-  reviewMode?: ReviewMode;
-  reviewIntervalDays?: number;
-  persian?: PersianFields;
-  guitar?: GuitarFields;
-}
-
-interface StoreState {
-  db: PracticeDB;
-  /** Monotonic data revision — bumped by middleware on every db mutation. */
-  rev: number;
-  active: ActiveSession | null;
-  theme: ThemePref;
-  /** True once the async IndexedDB store has finished rehydrating. */
-  hydrated: boolean;
-  /**
-   * The instrument the user chose to practise right now ("I'm practising Setar").
-   * Persisted so Today reopens where they left off. Null = overview.
-   */
-  sessionInstrumentId: ID | null;
-  /** Reviews the user said "not now" to — hidden for the rest of *today* only. */
-  notNow: { date: string; ids: ID[] };
-  /** The Session Plan being run right now (ephemeral; not in PracticeDB). */
-  activePlan: ActivePlan | null;
-  /** Last chosen plan duration per instrument, so the picker remembers. */
-  planMinutesByInstrument: Record<ID, number>;
-  /** The routine run in progress right now (ephemeral; not in PracticeDB). */
-  activeRoutine: ActiveRoutine | null;
-
-  setTheme: (t: ThemePref) => void;
-  setSessionInstrument: (id: ID | null) => void;
-
-  /** Merge + clamp scheduling knobs. Passing null resets to the defaults. */
-  updateSchedulingParams: (patch: Partial<SchedulingParams> | null) => void;
-
-  // Session Plan (a time-budgeted programme over real practice blocks)
-  /** Remember the chosen duration for an instrument's next plan. */
-  setPlanMinutes: (instrumentId: ID, minutes: number) => void;
-  /** Begin running a built plan (segments become pending). */
-  startPlan: (plan: SessionPlan) => void;
-  /** Start a real block seeded from the current segment (→ /active → /close). */
-  beginPlanSegment: () => void;
-  /** Mark the current segment skipped and advance (no data written). */
-  skipPlanSegment: () => void;
-  /** End the running plan (clears it). */
-  endPlan: () => void;
-
-  // Attachments (metadata; blobs live in IndexedDB via src/store/idb.ts)
-  addAttachmentMeta: (meta: AttachmentMeta) => void;
-  removeAttachmentMeta: (id: ID) => void;
-
-  // Instruments
-  addInstrument: (input: { name: string; family?: string }) => ID;
-  updateInstrument: (id: ID, patch: Partial<Pick<Instrument, 'name' | 'family' | 'active'>>) => void;
-
-  // Lessons (classes with a teacher)
-  addLesson: (input: { instrumentId: ID; date: ISODate; notes?: string; number?: number }) => ID;
-  updateLesson: (id: ID, patch: { date?: ISODate; notes?: string; number?: number }) => void;
-  deleteLesson: (id: ID) => void;
-  /** Link/unlink an existing item to a lesson (a link, never ownership). */
-  linkItemToLesson: (lessonId: ID, itemId: ID) => void;
-  addLessonRecording: (
-    lessonId: ID,
-    input: {
-      title: string;
-      path: string;
-      kind?: LessonFileKind;
-      date?: ISODate;
-      sizeBytes?: number;
-      durationLabel?: string;
-      notes?: string;
+  return {
+    page,
+    origin,
+    engine,
+    pageErrors,
+    async close() {
+      await browser.close();
+      await server.close();
     },
-  ) => ID;
-  removeLessonRecording: (lessonId: ID, recordingId: ID) => void;
-  unlinkItemFromLesson: (lessonId: ID, itemId: ID) => void;
-
-  // Materials
-  addMaterial: (input: {
-    instrumentId: ID;
-    title: string;
-    sourceType?: MaterialSourceType;
-    sourceName?: string;
-    parentTitle?: string;
-    section?: string;
-    teacherOrSource?: string;
-    notes?: string;
-    status?: MaterialStatus;
-  }) => ID;
-  updateMaterial: (id: ID, patch: Partial<Omit<Material, 'id' | 'createdAt'>>) => void;
-  deleteMaterial: (id: ID) => void;
-
-  // Items
-  addItem: (input: CreateItemInput) => ID;
-  /**
-   * Save an item's own fields. Returns null, or the reason it REFUSED — a save
-   * that would hand an ambiguous pending schedule to the engine is refused
-   * whole rather than half-applied.
-   */
-  updateItem: (id: ID, patch: ItemPatch) => string | null;
-  setItemStatus: (id: ID, status: ItemStatus) => void;
-  deleteItem: (id: ID) => void;
-  /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
-  removeCatalogItem: (id: ID) => boolean;
-  placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
-
-  // --- The archive source graph -------------------------------------------
-  /**
-   * Preview what a published index would do to THIS database, against the
-   * revision it was decided at. Pure decision, no write.
-   */
-  previewArchiveImport: (input: {
-    index: SourceIndex;
-    instrumentId: ID;
-    decisions?: ReconcileDecision[];
-    /** This device's own media base, for converting a stored full URL. */
-    verifiedBase?: string;
-    now?: Date;
-  }) => { plan: ImportPlan; rev: number };
-  /** Apply a previewed plan in ONE mutation, and wait for IndexedDB to say so. */
-  commitArchiveImport: (input: {
-    index: SourceIndex;
-    instrumentId: ID;
-    decisions?: ReconcileDecision[];
-    verifiedBase?: string;
-    decidedFromRev: number;
-    now?: Date;
-  }) => Promise<ArchiveCommitResult>;
-  /** Hide ONE archive resource — on one item, or everywhere. */
-  hideArchiveResource: (archiveId: ID, path: string, itemId?: ID) => void;
-  /** Lift a suppression, so the next refresh may bring that entity back. */
-  resetArchiveSuppression: (archiveId: ID, kind: 'piece' | 'session' | 'resource' | 'link', ref: string) => void;
-  /** Attach a direct NAS reference to an item — no artificial lesson needed. */
-  addItemReference: (itemId: ID, ref: { title: string; path: string; kind?: LessonFileKind; notes?: string }) => void;
-  /** Remove a direct item reference. Never touches the file it points at. */
-  removeItemReference: (itemId: ID, refId: ID) => void;
-
-  // Lesson agenda — commitments and questions, each naming its own class
-  /** Commit an item to a specific class (or capture it unassigned). Returns the entry id. */
-  addLessonPreparation: (itemId: ID, lessonId?: ID) => ID | null;
-  /** Raise a question. It is its own entry; nothing else is overwritten. */
-  addLessonQuestion: (input: { text: string; instrumentId: ID; itemId?: ID; lessonId?: ID }) => ID | null;
-  /** Edit a question's text. Never touches its asked state or answer. */
-  updateLessonQuestion: (id: ID, text: string) => void;
-  /** Point an entry at a different class, or at none. The only carry-forward. */
-  setAgendaTarget: (id: ID, lessonId: ID | undefined) => void;
-  /** Mark asked (optionally with the teacher's answer). Logs no practice. */
-  markQuestionAsked: (id: ID, answer?: string) => void;
-  /** Put an asked question back on the open list. */
-  reopenQuestion: (id: ID) => void;
-  /** Record or replace a teacher answer without changing the asked state. */
-  setQuestionAnswer: (id: ID, answer: string) => void;
-  /** Remove an entry. Never deletes the item or its practice. */
-  removeAgendaEntry: (id: ID) => void;
-  /** Create a practice item from a stage's reference catalog entry; returns its id. */
-  addFromCatalog: (stageId: ID, entryKey: string) => ID;
-  /** Begin a session on an existing item (with smart defaults). */
-  startItemSession: (itemId: ID) => void;
-
-  // Session
-  startSession: (input: StartSessionInput) => void;
-  pauseSession: () => void;
-  resumeSession: () => void;
-  setSessionNote: (note: string) => void;
-  /** Persist how many target boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  setSessionSignal: (marker: number) => void;
-  cancelSession: () => void;
-  closeSession: (input: CloseSessionInput) => void;
-
-  // Reviews
-  completeReview: (id: ID, result?: BlockResult) => void;
-  /** "Not now": hide a due review for the rest of today (no schedule change). */
-  notNowReview: (id: ID) => void;
-  /** Snooze: honestly move the due date N days from today (no SM-2 change). */
-  snoozeReview: (id: ID, days?: number) => void;
-  /**
-   * "Schedule again" from the item itself: set the one pending date on both
-   * the item and its review row, creating the row when none is open. Purely
-   * administrative — no block, no result, no SM-2 progress.
-   */
-  scheduleReviewAgain: (itemId: ID, dueDate: ISODate, reviewType?: ReviewType) => void;
-  /**
-   * Hand this item's next review back to the engine, KEEPING its pending date.
-   * Returns null on success, or the reason it refused (an ambiguous pending
-   * schedule the owner has to resolve first). Records no practice.
-   */
-  useAutomaticReviewDates: (itemId: ID) => string | null;
-
-  // Pathways
-  addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
-  updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived' | 'currentStageId'>>) => void;
-  deletePathway: (id: ID) => void;
-  reseedDefaultPathways: () => void;
-
-  addStage: (pathwayId: ID, input: { code: string; title: string; group?: string; intro?: string }) => ID;
-  updateStage: (id: ID, patch: Partial<Pick<PathwayStage, 'code' | 'title' | 'group' | 'intro'>>) => void;
-  deleteStage: (id: ID) => void;
-  moveStage: (id: ID, dir: -1 | 1) => void;
-  /** Rename a section heading across all of a pathway's stages. */
-  renameSection: (pathwayId: ID, oldGroup: string | undefined, newGroup: string) => void;
-
-  // Routines (ordinary editable data, placement optional, instrument required)
-  addRoutine: (input: {
-    name: string;
-    instrumentId: ID;
-    pathwayId?: ID;
-    stageId?: ID;
-    segments?: RoutineSegment[];
-  }) => ID;
-  /**
-   * Full-form save: a complete replace, not a partial patch. Every save
-   * re-enforces the binding + placement invariants against the instrument
-   * being saved, whether or not it changed — never trusts the form on
-   * faith. `instrumentId` is optional here (unlike addRoutine): editing an
-   * already-unscoped legacy routine must be able to save without inventing
-   * one.
-   */
-  updateRoutine: (
-    id: ID,
-    patch: { name: string; segments: RoutineSegment[]; instrumentId?: ID; pathwayId?: ID; stageId?: ID },
-  ) => void;
-  deleteRoutine: (id: ID) => void;
-  duplicateRoutine: (id: ID) => ID;
-  /**
-   * Begin running a routine (segments become the live run). A no-op if an
-   * ordinary block is running, or if a DIFFERENT routine is already active —
-   * callers must resolve (resume/finish/discard) that one first, so its
-   * in-flight elapsed time is never silently overwritten or double-counted.
-   */
-  startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
-  pauseRoutineRun: () => void;
-  resumeRoutineRun: () => void;
-  /** Mark the current segment skipped; finishes the run if that was the last one. */
-  skipRoutineRun: () => void;
-  /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
-  finishRoutine: () => void;
-  /** Persist how many segment boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  setRoutineSignal: (marker: number) => void;
-
-  // Data management
-  exportDB: () => PracticeDB;
-  importDB: (raw: unknown) => void;
-  resetDemo: () => void;
-  clearAll: () => void;
+  };
 }
-
-function touch<T extends { updatedAt: string }>(entity: T, now: Date): T {
-  return { ...entity, updatedAt: nowISO(now) };
-}
-
-export const useStore = create<StoreState>()(
-  persist(
-    withRevision((set, get) => ({
-      db: emptyDB(),
-      rev: 0,
-      active: null,
-      theme: 'system',
-      hydrated: false,
-      sessionInstrumentId: null,
-      notNow: { date: '', ids: [] },
-      activePlan: null,
-      planMinutesByInstrument: {},
-      activeRoutine: null,
-
-      setTheme: (theme) => set({ theme }),
-
-      updateSchedulingParams: (patch) =>
-        set((s) => ({
-          db: {
-            ...s.db,
-            // null ⇒ reset (drop the field so it falls back to defaults).
-            settings: patch === null ? undefined : clampSchedulingParams({ ...s.db.settings, ...patch }),
-          },
-        })),
-
-      setPlanMinutes: (instrumentId, minutes) =>
-        set((s) => ({
-          planMinutesByInstrument: { ...s.planMinutesByInstrument, [instrumentId]: Math.max(5, Math.round(minutes)) },
-        })),
-
-      startPlan: (plan) =>
-        set({
-          activePlan: {
-            instrumentId: plan.instrumentId,
-            budgetMinutes: plan.budgetMinutes,
-            startedAt: nowISO(),
-            pointer: 0,
-            segments: plan.segments.map((seg) => ({ ...seg, status: 'pending' as const })),
-          },
-        }),
-
-      beginPlanSegment: () => {
-        const { activePlan, db, active, activeRoutine } = get();
-        if (!activePlan) return;
-        const seg = activePlan.segments[activePlan.pointer];
-        // Revalidated LIVE against the same pure check a test can reach, never
-        // trusted from the plan: an item can be deleted or moved to another
-        // instrument between building the plan and reaching this segment.
-        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
-        if (!check.ok) {
-          // A deleted or moved item is visibly skipped (and skipping logs
-          // nothing); a busy clock is refused outright rather than replaced.
-          if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
-          return;
-        }
-        const item = check.item;
-        if (!seg) return;
-        get().startSession({
-          itemId: item.id,
-          instrumentId: item.instrumentId,
-          materialId: item.materialId,
-          mode: seg.mode,
-          focus: seg.focus,
-          targetMinutes: seg.minutes,
-        });
-      },
-
-      skipPlanSegment: () =>
-        set((s) => (s.activePlan ? { activePlan: skipPlanSegmentRun(s.activePlan) } : {})),
-
-      endPlan: () => set({ activePlan: null }),
-
-      setSessionInstrument: (sessionInstrumentId) => set({ sessionInstrumentId }),
-
-      addAttachmentMeta: (meta) => {
-        set((s) => ({ db: { ...s.db, attachments: [...s.db.attachments, meta] } }));
-      },
-      removeAttachmentMeta: (id) => {
-        set((s) => ({ db: { ...s.db, attachments: s.db.attachments.filter((a) => a.id !== id) } }));
-      },
-
-      addInstrument: (input) => {
-        const now = new Date();
-        const inst = createInstrument(input, now);
-        set((s) => ({ db: { ...s.db, instruments: [...s.db.instruments, inst] } }));
-        return inst.id;
-      },
-
-      updateInstrument: (id, patch) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            instruments: s.db.instruments.map((i) =>
-              i.id === id ? touch({ ...i, ...patch }, now) : i,
-            ),
-          },
-        }));
-      },
-
-      addLesson: (input) => {
-        const now = new Date();
-        const lesson = createLesson(input, now);
-        set((s) => ({ db: { ...s.db, lessons: [...s.db.lessons, lesson] } }));
-        return lesson.id;
-      },
-
-      updateLesson: (id, patch) => {
-        const now = new Date();
-        // AN OMITTED FIELD AND A DELIBERATELY EMPTY ONE ARE DIFFERENT THINGS.
-        // `patch.notes ?? l.notes` could not tell them apart, so clearing a
-        // lesson's notes was IMPOSSIBLE: the editor sends `undefined` for empty
-        // text and the store handed the previous notes straight back, which
-        // looked to the owner like the app silently refusing to delete what
-        // they had just deleted. The PRESENCE of the key is the intent — the
-        // same distinction `resolveReviewDate` already makes for a date.
-        const clearsNotes = 'notes' in patch && !patch.notes;
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: s.db.lessons.map((l) =>
-              l.id === id
-                ? touch(
-                    { ...l, ...patch, notes: clearsNotes ? undefined : ('notes' in patch ? patch.notes : l.notes) },
-                    now,
-                  )
-                : l,
-            ),
-          },
-        }));
-      },
-
-      deleteLesson: (id) => {
-        const detachNow = new Date();
-        const lessonSource = get().db.lessons.find((l) => l.id === id)?.source;
-        // The lesson owns its attachments; linked items are never touched.
-        // ownerId alone is not a lesson id — an item can share it — so only
-        // an attachment whose ownerType is ALSO 'lesson' is this lesson's own.
-        const owned = get().db.attachments.filter((a) => a.ownerType === 'lesson' && a.ownerId === id);
-        for (const a of owned) void deleteBlob(a.id);
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: s.db.lessons.filter((l) => l.id !== id),
-            attachments: s.db.attachments.filter((a) => !(a.ownerType === 'lesson' && a.ownerId === id)),
-            // Entries that named it become visibly unassigned and REMEMBER
-            // which class they were for. Nothing is deleted and nothing is
-            // silently reassigned to another class.
-            lessonAgenda: detachAgendaLesson(s.db.lessonAgenda, id, detachNow),
-            // A DELETION IS A DECISION, and the next refresh must respect it:
-            // without this the very same class comes straight back, because the
-            // source still describes it. Recorded in the SAME mutation as the
-            // delete, so there is no window in which one happened and not the
-            // other.
-            archiveSources: lessonSource
-              ? withSuppression(s.db.archiveSources, lessonSource.archiveId, {
-                  kind: 'session',
-                  ref: String(lessonSource.sessionN),
-                  at: nowISO(detachNow),
-                })
-              : s.db.archiveSources,
-          },
-        }));
-      },
-
-      linkItemToLesson: (lessonId, itemId) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: s.db.lessons.map((l) =>
-              l.id === lessonId && !(l.itemIds ?? []).includes(itemId)
-                ? touch({ ...l, itemIds: [...(l.itemIds ?? []), itemId] }, now)
-                : l,
-            ),
-          },
-        }));
-      },
-
-      addLessonRecording: (lessonId, input) => {
-        const now = new Date();
-        const rec: LessonRecording = {
-          id: newId(),
-          title: input.title.trim() || 'Class recording',
-          path: input.path.trim(),
-          kind: input.kind ?? 'video',
-          date: input.date,
-          sizeBytes: input.sizeBytes,
-          durationLabel: input.durationLabel,
-          notes: input.notes?.trim() || undefined,
-          createdAt: nowISO(now),
-        };
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: s.db.lessons.map((l) =>
-              l.id === lessonId ? touch({ ...l, recordings: [...(l.recordings ?? []), rec] }, now) : l,
-            ),
-          },
-        }));
-        return rec.id;
-      },
-
-      // Removes only the REFERENCE. The NAS file is never touched.
-      removeLessonRecording: (lessonId, recordingId) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: s.db.lessons.map((l) =>
-              l.id === lessonId
-                ? touch({ ...l, recordings: (l.recordings ?? []).filter((r) => r.id !== recordingId) }, now)
-                : l,
-            ),
-          },
-        }));
-      },
-
-      unlinkItemFromLesson: (lessonId, itemId) => {
-        const now = new Date();
-        const { db } = get();
-        // An archive association is DERIVED from the session's membership, not
-        // stored on the lesson — so removing it means recording the owner's
-        // decision, in the same mutation, or the graph simply asserts it again.
-        const lessonSource = db.lessons.find((l) => l.id === lessonId)?.source;
-        const itemSource = db.items.find((i) => i.id === itemId)?.source;
-        const both = lessonSource && itemSource && lessonSource.archiveId === itemSource.archiveId ? lessonSource : null;
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: s.db.lessons.map((l) =>
-              l.id === lessonId
-                ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== itemId) }, now)
-                : l,
-            ),
-            archiveSources: both
-              ? withSuppression(s.db.archiveSources, both.archiveId, {
-                  kind: 'link',
-                  ref: `${both.sessionN}:${itemSource!.pieceKey}`,
-                  at: nowISO(now),
-                })
-              : s.db.archiveSources,
-          },
-        }));
-      },
-
-      addMaterial: (input) => {
-        const now = new Date();
-        const mat = createMaterial(input, now);
-        set((s) => ({ db: { ...s.db, materials: [...s.db.materials, mat] } }));
-        return mat.id;
-      },
-
-      updateMaterial: (id, patch) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            materials: s.db.materials.map((m) =>
-              m.id === id ? touch({ ...m, ...patch }, now) : m,
-            ),
-          },
-        }));
-      },
-
-      deleteMaterial: (id) => {
-        set((s) => ({
-          db: {
-            ...s.db,
-            materials: s.db.materials.filter((m) => m.id !== id),
-            // Detach items from the removed material rather than deleting them.
-            items: s.db.items.map((i) =>
-              i.materialId === id ? { ...i, materialId: undefined } : i,
-            ),
-          },
-        }));
-      },
-
-      addItem: (input) => {
-        const now = new Date();
-        const item = createItem(input, now);
-        set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
-        return item.id;
-      },
-
-      updateItem: (id, patch) => {
-        const now = new Date();
-        // Route the review date through the shared resolver (§1.5): absent
-        // leaves the schedule untouched, so a blind spread of `patch` can
-        // never silently wipe it; an ISODate moves the open review row with
-        // it; null clears both sides honestly.
-        const { nextReviewDate, ...rest } = patch;
-        const write = resolveReviewDate(nextReviewDate);
-        const current = get().db.items.find((i) => i.id === id);
-        const newInstrumentId =
-          rest.instrumentId !== undefined && current && rest.instrumentId !== current.instrumentId
-            ? rest.instrumentId
-            : undefined;
-        // AN ARCHIVE BINDING NAMES ONE INSTRUMENT'S SOURCE. Moving the item
-        // elsewhere would leave a binding that resolves to the wrong
-        // instrument — a graph `validateDB` refuses at every inbound door, so
-        // writing it here would produce a database this device could not
-        // re-import. Refuse BEFORE the mutation and say what to do instead;
-        // detaching from the archive is a separate, explicit act.
-        if (newInstrumentId && current?.source) {
-          return 'This piece is linked to the Setar archive. Detach it from the archive before moving it to another instrument.';
-        }
-        // A SAVED mode change from manual/fixed-cadence to automatic is the
-        // same administrative transfer the item screen's own button performs —
-        // the form must not be a second, quieter route that leaves the date's
-        // provenance (and therefore its protection) saying something different.
-        // An unrelated save on an already-auto item takes neither branch, so a
-        // date the owner chose keeps its protection untouched.
-        const movingToAuto = rest.reviewMode === 'auto' && !!current && (current.reviewMode ?? 'auto') !== 'auto';
-        const transfer = movingToAuto
-          ? transferToAutomaticReview({ item: current!, reviews: get().db.reviews, now })
-          : null;
-        if (transfer && !transfer.ok) return transfer.reason;
-        const transferredRows =
-          transfer && transfer.ok
-            ? transfer.createRow
-              ? [
-                  ...transfer.reviews,
-                  createReview(
-                    {
-                      practiceItemId: id,
-                      dueDate: transfer.keptDate!,
-                      reviewType: transfer.reviewType,
-                      reason: AUTOMATIC_TRANSFER_REASON,
-                    },
-                    now,
-                  ),
-                ]
-              : transfer.reviews
-            : null;
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) => {
-              if (i.id !== id) return i;
-              const next = { ...i, ...rest };
-              if (write) {
-                next.nextReviewDate = write.nextReviewDate;
-                // A date arriving through an explicit item patch is the
-                // OWNER'S, never the engine's — stamp the provenance here so
-                // this cannot become a fourth path that writes a date without
-                // one (closeSession, snoozeReview and scheduleReviewAgain all
-                // stamp their own). Without it an owner-edited date on an
-                // auto-source item would stay 'auto' and lose the protection
-                // A4/A5 promise it. Clearing the date clears the provenance.
-                next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
-              }
-              if (transfer && transfer.ok) {
-                // Same DATE, new authority. Only the provenance moves.
-                next.nextReviewSource = transfer.item.nextReviewSource;
-              }
-              return touch(next, now);
-            }),
-            reviews:
-              applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
-              transferredRows ??
-              s.db.reviews,
-            // An item that changes instrument no longer belongs in a routine
-            // scoped to the old one — unbind it there; matching routines keep it.
-            pathwayRoutines: newInstrumentId
-              ? unbindItemWhereInstrumentMismatch(s.db.pathwayRoutines, id, newInstrumentId, now)
-              : s.db.pathwayRoutines,
-            // Its commitments and questions follow it; a class target that no
-            // longer matches is cleared rather than pointing at another
-            // instrument's lesson.
-            lessonAgenda: newInstrumentId
-              ? retargetEntriesForItemInstrument(s.db.lessonAgenda, id, newInstrumentId, s.db.lessons, now)
-              : s.db.lessonAgenda,
-          },
-        }));
-        return null;
-      },
-
-      setItemStatus: (id, status) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) => (i.id === id ? touch({ ...i, status }, now) : i)),
-          },
-        }));
-      },
-
-      deleteItem: (id) => {
-        // ownerId alone is not an item id — a lesson can share it — so only
-        // an attachment owned by THIS item (ownerType 'item' too) is deleted.
-        const owned = itemOwnedAttachments(get().db.attachments, id);
-        for (const a of owned) void deleteBlob(a.id);
-        const now = new Date();
-        const itemSource = get().db.items.find((i) => i.id === id)?.source;
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items
-              .filter((i) => i.id !== id)
-              // Parts of a deleted piece stay, but ungrouped.
-              .map((i) => (i.parentItemId === id ? touch({ ...i, parentItemId: undefined }, now) : i)),
-            blocks: s.db.blocks.filter((b) => b.practiceItemId !== id),
-            reviews: s.db.reviews.filter((r) => r.practiceItemId !== id),
-            attachments: s.db.attachments.filter((a) => !(a.ownerType === 'item' && a.ownerId === id)),
-            lessons: s.db.lessons.map((l) =>
-              (l.itemIds ?? []).includes(id)
-                ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== id) }, now)
-                : l,
-            ),
-            // The segment survives as an unbound countdown — never removed.
-            pathwayRoutines: unbindItemFromRoutines(s.db.pathwayRoutines, id, now),
-            // Commitments to prepare a deleted item go with it; QUESTIONS
-            // survive, detached, because a question and its answer are the
-            // owner's record of a class, not a property of the item.
-            lessonAgenda: detachAgendaItem(s.db.lessonAgenda, id, now),
-            // The same rule as a deleted class: a refresh, a reload and a sync
-            // must not resurrect a piece the owner deliberately removed.
-            archiveSources: itemSource
-              ? withSuppression(s.db.archiveSources, itemSource.archiveId, {
-                  kind: 'piece',
-                  ref: itemSource.pieceKey,
-                  at: nowISO(now),
-                })
-              : s.db.archiveSources,
-          },
-          active: s.active?.itemId === id ? null : s.active,
-        }));
-      },
-
-      removeCatalogItem: (id) => {
-        const s = get();
-        const item = s.db.items.find((i) => i.id === id);
-        if (!item) return false;
-        const itemBlocks = s.db.blocks.filter((b) => b.practiceItemId === id);
-        // Only proceed when the deletion is provably lossless — a fresh,
-        // never-practised catalog item reverting to a suggestion.
-        if (!isLosslesslyRemovable(item, itemBlocks)) return false;
-        get().deleteItem(id);
-        return true;
-      },
-
-      placeItemInStage: (itemId, stageId) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) => (i.id === itemId ? touch({ ...i, stageId }, now) : i)),
-          },
-        }));
-      },
-
-      previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
-        // ONE statement, so the plan and the revision it was decided against
-        // cannot drift apart across an await that does not exist yet.
-        const { db, rev } = get();
-        return {
-          plan: planArchiveImport({ db, index, instrumentId, decisions, verifiedBase, now: now ?? new Date() }),
-          rev,
-        };
-      },
-
-      commitArchiveImport: async ({ index, instrumentId, decisions = [], verifiedBase, decidedFromRev, now }) => {
-        const at = now ?? new Date();
-        // REBASE, never overwrite. A block finished, a note saved or an item
-        // deleted while the index was being fetched has bumped `rev`; the plan
-        // is recomputed against the database as it is NOW, so none of that work
-        // is lost. A rebase that turns up a NEW question is not something to
-        // decide on the owner's behalf — it goes back for another look.
-        const before = get();
-        const rebased = before.rev !== decidedFromRev;
-        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
-        if (rebased && plan.questions.length > 0) {
-          return {
-            ok: false,
-            status: 'stale',
-            message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
-          };
-        }
-        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
-        // QUESTION is not the only way a rebase invalidates an answer: the
-        // owner choosing the archive's composer over an empty field, then
-        // typing one of their own before pressing Apply, raised no question at
-        // all and overwrote the words they had just written. The plan reports
-        // both kinds of premise now — a moved value and a link target that has
-        // been deleted, bound elsewhere or moved instrument — and this refuses
-        // on either, whether or not `rev` moved.
-        if (plan.staleDecisions.length > 0) {
-          return {
-            ok: false,
-            status: 'stale',
-            message: 'Something you had already decided about has changed since. Look again before applying.',
-            staleDecisions: plan.staleDecisions,
-          };
-        }
-
-        // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
-        // It returns the SAME OBJECT when a plan changes nothing, so asking it
-        // is one source of truth for the question. The summary's own
-        // `unchanged` was a second, and it answered about the INDEX alone: an
-        // owner decision taken against an already-current index — skipping a
-        // candidate, applying one registry field, a path the rename log moved —
-        // was reported "Already current" and thrown away unwritten.
-        const proposed = applyArchiveImport(before.db, plan, decisions);
-        if (proposed === before.db && !archivePersistFailed) {
-          return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
-        }
-
-        // VALIDATE THE WHOLE PROPOSED DATABASE BEFORE INSTALLING ANY OF IT —
-        // the same function every inbound door runs. A graph this device would
-        // refuse to import is a graph it must not write.
-        try {
-          validateDB(proposed);
-        } catch (e) {
-          return {
-            ok: false,
-            status: 'refused',
-            message: e instanceof Error ? e.message : 'That index could not be applied.',
-          };
-        }
-
-        // ONE synchronous mutation. No per-file commit, no blob copying, and
-        // never `importDB`/`installDatabase`: this ADDS to the database, it
-        // does not replace it, so the running clock, the routine, the plan and
-        // every unrelated field stay exactly as they are.
-        set({ db: proposed });
-        try {
-          await storageSettled();
-        } catch {
-          // The store already holds the new graph, so a retry that asked
-          // "has anything changed?" would answer "no" and save nothing. The
-          // flag is what makes the retry a real write rather than a false
-          // "Already current".
-          archivePersistFailed = true;
-          return {
-            ok: false,
-            status: 'unsaved',
-            message: 'The archive was read, but this device could not save it. Try again.',
-            summary: plan.summary,
-          };
-        }
-        archivePersistFailed = false;
-        return { ok: true, status: 'applied', message: 'Archive updated.', summary: plan.summary };
-      },
-
-      hideArchiveResource: (archiveId, path, itemId) => {
-        const at = nowISO(new Date());
-        set((s) => ({
-          db: {
-            ...s.db,
-            // `itemId` present hides it on THAT item only — a demonstration
-            // shared by eight pieces stays available to the other seven.
-            archiveSources: withSuppression(s.db.archiveSources, archiveId, {
-              kind: 'resource',
-              ref: path,
-              ...(itemId ? { itemId } : {}),
-              at,
-            }),
-          },
-        }));
-      },
-
-      resetArchiveSuppression: (archiveId, kind, ref) => {
-        set((s) => ({
-          db: {
-            ...s.db,
-            archiveSources: withoutSuppression(
-              s.db.archiveSources,
-              archiveId,
-              (x) => x.kind === kind && x.ref === ref,
-            ),
-          },
-        }));
-      },
-
-      addItemReference: (itemId, ref) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) =>
-              i.id === itemId
-                ? touch(
-                    {
-                      ...i,
-                      references: [
-                        ...(i.references ?? []),
-                        {
-                          id: newId(),
-                          title: ref.title.trim() || ref.path,
-                          path: ref.path.trim(),
-                          kind: ref.kind ?? 'video',
-                          notes: ref.notes?.trim() || undefined,
-                          createdAt: nowISO(now),
-                        },
-                      ],
-                    },
-                    now,
-                  )
-                : i,
-            ),
-          },
-        }));
-      },
-
-      removeItemReference: (itemId, refId) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) =>
-              i.id === itemId
-                ? touch({ ...i, references: (i.references ?? []).filter((r) => r.id !== refId) }, now)
-                : i,
-            ),
-          },
-        }));
-      },
-
-      addLessonPreparation: (itemId, lessonId) => {
-        const now = new Date();
-        const { db } = get();
-        const item = db.items.find((i) => i.id === itemId);
-        if (!item) return null;
-        // A class on another instrument is never a valid target — refuse
-        // rather than silently rewriting either side.
-        if (lessonId) {
-          const lesson = db.lessons.find((l) => l.id === lessonId);
-          if (!lesson || lesson.instrumentId !== item.instrumentId) return null;
-        }
-        // One commitment per item per class: committing twice is the same
-        // commitment, not two.
-        const existing = db.lessonAgenda.find(
-          (e) => e.kind === 'preparation' && e.itemId === itemId && e.lessonId === lessonId,
-        );
-        if (existing) return existing.id;
-        const entry = createPreparation({
-          id: newId(),
-          itemId,
-          instrumentId: item.instrumentId,
-          lessonId,
-          now,
-        });
-        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
-        return entry.id;
-      },
-
-      addLessonQuestion: (input) => {
-        const now = new Date();
-        const text = input.text.trim();
-        if (!text) return null;
-        const { db } = get();
-        if (input.itemId) {
-          const item = db.items.find((i) => i.id === input.itemId);
-          if (!item || item.instrumentId !== input.instrumentId) return null;
-        }
-        if (input.lessonId) {
-          const lesson = db.lessons.find((l) => l.id === input.lessonId);
-          if (!lesson || lesson.instrumentId !== input.instrumentId) return null;
-        }
-        const entry = createQuestion({ id: newId(), ...input, text, now });
-        set((st) => ({ db: { ...st.db, lessonAgenda: [...st.db.lessonAgenda, entry] } }));
-        return entry.id;
-      },
-
-      updateLessonQuestion: (id, text) => {
-        const now = new Date();
-        const trimmed = text.trim();
-        if (!trimmed) return;
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessonAgenda: s.db.lessonAgenda.map((e) =>
-              e.id === id && e.kind === 'question' ? touch({ ...e, text: trimmed }, now) : e,
-            ),
-          },
-        }));
-      },
-
-      setAgendaTarget: (id, lessonId) => {
-        const now = new Date();
-        set((s) => ({
-          db: { ...s.db, lessonAgenda: retargetAgendaEntry(s.db.lessonAgenda, id, lessonId, s.db.lessons, now) },
-        }));
-      },
-
-      markQuestionAsked: (id, answer) => {
-        const now = new Date();
-        set((s) => ({ db: { ...s.db, lessonAgenda: markAgendaQuestionAsked(s.db.lessonAgenda, id, now, answer) } }));
-      },
-
-      reopenQuestion: (id) => {
-        const now = new Date();
-        set((s) => ({ db: { ...s.db, lessonAgenda: reopenAgendaQuestion(s.db.lessonAgenda, id, now) } }));
-      },
-
-      setQuestionAnswer: (id, answer) => {
-        const now = new Date();
-        set((s) => ({ db: { ...s.db, lessonAgenda: setAgendaQuestionAnswer(s.db.lessonAgenda, id, answer, now) } }));
-      },
-
-      removeAgendaEntry: (id) => {
-        set((s) => ({ db: { ...s.db, lessonAgenda: s.db.lessonAgenda.filter((e) => e.id !== id) } }));
-      },
-
-      addFromCatalog: (stageId, entryKey) => {
-        const { db } = get();
-        // Reuse an existing item already created from this catalog entry.
-        const existing = db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey);
-        if (existing) return existing.id;
-
-        const entry = catalogForStage(stageId).find((e) => e.key === entryKey);
-        const stage = db.pathwayStages.find((s) => s.id === stageId);
-        const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
-        const instrumentId =
-          (pathway?.instrumentId && db.instruments.find((i) => i.id === pathway.instrumentId)?.id) ||
-          db.instruments.find((i) => i.active)?.id ||
-          db.instruments[0]?.id ||
-          '';
-        const now = new Date();
-        const item = entry
-          ? itemFromCatalogEntry(entry, instrumentId, now)
-          : createItem({ instrumentId, title: 'New item', stageId }, now);
-        set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
-        return item.id;
-      },
-
-      startItemSession: (itemId) => {
-        const { db } = get();
-        const item = db.items.find((i) => i.id === itemId);
-        if (!item) return;
-        get().startSession({
-          itemId: item.id,
-          instrumentId: item.instrumentId,
-          materialId: item.materialId,
-          mode: defaultModeForStatus(item.status),
-          focus: focusForItem(item),
-          targetMinutes: DEFAULT_DURATION_MINUTES,
-        });
-      },
-
-      startSession: (input) => {
-        const { active, activeRoutine } = get();
-        // Never silently overwrite an existing session's elapsed time, and
-        // never let an ordinary block run alongside a routine — every start
-        // path (direct item starts, Session Plan segments) routes through
-        // here, so this one guard is what keeps only one practice clock
-        // ticking at a time. The caller must resolve the existing one first
-        // (finish/discard/resume it) — same rule startRoutineRun applies in
-        // the other direction.
-        if (active || activeRoutine) return;
-        const now = new Date();
-        set({
-          active: {
-            ...input,
-            startedAt: nowISO(now),
-            accumulatedSeconds: 0,
-            running: true,
-            segmentStartedAt: nowISO(now),
-          },
-        });
-      },
-
-      pauseSession: () => {
-        const { active } = get();
-        if (!active || !active.running) return;
-        set({
-          active: {
-            ...active,
-            accumulatedSeconds: sessionElapsedSeconds(active),
-            running: false,
-            segmentStartedAt: undefined,
-          },
-        });
-      },
-
-      resumeSession: () => {
-        const { active, activeRoutine } = get();
-        if (!active || active.running) return;
-        // A routine clock is also live (only reachable from persisted state
-        // predating this guard) — resuming would tick two clocks at once,
-        // same as a fresh start. Resolve it first (finish/discard it).
-        if (activeRoutine) return;
-        set({ active: { ...active, running: true, segmentStartedAt: nowISO() } });
-      },
-
-      setSessionNote: (note) => {
-        const { active } = get();
-        if (!active) return;
-        set({ active: { ...active, note } });
-      },
-
-      setSessionSignal: (marker) => {
-        const { active } = get();
-        if (!active) return;
-        set({ active: { ...active, signalledThrough: marker } });
-      },
-
-      cancelSession: () => set({ active: null }),
-
-      closeSession: (input) => {
-        const now = input.now ?? new Date();
-        const { active, db, activePlan } = get();
-        if (!active) return;
-        const item = db.items.find((i) => i.id === active.itemId);
-        if (!item) {
-          set({ active: null });
-          return;
-        }
-
-        const block = createBlock(
-          {
-            practiceItemId: item.id,
-            instrumentId: active.instrumentId,
-            materialId: active.materialId,
-            startedAt: active.startedAt,
-            endedAt: nowISO(now),
-            durationMinutes: input.durationMinutes,
-            mode: active.mode,
-            focus: active.focus,
-            constraint: active.constraint,
-            result: input.result,
-            observation: input.observation,
-            nextAction: input.nextAction,
-            createdReview: input.answer === 'scheduled',
-          },
-          now,
-        );
-
-        // The one decision behind closing a block: does the item get a next
-        // review at all, and — if so — the single date written to both the
-        // item and its new Review row (§1.1–§1.3).
-        const outcome = computeReviewOutcome({
-          item,
-          result: input.result,
-          answer: input.answer,
-          nextReviewDate: input.nextReviewDate,
-          reviewType: input.reviewType,
-          now,
-          params: clampSchedulingParams(db.settings),
-        });
-
-        const existing = db.blocks.filter((b) => b.practiceItemId === item.id);
-        let updatedItem = applyBlockStats(item, block, {
-          itemBlocksIncludingNew: [...existing, block],
-          now,
-          newStatus: input.newStatus,
-          nextReviewDate: outcome.nextReviewDate,
-        });
-        if (outcome.sr) {
-          updatedItem = {
-            ...updatedItem,
-            srReps: outcome.sr.srReps,
-            srEase: outcome.sr.srEase,
-            srIntervalDays: outcome.sr.srIntervalDays,
-            // The one-advance-per-day marker only moves when the decision
-            // actually advanced spacing; every other close leaves it alone.
-            ...(outcome.sr.srLastProgressDay ? { srLastProgressDay: outcome.sr.srLastProgressDay } : {}),
-          };
-        }
-        // Provenance travels with the date, from the same decision: an
-        // engine-proposed date is the engine's to move again, a typed one is
-        // the owner's and is protected until it comes due.
-        if (outcome.nextReviewSource !== undefined) {
-          updatedItem = {
-            ...updatedItem,
-            nextReviewSource: outcome.nextReviewSource ?? undefined,
-          };
-        }
-
-        // A question raised here becomes its own agenda entry. It never
-        // overwrites another question and never commits the item to a class.
-        const questionText = input.newQuestion?.text.trim();
-        // The same target validation the guarded action applies: a class on
-        // another instrument is never a valid target, so the question is saved
-        // honestly unassigned rather than pointed at somebody else's lesson.
-        const questionLessonId = input.newQuestion?.lessonId;
-        const questionLesson = questionLessonId ? db.lessons.find((l) => l.id === questionLessonId) : undefined;
-        const newQuestion = questionText
-          ? createQuestion({
-              id: newId(),
-              text: questionText,
-              instrumentId: item.instrumentId,
-              itemId: item.id,
-              lessonId: questionLesson?.instrumentId === item.instrumentId ? questionLesson.id : undefined,
-              now,
-            })
-          : undefined;
-
-        // Complete this item's open reviews only when the SAME decision that
-        // set the date says so, and schedule the next from that one date
-        // (§1.2). Deciding it separately and unconditionally here is exactly
-        // how the row and the date used to come apart.
-        const reviews = completeOpenReviewsFor({
-          reviews: db.reviews,
-          practiceItemId: item.id,
-          complete: outcome.completeOpenReviews,
-          result: input.result,
-          now,
-        });
-        if (outcome.review) {
-          reviews.push(
-            createReview(
-              {
-                practiceItemId: item.id,
-                dueDate: outcome.review.dueDate,
-                reviewType: outcome.review.reviewType,
-              },
-              now,
-            ),
-          );
-        }
-
-        // If a Session Plan is running and this block closed its current
-        // segment's item, mark that segment done and advance. The plain flow
-        // (no active plan) is byte-identical to before.
-        const nextPlan = activePlan ? completePlanSegment(activePlan, item.id) : activePlan;
-
-        set({
-          db: {
-            ...db,
-            blocks: [...db.blocks, block],
-            items: db.items.map((i) => (i.id === item.id ? updatedItem : i)),
-            reviews,
-            lessonAgenda: newQuestion ? [...db.lessonAgenda, newQuestion] : db.lessonAgenda,
-          },
-          active: null,
-          activePlan: nextPlan,
-        });
-      },
-
-      completeReview: (id, result) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            reviews: s.db.reviews.map((r) =>
-              r.id === id ? { ...r, completedAt: nowISO(now), result, updatedAt: nowISO(now) } : r,
-            ),
-          },
-        }));
-      },
-
-      notNowReview: (id) => {
-        const today = todayISODate();
-        set((s) => {
-          const sameDay = s.notNow.date === today;
-          return {
-            notNow: { date: today, ids: sameDay ? [...new Set([...s.notNow.ids, id])] : [id] },
-          };
-        });
-      },
-
-      snoozeReview: (id, days = SNOOZE_DAYS_DEFAULT) => {
-        const now = new Date();
-        const { dueDate } = snoozePlan(days, now);
-        // The existing correct model: one date, resolved once. The write is
-        // scoped to the SELECTED row only (applyReviewDateToRow) — snoozing
-        // one due review must not silently move a sibling open review for
-        // the same item, unlike closeSession/updateItem where the item's
-        // whole schedule is what's being decided.
-        const write = resolveReviewDate(dueDate)!;
-        set((s) => {
-          const review = s.db.reviews.find((r) => r.id === id);
-          if (!review) return s;
-          return {
-            db: {
-              ...s.db,
-              reviews:
-                applyReviewDateToRow({ reviews: s.db.reviews, reviewId: id, instruction: dueDate, now }) ??
-                s.db.reviews,
-              // Keep the item's own schedule in step so nothing shows overdue.
-              // A snooze is the owner's own choice of date, so it is stamped
-              // as theirs: extra practice before it must not quietly undo it.
-              items: s.db.items.map((i) =>
-                i.id === review.practiceItemId
-                  ? touch({ ...i, nextReviewDate: write.nextReviewDate, nextReviewSource: 'user' as const }, now)
-                  : i,
-              ),
-            },
-          };
-        });
-      },
-
-      // --- Pathways --------------------------------------------------------
-
-      scheduleReviewAgain: (itemId, dueDate, reviewType) => {
-        const now = new Date();
-        set((s) => {
-          const item = s.db.items.find((i) => i.id === itemId);
-          if (!item) return s;
-          const plan = scheduleAgainPlan({ item, reviews: s.db.reviews, dueDate, reviewType, now });
-          const reviews = plan.createRow
-            ? [
-                ...plan.reviews,
-                createReview({ practiceItemId: itemId, dueDate: plan.dueDate, reviewType: plan.reviewType }, now),
-              ]
-            : plan.reviews;
-          return {
-            db: {
-              ...s.db,
-              // The owner chose this date, so the engine treats it as
-              // authoritative until it comes due. No block, no result, no
-              // statistics and no SM-2 movement: this is administration.
-              items: s.db.items.map((i) =>
-                i.id === itemId
-                  ? touch({ ...i, nextReviewDate: plan.dueDate, nextReviewSource: 'user' as const }, now)
-                  : i,
-              ),
-              reviews,
-            },
-          };
-        });
-      },
-
-      useAutomaticReviewDates: (itemId) => {
-        const now = new Date();
-        const state = get();
-        // Decided against the LIVE item and rows, never against whatever a
-        // panel captured when it mounted — including whether the item is
-        // still there at all.
-        const transfer = transferToAutomaticReview({
-          item: state.db.items.find((i) => i.id === itemId),
-          reviews: state.db.reviews,
-          now,
-        });
-        if (!transfer.ok) return transfer.reason;
-        const reviews = transfer.createRow
-          ? [
-              ...transfer.reviews,
-              createReview(
-                { practiceItemId: itemId, dueDate: transfer.keptDate!, reviewType: transfer.reviewType, reason: AUTOMATIC_TRANSFER_REASON },
-                now,
-              ),
-            ]
-          : transfer.reviews;
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) => (i.id === itemId ? transfer.item : i)),
-            reviews,
-          },
-        }));
-        return null;
-      },
-
-      addPathway: (input) => {
-        const now = new Date();
-        const ts = nowISO(now);
-        const pathway: Pathway = {
-          id: newId(),
-          instrumentId: input.instrumentId,
-          name: input.name.trim(),
-          source: input.source?.trim() || undefined,
-          description: input.description?.trim() || undefined,
-          note: input.note?.trim() || undefined,
-          order: get().db.pathways.length,
-          createdAt: ts,
-          updatedAt: ts,
-        };
-        set((s) => ({ db: { ...s.db, pathways: [...s.db.pathways, pathway] } }));
-        return pathway.id;
-      },
-
-      updatePathway: (id, patch) => {
-        const now = new Date();
-        const current = get().db.pathways.find((p) => p.id === id);
-        const instrumentChanged = 'instrumentId' in patch && current && patch.instrumentId !== current.instrumentId;
-        set((s) => ({
-          db: {
-            ...s.db,
-            pathways: s.db.pathways.map((p) => (p.id === id ? touch({ ...p, ...patch }, now) : p)),
-            // Neither side is silently rewritten to agree — an incompatible
-            // placed routine is detached instead.
-            pathwayRoutines: instrumentChanged
-              ? detachIncompatibleRoutinesForPathway(s.db.pathwayRoutines, id, patch.instrumentId, now)
-              : s.db.pathwayRoutines,
-          },
-        }));
-      },
-
-      deletePathway: (id) => {
-        const now = new Date();
-        set((s) => {
-          const stageIds = new Set(s.db.pathwayStages.filter((st) => st.pathwayId === id).map((st) => st.id));
-          return {
-            db: {
-              ...s.db,
-              pathways: s.db.pathways.filter((p) => p.id !== id),
-              pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
-              // A user's routine is detached, never deleted — same rule as items.
-              pathwayRoutines: detachRoutinesFromPathway(s.db.pathwayRoutines, id, now),
-              // Items are kept — they simply leave their stages.
-              items: s.db.items.map((i) =>
-                i.stageId && stageIds.has(i.stageId) ? touch({ ...i, stageId: undefined }, now) : i,
-              ),
-            },
-          };
-        });
-      },
-
-      reseedDefaultPathways: () => {
-        const now = new Date();
-        const { db } = get();
-        const ids = {
-          guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-          setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
-          tar:
-            db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
-        };
-        const seeded = seedPathways(ids, now);
-        const have = new Set(db.pathways.map((p) => p.id));
-        const newP = seeded.pathways.filter((p) => !have.has(p.id));
-        const newIds = new Set(newP.map((p) => p.id));
-        set((s) => ({
-          db: {
-            ...s.db,
-            pathways: [...s.db.pathways, ...newP],
-            pathwayStages: [...s.db.pathwayStages, ...seeded.pathwayStages.filter((x) => newIds.has(x.pathwayId))],
-            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => !!x.pathwayId && newIds.has(x.pathwayId))],
-          },
-        }));
-      },
-
-      addStage: (pathwayId, input) => {
-        const now = new Date();
-        const ts = nowISO(now);
-        const order = get().db.pathwayStages.filter((s) => s.pathwayId === pathwayId).length;
-        const stage: PathwayStage = {
-          id: newId(),
-          pathwayId,
-          code: input.code.trim() || 'New',
-          title: input.title.trim(),
-          group: input.group?.trim() || undefined,
-          intro: input.intro?.trim() || undefined,
-          order,
-          createdAt: ts,
-          updatedAt: ts,
-        };
-        set((s) => ({ db: { ...s.db, pathwayStages: [...s.db.pathwayStages, stage] } }));
-        return stage.id;
-      },
-
-      updateStage: (id, patch) => {
-        const now = new Date();
-        set((s) => ({
-          db: { ...s.db, pathwayStages: s.db.pathwayStages.map((st) => (st.id === id ? touch({ ...st, ...patch }, now) : st)) },
-        }));
-      },
-
-      deleteStage: (id) => {
-        const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            pathwayStages: s.db.pathwayStages.filter((st) => st.id !== id),
-            // Stage deletion is not pathway deletion — the routine keeps its
-            // pathwayId and only stageId is cleared.
-            pathwayRoutines: detachRoutinesFromStage(s.db.pathwayRoutines, id, now),
-            // Items stay — they just leave the stage.
-            items: s.db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
-            // Un-pin any pathway pointing at the removed stage.
-            pathways: s.db.pathways.map((p) =>
-              p.currentStageId === id ? touch({ ...p, currentStageId: undefined }, now) : p,
-            ),
-          },
-        }));
-      },
-
-      renameSection: (pathwayId, oldGroup, newGroup) => {
-        const now = new Date();
-        const next = newGroup.trim() || undefined;
-        set((s) => ({
-          db: {
-            ...s.db,
-            pathwayStages: s.db.pathwayStages.map((st) =>
-              st.pathwayId === pathwayId && (st.group ?? undefined) === (oldGroup ?? undefined)
-                ? touch({ ...st, group: next }, now)
-                : st,
-            ),
-          },
-        }));
-      },
-
-      moveStage: (id, dir) => {
-        set((s) => {
-          const stage = s.db.pathwayStages.find((x) => x.id === id);
-          if (!stage) return s;
-          const sibs = s.db.pathwayStages
-            .filter((x) => x.pathwayId === stage.pathwayId)
-            .sort((a, b) => a.order - b.order);
-          const idx = sibs.findIndex((x) => x.id === id);
-          const swap = sibs[idx + dir];
-          if (!swap) return s;
-          const now = new Date();
-          return {
-            db: {
-              ...s.db,
-              pathwayStages: s.db.pathwayStages.map((x) =>
-                x.id === stage.id ? touch({ ...x, order: swap.order }, now) : x.id === swap.id ? touch({ ...x, order: stage.order }, now) : x,
-              ),
-            },
-          };
-        });
-      },
-
-      // --- Routines ----------------------------------------------------------
-
-      addRoutine: (input) => {
-        const now = new Date();
-        const ts = nowISO(now);
-        const draft: PathwayRoutine = {
-          id: newId(),
-          instrumentId: input.instrumentId,
-          pathwayId: input.pathwayId,
-          stageId: input.stageId,
-          name: input.name.trim() || 'New routine',
-          segments: input.segments ?? [],
-          order: get().db.pathwayRoutines.length,
-          createdAt: ts,
-          updatedAt: ts,
-        };
-        // Never trust the caller's bindings/placement on faith — the same
-        // invariant enforcement updateRoutine applies on every save.
-        const { db } = get();
-        const pathway = draft.pathwayId ? db.pathways.find((p) => p.id === draft.pathwayId) : undefined;
-        const stage = draft.stageId ? db.pathwayStages.find((st) => st.id === draft.stageId) : undefined;
-        const routine = retargetRoutineInstrument(draft, draft.instrumentId, db.items, pathway, stage, now);
-        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
-        return routine.id;
-      },
-
-      updateRoutine: (id, patch) => {
-        const now = new Date();
-        const { db } = get();
-        const current = db.pathwayRoutines.find((r) => r.id === id);
-        if (!current) return;
-        set((s) => ({
-          db: {
-            ...s.db,
-            pathwayRoutines: s.db.pathwayRoutines.map((r) => {
-              if (r.id !== id) return r;
-              const merged: PathwayRoutine = {
-                ...r,
-                name: patch.name.trim() || r.name,
-                segments: patch.segments,
-                instrumentId: patch.instrumentId,
-                pathwayId: patch.pathwayId,
-                stageId: patch.stageId,
-              };
-              // Always re-enforce the binding + placement invariants against
-              // the instrument actually being saved — whether or not it
-              // changed — rather than trusting whatever the form happened to
-              // submit.
-              const pathway = merged.pathwayId ? s.db.pathways.find((p) => p.id === merged.pathwayId) : undefined;
-              const stage = merged.stageId ? s.db.pathwayStages.find((st) => st.id === merged.stageId) : undefined;
-              return retargetRoutineInstrument(merged, merged.instrumentId, s.db.items, pathway, stage, now);
-            }),
-          },
-        }));
-      },
-
-      deleteRoutine: (id) => {
-        // Deleting the routine currently running must not strand
-        // `activeRoutine` pointing at a now-dead id (every other routine's
-        // Start would then redirect to a "Routine not found" dead end with
-        // no way back). Finish it first — honestly saving whatever bound-item
-        // time has genuinely elapsed, same as any other early finish — rather
-        // than silently discarding it.
-        if (get().activeRoutine?.routineId === id) get().finishRoutine();
-        set((s) => ({ db: { ...s.db, pathwayRoutines: s.db.pathwayRoutines.filter((r) => r.id !== id) } }));
-      },
-
-      duplicateRoutine: (id) => {
-        const now = new Date();
-        const { db } = get();
-        const routine = db.pathwayRoutines.find((r) => r.id === id);
-        if (!routine) return '';
-        const copy = duplicateRoutineData(routine, db.pathwayRoutines.length, now);
-        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, copy] } }));
-        return copy.id;
-      },
-
-      startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
-        const { activeRoutine, active } = get();
-        // Same guard as startSession, in the other direction: an ordinary
-        // block already running must be resolved before a routine can start.
-        if (active) return;
-        if (activeRoutine && activeRoutine.routineId !== routineId) return;
-        set({
-          activeRoutine: {
-            routineId,
-            shortOnTime,
-            authoredSegments,
-            segs: toRunSegments(authoredSegments),
-            accumulatedSeconds: 0,
-            running: true,
-            runningSince: nowISO(),
-          },
-        });
-      },
-
-      pauseRoutineRun: () => {
-        const { activeRoutine } = get();
-        if (!activeRoutine?.running) return;
-        set({
-          activeRoutine: {
-            ...activeRoutine,
-            accumulatedSeconds: runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, true, new Date()),
-            running: false,
-            runningSince: undefined,
-          },
-        });
-      },
-
-      resumeRoutineRun: () => {
-        const { activeRoutine, active } = get();
-        if (!activeRoutine || activeRoutine.running) return;
-        // Same guard as resumeSession, in the other direction.
-        if (active) return;
-        set({ activeRoutine: { ...activeRoutine, running: true, runningSince: nowISO() } });
-      },
-
-      // Mutates segs only — never decides the run is over. Whether a skip
-      // lands on the final segment (locateClock's `finished` flips true) is
-      // detected uniformly by RoutineRunner's one completion effect, the same
-      // place natural (tick/background-catch-up) completion is detected. A
-      // second "did this finish it" branch here previously called
-      // finishRoutine() directly, bypassing the component's result snapshot
-      // and leaving the screen blank once activeRoutine was cleared out from
-      // under it.
-      skipRoutineRun: () => {
-        const { activeRoutine } = get();
-        if (!activeRoutine) return;
-        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
-        const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
-        // Skip clamps the boundary onto elapsed itself — acknowledge it silently
-        // (never nextSignal's announcing path), or the very next render would
-        // see a freshly-passed boundary and announce a segment the user just
-        // chose to end themselves.
-        const signalledThrough = acknowledgeThrough(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
-        set({ activeRoutine: { ...activeRoutine, segs, signalledThrough } });
-      },
-
-      setRoutineSignal: (marker) => {
-        const { activeRoutine } = get();
-        if (!activeRoutine) return;
-        set({ activeRoutine: { ...activeRoutine, signalledThrough: marker } });
-      },
-
-      finishRoutine: () => {
-        const { activeRoutine, db } = get();
-        if (!activeRoutine) return;
-        const now = new Date();
-        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, now);
-        const outcome = applyRoutineRun(activeRoutine.segs, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
-        const updatedById = new Map(outcome.items.map((i) => [i.id, i]));
-        set((s) => ({
-          activeRoutine: null,
-          db: {
-            ...s.db,
-            blocks: outcome.blocks.length > 0 ? [...s.db.blocks, ...outcome.blocks] : s.db.blocks,
-            items: s.db.items.map((i) => updatedById.get(i.id) ?? i),
-          },
-        }));
-      },
-
-      exportDB: () => get().db,
-
-      // The three — and only three — places a new `db` object is installed.
-      // Each is a single `set()` of `installDatabase`, which returns the new
-      // database TOGETHER WITH the ephemeral reset: no path can install a
-      // database while leaving the running plan, today's dismissed reviews or
-      // a now-dangling session instrument pointing at the one it replaced.
-      // (resetDemo and clearAll never pass through importFullBackup, so a fix
-      // that lived only there would silently miss two of the three.)
-      importDB: (raw) => {
-        set((s) => installDatabase({ db: validateDB(raw), sessionInstrumentId: s.sessionInstrumentId }));
-      },
-
-      resetDemo: () => {
-        void clearBlobs();
-        set((s) => installDatabase({ db: createSeedDB(), sessionInstrumentId: s.sessionInstrumentId }));
-      },
-
-      clearAll: () => {
-        void clearBlobs();
-        set((s) => installDatabase({ db: emptyDB(), sessionInstrumentId: s.sessionInstrumentId }));
-      },
-    })),
-    {
-      name: 'practice-compass',
-      version: SCHEMA_VERSION,
-      storage: createJSONStorage(() => idbStorage),
-      partialize: (s) => ({
-        db: s.db,
-        rev: s.rev,
-        active: s.active,
-        theme: s.theme,
-        sessionInstrumentId: s.sessionInstrumentId,
-        notNow: s.notNow,
-        activePlan: s.activePlan,
-        planMinutesByInstrument: s.planMinutesByInstrument,
-        activeRoutine: s.activeRoutine,
-      }),
-      // Every other inbound door — manual import, sync pull, Keep remote,
-      // archive restore — installs a database only through `validateDB`
-      // (§C7): it refuses a newer-than-supported schema outright instead of
-      // relabelling it down, runs the shared migration chain, and rejects
-      // structurally/semantically invalid data (an impossible calendar date,
-      // a dangling live reference) with actionable detail. Hydration used to
-      // call `migrateToCurrent` directly instead, which does none of that —
-      // a persisted schema newer than this build understands got silently
-      // stamped down to SCHEMA_VERSION (migrations.ts's own final line) and
-      // hydrated anyway, and already-current-but-invalid data sailed
-      // straight into live state. Routing both hooks below through
-      // `validateDB` closes that gap at the one place ALL persisted state
-      // re-enters live state, rather than teaching every UI caller to check
-      // it separately.
-      //
-      // Letting `validateDB` THROW here (never caught) is deliberate, not an
-      // oversight: zustand's own hydrate() only calls `merge` — and only
-      // persists the result back to storage — once `migrate` has RETURNED,
-      // and only calls its raw internal `set()` once `merge` has returned. A
-      // thrown validation error rejects that promise chain before either
-      // happens (see zustand's `middleware.js`), so the previously live AND
-      // the previously persisted state are both left exactly as they were:
-      // no partial hydration, no silent downgrade-and-relabel, no
-      // destructive write-back of a refused newer snapshot. This trades away
-      // opening the app's hydration gate on a refusal (zustand's own
-      // `hasHydrated`/`onFinishHydration` are wired to the success path
-      // only) — a deliberate choice, not an oversight: EVERY external call
-      // to `useStore.setState` — which is the only way to flip that gate —
-      // is itself wrapped by this same persist middleware to write straight
-      // back to storage afterwards, so forcing the gate open here would
-      // re-persist whatever `db` is currently live and silently destroy the
-      // very data a refusal (most of all a genuinely newer schema) exists to
-      // protect. `getLastHydrationError()` below still surfaces WHY, without
-      // that write.
-      migrate: (persisted) => {
-        const state = persisted as { db?: PracticeDB; active?: unknown } | undefined;
-        // `validateDB` reads the schema version off `state.db` itself (the
-        // same source of truth every other inbound door uses) rather than
-        // the envelope-level version zustand would pass as a second
-        // argument here — the two are always kept in sync by this app's own
-        // writes, and deriving from one place avoids two version signals
-        // that could ever disagree.
-        if (state?.db) state.db = validateDB(state.db);
-        // `active` lives OUTSIDE PracticeDB, so `validateDB` cannot see its
-        // scratch observation — yet it reaches live state through this very
-        // boundary and is rendered the moment the practice screen opens.
-        const unfinished = validateUnfinishedText((persisted as { active?: unknown } | undefined)?.active);
-        if (unfinished) throw new Error(unfinished);
-        return state as unknown;
-      },
-      merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<StoreState>;
-        // Zustand only calls `migrate` above when the persisted version
-        // differs from the current one — a persisted database that ALREADY
-        // claims the current schema never reaches it, even when it carries a
-        // stray `assignedForLesson`/`teacherQuestion` an interrupted write
-        // left behind, or genuinely invalid current-schema data a corrupt
-        // write produced. `merge` is the one place ALL persisted state
-        // re-enters live state regardless of whether `migrate` ran (the same
-        // reasoning the active/activeRoutine freeze below relies on), so it
-        // is where both the idempotent legacy conversion AND the §C7
-        // validation close for good: run the SAME `validateDB` call
-        // `migrate` makes, unconditionally. Calling it again on state
-        // `migrate` already validated is safe and cheap — it is pure and
-        // `migrateToV12`'s own docstring guarantees its tail step is a no-op
-        // wherever no legacy field survives — and throwing here on invalid
-        // current-version data is exactly as safe as throwing in `migrate`:
-        // `set()` is never reached, and this branch never queues a persist
-        // write-back regardless (zustand only writes back after a
-        // version-mismatched `migrate` ran).
-        const db = p.db ? validateDB(p.db) : current.db;
-        const unfinished = validateUnfinishedText(p.active);
-        if (unfinished) throw new Error(unfinished);
-        const merged = { ...current, ...p, db };
-        // The start/resume guards keep active/activeRoutine from BOTH being
-        // set going forward, but a device that persisted a dual-running
-        // state before those guards existed reaches this merge unchecked —
-        // hydration is the one place ALL persisted state re-enters the
-        // store, so it's the one place left to close. Passing both straight
-        // through would let each keep ticking live from its own timestamp
-        // and double-log the same wall-clock interval, exactly the bug the
-        // guards exist to prevent. Freeze both (the same transform
-        // pauseSession/pauseRoutineRun already do) rather than discarding
-        // either: nothing already elapsed is lost, neither clock advances
-        // further on its own, and the ordinary finish/discard flow is what
-        // the user resolves one with before the guards allow resuming or
-        // starting the other.
-        if (merged.active && merged.activeRoutine) {
-          const now = new Date();
-          merged.active = {
-            ...merged.active,
-            accumulatedSeconds: sessionElapsedSeconds(merged.active, now),
-            running: false,
-            segmentStartedAt: undefined,
-          };
-          merged.activeRoutine = {
-            ...merged.activeRoutine,
-            accumulatedSeconds: runElapsedSeconds(
-              merged.activeRoutine.accumulatedSeconds,
-              merged.activeRoutine.runningSince,
-              merged.activeRoutine.running,
-              now,
-            ),
-            running: false,
-            runningSince: undefined,
-          };
-        }
-        return merged;
-      },
-      // A thrown `migrate`/`merge` above rejects zustand's internal hydration
-      // promise before it ever calls its OWN raw `set()` — correct, and the
-      // whole point: it's what leaves both live and persisted state
-      // untouched. Recording the reason here must not undo that: EVERY
-      // external call to `useStore.setState` (any ordinary store action
-      // included) is itself wrapped by this same persist middleware to
-      // write straight back to storage afterwards — see `setItem()` below
-      // this config and its unconditional call from `api.setState`. Calling
-      // it here to flip a "hydration failed" flag would immediately
-      // re-persist whatever `db` happens to be live, silently overwriting
-      // the very data this refusal exists to protect (a genuinely newer
-      // schema this build cannot read, most of all). `lastHydrationError` is
-      // therefore a plain module variable, never store state — but a cold
-      // start (nothing has ever hydrated successfully) needs a REACTIVE
-      // signal too, or the UI has no way to notice the refusal and stays on
-      // "Loading…" forever: `useHydrationStatus` below is a separate,
-      // unpersisted store (the same shape `useSyncStatus` already uses for
-      // sync phase), so writing to IT never touches `useStore`'s persist
-      // middleware and can never become the destructive write-back this
-      // guard exists to prevent.
-      onRehydrateStorage: () => (_state, error) => {
-        lastHydrationError = error ? (error instanceof Error ? error.message : String(error)) : null;
-        useHydrationStatus.setState(
-          error
-            ? { refused: true, message: lastHydrationError, tooNew: error instanceof SchemaTooNewError }
-            : { refused: false, message: null, tooNew: false },
-        );
-      },
-    },
-  ),
-);
 
 /**
- * The message from the most recent REFUSED hydration attempt (§C7), or null
- * if the last attempt installed cleanly. Deliberately not store state: see
- * `onRehydrateStorage` above for why recording it through `useStore.setState`
- * would itself trigger the exact destructive write-back this guard exists to
- * prevent.
+ * Import a backup through the REAL Settings control — the same path the owner
+ * uses, file picker and confirmation included. No debug hook, no direct store
+ * access: a journey that seeded itself through a back door would prove nothing
+ * about the door the owner actually walks through.
  */
-let lastHydrationError: string | null = null;
-export function getLastHydrationError(): string | null {
-  return lastHydrationError;
+export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
+  const { page } = app;
+  await openSettings(app);
+  await page.getByLabel('Import backup file').setInputFiles({
+    name,
+    mimeType: 'application/json',
+    buffer: Buffer.from(json, 'utf8'),
+  });
+  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
 }
 
-export interface HydrationStatus {
-  /** True from the moment a hydration attempt is refused (§C7) — including
-   *  the very first one this device ever makes, so a cold start with already
-   *  invalid persisted bytes is never silently indistinguishable from an
-   *  ordinary in-flight load. */
-  refused: boolean;
-  /** The refusal's human-readable message, or null when not refused. */
-  message: string | null;
-  /** True when the refusal was specifically a newer-than-supported schema —
-   *  an app update fixes this, not a data restore. */
-  tooNew: boolean;
-}
 /**
- * The reactive counterpart to `getLastHydrationError()`: what `App.tsx`
- * actually subscribes to so a refused cold start can render an explanation
- * instead of staying on "Loading…" indefinitely (`hydrated` never turns
- * true on a refusal, and zustand's own `onFinishHydration` is wired to the
- * success path only). Never persisted, never derived from `useStore` —
- * see `onRehydrateStorage` above for why.
+ * Reach Settings the way the owner does — More → Settings. The practice
+ * screens hide the tab bar (they are the one place the app asks for undivided
+ * attention), so from one of those this takes the route directly instead of
+ * waiting forever for a nav that is deliberately not there.
  */
-export const useHydrationStatus = create<HydrationStatus>(() => ({
-  refused: false,
-  message: null,
-  tooNew: false,
-}));
-
-// Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
-function finishHydration() {
-  if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
-    useStore.setState({ db: createSeedDB(), hydrated: true });
+export async function openSettings(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  if (await page.getByRole('navigation', { name: 'Primary' }).isVisible()) {
+    await page.getByRole('link', { name: 'More' }).click();
+    // "Settings" also names a link inside Settings' own copy once the page is
+    // open, so take the one on the More menu — the first in the document.
+    await page.getByRole('link', { name: 'Settings' }).first().click();
   } else {
-    useStore.setState({ hydrated: true });
+    await goTo(app, '/settings');
+  }
+  await page.getByLabel('Import backup file').waitFor({ state: 'attached', timeout: 20_000 });
+}
+
+/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
+export async function importOutcome(app: PracticeApp): Promise<string> {
+  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
+}
+
+/**
+ * Go to a route the way the owner does, then wait for the app to settle.
+ *
+ * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
+ * the tab bar — they are the one place the app asks for undivided attention —
+ * so those routes wait on their own first control instead.
+ */
+const FOCUSED_ROUTES = /^\/(active|close|routine)/;
+
+export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
+  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
+  if (FOCUSED_ROUTES.test(hashPath)) {
+    await app.page.locator('main').waitFor({ timeout: 20_000 });
+    await app.page.waitForFunction(() => (document.querySelector('main')?.textContent ?? '').length > 0);
+    return;
+  }
+  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+}
+
+/** Reload, proving a claim survived in IndexedDB rather than in React state. */
+export async function reload(app: PracticeApp): Promise<void> {
+  // The store persists to IndexedDB asynchronously (that is the whole reason
+  // App gates render on `hydrated`), so a reload fired in the same tick as the
+  // click can outrun the write. This wait is about the storage platform, not
+  // about the app: it is real wall-clock time in Node, unaffected by the
+  // page's faked clock.
+  await app.page.waitForTimeout(400);
+  await app.page.reload();
+  await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
+}
+
+const KV_KEY = 'practice-compass';
+
+/**
+ * Read the raw bytes the app's own persist middleware would read on the next
+ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
+ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
+ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
+ */
+export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
+  return app.page.evaluate(
+    (key) =>
+      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readonly');
+          const get = tx.objectStore('kv').get(key);
+          get.onsuccess = () => {
+            db.close();
+            resolve(JSON.parse((get.result as { value: string }).value));
+          };
+          get.onerror = () => reject(get.error);
+        };
+      }),
+    KV_KEY,
+  );
+}
+
+/**
+ * Write directly into the app's own IndexedDB `kv` store — the way an
+ * ALREADY-hydrated device holds its persisted state — bypassing every
+ * import/migration door entirely. The one way to reach the "persisted
+ * version already matches the current schema" hydration path: Zustand's
+ * persist middleware only calls `migrate` when the persisted version differs
+ * from the current one, and every JSON-import door runs `validateDB`
+ * regardless of what version a FILE claims.
+ */
+export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
+  await app.page.evaluate(
+    ({ key, state, version }) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    { key: KV_KEY, state, version },
+  );
+}
+
+/**
+ * Export a full backup through the REAL Settings control and return its text.
+ * Same button the owner presses, same file the browser would save — the point
+ * of a rollback test is the artefact the app actually produces, not one a test
+ * rebuilt from the store.
+ */
+export async function exportBackup(app: PracticeApp): Promise<string> {
+  const { page } = app;
+  await openSettings(app);
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30_000 }),
+    page.getByRole('button', { name: /Export backup/ }).click(),
+  ]);
+  const path = await download.path();
+  return readFile(path, 'utf8');
+}
+
+/**
+ * Wait until the app's OWN persisted bytes satisfy a predicate — a real
+ * IndexedDB acknowledgement of a write, never a sleep. A timeout fails with
+ * the state actually found, so a slow write and a missing write look different.
+ */
+export async function persistedUntil<T>(
+  app: PracticeApp,
+  read: (state: { state: unknown; version: number }) => T,
+  predicate: (value: T) => boolean,
+  timeoutMs = 10_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: T | undefined;
+  for (;;) {
+    last = read(await readPersistedState(app));
+    if (predicate(last)) return last;
+    if (Date.now() > deadline) {
+      throw new Error(`Persisted state never satisfied the check. Last value: ${JSON.stringify(last)}`);
+    }
+    await app.page.waitForTimeout(50);
   }
 }
-if (useStore.persist.hasHydrated()) finishHydration();
-else useStore.persist.onFinishHydration(finishHydration);
+
+/** The database as the app has actually PERSISTED it, not as it is rendering it. */
+export async function persistedDb(app: PracticeApp): Promise<{
+  items: Record<string, unknown>[];
+  blocks: Record<string, unknown>[];
+  reviews: Record<string, unknown>[];
+  lessonAgenda: Record<string, unknown>[];
+  schemaVersion: number;
+}> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: never }).db;
+}
+
+// ---------------------------------------------------------------------------
+// A GitHub data repo that lives in this test process.
+//
+// It is installed at the REAL transport boundary — the `fetch` calls
+// `gitRemote.ts` makes to api.github.com — so everything above it runs for
+// real: `syncNow`, `resolveConflict`, `runSync`, `decideSync`, the pre-sync
+// archive, and `importFullBackup`'s own guards. Nothing in the app is stubbed
+// or bypassed, and no request ever leaves the machine.
+// ---------------------------------------------------------------------------
+
+export interface FakeRemote {
+  /** The snapshot the repo currently holds, or null for an empty repo. */
+  snapshot: { stateText: string; hash: string; rev: number; deviceName?: string; savedAt: string } | null;
+  /** Every ref this repo has, so an archive branch is observable. */
+  refs: string[];
+  /** How many times each endpoint was called, so "it really went there" is checkable. */
+  calls: string[];
+  /**
+   * The published Setar source index — the ONE file on the source-index
+   * branch that the NAS scanner writes and the app only ever GETs. Null until
+   * something publishes it.
+   */
+  sourceIndex: { text: string; commit: string } | null;
+}
+
+export function newFakeRemote(): FakeRemote {
+  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
+}
+
+/** Put a snapshot in the repo as if another device had pushed it. */
+export function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
+  remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
+  if (!remote.refs.includes('main')) remote.refs.push('main');
+}
+
+/**
+ * Re-stamp an index with the digest the SCANNER would have written for it.
+ *
+ * The app recomputes this digest at its reader boundary and refuses an index
+ * whose content and hash disagree, so a journey that edits a fixture index must
+ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
+ * ONE implementation, here beside `publishSourceIndex`, so no journey can
+ * quietly hand-edit a hash instead.
+ */
+export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
+  const body = { ...index };
+  delete body.contentHash;
+  delete body.generatedAt;
+  const sorted = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sorted);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[k];
+        if (v !== undefined) out[k] = sorted(v);
+      }
+      return out;
+    }
+    return value;
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({ ...index, contentHash });
+}
+
+/** Put a source index on the source-index branch, as the NAS publisher would. */
+export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
+  remote.sourceIndex = { text, commit };
+  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
+}
+
+export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
+  let headCounter = 0;
+  const blobs = new Map<string, string>();
+
+  await page.route('https://api.github.com/**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    // /repos/<owner>/<name>/<rest…>
+    const rest = url.pathname.split('/').slice(4).join('/');
+    const method = req.method();
+    remote.calls.push(`${method} ${rest}`);
+    // A FULFILLED response is still subject to the browser's own CORS check.
+    // Chromium lets a routed cross-origin request through; WebKit does not, and
+    // an unadorned reply surfaces as "Fetch API cannot load … due to access
+    // control checks" — a harness artefact that looks exactly like an app bug.
+    // The real api.github.com sends these headers, so sending them here is the
+    // fake behaving like the thing it stands in for.
+    const CORS = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
+    };
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
+    const json = (body: unknown, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
+    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
+    const head = () => `head-${headCounter}`;
+
+    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
+    // the file "on the branch" instead would be a second, later state.
+    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
+      if (!remote.sourceIndex) return json({}, 404);
+      return json({ object: { sha: remote.sourceIndex.commit } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
+      const ref = url.searchParams.get('ref');
+      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
+      return json({
+        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
+        encoding: 'base64',
+        size: remote.sourceIndex.text.length,
+      });
+    }
+    if (method === 'GET' && rest === 'git/ref/heads/main') {
+      if (!remote.snapshot) return json({}, 404);
+      return json({ object: { sha: head() } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
+      if (!remote.snapshot) return json({}, 404);
+      return raw(
+        JSON.stringify({
+          formatVersion: 2,
+          hash: remote.snapshot.hash,
+          rev: remote.snapshot.rev,
+          deviceName: remote.snapshot.deviceName,
+          savedAt: remote.snapshot.savedAt,
+          attachments: [],
+        }),
+      );
+    }
+    if (method === 'GET' && rest.startsWith('contents/state.json')) {
+      if (!remote.snapshot) return json({}, 404);
+      return raw(remote.snapshot.stateText);
+    }
+    if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
+    if (method === 'GET' && rest.startsWith('git/blobs/')) {
+      return json({ content: blobs.get(rest.slice('git/blobs/'.length)) ?? '' });
+    }
+    if (method === 'PUT' && rest.startsWith('contents/README.md')) {
+      headCounter += 1;
+      if (!remote.refs.includes('main')) remote.refs.push('main');
+      return json({ commit: { sha: head() } });
+    }
+    if (method === 'POST' && rest === 'git/blobs') {
+      const body = req.postDataJSON() as { content: string };
+      const sha = `blob-${blobs.size}`;
+      blobs.set(sha, body.content);
+      return json({ sha });
+    }
+    if (method === 'POST' && rest === 'git/trees') return json({ sha: 'tree-1' });
+    if (method === 'POST' && rest === 'git/commits') {
+      headCounter += 1;
+      return json({ sha: head() });
+    }
+    if (method === 'POST' && rest === 'git/refs') {
+      const body = req.postDataJSON() as { ref: string };
+      remote.refs.push(body.ref.replace('refs/heads/', ''));
+      return json({});
+    }
+    if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
+    return json({ message: 'not routed' }, 404);
+  });
+}
+
+/**
+ * Wrap a database in the shape `state.json` holds: a full backup with NO file
+ * payloads (attachments travel as separate git blobs).
+ */
+export function remoteStateText(db: unknown, deviceName = 'the other device'): string {
+  return JSON.stringify({
+    app: 'practice-compass',
+    schemaVersion: (db as { schemaVersion?: number }).schemaVersion ?? 13,
+    exportedAt: new Date().toISOString(),
+    deviceName,
+    data: db,
+    files: [],
+  });
+}
+
+/** Connect sync through the REAL Settings form and run the first sync. */
+export async function connectSync(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  await goTo(app, '/settings');
+  // The sync form's fields sit inside a labelled group rather than carrying
+  // their own accessible names. That is pre-existing Settings markup this lane
+  // is explicitly not reshaping, so this reaches them the way they actually
+  // are rather than pretending otherwise.
+  await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
+  await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
+  await page.getByRole('button', { name: 'Connect & sync' }).click();
+  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
+}
+
+/** The sync section's own status line, whatever it currently says. */
+export async function syncMessage(page: Page): Promise<string> {
+  return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
+}
+```
+
+### tests/setarArchive.browser.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import {
+  connectSync,
+  goTo,
+  importBackup,
+  installFakeGitHub,
+  newFakeRemote,
+  openPracticeApp,
+  persistedUntil,
+  publishSourceIndex,
+  readPersistedState,
+  stampSourceIndex,
+  reload,
+  type Engine,
+  type PracticeApp,
+} from './practiceBrowser';
+
+// ---------------------------------------------------------------------------
+// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
+//
+// Refresh → a historical class with its real material → a canonical piece →
+// the material that is genuinely useful for it → Start → open a file, with the
+// practice clock untouched. The corpus is the checked-in index derived from the
+// real archive, the clock is frozen, and every control is reached by its
+// accessible name — no debug hook, no source regex.
+//
+// A missing engine FAILS with an install instruction; it never skips.
+// ---------------------------------------------------------------------------
+
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 900 };
+
+interface Db {
+  items: {
+    id: string;
+    title: string;
+    status: string;
+    persian?: { composer?: string };
+    source?: { pieceKey: string };
+  }[];
+  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
+  blocks: unknown[];
+  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
+}
+
+async function db(app: PracticeApp): Promise<Db> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: Db }).db;
+}
+
+/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
+async function setUp(app: PracticeApp, indexText: string) {
+  const remote = newFakeRemote();
+  await installFakeGitHub(app.page, remote);
+  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+  await connectSync(app);
+  publishSourceIndex(remote, indexText);
+  return remote;
+}
+
+async function refresh(app: PracticeApp) {
+  await goTo(app, '/settings');
+  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
+}
+
+/**
+ * An index with one more class than the corpus — the delta a refresh applies.
+ *
+ * Re-STAMPED with the digest the scanner itself would have written: the app
+ * recomputes that digest and refuses an index whose content and hash disagree,
+ * so a journey may not hand-edit a hash to fake a new scan.
+ */
+async function withSession40(text: string): Promise<string> {
+  const index = JSON.parse(text) as {
+    contentHash: string;
+    sessions: unknown[];
+    pieces: { key: string; composer: string }[];
+  };
+  index.sessions = [
+    ...index.sessions,
+    {
+      n: 40,
+      date: '2026-09-29',
+      folder: 'session-40-29-09-2026',
+      roster: [index.pieces[0]!.key],
+      rosterTrusted: true,
+      hasClassRecording: true,
+      resources: [
+        {
+          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
+          role: 'ضبط-کلاس',
+          kind: 'video',
+          title: 'ضبط کلاس',
+          part: null,
+          pieces: [],
+          group: null,
+        },
+      ],
+      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
+    },
+  ];
+  return stampSourceIndex(index as unknown as Record<string, unknown>);
+}
+
+/** The composer this journey's re-scanned registry proposes for one piece. */
+const NEW_COMPOSER = 'میرزا-عبدالله';
+
+/**
+ * A re-scanned index whose REGISTRY has improved: one piece the owner already
+ * has now names a different composer. That is a suggestion, never a write.
+ */
+async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
+  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
+  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
+  const was = target.composer;
+  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
+  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
+}
+
+describe('the Setar archive, rendered', () => {
+  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const viewport of [PHONE, DESKTOP]) {
+        const app = await openPracticeApp({ now: NOW, viewport, engine });
+        try {
+          const { page } = app;
+          const remote = await setUp(app, INDEX_TEXT);
+
+          // --- REFRESH: one action, a readable summary, no crawler output ---
+          await refresh(app);
+          const summary = await page.locator('main').innerText();
+          // Four of the owner's own legacy classes carry EXACT source-path evidence,
+          // so they are adopted rather than duplicated; the other 35 are new.
+          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
+          // It says the index CHANGED or was FETCHED — never that a scan ran.
+          expect(summary).not.toMatch(/last scanned/i);
+          expect(summary).toMatch(/needing attention/);
+          // Import policy is stated BEFORE the import, not discovered after.
+          expect(summary).toMatch(/New pieces arrive resting/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+
+          const after = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 40 && d.items.length === 96,
+          );
+          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+          expect(after.items.filter((i) => i.source)).toHaveLength(94);
+          // The owner's own upcoming class 38 and the archive's class 38 both
+          // exist, on their own dates.
+          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
+            '2026-08-04',
+            '2026-09-27',
+          ]);
+
+          // --- A HISTORICAL CLASS, with its real material -------------------
+          // Lessons is a two-pane list at 1000px and stacked cards below it, so
+          // this journey drives whichever the viewport actually renders.
+          await goTo(app, '/lessons');
+          const wide = viewport.width >= 1000;
+          /**
+           * Open one class and read what it actually renders — the whole page
+           * on the wide two-pane layout, the card itself on the phone, where
+           * rows start compact and must be opened first.
+           */
+          const openClass = async (label: string, number: number): Promise<string> => {
+            if (wide) {
+              await page.getByRole('button', { name: new RegExp(label) }).first().click();
+              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+              return page.locator('main').innerText();
+            }
+            const card = page.getByRole('article').filter({ hasText: label });
+            await card.first().waitFor({ timeout: 20_000 });
+            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
+            // all open at once just because none of them has notes yet.
+            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
+            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
+            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+            return card.innerText();
+          };
+          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
+          // The class recording is here, with its part numbers; a named score
+          // is here; nothing claims a demonstration belongs to the class alone.
+          expect(lessonText).toContain('ضبط کلاس');
+          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
+
+          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
+          //
+          // Class 25 is an ADOPTED legacy class carrying three of the owner's
+          // OWN references — personal takes the index describes nowhere, by
+          // construction — beside the archive's session material. The composed
+          // list used to include the owner's rows as well, so each of them was
+          // rendered twice: once where it can be edited and removed, and once
+          // again above it.
+          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+          const adopted = await openClass('Class 25 · 2025-08-05', 25);
+          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
+            expect(occurrences(adopted, authored)).toBe(1);
+          }
+          // …and they are still editable where they live: the section that owns
+          // them can still remove them, by name.
+          const owning = wide
+            ? page.locator('main')
+            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
+          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
+          // A class the archive gave a recording to is NOT invited to add one.
+          // Class 12 is a purely imported class: it keeps no copy of its
+          // session's files, so its own `recordings` array is empty and the
+          // empty-state card offered to add the very video playing above it.
+          const imported = await openClass('Class 12 · 2024-08-06', 12);
+          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
+          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
+
+          // --- A CANONICAL PIECE, and the material that is useful for it ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
+          // through the existing Farsi matcher.
+          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
+          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
+          await found.waitFor({ timeout: 20_000 });
+          await found.click();
+          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
+
+          const itemText = await page.locator('main').innerText();
+          // Its OWN notation, with provenance…
+          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
+          // …the demonstration that covers its session…
+          expect(itemText).toContain('teacher’s demonstration');
+          // …and NOT the class recording, and NOT anyone's practice takes.
+          expect(itemText).not.toContain('class recording');
+          expect(itemText).not.toContain('تمرین من');
+          // Imported pieces arrive resting.
+          expect(itemText).toMatch(/Resting/);
+
+          // --- DIRECT START, and opening material with the clock untouched --
+          await page.getByRole('button', { name: 'Start a block' }).click();
+          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+          const clockBefore = await page.locator('main').innerText();
+          // Material on the practice screen is ONE CLOSED disclosure.
+          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
+          // CLOSED until asked for: nothing is listed before the tap.
+          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
+          await materialToggle.click();
+          const openButtons = page.getByRole('button', { name: 'Open' });
+          expect(await openButtons.count()).toBeGreaterThan(0);
+          // Every control has an accessible name and is reachable by keyboard.
+          await page.keyboard.press('Tab');
+          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
+          // Opening a file never disturbs the running block.
+          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
+            clockBefore.includes('Finish'),
+          );
+          const blocksBefore = (await db(app)).blocks.length;
+          // The harness accepts the confirm() for the whole journey.
+          await page.getByRole('button', { name: 'Discard block' }).click();
+          expect((await db(app)).blocks).toHaveLength(blocksBefore);
+
+          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
+          const wrapped = await page.evaluate(() => {
+            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
+              /[؀-ۿ]/.test(n.textContent ?? ''),
+            );
+            if (!el) return null;
+            const box = el.getBoundingClientRect();
+            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
+          });
+          expect(wrapped).not.toBeNull();
+          expect(wrapped!.rtl).toBe('rtl');
+          expect(wrapped!.overflows).toBe(false);
+
+          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: 'Already current' }).click();
+          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
+
+          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
+          await refresh(app);
+          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const delta = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 41,
+          );
+          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
+
+          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
+          // The registry improves. That is an OFFER, field by field: nothing
+          // about the owner's own piece changes until they say so, and the
+          // choice must survive the commit even when the index behind it is
+          // already the one installed.
+          const better = await withBetterComposer(INDEX_TEXT);
+          publishSourceIndex(remote, better.text, 'source-index-commit-4');
+          await refresh(app);
+          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
+          await offerRow.first().waitFor({ timeout: 20_000 });
+          const offerText = await page.locator('main').innerText();
+          // The section label is rendered uppercase by the stylesheet, and
+          // innerText returns what is actually rendered.
+          expect(offerText).toMatch(/the archive knows more about these/i);
+          expect(offerText).toContain(better.key);
+          expect(offerText).toContain(NEW_COMPOSER);
+          // Applying WITHOUT answering updates the source graph and leaves the
+          // owner's own piece exactly as it was.
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const unanswered = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
+          );
+          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
+
+          // THE SAME INDEX, a NEW answer. The graph is already current, so a
+          // refresh judged by the index hash alone called this "Already
+          // current" and threw the answer away unwritten.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const answeredDb = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
+          );
+          // Only that field moved: the piece keeps its title and its history.
+          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
+          expect(answeredDb.blocks).toHaveLength(1);
+          // …and the offer is gone, because it has been taken.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+
+          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
+          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
+          await goTo(app, '/settings');
+          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
+          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
+
+          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
+          await reload(app);
+          const persisted = await db(app);
+          expect(persisted.lessons).toHaveLength(41);
+          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
+          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
+          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
+          expect(persisted.blocks).toHaveLength(1);
+          expect(app.pageErrors).toEqual([]);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  });
+});
 ```
 
 ## Check against the contract
