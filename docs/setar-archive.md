@@ -162,6 +162,21 @@ two scripts by hand; that is the development fallback, not the deployment.
    Refresh finding the new index. Then confirm an **unattended** run with the Mac
    off.
 
+### What has been exercised, and what only the owner can
+
+`run-setar-index.sh` was run end to end on the Mac against the real archive with a
+deliberately invalid `PC_INDEX_TOKEN` (2026‑09‑17). It scanned the live corpus to the same
+content hash as every other run (`924125427f61`), wrote `setar-index.json` into the runtime
+directory, failed the publish with `GitHub refused the branch reference (HTTP 401)`, exited
+non-zero so a scheduler reports it, and left the archive byte-for-byte untouched. The
+output contains **no token, no repository name, no API URL and no archive path** — checked,
+not assumed.
+
+What that cannot prove, and what the OWNER has to confirm on the NAS itself: the real
+internal mount path, the DSM Node runtime, the service user's read-only permissions, the
+scheduled task firing unattended with the Mac off, a real publish landing on `source-index`
+with `main` unchanged, and the behaviour when the token is revoked.
+
 ### Rollback
 
 Disable the scheduled task. The app keeps the source graph it last accepted and
@@ -209,6 +224,12 @@ piece's material.
   would never run. The scanner and publisher are tested from
   `src/domain/scanSetarClasses.test.ts` and `src/store/archiveIndex.test.ts`,
   which import the `.mjs` modules directly.
+- **`src/domain/sourceArchive.test.ts` is deliberately absent too.** The decoder, the
+  deterministic ids, the suppression queries and `validateArchiveSources` are all exercised
+  where they are actually used — `scanSetarClasses.test.ts` (the grammar that feeds it),
+  `io.test.ts` (the validation boundary every door runs), `sourceReconcile.test.ts` and
+  `archiveIndex.test.ts` (the store). A fourth file asserting the same functions in
+  isolation would add a place to forget, not a place to look.
 - **`src/domain/setarClasses.ts` is frozen.** It is no longer a workflow; it is
   the ledger of the 67 obsolete paths the old bundled importer wrote, and the
   reference-repair check runs against all 67 of them.

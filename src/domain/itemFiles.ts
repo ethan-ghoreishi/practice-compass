@@ -61,6 +61,8 @@ export interface ItemFileReference {
   lessonId?: ID;
   /** Present only for a resource the archive scoped to this piece. */
   archive?: ItemFileProvenance;
+  /** The source no longer describes this file; its provenance is kept. */
+  unavailable?: boolean;
   sizeBytes?: number;
   notes?: string;
   /**
@@ -161,6 +163,7 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
         path: ref.path,
         kind: ref.kind ?? 'video',
         archive: { sessionN: r.sessionN, date: r.sessionDate, role: r.role, group: r.group, part: r.part },
+        ...(r.unavailable ? { unavailable: true } : {}),
         sizeBytes: ref.sizeBytes,
         inline: false,
       });
@@ -275,6 +278,7 @@ export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
         kind: ref.kind ?? 'video',
         lessonId,
         archive: { sessionN: lesson.source.sessionN, date: lesson.date, role: r.role, group: r.group, part: r.part },
+        ...(r.unavailable ? { unavailable: true } : {}),
         sizeBytes: ref.sizeBytes,
         inline: false,
       });

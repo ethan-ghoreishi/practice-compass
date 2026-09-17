@@ -572,10 +572,22 @@ describe('what an archive import may and may not establish', () => {
     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
     // Their membership and role survive — that is the whole of what they leave.
     const chainPiece = 'پیش-درامد-سه-گاه-فروتن';
-    const chain = source.sessions
-      .filter((s) => s.members.some((m) => m.key === chainPiece && m.roles.includes('تمرین-من')))
-      .map((s) => s.n);
-    expect(chain).toEqual([22, 23, 24, 25, 26, 27]);
+    const { repeatChains } = await import('../domain/sourceArchive');
+    // The longest repeat chain in the real archive. It is read from the
+    // PERSONAL role — a piece is a repeat because the student was asked to play
+    // it again, not because an unnamed demonstration gave it membership of a
+    // session (which would report a repeat nobody was asked for).
+    expect(repeatChains(source, chainPiece)).toEqual([[22, 23, 24, 25, 26, 27]]);
+    // The real counterexample: پیش-درامد-ماهور-هرمزی is a MEMBER of sessions
+    // 16, 17 and 18, but the student only recorded themselves playing it in 17
+    // and 18 — session 16's membership comes from a correction and a
+    // demonstration. Read from membership the chain would be three classes
+    // long; read from what was actually asked for again, it is two.
+    const hormozi = 'پیش-درامد-ماهور-هرمزی';
+    expect(source.sessions.filter((s) => s.members.some((m) => m.key === hormozi)).map((s) => s.n)).toEqual([
+      16, 17, 18,
+    ]);
+    expect(repeatChains(source, hormozi)).toEqual([[17, 18]]);
     const chainItem = useStore.getState().db.items.find((i) => i.source?.pieceKey === chainPiece)!;
     // Six classes of provenance, and still zero recorded practice.
     expect(chainItem.timesPractised).toBe(0);

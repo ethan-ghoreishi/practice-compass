@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
-import { decodeSourceIndex, sourceItemId, sourceLessonId, type SourceIndex } from './sourceArchive';
+import {
+  decodeSourceIndex,
+  sourceItemId,
+  sourceLessonId,
+  validateArchiveSources,
+  type SourceIndex,
+} from './sourceArchive';
 import {
   applyArchiveImport,
   planArchiveImport,
@@ -289,7 +295,8 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(same.summary.unchanged).toBe(true);
     expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
 
-    // --- a missing file / missing registry row keeps its provenance ---------
+    // --- a missing FILE keeps its provenance, flagged ----------------------
+    const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
     const shrunk: SourceIndex = {
       ...next,
       contentHash: 'c'.repeat(64),
@@ -302,6 +309,58 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(afterShrink.lessons).toHaveLength(40);
     expect(afterShrink.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('My own title');
     expect(afterShrink.blocks).toEqual(refreshed.blocks);
+    const shrunkSource = afterShrink.archiveSources.find((s) => s.id === 'setar-classes')!;
+    const goneRow = shrunkSource.sessions.find((s) => s.n === 12)!.resources.find((r) => r.path === goneFile)!;
+    expect(goneRow.unavailable).toBe(true);
+    // ...and the database this produced is one every inbound door accepts.
+    expect(validateArchiveSources(afterShrink)).toBeNull();
+
+    // --- a missing REGISTRY ROW is the case that used to lock refresh out ---
+    // Dropping a piece the owner has an item bound to would leave that binding
+    // pointing at nothing — which `validateDB` refuses at every door, so the
+    // next Refresh, and every one after it, would fail outright. Provenance is
+    // RETAINED and flagged instead.
+    const withoutPiece: SourceIndex = {
+      ...next,
+      contentHash: 'e'.repeat(64),
+      pieces: next.pieces.filter((p) => p.key !== 'عراق'),
+      sessions: next.sessions.map((s) => ({
+        ...s,
+        roster: s.roster.filter((k) => k !== 'عراق'),
+        members: s.members.filter((m) => m.key !== 'عراق'),
+        resources: s.resources.map((r) => ({ ...r, pieces: r.pieces.filter((k) => k !== 'عراق') })),
+      })),
+    };
+    const withoutPlan = planArchiveImport({ db: refreshed, index: withoutPiece, instrumentId: SETAR, now: NOW });
+    const afterWithout = applyArchiveImport(refreshed, withoutPlan);
+    expect(validateArchiveSources(afterWithout)).toBeNull();
+    const keptPiece = afterWithout.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!;
+    expect(keptPiece.unavailable).toBe(true);
+    // The owner's item, its title and its binding are all still there.
+    const keptItem = afterWithout.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(keptItem.title).toBe('My own title');
+    expect(keptItem.notes).toBe('my notes');
+    // It is not re-created as a second item either.
+    expect(afterWithout.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+    // A WHOLE SESSION that disappears is retained the same way.
+    const withoutSession: SourceIndex = {
+      ...next,
+      contentHash: 'f'.repeat(64),
+      sessions: next.sessions.filter((s) => s.n !== 13),
+    };
+    const afterNoSession = applyArchiveImport(
+      refreshed,
+      planArchiveImport({ db: refreshed, index: withoutSession, instrumentId: SETAR, now: NOW }),
+    );
+    expect(validateArchiveSources(afterNoSession)).toBeNull();
+    expect(afterNoSession.archiveSources[0]!.sessions.find((s) => s.n === 13)!.unavailable).toBe(true);
+    expect(afterNoSession.lessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
+    // ...and the source coming BACK clears the flag: the source is
+    // authoritative about what it has.
+    const restoredPlan = planArchiveImport({ db: afterWithout, index: next, instrumentId: SETAR, now: NOW });
+    const afterRestore = applyArchiveImport(afterWithout, restoredPlan);
+    expect(afterRestore.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!.unavailable).toBeUndefined();
+    expect(afterRestore.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
 
     // --- a CHANGED canonical key is a NEW identity, never a rename ----------
     const renamedKey: SourceIndex = {

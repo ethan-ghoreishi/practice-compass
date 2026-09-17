@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { SOURCE_ROLE_LABELS, formatFileSize, itemFiles, lessonFiles, resolveRecording, type ItemFile } from '../domain';
+import {
+  SOURCE_ROLE_LABELS,
+  archiveFor,
+  formatFileSize,
+  itemFiles,
+  lessonFiles,
+  repeatChains,
+  resolveRecording,
+  type ItemFile,
+} from '../domain';
 import { useStore } from '../store/useStore';
 import { getNasBaseUrl } from '../store/backup';
 import { attachmentObjectURL } from '../store/attachments';
@@ -27,6 +36,7 @@ export default function ItemMaterial({ itemId }: { itemId: string }) {
 
   return (
     <div className="stack-sm">
+      <RepeatChains itemId={itemId} />
       {files.map((f) => (
         <FileRow
           key={`${f.source}-${f.id}`}
@@ -58,6 +68,37 @@ export function LessonMaterial({ lessonId }: { lessonId: string }) {
       {files.map((f) => (
         <FileRow key={`${f.source}-${f.id}`} file={f} />
       ))}
+    </div>
+  );
+}
+
+/**
+ * "Practised in classes 22-27" — the archive's own repeat evidence, derived from
+ * the graph and never cached beside it.
+ *
+ * Deliberately worded as CLASSES. The same run described as "six weeks" would
+ * be a claim about time nobody recorded, and this whole feature exists on the
+ * understanding that an archive describes and never testifies: it is a count of
+ * classes the piece came back in, not practice this app has any record of.
+ */
+function RepeatChains({ itemId }: { itemId: string }) {
+  const db = useStore((s) => s.db);
+  const item = db.items.find((i) => i.id === itemId);
+  const source = item?.source ? archiveFor(db, item.source.archiveId) : undefined;
+  const chains = useMemo(
+    () => (source && item?.source ? repeatChains(source, item.source.pieceKey) : []),
+    [source, item?.source],
+  );
+  if (chains.length === 0) return null;
+  return (
+    <div className="tiny faint" style={{ textAlign: 'start' }}>
+      <span dir="ltr">
+        Came back in{' '}
+        {chains
+          .map((run) => (run.length > 2 ? `classes ${run[0]}–${run[run.length - 1]}` : `classes ${run.join(' and ')}`))
+          .join(', ')}
+        .
+      </span>
     </div>
   );
 }
@@ -109,12 +150,13 @@ function ReferenceRow({ file, onHide }: { file: Extract<ItemFile, { source: 'ref
             {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
             {resolution.status === 'unsafe' && ' · this link points outside the archive and will not be opened'}
             {provenance ? ` · ${provenance}` : ''}
+            {file.unavailable && ' · no longer in the archive'}
           </span>
         </div>
       </div>
       <button
         className="btn btn-sm"
-        disabled={resolution.status !== 'ok'}
+        disabled={resolution.status !== 'ok' || file.unavailable === true}
         onClick={() => resolution.status === 'ok' && window.open(resolution.url, '_blank', 'noopener,noreferrer')}
       >
         Open
