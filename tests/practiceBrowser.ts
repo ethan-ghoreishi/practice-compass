@@ -361,22 +361,32 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
     const rest = url.pathname.split('/').slice(4).join('/');
     const method = req.method();
     remote.calls.push(`${method} ${rest}`);
+    // A FULFILLED response is still subject to the browser's own CORS check.
+    // Chromium lets a routed cross-origin request through; WebKit does not, and
+    // an unadorned reply surfaces as "Fetch API cannot load … due to access
+    // control checks" — a harness artefact that looks exactly like an app bug.
+    // The real api.github.com sends these headers, so sending them here is the
+    // fake behaving like the thing it stands in for.
+    const CORS = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
+    };
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
     const json = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', body });
+      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
+    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
     const head = () => `head-${headCounter}`;
 
     // The source index: a branch ref, then the file AT THAT COMMIT. Reading
     // the file "on the branch" instead would be a second, later state.
     if (method === 'GET' && rest === 'git/ref/heads/source-index') {
-      if (!remote.sourceIndex) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.sourceIndex) return json({}, 404);
       return json({ object: { sha: remote.sourceIndex.commit } });
     }
     if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
       const ref = url.searchParams.get('ref');
-      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) {
-        return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
-      }
+      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
       return json({
         content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
         encoding: 'base64',
@@ -384,11 +394,11 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
       });
     }
     if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.snapshot) return json({}, 404);
       return json({ object: { sha: head() } });
     }
     if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.snapshot) return json({}, 404);
       return raw(
         JSON.stringify({
           formatVersion: 2,
@@ -401,7 +411,7 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
       );
     }
     if (method === 'GET' && rest.startsWith('contents/state.json')) {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.snapshot) return json({}, 404);
       return raw(remote.snapshot.stateText);
     }
     if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
@@ -430,7 +440,7 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
       return json({});
     }
     if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
-    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"message":"not routed"}' });
+    return json({ message: 'not routed' }, 404);
   });
 }
 
