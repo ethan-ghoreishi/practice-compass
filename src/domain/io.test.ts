@@ -942,8 +942,17 @@ describe('the v14 source graph at the schema boundary', () => {
     );
     expect(roundTripped.blocks[0]!.observation).toBe('The return is still heavy.');
     expect(roundTripped.attachments).toEqual(graphed.attachments);
-    expect(() =>
-      validateDB({ ...graphed, attachments: [graphed.attachments[0]!, graphed.attachments[0]!] }),
-    ).toThrow(/share the id/);
+    const attachment = {
+      id: 'att-1',
+      ownerType: 'lesson' as const,
+      ownerId: graphed.lessons[0]!.id,
+      name: 'handout.pdf',
+      mime: 'application/pdf',
+      size: 2048,
+      kind: 'pdf' as const,
+      createdAt: '2026-09-10T19:00:00.000Z',
+    };
+    expect(validateDB({ ...graphed, attachments: [attachment] }).attachments).toEqual([attachment]);
+    expect(() => validateDB({ ...graphed, attachments: [attachment, attachment] })).toThrow(/share the id/);
   });
 });
