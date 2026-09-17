@@ -16,6 +16,14 @@ do not build a plugin registry for two cases.
 
 ## Archive follow-ups the first lane deliberately left open
 
+- **Pruning long-gone source rows.** `retainMissing` keeps a piece, session or file the
+  source has stopped describing, flagged `unavailable`, because dropping it would leave an
+  item's binding pointing at nothing and lock every later Refresh out — and because losing
+  provenance silently is the failure this whole lane exists to prevent. The consequence is
+  that the graph only grows: a file deleted from the NAS two years ago keeps its row for
+  good. Owner-initiated removal is already covered (delete records a suppression); what is
+  missing is a deliberate "forget what the archive no longer has" affordance. Add it as an
+  explicit action, never as automatic cleanup.
 - **Splitting a PROVISIONAL piece.** Sessions 7, 34 and 35 use dastgāh-level names because
   the individual gushehs were never labelled. The flag reaches the app; a "needs labelling"
   affordance that splits one into several, carrying the material across, does not.
