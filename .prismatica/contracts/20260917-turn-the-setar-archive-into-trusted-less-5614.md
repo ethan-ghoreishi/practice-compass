@@ -4,7 +4,7 @@ title: Turn the Setar archive into trusted lessons and useful practice material
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/29
 intent: 20260917-turn-the-setar-archive-into-trusted-less-5614
 tier: heavy
-stage: build
+stage: prove
 baseline:
   commit: b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417
   branch: main
