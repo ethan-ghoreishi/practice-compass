@@ -637,3 +637,17 @@ export function validateArchiveSources(db: PracticeDB): string | null {
   }
   return null;
 }
+
+/**
+ * The canonical pieces an archive session is associated with, honouring an
+ * owner's explicit unlink of ONE piece from ONE class.
+ *
+ * Derived from the graph, never stored on the lesson: a session's membership
+ * is a source fact, and copying it into `lesson.itemIds` would make one fact
+ * two that can disagree.
+ */
+export function membersForSession(source: ArchiveSource, sessionN: number): SourceMember[] {
+  const s = source.sessions.find((x) => x.n === sessionN);
+  if (!s || suppressed(source, 'session', String(sessionN))) return [];
+  return s.members.filter((m) => !suppressed(source, 'link', `${sessionN}:${m.key}`));
+}
