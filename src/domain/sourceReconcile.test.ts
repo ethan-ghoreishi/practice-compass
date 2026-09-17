@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
 import {
   decodeSourceIndex,
+  resourcesForPiece,
+  resourcesForSession,
   sourceItemId,
   sourceLessonId,
   validateArchiveSources,
@@ -308,7 +310,24 @@ describe('reconciling the archive with the owner’s own records', () => {
       ...INDEX,
       contentHash: 'b'.repeat(64),
       sessions: [
-        ...INDEX.sessions.map((s) => (s.n === 12 ? { ...s, resources: [...s.resources, addedScore] } : s)),
+        // A scan records the MEMBERSHIP a new resource creates in the same
+        // pass that lists the resource, so a fixture that adds one without the
+        // other is a graph disagreeing with itself — refused at every door.
+        ...INDEX.sessions.map((s) =>
+          s.n === 12
+            ? {
+                ...s,
+                resources: [...s.resources, addedScore],
+                members: [
+                  ...s.members.filter((m) => m.key !== 'عراق'),
+                  {
+                    key: 'عراق',
+                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
+                  },
+                ],
+              }
+            : s,
+        ),
         session40,
       ],
       // A later registry improvement on a piece already seeded.
@@ -340,8 +359,12 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(suggestion).toBeDefined();
     expect(suggestion.from).toBe('');
     expect(suggestion.to).toBe('میرزا-حسینقلی');
+    // A field decision names the RECORD it was shown against, not just the
+    // piece: a rebase must not hand the answer to whichever item happens to
+    // hold that piece by the time Apply is pressed.
+    const araqItemId = suggestion.itemId;
     const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
+      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
     ]);
     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
@@ -358,7 +381,9 @@ describe('reconciling the archive with the owner’s own records', () => {
     // The suggestion stands until it is answered, and it may be answered days
     // later against the very same published index. Judging "already current"
     // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
+    const lateField = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
+    ];
     const lateDecision = planArchiveImport({
       db: refreshed,
       index: next,
@@ -380,7 +405,9 @@ describe('reconciling the archive with the owner’s own records', () => {
     // Applied, the suggestion is gone: the next refresh has nothing to offer.
     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
     // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
+    const emptyField = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
+    ];
     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
     expect(noop.summary.unchanged).toBe(true);
     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
@@ -457,12 +484,119 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(stalelink.staleDecisions).toEqual(linkDecision);
     expect(stalelink.adoptedItems).toEqual([]);
 
+    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
+    //
+    // The loops start with "already bound? nothing to decide" / "already
+    // suppressed? nothing to decide", so a decision about a record that became
+    // bound between the preview and the commit was never looked at: no
+    // adoption, no question, and an EMPTY `staleDecisions` — the commit
+    // reported success for an action it had not performed. And a field
+    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
+    // onto whichever record held that piece by the time Apply ran.
+    const otherItemId = 'someone-elses-item';
+    const boundToAnother: PracticeDB = {
+      ...unbound,
+      items: [
+        ...unbound.items,
+        item({
+          id: otherItemId,
+          instrumentId: SETAR,
+          title: 'Another record',
+          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
+        }),
+      ],
+    };
+    // LINK: the approved record is not the one holding the piece now, so the
+    // choice is stale — never quietly satisfied by the other record.
+    const redirectedLink = planArchiveImport({
+      db: boundToAnother,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
+    expect(redirectedLink.adoptedItems).toEqual([]);
+    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
+      .toBeUndefined();
+    // APPLY-FIELD: the archive's composer, chosen against item A's empty
+    // field, must not be written to the item that holds the piece now — whose
+    // composer is also empty, so nothing about the VALUE would have caught it.
+    const fieldForA = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
+    ];
+    const redirectedField = planArchiveImport({
+      db: boundToAnother,
+      index: next,
+      instrumentId: SETAR,
+      decisions: fieldForA,
+      now: NOW,
+    });
+    expect(redirectedField.staleDecisions).toEqual(fieldForA);
+    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
+    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
+    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
+    // SKIP and CREATE are the same rule: an answer about a record that has
+    // since been bound is an answer to a question that no longer stands.
+    for (const decision of [
+      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
+      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
+    ]) {
+      const swept = planArchiveImport({
+        db: boundToAnother,
+        index: next,
+        instrumentId: SETAR,
+        decisions: decision,
+        now: NOW,
+      });
+      expect(swept.staleDecisions).toEqual(decision);
+      expect(swept.newItems).toEqual([]);
+    }
+    // …and LOOP PREVENTION: the action the owner approved, once it HAS
+    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
+    // re-previews, so a realised action that could never be consumed again
+    // would go stale for ever.
+    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
+    const again = planArchiveImport({
+      db: afterLink,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(again.staleDecisions).toEqual([]);
+    const skipped = applyArchiveImport(
+      unbound,
+      planArchiveImport({
+        db: unbound,
+        index: next,
+        instrumentId: SETAR,
+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
+        now: NOW,
+      }),
+    );
+    expect(
+      planArchiveImport({
+        db: skipped,
+        index: next,
+        instrumentId: SETAR,
+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
+        now: NOW,
+      }).staleDecisions,
+    ).toEqual([]);
+
     // --- a missing FILE keeps its provenance, flagged ----------------------
     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
     const shrunk: SourceIndex = {
       ...next,
       contentHash: 'c'.repeat(64),
-      sessions: next.sessions.map((s) => (s.n === 12 ? { ...s, resources: [] } : s)),
+      // A session that has lost every file has lost its class recording with
+      // them: a scan recomputes that flag, and a hand-built index that keeps
+      // it is a graph disagreeing with itself — which `checkSourceGraph` now
+      // refuses at every door, so it cannot be used to prove anything else.
+      sessions: next.sessions.map((s) =>
+        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
+      ),
     };
     const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
     const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
@@ -858,7 +992,7 @@ describe('reconciling the archive with the owner’s own records', () => {
       renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
     };
     const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
-    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
+    expect(followRenames(hopA, chainRenames)).toBe(hopC);
     const legacyClass = lesson({
       id: 'L-chain',
       date: '2023-09-26',
@@ -938,6 +1072,69 @@ describe('reconciling the archive with the owner’s own records', () => {
       itemId: 'item-x',
     });
     expect(validateArchiveSources(afterCross)).toBeNull();
+
+    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
+    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
+    // usable-looking path beside a flag — and only ONE of its three callers
+    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
+    // straight past the verdict and moved the owner's hide onto B, so A came
+    // back into view and the wrong file went dark. It returns `null` now, so
+    // there is no way to drop the verdict and still have a path.
+    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
+    const cyclicLog: SourceIndex = {
+      ...INDEX,
+      contentHash: '3'.repeat(64),
+      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
+    };
+    const afterCycle = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
+    );
+    const cycledSource = afterCycle.archiveSources[0]!;
+    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
+    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
+    expect(cycledHide.itemId).toBe('item-x');
+    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
+    // …so the file the owner hid is still hidden, and its sibling is not.
+    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
+    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
+
+    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
+    // incoming index has dropped keeps its provenance flagged rather than
+    // being silently deleted on the strength of a destination nothing can read.
+    const cyclicAndRemoved: SourceIndex = {
+      ...cyclicLog,
+      contentHash: '2'.repeat(64),
+      sessions: cyclicLog.sessions.map((sess) =>
+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
+      ),
+    };
+    const afterCyclicRemoval = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
+    );
+    expect(
+      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
+        (r) => r.path === hiddenPath,
+      )?.unavailable,
+    ).toBe(true);
+    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
+
+    // REPAIR says so out loud rather than rewriting the path to a stop on the
+    // loop — and ADOPTION, which reads the same verdict, takes it as no
+    // evidence at all (asserted above for the same shape).
+    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
+    expect(followRenames(hiddenPath, loopMap)).toBeNull();
+    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
+      status: 'attention',
+      reason: 'The rename log loops on this path.',
+      code: 'cycle',
+    });
+    const loopLesson = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
+    ).lessons.find((l) => l.id === 'L1')!;
+    expect(loopLesson.recordings).toEqual(storedOne.recordings);
 
     // A file that really IS gone still keeps its provenance, flagged.
     const removed: SourceIndex = {

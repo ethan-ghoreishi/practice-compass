@@ -5,10 +5,12 @@ import {
   type PracticeItem,
   cleanFileTitle,
   daysUntil,
+  CLASS_ROLE,
   defaultInstrumentFilter,
   formatFileSize,
   ITEM_STATUS_LABELS,
   LESSON_FILE_KIND_ORDER,
+  lessonFiles,
   lessonsForInstrument,
   isUpcomingLesson,
   nextLessonFor,
@@ -435,9 +437,11 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
         />
       )}
 
-      {/* Everything this class holds, composed once: an archive-bound class
-          keeps no copy of its session's files, so its own `recordings` array
-          is empty and only the graph can answer. */}
+      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
+          copy of its session's files, so only the graph can answer — and the
+          owner's OWN references and attachments are NOT repeated here: they
+          each have exactly one section on this page, the one that can also
+          edit and remove them. */}
       <LessonMaterial lessonId={lesson.id} />
 
       <LessonRecordings lesson={lesson} />
@@ -483,6 +487,7 @@ function KindIcon({ kind }: { kind: LessonFileKind }) {
  * reference never touches the NAS file. Video first, then scores/docs.
  */
 function LessonRecordings({ lesson }: { lesson: Lesson }) {
+  const db = useStore((s) => s.db);
   const addLessonRecording = useStore((s) => s.addLessonRecording);
   const removeLessonRecording = useStore((s) => s.removeLessonRecording);
   const navigate = useNavigate();
@@ -493,6 +498,16 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
         (a, b) => LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'],
       ),
     [lesson.recordings],
+  );
+  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
+  // historical class keeps no copy of its session's files, so `recordings` is
+  // empty and the empty-state card invited the owner to add a class recording
+  // directly beneath the one already playing above it. Read through the same
+  // composition the section above renders, so a recording the owner has HIDDEN
+  // does not count as one that is there.
+  const fromArchive = useMemo(
+    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
+    [db, lesson.id],
   );
 
   const browseUrl = normalizeBaseUrl(baseUrl);
@@ -535,7 +550,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
         </button>
       </div>
 
-      {recordings.length === 0 && !adding && (
+      {recordings.length === 0 && !fromArchive && !adding && (
         <div className="card card-quiet small dim">
           Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
         </div>
@@ -601,7 +616,10 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
             </button>
             <button
               className="btn btn-ghost btn-sm"
-              aria-label="Remove this link (the NAS file is kept)"
+              // Named, because a class holds several of these and "Remove this
+              // link" three times over tells a screen reader nothing about
+              // which file it is about to drop.
+              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
               title="Remove link (the NAS file is kept)"
               onClick={() => {
                 if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);

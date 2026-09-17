@@ -9,6 +9,7 @@ import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 
 import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
 import { decodeSourceIndex } from '../domain/sourceArchive';
 import { validateDB } from '../domain/io';
+import { createItem } from '../domain/factories';
 import type { PracticeDB } from '../domain/types';
 
 // ---------------------------------------------------------------------------
@@ -658,7 +659,7 @@ describe('committing an archive import', () => {
     const answered2 = useStore.getState().previewArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
       now: NOW,
     });
     expect(answered2.plan.summary.unchanged).toBe(false);
@@ -670,7 +671,7 @@ describe('committing an archive import', () => {
     const appliedField = await useStore.getState().commitArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
       decidedFromRev: useStore.getState().rev,
       now: NOW,
     });
@@ -692,7 +693,11 @@ describe('committing an archive import', () => {
     useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
     const secondKey = second.source!.pieceKey;
     const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
+    const choice = [
+      // Bound to the RECORD as well as the piece and the premise: a rebase that
+      // finds the piece on a different item must not hand it that answer.
+      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
+    ];
     useStore.getState().updateItem(second.id, {
       persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
     });
@@ -720,6 +725,53 @@ describe('committing an archive import', () => {
     expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
       second.persian!.composer,
     );
+
+    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
+    // The other half of the same family, and the one an already-bound early
+    // `continue` hid completely: the piece is held by a DIFFERENT record by
+    // the time Apply runs. A field decision keyed by piece alone was written
+    // to that other record (its composer was empty too, so nothing about the
+    // VALUE would have caught it), and a Link decision was skipped in silence
+    // — `staleDecisions` empty, the commit reporting success for an action it
+    // never performed.
+    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
+    const movedKey = movedPiece.source!.pieceKey;
+    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
+    useStore.setState((st) => ({
+      db: {
+        ...st.db,
+        items: [
+          // The approved record loses the binding; another record takes it.
+          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
+          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
+        ],
+      },
+    }));
+    for (const decisions of [
+      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
+      [
+        {
+          kind: 'apply-field' as const,
+          pieceKey: movedKey,
+          itemId: movedPiece.id,
+          field: 'composer' as const,
+          from: movedPiece.persian?.composer ?? '',
+        },
+      ],
+    ]) {
+      const refused = await useStore.getState().commitArchiveImport({
+        index: INDEX,
+        instrumentId: SETAR,
+        decisions,
+        decidedFromRev: useStore.getState().rev,
+        now: NOW,
+      });
+      expect(refused).toMatchObject({ ok: false, status: 'stale' });
+      expect(refused.staleDecisions).toEqual(decisions);
+    }
+    // Neither record was touched by either refusal.
+    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
+    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
 
     // --- refresh NEVER runs a whole-database import or reset ---------------
     // `importDB`, `resetDemo` and `clearAll` each null the active session and

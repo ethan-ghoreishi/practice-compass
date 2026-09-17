@@ -61,9 +61,29 @@ readings agrees with itself, and from here is indistinguishable from the archive
 genuinely being in that state. What it removes is the transient — which is what a
 copy in flight looks like, and what would otherwise publish an index missing a
 file that is still there.
+
+A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
+stops it being read — missing, unreadable, a directory where a file should be —
+refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
+nothing else: it travels in the compared reading as `{present:false}`, never as
+empty text, because `catch { text = '' }` made a permission change or an I/O
+error agree with itself across both readings and publish an index with no
+renames at all. A present but EMPTY log is refused like an empty registry — a
+zero-byte file is what a copy in flight looks like.
+
+Each file's `mtimeMs` is part of the compared reading and is never read by the
+index builder, so a file edited IN PLACE at the same byte length fails the scan
+while altered mtimes still produce a byte-identical index.
+
 What it reports and skips: a file with no known role, an unknown piece, an
 unsupported extension, a class recording claiming a piece, an unnamed demo in a
-session whose roster and filenames disagree.
+session whose roster and filenames disagree, a symbolic link (never followed —
+but never silently dropped either, since two readings agree about a file neither
+of them looked at), a session-named entry that is not a real directory, and
+every row of a rename LOOP. A log that loops names no file, so those rows — and
+any row that walks into a loop — are dropped with a diagnostic rather than
+published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
+and out-of-scope root folders stay silent: they are not archive content.
 
 The output is written **outside the archive** via a temp file + rename, and the
 scanner refuses an `--out` path inside `--root`.
@@ -218,11 +238,18 @@ applies the lot in one store mutation.
   same mutation, so a refresh, a reload and a sync all respect it. A hide follows
   its file through the rename log, so a renamed resource does not reappear —
   including when the rename moves it into a different session's folder, where
-  the old row is dropped rather than reported missing.
-- **A decision is about the state you saw.** If the value you chose the archive's
-  over has changed since — or a record you chose to link has been deleted, bound
-  elsewhere or moved instrument — the commit refuses and re-previews rather than
-  applying an answer to a question that no longer stands.
+  the old row is dropped rather than reported missing. A rename LOOP names no
+  file, so a hide stays exactly where you put it and nothing is re-keyed.
+- **A decision is about the state you saw, and about the record you saw it on.**
+  If the value you chose the archive's over has changed since — or the record you
+  chose to link or apply a field to has been deleted, bound elsewhere or moved
+  instrument — the commit refuses and re-previews rather than applying an answer
+  to a question that no longer stands, or handing it to some other record.
+- **Every file on a class has exactly one section.** The archive's own session
+  material is composed for you (an imported class keeps no copy of it, so nothing
+  else can show it); your own links and attachments stay in the sections that can
+  edit and remove them, and are never repeated above. An imported class recording
+  counts as a recording, so you are not invited to add the video already playing.
 - **Your media base is an address and a folder.** A base carrying a username,
   password, `?query` or `#fragment` is refused, not silently cleaned up: every
   file URL is built by appending a path to it.

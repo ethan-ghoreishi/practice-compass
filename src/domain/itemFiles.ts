@@ -239,14 +239,20 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
 }
 
 /**
- * Everything a LESSON holds: the archive session's own files (the class
- * recording, an unnamed handout — the material that belongs to the whole
- * class rather than to one piece) followed by references the owner authored
- * on the lesson itself, then its attachments.
+ * What the ARCHIVE gives a lesson: its session's own files — the class
+ * recording, an unnamed handout, the material that belongs to the whole class
+ * rather than to one piece. An archive-bound lesson keeps no copy of these, so
+ * reading its `recordings` array alone shows nothing at all; this is the only
+ * way they reach the screen.
  *
- * The same composition function family as `itemFiles`, for the same reason:
- * an archive-bound lesson carries no copy of its session's resources, so
- * reading its `recordings` array alone would show nothing at all.
+ * EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT. This used to
+ * compose the owner's own `recordings` and attachments too, and the lesson page
+ * renders those in their own editable sections — so one authored NAS reference
+ * and one local attachment each appeared TWICE, once here and once where they
+ * can actually be edited or removed. An item is the opposite case and stays as
+ * it is: its material is composed from OTHER records (linked lessons, the
+ * graph) that the item's own page has no section for, which is exactly why
+ * `itemFiles` must stay the whole composition.
  */
 export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
   const out: ItemFile[] = [];
@@ -283,41 +289,6 @@ export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
         inline: false,
       });
     }
-  }
-
-  for (const rec of [...(lesson.recordings ?? [])].sort(
-    (a, b) =>
-      LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'] ||
-      a.createdAt.localeCompare(b.createdAt),
-  )) {
-    const key = referenceKey(rec.path);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      source: 'reference',
-      id: rec.id,
-      title: rec.title,
-      path: rec.path,
-      kind: rec.kind ?? 'video',
-      lessonId,
-      sizeBytes: rec.sizeBytes,
-      notes: rec.notes,
-      inline: false,
-    });
-  }
-
-  for (const a of attachmentsOwnedBy(db.attachments, 'lesson', lessonId).sort((x, y) =>
-    x.createdAt.localeCompare(y.createdAt),
-  )) {
-    out.push({
-      source: 'attachment',
-      id: a.id,
-      title: a.name,
-      kind: a.kind,
-      mime: a.mime,
-      sizeBytes: a.size,
-      inline: a.kind === 'image',
-    });
   }
 
   return out;

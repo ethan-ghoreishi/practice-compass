@@ -2,6 +2,64 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
+
+A third sealed review rejected the reworked Setar-archive diff. Each finding was the
+PREVIOUS fix holding for exactly the case it was written against, so each fix here is the
+rule the whole family shares — and the previous narrower mechanism is subsumed rather than
+left beside it.
+
+- **A read failure was valid empty source data.** The two-read consistency check was
+  extended to every input, and `catch { renameLogText = '' }` then made an unreadable
+  RENAME-LOG.csv agree with itself: both readings held `''`, the check passed, and the scan
+  published an index with no renames — so a file that moved in that window is flagged
+  unavailable and its saved references can never be repaired. Absence is an OBSERVATION now
+  (`{present:false}`, ENOENT only) and travels in the compared reading; anything else fails
+  the scan. The walk had the deeper version of the same gap: two readings agree about a file
+  neither looked at, so a skipped symlink or a session-named non-directory is a published
+  diagnostic instead of a silent omission. The compared reading also carries `mtimeMs`,
+  which `buildIndex` never reads, so an in-place edit at the same byte length is visible to
+  the check and invisible to the index.
+- **The absent/present rule reached the lists and the scalars, not the strings.**
+  `str(raw.form ?? '')` still read absent and present-and-null alike, so a `title: null`
+  decoded to an untitled row behind a correct digest. `text()` is that rule for strings.
+  Separately, a grammar of FIELD TYPES says every value is readable and nothing about
+  whether the graph agrees with itself: a resource in class 2's folder listed under class 1
+  passed every door. `checkSourceGraph` now also checks path ownership, resource-to-member
+  agreement by role, demo-group coherence and `hasClassRecording` — over rows the source
+  still DESCRIBES, because holding retained `unavailable` provenance to the current
+  source's internal agreement would refuse every refresh after a removal.
+- **A decision named its piece, not its record.** Both reconciliation loops open with
+  "already bound? nothing to decide", so a decision about a record bound between the preview
+  and the commit was never examined: no adoption, no question, an EMPTY `staleDecisions`,
+  and a commit reporting success for an action it had not performed. `apply-field` was worse
+  than ignored — keyed by piece and value alone, it was redirected onto whichever record held
+  that piece by commit time. It carries `itemId` now, and `planArchiveImport` marks every
+  decision it acts on and sweeps the rest: unmarked is either already realised (loop
+  prevention — the screen drops a stale decision and re-previews) or stale. The `from`
+  premise rule is an outcome of that sweep rather than a second mechanism beside it.
+- **"A cycle is reported" was reported in a value callers could ignore.** `followRenames`
+  returned `{ path, cycle: true }` and only adoption read the flag; the suppression re-key
+  and `retainMissing` walked past it, so A→B plus B→A moved the owner's hide onto B and the
+  wrong file went dark. It returns `string | null`, so dropping the verdict and keeping a
+  path is unrepresentable. The scanner drops every row in a loop — and every row walking into
+  one — with a diagnostic, per ac-12's own "cycles diagnose, never guess"; refusing the whole
+  index was rejected, because a name swap is a legitimate archive operation and an
+  unimportable archive is a worse answer than an unrepaired path.
+- **One lesson file had two sections.** `lessonFiles` composed the lesson's own references
+  and attachments as well as the archive's, and the lesson page renders both in the sections
+  that can edit and remove them — so an authored file appeared twice, once where nothing
+  could be done with it. `lessonFiles` is the ARCHIVE's contribution alone; an ITEM keeps the
+  whole composition, because its material comes from records its own page has no section for.
+  And "has a recording" is read through that composition, not `lesson.recordings`, so an
+  imported class is no longer invited to add the video already playing above the prompt.
+
+Eight mutations were run and all eight fail their named acceptance test: the optional-read
+swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
+`itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson
+composition's authored half (in the real browser, both engines), and the empty-recording
+prompt's guard.
+
 ## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
 
 A second sealed review rejected the reworked Setar-archive diff with five findings. Every

@@ -296,6 +296,51 @@ describe('archive material for a piece', () => {
     expect(lessonSide[0]!.path).toContain('ضبط-کلاس');
     expect(lessonSide.every((f) => f.lessonId === lesson13.id)).toBe(true);
 
+    // --- EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT -----
+    // This composition used to include the owner's OWN references and the
+    // lesson's attachments as well. The lesson page renders both in their own
+    // editable sections, so each authored file appeared twice: once here, and
+    // once again where it can actually be removed. An ITEM is the opposite
+    // case and is unchanged — its material comes from records its own page has
+    // no section for, which is why `itemFiles` stays the whole composition.
+    const withOwnFiles: PracticeDB = {
+      ...db,
+      lessons: db.lessons.map((l) =>
+        l.id === lesson13.id
+          ? {
+              ...l,
+              recordings: [
+                {
+                  id: 'own-ref',
+                  title: 'My own link',
+                  path: 'session-13-03-09-2024/my-own-file.mp4',
+                  kind: 'video' as const,
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                },
+              ],
+            }
+          : l,
+      ),
+      attachments: [
+        {
+          id: 'own-att',
+          ownerType: 'lesson' as const,
+          ownerId: lesson13.id,
+          name: 'handout.pdf',
+          mime: 'application/pdf',
+          size: 2048,
+          kind: 'pdf' as const,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    };
+    const composed = lessonFiles(withOwnFiles, lesson13.id);
+    expect(composed.every((f) => f.source === 'reference' && f.archive !== undefined)).toBe(true);
+    expect(composed.some((f) => f.title === 'My own link')).toBe(false);
+    expect(composed.some((f) => f.source === 'attachment')).toBe(false);
+    // The archive's own material is untouched by the owner's additions.
+    expect(composed.map((f) => f.id)).toEqual(lessonSide.map((f) => f.id));
+
     // --- an UNNAMED demonstration is one ordered logical group --------------
     const araqGusheh = itemFiles(db, idFor(db, 'کرشمه-در-عراق')) as ItemFileReference[];
     const demo = araqGusheh.filter((f) => f.archive?.role === 'نمونه' && f.archive.sessionN === 13);

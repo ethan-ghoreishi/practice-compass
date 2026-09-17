@@ -801,6 +801,37 @@ describe('the v14 source graph at the schema boundary', () => {
   const NOW = new Date('2026-09-17T09:00:00.000Z');
   const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
 
+  /**
+   * A source graph as it arrives — every value still `unknown`, because that is
+   * exactly what these mutations put into it. One shape for BOTH doors: the
+   * published index and a persisted `archiveSources` row carry the same graph,
+   * so one mutation can be handed to each and neither can be given a check the
+   * other misses.
+   */
+  type RawRow = Record<string, unknown>;
+  type RawSession = RawRow & { folder: string; resources: RawRow[]; members: RawRow[] };
+  type Graph = { pieces: RawRow[]; sessions: RawSession[]; diagnostics: RawRow[] };
+
+  /** First `[session, resource]` carrying a role, in the corpus fixture. */
+  function firstWithRole(g: Graph, role: string): [RawSession, RawRow] {
+    for (const sess of g.sessions) {
+      const res = sess.resources.find((r) => r.role === role);
+      if (res) return [sess, res];
+    }
+    throw new Error(`The corpus fixture has no "${role}" resource to mutate.`);
+  }
+
+  /** A demonstration group with at least TWO parts, and its session. */
+  function groupedDemo(g: Graph): [string, RawRow, RawSession] {
+    for (const sess of g.sessions) {
+      for (const r of sess.resources) {
+        if (!r.group) continue;
+        if (sess.resources.filter((x) => x.group === r.group).length > 1) return [r.group as string, r, sess];
+      }
+    }
+    throw new Error('The corpus fixture has no multi-part demonstration to mutate.');
+  }
+
   /** A database with a real accepted graph in it, built by the real planner. */
   function withGraph(): PracticeDB {
     const base = validateDB(legacy());
@@ -986,6 +1017,98 @@ describe('the v14 source graph at the schema boundary', () => {
     refuses((d) => {
       (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
     }, /suppression with no timestamp/);
+
+    // --- ABSENT IS A DEFAULT; PRESENT-AND-NULL IS A REFUSAL ----------------
+    // The list/num/bool rule closed this for lists and scalars and left every
+    // STRING with a default behind: `str(raw.form ?? '')` read absent and
+    // present-and-null as the same thing, so a `title: null` in an index whose
+    // digest was recomputed decoded to an untitled row the grammar was
+    // perfectly happy with. Absent is a default; null is a value, and a wrong
+    // one. Proved at BOTH doors from ONE mutation, so the published decoder
+    // and the persisted-graph validator cannot be given it separately.
+    const refusesBothDoors = (fn: (g: Graph) => void, pattern: RegExp) => {
+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
+      fn(index);
+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
+      refuses((d) => fn(d.archiveSources[0] as unknown as Graph), pattern);
+    };
+    const onIndexOnly = (fn: (g: Graph) => void, pattern: RegExp) => {
+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
+      fn(index);
+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
+    };
+    onIndexOnly((g) => {
+      g.sessions[0]!.resources[0]!.title = null;
+    }, /title must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.form = null;
+    }, /form must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.notes = null;
+    }, /notes must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.composer = null;
+    }, /composer must be text/);
+    // `size` is genuinely optional, so ABSENT is a default here too — but a
+    // present null is still a value, and the shared grammar refuses it with
+    // the same message at both doors rather than dropping the field.
+    onIndexOnly((g) => {
+      g.sessions[0]!.resources[0]!.size = null;
+    }, /unreadable size/);
+    onIndexOnly((g) => {
+      g.diagnostics.push({ path: null, reason: 'x' });
+    }, /diagnostic path must be text/);
+
+    // --- SEMANTIC RELATIONS, NOT MERELY FIELD TYPES ------------------------
+    // A field-type grammar says every value is READABLE and nothing about
+    // whether the graph agrees with itself. A resource physically sitting in
+    // class 2's folder, listed under class 1, is type-perfect and attributes
+    // someone else's file to the wrong class on every screen that reads it;
+    // an arbitrary `group` on a non-demonstration invents one logical resource
+    // out of unrelated files. Both doors, one mutation, every time.
+    refusesBothDoors((g) => {
+      g.sessions[1]!.resources[0]!.path = `${g.sessions[0]!.folder}/smuggled.mp4`;
+    }, /not a file in its own folder/);
+    refusesBothDoors((g) => {
+      g.sessions[0]!.resources[0]!.path = `${g.sessions[0]!.folder}/deeper/x.mp4`;
+    }, /not a file in its own folder/);
+    refusesBothDoors((g) => {
+      // Attributed to a real registry piece that this session never records a
+      // membership for: the file would surface as that piece's material with
+      // nothing in the graph saying it belongs to it.
+      const [s0, res] = firstWithRole(g, 'نت');
+      const stranger = g.pieces.find((p) => !s0.members.some((m) => m.key === p.key))!;
+      res.pieces = [stranger.key];
+    }, /without recording that membership/);
+    refusesBothDoors((g) => {
+      const [, res] = firstWithRole(g, 'نت');
+      res.group = 'نمونه:invented';
+    }, /carries a part group but is not a demonstration/);
+    refusesBothDoors((g) => {
+      const [, res] = firstWithRole(g, 'ضبط-کلاس');
+      res.pieces = [g.pieces[0]!.key];
+    }, /class recording and cannot name a piece/);
+    refusesBothDoors((g) => {
+      const [sess] = firstWithRole(g, 'ضبط-کلاس');
+      sess.hasClassRecording = false;
+    }, /disagrees with itself about having a class recording/);
+    refusesBothDoors((g) => {
+      const sess = g.sessions.find((x) => !x.resources.some((r) => r.role === 'ضبط-کلاس'))!;
+      sess.hasClassRecording = true;
+    }, /disagrees with itself about having a class recording/);
+    // A demonstration's PARTS are one resource told in order. Parts that are
+    // material for different pieces are not one resource, and two parts
+    // numbered alike have no order to be read in.
+    refusesBothDoors((g) => {
+      const [, first, sess] = groupedDemo(g);
+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
+      sibling.pieces = [];
+    }, /parts belong to different pieces/);
+    refusesBothDoors((g) => {
+      const [, first, sess] = groupedDemo(g);
+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
+      sibling.part = first.part;
+    }, /two parts numbered alike/);
 
     // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
     // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say

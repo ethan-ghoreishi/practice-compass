@@ -48,17 +48,34 @@ interface Index {
 interface Entry {
   path: string;
   size: number;
+  mtimeMs?: number;
 }
+interface Skipped {
+  path: string;
+  reason: string;
+}
+/** An optional input is ABSENT or PRESENT — never "empty because it threw". */
+type OptionalInput = { present: false } | { present: true; text: string };
 interface Scanner {
-  buildIndex(input: { registryText: string; inventory: Entry[]; renameLogText?: string }): Index;
+  buildIndex(input: {
+    registryText: string;
+    inventory: Entry[];
+    renameLog?: OptionalInput;
+    skipped?: Skipped[];
+  }): Index;
   contentHash(body: unknown): string;
   parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
   parseCsv(text: string): string[][];
   parseRegistry(text: string): Piece[];
   parseSessionFolderName(name: string): { n: number; date: string } | null;
-  scanArchive(root: string): Entry[];
+  scanArchive(root: string): { inventory: Entry[]; skipped: Skipped[] };
   scanToIndex(root: string): Index;
-  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
+  readSource(root: string): {
+    registryText: string;
+    renameLog: OptionalInput;
+    inventory: Entry[];
+    skipped: Skipped[];
+  };
   canonicalJson(value: unknown): string;
   writeIndexAtomically(outPath: string, text: string, root?: string): string;
   isSafeRelativePath(p: string): boolean;
@@ -442,13 +459,25 @@ describe('scanning the archive', () => {
       writeFileSync(join(out, 'outside.mp4'), 'x');
       symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
 
-      const first = scanArchive(root);
+      const { inventory: first, skipped: firstSkipped } = scanArchive(root);
       expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
       expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
       expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
       // The symlink is not followed: its target is outside the archive root.
       expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
       expect(first).toHaveLength(INVENTORY.length);
+      // …but "not followed" is SAID, never silent. A walk that drops a file the
+      // folder really holds and reports nothing publishes an index that is
+      // quietly narrower than the archive — the same "partial view sold as
+      // complete" the two-read check below refuses, arriving through the door
+      // the two-read check cannot see, because BOTH readings agree on it.
+      expect(firstSkipped.map((x) => x.path)).toEqual(['session-1-26-09-2023/نت-عراق.pdf']);
+      expect(firstSkipped[0]!.reason).toMatch(/symbolic link/i);
+      expect(
+        buildIndex({ registryText: REGISTRY, inventory: first, skipped: firstSkipped }).diagnostics.some(
+          (d) => d.path === 'session-1-26-09-2023/نت-عراق.pdf' && /symbolic link/i.test(d.reason),
+        ),
+      ).toBe(true);
 
       // DETERMINISM. Shuffled directory order and altered mtimes produce a
       // byte-identical semantic index: nothing here reads a time or trusts the
@@ -458,7 +487,7 @@ describe('scanning the archive', () => {
       expect(buildIndex({ registryText: REGISTRY, inventory: shuffled }).contentHash).toBe(scanned.contentHash);
       const old = new Date('2001-01-01T00:00:00Z');
       for (const f of INVENTORY) utimesSync(join(root, f.path), old, old);
-      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root) }).contentHash).toBe(scanned.contentHash);
+      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root).inventory }).contentHash).toBe(scanned.contentHash);
       expect(contentHash(scanned)).toBe(scanned.contentHash);
       // ...and the hash is not vacuous: a file whose SIZE changed is a changed
       // archive, so the semantic index changes with it.
@@ -533,20 +562,28 @@ describe('scanning the archive', () => {
       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
       const settled = readSource(root);
       // Every input this scanner reads is in the reading that gets compared.
-      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
+      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLog', 'skipped']);
       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
 
-      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
+      // Each of the inputs, perturbed in turn, is VISIBLE to that comparison.
       const moved = INVENTORY[0]!.path;
       const bytes = readFileSync(join(root, moved));
+      const when = new Date(settled.inventory.find((f) => f.path === moved)!.mtimeMs!);
+      // Put a file back EXACTLY as it was — bytes and metadata — or the
+      // restore is itself a mutation, which is the whole point of observing
+      // more than the size.
+      const restore = () => {
+        writeFileSync(join(root, moved), bytes);
+        utimesSync(join(root, moved), when, when);
+      };
       rmSync(join(root, moved));
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
+      restore(); // …and back, as a copy would
       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
       // A file still being COPIED is a size change, and is caught the same way.
       writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      writeFileSync(join(root, moved), bytes);
+      restore();
       writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
@@ -554,6 +591,89 @@ describe('scanning the archive', () => {
       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
       writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+      // A file edited IN PLACE at the same byte length changes no size and no
+      // CSV: `mtimeMs` is what makes that mutation visible to the comparison,
+      // and it is deliberately NOT semantic — the determinism check above
+      // altered every mtime in the archive and the index hash did not move.
+      const later = new Date(Date.now() + 60_000);
+      utimesSync(join(root, moved), later, later);
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      utimesSync(join(root, moved), when, when);
+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
+
+      // A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA. `catch { text = '' }`
+      // made an unreadable RENAME-LOG.csv indistinguishable from an archive
+      // that has none: both readings agreed, the consistency check passed, and
+      // the scan published an index with NO renames — so a file that moved in
+      // that window is flagged unavailable and its saved references can never
+      // be repaired. Absence is an OBSERVATION and is recorded as one;
+      // anything else fails the scan.
+      expect(settled.renameLog).toEqual({ present: true, text: renameLog });
+      rmSync(join(root, 'RENAME-LOG.csv'));
+      expect(readSource(root).renameLog).toEqual({ present: false });
+      // …and the two are not the same reading, so a log that VANISHES between
+      // the readings is a change, not a quiet "there was never one".
+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
+      // A present-but-EMPTY log is a zero-byte file — what a copy in flight
+      // looks like — and is refused exactly as PIECES.csv would be, rather
+      // than read as "no renames".
+      writeFileSync(join(root, 'RENAME-LOG.csv'), '');
+      expect(() => scanToIndex(root)).toThrow(/CSV is empty/);
+      // An unreadable required input fails the scan; it is never an empty one.
+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
+      const hidden = join(root, 'PIECES.csv');
+      const registryBytes = readFileSync(hidden);
+      rmSync(hidden);
+      mkdirSync(hidden); // a directory where a file must be: EISDIR, not ENOENT
+      expect(() => readSource(root)).toThrow(/Could not read PIECES\.csv/);
+      expect(() => scanToIndex(root)).toThrow(/Could not read PIECES\.csv/);
+      rmSync(hidden, { recursive: true });
+      writeFileSync(hidden, registryBytes);
+
+      // A RENAME LOOP NAMES NO FILE, and is dropped with a diagnostic rather
+      // than published. Every path that walks INTO the loop is equally
+      // unusable: A->B, B->C, C->B leaves no readable destination for A.
+      const swap = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: {
+          present: true,
+          text: 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\nsession-1-26-09-2023/b.mp4,session-1-26-09-2023/a.mp4\n',
+        },
+      });
+      expect(swap.renames).toEqual([]);
+      expect(swap.diagnostics.filter((d) => /loops through this path/.test(d.reason)).map((d) => d.path).sort()).toEqual([
+        'session-1-26-09-2023/a.mp4',
+        'session-1-26-09-2023/b.mp4',
+      ]);
+      const intoLoop = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: {
+          present: true,
+          text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/b.mp4,x/c.mp4\nx/c.mp4,x/b.mp4\n',
+        },
+      });
+      expect(intoLoop.renames).toEqual([]);
+      // An ordinary chain beside a loop still publishes — one bad topology
+      // does not cost the archive its good provenance.
+      const mixed = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: {
+          present: true,
+          text: 'old_path,new_path\nx/p.mp4,x/q.mp4\nx/a.mp4,x/b.mp4\nx/b.mp4,x/a.mp4\n',
+        },
+      });
+      expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
+      // An old path with TWO destinations was already refused, and still is.
+      const forked = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
+      });
+      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
+      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
 
       // And the scan itself reads the WHOLE source twice and refuses on any
       // difference. Nothing can mutate a filesystem between two synchronous
@@ -575,7 +695,7 @@ describe('scanning the archive', () => {
       expect(() => scanToIndex(root)).toThrow();
       expect(readFileSync(target, 'utf8')).toBe('last good\n');
       // And the archive itself is untouched by any of the above.
-      expect(scanArchive(root)).toHaveLength(INVENTORY.length);
+      expect(scanArchive(root).inventory).toHaveLength(INVENTORY.length);
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(out, { recursive: true, force: true });

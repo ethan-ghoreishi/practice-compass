@@ -271,6 +271,20 @@ function list(v: unknown, what: string): unknown[] {
   return v;
 }
 
+/**
+ * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
+ * same thing and quietly produced `''` for both — the very normalisation the
+ * list/num/bool rule above exists to stop, left in place for every string
+ * field that has a default. A resource `title: null` became an untitled row
+ * the grammar was perfectly happy with. Absent is a default; null is a value,
+ * and a wrong one.
+ */
+function text(v: unknown, what: string): string {
+  if (v === undefined) return '';
+  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
+  return v;
+}
+
 function num(v: unknown, what: string): number | null {
   if (v === undefined || v === null) return null;
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
@@ -347,13 +361,13 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     }
     pieces.push({
       key,
-      form: str(raw.form ?? '', 'form'),
-      piece: str(raw.piece ?? '', 'piece'),
-      dastgah: str(raw.dastgah ?? '', 'dastgah'),
-      composer: str(raw.composer ?? '', 'composer'),
+      form: text(raw.form, `Registry entry "${key}" form`),
+      piece: text(raw.piece, `Registry entry "${key}" piece`),
+      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
+      composer: text(raw.composer, `Registry entry "${key}" composer`),
       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
       sessions: sessions as number[],
-      notes: str(raw.notes ?? '', 'notes'),
+      notes: text(raw.notes, `Registry entry "${key}" notes`),
       ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
       ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
     });
@@ -394,9 +408,12 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
         path,
         role,
         kind: kind as SourceKind,
-        title: str(r.title ?? '', 'A resource title'),
+        title: text(r.title, `Resource "${path}" title`),
         part: num(r.part, `Resource "${path}" part`),
-        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
+        // `part` and `group` are genuinely nullable in the published format —
+        // the scanner emits `null` for both — so null stays legal THERE and
+        // nowhere else. `size` it always emits as a number.
+        ...(r.size === undefined ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
         pieces: forPieces,
         group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
       });
@@ -436,8 +453,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
   for (const d of list(input.diagnostics, 'The diagnostic list')) {
     if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
     diagnostics.push({
-      path: str(d.path ?? '', 'A diagnostic path'),
-      reason: str(d.reason ?? '', 'A diagnostic reason'),
+      path: text(d.path, 'A diagnostic path'),
+      reason: text(d.reason, 'A diagnostic reason'),
     });
   }
 
@@ -728,6 +745,65 @@ function checkSourceGraph(
       if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
       for (const role of m.roles as string[]) {
         if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
+      }
+    }
+
+    // --- SEMANTIC RELATIONS, not merely field types ------------------------
+    //
+    // A field-type grammar says every value is READABLE; it says nothing about
+    // whether the graph agrees with itself. A resource physically sitting in
+    // class 2's folder, listed under class 1, is type-perfect and attributes
+    // someone else's file to the wrong lesson on every screen that reads it —
+    // and an arbitrary `group` on a non-demonstration invents a logical
+    // resource out of unrelated files.
+    //
+    // Scoped to what the source still DESCRIBES. `unavailable` is retained
+    // provenance about what it has STOPPED describing — a piece dropped from
+    // the registry, a file deleted from the NAS — so holding those rows to the
+    // current source's internal agreement is a category error, and would make
+    // every refresh after a removal refuse at every door.
+    if (!sess.unavailable) {
+      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
+      const rolesFor = new Map<string, Set<string>>();
+      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
+      const groups = new Map<string, SourceResource[]>();
+      let classRecordings = 0;
+      for (const r of live) {
+        const segs = r.path.split('/');
+        if (segs.length !== 2 || segs[0] !== sess.folder) {
+          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
+        }
+        if (r.role === CLASS_ROLE) {
+          classRecordings += 1;
+          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
+        }
+        for (const k of r.pieces) {
+          if (!rolesFor.get(k)?.has(r.role)) {
+            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
+          }
+        }
+        if (r.group !== null && r.group !== undefined) {
+          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
+          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
+        }
+      }
+      if (classRecordings > 0 !== sess.hasClassRecording) {
+        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
+      }
+      // Parts of ONE demonstration: the same material, told in order. Parts
+      // that are material for different pieces are not one resource, and two
+      // parts with one number have no order to be read in.
+      for (const [g, parts] of groups) {
+        const pieces = [...parts[0]!.pieces].sort().join(NUL);
+        const numbers = new Set<number | null>();
+        for (const r of parts) {
+          if ([...r.pieces].sort().join(NUL) !== pieces) {
+            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
+          }
+          const part = r.part ?? null;
+          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
+          numbers.add(part);
+        }
       }
     }
   }

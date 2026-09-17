@@ -163,25 +163,58 @@ describe('the Setar archive, rendered', () => {
           // this journey drives whichever the viewport actually renders.
           await goTo(app, '/lessons');
           const wide = viewport.width >= 1000;
-          let lessonText: string;
-          if (wide) {
-            await page.getByRole('button', { name: /Class 13 · 2024-09-03/ }).first().click();
-            await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-            lessonText = await page.locator('main').innerText();
-          } else {
-            const class13 = page.getByRole('article').filter({ hasText: 'Class 13 · 2024-09-03' });
-            await class13.first().waitFor({ timeout: 20_000 });
+          /**
+           * Open one class and read what it actually renders — the whole page
+           * on the wide two-pane layout, the card itself on the phone, where
+           * rows start compact and must be opened first.
+           */
+          const openClass = async (label: string, number: number): Promise<string> => {
+            if (wide) {
+              await page.getByRole('button', { name: new RegExp(label) }).first().click();
+              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+              return page.locator('main').innerText();
+            }
+            const card = page.getByRole('article').filter({ hasText: label });
+            await card.first().waitFor({ timeout: 20_000 });
             // PHONE ROWS START COMPACT: thirty-nine imported classes must not
             // all open at once just because none of them has notes yet.
-            expect(await class13.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
-            await class13.getByRole('button', { name: /Class 13/ }).first().click();
-            await class13.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-            lessonText = await class13.innerText();
-          }
+            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
+            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
+            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+            return card.innerText();
+          };
+          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
           // The class recording is here, with its part numbers; a named score
           // is here; nothing claims a demonstration belongs to the class alone.
           expect(lessonText).toContain('ضبط کلاس');
           expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
+
+          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
+          //
+          // Class 25 is an ADOPTED legacy class carrying three of the owner's
+          // OWN references — personal takes the index describes nowhere, by
+          // construction — beside the archive's session material. The composed
+          // list used to include the owner's rows as well, so each of them was
+          // rendered twice: once where it can be edited and removed, and once
+          // again above it.
+          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+          const adopted = await openClass('Class 25 · 2025-08-05', 25);
+          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
+            expect(occurrences(adopted, authored)).toBe(1);
+          }
+          // …and they are still editable where they live: the section that owns
+          // them can still remove them, by name.
+          const owning = wide
+            ? page.locator('main')
+            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
+          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
+          // A class the archive gave a recording to is NOT invited to add one.
+          // Class 12 is a purely imported class: it keeps no copy of its
+          // session's files, so its own `recordings` array is empty and the
+          // empty-state card offered to add the very video playing above it.
+          const imported = await openClass('Class 12 · 2024-08-06', 12);
+          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
+          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
 
           // --- A CANONICAL PIECE, and the material that is useful for it ----
           await goTo(app, '/repertoire');

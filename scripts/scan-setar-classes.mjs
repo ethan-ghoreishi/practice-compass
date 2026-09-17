@@ -284,7 +284,7 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  * files). Individual unhandled FILES are reported in `diagnostics` and left
  * out — surfaced for the owner, never relabelled.
  */
-export function buildIndex({ registryText, inventory, renameLogText }) {
+export function buildIndex({ registryText, inventory, renameLog, skipped = [] }) {
   const pieces = parseRegistry(registryText);
   const byKey = new Map(pieces.map((p) => [p.key, p]));
 
@@ -292,6 +292,11 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
 
   const diagnostics = [];
   const diag = (path, reason) => diagnostics.push({ path, reason });
+  // Everything the WALK could not take in. A symlink is not followed and a
+  // device node is not a file, but dropping either in silence publishes an
+  // index that is quietly narrower than the archive — the same "partial view
+  // sold as complete" this scanner's two-read check exists to refuse.
+  for (const s of skipped) diag(s.path, s.reason);
 
   // --- sessions -----------------------------------------------------------
   const sessions = new Map(); // n -> { n, date, folder, assets: [] }
@@ -426,8 +431,12 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
   // EXACT old→new pairs only. This is path provenance, not a similarity model:
   // an old path with two destinations is reported, never resolved by guessing.
   const renames = [];
-  if (renameLogText) {
-    const rows = readTable(renameLogText, ['old_path', 'new_path']);
+  // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
+  // A present-but-empty log has no header and `readTable` says so, exactly as
+  // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
+  // like, and guessing "no renames" from it is the failure this lane closed.
+  if (renameLog && renameLog.present) {
+    const rows = readTable(renameLog.text, ['old_path', 'new_path']);
     const dest = new Map();
     for (const r of rows) {
       const from = r.old_path.trim();
@@ -446,6 +455,32 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
       dest.set(from, to);
       renames.push({ from, to });
     }
+    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
+    // only that two names were swapped; picking a stopping point would invent
+    // an identity, and every path that LEADS INTO a loop is equally unusable.
+    // Those rows are dropped with a diagnostic rather than published: the app
+    // must never be handed a replacement identity this log cannot support.
+    const cyclic = new Set();
+    for (const from of dest.keys()) {
+      const walked = new Set([from]);
+      let cur = from;
+      while (dest.has(cur)) {
+        const next = dest.get(cur);
+        if (walked.has(next)) {
+          for (const p of walked) cyclic.add(p);
+          cyclic.add(next);
+          break;
+        }
+        walked.add(next);
+        cur = next;
+      }
+    }
+    for (const from of cyclic) {
+      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
+    }
+    const kept = renames.filter((r) => !cyclic.has(r.from));
+    renames.length = 0;
+    renames.push(...kept);
     renames.sort((a, b) => cmp(a.from, b.from));
   }
 
@@ -490,23 +525,45 @@ export function canonicalJson(value) {
 export function scanArchive(root) {
   const base = resolve(root);
   const inventory = [];
+  const skipped = [];
   for (const entry of readdirSync(base, { withFileTypes: true })) {
     if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
-    if (!entry.isDirectory()) continue;
     if (!parseSessionFolderName(entry.name)) continue; // root folders out of scope
+    if (!entry.isDirectory()) {
+      // It CLAIMS to be a session and this walk will not open it. Silence here
+      // would drop a whole class out of a "complete" index.
+      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.' });
+      continue;
+    }
     const dir = join(base, entry.name);
     for (const f of readdirSync(dir, { withFileTypes: true })) {
       if (f.name.startsWith('.') || IGNORED_DIRS.has(f.name)) continue;
       const full = join(dir, f.name);
       const st = lstatSync(full);
-      if (st.isSymbolicLink() || !st.isFile()) continue;
+      const path = `${entry.name}/${f.name}`;
+      if (st.isSymbolicLink()) {
+        // Never FOLLOWED — a link out of the archive is a path this scanner
+        // has no authority over — but always SAID, so the owner can see that
+        // the index is not describing something the folder holds.
+        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed.' });
+        continue;
+      }
+      if (!st.isFile()) {
+        skipped.push({ path, reason: 'Not a regular file — not indexed.' });
+        continue;
+      }
       if (!full.startsWith(base + sep)) continue;
-      inventory.push({ path: `${entry.name}/${f.name}`, size: st.size });
+      // `mtimeMs` is deliberately NOT semantic — `buildIndex` reads `size` and
+      // nothing else, so an altered time cannot change the published index. It
+      // is here for the two-read comparison below: a file edited IN PLACE at
+      // the same byte length is otherwise invisible to it.
+      inventory.push({ path, size: st.size, mtimeMs: st.mtimeMs });
       if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
     }
   }
   inventory.sort((a, b) => cmp(a.path, b.path));
-  return inventory;
+  skipped.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason));
+  return { inventory, skipped };
 }
 
 /** Write via a temp file + rename, so a reader never sees a half-written index. */
@@ -526,14 +583,39 @@ export function writeIndexAtomically(outPath, text, root) {
  * below covers all of them by construction, including one added later.
  */
 export function readSource(base) {
-  const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
-  let renameLogText = '';
+  const registryText = readRequired(join(base, 'PIECES.csv'), 'PIECES.csv');
+  const renameLog = readOptional(join(base, 'RENAME-LOG.csv'), 'RENAME-LOG.csv');
+  const { inventory, skipped } = scanArchive(base);
+  return { registryText, renameLog, inventory, skipped };
+}
+
+/** A required input. Any failure to read it is a failure to scan. */
+function readRequired(path, label) {
   try {
-    renameLogText = readFileSync(join(base, 'RENAME-LOG.csv'), 'utf8');
-  } catch {
-    renameLogText = '';
+    return readFileSync(path, 'utf8');
+  } catch (err) {
+    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
   }
-  return { registryText, renameLogText, inventory: scanArchive(base) };
+}
+
+/**
+ * AN OPTIONAL INPUT IS ABSENT OR PRESENT — NEVER "EMPTY BECAUSE IT THREW".
+ *
+ * `catch { text = '' }` made every failure to read RENAME-LOG.csv — a
+ * permission change, an I/O error, a mount that went away mid-copy — look
+ * exactly like an archive that has no rename log. Both readings then agreed
+ * with each other, so the consistency check below passed and the scan
+ * published an index with no renames at all: a file that moved during that
+ * window is flagged unavailable and its saved references can never be
+ * repaired. Only ENOENT is an observation; everything else is a failure.
+ */
+function readOptional(path, label) {
+  try {
+    return { present: true, text: readFileSync(path, 'utf8') };
+  } catch (err) {
+    if (err?.code === 'ENOENT') return { present: false };
+    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
+  }
 }
 
 /**

@@ -1658,6 +1658,31 @@ check, not atomicity: a perturbation stable across both readings agrees with its
 indistinguishable from the archive genuinely being in that state. What it removes is the
 transient, which is what a copy in flight looks like.
 
+**AND A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA — WHICH IS WHAT MADE THE TWO-READ
+CHECK LOOK CLEAN OVER A FALSE VIEW.** `catch { renameLogText = '' }` turned every failure to
+read RENAME-LOG.csv — a permission change, an I/O error, a mount that went away mid-copy —
+into an archive that has no rename log. Both readings then AGREED, the consistency check
+passed, and the scan published an index with no renames at all: a file that moved during
+that window is flagged `unavailable` and its saved references can never be repaired. Absence
+is an OBSERVATION (`{present:false}`, ENOENT only) and travels in the compared reading as
+one; anything else fails the scan. A required input is required outright, so a missing or
+unreadable PIECES.csv refuses rather than yielding an empty registry, and a present-but-EMPTY
+log — what a zero-byte copy in flight looks like — is refused by `readTable` exactly as the
+registry would be.
+
+**AND THE WALK SAYS WHAT IT COULD NOT TAKE IN.** Two readings agree about a file neither of
+them looked at, so the consistency check is blind by construction to anything the walk drops
+in silence. A symbolic link is still never FOLLOWED — a link out of the archive is a path
+this scanner has no authority over — and a session-named entry that is not a directory is
+still never opened; both are now `diagnostics` rows in the published index instead of
+vanishing, because an index quietly narrower than the archive is the same "partial view sold
+as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
+folders stay silent: they are not archive content, and saying so 258 times is noise.
+Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
+a file edited IN PLACE at the same byte length changes no size and no CSV, and would
+otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
+determinism rule is untouched: altered mtimes still produce a byte-identical index.
+
 **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
 trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
 token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
@@ -1688,6 +1713,15 @@ boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`
 one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
 the same treatment `validatePracticeText` gives the owner's own words, and never a
 coercion.
+
+**AND THAT RULE HAD TO REACH THE STRINGS TOO.** It closed the lists and the scalars and left
+every string field with a default exactly as it was: `str(raw.form ?? '')` still read ABSENT
+and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `form`,
+`composer` or `notes`, and a diagnostic's own `path` all decoded to `''` — an untitled row
+the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
+a default, anything else that is not text is refused naming the record. `part` and `group`
+stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
+present null is refused with everything else.
 
 **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
 SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
@@ -1789,6 +1823,28 @@ channel rather than two, and the commit refuses on either whether or not `rev` m
 screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
 question, or the suggestion's real current value, is shown as it is now.
 
+**AND A DECISION NAMES ITS RECORD, NOT ONLY ITS PIECE — AND EVERY DECISION IS ACCOUNTED
+FOR.** The premise rule above closed the case where the owner's VALUE moved and left the two
+cases where the RECORD did. Both loops open with "already bound? nothing to decide" /
+"already suppressed? nothing to decide", so a decision about a record that became bound
+between the preview and the commit was never looked at at all: no adoption, no question, and
+an EMPTY `staleDecisions`, so the commit reported success for an action it had not performed.
+An `apply-field` decision was worse than ignored — keyed by piece and value alone, it was
+REDIRECTED onto whichever record held that piece by commit time, and a sync installing a
+database where the same piece is bound to item B, also with an empty composer, took a choice
+made about A.
+
+So `apply-field` carries `itemId` (identity) as well as `from` (premise), and
+`decisionMatchesSuggestion` compares all four; and `planArchiveImport` marks every decision
+it ACTS on and sweeps the rest. An unmarked decision is either an action that has ALREADY
+HAPPENED — the same answer still in hand on the next preview — or an answer to a question
+that no longer stands, which is stale. That already-done branch is LOOP PREVENTION rather
+than politeness: `ArchiveRefresh` drops a stale decision and re-previews, and a realised
+action can never be consumed by a loop that skips its own record, so without it the same
+decision would go stale for ever. The sweep is why this holds for Link, Create, Skip and
+apply-field together instead of a stale check bolted inside each early return, and the
+premise rule above is now one of its outcomes rather than a second mechanism beside it.
+
 **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
 decide what file a stored reference names, and they used to decide it differently:
 `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
@@ -1804,7 +1860,25 @@ session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B a
 that very reference repaired into session 2: bound to one class, pointing at another's
 files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
 that loops says nothing about where the file is), and three things use it: evidence, repair,
-and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+and the owner's own hides.
+
+**AND "REPORTED" HAD TO BE UNIGNORABLE.** `followRenames` handed back
+`{ path, cycle: true }` — a perfectly usable-looking path beside a flag — and only ONE of its
+three callers read the flag: adoption refused it, while the suppression re-key and
+`retainMissing` walked straight past it. Hide A, publish A->B and B->A, and the re-key moved
+the owner's hide onto B: A came back into view and the wrong file went dark. It returns
+`string | null` now, so there is no way to drop the verdict and still have a path. A hide
+stays exactly where the owner put it, a row the incoming index no longer lists keeps its
+provenance flagged rather than being deleted on the strength of a destination nothing can
+read, and repair says "the rename log loops on this path" instead of rewriting to an
+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
+row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
+published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
+published index carries no cycle, and the app still refuses to read one from any other
+source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
+archive its good provenance.
+
+A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
 a hidden file simply reappeared under the new one while the old row sat there flagged
 unavailable. Re-keying it is not editing an owner decision — it is the same decision about
 the same bytes said in the archive's current words, the `itemId` scope carried untouched and
@@ -1837,7 +1911,27 @@ lessons that are NOT archive-bound. An archive-bound lesson contributes nothing 
 link route — its files reached the list already, correctly scoped — which is what stops a
 class recording and someone's practice takes from landing on a piece. A manual, unclassified
 lesson still contributes everything it has, because nothing knows the scope and inventing
-one would be a guess. `lessonFiles` is the same composition for a lesson.
+one would be a guess.
+
+**A LESSON IS THE OPPOSITE CASE: EVERY FILE ON IT HAS EXACTLY ONE SECTION THAT RENDERS IT.**
+An ITEM's material is composed from OTHER records — linked lessons, the graph — that the
+item's own page has no section for, which is precisely why `itemFiles` must stay the whole
+composition. A LESSON owns its own references and its own attachments, and its page already
+renders each in the section that can edit and remove them. `lessonFiles` composed those as
+well, so an authored NAS reference the index describes nowhere — the owner's own practice
+takes on an adopted class — and every local attachment were rendered TWICE: once above,
+where nothing can be done with them, and once again where they live. `lessonFiles` is now
+the ARCHIVE's contribution alone (an archive-bound class keeps no copy of its session's
+files, so nothing else can show them); "Class recording & scores" keeps the owner's
+references, `Attachments` keeps the attachments, and each Remove button is NAMED after its
+own file rather than saying "Remove this link" three times over.
+
+**AND "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THAT ARRAY.** An imported historical
+class keeps no copy of its session's files, so `lesson.recordings` is empty and the
+empty-state card invited the owner to add a class recording directly beneath the one already
+playing above it. That state is read through the same composition the section above renders
+— not the session's `hasClassRecording` flag — so a class recording the owner has HIDDEN does
+not count as one that is there.
 
 **SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
 `migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
@@ -1869,6 +1963,25 @@ GRAMMAR, never a defensive guard in a component: a reader written against a vali
 is the point of validating it. `unavailable` stays legal on a piece, a session and a
 resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
 silently widens a hide scoped to ONE item.
+
+**AND A GRAMMAR OF FIELD TYPES SAYS EVERY VALUE IS READABLE, NEVER THAT THE GRAPH AGREES
+WITH ITSELF.** A resource physically sitting in class 2's folder, listed under class 1, is
+type-perfect at every door and attributes someone else's file to the wrong class on every
+screen that reads it. So `checkSourceGraph` also checks the RELATIONS, and the same four at
+both doors: a resource's path is `<that session's folder>/<name>` and nothing else; a
+resource attributed to a piece has that piece's membership recorded for that ROLE, so no
+file can surface as a piece's material with nothing in the graph saying it belongs to it; a
+`group` belongs only to a demonstration, and the parts sharing one are material for the same
+pieces with distinct part numbers, so an arbitrary group cannot invent one logical resource
+out of unrelated files; and `hasClassRecording` agrees with whether a class-role resource is
+actually there, which itself may never name a piece.
+
+These run over what the source still DESCRIBES. `unavailable` is retained provenance about
+what it has STOPPED describing — a piece dropped from the registry, a file deleted from the
+NAS — so holding those rows to the current source's internal agreement is a category error,
+and would make every refresh after a removal refuse at every door. The group's LABEL format
+is deliberately not asserted: that is the scanner's grammar, and this file's own rule is
+that the grammar lives once.
 
 **AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
 the one persisted field with no check at all, while Settings renders it

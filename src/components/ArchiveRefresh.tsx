@@ -277,7 +277,18 @@ export default function ArchiveRefresh() {
                         type="button"
                         className="btn btn-sm"
                         aria-pressed={applied}
-                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
+                        onClick={() =>
+                          decide({
+                            kind: 'apply-field',
+                            pieceKey: sg.pieceKey,
+                            // The RECORD the value was shown against, not just
+                            // the piece: a rebase must not hand the answer to
+                            // whichever item happens to hold that piece later.
+                            itemId: sg.itemId,
+                            field: sg.field,
+                            from: sg.from,
+                          })
+                        }
                       >
                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
                       </button>
@@ -347,7 +358,7 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
   // earlier, and either one evicted a Link/Skip answer about the same piece.
   const key = (d: ReconcileDecision) =>
     d.kind === 'apply-field'
-      ? `field:${d.pieceKey}:${d.field}`
+      ? `field:${d.pieceKey}:${d.itemId}:${d.field}`
       : 'pieceKey' in d
         ? `piece:${d.pieceKey}`
         : 'sessionN' in d
