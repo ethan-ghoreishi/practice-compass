@@ -344,6 +344,37 @@ export function publishRemote(remote: FakeRemote, stateText: string, hash: strin
   if (!remote.refs.includes('main')) remote.refs.push('main');
 }
 
+/**
+ * Re-stamp an index with the digest the SCANNER would have written for it.
+ *
+ * The app recomputes this digest at its reader boundary and refuses an index
+ * whose content and hash disagree, so a journey that edits a fixture index must
+ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
+ * ONE implementation, here beside `publishSourceIndex`, so no journey can
+ * quietly hand-edit a hash instead.
+ */
+export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
+  const body = { ...index };
+  delete body.contentHash;
+  delete body.generatedAt;
+  const sorted = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sorted);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[k];
+        if (v !== undefined) out[k] = sorted(v);
+      }
+      return out;
+    }
+    return value;
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({ ...index, contentHash });
+}
+
 /** Put a source index on the source-index branch, as the NAS publisher would. */
 export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
   remote.sourceIndex = { text, commit };

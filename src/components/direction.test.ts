@@ -144,6 +144,13 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
  */
 const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
   { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
+  // The metadata-suggestion row: the piece's own name groups with the change
+  // proposed for it, and the owner's CURRENT value and the archive's PROPOSED
+  // one each resolve from their own content — either may be Farsi or Latin,
+  // and neither follows from the other.
+  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
@@ -598,6 +605,10 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'components/ItemNotes.tsx', snippet: '<div className="small notes-read" dir="auto"' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.observation}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
+  // A registry improvement offered on Refresh: the value the owner has and the
+  // value the archive proposes are authored independently of each other.
+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
+  { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
   // Instrument names used to be tracked here too, one exact snippet per site.
   // A sealed review found that shape structurally insufficient FOUR times

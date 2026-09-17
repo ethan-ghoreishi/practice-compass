@@ -1652,6 +1652,19 @@ consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes
 validates that index; a version newer than this build understands is REFUSED rather than
 read leniently.
 
+**AND THE DECLARED DIGEST IS RECOMPUTED, NEVER TAKEN ON FAITH.** `contentHash` is not a
+checksum the app may skip past: it is the REFRESH IDENTITY. `planArchiveImport` compares it
+with the hash already accepted to conclude nothing has changed, so content altered under a
+RETAINED old hash was reported "Already current" and its changed facts silently ignored —
+a sealed review reproduced it by editing one composer. `parseSourceIndex` (now async)
+recomputes the SCANNER's own digest — SHA-256 over `canonicalStringify` of the body minus
+`contentHash` and `generatedAt`, byte-for-byte `scan-setar-classes.mjs`'s `contentHash` /
+`canonicalJson` — and refuses a mismatch. It is the ONE boundary the GitHub fetch and the
+file fallback both pass through, so neither door can be given the check separately and miss
+it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
+decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
+broken file reports the error the owner can act on rather than a hash mismatch.
+
 **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
 SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
 COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
@@ -1709,6 +1722,28 @@ a refresh ADDS to the database, it does not replace it, so the running clock, th
 the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
 the SAME database object, so it cannot bump the revision or churn a timestamp.
 
+**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND IT IS PERSISTED.** A sealed
+review found three halves of this missing. SKIP lived only in the preview's own `decisions`
+argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
+the next refresh, asked the identical question again with nothing in the database to show it
+had ever been answered; `planArchiveImport` writes a `piece`/`session` suppression for it
+now, the same record every other deliberate removal writes, which a refresh, a reload and a
+sync all already respect (idempotent, so answering twice does not grow the list). CREATE
+SEPARATELY was honoured for an item and silently dropped for a LESSON, so two
+indistinguishable legacy classes re-asked for ever. And a decision taken against an
+ALREADY-CURRENT index — a skip, or one registry field applied — was reported "Already
+current" and thrown away unwritten, because `commitArchiveImport` judged it by
+`summary.unchanged`, which answers about the INDEX alone. The store asks
+`applyArchiveImport` itself now (it returns the SAME OBJECT when a plan changes nothing),
+so there is one source of truth for that question and it is the function that does the
+writing. `applyArchiveImport` counts a field decision only when the plan actually OFFERS
+that field, so both sides of the preview/commit boundary mean the same thing by "nothing to
+do". An OFFER is not a change: an unanswered suggestion writes nothing and says so.
+Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
+current value and the archive's proposal each resolving their own direction — and a decision
+is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
+dastgāh choice made a moment earlier.
+
 **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
 `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
 alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
@@ -1739,6 +1774,23 @@ item/lesson bindings, an instrument mismatch and an unsafe direct reference, nam
 record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
 its provenance is kept — not a dangling reference.
 
+**THE NESTED GRAPH HAS ONE GRAMMAR, AND BOTH CALLERS RUN IT.** `decodeSourceIndex` and
+`validateArchiveSources` used to state the shape separately, and the second stated LESS of
+it: it checked a resource's path and its part group and walked straight past
+`members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
+`folder` and `roster`, and the rename and diagnostic rows entirely. A sealed review set
+`members[0].roles` to `null` in an imported file: every door ACCEPTED and PERSISTED it, and
+the first production reader to touch it — `repeatChains`, doing `m.roles.includes(...)` —
+threw while rendering material. `planArchiveImport` had the identical exposure through
+`new Set([piece.key, ...piece.aliases])`. `checkSourceGraph` (`sourceArchive.ts`) is that
+grammar in ONE place; the decoder runs it over its own normalised output and
+`validateArchiveSources` runs it over every persisted source, so a reader may dereference
+any field the grammar admits and nothing else can reach the database. The fix is the
+GRAMMAR, never a defensive guard in a component: a reader written against a validated graph
+is the point of validating it. `unavailable` stays legal on a piece, a session and a
+resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
+silently widens a hide scoped to ONE item.
+
 **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
 ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
 (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
@@ -1759,6 +1811,24 @@ mapping is reported. A full URL converts only under a VERIFIED base, and one car
 query or fragment is left alone. Where an old and a current row now point at one physical
 file, BOTH rows survive with their own titles and notes: deleting one deletes something the
 owner wrote.
+
+**AND THE REFRESH ITSELF DOES IT — a helper with no production caller repairs nothing.**
+The rename log is published WITH the index, so the one moment the app can repair a stored
+path is the moment it accepts a new graph; a sealed review found a uniquely adoptable
+legacy class being adopted and left pointing at names the archive renamed years ago — bound
+and broken. `planArchiveImport` now runs `repairLessonReferences` in ONE pass over the
+lessons this archive OWNS: the ones this plan adopts and the ones already bound. A lesson
+the archive has no claim on is not something a refresh may rewrite. The pass produces the
+objects the plan SHOWS (`adoptedLessons`) and the ones it installs (`repairedLessons`), so a
+preview cannot display an old path while the commit writes a new one. `verifiedBase` is
+threaded from the device's own configured media base, so a stored full URL under it converts
+and everything else stays exactly as the owner saved it.
+A cycle, a rename whose destination is gone and an unsafe path become plan `attention`
+rows — but `not-described` does NOT (see `RepairReason`): the index deliberately describes
+only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
+own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
+renamed is outside what it knows, never evidence that the file is gone. Those three personal
+references are retained historical links, untouched and unflagged.
 
 **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
 (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged

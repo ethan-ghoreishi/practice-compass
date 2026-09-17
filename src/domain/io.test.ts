@@ -6,7 +6,14 @@ import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
 import { serializeExport, validateDB, parseImport } from './io';
 import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
-import { decodeSourceIndex } from './sourceArchive';
+import {
+  decodeSourceIndex,
+  membersForSession,
+  repeatChains,
+  resourceReference,
+  resourcesForPiece,
+  resourcesForSession,
+} from './sourceArchive';
 import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
@@ -889,6 +896,115 @@ describe('the v14 source graph at the schema boundary', () => {
     refuses((d) => {
       d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
     }, /suppression of an unknown kind/);
+
+    // --- EVERY NESTED FIELD A PRODUCTION READER DEREFERENCES ----------------
+    // The validator used to check a resource's path and its part group and
+    // walk straight past the rest of the graph, so a malformed nested value
+    // was accepted, persisted, and then thrown on by the first reader to
+    // touch it. These are that whole family, not one counterexample: the
+    // roles list `repeatChains` calls `.includes` on, the alias list
+    // `planArchiveImport` spreads, the kind/title `resourceReference` reads,
+    // and the session fields `sessionsForPiece` and the material composition
+    // walk.
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { roles: unknown }).roles = null;
+    }, /unreadable role list/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.members[0]!.roles = ['not-a-real-role'];
+    }, /unknown role/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { key: unknown }).key = null;
+    }, /claims an unknown piece/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = null;
+    }, /unreadable alias list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = [1, 2];
+    }, /unreadable alias list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { composer: unknown }).composer = { name: 'x' };
+    }, /unreadable composer/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { sessions: unknown }).sessions = ['13'];
+    }, /invalid session number/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { provisional: unknown }).provisional = 'yes';
+    }, /unreadable flag/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { kind: unknown }).kind = 'executable';
+    }, /unknown kind/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { role: unknown }).role = null;
+    }, /unknown role/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { title: unknown }).title = 42;
+    }, /unreadable title/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { pieces: unknown }).pieces = null;
+    }, /unreadable piece list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { part: unknown }).part = '2';
+    }, /unreadable part number/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { size: unknown }).size = '10mb';
+    }, /unreadable size/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { resources: unknown }).resources = null;
+    }, /no resource list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { members: unknown }).members = null;
+    }, /no membership list/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.folder = '../elsewhere';
+    }, /unsafe folder path/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { roster: unknown }).roster = null;
+    }, /unreadable roster/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.roster = ['not-in-the-registry'];
+    }, /which it does not describe/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { rosterTrusted: unknown }).rosterTrusted = 'maybe';
+    }, /unreadable flag/);
+    refuses((d) => {
+      d.archiveSources[0]!.renames = [{ from: '../secret', to: 'x' }];
+    }, /rename with an unsafe path/);
+    refuses((d) => {
+      d.archiveSources[0]!.renames = [
+        { from: 'a/b.mp4', to: 'a/c.mp4' },
+        { from: 'a/b.mp4', to: 'a/d.mp4' },
+      ];
+    }, /more than one destination/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { diagnostics: unknown }).diagnostics = [{ path: 'x' }];
+    }, /unreadable diagnostic entry/);
+    refuses((d) => {
+      (d.archiveSources[0]!.suppressions as unknown[]) = [
+        { kind: 'resource', ref: 'x', itemId: 42, at: '2026-01-01T00:00:00.000Z' },
+      ];
+    }, /suppression with an unreadable item/);
+    refuses((d) => {
+      (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
+    }, /suppression with no timestamp/);
+
+    // The POSITIVE half: a graph this door ACCEPTS is one every production
+    // reader can walk without throwing. The counterexample above reached
+    // `repeatChains` and crashed the material list; this asserts the whole
+    // reader surface over the whole accepted graph, not one call.
+    const accepted = validateDB(graphed);
+    const live = accepted.archiveSources[0]!;
+    for (const piece of live.pieces) {
+      expect(Array.isArray(repeatChains(live, piece.key))).toBe(true);
+      expect(Array.isArray(resourcesForPiece(live, piece.key))).toBe(true);
+      for (const r of resourcesForPiece(live, piece.key)) {
+        expect(typeof resourceReference(live.id, r).title).toBe('string');
+      }
+      expect([...new Set([piece.key, ...piece.aliases])].length).toBeGreaterThan(0);
+    }
+    for (const sess of live.sessions) {
+      expect(Array.isArray(membersForSession(live, sess.n))).toBe(true);
+      expect(Array.isArray(resourcesForSession(live, sess.n))).toBe(true);
+    }
 
     // Bindings: dangling, duplicated, or on the wrong instrument.
     refuses((d) => {

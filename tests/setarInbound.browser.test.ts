@@ -62,6 +62,33 @@ function v14Database(): PracticeDB {
 const V14_DB = v14Database();
 const V14_TEXT = serializeExport(V14_DB, CLOCK);
 
+/**
+ * The same database with ONE nested value inside the graph made malformed.
+ *
+ * `members[].roles` is what `repeatChains` calls `.includes` on to render an
+ * item's material, so a door that accepts this persists a database whose first
+ * reader throws. It is the sharpest member of the family — the nested fields a
+ * production reader dereferences — and every door below is given the identical
+ * bytes rather than a door-specific approximation of them.
+ */
+function withMalformedRoles<T extends PracticeDB>(db: T): T {
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((src, i) =>
+      i === 0
+        ? {
+            ...src,
+            sessions: src.sessions.map((sess, j) =>
+              j === 0
+                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
+                : sess,
+            ),
+          }
+        : src,
+    ),
+  } as unknown as T;
+}
+
 const wrap = (data: unknown, files?: unknown) =>
   JSON.stringify({
     app: 'practice-compass',
@@ -183,6 +210,12 @@ describe('the archive graph at every inbound door', () => {
           says: /unsafe reference path/,
         },
         {
+          // The sealed counterexample: a nested value no door used to check.
+          name: 'a membership with an unreadable role list',
+          text: wrap(withMalformedRoles(bad)),
+          says: /unreadable role list/,
+        },
+        {
           name: 'a newer schema',
           text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
           says: /newer version/i,
@@ -249,6 +282,20 @@ describe('the archive graph at every inbound door', () => {
       await page.getByRole('button', { name: 'Sync now' }).click();
       await expect
         .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // …and the NESTED malformation is refused by this door too, not only by
+      // the import one. A pull that installed it would leave a database whose
+      // own material reader throws, with nothing to undo it.
+      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
+      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
           timeout: 60_000,
           interval: 500,
         })
@@ -336,6 +383,20 @@ describe('the archive graph at every inbound door', () => {
       expect(await page.locator('body').innerText()).toMatch(/instrument that does not exist/);
       // Rendering the refusal writes nothing at all.
       expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
+
+      // The same hydration branch, given the NESTED malformation instead: this
+      // is the door the sealed counterexample actually walked through, and a
+      // database it accepted would crash the first material render.
+      await writePersistedState(
+        app,
+        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
+        SCHEMA_VERSION,
+      );
+      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
 
       // --- COLD-START RECOVERY gets the owner back in ----------------------
       await page.getByLabel('Restore backup file').setInputFiles({

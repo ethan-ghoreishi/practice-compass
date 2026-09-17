@@ -11,6 +11,7 @@ import {
   persistedUntil,
   publishSourceIndex,
   readPersistedState,
+  stampSourceIndex,
   reload,
   type Engine,
   type PracticeApp,
@@ -33,7 +34,13 @@ const PHONE = { width: 390, height: 844 };
 const DESKTOP = { width: 1280, height: 900 };
 
 interface Db {
-  items: { id: string; title: string; status: string; source?: { pieceKey: string } }[];
+  items: {
+    id: string;
+    title: string;
+    status: string;
+    persian?: { composer?: string };
+    source?: { pieceKey: string };
+  }[];
   lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
   blocks: unknown[];
   archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
@@ -60,12 +67,18 @@ async function refresh(app: PracticeApp) {
   await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
 }
 
-/** An index with one more class than the corpus — the delta a refresh applies. */
-function withSession40(text: string): string {
+/**
+ * An index with one more class than the corpus — the delta a refresh applies.
+ *
+ * Re-STAMPED with the digest the scanner itself would have written: the app
+ * recomputes that digest and refuses an index whose content and hash disagree,
+ * so a journey may not hand-edit a hash to fake a new scan.
+ */
+async function withSession40(text: string): Promise<string> {
   const index = JSON.parse(text) as {
     contentHash: string;
     sessions: unknown[];
-    pieces: { key: string }[];
+    pieces: { key: string; composer: string }[];
   };
   index.sessions = [
     ...index.sessions,
@@ -90,8 +103,22 @@ function withSession40(text: string): string {
       members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
     },
   ];
-  index.contentHash = index.contentHash.replace(/^../, 'ff');
-  return JSON.stringify(index);
+  return stampSourceIndex(index as unknown as Record<string, unknown>);
+}
+
+/** The composer this journey's re-scanned registry proposes for one piece. */
+const NEW_COMPOSER = 'میرزا-عبدالله';
+
+/**
+ * A re-scanned index whose REGISTRY has improved: one piece the owner already
+ * has now names a different composer. That is a suggestion, never a write.
+ */
+async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
+  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
+  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
+  const was = target.composer;
+  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
+  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
 }
 
 describe('the Setar archive, rendered', () => {
@@ -223,7 +250,7 @@ describe('the Setar archive, rendered', () => {
           await page.getByRole('button', { name: 'Already current' }).click();
           await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
 
-          publishSourceIndex(remote, withSession40(INDEX_TEXT), 'source-index-commit-2');
+          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
           await refresh(app);
           expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
           await page.getByRole('button', { name: 'Apply' }).click();
@@ -234,6 +261,55 @@ describe('the Setar archive, rendered', () => {
             (d) => d.lessons.length === 41,
           );
           expect(delta.items.filter((i) => i.source)).toHaveLength(94);
+
+          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
+          // The registry improves. That is an OFFER, field by field: nothing
+          // about the owner's own piece changes until they say so, and the
+          // choice must survive the commit even when the index behind it is
+          // already the one installed.
+          const better = await withBetterComposer(INDEX_TEXT);
+          publishSourceIndex(remote, better.text, 'source-index-commit-4');
+          await refresh(app);
+          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
+          await offerRow.first().waitFor({ timeout: 20_000 });
+          const offerText = await page.locator('main').innerText();
+          // The section label is rendered uppercase by the stylesheet, and
+          // innerText returns what is actually rendered.
+          expect(offerText).toMatch(/the archive knows more about these/i);
+          expect(offerText).toContain(better.key);
+          expect(offerText).toContain(NEW_COMPOSER);
+          // Applying WITHOUT answering updates the source graph and leaves the
+          // owner's own piece exactly as it was.
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const unanswered = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
+          );
+          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
+
+          // THE SAME INDEX, a NEW answer. The graph is already current, so a
+          // refresh judged by the index hash alone called this "Already
+          // current" and threw the answer away unwritten.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const answeredDb = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
+          );
+          // Only that field moved: the piece keeps its title and its history.
+          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
+          expect(answeredDb.blocks).toHaveLength(1);
+          // …and the offer is gone, because it has been taken.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
 
           // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
           publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');

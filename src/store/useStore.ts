@@ -370,6 +370,8 @@ interface StoreState {
     index: SourceIndex;
     instrumentId: ID;
     decisions?: ReconcileDecision[];
+    /** This device's own media base, for converting a stored full URL. */
+    verifiedBase?: string;
     now?: Date;
   }) => { plan: ImportPlan; rev: number };
   /** Apply a previewed plan in ONE mutation, and wait for IndexedDB to say so. */
@@ -377,6 +379,7 @@ interface StoreState {
     index: SourceIndex;
     instrumentId: ID;
     decisions?: ReconcileDecision[];
+    verifiedBase?: string;
     decidedFromRev: number;
     now?: Date;
   }) => Promise<ArchiveCommitResult>;
@@ -954,14 +957,17 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      previewArchiveImport: ({ index, instrumentId, decisions, now }) => {
+      previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
         // ONE statement, so the plan and the revision it was decided against
         // cannot drift apart across an await that does not exist yet.
         const { db, rev } = get();
-        return { plan: planArchiveImport({ db, index, instrumentId, decisions, now: now ?? new Date() }), rev };
+        return {
+          plan: planArchiveImport({ db, index, instrumentId, decisions, verifiedBase, now: now ?? new Date() }),
+          rev,
+        };
       },
 
-      commitArchiveImport: async ({ index, instrumentId, decisions = [], decidedFromRev, now }) => {
+      commitArchiveImport: async ({ index, instrumentId, decisions = [], verifiedBase, decidedFromRev, now }) => {
         const at = now ?? new Date();
         // REBASE, never overwrite. A block finished, a note saved or an item
         // deleted while the index was being fetched has bumped `rev`; the plan
@@ -970,7 +976,7 @@ export const useStore = create<StoreState>()(
         // decide on the owner's behalf — it goes back for another look.
         const before = get();
         const rebased = before.rev !== decidedFromRev;
-        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, now: at });
+        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
         if (rebased && plan.questions.length > 0) {
           return {
             ok: false,
@@ -979,13 +985,21 @@ export const useStore = create<StoreState>()(
           };
         }
 
-        const nothingToDo = plan.summary.unchanged && !archivePersistFailed;
-        if (nothingToDo) return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
+        // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
+        // It returns the SAME OBJECT when a plan changes nothing, so asking it
+        // is one source of truth for the question. The summary's own
+        // `unchanged` was a second, and it answered about the INDEX alone: an
+        // owner decision taken against an already-current index — skipping a
+        // candidate, applying one registry field, a path the rename log moved —
+        // was reported "Already current" and thrown away unwritten.
+        const proposed = applyArchiveImport(before.db, plan, decisions);
+        if (proposed === before.db && !archivePersistFailed) {
+          return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
+        }
 
         // VALIDATE THE WHOLE PROPOSED DATABASE BEFORE INSTALLING ANY OF IT —
         // the same function every inbound door runs. A graph this device would
         // refuse to import is a graph it must not write.
-        const proposed = applyArchiveImport(before.db, plan, decisions);
         try {
           validateDB(proposed);
         } catch (e) {

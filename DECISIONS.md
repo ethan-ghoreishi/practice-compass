@@ -2,6 +2,43 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
+
+A sealed review rejected the first Setar-archive diff with four findings. Each was reported
+as one counterexample; each was really a FAMILY, and the fixes are family-shaped.
+
+- **The nested graph had two grammars.** `decodeSourceIndex` stated the shape of a session;
+  `validateArchiveSources` stated LESS of it and was the one every inbound door ran. So
+  `members[0].roles: null` was accepted, persisted, and thrown on by `repeatChains` while
+  rendering material — and `piece.aliases` had the identical exposure through
+  `planArchiveImport`'s own spread. `checkSourceGraph` is now that grammar in ONE place,
+  run by both callers. The alternative — guarding the reader — was rejected outright: a
+  reader written against a validated graph is the whole point of validating it, and a guard
+  in `ItemMaterial` would leave the invalid data on disk for the next reader.
+- **The reference repair had no production caller.** The 67-path mapping was proved against
+  the real rename log and then never wired in, so a uniquely adoptable legacy class was
+  adopted and left pointing at names the archive renamed. The repair runs inside
+  `planArchiveImport` now, in ONE pass whose output is both what the preview shows and what
+  the commit installs. Scope is the lessons the archive owns; `not-described` is deliberately
+  NOT reported, because the index omits 125 of 258 files by construction and "I have never
+  heard of this path" is not "this file is gone".
+- **Owner answers were transient.** Skip lived only in the preview's argument list; Create
+  separately was honoured for items and dropped for lessons; and any decision taken against
+  an already-current index was reported "Already current" and discarded. Skip writes a
+  suppression, the lesson branch exists, and `commitArchiveImport` asks `applyArchiveImport`
+  itself — which returns the same object when a plan changes nothing — instead of keeping a
+  second opinion about what "unchanged" means.
+- **The digest was format-checked, never verified.** `contentHash` is the refresh IDENTITY,
+  so altered content under a retained hash was reported unchanged and its facts ignored.
+  `parseSourceIndex` recomputes the scanner's own digest at the one boundary both readers
+  share. It is async because the platform's SHA-256 is; a hand-rolled synchronous one to
+  avoid two `await`s would be a second implementation of a primitive the app already has.
+
+Each fix was mutation-checked: the roles check, the `create-lesson` branch, the suppression
+write and the digest comparison were each reverted in turn and confirmed to fail the named
+acceptance test — the suppression one failing specifically AFTER a reload, which is where
+the defect actually lived.
+
 ## The archive describes; it never testifies (2026-09-17)
 
 The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,

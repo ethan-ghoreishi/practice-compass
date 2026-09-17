@@ -1,4 +1,5 @@
 import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
+import { canonicalStringify, sha256Hex } from './canonical';
 
 // ---------------------------------------------------------------------------
 // The Setar class archive as the APP sees it.
@@ -399,6 +400,12 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     });
   }
 
+  // The decoder's own normalisation, held to the SAME grammar the persisted
+  // graph is held to. Every field below has just been built here, so this can
+  // only fail if the two ever drift — which is exactly what it exists to stop.
+  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
+  if (bad) throw new Error(bad);
+
   return {
     format: INDEX_FORMAT,
     version: INDEX_VERSION,
@@ -411,8 +418,39 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
   };
 }
 
-/** Parse and decode published index TEXT, refusing anything oversized. */
-export function parseSourceIndex(text: string): SourceIndex {
+/**
+ * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
+ * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
+ * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
+ * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
+ * that serialisation for JSON-derived data.
+ */
+async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
+  const body = { ...parsed };
+  delete body.contentHash;
+  delete body.generatedAt;
+  return sha256Hex(canonicalStringify(body));
+}
+
+/**
+ * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
+ *
+ * `contentHash` is not a checksum the app may take on faith — it is the
+ * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
+ * accepted to decide that nothing has changed, so content altered in transit
+ * (or in the repository) under a retained old hash would be reported "Already
+ * current" and the changed facts silently ignored. Recomputing it here, at the
+ * ONE boundary both the GitHub fetch and the file fallback pass through, makes
+ * that fail closed instead.
+ *
+ * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
+ * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
+ * that build an index object in memory call it directly and have no transport.
+ *
+ * Order matters: size → parse → structure → digest, so a structurally broken
+ * file reports the error the owner can act on rather than a hash mismatch.
+ */
+export async function parseSourceIndex(text: string): Promise<SourceIndex> {
   if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
   let parsed: unknown;
   try {
@@ -420,7 +458,14 @@ export function parseSourceIndex(text: string): SourceIndex {
   } catch {
     throw new Error('That file is not valid JSON.');
   }
-  return decodeSourceIndex(parsed);
+  const index = decodeSourceIndex(parsed);
+  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
+  if (actual !== index.contentHash) {
+    throw new Error(
+      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
+    );
+  }
+  return index;
 }
 
 // --- what counts as an UPCOMING class ---------------------------------------
@@ -530,6 +575,146 @@ export function resourceReference(archiveId: string, r: SourceResource, date?: I
   };
 }
 
+// --- the graph's own grammar, in ONE place ---------------------------------
+
+/**
+ * THE grammar of a source graph — every nested field, one definition.
+ *
+ * `decodeSourceIndex` and `validateArchiveSources` used to state this
+ * separately, and the second stated LESS of it: it checked a resource's path
+ * and its part group and then walked straight past `members[].roles`,
+ * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
+ * `folder` and `roster`, and the rename and diagnostic rows entirely. A
+ * database carrying `members[0].roles: null` was therefore accepted and
+ * PERSISTED by every inbound door, and the first production reader to touch it
+ * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
+ * material. `planArchiveImport` had the same exposure through
+ * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
+ *
+ * Both callers run THIS function now, so the decoder and the persisted-graph
+ * validator cannot drift apart again: a reader may dereference any field this
+ * grammar admits, and nothing else can reach the database.
+ *
+ * `unavailable` stays legal on a piece, a session and a resource — a file gone
+ * from the NAS with its provenance kept is a VALID state, not a broken graph.
+ */
+function checkSourceGraph(
+  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
+  label: string,
+): string | null {
+  const text = (v: unknown) => typeof v === 'string';
+  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
+  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
+
+  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
+  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
+
+  const keys = new Set<string>();
+  for (const raw of graph.pieces) {
+    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
+    const p = raw as Partial<SourcePiece>;
+    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
+    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
+    keys.add(p.key);
+    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
+      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
+    }
+    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
+    // that is not a list of text takes the whole refresh down with a TypeError.
+    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
+    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
+      return `Piece "${p.key}" has an invalid session number.`;
+    }
+    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
+      return `Piece "${p.key}" has an unreadable flag.`;
+    }
+  }
+
+  const ns = new Set<number>();
+  const paths = new Set<string>();
+  for (const raw of graph.sessions) {
+    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
+    const sess = raw as Partial<SourceSession>;
+    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
+      return `${label} has a session with no number.`;
+    }
+    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
+    ns.add(sess.n);
+    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
+    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
+    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
+    for (const k of sess.roster as string[]) {
+      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
+    }
+    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
+      return `${label} session ${sess.n} has an unreadable flag.`;
+    }
+
+    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
+    for (const rawRes of sess.resources) {
+      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
+      const r = rawRes as Partial<SourceResource>;
+      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
+      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
+      paths.add(r.path);
+      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
+      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
+      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
+      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
+        return `Resource "${r.path}" has an unreadable part number.`;
+      }
+      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
+      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
+      for (const k of r.pieces as string[]) {
+        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
+      }
+      // A demonstration's parts form ONE group; anything but a plain label
+      // here would let a part claim membership of an arbitrary structure.
+      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
+        return `Resource "${r.path}" has an invalid part group.`;
+      }
+      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
+    }
+
+    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
+    for (const rawMember of sess.members) {
+      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
+      const m = rawMember as Partial<SourceMember>;
+      if (typeof m.key !== 'string' || !keys.has(m.key)) {
+        return `${label} session ${sess.n} claims an unknown piece.`;
+      }
+      // `repeatChains` reads `roles.includes(...)` on every one of these.
+      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
+      for (const role of m.roles as string[]) {
+        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
+      }
+    }
+  }
+
+  if (graph.renames !== undefined) {
+    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
+    const froms = new Set<string>();
+    for (const rawRename of graph.renames) {
+      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
+      const r = rawRename as Partial<SourceRename>;
+      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
+      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
+      froms.add(r.from);
+    }
+  }
+
+  if (graph.diagnostics !== undefined) {
+    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
+    for (const rawDiag of graph.diagnostics) {
+      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
+      const d = rawDiag as Partial<SourceDiagnostic>;
+      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
+    }
+  }
+
+  return null;
+}
+
 // --- inbound validation (C7) -----------------------------------------------
 
 /**
@@ -559,43 +744,22 @@ export function validateArchiveSources(db: PracticeDB): string | null {
     if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
     if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
 
-    const keys = new Set<string>();
-    for (const p of s.pieces) {
-      if (typeof p?.key !== 'string' || !p.key) return `Archive source "${s.id}" has a piece with no canonical key.`;
-      if (keys.has(p.key)) return `Archive source "${s.id}" has two pieces keyed "${p.key}".`;
-      keys.add(p.key);
-    }
-    const ns = new Set<number>();
-    const paths = new Set<string>();
-    for (const sess of s.sessions) {
-      if (typeof sess?.n !== 'number' || !Number.isInteger(sess.n)) {
-        return `Archive source "${s.id}" has a session with no number.`;
-      }
-      if (ns.has(sess.n)) return `Archive source "${s.id}" has two entries for session ${sess.n}.`;
-      ns.add(sess.n);
-      if (!isValidSourceDate(sess.date)) return `Archive source "${s.id}" session ${sess.n} has an unreadable date.`;
-      for (const r of sess.resources ?? []) {
-        if (!isSafeSourcePath(r?.path)) return `Archive source "${s.id}" has an unsafe resource path.`;
-        if (paths.has(r.path)) return `Archive source "${s.id}" lists "${r.path}" twice.`;
-        paths.add(r.path);
-        for (const k of r.pieces ?? []) {
-          if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
-        }
-        // A demonstration's parts form ONE group; anything but a plain label
-        // here would let a part claim membership of an arbitrary structure.
-        if (r.group !== null && r.group !== undefined && typeof r.group !== 'string') {
-          return `Resource "${r.path}" has an invalid part group.`;
-        }
-      }
-      for (const m of sess.members ?? []) {
-        if (!keys.has(m?.key)) return `Archive source "${s.id}" session ${sess.n} claims an unknown piece.`;
-      }
-    }
+    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
+    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
+    if (bad) return bad;
+
     for (const sup of s.suppressions) {
       if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
         return `Archive source "${s.id}" has a suppression of an unknown kind.`;
       }
       if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
+      // An owner decision carries the id it was scoped to and the moment it
+      // was taken; both are read back — a resource hidden on ONE item is
+      // decided by comparing `itemId`, so a non-string silently widens it.
+      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
+        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
+      }
+      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
     }
   }
 

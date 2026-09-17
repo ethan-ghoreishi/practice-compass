@@ -195,6 +195,63 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
     expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
 
+    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
+    // It used to live only in the preview's own `decisions` argument, so "no,
+    // not this one" survived exactly as long as the screen did: a reload, or
+    // simply the next refresh, asked the identical question again with nothing
+    // in the database to show it had ever been answered.
+    const skipDb = baseDB({ items: [sameTitle] });
+    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
+    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
+    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
+    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
+    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
+    expect(validateArchiveSources(afterSkip)).toBeNull();
+    // ...and it survives the persisted shape. A LATER refresh, carrying no
+    // decisions at all, neither asks nor re-creates.
+    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
+    const afterReload = plan(reloaded);
+    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(afterReload.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
+    // Skipping the same thing twice does not grow the list either.
+    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
+    expect(skipTwice.source.suppressions).toHaveLength(1);
+    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
+
+    // The same holds for a CLASS the owner skips.
+    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
+    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
+    expect(lessonSkipped.newLessons).toHaveLength(38);
+    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
+    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
+    expect(plan(lessonReloaded).newLessons).toEqual([]);
+    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+
+    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
+    // Two indistinguishable candidates; the owner says neither of them is this
+    // session. The decision used to be dropped on the floor for lessons — the
+    // item side had it from the start — and the question came back for ever.
+    const twinDb = baseDB({ lessons: [evidence, twin] });
+    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
+    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
+    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
+    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
+    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
+    // Three records for that day now: the archive's own, and BOTH of the
+    // owner's, each keeping its id, its notes and its unbound status.
+    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
+    expect(validateArchiveSources(afterCreate)).toBeNull();
+    // ...and the binding it did create is the archive's own deterministic one.
+    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
+
     // --- the source/instrument binding is explicit and validated -----------
     expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
     expect(after.archiveSources[0]!.id).toBe('setar-classes');
@@ -294,6 +351,37 @@ describe('reconciling the archive with the owner’s own records', () => {
     const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
     expect(same.summary.unchanged).toBe(true);
     expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
+
+    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
+    // The suggestion stands until it is answered, and it may be answered days
+    // later against the very same published index. Judging "already current"
+    // by the index hash alone reported exactly that and discarded the answer.
+    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const }];
+    const lateDecision = planArchiveImport({
+      db: refreshed,
+      index: next,
+      instrumentId: SETAR,
+      decisions: lateField,
+      now: NOW,
+    });
+    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
+    expect(lateDecision.summary.unchanged).toBe(false);
+    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
+    expect(lateApplied).not.toBe(refreshed);
+    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
+    // Only that field: the notebook, the title and the status are the owner's.
+    expect(lateItem.notes).toBe('my notes');
+    expect(lateItem.title).toBe('My own title');
+    expect(lateItem.status).toBe('usable');
+    expect(lateApplied.blocks).toEqual(refreshed.blocks);
+    // Applied, the suggestion is gone: the next refresh has nothing to offer.
+    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
+    // A decision for a field with NO suggestion changes nothing at all.
+    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const }];
+    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
+    expect(noop.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
 
     // --- a missing FILE keeps its provenance, flagged ----------------------
     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
@@ -528,6 +616,112 @@ describe('reconciling the archive with the owner’s own records', () => {
     // The archive never offers a personal recording as material for a piece.
     const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+
+    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
+    // The helper above proves the mapping. THIS proves the production journey:
+    // the rename log arrives WITH the index, so the one moment the app can
+    // repair a stored path is the moment it accepts a new graph — and a lesson
+    // adopted with its own references still pointing at names the archive
+    // renamed is half a job, bound and broken.
+    const ownPersonal = lesson({
+      id: 'L25',
+      date: '2025-08-05',
+      number: 25,
+      recordings: [
+        {
+          id: 'mine-1',
+          title: 'My take, August',
+          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
+          kind: 'video',
+          notes: 'Slow but even.',
+          createdAt: '2025-08-06T00:00:00.000Z',
+        },
+      ],
+    });
+    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
+    const refresh = plan(legacyDb);
+    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
+    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
+    // The PLAN already shows the repaired paths, so the preview and the commit
+    // cannot disagree about what is about to be written.
+    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
+    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
+    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
+
+    const installedLegacy = applyArchiveImport(legacyDb, refresh);
+    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
+    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
+    // BOTH rows of each collision survive, with everything the owner wrote.
+    expect(storedOne.recordings).toHaveLength(4);
+    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
+    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
+    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
+    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
+    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
+    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
+    expect(validateArchiveSources(installedLegacy)).toBeNull();
+
+    // The owner's own practice takes are RETAINED, untouched — and never
+    // reported missing. The index describes only material scoped to pieces and
+    // classes, so a path it does not name is outside what it knows, never
+    // evidence that the file is gone.
+    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
+    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
+    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
+    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+
+    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
+    const again = plan(installedLegacy);
+    expect(again.repairedLessons).toEqual([]);
+    expect(again.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
+
+    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
+    // The archive moves a file the owner's bound class already points at. The
+    // next refresh follows the log; the row, its title and its notes stay.
+    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
+    const moved: SourceIndex = {
+      ...INDEX,
+      contentHash: '9'.repeat(64),
+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1
+          ? {
+              ...sess,
+              resources: sess.resources.map((r) =>
+                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
+              ),
+            }
+          : sess,
+      ),
+    };
+    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
+    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
+    const afterMove = applyArchiveImport(installedLegacy, later);
+    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
+    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
+    expect(movedRows.get('old-video')!.path).toBe(movedTo);
+    expect(movedRows.get('current-video')!.path).toBe(movedTo);
+    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
+    // The score, which did not move, is exactly as it was.
+    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
+    // Nothing about practice moved with it.
+    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
+    expect(validateArchiveSources(afterMove)).toBeNull();
+
+    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
+    // A rename whose destination the archive no longer has: the stored path is
+    // left exactly as it is, and the owner is told which file and why.
+    const dangling: SourceIndex = {
+      ...INDEX,
+      contentHash: '8'.repeat(64),
+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
+    };
+    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
+    expect(broken.repairedLessons).toEqual([]);
+    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
+    const afterBroken = applyArchiveImport(installedLegacy, broken);
+    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
   });
 });
 

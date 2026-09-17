@@ -98,7 +98,7 @@ export async function fetchPublishedIndex(
   try {
     return {
       ok: true,
-      value: { index: parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
+      value: { index: await parseSourceIndex(text), commitSha, fetchedAt: (options.now ?? new Date()).toISOString() },
     };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
@@ -109,9 +109,9 @@ export async function fetchPublishedIndex(
  * The file-import fallback. The SAME decoder, so a hand-copied index is held to
  * exactly the rules a fetched one is.
  */
-export function readIndexFile(text: string, now: Date = new Date()): IndexFetchResult {
+export async function readIndexFile(text: string, now: Date = new Date()): Promise<IndexFetchResult> {
   try {
-    return { ok: true, value: { index: parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
+    return { ok: true, value: { index: await parseSourceIndex(text), commitSha: '', fetchedAt: now.toISOString() } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'That index could not be read.' };
   }

@@ -8,6 +8,7 @@ import {
   describeArchiveAccess,
   archiveRootUrl,
   type ImportPlan,
+  type MetadataField,
   type ReconcileDecision,
 } from '../domain';
 
@@ -57,7 +58,12 @@ export default function ArchiveRefresh() {
   const rootUrl = archiveRootUrl(getNasBaseUrl());
 
   function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[]) {
-    const { plan, rev } = preview({ index: fetched.index, instrumentId: chosen, decisions: nextDecisions });
+    const { plan, rev } = preview({
+      index: fetched.index,
+      instrumentId: chosen,
+      decisions: nextDecisions,
+      verifiedBase: rootUrl ?? undefined,
+    });
     setPhase({ kind: 'preview', fetched, rev, plan });
   }
 
@@ -87,7 +93,13 @@ export default function ArchiveRefresh() {
     if (phase.kind !== 'preview') return;
     const { fetched, rev } = phase;
     setPhase({ kind: 'working' });
-    const result = await commit({ index: fetched.index, instrumentId: chosen, decisions, decidedFromRev: rev });
+    const result = await commit({
+      index: fetched.index,
+      instrumentId: chosen,
+      decisions,
+      verifiedBase: rootUrl ?? undefined,
+      decidedFromRev: rev,
+    });
     if (!result.ok) {
       if (result.status === 'stale') {
         // Something changed underneath; look again rather than apply a plan
@@ -230,6 +242,43 @@ export default function ArchiveRefresh() {
             </div>
           )}
 
+          {phase.plan.suggestions.length > 0 && (
+            <div className="stack-sm">
+              <div className="section-label">The archive knows more about these</div>
+              {/* A registry improvement to a piece the owner ALREADY has. It is
+                  offered field by field and applied only when asked — never
+                  written behind them, and never near their notebook. */}
+              {phase.plan.suggestions.map((sg) => {
+                const applied = decisions.some(
+                  (d) => d.kind === 'apply-field' && d.pieceKey === sg.pieceKey && d.field === sg.field,
+                );
+                return (
+                  <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
+                    <div dir="auto" style={{ textAlign: 'start' }}>
+                      <strong>{sg.pieceKey}</strong>
+                      <div className="tiny faint">
+                        <span dir="ltr">{FIELD_LABELS[sg.field]}: </span>
+                        <span dir="auto">{sg.from || '—'}</span>
+                        <span dir="ltr"> → </span>
+                        <span dir="auto">{sg.to}</span>
+                      </div>
+                    </div>
+                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        aria-pressed={applied}
+                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field })}
+                      >
+                        {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           <div className="row" style={{ gap: 8 }}>
             <button type="button" className="btn btn-primary" onClick={() => void apply()}>
               {phase.plan.summary.unchanged ? 'Already current' : 'Apply'}
@@ -269,8 +318,8 @@ function Summary({ plan }: { plan: ImportPlan }) {
           </button>
           {open && (
             <ul className="tiny faint stack-sm" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
-              {plan.attention.map((d) => (
-                <li key={d.path} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
+              {plan.attention.map((d, i) => (
+                <li key={`${d.path}-${i}`} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
                   <span>{d.path}</span>
                   <span dir="ltr">— {d.reason}</span>
                 </li>
@@ -284,9 +333,26 @@ function Summary({ plan }: { plan: ImportPlan }) {
 }
 
 function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
+  // A FIELD decision is keyed by its field, not merely its piece: keyed by
+  // piece alone, choosing a composer evicted the dastgāh choice made a moment
+  // earlier, and either one evicted a Link/Skip answer about the same piece.
   const key = (d: ReconcileDecision) =>
-    'pieceKey' in d ? `piece:${d.pieceKey}` : 'sessionN' in d ? `session:${d.sessionN}` : '';
+    d.kind === 'apply-field'
+      ? `field:${d.pieceKey}:${d.field}`
+      : 'pieceKey' in d
+        ? `piece:${d.pieceKey}`
+        : 'sessionN' in d
+          ? `session:${d.sessionN}`
+          : '';
   return key(a) === key(b) && key(a) !== '';
 }
 
 const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
+
+/** Plain names for the registry fields an improvement can touch. */
+const FIELD_LABELS: Record<MetadataField, string> = {
+  dastgahAvaz: 'dastgāh',
+  gusheh: 'gusheh',
+  form: 'form',
+  composer: 'composer',
+};

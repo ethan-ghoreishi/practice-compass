@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
 import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
+// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
+// against the real producer rather than a restatement of it in the test.
+import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
 import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
 import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
 import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
@@ -319,11 +322,69 @@ describe('publishing and reading the source index', () => {
     expect(everything).not.toContain('/Volumes/');
 
     // The file-import fallback goes through the SAME decoder.
-    expect(readIndexFile(rival).ok).toBe(true);
-    const badFile = readIndexFile('{"format":"setar-archive-index","version":99}');
+    expect((await readIndexFile(rival)).ok).toBe(true);
+    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
     expect(badFile.ok).toBe(false);
     if (badFile.ok) throw new Error('expected refusal');
     expect(badFile.error).toMatch(/newer scanner/);
+
+    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
+    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
+    // against the hash already accepted to conclude that nothing has changed.
+    // So content altered under a RETAINED old hash would be reported "Already
+    // current" and its changed facts silently ignored. Both doors recompute
+    // the scanner's own digest and fail closed.
+    const original = JSON.parse(rival) as typeof indexFixture;
+    const altered = {
+      ...original,
+      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
+    };
+    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
+    expect(altered.contentHash).toBe(original.contentHash);
+    const alteredText = JSON.stringify(altered);
+    const tampered = await readIndexFile(alteredText);
+    expect(tampered.ok).toBe(false);
+    if (tampered.ok) throw new Error('expected refusal');
+    expect(tampered.error).toMatch(/does not match its own content hash/);
+
+    // The GitHub door refuses the identical bytes, through the same boundary.
+    const tamperedFetch = async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes('/git/ref/heads/')) {
+        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          content: Buffer.from(alteredText, 'utf8').toString('base64'),
+          encoding: 'base64',
+          size: alteredText.length,
+        }),
+        { status: 200 },
+      );
+    };
+    const fetchedTampered = await fetchPublishedIndex({
+      repo: 'owner/data',
+      token: 'device-token',
+      fetchImpl: tamperedFetch as typeof fetch,
+    });
+    expect(fetchedTampered.ok).toBe(false);
+    if (fetchedTampered.ok) throw new Error('expected refusal');
+    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
+
+    // Re-scanned content — a NEW digest for the new facts — is accepted, so
+    // this is an integrity gate and not a freeze on the archive ever changing.
+    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
+    expect(rescanned.ok).toBe(true);
+    if (!rescanned.ok) throw new Error(rescanned.error);
+    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
+    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
+
+    // A STRUCTURALLY broken file still reports the structural error rather
+    // than a hash mismatch: the owner can act on the first, never the second.
+    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
+    expect(brokenStructure.ok).toBe(false);
+    if (brokenStructure.ok) throw new Error('expected refusal');
+    expect(brokenStructure.error).toMatch(/no sessions/);
   });
 });
 
@@ -478,6 +539,84 @@ describe('committing an archive import', () => {
     expect(refusedGraph.ok).toBe(false);
     expect(refusedGraph.status).toBe('refused');
     expect(useStore.getState().db.archiveSources).toEqual([]);
+
+    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
+    // The whole lifecycle, not the helper: a rendered choice becomes a
+    // decision, the commit persists it, a real rehydration reads it back, and
+    // the NEXT refresh — carrying no decisions at all — honours it.
+    loadOwnerData();
+    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
+    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
+    const skipped = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
+      decidedFromRev: asked.rev,
+      now: NOW,
+    });
+    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
+
+    // Reload: the bytes actually on disk, back through the app's hydration.
+    const skipDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(skipDisk);
+    await useStore.persist.rehydrate();
+    const reloadedSource = useStore.getState().db.archiveSources[0]!;
+    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    // The owner's own record is untouched and still theirs.
+    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
+
+    // The NEXT refresh asks nothing and writes nothing.
+    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(afterReload.plan.questions).toEqual([]);
+    const quiet = await commit(afterReload.rev);
+    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+
+    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
+    // The index has not moved; the owner has only just answered. Judging
+    // "Already current" by the index hash alone reported exactly that and
+    // dropped the answer before it could ever be written.
+    const boundWithComposer = useStore
+      .getState()
+      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
+    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
+    const composer = boundWithComposer.persian!.composer!;
+    const pieceKey = boundWithComposer.source!.pieceKey;
+    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
+    // An OFFER is not a change: unanswered, this refresh genuinely writes
+    // nothing, and says so. The owner's DECISION is what makes it a write.
+    expect(offered.plan.summary.unchanged).toBe(true);
+    const answered2 = useStore.getState().previewArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      now: NOW,
+    });
+    expect(answered2.plan.summary.unchanged).toBe(false);
+    // Left unanswered, the same refresh really is a no-op.
+    const declined = await commit(useStore.getState().rev);
+    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
+    // Answered, it is applied — and acknowledged by storage.
+    const appliedField = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
+    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
+    // Nothing else moved with it.
+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
+      boundWithComposer.title,
+    );
+    expect(useStore.getState().db.blocks).toHaveLength(1);
 
     // --- refresh NEVER runs a whole-database import or reset ---------------
     // `importDB`, `resetDemo` and `clearAll` each null the active session and
