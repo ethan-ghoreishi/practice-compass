@@ -210,6 +210,21 @@ export const SOURCE_ROLES: readonly string[] = [
   'نت', // clean notation
 ];
 
+/**
+ * Plain-English names for the archive's own role words, for UI copy only.
+ * The Farsi word stays the identity everywhere else — this is a LABEL map,
+ * exactly like `ITEM_STATUS_LABELS`, and never a second vocabulary.
+ */
+export const SOURCE_ROLE_LABELS: Record<string, string> = {
+  [SOURCE_ROLES[0]!]: 'class recording',
+  [SOURCE_ROLES[1]!]: 'my practice',
+  [SOURCE_ROLES[2]!]: 'teacher’s corrections',
+  [SOURCE_ROLES[3]!]: 'homework',
+  [SOURCE_ROLES[4]!]: 'handout',
+  [SOURCE_ROLES[5]!]: 'teacher’s demonstration',
+  [SOURCE_ROLES[6]!]: 'notation',
+};
+
 export const CLASS_ROLE = SOURCE_ROLES[0];
 export const PERSONAL_ROLE = SOURCE_ROLES[1];
 export const CORRECTION_ROLE = SOURCE_ROLES[2];

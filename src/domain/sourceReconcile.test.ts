@@ -10,6 +10,7 @@ import {
   withSuppression,
 } from './sourceReconcile';
 import { emptyDB } from './seed';
+import { LEGACY_SEED_PATHS } from './setarClasses';
 import { createItem, createLesson } from './factories';
 import type { Lesson, PracticeDB, PracticeItem } from './types';
 
@@ -350,26 +351,25 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(toArchiveRelative('setar-classes/session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
     expect(toArchiveRelative('session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
 
-    // Every legacy seed path in the shipped session table maps through the
-    // rename log EXACTLY — no title, size or modification-time matching.
-    const legacy = [
-      'setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4',
-      'setar-classes/session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf',
-      'setar-classes/session-13-03-09-2024/aragh-mirzahoseyngholi.pdf',
-      'setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4',
-      'setar-classes/session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
-    ];
-    for (const p of legacy) {
+    // EVERY legacy seed path the old importer ever wrote — all 67 of them —
+    // maps through the rename log EXACTLY. No title, size or modification-time
+    // matching is involved anywhere, and none of the 67 is left to a guess.
+    expect(LEGACY_SEED_PATHS).toHaveLength(67);
+    expect(INDEX.renames).toHaveLength(257);
+    const repairedPaths = new Map<string, string>();
+    for (const p of LEGACY_SEED_PATHS) {
       const outcome = repairReferencePath(p, renames, known);
       expect(outcome.status).toBe('repaired');
       if (outcome.status !== 'repaired') throw new Error('unreachable');
       expect(outcome.path.startsWith('session-')).toBe(true);
       expect(known.has(outcome.path)).toBe(true);
+      repairedPaths.set(p, outcome.path);
     }
+    expect(repairedPaths.size).toBe(67);
     // Session 28's "main video" is really a NAMED DEMONSTRATION; the repair
     // says so by landing on the demo file, and nothing invents a class
     // recording for a session that has none.
-    const s28 = repairReferencePath(legacy[3]!, renames, known);
+    const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
     expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
 
     // A path with no rename row and no file is DIAGNOSED, never guessed.

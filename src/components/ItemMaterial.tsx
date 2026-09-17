@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatFileSize, itemFiles, resolveRecording, type ItemFile } from '../domain';
+import { SOURCE_ROLE_LABELS, formatFileSize, itemFiles, lessonFiles, resolveRecording, type ItemFile } from '../domain';
 import { useStore } from '../store/useStore';
 import { getNasBaseUrl } from '../store/backup';
 import { attachmentObjectURL } from '../store/attachments';
@@ -19,10 +19,40 @@ import { MusicIcon, PlayIcon, ReportIcon } from './icons';
  */
 export default function ItemMaterial({ itemId }: { itemId: string }) {
   const db = useStore((s) => s.db);
+  const hide = useStore((s) => s.hideArchiveResource);
   const files = useMemo(() => itemFiles(db, itemId), [db, itemId]);
+  const archiveId = db.items.find((i) => i.id === itemId)?.source?.archiveId;
 
   if (files.length === 0) return null;
 
+  return (
+    <div className="stack-sm">
+      {files.map((f) => (
+        <FileRow
+          key={`${f.source}-${f.id}`}
+          file={f}
+          // Hiding is scoped to THIS item: a demonstration shared by eight
+          // pieces stays available to the other seven.
+          onHide={
+            archiveId && f.source === 'reference' && f.archive
+              ? () => hide(archiveId, f.path, itemId)
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A lesson's own material, composed the same way — an archive-bound class
+ * carries no copy of its session's files, so reading `lesson.recordings` alone
+ * would show nothing at all.
+ */
+export function LessonMaterial({ lessonId }: { lessonId: string }) {
+  const db = useStore((s) => s.db);
+  const files = useMemo(() => lessonFiles(db, lessonId), [db, lessonId]);
+  if (files.length === 0) return null;
   return (
     <div className="stack-sm">
       {files.map((f) => (
@@ -39,14 +69,21 @@ function KindIcon({ file }: { file: ItemFile }) {
   return <ReportIcon width={18} height={18} />;
 }
 
-function FileRow({ file }: { file: ItemFile }) {
-  return file.source === 'reference' ? <ReferenceRow file={file} /> : <AttachmentRow file={file} />;
+function FileRow({ file, onHide }: { file: ItemFile; onHide?: () => void }) {
+  return file.source === 'reference' ? <ReferenceRow file={file} onHide={onHide} /> : <AttachmentRow file={file} />;
 }
 
 /** A NAS reference: resolved through the configured base, opened on tap only. */
-function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' }> }) {
+function ReferenceRow({ file, onHide }: { file: Extract<ItemFile, { source: 'reference' }>; onHide?: () => void }) {
   const resolution = resolveRecording(getNasBaseUrl(), file);
   const size = formatFileSize(file.sizeBytes);
+  // PROVENANCE, stated plainly: which class this came out of, and what it is.
+  // Generated English metadata, so it carries its own inline LTR isolate.
+  const provenance = file.archive
+    ? `Class ${file.archive.sessionN} · ${file.archive.date} · ${SOURCE_ROLE_LABELS[file.archive.role] ?? 'material'}${
+        file.archive.part ? ` · part ${file.archive.part}` : ''
+      }`
+    : null;
 
   return (
     <div className="card row" style={{ gap: 12 }}>
@@ -70,6 +107,8 @@ function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' 
             {size ? ` · ${size}` : ''}
             {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
             {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
+            {resolution.status === 'unsafe' && ' · this link points outside the archive and will not be opened'}
+            {provenance ? ` · ${provenance}` : ''}
           </span>
         </div>
       </div>
@@ -80,6 +119,11 @@ function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' 
       >
         Open
       </button>
+      {onHide && (
+        <button className="btn btn-sm" aria-label={`Hide ${file.title} from this piece`} onClick={onHide}>
+          Hide
+        </button>
+      )}
     </div>
   );
 }

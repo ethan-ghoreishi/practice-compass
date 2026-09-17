@@ -35,6 +35,7 @@ import { ItemAgenda } from '../components/LessonAgenda';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
 import ItemMaterial from '../components/ItemMaterial';
+import ReferenceEditor from '../components/ReferenceEditor';
 import ItemNotes from '../components/ItemNotes';
 import { Field, OptionPills, Stars, StatusBadge, Stat } from '../components/ui';
 import { ArrowLeftIcon, PlayIcon, PlusIcon } from '../components/icons';
@@ -427,11 +428,14 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
 function MaterialSection({ item }: { item: PracticeItem }) {
   const db = useStore((s) => s.db);
   const files = useMemo(() => itemFiles(db, item.id), [db, item.id]);
-  if (files.length === 0) return null;
+  // The section stays reachable with no files at all: attaching a direct link
+  // is how a piece with nothing linked to it GETS material.
+  if (files.length === 0 && (item.references ?? []).length === 0 && !item.source) return null;
   return (
     <section className="stack-sm">
       <div className="section-label">Material</div>
       <ItemMaterial itemId={item.id} />
+      <ReferenceEditor itemId={item.id} />
     </section>
   );
 }

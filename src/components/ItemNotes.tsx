@@ -41,9 +41,14 @@ const PLACEHOLDER =
 
 type SaveState = { phase: 'idle' | 'saving' | 'saved' } | { phase: 'failed'; message: string };
 
-/** The text being edited, together with the item it was typed for. */
+/** The text being edited, together with the RECORD it was typed for. */
 type Draft = { forItem: string; text: string };
 
+/**
+ * The item's notebook. A thin wrapper over {@link DurableNotes} — the
+ * durability model below is identical for an item and for a lesson, and a
+ * second copy of it is exactly how one of the two ends up subtly different.
+ */
 export default function ItemNotes({
   itemId,
   /** Collapsed while practising; open on the item's own screen. */
@@ -56,7 +61,43 @@ export default function ItemNotes({
 }) {
   const item = useStore((s) => s.db.items.find((i) => i.id === itemId));
   const updateItem = useStore((s) => s.updateItem);
-  const saved = item?.notes ?? '';
+  if (!item) return null;
+  return (
+    <DurableNotes
+      ownerId={itemId}
+      saved={item.notes ?? ''}
+      onSave={(text) => updateItem(itemId, { notes: text })}
+      label={label}
+      placeholder={PLACEHOLDER}
+      startExpanded={startExpanded}
+    />
+  );
+}
+
+/**
+ * The durable free-text editor: explicit save, tagged draft, acknowledged
+ * persistence, retry, and an in-flight write that never owns the textarea.
+ *
+ * `onSave` receives the text ALREADY normalised to `undefined` when empty, and
+ * must write it to the store synchronously — `storageSettled()` is captured
+ * immediately afterwards, so an asynchronous write would hand this the wrong
+ * promise.
+ */
+export function DurableNotes({
+  ownerId,
+  saved,
+  onSave,
+  label,
+  placeholder,
+  startExpanded = true,
+}: {
+  ownerId: string;
+  saved: string;
+  onSave: (text: string | undefined) => void;
+  label: string;
+  placeholder: string;
+  startExpanded?: boolean;
+}) {
 
   const [expanded, setExpanded] = useState(startExpanded);
   /**
@@ -93,14 +134,15 @@ export default function ItemNotes({
     setDraft(next);
   }
 
-  // Switching item — an Item Detail route change, a routine crossing into the
-  // next bound segment — abandons the draft rather than carrying it across.
-  // Any write still in flight for the previous item is disowned with it.
+  // Switching record — an Item Detail route change, a routine crossing into
+  // the next bound segment, tapping a different class — abandons the draft
+  // rather than carrying it across. Any write still in flight for the previous
+  // record is disowned with it, so it can never land on this one.
   useEffect(() => {
     saveSeq.current += 1;
     applyDraft(null);
     setState({ phase: 'idle' });
-  }, [itemId]);
+  }, [ownerId]);
 
   useEffect(
     () => () => {
@@ -109,14 +151,12 @@ export default function ItemNotes({
     [],
   );
 
-  if (!item) return null;
-
-  const editing = draft !== null && draft.forItem === itemId;
+  const editing = draft !== null && draft.forItem === ownerId;
   const shown = editing ? draft.text : saved;
 
   function beginEdit() {
     setState({ phase: 'idle' });
-    applyDraft({ forItem: itemId, text: saved });
+    applyDraft({ forItem: ownerId, text: saved });
   }
 
   /**
@@ -135,7 +175,8 @@ export default function ItemNotes({
     // Emptying the notebook is deliberate and must persist — `undefined` IS a
     // saved value here, never a reason to keep what was there.
     setState({ phase: 'saving' });
-    updateItem(forItem, { notes: text.trim() || undefined });
+    if (forItem !== ownerId) return;
+    onSave(text.trim() || undefined);
     // The store's persist middleware has queued the IndexedDB write by now.
     // "Saved." waits for THAT, not for a timer.
     void storageSettled().then(
@@ -172,18 +213,18 @@ export default function ItemNotes({
     // writing THIS item's own words. The REF, not the render's copy: a
     // keystroke that has not been painted yet is still the newest text.
     const current = draftRef.current;
-    if (!current || current.forItem !== itemId || !item) return;
+    if (!current || current.forItem !== ownerId) return;
     // The store already holds the new text after a FAILED attempt (the write
     // that failed was to storage, not to memory), so this "nothing changed"
     // short-circuit would make Try again a silent no-op: the person would see
     // the failure clear with their words still only in RAM. A retry therefore
     // always re-issues the write.
-    if (state.phase !== 'failed' && (item.notes ?? undefined) === (current.text.trim() || undefined)) {
+    if (state.phase !== 'failed' && (saved || undefined) === (current.text.trim() || undefined)) {
       applyDraft(null);
       setState({ phase: 'idle' });
       return;
     }
-    write(current.text, itemId);
+    write(current.text, ownerId);
   }
 
   return (
@@ -227,9 +268,9 @@ export default function ItemNotes({
               className="textarea"
               aria-label={label}
               style={{ minHeight: 120 }}
-              placeholder={PLACEHOLDER}
+              placeholder={placeholder}
               value={draft.text}
-              onChange={(e) => applyDraft({ forItem: itemId, text: e.target.value })}
+              onChange={(e) => applyDraft({ forItem: ownerId, text: e.target.value })}
             />
           ) : shown ? (
             <div className="small notes-read" dir="auto" style={{ whiteSpace: 'pre-wrap', textAlign: 'start' }}>

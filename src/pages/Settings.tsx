@@ -12,9 +12,7 @@ import {
   RESULT_BUTTONS,
   RESULT_DESCRIPTIONS,
   RESULT_LABELS,
-  resolveRecording,
   SCHEDULING_BOUNDS,
-  SETAR_CLASS_SESSIONS,
   type SchedulingParams,
 } from '../domain';
 import { useStore, type ThemePref } from '../store/useStore';
@@ -38,6 +36,7 @@ import {
   useSyncStatus,
 } from '../store/githubSync';
 import { Field } from '../components/ui';
+import ArchiveRefresh from '../components/ArchiveRefresh';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
@@ -274,7 +273,7 @@ export default function Settings() {
         </div>
       </section>
 
-      <NasRecordingsSection onFlash={flash} />
+      <NasRecordingsSection />
 
       <SchedulingSection />
 
@@ -513,12 +512,9 @@ function SyncSection() {
  * plus a one-tap importer for the Setar class history. Full videos never enter
  * the app — only these references do.
  */
-function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
-  const db = useStore((s) => s.db);
-  const importSetarClasses = useStore((s) => s.importSetarClasses);
+function NasRecordingsSection() {
   const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
 
-  const setar = db.instruments.find((i) => i.family === 'Persian' && /setar|سه‌تار|سه تار/i.test(i.name));
   const trimmed = baseUrl.trim();
   const normalized = trimmed ? normalizeBaseUrl(trimmed) : null;
   const invalid = trimmed.length > 0 && normalized === null;
@@ -531,29 +527,6 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
     setBaseUrlState(next);
     setNasBaseUrl(next);
   }
-
-  function runImport() {
-    if (!setar) {
-      onFlash('Add a Setar instrument first.');
-      return;
-    }
-    const count = importSetarClasses(setar.id);
-    onFlash(count > 0 ? `Imported ${count} Setar class${count === 1 ? '' : 'es'}.` : 'All Setar classes are already imported.');
-  }
-
-  function testLink() {
-    const first = SETAR_CLASS_SESSIONS[0];
-    const r = resolveRecording(normalizeBaseUrl(baseUrl) ?? baseUrl, { path: first.video });
-    if (r.status === 'ok') {
-      window.open(r.url, '_blank', 'noopener,noreferrer');
-    } else if (r.status === 'bad-base') {
-      onFlash('That base URL isn’t valid — check it and try again.');
-    } else {
-      onFlash('Enter a base URL first.');
-    }
-  }
-
-  const testUrl = resolveRecording(normalized ?? undefined, { path: SETAR_CLASS_SESSIONS[0].video });
 
   return (
     <section className="stack-sm">
@@ -604,20 +577,18 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
           </button>
         </div>
 
+        {/* A single clip proved nothing: it fails for a file that was renamed
+            and passes for a base whose other thousand files are unreachable.
+            The ARCHIVE ROOT is what was configured, so it is what opens. */}
         <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">Open session 1’s recording to check the base URL works.</div>
-          <button className="btn btn-sm" style={{ flex: 'none' }} disabled={!normalized || testUrl.status !== 'ok'} onClick={testLink}>
-            Test link
-          </button>
-        </div>
-
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">Import your logged Setar classes as lessons (recording links, no video).</div>
-          <button className="btn btn-sm" style={{ flex: 'none' }} onClick={runImport}>
-            Import Setar classes
-          </button>
+          <div className="tiny faint">
+            Opening a file is a direct request from this device. The app cannot check from here whether the NAS is
+            reachable — a certificate, a blocked cross-origin request and an outage all look the same to it.
+          </div>
         </div>
       </div>
+
+      <ArchiveRefresh />
     </section>
   );
 }

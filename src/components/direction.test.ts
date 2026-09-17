@@ -143,6 +143,8 @@ const UNEXEMPTED_PHRASE_ALLOWLIST: { file: string; tagSnippet: string; why: stri
  * exactly as a title exception must be added to the allowlist above.
  */
 const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string }[] = [
+  { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
@@ -157,6 +159,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "small" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
+  { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },

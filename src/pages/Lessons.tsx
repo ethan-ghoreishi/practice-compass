@@ -29,6 +29,8 @@ import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/
 import { relativeDay } from '../components/format';
 import Attachments from '../components/Attachments';
 import ClassQuestions from '../components/ClassQuestions';
+import LessonNotes from '../components/LessonNotes';
+import { LessonMaterial } from '../components/ItemMaterial';
 import { LessonAgendaPanel } from '../components/LessonAgenda';
 import QuickAdd from '../components/QuickAdd';
 
@@ -393,20 +395,7 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
 /** Notes, linked items, files and delete — the body of an open lesson. */
 function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
   const db = useStore((s) => s.db);
-  const updateLesson = useStore((s) => s.updateLesson);
   const now = useMemo(() => new Date(), []);
-  const [text, setText] = useState(lesson.notes ?? '');
-
-  // Editing a different lesson resets the draft (wide-screen pane reuse).
-  useEffect(() => {
-    setText(lesson.notes ?? '');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lesson.id]);
-
-  function save() {
-    const next = text.trim() || undefined;
-    if ((lesson.notes ?? undefined) !== next) updateLesson(lesson.id, { notes: next });
-  }
 
   const upcoming = isUpcomingLesson(lesson, todayISODate(now));
   // BY LESSON ID, never by instrument: every future class used to show the
@@ -421,15 +410,10 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
 
   return (
     <>
-      <textarea
-        className="textarea"
-        dir="auto"
-        style={{ minHeight: 160 }}
-        placeholder="Notes from the class — what was covered, what your teacher said, what to prepare… (فارسی هم می‌شود)"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={save}
-      />
+      {/* The SAME durable editor as the item's notebook. Blur-only saving
+          made a stale copy authoritative the moment anything stole focus, and
+          could not clear the text at all. */}
+      <LessonNotes lessonId={lesson.id} />
 
       <LessonItems lesson={lesson} />
 
@@ -450,6 +434,11 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
           questions={questions}
         />
       )}
+
+      {/* Everything this class holds, composed once: an archive-bound class
+          keeps no copy of its session's files, so its own `recordings` array
+          is empty and only the graph can answer. */}
+      <LessonMaterial lessonId={lesson.id} />
 
       <LessonRecordings lesson={lesson} />
 
