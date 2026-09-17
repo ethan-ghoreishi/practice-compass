@@ -1722,7 +1722,7 @@ a refresh ADDS to the database, it does not replace it, so the running clock, th
 the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
 the SAME database object, so it cannot bump the revision or churn a timestamp.
 
-**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND IT IS PERSISTED.** A sealed
+**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND A SKIP IS PERSISTED.** A sealed
 review found three halves of this missing. SKIP lived only in the preview's own `decisions`
 argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
 the next refresh, asked the identical question again with nothing in the database to show it
@@ -1742,7 +1742,18 @@ do". An OFFER is not a change: an unanswered suggestion writes nothing and says 
 Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
 current value and the archive's proposal each resolving their own direction — and a decision
 is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
-dastgāh choice made a moment earlier.
+dastgāh choice made a moment earlier. What is DURABLE here is the suppression a skip writes
+and the value an applied field writes — never the in-flight selection itself: an unpressed
+suggestion is component state, and it is re-derived from the graph on the next refresh
+precisely because nothing about it was stored.
+
+**AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
+decide what file a stored reference names, and they used to decide it differently:
+`hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
+`repairReferencePath` also understood a full URL under this device's verified base. So a
+class whose references were saved as full links carried perfectly good evidence that
+nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
+is that one reading, and both go through it.
 
 **A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
 `deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`

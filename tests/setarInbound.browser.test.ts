@@ -98,9 +98,17 @@ const wrap = (data: unknown, files?: unknown) =>
     ...(files === undefined ? {} : { files }),
   });
 
+/**
+ * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
+ * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+ * and the rename log moves it here. Repair produces PERSISTED archive state, so
+ * it has to cross these doors like everything else.
+ */
+const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+
 interface Shape {
   items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
-  lessons: { id: string; source?: { sessionN: number }; origin?: string }[];
+  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
   blocks: unknown[];
   archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
   schemaVersion: number;
@@ -128,6 +136,9 @@ describe('the archive graph at every inbound door', () => {
       // …as did their own untouched records.
       expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
       expect(db.blocks).toHaveLength(1);
+      // The REPAIRED reference survived the door, with the row the owner wrote.
+      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
 
       const goodBytes = JSON.stringify(await readPersistedState(app));
 
@@ -274,6 +285,7 @@ describe('the archive graph at every inbound door', () => {
       db = await shape(app);
       expect(db.archiveSources).toHaveLength(1);
       expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
 
       // --- A MALFORMED remote snapshot is refused, and installs nothing ----
       const beforePull = JSON.stringify(await readPersistedState(app));
@@ -349,6 +361,11 @@ describe('the archive graph at every inbound door', () => {
       // local attachments appear in `files` (there are none here).
       expect(parsed.files ?? []).toEqual([]);
       expect(exported).toContain('session-13-03-09-2024');
+      // A repaired path is exported as the archive-relative text it now is —
+      // no device base, no legacy folder prefix, and no bytes.
+      expect(exported).toContain(REPAIRED_PATH);
+      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
+      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
 
       // --- BOTH HYDRATION BRANCHES ----------------------------------------
       // `migrate`: a persisted database declaring the OLD version.
@@ -410,6 +427,7 @@ describe('the archive graph at every inbound door', () => {
       db = await shape(app);
       expect(db.archiveSources).toHaveLength(1);
       expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
     } finally {
       await app.close();

@@ -15,6 +15,7 @@ import {
   toArchiveRelative,
   withSuppression,
 } from './sourceReconcile';
+import { archiveRootUrl } from './recordings';
 import { emptyDB } from './seed';
 import { LEGACY_SEED_PATHS } from './setarClasses';
 import { createItem, createLesson } from './factories';
@@ -669,6 +670,50 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
     expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
     expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+
+    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
+    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
+    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
+    // literal: a trailing-slash or prefix mismatch between the two would fail
+    // silently, leaving the link exactly as it was with nothing to show why.
+    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
+    const absolute = lesson({
+      id: 'L-abs',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [
+        {
+          id: 'abs-1',
+          title: 'Class 1, saved as a full link',
+          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+          kind: 'video',
+          notes: 'Typed in from the browser bar.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'foreign',
+          title: 'Somewhere else entirely',
+          path: 'https://elsewhere.example/x.mp4',
+          kind: 'video',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+      ],
+    });
+    const absDb = baseDB({ lessons: [absolute] });
+    const urlRepaired = applyArchiveImport(
+      absDb,
+      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
+    );
+    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
+    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
+    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
+    // A link to somewhere else is not this archive's to rewrite.
+    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
+    // WITHOUT a base, nothing is converted and nothing is mangled.
+    const noBase = applyArchiveImport(absDb, plan(absDb));
+    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
+    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
+    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
 
     // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
     const again = plan(installedLegacy);
