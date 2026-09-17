@@ -197,7 +197,7 @@ describe('the Setar archive, rendered', () => {
             clockBefore.includes('Finish'),
           );
           const blocksBefore = (await db(app)).blocks.length;
-          page.once('dialog', (d) => void d.accept());
+          // The harness accepts the confirm() for the whole journey.
           await page.getByRole('button', { name: 'Discard block' }).click();
           expect((await db(app)).blocks).toHaveLength(blocksBefore);
 
