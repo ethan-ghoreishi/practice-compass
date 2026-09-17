@@ -1,31 +1,23 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 4c51d297d91dad90f20b2f9a8becf922c392a3a8
+patchId: 2b801d6b01837feb3662e3a4819475e98cf7553a
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Exact rename identity across scanning, repair and suppression
-    summary: A rename source with two different destinations is diagnosed but its
-      first destination is still published and used as exact identity.
-    counterexample: Give RENAME-LOG.csv two rows A->B and A->C. buildIndex publishes
-      A->B, as the named test currently asserts. Refresh can repair an authored
-      A reference to B or move an item-scoped hide from A to B although the log
-      does not establish which file A became. Remove every conflicting source
-      mapping while retaining an actionable diagnostic, and check downstream
-      reference and suppression transitions.
   - family: Browser journey error visibility after cancelled requests
-    summary: The WebKit harness can suppress a genuine later page error after an
-      unrelated or earlier cancellation with the same URL path.
-    counterexample: During one journey, cancel a PUT to a GitHub path, then cause a
-      later request to that path to fail genuinely. requestfailed adds the URL
-      to a permanent set; pageerror discards the later error whenever its
-      message contains the pathname, without checking request identity, method,
-      timing or the diagnosed cancellation error. The journey's pageErrors
-      assertion can pass despite the real failure.
-createdAt: 2026-09-17T19:43:34.587Z
-sealedAt: 2026-09-17T19:49:09.746Z
+    summary: A cancelled request can still suppress a genuine later WebKit
+      access-control page error at the same URL when the cancellation emitted no
+      page error of its own.
+    counterexample: Cancel a request to a GitHub URL without a pageerror. Within 30
+      seconds, make a later request to that URL fail genuinely with WebKit's
+      cannot-load/access-control wording. excusedCancellation consumes the
+      earlier cancellation and returns true, so openPracticeApp omits the real
+      error from pageErrors. The named test only covers a later failure after
+      the cancellation entry has already been consumed.
+createdAt: 2026-09-17T20:10:15.918Z
+sealedAt: 2026-09-17T20:24:54.975Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -39,7 +31,7 @@ sealedAt: 2026-09-17T19:49:09.746Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `4c51d297d91dad90f20b2f9a8becf922c392a3a8`
+- **Diff patch-id:** `2b801d6b01837feb3662e3a4819475e98cf7553a`
 
 ## The Delta this change was framed from
 
@@ -82,1735 +74,611 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Complete source scans before publishing** — P1: readSource treats every RENAME-LOG.csv read failure as an empty log, so two failed reads look like a consistent complete scan and can publish a false source view (scripts/scan-setar-classes.mjs:528-565).
-  _counterexample:_ Make RENAME-LOG.csv temporarily unreadable for both reads while PIECES.csv and media remain readable. Both snapshots contain renameLogText='', so scanToIndex builds an index without the exact renames. If a copied file changed path during that window, Refresh flags its old resource unavailable and cannot repair saved references.
-- **Archive graph validation at reader and inbound doors** — P1: the decoder still normalises present null source facts, and the shared graph check validates types but not resource ownership by session or valid group relationships (src/domain/sourceArchive.ts:348-401,642-756).
-  _counterexample:_ Set a resource title to null in an index and recompute contentHash: parseSourceIndex accepts an empty title. Put a resource whose path is under session 2's folder into session 1's resources and recompute the digest: the decoder and validateDB accept it, so material attributes that file to class 1. A non-demo resource with an arbitrary demo group also passes.
-- **Owner reconciliation choices across revision rebase** — P1: decisions do not retain the bound record identity, and already-bound loops skip Link decisions before stale checking; a rebase can redirect or ignore the owner's choice (src/domain/sourceReconcile.ts:89,449-450,526-539,657-665).
-  _counterexample:_ Preview applying a composer to item A when it is empty. Before Apply, sync a valid database where the same piece is bound to item B, also with an empty composer. The old choice applies to B. Likewise, preview Link item A, then bind that piece to B before Apply: the early continue leaves staleDecisions empty and commit can report success without linking A.
-- **Exact rename identity through adoption and suppression** — P1: a cyclic rename log is accepted, but suppression re-keying ignores followRenames' cycle verdict and moves an owner hide to an intermediate path (scripts/scan-setar-classes.mjs:425-450; src/domain/sourceReconcile.ts:161-168,649-653).
-  _counterexample:_ Keep resources A and B, hide A for one item, then publish exact rows A->B and B->A. The scanner emits the cycle without a diagnostic. followRenames(A) returns {path:B,cycle:true}; Refresh stores the hide for B, so A reappears and the wrong file is hidden.
-- **Lesson material and rendered journey** — P2: LessonDetail renders composed material and the old reference and attachment lists together, duplicating manual files and showing an empty-recordings prompt beside imported class videos (src/pages/Lessons.tsx:438-449,538-541; src/domain/itemFiles.ts:288-320).
-  _counterexample:_ Open a lesson with one authored NAS reference and one local attachment: both appear in LessonMaterial and again in LessonRecordings or Attachments. Open an imported historical class with a graph class video but no authored recordings: the video is shown, followed by a prompt to add a class recording.
+- **Exact rename identity across scanning, repair and suppression** — A rename source with two different destinations is diagnosed but its first destination is still published and used as exact identity.
+  _counterexample:_ Give RENAME-LOG.csv two rows A->B and A->C. buildIndex publishes A->B, as the named test currently asserts. Refresh can repair an authored A reference to B or move an item-scoped hide from A to B although the log does not establish which file A became. Remove every conflicting source mapping while retaining an actionable diagnostic, and check downstream reference and suppression transitions.
+- **Browser journey error visibility after cancelled requests** — The WebKit harness can suppress a genuine later page error after an unrelated or earlier cancellation with the same URL path.
+  _counterexample:_ During one journey, cancel a PUT to a GitHub path, then cause a later request to that path to fail genuinely. requestfailed adds the URL to a permanent set; pageerror discards the later error whenever its message contains the pathname, without checking request identity, method, timing or the diagnosed cancellation error. The journey's pageErrors assertion can pass despite the real failure.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 2859fd5..d1fda0a 100644
+index d1fda0a..26c6274 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1507,6 +1507,15 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
- automation driver (so that journey seeds state-only), and it reports
- `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
- 
-+A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
-+while it was in flight is reported by WebKit as
-+`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
-+problem and is not one. Instrumented, the only difference between a passing and a failing run
-+of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
-+fulfilled with the right CORS headers every other time. A real person navigating mid-sync
-+cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
-+as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
+@@ -1514,7 +1514,19 @@ problem and is not one. Instrumented, the only difference between a passing and
+ of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
+ fulfilled with the right CORS headers every other time. A real person navigating mid-sync
+ cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
+-as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
++as a page error.
 +
++**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
++It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
++message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
++later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
++(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
++excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
++naming the same URL is never excused), names that request's HOST as well as its path, and
++arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
++ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
++tick, and a tight window would trade an over-broad filter for a flaky one under the
++contention five concurrent dev servers already create.
+ 
  **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
  the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
- canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
-@@ -1658,6 +1667,35 @@ check, not atomicity: a perturbation stable across both readings agrees with its
- indistinguishable from the archive genuinely being in that state. What it removes is the
- transient, which is what a copy in flight looks like.
+@@ -1885,12 +1897,21 @@ the owner's hide onto B: A came back into view and the wrong file went dark. It
+ stays exactly where the owner put it, a row the incoming index no longer lists keeps its
+ provenance flagged rather than being deleted on the strength of a destination nothing can
+ read, and repair says "the rename log loops on this path" instead of rewriting to an
+-arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
+-row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
+-published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
+-published index carries no cycle, and the app still refuses to read one from any other
+-source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
+-archive its good provenance.
++arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place, and it is
++ONE rule rather than a mechanism per shape: A REPLACEMENT NAME IS PUBLISHED ONLY WHERE THE
++LOG DETERMINES IT UNIQUELY AND TERMINALLY. A loop names no file; a path given TWO
++destinations names no file either; and a chain walking into either cannot say where it
++ended. All of them are dropped with a diagnostic (ac-12's own rule: cycles and multiple
++destinations DIAGNOSE, never guess), so a published index carries neither, and the app still
++refuses to read one from any other source — `checkSourceGraph` rejects a second row for one
++`from` at the decoder AND at the persisted door. The fork case had exactly the defect the
++loop rule exists to prevent, said the other way round: the scanner published the FIRST
++destination and diagnosed the second as "not applied", so the app was handed a mapping the
++log cannot support and used it as EXACT IDENTITY — repairing an authored reference onto it
++and re-keying an owner's hide onto it. The diagnostic names every destination it saw, once
++and in sorted order, because `diagnostics` is inside `contentHash` and a shuffled log must
++still produce the same index. An ordinary chain beside a loop or a fork still publishes: one
++bad topology does not cost the archive its good provenance.
  
-+**AND A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA — WHICH IS WHAT MADE THE TWO-READ
-+CHECK LOOK CLEAN OVER A FALSE VIEW.** `catch { renameLogText = '' }` turned every failure to
-+read RENAME-LOG.csv — a permission change, an I/O error, a mount that went away mid-copy —
-+into an archive that has no rename log. Both readings then AGREED, the consistency check
-+passed, and the scan published an index with no renames at all: a file that moved during
-+that window is flagged `unavailable` and its saved references can never be repaired. Absence
-+is an OBSERVATION (`{present:false}`, ENOENT only) and travels in the compared reading as
-+one; anything else fails the scan. A required input is required outright, so a missing or
-+unreadable PIECES.csv refuses rather than yielding an empty registry, and a present-but-EMPTY
-+log — what a zero-byte copy in flight looks like — is refused by `readTable` exactly as the
-+registry would be.
-+
-+**AND THE WALK SAYS WHAT IT COULD NOT TAKE IN.** Two readings agree about a file neither of
-+them looked at, so the consistency check is blind by construction to anything the walk drops
-+in silence. A symbolic link is still never FOLLOWED — a link out of the archive is a path
-+this scanner has no authority over — and a session-named entry that is not a directory is
-+still never opened; both are now `diagnostics` rows in the published index instead of
-+vanishing, because an index quietly narrower than the archive is the same "partial view sold
-+as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
-+folders stay silent: they are not archive content, and saying so 258 times is noise. It is a
-+DIAGNOSTIC and not a refusal for the same reason a rename cycle is: a symlink is a stable
-+property of the archive, not a transient, so refusing would leave the archive permanently
-+unindexable until the owner went and deleted it — where the two-read check refuses only what
-+disagrees with itself between two readings a moment apart.
-+Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
-+a file edited IN PLACE at the same byte length changes no size and no CSV, and would
-+otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
-+determinism rule is untouched: altered mtimes still produce a byte-identical index.
-+
- **THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
- trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
- token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
-@@ -1689,6 +1727,16 @@ one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the
- the same treatment `validatePracticeText` gives the owner's own words, and never a
- coercion.
- 
-+**AND THAT RULE HAD TO REACH THE STRINGS TOO.** It closed the lists and the scalars and left
-+every string field with a default exactly as it was: `str(raw.form ?? '')` still read ABSENT
-+and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `form`,
-+`composer` or `notes`, and a diagnostic's own `path` all decoded to `''` — an untitled row
-+the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
-+a default, anything else that is not text is refused naming the record. `part` and `group`
-+stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
-+present null is refused BY THE DECODER rather than spread into its own output as a value the
-+declared type does not admit and left for the grammar to catch downstream.
-+
- **ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
- SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
- COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
-@@ -1789,6 +1837,28 @@ channel rather than two, and the commit refuses on either whether or not `rev` m
- screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
- question, or the suggestion's real current value, is shown as it is now.
- 
-+**AND A DECISION NAMES ITS RECORD, NOT ONLY ITS PIECE — AND EVERY DECISION IS ACCOUNTED
-+FOR.** The premise rule above closed the case where the owner's VALUE moved and left the two
-+cases where the RECORD did. Both loops open with "already bound? nothing to decide" /
-+"already suppressed? nothing to decide", so a decision about a record that became bound
-+between the preview and the commit was never looked at at all: no adoption, no question, and
-+an EMPTY `staleDecisions`, so the commit reported success for an action it had not performed.
-+An `apply-field` decision was worse than ignored — keyed by piece and value alone, it was
-+REDIRECTED onto whichever record held that piece by commit time, and a sync installing a
-+database where the same piece is bound to item B, also with an empty composer, took a choice
-+made about A.
-+
-+So `apply-field` carries `itemId` (identity) as well as `from` (premise), and
-+`decisionMatchesSuggestion` compares all four; and `planArchiveImport` marks every decision
-+it ACTS on and sweeps the rest. An unmarked decision is either an action that has ALREADY
-+HAPPENED — the same answer still in hand on the next preview — or an answer to a question
-+that no longer stands, which is stale. That already-done branch is LOOP PREVENTION rather
-+than politeness: `ArchiveRefresh` drops a stale decision and re-previews, and a realised
-+action can never be consumed by a loop that skips its own record, so without it the same
-+decision would go stale for ever. The sweep is why this holds for Link, Create, Skip and
-+apply-field together instead of a stale check bolted inside each early return, and the
-+premise rule above is now one of its outcomes rather than a second mechanism beside it.
-+
- **AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
- decide what file a stored reference names, and they used to decide it differently:
- `hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
-@@ -1804,7 +1874,25 @@ session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B a
- that very reference repaired into session 2: bound to one class, pointing at another's
- files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
- that loops says nothing about where the file is), and three things use it: evidence, repair,
--and the owner's own hides. A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
-+and the owner's own hides.
-+
-+**AND "REPORTED" HAD TO BE UNIGNORABLE.** `followRenames` handed back
-+`{ path, cycle: true }` — a perfectly usable-looking path beside a flag — and only ONE of its
-+three callers read the flag: adoption refused it, while the suppression re-key and
-+`retainMissing` walked straight past it. Hide A, publish A->B and B->A, and the re-key moved
-+the owner's hide onto B: A came back into view and the wrong file went dark. It returns
-+`string | null` now, so there is no way to drop the verdict and still have a path. A hide
-+stays exactly where the owner put it, a row the incoming index no longer lists keeps its
-+provenance flagged rather than being deleted on the strength of a destination nothing can
-+read, and repair says "the rename log loops on this path" instead of rewriting to an
-+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
-+row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
-+published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
-+published index carries no cycle, and the app still refuses to read one from any other
-+source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
-+archive its good provenance.
-+
-+A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+ A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
  a hidden file simply reappeared under the new one while the old row sat there flagged
- unavailable. Re-keying it is not editing an owner decision — it is the same decision about
- the same bytes said in the archive's current words, the `itemId` scope carried untouched and
-@@ -1837,7 +1925,27 @@ lessons that are NOT archive-bound. An archive-bound lesson contributes nothing
- link route — its files reached the list already, correctly scoped — which is what stops a
- class recording and someone's practice takes from landing on a piece. A manual, unclassified
- lesson still contributes everything it has, because nothing knows the scope and inventing
--one would be a guess. `lessonFiles` is the same composition for a lesson.
-+one would be a guess.
-+
-+**A LESSON IS THE OPPOSITE CASE: EVERY FILE ON IT HAS EXACTLY ONE SECTION THAT RENDERS IT.**
-+An ITEM's material is composed from OTHER records — linked lessons, the graph — that the
-+item's own page has no section for, which is precisely why `itemFiles` must stay the whole
-+composition. A LESSON owns its own references and its own attachments, and its page already
-+renders each in the section that can edit and remove them. `lessonFiles` composed those as
-+well, so an authored NAS reference the index describes nowhere — the owner's own practice
-+takes on an adopted class — and every local attachment were rendered TWICE: once above,
-+where nothing can be done with them, and once again where they live. `lessonFiles` is now
-+the ARCHIVE's contribution alone (an archive-bound class keeps no copy of its session's
-+files, so nothing else can show them); "Class recording & scores" keeps the owner's
-+references, `Attachments` keeps the attachments, and each Remove button is NAMED after its
-+own file rather than saying "Remove this link" three times over.
-+
-+**AND "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THAT ARRAY.** An imported historical
-+class keeps no copy of its session's files, so `lesson.recordings` is empty and the
-+empty-state card invited the owner to add a class recording directly beneath the one already
-+playing above it. That state is read through the same composition the section above renders
-+— not the session's `hasClassRecording` flag — so a class recording the owner has HIDDEN does
-+not count as one that is there.
- 
- **SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
- `migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
-@@ -1870,6 +1978,25 @@ is the point of validating it. `unavailable` stays legal on a piece, a session a
- resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
- silently widens a hide scoped to ONE item.
- 
-+**AND A GRAMMAR OF FIELD TYPES SAYS EVERY VALUE IS READABLE, NEVER THAT THE GRAPH AGREES
-+WITH ITSELF.** A resource physically sitting in class 2's folder, listed under class 1, is
-+type-perfect at every door and attributes someone else's file to the wrong class on every
-+screen that reads it. So `checkSourceGraph` also checks the RELATIONS, and the same four at
-+both doors: a resource's path is `<that session's folder>/<name>` and nothing else; a
-+resource attributed to a piece has that piece's membership recorded for that ROLE, so no
-+file can surface as a piece's material with nothing in the graph saying it belongs to it; a
-+`group` belongs only to a demonstration, and the parts sharing one are material for the same
-+pieces with distinct part numbers, so an arbitrary group cannot invent one logical resource
-+out of unrelated files; and `hasClassRecording` agrees with whether a class-role resource is
-+actually there, which itself may never name a piece.
-+
-+These run over what the source still DESCRIBES. `unavailable` is retained provenance about
-+what it has STOPPED describing — a piece dropped from the registry, a file deleted from the
-+NAS — so holding those rows to the current source's internal agreement is a category error,
-+and would make every refresh after a removal refuse at every door. The group's LABEL format
-+is deliberately not asserted: that is the scanner's grammar, and this file's own rule is
-+that the grammar lives once.
-+
- **AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
- the one persisted field with no check at all, while Settings renders it
- (`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
 diff --git a/DECISIONS.md b/DECISIONS.md
-index 214880a..decd7f0 100644
+index decd7f0..1140393 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
-@@ -2,6 +2,75 @@
+@@ -2,6 +2,50 @@
  
  Durable record of non-obvious choices. Newest first.
  
-+## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
++## Rejection: two rules that held for one shape of the same defect (2026-09-17)
 +
-+A third sealed review rejected the reworked Setar-archive diff. Each finding was the
-+PREVIOUS fix holding for exactly the case it was written against, so each fix here is the
-+rule the whole family shares — and the previous narrower mechanism is subsumed rather than
-+left beside it.
++A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
++the previous fix covering one shape of a defect and not the shape beside it, so each fix
++here is the rule the shapes share — and the narrower mechanism is subsumed rather than left
++next to the new one.
 +
-+- **A read failure was valid empty source data.** The two-read consistency check was
-+  extended to every input, and `catch { renameLogText = '' }` then made an unreadable
-+  RENAME-LOG.csv agree with itself: both readings held `''`, the check passed, and the scan
-+  published an index with no renames — so a file that moved in that window is flagged
-+  unavailable and its saved references can never be repaired. Absence is an OBSERVATION now
-+  (`{present:false}`, ENOENT only) and travels in the compared reading; anything else fails
-+  the scan. The walk had the deeper version of the same gap: two readings agree about a file
-+  neither looked at, so a skipped symlink or a session-named non-directory is a published
-+  diagnostic instead of a silent omission. The compared reading also carries `mtimeMs`,
-+  which `buildIndex` never reads, so an in-place edit at the same byte length is visible to
-+  the check and invisible to the index.
-+- **The absent/present rule reached the lists and the scalars, not the strings.**
-+  `str(raw.form ?? '')` still read absent and present-and-null alike, so a `title: null`
-+  decoded to an untitled row behind a correct digest. `text()` is that rule for strings.
-+  Separately, a grammar of FIELD TYPES says every value is readable and nothing about
-+  whether the graph agrees with itself: a resource in class 2's folder listed under class 1
-+  passed every door. `checkSourceGraph` now also checks path ownership, resource-to-member
-+  agreement by role, demo-group coherence and `hasClassRecording` — over rows the source
-+  still DESCRIBES, because holding retained `unavailable` provenance to the current
-+  source's internal agreement would refuse every refresh after a removal.
-+- **A decision named its piece, not its record.** Both reconciliation loops open with
-+  "already bound? nothing to decide", so a decision about a record bound between the preview
-+  and the commit was never examined: no adoption, no question, an EMPTY `staleDecisions`,
-+  and a commit reporting success for an action it had not performed. `apply-field` was worse
-+  than ignored — keyed by piece and value alone, it was redirected onto whichever record held
-+  that piece by commit time. It carries `itemId` now, and `planArchiveImport` marks every
-+  decision it acts on and sweeps the rest: unmarked is either already realised (loop
-+  prevention — the screen drops a stale decision and re-previews) or stale. The `from`
-+  premise rule is an outcome of that sweep rather than a second mechanism beside it.
-+- **"A cycle is reported" was reported in a value callers could ignore.** `followRenames`
-+  returned `{ path, cycle: true }` and only adoption read the flag; the suppression re-key
-+  and `retainMissing` walked past it, so A→B plus B→A moved the owner's hide onto B and the
-+  wrong file went dark. It returns `string | null`, so dropping the verdict and keeping a
-+  path is unrepresentable. The scanner drops every row in a loop — and every row walking into
-+  one — with a diagnostic, per ac-12's own "cycles diagnose, never guess"; refusing the whole
-+  index was rejected, because a name swap is a legitimate archive operation and an
-+  unimportable archive is a worse answer than an unrepaired path.
-+- **One lesson file had two sections.** `lessonFiles` composed the lesson's own references
-+  and attachments as well as the archive's, and the lesson page renders both in the sections
-+  that can edit and remove them — so an authored file appeared twice, once where nothing
-+  could be done with it. `lessonFiles` is the ARCHIVE's contribution alone; an ITEM keeps the
-+  whole composition, because its material comes from records its own page has no section for.
-+  And "has a recording" is read through that composition, not `lesson.recordings`, so an
-+  imported class is no longer invited to add the video already playing above the prompt.
++- **A rename source with two destinations still published its first one.** The loop rule
++  ("a log that loops names no file") had been closed at every consumer, and the fork sitting
++  beside it — `A→B` and `A→C` in the same log — was diagnosed as "not applied" while `A→B`
++  was published and used as exact identity: Refresh repaired an authored reference onto B and
++  re-keyed an owner's item-scoped hide onto B, although the log never established which file
++  A became. A fork and a loop are ONE defect said two ways, so the scanner now publishes a
++  replacement name only where the log determines it UNIQUELY and TERMINALLY — a fork
++  publishes nothing, a loop publishes nothing, and a chain walking into either publishes
++  nothing. The conflicted sources are removed from the map BEFORE the reachability walk, or
++  a chain ending at one would still publish a name on the strength of a mapping that was
++  meant to be gone. Its diagnostic names every destination seen, once and sorted, because
++  `diagnostics` is inside `contentHash` and ac-4's own claim is that a shuffled source yields
++  the same semantic index. Refusing the whole index was rejected for the reason the loop case
++  already records: an unimportable archive is a worse answer than an unrepaired path. No app
++  change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
++  decoder and at the persisted door — and ac-12's named test now drives the downstream
++  reference and suppression transitions from the scanner's ACTUAL output for a forked log.
++  It changes nothing the operator publishes TODAY, and that is checked rather than assumed:
++  the corpus baseline records 257 rows in RENAME-LOG.csv and the index carries 257 mappings,
++  so no row of the real log is dropped for any reason — there is no fork in it to drop.
++- **The harness's excuse for a cancelled request was permanent.** The WebKit
++  cancelled-request diagnosis recorded in the previous round was implemented as a permanent
++  set of cancelled URLs, with any later page error whose message merely CONTAINED that
++  pathname discarded — so a genuine failure at the same path, later in the same journey, was
++  swallowed and the journey's `pageErrors` assertion passed over it. A check that can hide
++  the failure it exists to catch is worse than no check. `excusedCancellation` is consuming
++  (one cancellation, one error) and additionally requires the diagnosed wording and the
++  request's host as well as its path, inside a generous ceiling on how long an unconsumed
++  cancellation may stand. The ceiling is not a timing correlation: the spurious error arrives
++  in the same tick, and a tight window would trade an over-broad filter for a flaky one under
++  the contention five concurrent dev servers already create. Matching the request's METHOD
++  was considered and is not possible — the page error carries no method.
 +
-+A separate, reproduced HARNESS diagnosis came out of the same round and is recorded here
-+because a flaky heavy check is worse than a missing one: WebKit reports a request the browser
-+CANCELLED (because the test navigated away mid-flight) as "Fetch API cannot load … due to
-+access control checks", which reads as a CORS failure and is not one. Instrumenting the
-+journey showed the only difference between a passing and a failing run was one `requestfailed`
-+with `errorText: 'cancelled'` against a request fulfilled with correct CORS headers every
-+other time. `openPracticeApp` no longer counts such an error, narrowly and by URL. Filtering
-+the wording alone, or seeding the fake remote so the bootstrap PUT never happens, were both
-+rejected: the first excuses a real CORS bug, the second changes what the other journeys mean
-+by an empty remote.
++Four mutations were run and all four fail their named acceptance test: the fork's first
++destination published again, the walks-into-a-fork extension removed, the cancellation excuse
++made permanent (non-consuming), and the diagnosed-wording requirement dropped.
 +
-+Eight mutations were run and all eight fail their named acceptance test: the optional-read
-+swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
-+`itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson
-+composition's authored half (in the real browser, both engines), and the empty-recording
-+prompt's guard.
-+
- ## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
+ ## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
  
- A second sealed review rejected the reworked Setar-archive diff with five findings. Every
+ A third sealed review rejected the reworked Setar-archive diff. Each finding was the
 diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index efd7ab0..6d1f4be 100644
+index 6d1f4be..8ba9e0b 100644
 --- a/docs/setar-archive.md
 +++ b/docs/setar-archive.md
-@@ -61,9 +61,29 @@ readings agrees with itself, and from here is indistinguishable from the archive
- genuinely being in that state. What it removes is the transient — which is what a
- copy in flight looks like, and what would otherwise publish an index missing a
- file that is still there.
-+
-+A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
-+stops it being read — missing, unreadable, a directory where a file should be —
-+refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
-+nothing else: it travels in the compared reading as `{present:false}`, never as
-+empty text, because `catch { text = '' }` made a permission change or an I/O
-+error agree with itself across both readings and publish an index with no
-+renames at all. A present but EMPTY log is refused like an empty registry — a
-+zero-byte file is what a copy in flight looks like.
-+
-+Each file's `mtimeMs` is part of the compared reading and is never read by the
-+index builder, so a file edited IN PLACE at the same byte length fails the scan
-+while altered mtimes still produce a byte-identical index.
-+
- What it reports and skips: a file with no known role, an unknown piece, an
- unsupported extension, a class recording claiming a piece, an unnamed demo in a
--session whose roster and filenames disagree.
-+session whose roster and filenames disagree, a symbolic link (never followed —
-+but never silently dropped either, since two readings agree about a file neither
-+of them looked at), a session-named entry that is not a real directory, and
-+every row of a rename LOOP. A log that loops names no file, so those rows — and
-+any row that walks into a loop — are dropped with a diagnostic rather than
-+published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
-+and out-of-scope root folders stay silent: they are not archive content.
+@@ -80,10 +80,16 @@ unsupported extension, a class recording claiming a piece, an unnamed demo in a
+ session whose roster and filenames disagree, a symbolic link (never followed —
+ but never silently dropped either, since two readings agree about a file neither
+ of them looked at), a session-named entry that is not a real directory, and
+-every row of a rename LOOP. A log that loops names no file, so those rows — and
+-any row that walks into a loop — are dropped with a diagnostic rather than
+-published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
+-and out-of-scope root folders stay silent: they are not archive content.
++every rename row whose destination this log does not determine. That is ONE
++rule, not two: a replacement name is published only where the log names it
++UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
++destinations names no file either; and a chain walking into either of those
++cannot say where it ended. Every such row is dropped with a diagnostic rather
++than published — the fork case used to publish its FIRST destination and
++diagnose the second as "not applied", which handed the app an identity this log
++cannot support. An ordinary chain beside a loop or a fork still publishes.
++Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
++archive content.
  
  The output is written **outside the archive** via a temp file + rename, and the
  scanner refuses an `--out` path inside `--root`.
-@@ -218,11 +238,18 @@ applies the lot in one store mutation.
-   same mutation, so a refresh, a reload and a sync all respect it. A hide follows
-   its file through the rename log, so a renamed resource does not reappear —
-   including when the rename moves it into a different session's folder, where
--  the old row is dropped rather than reported missing.
--- **A decision is about the state you saw.** If the value you chose the archive's
--  over has changed since — or a record you chose to link has been deleted, bound
--  elsewhere or moved instrument — the commit refuses and re-previews rather than
--  applying an answer to a question that no longer stands.
-+  the old row is dropped rather than reported missing. A rename LOOP names no
-+  file, so a hide stays exactly where you put it and nothing is re-keyed.
-+- **A decision is about the state you saw, and about the record you saw it on.**
-+  If the value you chose the archive's over has changed since — or the record you
-+  chose to link or apply a field to has been deleted, bound elsewhere or moved
-+  instrument — the commit refuses and re-previews rather than applying an answer
-+  to a question that no longer stands, or handing it to some other record.
-+- **Every file on a class has exactly one section.** The archive's own session
-+  material is composed for you (an imported class keeps no copy of it, so nothing
-+  else can show it); your own links and attachments stay in the sections that can
-+  edit and remove them, and are never repeated above. An imported class recording
-+  counts as a recording, so you are not invited to add the video already playing.
- - **Your media base is an address and a folder.** A base carrying a username,
-   password, `?query` or `#fragment` is refused, not silently cleaned up: every
-   file URL is built by appending a path to it.
 diff --git a/scripts/scan-setar-classes.mjs b/scripts/scan-setar-classes.mjs
-index af3a245..60a1e71 100644
+index 60a1e71..a76181b 100644
 --- a/scripts/scan-setar-classes.mjs
 +++ b/scripts/scan-setar-classes.mjs
-@@ -284,7 +284,7 @@ const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-  * files). Individual unhandled FILES are reported in `diagnostics` and left
-  * out — surfaced for the owner, never relabelled.
-  */
--export function buildIndex({ registryText, inventory, renameLogText }) {
-+export function buildIndex({ registryText, inventory, renameLog, skipped = [] }) {
-   const pieces = parseRegistry(registryText);
-   const byKey = new Map(pieces.map((p) => [p.key, p]));
+@@ -428,9 +428,18 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
+   }
  
-@@ -292,6 +292,11 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
- 
-   const diagnostics = [];
-   const diag = (path, reason) => diagnostics.push({ path, reason });
-+  // Everything the WALK could not take in. A symlink is not followed and a
-+  // device node is not a file, but dropping either in silence publishes an
-+  // index that is quietly narrower than the archive — the same "partial view
-+  // sold as complete" this scanner's two-read check exists to refuse.
-+  for (const s of skipped) diag(s.path, s.reason);
- 
-   // --- sessions -----------------------------------------------------------
-   const sessions = new Map(); // n -> { n, date, folder, assets: [] }
-@@ -426,8 +431,12 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
-   // EXACT old→new pairs only. This is path provenance, not a similarity model:
-   // an old path with two destinations is reported, never resolved by guessing.
-   const renames = [];
--  if (renameLogText) {
--    const rows = readTable(renameLogText, ['old_path', 'new_path']);
-+  // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
-+  // A present-but-empty log has no header and `readTable` says so, exactly as
-+  // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
-+  // like, and guessing "no renames" from it is the failure this lane closed.
-+  if (renameLog && renameLog.present) {
-+    const rows = readTable(renameLog.text, ['old_path', 'new_path']);
+   // --- rename provenance --------------------------------------------------
+-  // EXACT old→new pairs only. This is path provenance, not a similarity model:
+-  // an old path with two destinations is reported, never resolved by guessing.
+-  const renames = [];
++  // EXACT old→new pairs only. This is path provenance, not a similarity model.
++  //
++  // ONE RULE, NOT TWO MECHANISMS: a path publishes a replacement name only
++  // when this log determines it UNIQUELY and TERMINALLY. A source named with
++  // two destinations does not say which file it became; a chain that walks
++  // into a loop — or into such a source — cannot say either. Every one of
++  // those publishes NOTHING and is diagnosed instead. The conflict case used
++  // to publish the FIRST destination and diagnose the second as "not
++  // applied", which is exactly backwards: the mapping the log cannot support
++  // was handed to the app as exact identity, and the app then repaired an
++  // authored reference onto it and re-keyed an owner's hide onto it.
++  let renames = [];
+   // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
+   // A present-but-empty log has no header and `readTable` says so, exactly as
+   // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
+@@ -438,6 +447,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
+   if (renameLog && renameLog.present) {
+     const rows = readTable(renameLog.text, ['old_path', 'new_path']);
      const dest = new Map();
++    const forks = new Map(); // from → every destination the log names for it
      for (const r of rows) {
        const from = r.old_path.trim();
-@@ -446,6 +455,32 @@ export function buildIndex({ registryText, inventory, renameLogText }) {
+       const to = r.new_path.trim();
+@@ -447,41 +457,52 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
+         continue;
+       }
+       const prior = dest.get(from);
+-      if (prior && prior !== to) {
+-        diag(from, `Rename log maps this path to both "${prior}" and "${to}" — not applied.`);
++      if (prior !== undefined && prior !== to) {
++        forks.set(from, (forks.get(from) ?? new Set([prior])).add(to));
+         continue;
+       }
+-      if (prior === to) continue;
        dest.set(from, to);
-       renames.push({ from, to });
+-      renames.push({ from, to });
      }
-+    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
-+    // only that two names were swapped; picking a stopping point would invent
-+    // an identity, and every path that LEADS INTO a loop is equally unusable.
-+    // Those rows are dropped with a diagnostic rather than published: the app
-+    // must never be handed a replacement identity this log cannot support.
-+    const cyclic = new Set();
-+    for (const from of dest.keys()) {
-+      const walked = new Set([from]);
-+      let cur = from;
-+      while (dest.has(cur)) {
-+        const next = dest.get(cur);
-+        if (walked.has(next)) {
-+          for (const p of walked) cyclic.add(p);
-+          cyclic.add(next);
-+          break;
-+        }
-+        walked.add(next);
-+        cur = next;
+-    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
+-    // only that two names were swapped; picking a stopping point would invent
+-    // an identity, and every path that LEADS INTO a loop is equally unusable.
+-    // Those rows are dropped with a diagnostic rather than published: the app
+-    // must never be handed a replacement identity this log cannot support.
+-    const cyclic = new Set();
++    // A conflicted source stops being a mapping BEFORE anything walks the
++    // graph: left in `dest`, its first destination would still be published,
++    // and a chain ending there would publish a name on its strength too.
++    for (const from of forks.keys()) dest.delete(from);
++
++    // Each path is judged by ITS OWN walk, so the verdict does not depend on
++    // the order rows arrived in — `diagnostics` is inside `contentHash`, and
++    // ac-4's claim is that a shuffled source yields the same semantic index.
++    const unresolvable = new Map();
+     for (const from of dest.keys()) {
+-      const walked = new Set([from]);
++      const seen = new Set([from]);
+       let cur = from;
++      let loops = false;
+       while (dest.has(cur)) {
+         const next = dest.get(cur);
+-        if (walked.has(next)) {
+-          for (const p of walked) cyclic.add(p);
+-          cyclic.add(next);
++        if (seen.has(next)) {
++          loops = true;
+           break;
+         }
+-        walked.add(next);
++        seen.add(next);
+         cur = next;
+       }
++      if (loops) {
++        unresolvable.set(from, 'Rename log loops through this path — no replacement name can be read from it.');
++      } else if (forks.has(cur)) {
++        unresolvable.set(
++          from,
++          `Rename log renames this path into "${cur}", which it names more than one destination for — no replacement name can be read from it.`,
++        );
 +      }
 +    }
-+    for (const from of cyclic) {
-+      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
-+    }
-+    const kept = renames.filter((r) => !cyclic.has(r.from));
-+    renames.length = 0;
-+    renames.push(...kept);
-     renames.sort((a, b) => cmp(a.from, b.from));
-   }
- 
-@@ -490,23 +525,45 @@ export function canonicalJson(value) {
- export function scanArchive(root) {
-   const base = resolve(root);
-   const inventory = [];
-+  const skipped = [];
-   for (const entry of readdirSync(base, { withFileTypes: true })) {
-     if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
--    if (!entry.isDirectory()) continue;
-     if (!parseSessionFolderName(entry.name)) continue; // root folders out of scope
-+    if (!entry.isDirectory()) {
-+      // It CLAIMS to be a session and this walk will not open it. Silence here
-+      // would drop a whole class out of a "complete" index.
-+      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.' });
-+      continue;
-+    }
-     const dir = join(base, entry.name);
-     for (const f of readdirSync(dir, { withFileTypes: true })) {
-       if (f.name.startsWith('.') || IGNORED_DIRS.has(f.name)) continue;
-       const full = join(dir, f.name);
-       const st = lstatSync(full);
--      if (st.isSymbolicLink() || !st.isFile()) continue;
-+      const path = `${entry.name}/${f.name}`;
-+      if (st.isSymbolicLink()) {
-+        // Never FOLLOWED — a link out of the archive is a path this scanner
-+        // has no authority over — but always SAID, so the owner can see that
-+        // the index is not describing something the folder holds.
-+        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed.' });
-+        continue;
-+      }
-+      if (!st.isFile()) {
-+        skipped.push({ path, reason: 'Not a regular file — not indexed.' });
-+        continue;
-+      }
-       if (!full.startsWith(base + sep)) continue;
--      inventory.push({ path: `${entry.name}/${f.name}`, size: st.size });
-+      // `mtimeMs` is deliberately NOT semantic — `buildIndex` reads `size` and
-+      // nothing else, so an altered time cannot change the published index. It
-+      // is here for the two-read comparison below: a file edited IN PLACE at
-+      // the same byte length is otherwise invisible to it.
-+      inventory.push({ path, size: st.size, mtimeMs: st.mtimeMs });
-       if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
++    for (const [from, reason] of unresolvable) {
++      dest.delete(from);
++      diag(from, reason);
      }
-   }
-   inventory.sort((a, b) => cmp(a.path, b.path));
--  return inventory;
-+  skipped.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason));
-+  return { inventory, skipped };
- }
- 
- /** Write via a temp file + rename, so a reader never sees a half-written index. */
-@@ -526,14 +583,39 @@ export function writeIndexAtomically(outPath, text, root) {
-  * below covers all of them by construction, including one added later.
-  */
- export function readSource(base) {
--  const registryText = readFileSync(join(base, 'PIECES.csv'), 'utf8');
--  let renameLogText = '';
-+  const registryText = readRequired(join(base, 'PIECES.csv'), 'PIECES.csv');
-+  const renameLog = readOptional(join(base, 'RENAME-LOG.csv'), 'RENAME-LOG.csv');
-+  const { inventory, skipped } = scanArchive(base);
-+  return { registryText, renameLog, inventory, skipped };
-+}
-+
-+/** A required input. Any failure to read it is a failure to scan. */
-+function readRequired(path, label) {
-+  try {
-+    return readFileSync(path, 'utf8');
-+  } catch (err) {
-+    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
-+  }
-+}
-+
-+/**
-+ * AN OPTIONAL INPUT IS ABSENT OR PRESENT — NEVER "EMPTY BECAUSE IT THREW".
-+ *
-+ * `catch { text = '' }` made every failure to read RENAME-LOG.csv — a
-+ * permission change, an I/O error, a mount that went away mid-copy — look
-+ * exactly like an archive that has no rename log. Both readings then agreed
-+ * with each other, so the consistency check below passed and the scan
-+ * published an index with no renames at all: a file that moved during that
-+ * window is flagged unavailable and its saved references can never be
-+ * repaired. Only ENOENT is an observation; everything else is a failure.
-+ */
-+function readOptional(path, label) {
-   try {
--    renameLogText = readFileSync(join(base, 'RENAME-LOG.csv'), 'utf8');
--  } catch {
--    renameLogText = '';
-+    return { present: true, text: readFileSync(path, 'utf8') };
-+  } catch (err) {
-+    if (err?.code === 'ENOENT') return { present: false };
-+    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
-   }
--  return { registryText, renameLogText, inventory: scanArchive(base) };
- }
- 
- /**
-diff --git a/src/components/ArchiveRefresh.tsx b/src/components/ArchiveRefresh.tsx
-index b7c58f8..7683adc 100644
---- a/src/components/ArchiveRefresh.tsx
-+++ b/src/components/ArchiveRefresh.tsx
-@@ -277,7 +277,18 @@ export default function ArchiveRefresh() {
-                         type="button"
-                         className="btn btn-sm"
-                         aria-pressed={applied}
--                        onClick={() => decide({ kind: 'apply-field', pieceKey: sg.pieceKey, field: sg.field, from: sg.from })}
-+                        onClick={() =>
-+                          decide({
-+                            kind: 'apply-field',
-+                            pieceKey: sg.pieceKey,
-+                            // The RECORD the value was shown against, not just
-+                            // the piece: a rebase must not hand the answer to
-+                            // whichever item happens to hold that piece later.
-+                            itemId: sg.itemId,
-+                            field: sg.field,
-+                            from: sg.from,
-+                          })
-+                        }
-                       >
-                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
-                       </button>
-diff --git a/src/domain/io.test.ts b/src/domain/io.test.ts
-index 06d1b7e..4568532 100644
---- a/src/domain/io.test.ts
-+++ b/src/domain/io.test.ts
-@@ -801,6 +801,37 @@ describe('the v14 source graph at the schema boundary', () => {
-   const NOW = new Date('2026-09-17T09:00:00.000Z');
-   const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
- 
-+  /**
-+   * A source graph as it arrives — every value still `unknown`, because that is
-+   * exactly what these mutations put into it. One shape for BOTH doors: the
-+   * published index and a persisted `archiveSources` row carry the same graph,
-+   * so one mutation can be handed to each and neither can be given a check the
-+   * other misses.
-+   */
-+  type RawRow = Record<string, unknown>;
-+  type RawSession = RawRow & { folder: string; resources: RawRow[]; members: RawRow[] };
-+  type Graph = { pieces: RawRow[]; sessions: RawSession[]; diagnostics: RawRow[] };
-+
-+  /** First `[session, resource]` carrying a role, in the corpus fixture. */
-+  function firstWithRole(g: Graph, role: string): [RawSession, RawRow] {
-+    for (const sess of g.sessions) {
-+      const res = sess.resources.find((r) => r.role === role);
-+      if (res) return [sess, res];
-+    }
-+    throw new Error(`The corpus fixture has no "${role}" resource to mutate.`);
-+  }
-+
-+  /** A demonstration group with at least TWO parts, and its session. */
-+  function groupedDemo(g: Graph): [string, RawRow, RawSession] {
-+    for (const sess of g.sessions) {
-+      for (const r of sess.resources) {
-+        if (!r.group) continue;
-+        if (sess.resources.filter((x) => x.group === r.group).length > 1) return [r.group as string, r, sess];
-+      }
-+    }
-+    throw new Error('The corpus fixture has no multi-part demonstration to mutate.');
-+  }
-+
-   /** A database with a real accepted graph in it, built by the real planner. */
-   function withGraph(): PracticeDB {
-     const base = validateDB(legacy());
-@@ -987,6 +1018,99 @@ describe('the v14 source graph at the schema boundary', () => {
-       (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
-     }, /suppression with no timestamp/);
- 
-+    // --- ABSENT IS A DEFAULT; PRESENT-AND-NULL IS A REFUSAL ----------------
-+    // The list/num/bool rule closed this for lists and scalars and left every
-+    // STRING with a default behind: `str(raw.form ?? '')` read absent and
-+    // present-and-null as the same thing, so a `title: null` in an index whose
-+    // digest was recomputed decoded to an untitled row the grammar was
-+    // perfectly happy with. Absent is a default; null is a value, and a wrong
-+    // one. Proved at BOTH doors from ONE mutation, so the published decoder
-+    // and the persisted-graph validator cannot be given it separately.
-+    const refusesBothDoors = (fn: (g: Graph) => void, pattern: RegExp) => {
-+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
-+      fn(index);
-+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
-+      refuses((d) => fn(d.archiveSources[0] as unknown as Graph), pattern);
-+    };
-+    const onIndexOnly = (fn: (g: Graph) => void, pattern: RegExp) => {
-+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
-+      fn(index);
-+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
-+    };
-+    onIndexOnly((g) => {
-+      g.sessions[0]!.resources[0]!.title = null;
-+    }, /title must be text/);
-+    onIndexOnly((g) => {
-+      g.pieces[0]!.form = null;
-+    }, /form must be text/);
-+    onIndexOnly((g) => {
-+      g.pieces[0]!.notes = null;
-+    }, /notes must be text/);
-+    onIndexOnly((g) => {
-+      g.pieces[0]!.composer = null;
-+    }, /composer must be text/);
-+    // `size` is genuinely optional, so ABSENT is a default here too — but a
-+    // present null is still a value, and the DECODER refuses it rather than
-+    // spreading a type-violating value into its own output for the grammar to
-+    // catch downstream. (The persisted door has its own `size` check above.)
-+    onIndexOnly((g) => {
-+      g.sessions[0]!.resources[0]!.size = null;
-+    }, /size must be a number/);
-+    onIndexOnly((g) => {
-+      g.diagnostics.push({ path: null, reason: 'x' });
-+    }, /diagnostic path must be text/);
-+
-+    // --- SEMANTIC RELATIONS, NOT MERELY FIELD TYPES ------------------------
-+    // A field-type grammar says every value is READABLE and nothing about
-+    // whether the graph agrees with itself. A resource physically sitting in
-+    // class 2's folder, listed under class 1, is type-perfect and attributes
-+    // someone else's file to the wrong class on every screen that reads it;
-+    // an arbitrary `group` on a non-demonstration invents one logical resource
-+    // out of unrelated files. Both doors, one mutation, every time.
-+    refusesBothDoors((g) => {
-+      g.sessions[1]!.resources[0]!.path = `${g.sessions[0]!.folder}/smuggled.mp4`;
-+    }, /not a file in its own folder/);
-+    refusesBothDoors((g) => {
-+      g.sessions[0]!.resources[0]!.path = `${g.sessions[0]!.folder}/deeper/x.mp4`;
-+    }, /not a file in its own folder/);
-+    refusesBothDoors((g) => {
-+      // Attributed to a real registry piece that this session never records a
-+      // membership for: the file would surface as that piece's material with
-+      // nothing in the graph saying it belongs to it.
-+      const [s0, res] = firstWithRole(g, 'نت');
-+      const stranger = g.pieces.find((p) => !s0.members.some((m) => m.key === p.key))!;
-+      res.pieces = [stranger.key];
-+    }, /without recording that membership/);
-+    refusesBothDoors((g) => {
-+      const [, res] = firstWithRole(g, 'نت');
-+      res.group = 'نمونه:invented';
-+    }, /carries a part group but is not a demonstration/);
-+    refusesBothDoors((g) => {
-+      const [, res] = firstWithRole(g, 'ضبط-کلاس');
-+      res.pieces = [g.pieces[0]!.key];
-+    }, /class recording and cannot name a piece/);
-+    refusesBothDoors((g) => {
-+      const [sess] = firstWithRole(g, 'ضبط-کلاس');
-+      sess.hasClassRecording = false;
-+    }, /disagrees with itself about having a class recording/);
-+    refusesBothDoors((g) => {
-+      const sess = g.sessions.find((x) => !x.resources.some((r) => r.role === 'ضبط-کلاس'))!;
-+      sess.hasClassRecording = true;
-+    }, /disagrees with itself about having a class recording/);
-+    // A demonstration's PARTS are one resource told in order. Parts that are
-+    // material for different pieces are not one resource, and two parts
-+    // numbered alike have no order to be read in.
-+    refusesBothDoors((g) => {
-+      const [, first, sess] = groupedDemo(g);
-+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
-+      sibling.pieces = [];
-+    }, /parts belong to different pieces/);
-+    refusesBothDoors((g) => {
-+      const [, first, sess] = groupedDemo(g);
-+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
-+      sibling.part = first.part;
-+    }, /two parts numbered alike/);
-+
-     // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
-     // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
-     // when the index last changed. It was the one persisted field with no
-diff --git a/src/domain/itemFiles.test.ts b/src/domain/itemFiles.test.ts
-index 592aebe..f3e4d35 100644
---- a/src/domain/itemFiles.test.ts
-+++ b/src/domain/itemFiles.test.ts
-@@ -296,6 +296,51 @@ describe('archive material for a piece', () => {
-     expect(lessonSide[0]!.path).toContain('ضبط-کلاس');
-     expect(lessonSide.every((f) => f.lessonId === lesson13.id)).toBe(true);
- 
-+    // --- EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT -----
-+    // This composition used to include the owner's OWN references and the
-+    // lesson's attachments as well. The lesson page renders both in their own
-+    // editable sections, so each authored file appeared twice: once here, and
-+    // once again where it can actually be removed. An ITEM is the opposite
-+    // case and is unchanged — its material comes from records its own page has
-+    // no section for, which is why `itemFiles` stays the whole composition.
-+    const withOwnFiles: PracticeDB = {
-+      ...db,
-+      lessons: db.lessons.map((l) =>
-+        l.id === lesson13.id
-+          ? {
-+              ...l,
-+              recordings: [
-+                {
-+                  id: 'own-ref',
-+                  title: 'My own link',
-+                  path: 'session-13-03-09-2024/my-own-file.mp4',
-+                  kind: 'video' as const,
-+                  createdAt: '2026-01-01T00:00:00.000Z',
-+                },
-+              ],
-+            }
-+          : l,
-+      ),
-+      attachments: [
-+        {
-+          id: 'own-att',
-+          ownerType: 'lesson' as const,
-+          ownerId: lesson13.id,
-+          name: 'handout.pdf',
-+          mime: 'application/pdf',
-+          size: 2048,
-+          kind: 'pdf' as const,
-+          createdAt: '2026-01-01T00:00:00.000Z',
-+        },
-+      ],
-+    };
-+    const composed = lessonFiles(withOwnFiles, lesson13.id);
-+    expect(composed.every((f) => f.source === 'reference' && f.archive !== undefined)).toBe(true);
-+    expect(composed.some((f) => f.title === 'My own link')).toBe(false);
-+    expect(composed.some((f) => f.source === 'attachment')).toBe(false);
-+    // The archive's own material is untouched by the owner's additions.
-+    expect(composed.map((f) => f.id)).toEqual(lessonSide.map((f) => f.id));
-+
-     // --- an UNNAMED demonstration is one ordered logical group --------------
-     const araqGusheh = itemFiles(db, idFor(db, 'کرشمه-در-عراق')) as ItemFileReference[];
-     const demo = araqGusheh.filter((f) => f.archive?.role === 'نمونه' && f.archive.sessionN === 13);
-diff --git a/src/domain/itemFiles.ts b/src/domain/itemFiles.ts
-index 0222517..8ebef18 100644
---- a/src/domain/itemFiles.ts
-+++ b/src/domain/itemFiles.ts
-@@ -239,14 +239,20 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
- }
- 
- /**
-- * Everything a LESSON holds: the archive session's own files (the class
-- * recording, an unnamed handout — the material that belongs to the whole
-- * class rather than to one piece) followed by references the owner authored
-- * on the lesson itself, then its attachments.
-+ * What the ARCHIVE gives a lesson: its session's own files — the class
-+ * recording, an unnamed handout, the material that belongs to the whole class
-+ * rather than to one piece. An archive-bound lesson keeps no copy of these, so
-+ * reading its `recordings` array alone shows nothing at all; this is the only
-+ * way they reach the screen.
-  *
-- * The same composition function family as `itemFiles`, for the same reason:
-- * an archive-bound lesson carries no copy of its session's resources, so
-- * reading its `recordings` array alone would show nothing at all.
-+ * EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT. This used to
-+ * compose the owner's own `recordings` and attachments too, and the lesson page
-+ * renders those in their own editable sections — so one authored NAS reference
-+ * and one local attachment each appeared TWICE, once here and once where they
-+ * can actually be edited or removed. An item is the opposite case and stays as
-+ * it is: its material is composed from OTHER records (linked lessons, the
-+ * graph) that the item's own page has no section for, which is exactly why
-+ * `itemFiles` must stay the whole composition.
-  */
- export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
-   const out: ItemFile[] = [];
-@@ -285,40 +291,5 @@ export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
+-    for (const from of cyclic) {
+-      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
++    for (const [from, tos] of forks) {
++      const named = [...tos].sort(cmp).map((t) => `"${t}"`).join(' and ');
++      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`);
      }
+-    const kept = renames.filter((r) => !cyclic.has(r.from));
+-    renames.length = 0;
+-    renames.push(...kept);
+-    renames.sort((a, b) => cmp(a.from, b.from));
++    renames = [...dest].map(([from, to]) => ({ from, to })).sort((a, b) => cmp(a.from, b.from));
    }
  
--  for (const rec of [...(lesson.recordings ?? [])].sort(
--    (a, b) =>
--      LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'] ||
--      a.createdAt.localeCompare(b.createdAt),
--  )) {
--    const key = referenceKey(rec.path);
--    if (!key || seen.has(key)) continue;
--    seen.add(key);
--    out.push({
--      source: 'reference',
--      id: rec.id,
--      title: rec.title,
--      path: rec.path,
--      kind: rec.kind ?? 'video',
--      lessonId,
--      sizeBytes: rec.sizeBytes,
--      notes: rec.notes,
--      inline: false,
--    });
--  }
--
--  for (const a of attachmentsOwnedBy(db.attachments, 'lesson', lessonId).sort((x, y) =>
--    x.createdAt.localeCompare(y.createdAt),
--  )) {
--    out.push({
--      source: 'attachment',
--      id: a.id,
--      title: a.name,
--      kind: a.kind,
--      mime: a.mime,
--      sizeBytes: a.size,
--      inline: a.kind === 'image',
--    });
--  }
--
-   return out;
- }
+   const body = {
 diff --git a/src/domain/scanSetarClasses.test.ts b/src/domain/scanSetarClasses.test.ts
-index 0369642..65559a3 100644
+index 65559a3..c5241b2 100644
 --- a/src/domain/scanSetarClasses.test.ts
 +++ b/src/domain/scanSetarClasses.test.ts
-@@ -48,17 +48,34 @@ interface Index {
- interface Entry {
-   path: string;
-   size: number;
-+  mtimeMs?: number;
- }
-+interface Skipped {
-+  path: string;
-+  reason: string;
-+}
-+/** An optional input is ABSENT or PRESENT — never "empty because it threw". */
-+type OptionalInput = { present: false } | { present: true; text: string };
- interface Scanner {
--  buildIndex(input: { registryText: string; inventory: Entry[]; renameLogText?: string }): Index;
-+  buildIndex(input: {
-+    registryText: string;
-+    inventory: Entry[];
-+    renameLog?: OptionalInput;
-+    skipped?: Skipped[];
-+  }): Index;
-   contentHash(body: unknown): string;
-   parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
-   parseCsv(text: string): string[][];
-   parseRegistry(text: string): Piece[];
-   parseSessionFolderName(name: string): { n: number; date: string } | null;
--  scanArchive(root: string): Entry[];
-+  scanArchive(root: string): { inventory: Entry[]; skipped: Skipped[] };
-   scanToIndex(root: string): Index;
--  readSource(root: string): { registryText: string; renameLogText: string; inventory: Entry[] };
-+  readSource(root: string): {
-+    registryText: string;
-+    renameLog: OptionalInput;
-+    inventory: Entry[];
-+    skipped: Skipped[];
-+  };
-   canonicalJson(value: unknown): string;
-   writeIndexAtomically(outPath: string, text: string, root?: string): string;
-   isSafeRelativePath(p: string): boolean;
-@@ -442,13 +459,25 @@ describe('scanning the archive', () => {
-       writeFileSync(join(out, 'outside.mp4'), 'x');
-       symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
- 
--      const first = scanArchive(root);
-+      const { inventory: first, skipped: firstSkipped } = scanArchive(root);
-       expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
-       expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
-       expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
-       // The symlink is not followed: its target is outside the archive root.
-       expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
-       expect(first).toHaveLength(INVENTORY.length);
-+      // …but "not followed" is SAID, never silent. A walk that drops a file the
-+      // folder really holds and reports nothing publishes an index that is
-+      // quietly narrower than the archive — the same "partial view sold as
-+      // complete" the two-read check below refuses, arriving through the door
-+      // the two-read check cannot see, because BOTH readings agree on it.
-+      expect(firstSkipped.map((x) => x.path)).toEqual(['session-1-26-09-2023/نت-عراق.pdf']);
-+      expect(firstSkipped[0]!.reason).toMatch(/symbolic link/i);
-+      expect(
-+        buildIndex({ registryText: REGISTRY, inventory: first, skipped: firstSkipped }).diagnostics.some(
-+          (d) => d.path === 'session-1-26-09-2023/نت-عراق.pdf' && /symbolic link/i.test(d.reason),
-+        ),
-+      ).toBe(true);
- 
-       // DETERMINISM. Shuffled directory order and altered mtimes produce a
-       // byte-identical semantic index: nothing here reads a time or trusts the
-@@ -458,7 +487,7 @@ describe('scanning the archive', () => {
-       expect(buildIndex({ registryText: REGISTRY, inventory: shuffled }).contentHash).toBe(scanned.contentHash);
-       const old = new Date('2001-01-01T00:00:00Z');
-       for (const f of INVENTORY) utimesSync(join(root, f.path), old, old);
--      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root) }).contentHash).toBe(scanned.contentHash);
-+      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root).inventory }).contentHash).toBe(scanned.contentHash);
-       expect(contentHash(scanned)).toBe(scanned.contentHash);
-       // ...and the hash is not vacuous: a file whose SIZE changed is a changed
-       // archive, so the semantic index changes with it.
-@@ -533,20 +562,28 @@ describe('scanning the archive', () => {
-       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-       const settled = readSource(root);
-       // Every input this scanner reads is in the reading that gets compared.
--      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLogText']);
-+      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLog', 'skipped']);
-       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
- 
--      // Each of the three, perturbed in turn, is VISIBLE to that comparison.
-+      // Each of the inputs, perturbed in turn, is VISIBLE to that comparison.
-       const moved = INVENTORY[0]!.path;
-       const bytes = readFileSync(join(root, moved));
-+      const when = new Date(settled.inventory.find((f) => f.path === moved)!.mtimeMs!);
-+      // Put a file back EXACTLY as it was — bytes and metadata — or the
-+      // restore is itself a mutation, which is the whole point of observing
-+      // more than the size.
-+      const restore = () => {
-+        writeFileSync(join(root, moved), bytes);
-+        utimesSync(join(root, moved), when, when);
-+      };
-       rmSync(join(root, moved));
-       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
--      writeFileSync(join(root, moved), bytes); // …and back, as a copy would
-+      restore(); // …and back, as a copy would
-       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-       // A file still being COPIED is a size change, and is caught the same way.
-       writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
-       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
--      writeFileSync(join(root, moved), bytes);
-+      restore();
-       writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
-       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-       writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-@@ -554,6 +591,89 @@ describe('scanning the archive', () => {
-       expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-       writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
-       expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-+      // A file edited IN PLACE at the same byte length changes no size and no
-+      // CSV: `mtimeMs` is what makes that mutation visible to the comparison,
-+      // and it is deliberately NOT semantic — the determinism check above
-+      // altered every mtime in the archive and the index hash did not move.
-+      const later = new Date(Date.now() + 60_000);
-+      utimesSync(join(root, moved), later, later);
-+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-+      utimesSync(join(root, moved), when, when);
-+      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-+
-+      // A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA. `catch { text = '' }`
-+      // made an unreadable RENAME-LOG.csv indistinguishable from an archive
-+      // that has none: both readings agreed, the consistency check passed, and
-+      // the scan published an index with NO renames — so a file that moved in
-+      // that window is flagged unavailable and its saved references can never
-+      // be repaired. Absence is an OBSERVATION and is recorded as one;
-+      // anything else fails the scan.
-+      expect(settled.renameLog).toEqual({ present: true, text: renameLog });
-+      rmSync(join(root, 'RENAME-LOG.csv'));
-+      expect(readSource(root).renameLog).toEqual({ present: false });
-+      // …and the two are not the same reading, so a log that VANISHES between
-+      // the readings is a change, not a quiet "there was never one".
-+      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-+      // A present-but-EMPTY log is a zero-byte file — what a copy in flight
-+      // looks like — and is refused exactly as PIECES.csv would be, rather
-+      // than read as "no renames".
-+      writeFileSync(join(root, 'RENAME-LOG.csv'), '');
-+      expect(() => scanToIndex(root)).toThrow(/CSV is empty/);
-+      // An unreadable required input fails the scan; it is never an empty one.
-+      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-+      const hidden = join(root, 'PIECES.csv');
-+      const registryBytes = readFileSync(hidden);
-+      rmSync(hidden);
-+      mkdirSync(hidden); // a directory where a file must be: EISDIR, not ENOENT
-+      expect(() => readSource(root)).toThrow(/Could not read PIECES\.csv/);
-+      expect(() => scanToIndex(root)).toThrow(/Could not read PIECES\.csv/);
-+      rmSync(hidden, { recursive: true });
-+      writeFileSync(hidden, registryBytes);
-+
-+      // A RENAME LOOP NAMES NO FILE, and is dropped with a diagnostic rather
-+      // than published. Every path that walks INTO the loop is equally
-+      // unusable: A->B, B->C, C->B leaves no readable destination for A.
-+      const swap = buildIndex({
-+        registryText: REGISTRY,
-+        inventory: INVENTORY,
-+        renameLog: {
-+          present: true,
-+          text: 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\nsession-1-26-09-2023/b.mp4,session-1-26-09-2023/a.mp4\n',
+@@ -666,14 +666,65 @@ describe('scanning the archive', () => {
+         },
+       });
+       expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
+-      // An old path with TWO destinations was already refused, and still is.
++      // AN OLD PATH WITH TWO DESTINATIONS PUBLISHES NEITHER. This used to
++      // publish the FIRST row and diagnose the second as "not applied", which
++      // is the same defect the loop rule exists to prevent, said the other way
++      // round: a log that cannot say which file A became was handed to the app
++      // as exact identity anyway. It is ONE rule now — a replacement name is
++      // published only where this log determines it uniquely and terminally.
++      const forkLog = 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n';
+       const forked = buildIndex({
+         registryText: REGISTRY,
+         inventory: INVENTORY,
+-        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
++        renameLog: { present: true, text: forkLog },
+       });
+-      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
+-      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
++      expect(forked.renames).toEqual([]);
++      expect(forked.diagnostics.filter((d) => d.path === 'x/a.mp4')).toEqual([
++        {
++          path: 'x/a.mp4',
++          reason:
++            'Rename log names more than one destination for this path ("x/b.mp4" and "x/c.mp4") — no replacement name can be read from it.',
 +        },
-+      });
-+      expect(swap.renames).toEqual([]);
-+      expect(swap.diagnostics.filter((d) => /loops through this path/.test(d.reason)).map((d) => d.path).sort()).toEqual([
-+        'session-1-26-09-2023/a.mp4',
-+        'session-1-26-09-2023/b.mp4',
 +      ]);
-+      const intoLoop = buildIndex({
++      // ONE diagnostic naming its destinations in a stable order, whatever
++      // order the rows arrived in: `diagnostics` is inside `contentHash`, and
++      // a shuffled source must still yield the same semantic index. A third
++      // destination joins that one row rather than emitting a second pair.
++      const forkRowsSwapped = buildIndex({
 +        registryText: REGISTRY,
 +        inventory: INVENTORY,
-+        renameLog: {
-+          present: true,
-+          text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/b.mp4,x/c.mp4\nx/c.mp4,x/b.mp4\n',
-+        },
++        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/c.mp4\nx/a.mp4,x/b.mp4\n' },
 +      });
-+      expect(intoLoop.renames).toEqual([]);
-+      // An ordinary chain beside a loop still publishes — one bad topology
-+      // does not cost the archive its good provenance.
-+      const mixed = buildIndex({
++      expect(forkRowsSwapped.contentHash).toBe(forked.contentHash);
++      const three = buildIndex({
 +        registryText: REGISTRY,
 +        inventory: INVENTORY,
-+        renameLog: {
-+          present: true,
-+          text: 'old_path,new_path\nx/p.mp4,x/q.mp4\nx/a.mp4,x/b.mp4\nx/b.mp4,x/a.mp4\n',
-+        },
++        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/d.mp4\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
 +      });
-+      expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
-+      // An old path with TWO destinations was already refused, and still is.
-+      const forked = buildIndex({
++      expect(three.diagnostics.filter((d) => d.path === 'x/a.mp4')).toHaveLength(1);
++      expect(three.diagnostics.find((d) => d.path === 'x/a.mp4')!.reason).toContain(
++        '("x/b.mp4" and "x/c.mp4" and "x/d.mp4")',
++      );
++      // And a chain that walks INTO a forked path publishes nothing either —
++      // the same extension the loop rule already makes, for the same reason:
++      // x/z.mp4 became x/a.mp4, and what x/a.mp4 is called now is unreadable.
++      const intoFork = buildIndex({
 +        registryText: REGISTRY,
 +        inventory: INVENTORY,
-+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
++        renameLog: { present: true, text: `old_path,new_path\nx/z.mp4,x/a.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
 +      });
-+      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
-+      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
++      expect(intoFork.renames).toEqual([]);
++      expect(intoFork.diagnostics.find((d) => d.path === 'x/z.mp4')!.reason).toContain(
++        'renames this path into "x/a.mp4", which it names more than one destination for',
++      );
++      // An ordinary chain beside a FORK still publishes, exactly as one beside
++      // a loop does.
++      const besideFork = buildIndex({
++        registryText: REGISTRY,
++        inventory: INVENTORY,
++        renameLog: { present: true, text: `old_path,new_path\nx/p.mp4,x/q.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
++      });
++      expect(besideFork.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
  
        // And the scan itself reads the WHOLE source twice and refuses on any
        // difference. Nothing can mutate a filesystem between two synchronous
-@@ -575,7 +695,7 @@ describe('scanning the archive', () => {
-       expect(() => scanToIndex(root)).toThrow();
-       expect(readFileSync(target, 'utf8')).toBe('last good\n');
-       // And the archive itself is untouched by any of the above.
--      expect(scanArchive(root)).toHaveLength(INVENTORY.length);
-+      expect(scanArchive(root).inventory).toHaveLength(INVENTORY.length);
-     } finally {
-       rmSync(root, { recursive: true, force: true });
-       rmSync(out, { recursive: true, force: true });
-diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
-index 82a0108..b156fab 100644
---- a/src/domain/sourceArchive.ts
-+++ b/src/domain/sourceArchive.ts
-@@ -271,12 +271,32 @@ function list(v: unknown, what: string): unknown[] {
-   return v;
- }
- 
-+/**
-+ * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
-+ * same thing and quietly produced `''` for both — the very normalisation the
-+ * list/num/bool rule above exists to stop, left in place for every string
-+ * field that has a default. A resource `title: null` became an untitled row
-+ * the grammar was perfectly happy with. Absent is a default; null is a value,
-+ * and a wrong one.
-+ */
-+function text(v: unknown, what: string): string {
-+  if (v === undefined) return '';
-+  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
-+  return v;
-+}
-+
- function num(v: unknown, what: string): number | null {
-   if (v === undefined || v === null) return null;
-   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
-   return v;
- }
- 
-+/** A number that is genuinely a number — no `null`, unlike an optional part. */
-+function size(v: unknown, what: string): number {
-+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
-+  return v;
-+}
-+
- function bool(v: unknown, what: string, fallback: boolean): boolean {
-   if (v === undefined) return fallback;
-   if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
-@@ -347,13 +367,13 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-     }
-     pieces.push({
-       key,
--      form: str(raw.form ?? '', 'form'),
--      piece: str(raw.piece ?? '', 'piece'),
--      dastgah: str(raw.dastgah ?? '', 'dastgah'),
--      composer: str(raw.composer ?? '', 'composer'),
-+      form: text(raw.form, `Registry entry "${key}" form`),
-+      piece: text(raw.piece, `Registry entry "${key}" piece`),
-+      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
-+      composer: text(raw.composer, `Registry entry "${key}" composer`),
-       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
-       sessions: sessions as number[],
--      notes: str(raw.notes ?? '', 'notes'),
-+      notes: text(raw.notes, `Registry entry "${key}" notes`),
-       ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
-       ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
-     });
-@@ -394,9 +414,14 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-         path,
-         role,
-         kind: kind as SourceKind,
--        title: str(r.title ?? '', 'A resource title'),
-+        title: text(r.title, `Resource "${path}" title`),
-         part: num(r.part, `Resource "${path}" part`),
--        ...(r.size === undefined || r.size === null ? {} : { size: num(r.size, `Resource "${path}" size`) as number }),
-+        // `part` and `group` are genuinely nullable in the published format —
-+        // the scanner emits `null` for both — so null stays legal THERE and
-+        // nowhere else. `size` it always emits as a number, and a present null
-+        // is refused HERE rather than spread into the output as a value the
-+        // declared type does not admit and left for the grammar to catch.
-+        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
-         pieces: forPieces,
-         group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
-       });
-@@ -436,8 +461,8 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-   for (const d of list(input.diagnostics, 'The diagnostic list')) {
-     if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
-     diagnostics.push({
--      path: str(d.path ?? '', 'A diagnostic path'),
--      reason: str(d.reason ?? '', 'A diagnostic reason'),
-+      path: text(d.path, 'A diagnostic path'),
-+      reason: text(d.reason, 'A diagnostic reason'),
-     });
-   }
- 
-@@ -730,6 +755,65 @@ function checkSourceGraph(
-         if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
-       }
-     }
-+
-+    // --- SEMANTIC RELATIONS, not merely field types ------------------------
-+    //
-+    // A field-type grammar says every value is READABLE; it says nothing about
-+    // whether the graph agrees with itself. A resource physically sitting in
-+    // class 2's folder, listed under class 1, is type-perfect and attributes
-+    // someone else's file to the wrong lesson on every screen that reads it —
-+    // and an arbitrary `group` on a non-demonstration invents a logical
-+    // resource out of unrelated files.
-+    //
-+    // Scoped to what the source still DESCRIBES. `unavailable` is retained
-+    // provenance about what it has STOPPED describing — a piece dropped from
-+    // the registry, a file deleted from the NAS — so holding those rows to the
-+    // current source's internal agreement is a category error, and would make
-+    // every refresh after a removal refuse at every door.
-+    if (!sess.unavailable) {
-+      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
-+      const rolesFor = new Map<string, Set<string>>();
-+      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
-+      const groups = new Map<string, SourceResource[]>();
-+      let classRecordings = 0;
-+      for (const r of live) {
-+        const segs = r.path.split('/');
-+        if (segs.length !== 2 || segs[0] !== sess.folder) {
-+          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
-+        }
-+        if (r.role === CLASS_ROLE) {
-+          classRecordings += 1;
-+          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
-+        }
-+        for (const k of r.pieces) {
-+          if (!rolesFor.get(k)?.has(r.role)) {
-+            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
-+          }
-+        }
-+        if (r.group !== null && r.group !== undefined) {
-+          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
-+          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
-+        }
-+      }
-+      if (classRecordings > 0 !== sess.hasClassRecording) {
-+        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
-+      }
-+      // Parts of ONE demonstration: the same material, told in order. Parts
-+      // that are material for different pieces are not one resource, and two
-+      // parts with one number have no order to be read in.
-+      for (const [g, parts] of groups) {
-+        const pieces = [...parts[0]!.pieces].sort().join(NUL);
-+        const numbers = new Set<number | null>();
-+        for (const r of parts) {
-+          if ([...r.pieces].sort().join(NUL) !== pieces) {
-+            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
-+          }
-+          const part = r.part ?? null;
-+          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
-+          numbers.add(part);
-+        }
-+      }
-+    }
-   }
- 
-   if (graph.renames !== undefined) {
 diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
-index ddf4032..c795bc3 100644
+index c795bc3..082dcef 100644
 --- a/src/domain/sourceReconcile.test.ts
 +++ b/src/domain/sourceReconcile.test.ts
-@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
- import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
- import {
-   decodeSourceIndex,
-+  resourcesForPiece,
-+  resourcesForSession,
-   sourceItemId,
-   sourceLessonId,
-   validateArchiveSources,
-@@ -308,7 +310,24 @@ describe('reconciling the archive with the owner’s own records', () => {
-       ...INDEX,
-       contentHash: 'b'.repeat(64),
-       sessions: [
--        ...INDEX.sessions.map((s) => (s.n === 12 ? { ...s, resources: [...s.resources, addedScore] } : s)),
-+        // A scan records the MEMBERSHIP a new resource creates in the same
-+        // pass that lists the resource, so a fixture that adds one without the
-+        // other is a graph disagreeing with itself — refused at every door.
-+        ...INDEX.sessions.map((s) =>
-+          s.n === 12
-+            ? {
-+                ...s,
-+                resources: [...s.resources, addedScore],
-+                members: [
-+                  ...s.members.filter((m) => m.key !== 'عراق'),
-+                  {
-+                    key: 'عراق',
-+                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
-+                  },
-+                ],
-+              }
-+            : s,
-+        ),
-         session40,
-       ],
-       // A later registry improvement on a piece already seeded.
-@@ -340,8 +359,12 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(suggestion).toBeDefined();
-     expect(suggestion.from).toBe('');
-     expect(suggestion.to).toBe('میرزا-حسینقلی');
-+    // A field decision names the RECORD it was shown against, not just the
-+    // piece: a rebase must not hand the answer to whichever item happens to
-+    // hold that piece by the time Apply is pressed.
-+    const araqItemId = suggestion.itemId;
-     const selective = applyArchiveImport(owned, delta, [
--      { kind: 'apply-field', pieceKey: 'عراق', field: 'composer', from: '' },
-+      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
-     ]);
-     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
-     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
-@@ -358,7 +381,9 @@ describe('reconciling the archive with the owner’s own records', () => {
-     // The suggestion stands until it is answered, and it may be answered days
-     // later against the very same published index. Judging "already current"
-     // by the index hash alone reported exactly that and discarded the answer.
--    const lateField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'composer' as const, from: '' }];
-+    const lateField = [
-+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
-+    ];
-     const lateDecision = planArchiveImport({
-       db: refreshed,
-       index: next,
-@@ -380,7 +405,9 @@ describe('reconciling the archive with the owner’s own records', () => {
-     // Applied, the suggestion is gone: the next refresh has nothing to offer.
-     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
-     // A decision for a field with NO suggestion changes nothing at all.
--    const emptyField = [{ kind: 'apply-field' as const, pieceKey: 'عراق', field: 'form' as const, from: '' }];
-+    const emptyField = [
-+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
-+    ];
-     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
-     expect(noop.summary.unchanged).toBe(true);
-     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
-@@ -457,12 +484,119 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(stalelink.staleDecisions).toEqual(linkDecision);
-     expect(stalelink.adoptedItems).toEqual([]);
+@@ -19,6 +19,19 @@ import {
+   followRenames,
+ } from './sourceReconcile';
+ import { archiveRootUrl } from './recordings';
++// The published log is the SCANNER's output, so the downstream transitions
++// below are driven by what it actually publishes for a forked log — never by
++// a hand-written approximation of it.
++// @ts-expect-error — no type declarations for the .mjs operator tool.
++import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
++const { buildIndex } = scannerModule as {
++  buildIndex(input: {
++    registryText: string;
++    inventory: never[];
++    renameLog: { present: true; text: string };
++  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
++};
++const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
+ import { emptyDB } from './seed';
+ import { LEGACY_SEED_PATHS } from './setarClasses';
+ import { createItem, createLesson } from './factories';
+@@ -710,6 +723,10 @@ describe('reconciling the archive with the owner’s own records', () => {
+     // maps through the rename log EXACTLY. No title, size or modification-time
+     // matching is involved anywhere, and none of the 67 is left to a guess.
+     expect(LEGACY_SEED_PATHS).toHaveLength(67);
++    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
++    // and 257 mappings out: no row of the REAL log is dropped for any reason —
++    // not unsafe, not empty, not a loop and not a fork — so the rule below
++    // changes nothing the operator actually publishes today.
+     expect(INDEX.renames).toHaveLength(257);
+     const repairedPaths = new Map<string, string>();
+     for (const p of LEGACY_SEED_PATHS) {
+@@ -1136,6 +1153,51 @@ describe('reconciling the archive with the owner’s own records', () => {
+     ).lessons.find((l) => l.id === 'L1')!;
+     expect(loopLesson.recordings).toEqual(storedOne.recordings);
  
-+    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
-+    //
-+    // The loops start with "already bound? nothing to decide" / "already
-+    // suppressed? nothing to decide", so a decision about a record that became
-+    // bound between the preview and the commit was never looked at: no
-+    // adoption, no question, and an EMPTY `staleDecisions` — the commit
-+    // reported success for an action it had not performed. And a field
-+    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
-+    // onto whichever record held that piece by the time Apply ran.
-+    const otherItemId = 'someone-elses-item';
-+    const boundToAnother: PracticeDB = {
-+      ...unbound,
-+      items: [
-+        ...unbound.items,
-+        item({
-+          id: otherItemId,
-+          instrumentId: SETAR,
-+          title: 'Another record',
-+          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
-+        }),
-+      ],
-+    };
-+    // LINK: the approved record is not the one holding the piece now, so the
-+    // choice is stale — never quietly satisfied by the other record.
-+    const redirectedLink = planArchiveImport({
-+      db: boundToAnother,
-+      index: next,
-+      instrumentId: SETAR,
-+      decisions: linkDecision,
-+      now: NOW,
++    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
++    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
++    // log does not determine what this file is called now. The scanner used to
++    // publish the FIRST destination and diagnose the second as "not applied",
++    // so the app was handed a mapping the log cannot support and used it as
++    // exact identity — repairing an authored reference onto it and re-keying
++    // an owner's hide onto it. What it publishes for a fork is nothing, and
++    // this drives the transitions from that real output rather than a guess
++    // at it. (A forked log reaching the app from anywhere else is REFUSED at
++    // every door by the one grammar — asserted in `io.test.ts` against the
++    // persisted door, and by `checkSourceGraph` for the decoder.)
++    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
++    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
++    const scanned = buildIndex({
++      registryText: EMPTY_REGISTRY,
++      inventory: [],
++      renameLog: {
++        present: true,
++        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
++      },
 +    });
-+    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
-+    expect(redirectedLink.adoptedItems).toEqual([]);
-+    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
-+      .toBeUndefined();
-+    // APPLY-FIELD: the archive's composer, chosen against item A's empty
-+    // field, must not be written to the item that holds the piece now — whose
-+    // composer is also empty, so nothing about the VALUE would have caught it.
-+    const fieldForA = [
-+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
-+    ];
-+    const redirectedField = planArchiveImport({
-+      db: boundToAnother,
-+      index: next,
-+      instrumentId: SETAR,
-+      decisions: fieldForA,
-+      now: NOW,
-+    });
-+    expect(redirectedField.staleDecisions).toEqual(fieldForA);
-+    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
-+    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
-+    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
-+    // SKIP and CREATE are the same rule: an answer about a record that has
-+    // since been bound is an answer to a question that no longer stands.
-+    for (const decision of [
-+      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
-+      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
-+    ]) {
-+      const swept = planArchiveImport({
-+        db: boundToAnother,
-+        index: next,
-+        instrumentId: SETAR,
-+        decisions: decision,
-+        now: NOW,
-+      });
-+      expect(swept.staleDecisions).toEqual(decision);
-+      expect(swept.newItems).toEqual([]);
-+    }
-+    // …and LOOP PREVENTION: the action the owner approved, once it HAS
-+    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
-+    // re-previews, so a realised action that could never be consumed again
-+    // would go stale for ever.
-+    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
-+    const again = planArchiveImport({
-+      db: afterLink,
-+      index: next,
-+      instrumentId: SETAR,
-+      decisions: linkDecision,
-+      now: NOW,
-+    });
-+    expect(again.staleDecisions).toEqual([]);
-+    const skipped = applyArchiveImport(
-+      unbound,
-+      planArchiveImport({
-+        db: unbound,
-+        index: next,
-+        instrumentId: SETAR,
-+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
-+        now: NOW,
-+      }),
-+    );
-+    expect(
-+      planArchiveImport({
-+        db: skipped,
-+        index: next,
-+        instrumentId: SETAR,
-+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
-+        now: NOW,
-+      }).staleDecisions,
-+    ).toEqual([]);
-+
-     // --- a missing FILE keeps its provenance, flagged ----------------------
-     const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
-     const shrunk: SourceIndex = {
-       ...next,
-       contentHash: 'c'.repeat(64),
--      sessions: next.sessions.map((s) => (s.n === 12 ? { ...s, resources: [] } : s)),
-+      // A session that has lost every file has lost its class recording with
-+      // them: a scan recomputes that flag, and a hand-built index that keeps
-+      // it is a graph disagreeing with itself — which `checkSourceGraph` now
-+      // refuses at every door, so it cannot be used to prove anything else.
-+      sessions: next.sessions.map((s) =>
-+        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
-+      ),
-     };
-     const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
-     const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
-@@ -858,7 +992,7 @@ describe('reconciling the archive with the owner’s own records', () => {
-       renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
-     };
-     const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
--    expect(followRenames(hopA, chainRenames)).toEqual({ path: hopC, cycle: false });
-+    expect(followRenames(hopA, chainRenames)).toBe(hopC);
-     const legacyClass = lesson({
-       id: 'L-chain',
-       date: '2023-09-26',
-@@ -939,6 +1073,69 @@ describe('reconciling the archive with the owner’s own records', () => {
-     });
-     expect(validateArchiveSources(afterCross)).toBeNull();
- 
-+    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
-+    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
-+    // usable-looking path beside a flag — and only ONE of its three callers
-+    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
-+    // straight past the verdict and moved the owner's hide onto B, so A came
-+    // back into view and the wrong file went dark. It returns `null` now, so
-+    // there is no way to drop the verdict and still have a path.
-+    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
-+    const cyclicLog: SourceIndex = {
-+      ...INDEX,
-+      contentHash: '3'.repeat(64),
-+      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
-+    };
-+    const afterCycle = applyArchiveImport(
++    expect(scanned.renames).toEqual([]);
++    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
++    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
++    // The READING: the file keeps the only name this log establishes — its own.
++    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
++    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
++    // either destination.
++    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
++    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
++    const afterFork = applyArchiveImport(
 +      hidden,
-+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
++      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
 +    );
-+    const cycledSource = afterCycle.archiveSources[0]!;
-+    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
-+    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
-+    expect(cycledHide.itemId).toBe('item-x');
-+    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
-+    // …so the file the owner hid is still hidden, and its sibling is not.
-+    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
-+    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
-+
-+    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
-+    // incoming index has dropped keeps its provenance flagged rather than
-+    // being silently deleted on the strength of a destination nothing can read.
-+    const cyclicAndRemoved: SourceIndex = {
-+      ...cyclicLog,
-+      contentHash: '2'.repeat(64),
-+      sessions: cyclicLog.sessions.map((sess) =>
-+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
-+      ),
-+    };
-+    const afterCyclicRemoval = applyArchiveImport(
-+      hidden,
-+      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
-+    );
-+    expect(
-+      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
-+        (r) => r.path === hiddenPath,
-+      )?.unavailable,
-+    ).toBe(true);
-+    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
-+
-+    // REPAIR says so out loud rather than rewriting the path to a stop on the
-+    // loop — and ADOPTION, which reads the same verdict, takes it as no
-+    // evidence at all (asserted above for the same shape).
-+    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
-+    expect(followRenames(hiddenPath, loopMap)).toBeNull();
-+    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
-+      status: 'attention',
-+      reason: 'The rename log loops on this path.',
-+      code: 'cycle',
-+    });
-+    const loopLesson = applyArchiveImport(
-+      hidden,
-+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
-+    ).lessons.find((l) => l.id === 'L1')!;
-+    expect(loopLesson.recordings).toEqual(storedOne.recordings);
++    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
++    // The HIDE: exactly where the owner put it, still scoped to one item — so
++    // the file they hid is still hidden and neither destination went dark.
++    const forkedSource = afterFork.archiveSources[0]!;
++    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
++      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
++    ]);
++    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
++    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
++    expect(validateArchiveSources(afterFork)).toBeNull();
 +
      // A file that really IS gone still keeps its provenance, flagged.
      const removed: SourceIndex = {
        ...INDEX,
-diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
-index 3ee50c6..1ad0529 100644
-Binary files a/src/domain/sourceReconcile.ts and b/src/domain/sourceReconcile.ts differ
-diff --git a/src/pages/Lessons.tsx b/src/pages/Lessons.tsx
-index 0c3f449..124c564 100644
---- a/src/pages/Lessons.tsx
-+++ b/src/pages/Lessons.tsx
-@@ -5,10 +5,12 @@ import {
-   type PracticeItem,
-   cleanFileTitle,
-   daysUntil,
-+  CLASS_ROLE,
-   defaultInstrumentFilter,
-   formatFileSize,
-   ITEM_STATUS_LABELS,
-   LESSON_FILE_KIND_ORDER,
-+  lessonFiles,
-   lessonsForInstrument,
-   isUpcomingLesson,
-   nextLessonFor,
-@@ -435,9 +437,11 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
-         />
-       )}
- 
--      {/* Everything this class holds, composed once: an archive-bound class
--          keeps no copy of its session's files, so its own `recordings` array
--          is empty and only the graph can answer. */}
-+      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
-+          copy of its session's files, so only the graph can answer — and the
-+          owner's OWN references and attachments are NOT repeated here: they
-+          each have exactly one section on this page, the one that can also
-+          edit and remove them. */}
-       <LessonMaterial lessonId={lesson.id} />
- 
-       <LessonRecordings lesson={lesson} />
-@@ -483,6 +487,7 @@ function KindIcon({ kind }: { kind: LessonFileKind }) {
-  * reference never touches the NAS file. Video first, then scores/docs.
-  */
- function LessonRecordings({ lesson }: { lesson: Lesson }) {
-+  const db = useStore((s) => s.db);
-   const addLessonRecording = useStore((s) => s.addLessonRecording);
-   const removeLessonRecording = useStore((s) => s.removeLessonRecording);
-   const navigate = useNavigate();
-@@ -494,6 +499,16 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
-       ),
-     [lesson.recordings],
-   );
-+  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
-+  // historical class keeps no copy of its session's files, so `recordings` is
-+  // empty and the empty-state card invited the owner to add a class recording
-+  // directly beneath the one already playing above it. Read through the same
-+  // composition the section above renders, so a recording the owner has HIDDEN
-+  // does not count as one that is there.
-+  const fromArchive = useMemo(
-+    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
-+    [db, lesson.id],
-+  );
- 
-   const browseUrl = normalizeBaseUrl(baseUrl);
- 
-@@ -535,7 +550,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
-         </button>
-       </div>
- 
--      {recordings.length === 0 && !adding && (
-+      {recordings.length === 0 && !fromArchive && !adding && (
-         <div className="card card-quiet small dim">
-           Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
-         </div>
-@@ -601,7 +616,10 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
-             </button>
-             <button
-               className="btn btn-ghost btn-sm"
--              aria-label="Remove this link (the NAS file is kept)"
-+              // Named, because a class holds several of these and "Remove this
-+              // link" three times over tells a screen reader nothing about
-+              // which file it is about to drop.
-+              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
-               title="Remove link (the NAS file is kept)"
-               onClick={() => {
-                 if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
-diff --git a/src/store/archiveIndex.test.ts b/src/store/archiveIndex.test.ts
-index 8467fe9..e08aa95 100644
---- a/src/store/archiveIndex.test.ts
-+++ b/src/store/archiveIndex.test.ts
-@@ -9,6 +9,7 @@ import indexFixture from '../../tests/fixtures/setar-archive.json' with { type:
- import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
- import { decodeSourceIndex } from '../domain/sourceArchive';
- import { validateDB } from '../domain/io';
-+import { createItem } from '../domain/factories';
- import type { PracticeDB } from '../domain/types';
- 
- // ---------------------------------------------------------------------------
-@@ -658,7 +659,7 @@ describe('committing an archive import', () => {
-     const answered2 = useStore.getState().previewArchiveImport({
-       index: INDEX,
-       instrumentId: SETAR,
--      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
-+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
-       now: NOW,
-     });
-     expect(answered2.plan.summary.unchanged).toBe(false);
-@@ -670,7 +671,7 @@ describe('committing an archive import', () => {
-     const appliedField = await useStore.getState().commitArchiveImport({
-       index: INDEX,
-       instrumentId: SETAR,
--      decisions: [{ kind: 'apply-field', pieceKey, field: 'composer', from: '' }],
-+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
-       decidedFromRev: useStore.getState().rev,
-       now: NOW,
-     });
-@@ -692,7 +693,11 @@ describe('committing an archive import', () => {
-     useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
-     const secondKey = second.source!.pieceKey;
-     const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
--    const choice = [{ kind: 'apply-field' as const, pieceKey: secondKey, field: 'composer' as const, from: '' }];
-+    const choice = [
-+      // Bound to the RECORD as well as the piece and the premise: a rebase that
-+      // finds the piece on a different item must not hand it that answer.
-+      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
-+    ];
-     useStore.getState().updateItem(second.id, {
-       persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
-     });
-@@ -721,6 +726,53 @@ describe('committing an archive import', () => {
-       second.persian!.composer,
-     );
- 
-+    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
-+    // The other half of the same family, and the one an already-bound early
-+    // `continue` hid completely: the piece is held by a DIFFERENT record by
-+    // the time Apply runs. A field decision keyed by piece alone was written
-+    // to that other record (its composer was empty too, so nothing about the
-+    // VALUE would have caught it), and a Link decision was skipped in silence
-+    // — `staleDecisions` empty, the commit reporting success for an action it
-+    // never performed.
-+    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
-+    const movedKey = movedPiece.source!.pieceKey;
-+    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
-+    useStore.setState((st) => ({
-+      db: {
-+        ...st.db,
-+        items: [
-+          // The approved record loses the binding; another record takes it.
-+          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
-+          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
-+        ],
-+      },
-+    }));
-+    for (const decisions of [
-+      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
-+      [
-+        {
-+          kind: 'apply-field' as const,
-+          pieceKey: movedKey,
-+          itemId: movedPiece.id,
-+          field: 'composer' as const,
-+          from: movedPiece.persian?.composer ?? '',
-+        },
-+      ],
-+    ]) {
-+      const refused = await useStore.getState().commitArchiveImport({
-+        index: INDEX,
-+        instrumentId: SETAR,
-+        decisions,
-+        decidedFromRev: useStore.getState().rev,
-+        now: NOW,
-+      });
-+      expect(refused).toMatchObject({ ok: false, status: 'stale' });
-+      expect(refused.staleDecisions).toEqual(decisions);
-+    }
-+    // Neither record was touched by either refusal.
-+    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
-+    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
-+
-     // --- refresh NEVER runs a whole-database import or reset ---------------
-     // `importDB`, `resetDemo` and `clearAll` each null the active session and
-     // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
 diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index bb4f97a..74e4c0e 100644
+index 74e4c0e..5266472 100644
 --- a/tests/practiceBrowser.ts
 +++ b/tests/practiceBrowser.ts
-@@ -97,9 +97,32 @@ export async function openPracticeApp(options: {
+@@ -27,6 +27,69 @@ const installHint = (engine: Engine) =>
+   '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
+   'and an engine quietly missed is the same thing as an engine never checked.';
+ 
++/**
++ * ONE cancelled request, awaiting the ONE spurious error it produces.
++ *
++ * A request the BROWSER cancelled because the test navigated away while it was
++ * in flight is not an application error. WebKit reports such a fetch as
++ * "Fetch API cannot load … due to access control checks", which reads exactly
++ * like a CORS problem and is not one: instrumented, the only difference
++ * between the passing and failing runs of the same journey is a single
++ * `requestfailed` with `errorText: 'cancelled'` for a request that is
++ * otherwise fulfilled with the right CORS headers every other time. A real
++ * person navigating mid-sync cancels the same request, so treating it as a
++ * page error makes a journey fail for driving the app quickly.
++ */
++export interface CancelledRequest {
++  url: string;
++  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
++  at: number;
++}
++
++/**
++ * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
++ * cancelled URL joined a permanent set, and every later page error whose
++ * message merely CONTAINED that pathname was discarded — so a genuine failure
++ * at the same path, later in the same journey, was swallowed and the journey's
++ * `pageErrors` assertion passed over it.
++ *
++ * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
++ * one cancellation excuses exactly one error.
++ *  - the message is the DIAGNOSED wording, so an error of any other shape
++ *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
++ *    for a fetch AND for an XHR, so the two words both spellings share are
++ *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
++ *    where this wording comes from, and the next intermittent "CORS" failure
++ *    belongs here before it is diagnosed from scratch. Getting the wording
++ *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
++ *    below is what stops a real failure being excused;
++ *  - it names that request's host AND path — WebKit spells the URL with the
++ *    scheme separated from the host, so the comparison is on the parts both
++ *    spellings carry verbatim;
++ *  - it arrives inside a CEILING on how long an unconsumed cancellation may
++ *    stand. Deliberately generous rather than a timing correlation: the
++ *    spurious error is emitted in the same tick as the cancellation, and a
++ *    tight window would trade an over-broad filter for a flaky one under the
++ *    contention five concurrent dev servers already create.
++ */
++export const CANCELLED_EXCUSE_MS = 30_000;
++
++export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
++  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
++  const i = pending.findIndex((c) => {
++    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
++    const url = new URL(c.url);
++    return message.includes(url.host) && message.includes(url.pathname);
++  });
++  if (i < 0) return false;
++  // CONSUMING the entry is this function's own job, not the caller's: the
++  // permanent-set version was a caller that simply never took anything out,
++  // and a boolean a caller can read without spending the cancellation would
++  // leave exactly that mistake available again.
++  pending.splice(i, 1);
++  return true;
++}
++
+ export interface PracticeApp {
+   page: Page;
+   /** The dev server origin this journey is isolated on. */
+@@ -97,30 +160,16 @@ export async function openPracticeApp(options: {
      page.on('dialog', (d) => {
        void d.accept().catch(() => {});
      });
-+    // A request the BROWSER cancelled because this test navigated away while it
-+    // was in flight is not an application error. WebKit reports such a fetch as
-+    // "Fetch API cannot load … due to access control checks", which reads
-+    // exactly like a CORS problem and is not one: instrumented, the only
-+    // difference between the passing and failing runs of the same journey is a
-+    // single `requestfailed` with `errorText: 'cancelled'` for a request that
-+    // is otherwise fulfilled with the right CORS headers every other time.
-+    // A real person navigating mid-sync cancels the same request, so treating
-+    // it as a page error makes a journey fail for driving the app quickly.
-+    // Narrow by construction: only a URL this run actually saw cancelled is
-+    // ever excused, and every other page error is recorded as before.
-+    const cancelled = new Set<string>();
-+    page.on('requestfailed', (r) => {
-+      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
-+    });
+-    // A request the BROWSER cancelled because this test navigated away while it
+-    // was in flight is not an application error. WebKit reports such a fetch as
+-    // "Fetch API cannot load … due to access control checks", which reads
+-    // exactly like a CORS problem and is not one: instrumented, the only
+-    // difference between the passing and failing runs of the same journey is a
+-    // single `requestfailed` with `errorText: 'cancelled'` for a request that
+-    // is otherwise fulfilled with the right CORS headers every other time.
+-    // A real person navigating mid-sync cancels the same request, so treating
+-    // it as a page error makes a journey fail for driving the app quickly.
+-    // Narrow by construction: only a URL this run actually saw cancelled is
+-    // ever excused, and every other page error is recorded as before.
+-    const cancelled = new Set<string>();
++    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
++    // every other page error is recorded exactly as before.
++    const cancelled: CancelledRequest[] = [];
+     page.on('requestfailed', (r) => {
+-      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
++      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
+     });
      // Surface a page-level error instead of letting it become a silently
      // wrong assertion later.
--    page.on('pageerror', (e) => pageErrors.push(e));
-+    page.on('pageerror', (e) => {
-+      const message = `${e.message}`;
-+      // WebKit spells the URL with the scheme separated from the host, so the
-+      // comparison is on the path, which both spellings carry verbatim.
-+      for (const url of cancelled) {
-+        if (message.includes(new URL(url).pathname)) return;
-+      }
-+      pageErrors.push(e);
-+    });
+     page.on('pageerror', (e) => {
+-      const message = `${e.message}`;
+-      // WebKit spells the URL with the scheme separated from the host, so the
+-      // comparison is on the path, which both spellings carry verbatim.
+-      for (const url of cancelled) {
+-        if (message.includes(new URL(url).pathname)) return;
+-      }
++      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
+       pageErrors.push(e);
+     });
      await page.clock.install({ time: options.now });
-     await page.goto(origin);
-     // The store hydrates from IndexedDB before anything renders. The ceiling is
-diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
-index 273ec33..53f895b 100644
---- a/tests/setarArchive.browser.test.ts
-+++ b/tests/setarArchive.browser.test.ts
-@@ -163,26 +163,59 @@ describe('the Setar archive, rendered', () => {
-           // this journey drives whichever the viewport actually renders.
-           await goTo(app, '/lessons');
-           const wide = viewport.width >= 1000;
--          let lessonText: string;
--          if (wide) {
--            await page.getByRole('button', { name: /Class 13 · 2024-09-03/ }).first().click();
--            await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
--            lessonText = await page.locator('main').innerText();
--          } else {
--            const class13 = page.getByRole('article').filter({ hasText: 'Class 13 · 2024-09-03' });
--            await class13.first().waitFor({ timeout: 20_000 });
-+          /**
-+           * Open one class and read what it actually renders — the whole page
-+           * on the wide two-pane layout, the card itself on the phone, where
-+           * rows start compact and must be opened first.
-+           */
-+          const openClass = async (label: string, number: number): Promise<string> => {
-+            if (wide) {
-+              await page.getByRole('button', { name: new RegExp(label) }).first().click();
-+              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-+              return page.locator('main').innerText();
-+            }
-+            const card = page.getByRole('article').filter({ hasText: label });
-+            await card.first().waitFor({ timeout: 20_000 });
-             // PHONE ROWS START COMPACT: thirty-nine imported classes must not
-             // all open at once just because none of them has notes yet.
--            expect(await class13.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
--            await class13.getByRole('button', { name: /Class 13/ }).first().click();
--            await class13.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
--            lessonText = await class13.innerText();
--          }
-+            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
-+            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
-+            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-+            return card.innerText();
-+          };
-+          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
-           // The class recording is here, with its part numbers; a named score
-           // is here; nothing claims a demonstration belongs to the class alone.
-           expect(lessonText).toContain('ضبط کلاس');
-           expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
- 
-+          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
-+          //
-+          // Class 25 is an ADOPTED legacy class carrying three of the owner's
-+          // OWN references — personal takes the index describes nowhere, by
-+          // construction — beside the archive's session material. The composed
-+          // list used to include the owner's rows as well, so each of them was
-+          // rendered twice: once where it can be edited and removed, and once
-+          // again above it.
-+          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
-+          const adopted = await openClass('Class 25 · 2025-08-05', 25);
-+          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
-+            expect(occurrences(adopted, authored)).toBe(1);
-+          }
-+          // …and they are still editable where they live: the section that owns
-+          // them can still remove them, by name.
-+          const owning = wide
-+            ? page.locator('main')
-+            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
-+          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
-+          // A class the archive gave a recording to is NOT invited to add one.
-+          // Class 12 is a purely imported class: it keeps no copy of its
-+          // session's files, so its own `recordings` array is empty and the
-+          // empty-state card offered to add the very video playing above it.
-+          const imported = await openClass('Class 12 · 2024-08-06', 12);
-+          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
-+          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
+diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
+index ca649cc..ba90650 100644
+--- a/tests/setarInbound.browser.test.ts
++++ b/tests/setarInbound.browser.test.ts
+@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+ import {
++  CANCELLED_EXCUSE_MS,
+   connectSync,
+   exportBackup,
+   goTo,
+@@ -11,6 +12,7 @@ import {
+   importOutcome,
+   installFakeGitHub,
+   newFakeRemote,
++  excusedCancellation,
+   openPracticeApp,
+   persistedDb,
+   publishRemote,
+@@ -501,3 +503,64 @@ describe('rolling back past the archive schema', () => {
+     }
+   }, 240_000);
+ });
 +
-           // --- A CANONICAL PIECE, and the material that is useful for it ----
-           await goTo(app, '/repertoire');
-           await page.getByRole('button', { name: 'Practice list' }).click();
++describe('the journey harness itself', () => {
++  // The harness must not be able to hide the very failure a journey exists to
++  // catch. A request the browser CANCELLED (because the test navigated away
++  // mid-flight) produces a WebKit error that reads exactly like a CORS
++  // failure; excusing it used to mean adding its URL to a PERMANENT set and
++  // discarding every later page error whose message merely contained that
++  // pathname. So a genuine failure at the same path, later in the same
++  // journey, was swallowed — and `pageErrors` said nothing.
++  it('a cancelled request excuses its own error once, and never a later real one', () => {
++    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
++    const spurious =
++      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
++    const at = 1_000_000;
++
++    // The cancellation's OWN error is excused — and CONSUMED. The identical
++    // message arriving again has no cancellation left to account for it, which
++    // is exactly the reviewer's counterexample: cancel a request to a path,
++    // then let a later one to that path fail for real.
++    // Spending it is the function's OWN job — a caller cannot forget to, which
++    // is precisely what the permanent set was.
++    const pending = [{ url, at }];
++    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
++    expect(pending).toEqual([]);
++    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
++
++    // Two cancellations excuse two errors and no more.
++    const twice = [
++      { url, at },
++      { url, at: at + 10 },
++    ];
++    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
++    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
++    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
++
++    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
++    // both are the same cancelled request.
++    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
++    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
++
++    // Only the DIAGNOSED wording is ever excused: a real render crash naming
++    // the same URL is a page error, not a cancellation.
++    expect(
++      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
++    ).toBe(false);
++
++    // It names that request, not merely its path: another host, and another
++    // path on the same host, both stay errors.
++    const elsewhere =
++      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
++    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
++    const otherPath =
++      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
++    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
++
++    // And an unconsumed cancellation does not stand for the whole journey: the
++    // ceiling is generous (the spurious error is emitted in the same tick), but
++    // it is a ceiling.
++    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
++  });
++});
 ```
 
 **Full current text of every file the rework touched:**
@@ -3334,7 +2202,19 @@ problem and is not one. Instrumented, the only difference between a passing and 
 of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
 fulfilled with the right CORS headers every other time. A real person navigating mid-sync
 cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
-as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
+as a page error.
+
+**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
+It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
+message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
+later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
+(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
+excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
+naming the same URL is never excused), names that request's HOST as well as its path, and
+arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
+ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
+tick, and a tight window would trade an over-broad filter for a flaky one under the
+contention five concurrent dev servers already create.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -3705,12 +2585,21 @@ the owner's hide onto B: A came back into view and the wrong file went dark. It 
 stays exactly where the owner put it, a row the incoming index no longer lists keeps its
 provenance flagged rather than being deleted on the strength of a destination nothing can
 read, and repair says "the rename log loops on this path" instead of rewriting to an
-arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
-row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
-published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
-published index carries no cycle, and the app still refuses to read one from any other
-source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
-archive its good provenance.
+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place, and it is
+ONE rule rather than a mechanism per shape: A REPLACEMENT NAME IS PUBLISHED ONLY WHERE THE
+LOG DETERMINES IT UNIQUELY AND TERMINALLY. A loop names no file; a path given TWO
+destinations names no file either; and a chain walking into either cannot say where it
+ended. All of them are dropped with a diagnostic (ac-12's own rule: cycles and multiple
+destinations DIAGNOSE, never guess), so a published index carries neither, and the app still
+refuses to read one from any other source — `checkSourceGraph` rejects a second row for one
+`from` at the decoder AND at the persisted door. The fork case had exactly the defect the
+loop rule exists to prevent, said the other way round: the scanner published the FIRST
+destination and diagnosed the second as "not applied", so the app was handed a mapping the
+log cannot support and used it as EXACT IDENTITY — repairing an authored reference onto it
+and re-keying an owner's hide onto it. The diagnostic names every destination it saw, once
+and in sorted order, because `diagnostics` is inside `contentHash` and a shuffled log must
+still produce the same index. An ordinary chain beside a loop or a fork still publishes: one
+bad topology does not cost the archive its good provenance.
 
 A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
 a hidden file simply reappeared under the new one while the old row sat there flagged
@@ -4359,6 +3248,50 @@ from the user, recorded here.
 # Decisions
 
 Durable record of non-obvious choices. Newest first.
+
+## Rejection: two rules that held for one shape of the same defect (2026-09-17)
+
+A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
+the previous fix covering one shape of a defect and not the shape beside it, so each fix
+here is the rule the shapes share — and the narrower mechanism is subsumed rather than left
+next to the new one.
+
+- **A rename source with two destinations still published its first one.** The loop rule
+  ("a log that loops names no file") had been closed at every consumer, and the fork sitting
+  beside it — `A→B` and `A→C` in the same log — was diagnosed as "not applied" while `A→B`
+  was published and used as exact identity: Refresh repaired an authored reference onto B and
+  re-keyed an owner's item-scoped hide onto B, although the log never established which file
+  A became. A fork and a loop are ONE defect said two ways, so the scanner now publishes a
+  replacement name only where the log determines it UNIQUELY and TERMINALLY — a fork
+  publishes nothing, a loop publishes nothing, and a chain walking into either publishes
+  nothing. The conflicted sources are removed from the map BEFORE the reachability walk, or
+  a chain ending at one would still publish a name on the strength of a mapping that was
+  meant to be gone. Its diagnostic names every destination seen, once and sorted, because
+  `diagnostics` is inside `contentHash` and ac-4's own claim is that a shuffled source yields
+  the same semantic index. Refusing the whole index was rejected for the reason the loop case
+  already records: an unimportable archive is a worse answer than an unrepaired path. No app
+  change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
+  decoder and at the persisted door — and ac-12's named test now drives the downstream
+  reference and suppression transitions from the scanner's ACTUAL output for a forked log.
+  It changes nothing the operator publishes TODAY, and that is checked rather than assumed:
+  the corpus baseline records 257 rows in RENAME-LOG.csv and the index carries 257 mappings,
+  so no row of the real log is dropped for any reason — there is no fork in it to drop.
+- **The harness's excuse for a cancelled request was permanent.** The WebKit
+  cancelled-request diagnosis recorded in the previous round was implemented as a permanent
+  set of cancelled URLs, with any later page error whose message merely CONTAINED that
+  pathname discarded — so a genuine failure at the same path, later in the same journey, was
+  swallowed and the journey's `pageErrors` assertion passed over it. A check that can hide
+  the failure it exists to catch is worse than no check. `excusedCancellation` is consuming
+  (one cancellation, one error) and additionally requires the diagnosed wording and the
+  request's host as well as its path, inside a generous ceiling on how long an unconsumed
+  cancellation may stand. The ceiling is not a timing correlation: the spurious error arrives
+  in the same tick, and a tight window would trade an over-broad filter for a flaky one under
+  the contention five concurrent dev servers already create. Matching the request's METHOD
+  was considered and is not possible — the page error carries no method.
+
+Four mutations were run and all four fail their named acceptance test: the fork's first
+destination published again, the walks-into-a-fork extension removed, the cancellation excuse
+made permanent (non-consuming), and the diagnosed-wording requirement dropped.
 
 ## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
 
@@ -5572,10 +4505,16 @@ unsupported extension, a class recording claiming a piece, an unnamed demo in a
 session whose roster and filenames disagree, a symbolic link (never followed —
 but never silently dropped either, since two readings agree about a file neither
 of them looked at), a session-named entry that is not a real directory, and
-every row of a rename LOOP. A log that loops names no file, so those rows — and
-any row that walks into a loop — are dropped with a diagnostic rather than
-published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
-and out-of-scope root folders stay silent: they are not archive content.
+every rename row whose destination this log does not determine. That is ONE
+rule, not two: a replacement name is published only where the log names it
+UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
+destinations names no file either; and a chain walking into either of those
+cannot say where it ended. Every such row is dropped with a diagnostic rather
+than published — the fork case used to publish its FIRST destination and
+diagnose the second as "not applied", which handed the app an identity this log
+cannot support. An ordinary chain beside a loop or a fork still publishes.
+Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
+archive content.
 
 The output is written **outside the archive** via a temp file + rename, and the
 scanner refuses an `--out` path inside `--root`.
@@ -6207,9 +5146,18 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
   }
 
   // --- rename provenance --------------------------------------------------
-  // EXACT old→new pairs only. This is path provenance, not a similarity model:
-  // an old path with two destinations is reported, never resolved by guessing.
-  const renames = [];
+  // EXACT old→new pairs only. This is path provenance, not a similarity model.
+  //
+  // ONE RULE, NOT TWO MECHANISMS: a path publishes a replacement name only
+  // when this log determines it UNIQUELY and TERMINALLY. A source named with
+  // two destinations does not say which file it became; a chain that walks
+  // into a loop — or into such a source — cannot say either. Every one of
+  // those publishes NOTHING and is diagnosed instead. The conflict case used
+  // to publish the FIRST destination and diagnose the second as "not
+  // applied", which is exactly backwards: the mapping the log cannot support
+  // was handed to the app as exact identity, and the app then repaired an
+  // authored reference onto it and re-keyed an owner's hide onto it.
+  let renames = [];
   // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
   // A present-but-empty log has no header and `readTable` says so, exactly as
   // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
@@ -6217,6 +5165,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
   if (renameLog && renameLog.present) {
     const rows = readTable(renameLog.text, ['old_path', 'new_path']);
     const dest = new Map();
+    const forks = new Map(); // from → every destination the log names for it
     for (const r of rows) {
       const from = r.old_path.trim();
       const to = r.new_path.trim();
@@ -6226,41 +5175,52 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
         continue;
       }
       const prior = dest.get(from);
-      if (prior && prior !== to) {
-        diag(from, `Rename log maps this path to both "${prior}" and "${to}" — not applied.`);
+      if (prior !== undefined && prior !== to) {
+        forks.set(from, (forks.get(from) ?? new Set([prior])).add(to));
         continue;
       }
-      if (prior === to) continue;
       dest.set(from, to);
-      renames.push({ from, to });
     }
-    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
-    // only that two names were swapped; picking a stopping point would invent
-    // an identity, and every path that LEADS INTO a loop is equally unusable.
-    // Those rows are dropped with a diagnostic rather than published: the app
-    // must never be handed a replacement identity this log cannot support.
-    const cyclic = new Set();
+    // A conflicted source stops being a mapping BEFORE anything walks the
+    // graph: left in `dest`, its first destination would still be published,
+    // and a chain ending there would publish a name on its strength too.
+    for (const from of forks.keys()) dest.delete(from);
+
+    // Each path is judged by ITS OWN walk, so the verdict does not depend on
+    // the order rows arrived in — `diagnostics` is inside `contentHash`, and
+    // ac-4's claim is that a shuffled source yields the same semantic index.
+    const unresolvable = new Map();
     for (const from of dest.keys()) {
-      const walked = new Set([from]);
+      const seen = new Set([from]);
       let cur = from;
+      let loops = false;
       while (dest.has(cur)) {
         const next = dest.get(cur);
-        if (walked.has(next)) {
-          for (const p of walked) cyclic.add(p);
-          cyclic.add(next);
+        if (seen.has(next)) {
+          loops = true;
           break;
         }
-        walked.add(next);
+        seen.add(next);
         cur = next;
       }
+      if (loops) {
+        unresolvable.set(from, 'Rename log loops through this path — no replacement name can be read from it.');
+      } else if (forks.has(cur)) {
+        unresolvable.set(
+          from,
+          `Rename log renames this path into "${cur}", which it names more than one destination for — no replacement name can be read from it.`,
+        );
+      }
     }
-    for (const from of cyclic) {
-      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
+    for (const [from, reason] of unresolvable) {
+      dest.delete(from);
+      diag(from, reason);
     }
-    const kept = renames.filter((r) => !cyclic.has(r.from));
-    renames.length = 0;
-    renames.push(...kept);
-    renames.sort((a, b) => cmp(a.from, b.from));
+    for (const [from, tos] of forks) {
+      const named = [...tos].sort(cmp).map((t) => `"${t}"`).join(' and ');
+      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`);
+    }
+    renames = [...dest].map(([from, to]) => ({ from, to })).sort((a, b) => cmp(a.from, b.from));
   }
 
   const body = {
@@ -6454,2363 +5414,6 @@ function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
-```
-
-### src/components/ArchiveRefresh.tsx
-
-```
-import { useMemo, useState } from 'react';
-import { useStore } from '../store/useStore';
-import { fetchPublishedIndex, type FetchedIndex } from '../store/archiveIndex';
-import { getNasBaseUrl } from '../store/backup';
-import {
-  SETAR_ARCHIVE_ID,
-  archiveFor,
-  describeArchiveAccess,
-  archiveRootUrl,
-  decisionMatchesSuggestion,
-  type ImportPlan,
-  type MetadataField,
-  type ReconcileDecision,
-} from '../domain';
-
-// ---------------------------------------------------------------------------
-// "Refresh Setar archive" — the ONE routine action.
-//
-// No filesystem picker, no URL to type, no crawler output. It fetches the
-// latest PUBLISHED index (a small JSON file the NAS scanner writes to its own
-// branch of the private data repository), says what would change, asks only
-// the questions that genuinely need an owner, and applies the lot in one go.
-//
-// It is deliberately honest about what it knows: the index was FETCHED at a
-// device-local time and CHANGED when the scanner last published something
-// different. Neither is proof that a scan ran recently, and this never says
-// "last scanned".
-// ---------------------------------------------------------------------------
-
-type Phase =
-  | { kind: 'idle' }
-  | { kind: 'working' }
-  | { kind: 'error'; message: string }
-  | { kind: 'done'; message: string; plan?: ImportPlan }
-  | { kind: 'preview'; fetched: FetchedIndex; rev: number; plan: ImportPlan };
-
-export default function ArchiveRefresh() {
-  const db = useStore((s) => s.db);
-  const preview = useStore((s) => s.previewArchiveImport);
-  const commit = useStore((s) => s.commitArchiveImport);
-  const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
-  const [decisions, setDecisions] = useState<ReconcileDecision[]>([]);
-  const [instrumentId, setInstrumentId] = useState<string>('');
-
-  const source = archiveFor(db, SETAR_ARCHIVE_ID);
-  // FIRST USE picks the instrument only when there is no doubt about it. An
-  // archive already bound keeps its own instrument for good.
-  const candidates = useMemo(
-    () => db.instruments.filter((i) => i.active && (/setar/i.test(i.name) || i.name.includes('سه'))),
-    [db.instruments],
-  );
-  const chosen = source?.instrumentId ?? (candidates.length === 1 ? candidates[0]!.id : instrumentId);
-
-  const access = describeArchiveAccess({
-    indexFetchedAt: phase.kind === 'preview' ? phase.fetched.fetchedAt.slice(0, 16).replace('T', ' ') : null,
-    indexChangedAt: source ? source.acceptedAt.slice(0, 16).replace('T', ' ') : null,
-    baseUrl: getNasBaseUrl(),
-  });
-  const rootUrl = archiveRootUrl(getNasBaseUrl());
-
-  function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[]) {
-    const { plan, rev } = preview({
-      index: fetched.index,
-      instrumentId: chosen,
-      decisions: nextDecisions,
-      verifiedBase: rootUrl ?? undefined,
-    });
-    setPhase({ kind: 'preview', fetched, rev, plan });
-  }
-
-  async function startRefresh() {
-    if (!chosen) {
-      setPhase({ kind: 'error', message: 'Choose which instrument this archive belongs to first.' });
-      return;
-    }
-    setPhase({ kind: 'working' });
-    setDecisions([]);
-    const result = await fetchPublishedIndex();
-    if (!result.ok) {
-      setPhase({ kind: 'error', message: result.error });
-      return;
-    }
-    showPlan(result.value, []);
-  }
-
-  function decide(next: ReconcileDecision) {
-    if (phase.kind !== 'preview') return;
-    const merged = [...decisions.filter((d) => !sameTarget(d, next)), next];
-    setDecisions(merged);
-    showPlan(phase.fetched, merged);
-  }
-
-  async function apply() {
-    if (phase.kind !== 'preview') return;
-    const { fetched, rev } = phase;
-    setPhase({ kind: 'working' });
-    const result = await commit({
-      index: fetched.index,
-      instrumentId: chosen,
-      decisions,
-      verifiedBase: rootUrl ?? undefined,
-      decidedFromRev: rev,
-    });
-    if (!result.ok) {
-      if (result.status === 'stale') {
-        // Something changed underneath; look again rather than apply a plan
-        // that was decided against a database that has moved on. A decision
-        // whose premise moved is DROPPED here — keeping it would re-submit the
-        // same invalid answer for ever — and the fresh preview shows the
-        // question, or the suggestion's real current value, as it is now.
-        const kept = result.staleDecisions?.length
-          ? decisions.filter((d) => !result.staleDecisions!.includes(d))
-          : decisions;
-        setDecisions(kept);
-        showPlan(fetched, kept);
-        setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
-        return;
-      }
-      setPhase({ kind: 'error', message: result.message });
-      return;
-    }
-    setPhase({ kind: 'done', message: result.message, plan: phase.plan });
-  }
-
-  return (
-    <section className="card stack-sm">
-      <div className="row between">
-        <h3 style={{ margin: 0 }}>Setar archive</h3>
-        <button type="button" className="btn btn-sm btn-primary" onClick={() => void startRefresh()} disabled={phase.kind === 'working'}>
-          {phase.kind === 'working' ? 'Working…' : 'Refresh Setar archive'}
-        </button>
-      </div>
-
-      <p className="tiny faint" style={{ textAlign: 'start' }}>
-        <span dir="ltr">
-          Brings in classes, pieces and their material from the archive index published by the NAS scanner. Your
-          practice, notes and schedule are never changed by it.
-        </span>
-      </p>
-
-      {!source && candidates.length !== 1 && (
-        <label className="tiny" style={{ textAlign: 'start' }}>
-          <span dir="ltr">Which instrument is this archive for?</span>
-          <select className="input" value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
-            <option value="">Choose…</option>
-            {db.instruments.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      <div className="tiny faint" style={{ textAlign: 'start' }}>
-        <div>
-          <span dir="ltr">{access.index}</span>
-        </div>
-        <div>
-          <span dir="ltr">{access.media}</span>
-        </div>
-        {rootUrl && (
-          <a className="tiny" href={rootUrl} target="_blank" rel="noreferrer">
-            Open archive root
-          </a>
-        )}
-      </div>
-
-      {phase.kind === 'error' && (
-        <p className="tiny" style={{ color: 'var(--tone-alert)', textAlign: 'start' }} role="alert">
-          <span dir="ltr">{phase.message}</span>
-        </p>
-      )}
-
-      {phase.kind === 'done' && (
-        <div className="tiny" aria-live="polite" style={{ textAlign: 'start' }}>
-          <span dir="ltr">{phase.message}</span>
-          {phase.plan && <Summary plan={phase.plan} />}
-        </div>
-      )}
-
-      {phase.kind === 'preview' && (
-        <div className="stack-sm">
-          <Summary plan={phase.plan} />
-
-          {phase.plan.questions.length > 0 && (
-            <div className="stack-sm">
-              <div className="section-label">Needs a decision</div>
-              {phase.plan.questions.map((q) => (
-                <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm">
-                  {/* The GROUP is the name and the sentence that belongs to it;
-                      the fixed English buttons below sit OUTSIDE it, so a Farsi
-                      piece name cannot claim their bidi base. */}
-                  <div dir="auto" style={{ textAlign: 'start' }}>
-                    <strong>{q.label}</strong>
-                    <div className="tiny faint">
-                      <span dir="ltr">
-                        {q.kind === 'item'
-                          ? 'An existing piece has this exact name.'
-                          : 'More than one class matches this session.'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                    {q.candidates.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() =>
-                          decide(
-                            q.kind === 'item'
-                              ? { kind: 'link-item', pieceKey: q.pieceKey!, itemId: c.id }
-                              : { kind: 'link-lesson', sessionN: q.sessionN!, lessonId: c.id },
-                          )
-                        }
-                      >
-                        Link to “{c.title}”
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() =>
-                        decide(
-                          q.kind === 'item'
-                            ? { kind: 'create-item', pieceKey: q.pieceKey! }
-                            : { kind: 'create-lesson', sessionN: q.sessionN! },
-                        )
-                      }
-                    >
-                      Create separately
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() =>
-                        decide(
-                          q.kind === 'item'
-                            ? { kind: 'skip-item', pieceKey: q.pieceKey! }
-                            : { kind: 'skip-lesson', sessionN: q.sessionN! },
-                        )
-                      }
-                    >
-                      Skip
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {phase.plan.suggestions.length > 0 && (
-            <div className="stack-sm">
-              <div className="section-label">The archive knows more about these</div>
-              {/* A registry improvement to a piece the owner ALREADY has. It is
-                  offered field by field and applied only when asked — never
-                  written behind them, and never near their notebook. */}
-              {phase.plan.suggestions.map((sg) => {
-                // The PREMISE is part of the match: a choice made against a
-                // value the owner has since edited is no longer this
-                // suggestion's answer, so the button reads unpressed again.
-                const applied = decisions.some((d) => decisionMatchesSuggestion(d, sg));
-                return (
-                  <div key={`${sg.pieceKey}-${sg.field}`} className="list-row stack-sm">
-                    <div dir="auto" style={{ textAlign: 'start' }}>
-                      <strong>{sg.pieceKey}</strong>
-                      <div className="tiny faint">
-                        <span dir="ltr">{FIELD_LABELS[sg.field]}: </span>
-                        <span dir="auto">{sg.from || '—'}</span>
-                        <span dir="ltr"> → </span>
-                        <span dir="auto">{sg.to}</span>
-                      </div>
-                    </div>
-                    <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        aria-pressed={applied}
-                        onClick={() =>
-                          decide({
-                            kind: 'apply-field',
-                            pieceKey: sg.pieceKey,
-                            // The RECORD the value was shown against, not just
-                            // the piece: a rebase must not hand the answer to
-                            // whichever item happens to hold that piece later.
-                            itemId: sg.itemId,
-                            field: sg.field,
-                            from: sg.from,
-                          })
-                        }
-                      >
-                        {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="row" style={{ gap: 8 }}>
-            <button type="button" className="btn btn-primary" onClick={() => void apply()}>
-              {phase.plan.summary.unchanged ? 'Already current' : 'Apply'}
-            </button>
-            <button type="button" className="btn" onClick={() => setPhase({ kind: 'idle' })}>
-              Cancel
-            </button>
-          </div>
-          <p className="tiny faint" style={{ textAlign: 'start' }}>
-            <span dir="ltr">
-              New pieces arrive resting, so today’s suggestions are not flooded. They stay searchable and you can start
-              one directly whenever you like.
-            </span>
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function Summary({ plan }: { plan: ImportPlan }) {
-  const s = plan.summary;
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="stack-sm">
-      <div className="tiny" style={{ textAlign: 'start' }}>
-        <span dir="ltr">
-          {s.unchanged
-            ? 'Already current.'
-            : `Added ${s.addedItems} pieces and ${s.addedLessons} classes · Updated ${s.updatedLessons} · ${s.questions} to decide · ${s.attention} needing attention`}
-        </span>
-      </div>
-      {plan.attention.length > 0 && (
-        <div className="tiny" style={{ textAlign: 'start' }}>
-          <button type="button" className="link tiny" style={LINK_BTN} onClick={() => setOpen((o) => !o)}>
-            {open ? 'Hide details' : `Show ${plan.attention.length} needing attention`}
-          </button>
-          {open && (
-            <ul className="tiny faint stack-sm" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
-              {plan.attention.map((d, i) => (
-                <li key={`${d.path}-${i}`} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
-                  <span>{d.path}</span>
-                  <span dir="ltr">— {d.reason}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
-  // A FIELD decision is keyed by its field, not merely its piece: keyed by
-  // piece alone, choosing a composer evicted the dastgāh choice made a moment
-  // earlier, and either one evicted a Link/Skip answer about the same piece.
-  const key = (d: ReconcileDecision) =>
-    d.kind === 'apply-field'
-      ? `field:${d.pieceKey}:${d.field}`
-      : 'pieceKey' in d
-        ? `piece:${d.pieceKey}`
-        : 'sessionN' in d
-          ? `session:${d.sessionN}`
-          : '';
-  return key(a) === key(b) && key(a) !== '';
-}
-
-const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
-
-/** Plain names for the registry fields an improvement can touch. */
-const FIELD_LABELS: Record<MetadataField, string> = {
-  dastgahAvaz: 'dastgāh',
-  gusheh: 'gusheh',
-  form: 'form',
-  composer: 'composer',
-};
-```
-
-### src/domain/io.test.ts
-
-```
-import { describe, expect, it, vi } from 'vitest';
-import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
-import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
-import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
-import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
-import { serializeExport, validateDB, parseImport } from './io';
-import { migrateToCurrent } from './migrations';
-import { createSeedDB } from './seed';
-import {
-  decodeSourceIndex,
-  membersForSession,
-  repeatChains,
-  resourceReference,
-  resourcesForPiece,
-  resourcesForSession,
-} from './sourceArchive';
-import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
-import { createBlock, createItem, createLesson } from './factories';
-import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
-import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
-import { SCHEMA_VERSION, type PracticeDB } from './types';
-import { addDays, nowISO, toISODate } from './util';
-// The Zustand persist boundary (§C7's actual enforcement point, not just
-// validateDB's own import-path callers) has no allowed dedicated store test
-// file for this contract — the same situation routines.test.ts documents for
-// the single-active-clock guard — so its regression coverage extends this
-// ac-15 test instead of being left unproven.
-import { useStore, getLastHydrationError, useHydrationStatus } from '../store/useStore';
-// The cold-start refusal screen and its recovery action are rendered UI, not
-// store wiring — reusing the SAME real-browser harness the two journey tests
-// use (never a second import implementation, never jsdom/RTL as a new
-// testing platform) is what lets this test prove the recovery action is
-// actually reachable and actually works, not merely that the store computes
-// the right flags.
-import { openPracticeApp, readPersistedState, reload, writePersistedState } from '../../tests/practiceBrowser';
-
-// The IndexedDB-backed persist storage doesn't exist in this test environment
-// (no real indexedDB global) — same stub routines.test.ts uses, except the
-// fake storage here is CONTROLLABLE per assertion: vi.hoisted keeps its state
-// reachable from the mock factory (which Vitest hoists above these imports)
-// without a temporal-dead-zone reference.
-const fakeStorage = vi.hoisted(() => {
-  let value: string | null = null;
-  let setItemCalls = 0;
-  return {
-    get: () => value,
-    set: (v: string | null) => {
-      value = v;
-    },
-    recordSetItem: () => {
-      setItemCalls += 1;
-    },
-    setItemCalls: () => setItemCalls,
-  };
-});
-vi.mock('../store/idb', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../store/idb')>();
-  return {
-    ...actual,
-    idbStorage: {
-      getItem: async () => fakeStorage.get(),
-      setItem: async (_name: string, value: string) => {
-        fakeStorage.recordSetItem();
-        fakeStorage.set(value);
-      },
-      removeItem: async () => fakeStorage.set(null),
-    },
-  };
-});
-
-const NOW = new Date('2026-06-18T12:00:00.000Z');
-
-describe('validateDB — backward-compatible import', () => {
-  it('round-trips a current export untouched', () => {
-    const db = createSeedDB(NOW);
-    const out = validateDB({ app: 'practice-compass', data: db });
-    expect(out.items.length).toBe(db.items.length);
-    expect(out.lessons.length).toBe(db.lessons.length);
-  });
-
-  it('folds a legacy attachment itemId into ownerType and ownerId', () => {
-    const db = createSeedDB(NOW);
-    const legacy = {
-      ...db,
-      schemaVersion: 5,
-      attachments: [
-        { id: 'att1', itemId: db.items[0].id, name: 'afshari.pdf', mime: 'application/pdf', size: 100, kind: 'pdf', createdAt: '2026-01-01T00:00:00.000Z' },
-      ],
-    };
-    const out = validateDB(legacy);
-    expect(out.attachments[0].ownerType).toBe('item');
-    expect(out.attachments[0].ownerId).toBe(db.items[0].id);
-    expect((out.attachments[0] as unknown as { itemId?: string }).itemId).toBeUndefined();
-  });
-
-  it('keeps modern owner-shaped attachments and lesson item links as-is', () => {
-    const db = createSeedDB(NOW);
-    const lesson = createLesson({ instrumentId: db.instruments[0].id, date: '2026-06-01' }, NOW);
-    lesson.itemIds = [db.items[0].id];
-    const withData = {
-      ...db,
-      lessons: [...db.lessons, lesson],
-      attachments: [
-        { id: 'a2', ownerType: 'lesson' as const, ownerId: lesson.id, name: 'notes.pdf', mime: 'application/pdf', size: 5, kind: 'pdf' as const, createdAt: '2026-01-01T00:00:00.000Z' },
-      ],
-    };
-    const out = validateDB(withData);
-    expect(out.attachments[0].ownerType).toBe('lesson');
-    expect(out.lessons.find((l) => l.id === lesson.id)?.itemIds).toEqual([db.items[0].id]);
-  });
-
-  it('rejects unusable shapes with a readable error', () => {
-    expect(parseImport('not json').ok).toBe(false);
-    expect(parseImport(JSON.stringify({ items: 'nope' })).ok).toBe(false);
-  });
-
-  it('treats a missing schemaVersion as the oldest and runs the whole chain', () => {
-    // Pre-v3 shaped: no `pathways` key at all, and no schemaVersion field.
-    const legacy = {
-      instruments: [{ id: 'i-setar', name: 'Setar', family: 'Persian', active: true, createdAt: '2025-01-01T00:00:00.000Z', updatedAt: '2025-01-01T00:00:00.000Z' }],
-      materials: [],
-      items: [],
-      blocks: [],
-      reviews: [],
-    };
-    const out = validateDB(legacy);
-    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(out.pathways.length).toBeGreaterThan(0);
-  });
-
-  it('places a legacy pathwaySteps item into its stage on every path', () => {
-    const db = createSeedDB(NOW);
-    const item = { ...db.items[0], stageId: 'stale-stage' };
-    const legacy = {
-      ...db,
-      schemaVersion: 4,
-      items: [item],
-      // Truncated to one item on purpose (this test is about pathwaySteps,
-      // not lesson agenda) — the seed's OWN agenda entries would otherwise
-      // dangle against every item but this one, which the strict live-itemId
-      // check now (correctly) refuses.
-      lessonAgenda: [],
-      pathwaySteps: [{ itemId: item.id, stageId: 'correct-stage' }],
-    };
-    // migrateToV5's overwrite behaviour wins over the old "fill only when
-    // empty" precedence — the same result whichever path the data arrived by:
-    // the chain directly, and the real import entry point.
-    const viaChain = migrateToCurrent(legacy as unknown as PracticeDB, 4);
-    expect(viaChain.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
-    const viaImport = validateDB(legacy);
-    expect(viaImport.items.find((i) => i.id === item.id)?.stageId).toBe('correct-stage');
-  });
-
-  it('returns a legacy backup with no schemaVersion fully migrated', () => {
-    const db = createSeedDB(NOW);
-    const item = db.items[0];
-    const legacy: Record<string, unknown> = {
-      instruments: db.instruments,
-      materials: db.materials,
-      items: [{ ...item, stageId: undefined }],
-      blocks: db.blocks,
-      reviews: db.reviews,
-      pathwaySteps: [{ itemId: item.id, stageId: 'legacy-stage' }],
-      attachments: [
-        { id: 'att-legacy', itemId: item.id, name: 'notes.pdf', mime: 'application/pdf', size: 10, kind: 'pdf', createdAt: '2025-01-01T00:00:00.000Z' },
-      ],
-    };
-    const out = validateDB(legacy);
-    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(out.pathways.length).toBeGreaterThan(0);
-    expect(out.items.find((i) => i.id === item.id)?.stageId).toBe('legacy-stage');
-    expect(out.attachments[0].ownerType).toBe('item');
-    expect(out.attachments[0].ownerId).toBe(item.id);
-    expect(out.lessons).toEqual([]);
-  });
-
-  it('rejects a database from a newer schema version instead of downgrading it', () => {
-    const db = createSeedDB(NOW);
-    const fromTheFuture = {
-      app: 'practice-compass' as const,
-      schemaVersion: SCHEMA_VERSION + 1,
-      exportedAt: nowISO(NOW),
-      data: { ...db, schemaVersion: SCHEMA_VERSION + 1 },
-    };
-    const result = parseImport(JSON.stringify(fromTheFuture));
-    expect(result.ok).toBe(false);
-    expect(() => validateDB(fromTheFuture)).toThrow(/newer version/i);
-  });
-
-  it('keeps legacy pathwaySteps placements when imported through the real entry point', () => {
-    const db = createSeedDB(NOW);
-    const item = { ...db.items[0], stageId: undefined };
-    const legacyText = JSON.stringify({
-      ...db,
-      schemaVersion: undefined,
-      items: [item],
-      // Truncated to one item on purpose (see the sibling test above).
-      lessonAgenda: [],
-      pathwaySteps: [{ itemId: item.id, stageId: 'from-pathway-steps' }],
-    });
-    const result = parseImport(legacyText);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.db.items.find((i) => i.id === item.id)?.stageId).toBe('from-pathway-steps');
-    }
-  });
-});
-
-describe('blocksInWindow — history stays historical', () => {
-  const item = createItem({ instrumentId: 'i', title: 't' }, NOW);
-  const at = (daysAgo: number) =>
-    createBlock(
-      {
-        practiceItemId: item.id,
-        instrumentId: 'i',
-        durationMinutes: 10,
-        mode: 'learn',
-        focus: 'tone',
-        result: 'slightly_better',
-        startedAt: addDays(NOW, -daysAgo).toISOString(),
-      },
-      NOW,
-    );
-
-  it('excludes future-dated blocks from insight windows', () => {
-    const blocks = [at(1), at(3), at(-2)]; // one block "from the future"
-    const windowed = blocksInWindow(blocks, NOW, 7);
-    expect(windowed).toHaveLength(2);
-    expect(windowed.every((b) => new Date(b.startedAt) <= NOW)).toBe(true);
-  });
-
-  it('still bounds the window at N days back', () => {
-    const blocks = [at(1), at(10)];
-    expect(blocksInWindow(blocks, NOW, 7)).toHaveLength(1);
-  });
-});
-
-describe('per-instrument lesson dates', () => {
-  it('nextLessonDates maps each instrument only to its own next class', () => {
-    const lessons = [
-      createLesson({ instrumentId: 'setar', date: toISODate(addDays(NOW, 5)) }, NOW),
-      createLesson({ instrumentId: 'setar', date: toISODate(addDays(NOW, 30)) }, NOW),
-      createLesson({ instrumentId: 'tar', date: toISODate(addDays(NOW, 2)) }, NOW),
-      createLesson({ instrumentId: 'setar', date: toISODate(addDays(NOW, -10)) }, NOW), // past
-    ];
-    const map = nextLessonDates(lessons, NOW);
-    expect(map.get('setar')).toBe(toISODate(addDays(NOW, 5)));
-    expect(map.get('tar')).toBe(toISODate(addDays(NOW, 2)));
-    expect(map.get('guitar')).toBeUndefined();
-    expect(nextLessonFor(lessons, 'guitar', NOW)).toBeUndefined();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-15 — C5/C6/C7: every inbound door, and what must be refused at it
-// ---------------------------------------------------------------------------
-
-// The exact bytes the browser journeys import through the real UI.
-
-/** The shapes `validateDB` accepts, i.e. every door an inbound database uses. */
-function doors(text: string): { label: string; payload: unknown }[] {
-  const wrapped = JSON.parse(text) as { data: unknown };
-  return [
-    { label: 'full backup (data + files)', payload: JSON.parse(text) },
-    { label: 'wrapped export', payload: { app: 'practice-compass', schemaVersion: 11, data: wrapped.data } },
-    { label: 'bare database', payload: wrapped.data },
-  ];
-}
-
-describe('the v12 model at every inbound door', () => {
-  it('all inbound paths preserve the new model or reject before replacement', async () => {
-    // 1. Every door migrates identically. `importFullBackup` (manual import,
-    //    sync pull, Keep remote, archive restore) and the store's own
-    //    `importDB` all route through THIS function, so a door that behaved
-    //    differently would have to bypass it.
-    const reference = JSON.stringify(validateDB(JSON.parse(V11_TEXT)));
-    for (const { label, payload } of doors(V11_TEXT)) {
-      expect(JSON.stringify(validateDB(payload)), label).toBe(reference);
-    }
-
-    // 2. A CURRENT v12 database round-trips with its agenda, question history,
-    //    scheduling provenance and one-advance-per-day marker intact.
-    const v12 = validateDB(JSON.parse(V12_TEXT));
-    const enriched: PracticeDB = {
-      ...v12,
-      items: v12.items.map((i) =>
-        i.id === 'i-scheduled'
-          ? { ...i, nextReviewSource: 'user' as const, srLastProgressDay: '2026-08-01' }
-          : i,
-      ),
-      lessonAgenda: v12.lessonAgenda.map((e) =>
-        e.kind === 'question' && e.itemId === 'i-q-farsi'
-          ? { ...e, askedAt: '2026-08-02T10:00:00.000Z', answer: 'بله، زینت را سبک‌تر کن.' }
-          : e,
-      ),
-    };
-    const round = validateDB(JSON.parse(serializeExport(enriched)));
-    expect(round.lessonAgenda).toEqual(enriched.lessonAgenda);
-    const scheduled = round.items.find((i) => i.id === 'i-scheduled')!;
-    expect(scheduled.nextReviewSource).toBe('user');
-    expect(scheduled.srLastProgressDay).toBe('2026-08-01');
-    expect(scheduled.srReps).toBe(3);
-    expect(scheduled.reviewMode).toBe('manual');
-
-    // 3. INVALID NEW DATA is refused with actionable detail, and nothing is
-    //    filtered away quietly — dropping an entry the owner wrote is the
-    //    data loss this guard exists to prevent.
-    const bad = (agenda: unknown[]) => () => validateDB({ ...v12, lessonAgenda: agenda });
-    const sample = v12.lessonAgenda[0];
-    expect(bad([{ ...sample, kind: 'reminder' }])).toThrow(/unknown kind/);
-    expect(bad([{ ...sample, id: undefined }])).toThrow(/missing an id/);
-    expect(bad([sample, { ...v12.lessonAgenda[1], id: sample.id }])).toThrow(/share the id/);
-    expect(bad([{ ...sample, instrumentId: '' }])).toThrow(/missing its instrument/);
-    expect(bad([{ ...sample, lessonId: 'L-guitar-past' }])).toThrow(/different instrument/);
-    expect(bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: '  ' }])).toThrow(/has no text/);
-    expect(
-      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: 'yesterday' }]),
-    ).toThrow(/unreadable asked date/);
-    // An IMPOSSIBLE calendar timestamp is refused too, not merely an
-    // unparseable one: `Date.parse` silently NORMALISES "2026-02-30" into
-    // March 2nd rather than rejecting it, so a shape check (or `Date.parse`
-    // alone) happily accepted it before this. A sealed review reproduced
-    // exactly this string passing.
-    expect(
-      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', askedAt: '2026-02-30T12:00:00.000Z' }]),
-    ).toThrow(/unreadable asked date/);
-    // A DANGLING live `lessonId` — set, but resolving to nothing — is neither
-    // a real agenda entry nor an honest unassigned one: `deleteLesson` always
-    // converts a live reference to a detached marker, so this app never
-    // leaves one dangling, and it is refused rather than tolerated as legacy
-    // debris.
-    expect(bad([{ ...sample, lessonId: 'nonexistent' }])).toThrow(/class that no longer exists/);
-    // A dangling `itemId` is REFUSED for the identical reason, not tolerated:
-    // `deleteItem` (`useStore.ts`) always calls `detachItem` in the SAME
-    // synchronous update that removes the item — a preparation naming it is
-    // removed outright, and a question's `itemId` becomes
-    // `detachedFromItemId` — so this app never leaves a LIVE `itemId`
-    // dangling any more than a `lessonId`. A sealed review found this
-    // previously tolerated on a theory the real producer above does not
-    // support.
-    expect(
-      bad([{ kind: 'preparation', id: 'p', instrumentId: 'setar', itemId: 'nonexistent' }]),
-    ).toThrow(/practice item that no longer exists/);
-    expect(
-      bad([{ kind: 'question', id: 'q', instrumentId: 'setar', text: 'x', itemId: 'nonexistent' }]),
-    ).toThrow(/practice item that no longer exists/);
-    expect(() => validateDB({ ...v12, lessonAgenda: 'nope' })).toThrow(/must be a list/);
-    // Calendar values are checked for real, not merely shape: a due date and
-    // an item's own next-review date must both name a date that exists.
-    expect(() =>
-      validateDB({ ...v12, items: v12.items.map((i) => (i.id === 'i-scheduled' ? { ...i, nextReviewDate: '2027-99-99' } : i)) }),
-    ).toThrow(/unreadable next-review date/);
-    expect(() =>
-      validateDB({ ...v12, reviews: v12.reviews.map((r) => ({ ...r, dueDate: '2026-02-30' })) }),
-    ).toThrow(/unreadable due date/);
-    // An INCOMPLETE conversion — a legacy field still set with no entry to
-    // represent it — is converted rather than accepted as-is, because the
-    // chain runs on every inbound database whatever version it claims.
-    // Declaring schema 12 (the CURRENT version, not a legacy 11) is the real
-    // counterexample: a version-gated conversion step would skip this
-    // database entirely and accept the leftover field with zero questions to
-    // show for it.
-    const halfConverted = validateDB({
-      ...v12,
-      schemaVersion: 12,
-      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'left behind' } : i)),
-    });
-    expect(halfConverted.lessonAgenda.some((e) => e.kind === 'question' && e.text === 'left behind')).toBe(true);
-    // A generated id that already names a DIFFERENT existing question is not
-    // "already represented" merely by matching id/kind/itemId — the content
-    // has to agree too. Both survive under distinct ids.
-    const halfConvertedConflict = validateDB({
-      ...v12,
-      schemaVersion: 12,
-      items: v12.items.map((i) => (i.id === 'i-flag-false' ? { ...i, teacherQuestion: 'a brand new question' } : i)),
-      lessonAgenda: [
-        ...v12.lessonAgenda,
-        {
-          id: 'question:i-flag-false',
-          kind: 'question' as const,
-          itemId: 'i-flag-false',
-          instrumentId: 'setar',
-          text: 'a completely different pre-existing question',
-          createdAt: '2026-08-01T09:00:00.000Z',
-          updatedAt: '2026-08-01T09:00:00.000Z',
-        },
-      ],
-    });
-    const conflictEntry = halfConvertedConflict.lessonAgenda.find((e) => e.id === 'question:i-flag-false');
-    expect(conflictEntry?.kind === 'question' ? conflictEntry.text : undefined).toBe(
-      'a completely different pre-existing question',
-    );
-    expect(
-      halfConvertedConflict.lessonAgenda.some(
-        (e) => e.kind === 'question' && e.itemId === 'i-flag-false' && e.text === 'a brand new question',
-      ),
-    ).toBe(true);
-
-    // 4. LEGITIMATE unassigned and detached historical records PASS — proven
-    //    against the REAL producer, not a hand-built approximation of its
-    //    shape. `detachLesson` destructures `lessonId` OUT rather than
-    //    setting it undefined; a JSON round-trip must still read that as
-    //    genuinely absent, not as a lingering `null`/`undefined` key.
-    const attached = createPreparation({ id: 'prep:real', itemId: 'i-premigrated', instrumentId: 'setar', lessonId: 'L-setar-1', now: NOW });
-    const [reallyDetached] = JSON.parse(JSON.stringify(detachLesson([attached], 'L-setar-1', NOW))) as typeof v12.lessonAgenda;
-    expect(reallyDetached).not.toHaveProperty('lessonId');
-    expect(reallyDetached).toMatchObject({ detachedFromLessonId: 'L-setar-1' });
-    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetached] })).not.toThrow();
-    // The item-side equivalent, against the REAL producer `detachItem`
-    // (`deleteItem`'s own path) rather than a hand-built approximation: it
-    // destructures `itemId` OUT rather than setting it undefined, so the
-    // strict live-itemId check just proven above must never see one here.
-    const questionOnItem = createQuestion({ id: 'q:real', text: 'Real question', itemId: 'i-premigrated', instrumentId: 'setar', now: NOW });
-    const [reallyDetachedQuestion] = JSON.parse(
-      JSON.stringify(detachItem([questionOnItem], 'i-premigrated', NOW)),
-    ) as typeof v12.lessonAgenda;
-    expect(reallyDetachedQuestion).not.toHaveProperty('itemId');
-    expect(reallyDetachedQuestion).toMatchObject({ detachedFromItemId: 'i-premigrated' });
-    expect(() => validateDB({ ...v12, lessonAgenda: [reallyDetachedQuestion] })).not.toThrow();
-    expect(() =>
-      validateDB({
-        ...v12,
-        lessonAgenda: [
-          { ...sample, lessonId: undefined, detachedFromLessonId: 'L-setar-past' },
-          {
-            kind: 'question',
-            id: 'q-detached',
-            instrumentId: 'setar',
-            text: 'Asked about a piece I have since deleted',
-            askedAt: '2026-02-01T00:00:00.000Z',
-            answer: 'Yes.',
-            detachedFromItemId: 'long-gone',
-            createdAt: '2026-02-01T00:00:00.000Z',
-            updatedAt: '2026-02-01T00:00:00.000Z',
-          },
-        ],
-      }),
-    ).not.toThrow();
-
-    // 4c. ATTACHMENT IDENTITY, at EVERY door rather than the full-backup one.
-    //     A sealed review found the duplicate-metadata check living inside
-    //     `decodeBackupFiles`, which returns on its FIRST line for a file with
-    //     no `files` key — so a state-only import (and a sync pull, an archive
-    //     restore, and hydration) installed two attachments claiming one id
-    //     unchecked. That is a one-way trap, not an untidiness: the export
-    //     emits one file per describing row, so the device's very next full
-    //     backup carries two files sharing an id and is refused by its own
-    //     importer. The check is in `validateDB` now, so it is the same
-    //     refusal at every door — including a bare database, which is the
-    //     shape a state-only file and a sync snapshot both arrive in.
-    const withAttachment = validateDB(JSON.parse(V12_TEXT));
-    expect(withAttachment.attachments.length).toBeGreaterThan(0);
-    const duplicated = {
-      ...withAttachment,
-      attachments: [...withAttachment.attachments, { ...withAttachment.attachments[0] }],
-    };
-    expect(() => validateDB(duplicated)).toThrow(/Two attachments share the id "att-1"/);
-    // Two rows sharing an id but disagreeing about their owner is the same
-    // refusal — the id IS the identity, and the blob is keyed by it.
-    expect(() =>
-      validateDB({
-        ...withAttachment,
-        attachments: [
-          ...withAttachment.attachments,
-          { ...withAttachment.attachments[0], ownerId: 'someone-else' },
-        ],
-      }),
-    ).toThrow(/Two attachments share the id/);
-    for (const { label, payload } of [
-      { label: 'wrapped export', payload: { app: 'practice-compass', schemaVersion: SCHEMA_VERSION, data: duplicated } },
-      { label: 'bare database (state-only import, sync pull, archive restore)', payload: duplicated },
-    ]) {
-      expect(() => validateDB(payload), label).toThrow(/Two attachments share the id/);
-    }
-    // Distinct ids are untouched, and so is a database with no attachments at
-    // all — this refuses a collision, it does not police attachments.
-    expect(() =>
-      validateDB({
-        ...withAttachment,
-        attachments: [...withAttachment.attachments, { ...withAttachment.attachments[0], id: 'att-2' }],
-      }),
-    ).not.toThrow();
-    expect(() => validateDB({ ...withAttachment, attachments: [] })).not.toThrow();
-
-    // 5. A NEWER schema is still refused outright rather than silently
-    //    downgraded and stripped of whatever it added.
-    expect(() => validateDB({ ...v12, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
-
-    // 6. No fake repair of old data: the v11 fixture's dangling instrument
-    //    reference survives exactly as it arrived.
-    const migrated = validateDB(JSON.parse(V11_TEXT));
-    expect(migrated.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
-    expect(migrated.lessonAgenda.find((e) => e.itemId === 'i-dangling')?.instrumentId).toBe('gone');
-
-    // 7. THE ACTUAL PERSISTED-HYDRATION BOUNDARY — a sealed review found that
-    //    every check above, however thorough, only ever exercised
-    //    `validateDB`'s own import-path callers. Zustand's persist
-    //    `migrate`/`merge` called `migrateToCurrent` directly, bypassing both
-    //    the newer-schema guard and every §C7 semantic check above: a
-    //    version=13 database hydrated successfully relabelled as
-    //    schemaVersion=12 (migrateToCurrent's own final line stamps the
-    //    CURRENT version unconditionally), and an already-current v12
-    //    database carrying a dangling live itemId or an impossible askedAt
-    //    entered live state unchanged. Drive the REAL store through its own
-    //    `persist.rehydrate()` — not a hand call to `migrate`/`merge` in
-    //    isolation — so the actual wiring, including zustand's own
-    //    no-write-back-on-a-thrown-migrate behaviour, is what's under test.
-    const wrap = (db: unknown, version: number) => JSON.stringify({ state: { db }, version });
-
-    // 7a. Valid CURRENT v12 data hydrates normally.
-    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
-    await useStore.persist.rehydrate();
-    expect(getLastHydrationError()).toBeNull();
-    expect(useStore.getState().hydrated).toBe(true);
-    expect(useStore.getState().db.lessonAgenda.length).toBe(v12.lessonAgenda.length);
-    // The REACTIVE signal App.tsx actually renders from agrees — a clean
-    // hydration carries no refusal forward from any earlier attempt.
-    expect(useHydrationStatus.getState()).toEqual({ refused: false, message: null, tooNew: false });
-
-    // 7b. Valid OLDER data migrates then hydrates — and, unlike the refusals
-    //     below, genuinely gets written back (a real upgrade worth saving).
-    const setItemsBeforeUpgrade = fakeStorage.setItemCalls();
-    fakeStorage.set(wrap((JSON.parse(V11_TEXT) as { data: unknown }).data, 11));
-    await useStore.persist.rehydrate();
-    expect(getLastHydrationError()).toBeNull();
-    expect(useStore.getState().db.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(useStore.getState().db.items.find((i) => i.id === 'i-dangling')?.instrumentId).toBe('gone');
-    expect(fakeStorage.setItemCalls()).toBeGreaterThan(setItemsBeforeUpgrade);
-
-    // 7c. INVALID current-v12 data — the exact sealed counterexample, a
-    //     dangling live itemId — is refused. The previously live database is
-    //     preserved BY REFERENCE (nothing was ever `set()`), and nothing is
-    //     written back over whatever is actually on disk: refusing must not
-    //     itself become a write, or a refusal of genuinely newer data (7d)
-    //     would silently destroy it the moment this build merely NOTICES the
-    //     problem.
-    const sentinel = useStore.getState().db;
-    const setItemsBeforeRefusal = fakeStorage.setItemCalls();
-    const badCurrent: PracticeDB = {
-      ...v12,
-      lessonAgenda: [
-        ...v12.lessonAgenda,
-        {
-          kind: 'question',
-          id: 'q-hydration-refused',
-          instrumentId: 'setar',
-          text: 'x',
-          itemId: 'nonexistent',
-          createdAt: '2026-01-01T00:00:00.000Z',
-          updatedAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-    };
-    fakeStorage.set(wrap(badCurrent, SCHEMA_VERSION));
-    await useStore.persist.rehydrate();
-    expect(useStore.getState().db).toBe(sentinel);
-    expect(getLastHydrationError()).toMatch(/practice item that no longer exists/);
-    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeRefusal);
-    // The reactive signal flips too, and is distinguishable from "too new":
-    // this is invalid/corrupt CURRENT-version data, not an app-update case.
-    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
-    expect(useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
-
-    // 7c-ii. THE SAME hydration door refuses duplicate attachment metadata.
-    //     This is the door the state-only counterexample actually ends at: an
-    //     import that installed the duplicates would hand them straight back
-    //     to `merge` on the next load. The previously live database is
-    //     preserved by reference and nothing is written back, exactly as 7c.
-    const sentinelDup = useStore.getState().db;
-    const setItemsBeforeDup = fakeStorage.setItemCalls();
-    fakeStorage.set(
-      wrap({ ...v12, attachments: [...v12.attachments, { ...v12.attachments[0] }] }, SCHEMA_VERSION),
-    );
-    await useStore.persist.rehydrate();
-    expect(useStore.getState().db).toBe(sentinelDup);
-    expect(getLastHydrationError()).toMatch(/Two attachments share the id/);
-    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeDup);
-    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
-
-    // 7d. A NEWER-than-supported schema is refused — never passed through
-    //     migrateToCurrent and relabelled as the current version, and never
-    //     written back over the (unreadable but genuinely newer) original.
-    const sentinelNewer = useStore.getState().db;
-    const setItemsBeforeNewer = fakeStorage.setItemCalls();
-    fakeStorage.set(wrap({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1));
-    await useStore.persist.rehydrate();
-    expect(useStore.getState().db).toBe(sentinelNewer);
-    expect(getLastHydrationError()).toMatch(/newer version/i);
-    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
-    // The reactive signal distinguishes THIS refusal from 7c's: `tooNew` is
-    // true here, so the UI can say "update the app" instead of "this data
-    // looks broken" — the two are not the same recovery instruction.
-    expect(useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
-    expect(useHydrationStatus.getState().message).toMatch(/newer version/i);
-
-    // 7e. REPEATED hydration stays safe: refusing the identical newer-schema
-    //     data twice in a row is idempotent (same refusal, live state never
-    //     mutated, and still no write-back the second time either)...
-    await useStore.persist.rehydrate();
-    expect(useStore.getState().db).toBe(sentinelNewer);
-    expect(getLastHydrationError()).toMatch(/newer version/i);
-    expect(fakeStorage.setItemCalls()).toBe(setItemsBeforeNewer);
-    // ...and re-hydrating the same valid data twice in a row produces
-    // byte-identical live state both times.
-    fakeStorage.set(wrap(v12, SCHEMA_VERSION));
-    await useStore.persist.rehydrate();
-    const firstHydrate = JSON.stringify(useStore.getState().db);
-    await useStore.persist.rehydrate();
-    expect(JSON.stringify(useStore.getState().db)).toBe(firstHydrate);
-    expect(getLastHydrationError()).toBeNull();
-
-    // 7f/7g. THE GENUINE COLD START — a sealed review found every case above
-    //     (7a-7e) runs on a store that had already hydrated successfully at
-    //     least once (module import itself reads empty storage and hydrates
-    //     fine before this test body even starts), so none of them prove
-    //     what a device experiences the very FIRST time it ever hydrates
-    //     with already-bad persisted bytes: `hydrated` never turns true,
-    //     zustand's own `onFinishHydration` is wired to the success path
-    //     only, and — before this fix — nothing reactive told the UI why,
-    //     so `App.tsx` stayed on "Loading…" forever. `vi.resetModules()`
-    //     plus a dynamic re-import gets a genuinely fresh store instance —
-    //     its own never-hydrated `hydrated`/`getLastHydrationError`/
-    //     `useHydrationStatus` — while `fakeStorage` (bound outside the
-    //     module graph via `vi.hoisted`) still feeds it through the same
-    //     mocked `idbStorage`, so this is still the REAL Zustand persistence
-    //     path, not a hand call to `migrate`/`merge`.
-    const coldStart = async (payload: unknown, version: number) => {
-      fakeStorage.set(wrap(payload, version));
-      const writesBefore = fakeStorage.setItemCalls();
-      vi.resetModules();
-      const fresh = await import('../store/useStore');
-      await fresh.useStore.persist.rehydrate();
-      expect(fresh.useStore.getState().hydrated).toBe(false);
-      expect(fakeStorage.setItemCalls()).toBe(writesBefore);
-      return fresh;
-    };
-
-    // 7f. Invalid CURRENT-version data, never successfully hydrated before:
-    //     refused, and the REACTIVE state (not just the internal
-    //     `lastHydrationError` variable) reports it as recoverable data
-    //     corruption rather than a schema mismatch.
-    const coldInvalid = await coldStart(badCurrent, SCHEMA_VERSION);
-    expect(coldInvalid.getLastHydrationError()).toMatch(/practice item that no longer exists/);
-    expect(coldInvalid.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: false });
-    expect(coldInvalid.useHydrationStatus.getState().message).toMatch(/practice item that no longer exists/);
-
-    // 7g. A newer-than-supported schema, never successfully hydrated before:
-    //     refused, and flagged distinctly as "too new" — an app update, not
-    //     a data restore, is the fix this device actually needs.
-    const coldNewer = await coldStart({ ...v12, schemaVersion: SCHEMA_VERSION + 1 }, SCHEMA_VERSION + 1);
-    expect(coldNewer.getLastHydrationError()).toMatch(/newer version/i);
-    expect(coldNewer.useHydrationStatus.getState()).toMatchObject({ refused: true, tooNew: true });
-    expect(coldNewer.useHydrationStatus.getState().message).toMatch(/newer version/i);
-
-    // 8. THE RECOVERY ROUTE ITSELF, RENDERED — a sealed review found that
-    //    7f/7g above, however real the store wiring, never render `App`:
-    //    the corrupt-data refusal it produces tells the owner to "use Import
-    //    in Settings", but Settings — and every other route — mounts only
-    //    once `hydrated` is true, which this exact refusal prevents. Drive
-    //    the REAL App component in a real browser (the SAME Playwright
-    //    harness the two journey tests use, never a hand call to
-    //    `recoverFromRefusedHydration`), so this proves the recovery action
-    //    is actually reachable and actually works, not merely that the store
-    //    computes the right flags.
-    const app = await openPracticeApp({ now: NOW });
-    try {
-      // 8a. Seed the SAME invalid-current-version bytes 7f used, straight
-      //     into the real app's own IndexedDB, then reload — the very first
-      //     hydration attempt this real page ever makes is a refusal.
-      await writePersistedState(app, { db: badCurrent }, SCHEMA_VERSION);
-      await app.page.reload();
-      await app.page.getByText(/data couldn.t be loaded safely/).waitFor({ timeout: 20_000 });
-      await app.page.getByText(/looks invalid or corrupted/).waitFor();
-      const restoreInput = app.page.getByLabel('Restore backup file');
-      await app.page.getByRole('button', { name: /Restore from backup/ }).waitFor();
-      // Rendering the refusal screen — even once its recovery control has
-      // mounted and become interactive — writes NOTHING on its own: the
-      // refused bytes are still exactly what was seeded above.
-      const beforeRecovery = await readPersistedState(app);
-      expect(beforeRecovery).toEqual({ state: { db: badCurrent }, version: SCHEMA_VERSION });
-
-      // 8b. An INVALID recovery file is rejected through REAL §C7 validation
-      //     (the same dangling-itemId rule 7c/7f already exercise headlessly)
-      //     — and the refused bytes already on this device are NOT silently
-      //     overwritten by the failed attempt.
-      await restoreInput.setInputFiles({
-        name: 'bad.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(JSON.stringify(badCurrent), 'utf8'),
-      });
-      await app.page.getByText(/Import failed:/).waitFor({ timeout: 20_000 });
-      await app.page.getByText(/data couldn.t be loaded safely/).waitFor();
-      expect(await readPersistedState(app)).toEqual(beforeRecovery);
-
-      // 8c. A VALID backup genuinely recovers the app — reachable BEFORE
-      //     hydration ever succeeded, installed through the real store path
-      //     (`recoverFromRefusedHydration` -> `importFullBackup` ->
-      //     `importDB`), the identical wiring every other inbound door uses.
-      // A real Settings export is a FULL backup — the data plus the bytes of
-      // every file it describes — so the recovery file here carries `att-1`'s
-      // bytes with it. A data-only file naming an attachment this device does
-      // not hold is refused at this door like any other (see `backup.ts`): it
-      // would install metadata for bytes that are nowhere, and the device's own
-      // next export would then be a backup it could not import back.
-      await restoreInput.setInputFiles({
-        name: 'good.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(
-          JSON.stringify({
-            ...(JSON.parse(serializeExport(v12, NOW)) as object),
-            files: (JSON.parse(V11_TEXT) as { files: unknown[] }).files,
-          }),
-          'utf8',
-        ),
-      });
-      await app.page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 20_000 });
-
-      // 8d. The recovery is DURABLE, not a live-state patch that a reload
-      //     would lose: reloading hydrates cleanly from what was actually
-      //     written, carrying the recovered agenda with it.
-      await reload(app);
-      const after = await readPersistedState(app);
-      const afterDb = (after.state as { db: PracticeDB }).db;
-      expect(afterDb.lessonAgenda.length).toBe(v12.lessonAgenda.length);
-
-      // 8e. A NEWER-than-supported schema offers NO recovery control at
-      //     all — there is no safe import/downgrade for it, only "update the
-      //     app", so nothing here could let the owner mistake one for the
-      //     other.
-      await writePersistedState(app, { db: { ...v12, schemaVersion: SCHEMA_VERSION + 1 } }, SCHEMA_VERSION + 1);
-      const beforeNewerRefusal = await readPersistedState(app);
-      await app.page.reload();
-      await app.page.getByText(/This device holds data saved by a newer version/).waitFor({ timeout: 20_000 });
-      expect(await app.page.getByRole('button', { name: /Restore from backup/ }).count()).toBe(0);
-      expect(await app.page.getByLabel('Restore backup file').count()).toBe(0);
-      expect(await readPersistedState(app)).toEqual(beforeNewerRefusal);
-    } finally {
-      await app.close();
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-16 — C8: the rollout / rollback route
-// ---------------------------------------------------------------------------
-
-describe('the documented rollback route', () => {
-  it('rollback fixtures preserve exports without pretending v12 can be downgraded', () => {
-    // The owner's PRE-UPGRADE export restores into this build, upgrading
-    // deterministically — the same result twice, whatever day it is run.
-    const first = validateDB(JSON.parse(V11_TEXT));
-    const second = validateDB(JSON.parse(V11_TEXT));
-    expect(JSON.stringify(first)).toBe(JSON.stringify(second));
-    expect(first.schemaVersion).toBe(SCHEMA_VERSION);
-
-    // Attachment METADATA and the fixture's file bytes both survive the trip:
-    // the metadata through the database, the bytes as the backup's own files
-    // array, which `importFullBackup` writes before the data is installed.
-    expect(first.attachments).toHaveLength(1);
-    expect(first.attachments[0]).toMatchObject({ id: 'att-1', ownerType: 'item', ownerId: 'i-scheduled' });
-    const files = (JSON.parse(V11_TEXT) as { files: { id: string; data: string }[] }).files;
-    expect(files.map((f) => f.id)).toEqual(['att-1']);
-    expect(atob(files[0].data)).toBe('score bytes');
-
-    // A POST-UPGRADE export keeps everything v12 added — answers, manual
-    // dates, provenance and SR state.
-    const answered: PracticeDB = {
-      ...first,
-      lessonAgenda: first.lessonAgenda.map((e) =>
-        e.kind === 'question' && e.itemId === 'i-q-only'
-          ? { ...e, lessonId: 'L-setar-1', askedAt: '2027-03-05T10:00:00.000Z', answer: 'Tone first.' }
-          : e,
-      ),
-    };
-    const restored = validateDB(JSON.parse(serializeExport(answered)));
-    const q = restored.lessonAgenda.find((e) => e.kind === 'question' && e.itemId === 'i-q-only')!;
-    expect(q).toMatchObject({ lessonId: 'L-setar-1', answer: 'Tone first.' });
-    expect(q.kind === 'question' && q.askedAt).toBe('2027-03-05T10:00:00.000Z');
-    const manual = restored.items.find((i) => i.id === 'i-scheduled')!;
-    expect(manual.nextReviewDate).toBe('2027-01-15');
-    expect(manual.srEase).toBe(2.6);
-
-    // THERE IS NO DOWNGRADE. An older build refuses a v12 file outright, and
-    // this build must not pretend otherwise by rewriting the number or
-    // dropping the new fields: the exported file says 12 and carries them.
-    const exported = JSON.parse(serializeExport(answered)) as { schemaVersion: number; data: PracticeDB };
-    expect(exported.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(exported.data.lessonAgenda.length).toBeGreaterThan(0);
-    expect(() => validateDB({ ...first, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
-    // An old v11 build can only restore an explicitly chosen PRE-upgrade
-    // backup — which still exists, unchanged, and still says 11.
-    expect((JSON.parse(V11_TEXT) as { schemaVersion: number }).schemaVersion).toBe(11);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-15 — the v14 source graph across the migration and validation boundary.
-// ---------------------------------------------------------------------------
-
-describe('the v14 source graph at the schema boundary', () => {
-  const NOW = new Date('2026-09-17T09:00:00.000Z');
-  const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
-
-  /**
-   * A source graph as it arrives — every value still `unknown`, because that is
-   * exactly what these mutations put into it. One shape for BOTH doors: the
-   * published index and a persisted `archiveSources` row carry the same graph,
-   * so one mutation can be handed to each and neither can be given a check the
-   * other misses.
-   */
-  type RawRow = Record<string, unknown>;
-  type RawSession = RawRow & { folder: string; resources: RawRow[]; members: RawRow[] };
-  type Graph = { pieces: RawRow[]; sessions: RawSession[]; diagnostics: RawRow[] };
-
-  /** First `[session, resource]` carrying a role, in the corpus fixture. */
-  function firstWithRole(g: Graph, role: string): [RawSession, RawRow] {
-    for (const sess of g.sessions) {
-      const res = sess.resources.find((r) => r.role === role);
-      if (res) return [sess, res];
-    }
-    throw new Error(`The corpus fixture has no "${role}" resource to mutate.`);
-  }
-
-  /** A demonstration group with at least TWO parts, and its session. */
-  function groupedDemo(g: Graph): [string, RawRow, RawSession] {
-    for (const sess of g.sessions) {
-      for (const r of sess.resources) {
-        if (!r.group) continue;
-        if (sess.resources.filter((x) => x.group === r.group).length > 1) return [r.group as string, r, sess];
-      }
-    }
-    throw new Error('The corpus fixture has no multi-part demonstration to mutate.');
-  }
-
-  /** A database with a real accepted graph in it, built by the real planner. */
-  function withGraph(): PracticeDB {
-    const base = validateDB(legacy());
-    const index = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT));
-    const plan = planArchiveImport({ db: base, index, instrumentId: 'inst-setar', now: NOW });
-    return applyArchiveImport(base, plan);
-  }
-
-  it('archive schema migration and validation preserve the whole source graph', () => {
-    // --- v13 -> v14 is ADDITIVE ---------------------------------------------
-    const source = legacy().data;
-    const migrated = validateDB(legacy());
-    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
-    expect(migrated.archiveSources).toEqual([]);
-    // Every legacy field comes through unchanged apart from the schema number
-    // and the new, empty collection.
-    const strip = (db: PracticeDB) => JSON.stringify({ ...db, schemaVersion: 0, archiveSources: [] });
-    expect(strip(migrated)).toBe(strip({ ...source, archiveSources: [] } as PracticeDB));
-    expect(migrated.blocks).toEqual(source.blocks);
-    expect(migrated.reviews).toEqual(source.reviews);
-    expect(migrated.lessonAgenda).toEqual(source.lessonAgenda);
-    expect(migrated.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-      'Teacher: keep the mezrab light on the return.',
-    );
-
-    // The WHOLE chain from the oldest supported version, and a repeat of it.
-    const fromOldest = migrateToCurrent(source, 2);
-    expect(Array.isArray(fromOldest.archiveSources)).toBe(true);
-    expect(migrateToCurrent(fromOldest, SCHEMA_VERSION)).toEqual(fromOldest);
-    // A database DECLARING the current schema but carrying no collection at
-    // all is still given one — gating on the version would hydrate an app with
-    // no source state and no way to say so.
-    const stray = { ...source, schemaVersion: SCHEMA_VERSION } as unknown as Record<string, unknown>;
-    delete stray.archiveSources;
-    expect(validateDB(stray).archiveSources).toEqual([]);
-    // ...and a stray LEGACY field on a current-declared database does not slip
-    // past validation just because the version says it should not be there.
-    expect(() =>
-      validateDB({
-        ...source,
-        schemaVersion: SCHEMA_VERSION,
-        lessonAgenda: [{ id: 'bad', kind: 'question', instrumentId: 'inst-setar', text: '' }],
-      }),
-    ).toThrow();
-
-    // --- the collection is RECONSTRUCTED, not merely accepted ---------------
-    const graphed = withGraph();
-    expect(graphed.archiveSources).toHaveLength(1);
-    const roundTripped = validateDB(JSON.parse(serializeExport(graphed, NOW)));
-    expect(roundTripped.archiveSources).toEqual(graphed.archiveSources);
-    expect(roundTripped.items.filter((i) => i.source).length).toBe(94);
-    expect(roundTripped.lessons.filter((l) => l.source).length).toBeGreaterThan(0);
-    // Revalidating its own output changes nothing, and an export round trip is
-    // byte-identical.
-    expect(serializeExport(validateDB(roundTripped), NOW)).toBe(serializeExport(graphed, NOW));
-
-    // --- every new persisted field is CHECKED --------------------------------
-    const mutate = (fn: (db: PracticeDB) => void): unknown => {
-      const copy = JSON.parse(JSON.stringify(graphed)) as PracticeDB;
-      fn(copy);
-      return copy;
-    };
-    const refuses = (fn: (db: PracticeDB) => void, pattern: RegExp) =>
-      expect(() => validateDB(mutate(fn))).toThrow(pattern);
-
-    refuses((d) => {
-      d.archiveSources.push({ ...d.archiveSources[0]! });
-    }, /Two archive sources share the id/);
-    refuses((d) => {
-      d.archiveSources[0]!.pieces.push({ ...d.archiveSources[0]!.pieces[0]! });
-    }, /two pieces keyed/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions.push({ ...d.archiveSources[0]!.sessions[0]! });
-    }, /two entries for session/);
-    refuses((d) => {
-      (d.archiveSources[0] as unknown as { indexHash: unknown }).indexHash = 42;
-    }, /no index hash/);
-    refuses((d) => {
-      d.archiveSources[0]!.instrumentId = 'no-such-instrument';
-    }, /instrument that does not exist/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions[0]!.resources[0]!.path = '../../etc/passwd';
-    }, /unsafe resource path/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions[0]!.resources[0]!.pieces = ['not-a-registry-key'];
-    }, /which this source does not describe/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { group: unknown }).group = { n: 1 };
-    }, /invalid part group/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions[0]!.date = '2026-02-30';
-    }, /unreadable date/);
-    refuses((d) => {
-      d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
-    }, /suppression of an unknown kind/);
-
-    // --- EVERY NESTED FIELD A PRODUCTION READER DEREFERENCES ----------------
-    // The validator used to check a resource's path and its part group and
-    // walk straight past the rest of the graph, so a malformed nested value
-    // was accepted, persisted, and then thrown on by the first reader to
-    // touch it. These are that whole family, not one counterexample: the
-    // roles list `repeatChains` calls `.includes` on, the alias list
-    // `planArchiveImport` spreads, the kind/title `resourceReference` reads,
-    // and the session fields `sessionsForPiece` and the material composition
-    // walk.
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { roles: unknown }).roles = null;
-    }, /unreadable role list/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions[0]!.members[0]!.roles = ['not-a-real-role'];
-    }, /unknown role/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { key: unknown }).key = null;
-    }, /claims an unknown piece/);
-    refuses((d) => {
-      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = null;
-    }, /unreadable alias list/);
-    refuses((d) => {
-      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = [1, 2];
-    }, /unreadable alias list/);
-    refuses((d) => {
-      (d.archiveSources[0]!.pieces[0] as unknown as { composer: unknown }).composer = { name: 'x' };
-    }, /unreadable composer/);
-    refuses((d) => {
-      (d.archiveSources[0]!.pieces[0] as unknown as { sessions: unknown }).sessions = ['13'];
-    }, /invalid session number/);
-    refuses((d) => {
-      (d.archiveSources[0]!.pieces[0] as unknown as { provisional: unknown }).provisional = 'yes';
-    }, /unreadable flag/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { kind: unknown }).kind = 'executable';
-    }, /unknown kind/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { role: unknown }).role = null;
-    }, /unknown role/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { title: unknown }).title = 42;
-    }, /unreadable title/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { pieces: unknown }).pieces = null;
-    }, /unreadable piece list/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { part: unknown }).part = '2';
-    }, /unreadable part number/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { size: unknown }).size = '10mb';
-    }, /unreadable size/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0] as unknown as { resources: unknown }).resources = null;
-    }, /no resource list/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0] as unknown as { members: unknown }).members = null;
-    }, /no membership list/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions[0]!.folder = '../elsewhere';
-    }, /unsafe folder path/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0] as unknown as { roster: unknown }).roster = null;
-    }, /unreadable roster/);
-    refuses((d) => {
-      d.archiveSources[0]!.sessions[0]!.roster = ['not-in-the-registry'];
-    }, /which it does not describe/);
-    refuses((d) => {
-      (d.archiveSources[0]!.sessions[0] as unknown as { rosterTrusted: unknown }).rosterTrusted = 'maybe';
-    }, /unreadable flag/);
-    refuses((d) => {
-      d.archiveSources[0]!.renames = [{ from: '../secret', to: 'x' }];
-    }, /rename with an unsafe path/);
-    refuses((d) => {
-      d.archiveSources[0]!.renames = [
-        { from: 'a/b.mp4', to: 'a/c.mp4' },
-        { from: 'a/b.mp4', to: 'a/d.mp4' },
-      ];
-    }, /more than one destination/);
-    refuses((d) => {
-      (d.archiveSources[0] as unknown as { diagnostics: unknown }).diagnostics = [{ path: 'x' }];
-    }, /unreadable diagnostic entry/);
-    refuses((d) => {
-      (d.archiveSources[0]!.suppressions as unknown[]) = [
-        { kind: 'resource', ref: 'x', itemId: 42, at: '2026-01-01T00:00:00.000Z' },
-      ];
-    }, /suppression with an unreadable item/);
-    refuses((d) => {
-      (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
-    }, /suppression with no timestamp/);
-
-    // --- ABSENT IS A DEFAULT; PRESENT-AND-NULL IS A REFUSAL ----------------
-    // The list/num/bool rule closed this for lists and scalars and left every
-    // STRING with a default behind: `str(raw.form ?? '')` read absent and
-    // present-and-null as the same thing, so a `title: null` in an index whose
-    // digest was recomputed decoded to an untitled row the grammar was
-    // perfectly happy with. Absent is a default; null is a value, and a wrong
-    // one. Proved at BOTH doors from ONE mutation, so the published decoder
-    // and the persisted-graph validator cannot be given it separately.
-    const refusesBothDoors = (fn: (g: Graph) => void, pattern: RegExp) => {
-      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
-      fn(index);
-      expect(() => decodeSourceIndex(index)).toThrow(pattern);
-      refuses((d) => fn(d.archiveSources[0] as unknown as Graph), pattern);
-    };
-    const onIndexOnly = (fn: (g: Graph) => void, pattern: RegExp) => {
-      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
-      fn(index);
-      expect(() => decodeSourceIndex(index)).toThrow(pattern);
-    };
-    onIndexOnly((g) => {
-      g.sessions[0]!.resources[0]!.title = null;
-    }, /title must be text/);
-    onIndexOnly((g) => {
-      g.pieces[0]!.form = null;
-    }, /form must be text/);
-    onIndexOnly((g) => {
-      g.pieces[0]!.notes = null;
-    }, /notes must be text/);
-    onIndexOnly((g) => {
-      g.pieces[0]!.composer = null;
-    }, /composer must be text/);
-    // `size` is genuinely optional, so ABSENT is a default here too — but a
-    // present null is still a value, and the DECODER refuses it rather than
-    // spreading a type-violating value into its own output for the grammar to
-    // catch downstream. (The persisted door has its own `size` check above.)
-    onIndexOnly((g) => {
-      g.sessions[0]!.resources[0]!.size = null;
-    }, /size must be a number/);
-    onIndexOnly((g) => {
-      g.diagnostics.push({ path: null, reason: 'x' });
-    }, /diagnostic path must be text/);
-
-    // --- SEMANTIC RELATIONS, NOT MERELY FIELD TYPES ------------------------
-    // A field-type grammar says every value is READABLE and nothing about
-    // whether the graph agrees with itself. A resource physically sitting in
-    // class 2's folder, listed under class 1, is type-perfect and attributes
-    // someone else's file to the wrong class on every screen that reads it;
-    // an arbitrary `group` on a non-demonstration invents one logical resource
-    // out of unrelated files. Both doors, one mutation, every time.
-    refusesBothDoors((g) => {
-      g.sessions[1]!.resources[0]!.path = `${g.sessions[0]!.folder}/smuggled.mp4`;
-    }, /not a file in its own folder/);
-    refusesBothDoors((g) => {
-      g.sessions[0]!.resources[0]!.path = `${g.sessions[0]!.folder}/deeper/x.mp4`;
-    }, /not a file in its own folder/);
-    refusesBothDoors((g) => {
-      // Attributed to a real registry piece that this session never records a
-      // membership for: the file would surface as that piece's material with
-      // nothing in the graph saying it belongs to it.
-      const [s0, res] = firstWithRole(g, 'نت');
-      const stranger = g.pieces.find((p) => !s0.members.some((m) => m.key === p.key))!;
-      res.pieces = [stranger.key];
-    }, /without recording that membership/);
-    refusesBothDoors((g) => {
-      const [, res] = firstWithRole(g, 'نت');
-      res.group = 'نمونه:invented';
-    }, /carries a part group but is not a demonstration/);
-    refusesBothDoors((g) => {
-      const [, res] = firstWithRole(g, 'ضبط-کلاس');
-      res.pieces = [g.pieces[0]!.key];
-    }, /class recording and cannot name a piece/);
-    refusesBothDoors((g) => {
-      const [sess] = firstWithRole(g, 'ضبط-کلاس');
-      sess.hasClassRecording = false;
-    }, /disagrees with itself about having a class recording/);
-    refusesBothDoors((g) => {
-      const sess = g.sessions.find((x) => !x.resources.some((r) => r.role === 'ضبط-کلاس'))!;
-      sess.hasClassRecording = true;
-    }, /disagrees with itself about having a class recording/);
-    // A demonstration's PARTS are one resource told in order. Parts that are
-    // material for different pieces are not one resource, and two parts
-    // numbered alike have no order to be read in.
-    refusesBothDoors((g) => {
-      const [, first, sess] = groupedDemo(g);
-      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
-      sibling.pieces = [];
-    }, /parts belong to different pieces/);
-    refusesBothDoors((g) => {
-      const [, first, sess] = groupedDemo(g);
-      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
-      sibling.part = first.part;
-    }, /two parts numbered alike/);
-
-    // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
-    // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
-    // when the index last changed. It was the one persisted field with no
-    // check at all: a v14 import carrying `acceptedAt: null` was accepted and
-    // then threw while the screen rendered. The fix is this door, never a
-    // guard in the component.
-    for (const bad of [null, 42, '', 'yesterday', '2026-02-30T12:00:00.000Z', '2026-09-17']) {
-      refuses((d) => {
-        (d.archiveSources[0] as unknown as { acceptedAt: unknown }).acceptedAt = bad;
-      }, /unreadable accepted time/);
-    }
-    refuses((d) => {
-      delete (d.archiveSources[0] as unknown as { renames?: unknown }).renames;
-    }, /no rename log/);
-    refuses((d) => {
-      (d.archiveSources[0] as unknown as { diagnostics?: unknown }).diagnostics = null;
-    }, /no diagnostic list/);
-
-    // The POSITIVE half: a graph this door ACCEPTS is one every production
-    // reader can walk without throwing. The counterexample above reached
-    // `repeatChains` and crashed the material list; this asserts the whole
-    // reader surface over the whole accepted graph, not one call.
-    const accepted = validateDB(graphed);
-    const live = accepted.archiveSources[0]!;
-    for (const piece of live.pieces) {
-      expect(Array.isArray(repeatChains(live, piece.key))).toBe(true);
-      expect(Array.isArray(resourcesForPiece(live, piece.key))).toBe(true);
-      for (const r of resourcesForPiece(live, piece.key)) {
-        expect(typeof resourceReference(live.id, r).title).toBe('string');
-      }
-      expect([...new Set([piece.key, ...piece.aliases])].length).toBeGreaterThan(0);
-    }
-    for (const sess of live.sessions) {
-      expect(Array.isArray(membersForSession(live, sess.n))).toBe(true);
-      expect(Array.isArray(resourcesForSession(live, sess.n))).toBe(true);
-    }
-
-    // Bindings: dangling, duplicated, or on the wrong instrument.
-    refuses((d) => {
-      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'setar-classes', pieceKey: 'not-in-the-registry' };
-    }, /which archive "setar-classes" does not describe/);
-    refuses((d) => {
-      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'no-such-archive', pieceKey: 'عراق' };
-    }, /which is not present/);
-    refuses((d) => {
-      const bound = d.items.find((i) => i.source)!;
-      // 'own-iraq' carries no binding of its own, so this is a genuine second
-      // claim on one canonical piece.
-      d.items.find((i) => i.id === 'own-iraq')!.source = { ...bound.source! };
-    }, /Two items are bound to piece/);
-    refuses((d) => {
-      d.instruments.push({ ...d.instruments[0]!, id: 'inst-tar', name: 'Tar' });
-      d.items.find((i) => i.source)!.instrumentId = 'inst-tar';
-    }, /belongs to another instrument/);
-    refuses((d) => {
-      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { archiveId: 'setar-classes', sessionN: 4242 };
-    }, /which archive "setar-classes" does not describe/);
-    refuses((d) => {
-      const bound = d.lessons.find((l) => l.source)!;
-      // The owner's own upcoming class 38 — deliberately an UNBOUND record, so
-      // this really is a second claim on one session rather than a no-op.
-      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { ...bound.source! };
-    }, /Two lessons are bound to session/);
-    // Manual direct item references obey the same path rules.
-    refuses((d) => {
-      d.items.find((i) => i.id === 'own-iraq')!.references = [
-        { id: 'x', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: '2026-01-01T00:00:00.000Z' },
-      ];
-    }, /unsafe reference path/);
-
-    // --- a MISSING FILE is a valid state, not a broken graph ----------------
-    const unavailable = mutate((d) => {
-      d.archiveSources[0]!.sessions[0]!.resources[0]!.unavailable = true;
-      d.archiveSources[0]!.pieces[0]!.unavailable = true;
-    }) as PracticeDB;
-    expect(() => validateDB(unavailable)).not.toThrow();
-    expect(validateDB(unavailable).archiveSources[0]!.pieces[0]!.unavailable).toBe(true);
-
-    // --- a newer schema, and an unknown index format, are refused -----------
-    expect(() => validateDB({ ...graphed, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
-    expect(() => decodeSourceIndex({ format: 'something-else', version: 1 })).toThrow(/not a Setar archive index/);
-    expect(() => decodeSourceIndex({ ...JSON.parse(SETAR_INDEX_TEXT), version: 99 })).toThrow(/newer scanner/);
-
-    // --- nothing above disturbed practice text or the attachment rules ------
-    expect(roundTripped.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-      'Teacher: keep the mezrab light on the return.',
-    );
-    expect(roundTripped.blocks[0]!.observation).toBe('The return is still heavy.');
-    expect(roundTripped.attachments).toEqual(graphed.attachments);
-    const attachment = {
-      id: 'att-1',
-      ownerType: 'lesson' as const,
-      ownerId: graphed.lessons[0]!.id,
-      name: 'handout.pdf',
-      mime: 'application/pdf',
-      size: 2048,
-      kind: 'pdf' as const,
-      createdAt: '2026-09-10T19:00:00.000Z',
-    };
-    expect(validateDB({ ...graphed, attachments: [attachment] }).attachments).toEqual([attachment]);
-    expect(() => validateDB({ ...graphed, attachments: [attachment, attachment] })).toThrow(/share the id/);
-  });
-});
-```
-
-### src/domain/itemFiles.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
-import { lessonFiles, type ItemFileReference } from './itemFiles';
-import { decodeSourceIndex } from './sourceArchive';
-import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
-import { emptyDB } from './seed';
-import { createLesson } from './factories';
-import { resolveRecordingUrl } from './recordings';
-import { attachmentsOwnedBy, itemFiles, itemOwnedAttachments } from './itemFiles';
-import type { AttachmentMeta, Lesson, LessonRecording, PracticeDB } from './types';
-
-function recording(partial: Partial<LessonRecording> & { id: string; path: string }): LessonRecording {
-  return {
-    title: partial.path,
-    kind: 'video',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    ...partial,
-  };
-}
-
-function lesson(partial: Partial<Lesson> & { id: string; date: string }): Lesson {
-  return {
-    instrumentId: 'setar',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    ...partial,
-  };
-}
-
-function attachment(partial: Partial<AttachmentMeta> & { id: string; ownerId: string }): AttachmentMeta {
-  return {
-    ownerType: 'item',
-    name: partial.id,
-    mime: 'application/pdf',
-    size: 1024,
-    kind: 'pdf',
-    createdAt: '2026-01-01T00:00:00.000Z',
-    ...partial,
-  };
-}
-
-function db(partial: Partial<PracticeDB>): PracticeDB {
-  return {
-    schemaVersion: 11,
-    instruments: [],
-    materials: [],
-    items: [],
-    blocks: [],
-    reviews: [],
-    pathways: [],
-    pathwayStages: [],
-    pathwayRoutines: [],
-    attachments: [],
-    lessons: [],
-    // Schema v12's lesson agenda. This file's own subject (composing an
-    // item's material) is untouched by it; the field is listed because
-    // PracticeDB now requires it.
-    lessonAgenda: [],
-    archiveSources: [],
-    ...partial,
-  };
-}
-
-describe('itemFiles', () => {
-  it("lists a linked lesson's references with the item's attachments, deduplicating references by path", () => {
-    const shared = 'setar-classes/session-37/score.pdf';
-    const state = db({
-      lessons: [
-        lesson({
-          id: 'l-37',
-          date: '2026-07-09',
-          itemIds: ['it'],
-          recordings: [
-            recording({ id: 'r-score', path: shared, kind: 'pdf', title: 'Score' }),
-            recording({ id: 'r-video', path: 'setar-classes/session-37/class.mp4', title: 'Class 37' }),
-          ],
-        }),
-        // An EARLIER lesson the item is also linked to, referencing the same
-        // score by a leading-slash spelling of the same path.
-        lesson({
-          id: 'l-36',
-          date: '2026-06-09',
-          itemIds: ['it'],
-          recordings: [recording({ id: 'r-score-again', path: `/${shared}`, kind: 'pdf', title: 'Score again' })],
-        }),
-      ],
-      attachments: [attachment({ id: 'a-photo', ownerId: 'it', name: 'page.jpg', kind: 'image', mime: 'image/jpeg' })],
-    });
-
-    const files = itemFiles(state, 'it');
-
-    // Newest lesson first, video before score within it, then attachments.
-    expect(files.map((f) => f.id)).toEqual(['r-video', 'r-score', 'a-photo']);
-    expect(files.filter((f) => f.source === 'reference' && f.path.endsWith('score.pdf'))).toHaveLength(1);
-  });
-
-  it("keeps a lesson-owned attachment out of an item's own attachments even when the item and a lesson it is linked to share an id", () => {
-    // Reviewer counterexample, reproduced exactly: a database containing an
-    // item AND a lesson with the same id, with an attachment whose ownerType
-    // is 'lesson' and ownerId is that shared id. ownerId alone is not a valid
-    // ownership test — it is only correct together with ownerType.
-    const sharedId = 'shared-id';
-    const attachments = [
-      attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
-      attachment({ id: 'a-lesson-own', ownerId: sharedId, ownerType: 'lesson', name: 'lesson-file.pdf' }),
-    ];
-
-    expect(itemOwnedAttachments(attachments, sharedId).map((a) => a.id)).toEqual(['a-item-own']);
-
-    // The item is genuinely linked to the colliding-id lesson, so its
-    // recording legitimately appears — only the lesson's ATTACHMENT must not.
-    const state = db({
-      lessons: [
-        lesson({
-          id: sharedId,
-          date: '2026-07-09',
-          itemIds: [sharedId],
-          recordings: [recording({ id: 'r-class', path: 'a/class.mp4' })],
-        }),
-      ],
-      attachments,
-    });
-    expect(itemFiles(state, sharedId).map((f) => f.id)).toEqual(['r-class', 'a-item-own']);
-  });
-
-  it("mirrors the collision the other way: a lesson's own attachments never include an item's, on the same shared id", () => {
-    // The surface this guards is the lesson Files section (Attachments.tsx,
-    // rendered with ownerType="lesson") and ItemCard's file-count badge
-    // (ownerType="item") — both must resolve through attachmentsOwnedBy
-    // rather than filtering ownerId alone, or a collision leaks across owners
-    // in both directions: the lesson's list would show/allow deleting the
-    // item's attachment, and the item's count would include the lesson's.
-    const sharedId = 'shared-id';
-    const attachments = [
-      attachment({ id: 'a-item-own', ownerId: sharedId, ownerType: 'item', name: 'item-file.pdf' }),
-      attachment({ id: 'a-lesson-own', ownerId: sharedId, ownerType: 'lesson', name: 'lesson-file.pdf' }),
-    ];
-
-    expect(attachmentsOwnedBy(attachments, 'lesson', sharedId).map((a) => a.id)).toEqual(['a-lesson-own']);
-    expect(attachmentsOwnedBy(attachments, 'item', sharedId).map((a) => a.id)).toEqual(['a-item-own']);
-  });
-
-  it('excludes references from lessons the item is not linked to and returns nothing when it has none', () => {
-    const state = db({
-      lessons: [
-        lesson({
-          id: 'l-other',
-          date: '2026-07-09',
-          itemIds: ['someone-else'],
-          recordings: [recording({ id: 'r-other', path: 'setar-classes/other/class.mp4' })],
-        }),
-      ],
-      attachments: [attachment({ id: 'a-other', ownerId: 'someone-else' })],
-    });
-
-    expect(itemFiles(state, 'it')).toEqual([]);
-    expect(itemFiles(state, 'someone-else').map((f) => f.id)).toEqual(['r-other', 'a-other']);
-  });
-
-  it('tags every entry with how it opens so a reference is never treated as an attachment', () => {
-    const state = db({
-      lessons: [
-        lesson({
-          id: 'l-37',
-          date: '2026-07-09',
-          itemIds: ['it'],
-          recordings: [recording({ id: 'r-video', path: 'setar-classes/session-37/class.mp4' })],
-        }),
-      ],
-      attachments: [attachment({ id: 'a-pdf', ownerId: 'it', name: 'handout.pdf' })],
-    });
-
-    const [ref, att] = itemFiles(state, 'it');
-    expect(ref.source).toBe('reference');
-    // A reference carries the path the NAS base URL resolves; an attachment
-    // carries none, because it opens as a blob and would 404 through the base.
-    expect(ref.source === 'reference' && ref.path).toBe('setar-classes/session-37/class.mp4');
-    expect(att.source).toBe('attachment');
-    expect('path' in att).toBe(false);
-  });
-
-  it('treats a local image as inline-renderable and every PDF, audio file and NAS reference as open-only', () => {
-    const state = db({
-      lessons: [
-        lesson({
-          id: 'l-37',
-          date: '2026-07-09',
-          itemIds: ['it'],
-          recordings: [
-            recording({ id: 'r-video', path: 'a/class.mp4', kind: 'video' }),
-            // `inferKind` maps jpg/png/heic to 'doc', so no NAS reference can
-            // ever be read as an image — and a remote origin could not render
-            // under the static production CSP anyway.
-            recording({ id: 'r-photo', path: 'a/page.jpg', kind: 'doc' }),
-          ],
-        }),
-      ],
-      attachments: [
-        attachment({ id: 'a-image', ownerId: 'it', name: 'page.jpg', kind: 'image', mime: 'image/jpeg' }),
-        attachment({ id: 'a-pdf', ownerId: 'it', name: 'score.pdf', kind: 'pdf' }),
-        attachment({ id: 'a-audio', ownerId: 'it', name: 'clip.m4a', kind: 'audio', mime: 'audio/mp4' }),
-      ],
-    });
-
-    const inline = Object.fromEntries(itemFiles(state, 'it').map((f) => [f.id, f.inline]));
-    expect(inline).toEqual({
-      'r-video': false,
-      'r-photo': false,
-      'a-image': true,
-      'a-pdf': false,
-      'a-audio': false,
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-13 — one composition, correctly scoped, for the item screen and Active.
-// ---------------------------------------------------------------------------
-
-describe('archive material for a piece', () => {
-  const NOW = new Date('2026-09-17T09:00:00.000Z');
-  const SETAR = 'inst-setar';
-  const INDEX = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT) as unknown);
-
-  function imported(): PracticeDB {
-    const base: PracticeDB = {
-      ...emptyDB(),
-      instruments: [
-        {
-          id: SETAR,
-          name: 'Setar',
-          family: 'Persian',
-          active: true,
-          createdAt: '2023-01-01T00:00:00.000Z',
-          updatedAt: '2023-01-01T00:00:00.000Z',
-        },
-      ],
-    };
-    return applyArchiveImport(base, planArchiveImport({ db: base, index: INDEX, instrumentId: SETAR, now: NOW }));
-  }
-
-  const idFor = (db: PracticeDB, key: string) => db.items.find((i) => i.source?.pieceKey === key)!.id;
-
-  it('practice material shows only useful correctly scoped archive resources', () => {
-    const db = imported();
-
-    // --- a piece with a correction AND a clean score -------------------------
-    const mahur = itemFiles(db, idFor(db, 'پیش-درامد-ماهور-هرمزی')) as ItemFileReference[];
-    // The teacher's corrected copy leads, and nothing else the piece has is
-    // dropped to make room for it.
-    expect(mahur[0]!.archive!.role).toBe('تصحیح');
-    expect(mahur.filter((f) => f.path.includes('تصحیح-پیش-درامد-ماهور-هرمزی'))).toHaveLength(2);
-    expect(mahur.some((f) => f.archive!.role === 'نمونه')).toBe(true);
-
-    // No piece in the real corpus currently carries BOTH a correction and a
-    // clean score of its own, so the retention rule is exercised against a
-    // graph that does: the correction still leads, and the clean score is
-    // RETAINED below it rather than replaced by it.
-    const cleanScore = {
-      path: 'session-18-21-01-2025/نت-پیش-درامد-ماهور-هرمزی.pdf',
-      role: 'نت',
-      kind: 'score' as const,
-      title: 'نت پیش درامد ماهور هرمزی',
-      part: null,
-      pieces: ['پیش-درامد-ماهور-هرمزی'],
-      group: null,
-    };
-    const withClean: PracticeDB = {
-      ...db,
-      archiveSources: db.archiveSources.map((src) => ({
-        ...src,
-        sessions: src.sessions.map((sess) =>
-          sess.n === 18 ? { ...sess, resources: [...sess.resources, cleanScore] } : sess,
-        ),
-      })),
-    };
-    const bothKinds = itemFiles(withClean, idFor(db, 'پیش-درامد-ماهور-هرمزی')) as ItemFileReference[];
-    const roles = bothKinds.map((f) => f.archive!.role);
-    expect(roles[0]).toBe('تصحیح');
-    expect(roles).toContain('نت');
-    expect(roles.indexOf('تصحیح')).toBeLessThan(roles.indexOf('نت'));
-    expect(bothKinds.some((f) => f.path === cleanScore.path)).toBe(true);
-
-    // --- a class recording stays with the LESSON ----------------------------
-    expect(mahur.every((f) => f.archive?.role !== 'ضبط-کلاس')).toBe(true);
-    for (const item of db.items) {
-      for (const f of itemFiles(db, item.id)) {
-        if (f.source !== 'reference') continue;
-        expect(f.path).not.toContain('ضبط-کلاس');
-        // ...and the owner's own practice recordings are never material either.
-        expect(f.path).not.toContain('تمرین-من');
-      }
-    }
-    const lesson13 = db.lessons.find((l) => l.source?.sessionN === 13)!;
-    const lessonSide = lessonFiles(db, lesson13.id) as ItemFileReference[];
-    expect(lessonSide[0]!.path).toContain('ضبط-کلاس');
-    expect(lessonSide.every((f) => f.lessonId === lesson13.id)).toBe(true);
-
-    // --- EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT -----
-    // This composition used to include the owner's OWN references and the
-    // lesson's attachments as well. The lesson page renders both in their own
-    // editable sections, so each authored file appeared twice: once here, and
-    // once again where it can actually be removed. An ITEM is the opposite
-    // case and is unchanged — its material comes from records its own page has
-    // no section for, which is why `itemFiles` stays the whole composition.
-    const withOwnFiles: PracticeDB = {
-      ...db,
-      lessons: db.lessons.map((l) =>
-        l.id === lesson13.id
-          ? {
-              ...l,
-              recordings: [
-                {
-                  id: 'own-ref',
-                  title: 'My own link',
-                  path: 'session-13-03-09-2024/my-own-file.mp4',
-                  kind: 'video' as const,
-                  createdAt: '2026-01-01T00:00:00.000Z',
-                },
-              ],
-            }
-          : l,
-      ),
-      attachments: [
-        {
-          id: 'own-att',
-          ownerType: 'lesson' as const,
-          ownerId: lesson13.id,
-          name: 'handout.pdf',
-          mime: 'application/pdf',
-          size: 2048,
-          kind: 'pdf' as const,
-          createdAt: '2026-01-01T00:00:00.000Z',
-        },
-      ],
-    };
-    const composed = lessonFiles(withOwnFiles, lesson13.id);
-    expect(composed.every((f) => f.source === 'reference' && f.archive !== undefined)).toBe(true);
-    expect(composed.some((f) => f.title === 'My own link')).toBe(false);
-    expect(composed.some((f) => f.source === 'attachment')).toBe(false);
-    // The archive's own material is untouched by the owner's additions.
-    expect(composed.map((f) => f.id)).toEqual(lessonSide.map((f) => f.id));
-
-    // --- an UNNAMED demonstration is one ordered logical group --------------
-    const araqGusheh = itemFiles(db, idFor(db, 'کرشمه-در-عراق')) as ItemFileReference[];
-    const demo = araqGusheh.filter((f) => f.archive?.role === 'نمونه' && f.archive.sessionN === 13);
-    expect(demo.map((f) => f.archive!.part)).toEqual([1, 2]);
-    expect(new Set(demo.map((f) => f.archive!.group)).size).toBe(1);
-    // It belongs to every canonical member of session 13 — all eight — and the
-    // eight are exactly the roster, not a guessed set.
-    const members = INDEX.sessions.find((s) => s.n === 13)!.roster;
-    expect(members).toHaveLength(8);
-    for (const key of members) {
-      const files = itemFiles(db, idFor(db, key)) as ItemFileReference[];
-      expect(files.some((f) => f.path === 'session-13-03-09-2024/نمونه-1.mp4')).toBe(true);
-    }
-
-    // --- a NAMED score or demo NEVER bleeds onto a sibling piece ------------
-    const zendan = itemFiles(db, idFor(db, 'به-زندان-شوشتری')) as ItemFileReference[];
-    expect(zendan.some((f) => f.path === 'session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4')).toBe(true);
-    const sibling = itemFiles(db, idFor(db, 'ضربی-شکسته-لطفی')) as ItemFileReference[];
-    expect(sibling.some((f) => f.path.includes('به-زندان'))).toBe(false);
-    // The session-13 notation names ONE piece and reaches only that one.
-    const named = 'session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf';
-    expect((itemFiles(db, idFor(db, 'ضربی-عراق-ماهور-میرزا-حسینقلی')) as ItemFileReference[]).some((f) => f.path === named)).toBe(true);
-    expect(araqGusheh.some((f) => f.path === named)).toBe(false);
-
-    // --- every session the piece appears in stays reachable -----------------
-    const chain = itemFiles(db, idFor(db, 'چهارمضراب-ماهور-صبا')) as ItemFileReference[];
-    const sessions = [...new Set(chain.map((f) => f.archive!.sessionN))].sort((a, b) => a - b);
-    // Its own registry row names sessions 9-12 and 16; the material from the
-    // EARLIER lessons of that run is still reachable, with its provenance.
-    expect(sessions).toContain(16);
-    expect(sessions.some((n) => n < 16)).toBe(true);
-    expect(chain.every((f) => f.archive!.date.length === 10)).toBe(true);
-
-    // --- a DIRECT item reference needs no lesson at all ----------------------
-    const target = idFor(db, 'عراق');
-    const direct: PracticeDB = {
-      ...db,
-      items: db.items.map((i) =>
-        i.id === target
-          ? {
-              ...i,
-              references: [
-                {
-                  id: 'own-1',
-                  title: 'My own copy of the score',
-                  path: 'session-12-06-08-2024/some-other-file.pdf',
-                  kind: 'pdf' as const,
-                  notes: 'Printed for the stand.',
-                  createdAt: '2026-09-01T00:00:00.000Z',
-                },
-              ],
-            }
-          : i,
-      ),
-    };
-    const withDirect = itemFiles(direct, target) as ItemFileReference[];
-    const mine = withDirect.find((f) => f.id === 'own-1')!;
-    expect(mine).toBeDefined();
-    expect(mine.lessonId).toBeUndefined();
-    expect(mine.archive).toBeUndefined();
-    expect(mine.notes).toBe('Printed for the stand.');
-    // It is a REFERENCE — the same resolver as every archive and legacy path,
-    // and never an attachment blob.
-    expect(mine.source).toBe('reference');
-    expect(resolveRecordingUrl('https://192.168.0.20:5010/setar-classes', mine)).toContain(
-      '/setar-classes/session-12-06-08-2024/',
-    );
-    expect(withDirect.every((f) => f.inline === false)).toBe(true);
-
-    // --- a MANUAL, unclassified lesson stays reachable, unscoped ------------
-    const manualLesson: Lesson = {
-      ...createLesson({ instrumentId: SETAR, date: '2026-02-02' }, NOW),
-      id: 'manual-lesson',
-      itemIds: [target],
-      recordings: [
-        {
-          id: 'manual-ref',
-          title: 'Something a teacher sent',
-          path: 'elsewhere/whatever.pdf',
-          kind: 'pdf',
-          createdAt: '2026-02-02T00:00:00.000Z',
-        },
-      ],
-    };
-    const withManual = itemFiles({ ...direct, lessons: [...direct.lessons, manualLesson] }, target) as ItemFileReference[];
-    const manual = withManual.find((f) => f.id === 'manual-ref')!;
-    expect(manual).toBeDefined();
-    expect(manual.lessonId).toBe('manual-lesson');
-    // Nothing invented a scope for it: it carries no archive provenance.
-    expect(manual.archive).toBeUndefined();
-
-    // --- an archive-bound lesson does not re-deliver its whole folder -------
-    // Linking the item to its own archive lesson must not drag the class
-    // recording back onto the piece through the lesson route.
-    const linked: PracticeDB = {
-      ...direct,
-      lessons: direct.lessons.map((l) =>
-        l.source?.sessionN === 12 ? { ...l, itemIds: [...(l.itemIds ?? []), target] } : l,
-      ),
-    };
-    const afterLink = itemFiles(linked, target) as ItemFileReference[];
-    expect(afterLink.some((f) => f.path.includes('ضبط-کلاس'))).toBe(false);
-    expect(afterLink.map((f) => f.path)).toEqual(withDirect.map((f) => f.path));
-  });
-});
-```
-
-### src/domain/itemFiles.ts
-
-```
-import type { AttachmentKind, AttachmentMeta, AttachmentOwnerType, ID, ISODate, LessonFileKind, PracticeDB } from './types';
-import {
-  CLASS_ROLE,
-  CORRECTION_ROLE,
-  DEMO_ROLE,
-  NOTATION_ROLE,
-  archiveFor,
-  resourcesForPiece,
-  resourcesForSession,
-  resourceReference,
-} from './sourceArchive';
-
-// ---------------------------------------------------------------------------
-// An item's MATERIAL — composed, never stored.
-//
-// Everything a piece needs to be practised from is already linked in the data:
-// the lessons it came from hold NAS references (the class video, the score
-// PDF), and the item itself holds attachments. Nothing new is persisted to show
-// them together; this module is the composition that was always possible and
-// never made.
-//
-// The two kinds open by COMPLETELY DIFFERENT mechanisms — a reference resolves
-// through the configured NAS base URL, an attachment through a blob — so the
-// `source` discriminant is not decoration: it is what stops a reference being
-// opened as a blob or an attachment being pushed through the base URL. They
-// also share no identity field (a reference has a path, an attachment a name),
-// so they are never merged and deduplication is WITHIN a kind, never across.
-// ---------------------------------------------------------------------------
-
-/** Video first, then scores/docs, then audio — the order Lessons already shows. */
-export const LESSON_FILE_KIND_ORDER: Record<LessonFileKind, number> = {
-  video: 0,
-  pdf: 1,
-  doc: 2,
-  audio: 3,
-};
-
-/** Where a composed reference came from, so the UI can say so honestly. */
-export interface ItemFileProvenance {
-  sessionN: number;
-  date: ISODate;
-  /** The archive's own role word — a correction, a demonstration, notation. */
-  role: string;
-  /** Parts of ONE logical demonstration share this. */
-  group?: string | null;
-  part?: number | null;
-}
-
-export interface ItemFileReference {
-  source: 'reference';
-  id: ID;
-  title: string;
-  /** Relative NAS path or full https URL — resolve with `resolveRecording`. */
-  path: string;
-  kind: LessonFileKind;
-  /**
-   * The lesson this reference belongs to. ABSENT for a resource composed from
-   * the archive graph (which belongs to a session, not to a lesson record) and
-   * for a direct reference the owner attached to the item itself.
-   */
-  lessonId?: ID;
-  /** Present only for a resource the archive scoped to this piece. */
-  archive?: ItemFileProvenance;
-  /** The source no longer describes this file; its provenance is kept. */
-  unavailable?: boolean;
-  sizeBytes?: number;
-  notes?: string;
-  /**
-   * Never inline. A NAS origin is not knowable at build time, so a remote file
-   * could not render under the static production CSP in any case; opening it in
-   * a tab is the only honest option.
-   */
-  inline: false;
-}
-
-export interface ItemFileAttachment {
-  source: 'attachment';
-  id: ID;
-  title: string;
-  kind: AttachmentKind;
-  mime: string;
-  sizeBytes: number;
-  /** A local image renders inline (blob: is already permitted); nothing else does. */
-  inline: boolean;
-}
-
-export type ItemFile = ItemFileReference | ItemFileAttachment;
-
-/** Same file, whichever lesson referenced it: `/a/b` and `a/b` resolve alike. */
-function referenceKey(path: string): string {
-  return path.trim().replace(/^\/+/, '');
-}
-
-/**
- * The single test for "this attachment belongs to this owner." `ownerId`
- * alone is not enough — an item and a lesson can collide on id, since each
- * has its own id space — so the check is only correct when `ownerType` and
- * `ownerId` are checked TOGETHER. Every surface that lists, counts or removes
- * attachments (an item's own files, a lesson's own Files section, ItemCard's
- * file-count badge) calls this instead of re-deriving the predicate, so the
- * invariant can't drift between call sites.
- */
-export function attachmentsOwnedBy(
-  attachments: AttachmentMeta[],
-  ownerType: AttachmentOwnerType,
-  ownerId: ID,
-): AttachmentMeta[] {
-  return attachments.filter((a) => a.ownerType === ownerType && a.ownerId === ownerId);
-}
-
-/** `attachmentsOwnedBy` narrowed to an item — the common case at every item surface. */
-export function itemOwnedAttachments(attachments: AttachmentMeta[], itemId: ID): AttachmentMeta[] {
-  return attachmentsOwnedBy(attachments, 'item', itemId);
-}
-
-/**
- * Every file that already belongs to an item: the NAS references of each lesson
- * the item is LINKED to (deduplicated by path, so a file referenced from two of
- * those lessons appears once), followed by the item's own attachments.
- *
- * Order is deterministic: lessons newest first, references within a lesson by
- * kind then creation, then attachments oldest first (the order the Files
- * section already lists them in).
- */
-export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
-  const out: ItemFile[] = [];
-  const seen = new Set<string>();
-  const item = db.items.find((i) => i.id === itemId);
-
-  // 1. WHAT THE ARCHIVE SAYS IS MATERIAL FOR THIS PIECE.
-  //
-  // Scope comes from the graph, never from "everything the lesson happens to
-  // hold": a class recording covers a whole lesson and stays there, a named
-  // score belongs to its own piece and never bleeds onto a sibling, and the
-  // owner's own practice recordings were never resources to begin with.
-  const source = item?.source ? archiveFor(db, item.source.archiveId) : undefined;
-  if (source && item?.source) {
-    const scoped = resourcesForPiece(source, item.source.pieceKey, itemId);
-    // Corrections carry the teacher's own hand and are the most useful thing
-    // here, so they lead — but a clean score is still kept, not replaced by it.
-    const rank = (role: string) =>
-      role === CORRECTION_ROLE ? 0 : role === DEMO_ROLE ? 1 : role === NOTATION_ROLE ? 2 : 3;
-    const ordered = [...scoped].sort(
-      (a, b) =>
-        rank(a.role) - rank(b.role) ||
-        a.sessionN - b.sessionN ||
-        (a.group ?? '').localeCompare(b.group ?? '') ||
-        (a.part ?? 0) - (b.part ?? 0) ||
-        a.path.localeCompare(b.path),
-    );
-    for (const r of ordered) {
-      // Defensive, and cheap: the graph already excludes it, and a class
-      // recording must never become one piece's material by any route.
-      if (r.role === CLASS_ROLE) continue;
-      const key = referenceKey(r.path);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const ref = resourceReference(item.source.archiveId, r, r.sessionDate);
-      out.push({
-        source: 'reference',
-        id: ref.id,
-        title: ref.title,
-        path: ref.path,
-        kind: ref.kind ?? 'video',
-        archive: { sessionN: r.sessionN, date: r.sessionDate, role: r.role, group: r.group, part: r.part },
-        ...(r.unavailable ? { unavailable: true } : {}),
-        sizeBytes: ref.sizeBytes,
-        inline: false,
-      });
-    }
-  }
-
-  // 2. DIRECT references the owner attached to the item itself — useful
-  //    material that needs no artificial lesson to hang from.
-  for (const rec of item?.references ?? []) {
-    const key = referenceKey(rec.path);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      source: 'reference',
-      id: rec.id,
-      title: rec.title,
-      path: rec.path,
-      kind: rec.kind ?? 'video',
-      sizeBytes: rec.sizeBytes,
-      notes: rec.notes,
-      inline: false,
-    });
-  }
-
-  // 3. Lessons the item is LINKED to. An archive-bound lesson contributes
-  //    nothing here: its files reached this list above, correctly scoped.
-  //    A manual, unclassified lesson still contributes all of its references —
-  //    nothing knows their scope, and inventing one would be a guess.
-  const lessons = db.lessons
-    .filter((l) => (l.itemIds ?? []).includes(itemId) && !l.source)
-    .sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
-
-  for (const lesson of lessons) {
-    const recordings = [...(lesson.recordings ?? [])].sort(
-      (a, b) =>
-        LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'] ||
-        a.createdAt.localeCompare(b.createdAt),
-    );
-    for (const rec of recordings) {
-      const key = referenceKey(rec.path);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push({
-        source: 'reference',
-        id: rec.id,
-        title: rec.title,
-        path: rec.path,
-        kind: rec.kind ?? 'video',
-        lessonId: lesson.id,
-        sizeBytes: rec.sizeBytes,
-        notes: rec.notes,
-        inline: false,
-      });
-    }
-  }
-
-  const attachments = itemOwnedAttachments(db.attachments, itemId).sort((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
-  );
-  for (const a of attachments) {
-    out.push({
-      source: 'attachment',
-      id: a.id,
-      title: a.name,
-      kind: a.kind,
-      mime: a.mime,
-      sizeBytes: a.size,
-      inline: a.kind === 'image',
-    });
-  }
-
-  return out;
-}
-
-/**
- * What the ARCHIVE gives a lesson: its session's own files — the class
- * recording, an unnamed handout, the material that belongs to the whole class
- * rather than to one piece. An archive-bound lesson keeps no copy of these, so
- * reading its `recordings` array alone shows nothing at all; this is the only
- * way they reach the screen.
- *
- * EVERY FILE ON A LESSON HAS EXACTLY ONE SECTION THAT RENDERS IT. This used to
- * compose the owner's own `recordings` and attachments too, and the lesson page
- * renders those in their own editable sections — so one authored NAS reference
- * and one local attachment each appeared TWICE, once here and once where they
- * can actually be edited or removed. An item is the opposite case and stays as
- * it is: its material is composed from OTHER records (linked lessons, the
- * graph) that the item's own page has no section for, which is exactly why
- * `itemFiles` must stay the whole composition.
- */
-export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
-  const out: ItemFile[] = [];
-  const seen = new Set<string>();
-  const lesson = db.lessons.find((l) => l.id === lessonId);
-  if (!lesson) return out;
-
-  const source = lesson.source ? archiveFor(db, lesson.source.archiveId) : undefined;
-  if (source && lesson.source) {
-    const resources = resourcesForSession(source, lesson.source.sessionN).sort(
-      (a, b) =>
-        // The class recording first — it IS the lesson — then everything else
-        // in the archive's own role order, parts numerically.
-        (a.role === CLASS_ROLE ? 0 : 1) - (b.role === CLASS_ROLE ? 0 : 1) ||
-        a.role.localeCompare(b.role) ||
-        (a.part ?? 0) - (b.part ?? 0) ||
-        a.path.localeCompare(b.path),
-    );
-    for (const r of resources) {
-      const key = referenceKey(r.path);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      const ref = resourceReference(lesson.source.archiveId, r, lesson.date);
-      out.push({
-        source: 'reference',
-        id: ref.id,
-        title: ref.title,
-        path: ref.path,
-        kind: ref.kind ?? 'video',
-        lessonId,
-        archive: { sessionN: lesson.source.sessionN, date: lesson.date, role: r.role, group: r.group, part: r.part },
-        ...(r.unavailable ? { unavailable: true } : {}),
-        sizeBytes: ref.sizeBytes,
-        inline: false,
-      });
-    }
-  }
-
-  return out;
-}
 ```
 
 ### src/domain/scanSetarClasses.test.ts
@@ -9484,14 +6087,65 @@ describe('scanning the archive', () => {
         },
       });
       expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
-      // An old path with TWO destinations was already refused, and still is.
+      // AN OLD PATH WITH TWO DESTINATIONS PUBLISHES NEITHER. This used to
+      // publish the FIRST row and diagnose the second as "not applied", which
+      // is the same defect the loop rule exists to prevent, said the other way
+      // round: a log that cannot say which file A became was handed to the app
+      // as exact identity anyway. It is ONE rule now — a replacement name is
+      // published only where this log determines it uniquely and terminally.
+      const forkLog = 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n';
       const forked = buildIndex({
         registryText: REGISTRY,
         inventory: INVENTORY,
-        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
+        renameLog: { present: true, text: forkLog },
       });
-      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
-      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
+      expect(forked.renames).toEqual([]);
+      expect(forked.diagnostics.filter((d) => d.path === 'x/a.mp4')).toEqual([
+        {
+          path: 'x/a.mp4',
+          reason:
+            'Rename log names more than one destination for this path ("x/b.mp4" and "x/c.mp4") — no replacement name can be read from it.',
+        },
+      ]);
+      // ONE diagnostic naming its destinations in a stable order, whatever
+      // order the rows arrived in: `diagnostics` is inside `contentHash`, and
+      // a shuffled source must still yield the same semantic index. A third
+      // destination joins that one row rather than emitting a second pair.
+      const forkRowsSwapped = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/c.mp4\nx/a.mp4,x/b.mp4\n' },
+      });
+      expect(forkRowsSwapped.contentHash).toBe(forked.contentHash);
+      const three = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/d.mp4\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
+      });
+      expect(three.diagnostics.filter((d) => d.path === 'x/a.mp4')).toHaveLength(1);
+      expect(three.diagnostics.find((d) => d.path === 'x/a.mp4')!.reason).toContain(
+        '("x/b.mp4" and "x/c.mp4" and "x/d.mp4")',
+      );
+      // And a chain that walks INTO a forked path publishes nothing either —
+      // the same extension the loop rule already makes, for the same reason:
+      // x/z.mp4 became x/a.mp4, and what x/a.mp4 is called now is unreadable.
+      const intoFork = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: `old_path,new_path\nx/z.mp4,x/a.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
+      });
+      expect(intoFork.renames).toEqual([]);
+      expect(intoFork.diagnostics.find((d) => d.path === 'x/z.mp4')!.reason).toContain(
+        'renames this path into "x/a.mp4", which it names more than one destination for',
+      );
+      // An ordinary chain beside a FORK still publishes, exactly as one beside
+      // a loop does.
+      const besideFork = buildIndex({
+        registryText: REGISTRY,
+        inventory: INVENTORY,
+        renameLog: { present: true, text: `old_path,new_path\nx/p.mp4,x/q.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
+      });
+      expect(besideFork.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
 
       // And the scan itself reads the WHOLE source twice and refuses on any
       // difference. Nothing can mutate a filesystem between two synchronous
@@ -9522,984 +6176,6 @@ describe('scanning the archive', () => {
 });
 ```
 
-### src/domain/sourceArchive.ts
-
-```
-import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
-import { canonicalStringify, sha256Hex } from './canonical';
-
-// ---------------------------------------------------------------------------
-// The Setar class archive as the APP sees it.
-//
-// The app never parses a filename. A read-only scanner (scripts/scan-setar-
-// classes.mjs) publishes a deterministic JSON index; everything here decodes
-// that index, keeps the accepted graph, and answers questions about it.
-//
-// Pure: no React, no clock, no network. The decoder is a TRUST BOUNDARY — it
-// refuses what it cannot vouch for rather than coercing it, because every
-// identity downstream (which lesson, which piece, which file) is taken from
-// this data verbatim.
-// ---------------------------------------------------------------------------
-
-export const INDEX_FORMAT = 'setar-archive-index';
-export const INDEX_VERSION = 1;
-/** The one archive this lane knows. Tar/Guitar do not share this grammar. */
-export const SETAR_ARCHIVE_ID = 'setar-classes';
-
-/** A published index larger than this is refused rather than parsed. */
-export const MAX_INDEX_BYTES = 4 * 1024 * 1024;
-
-// --- the published index ---------------------------------------------------
-
-export interface SourcePiece {
-  /** `canonical_fa` — the BYTE-EXACT join key. Never folded or transliterated. */
-  key: string;
-  form: string;
-  piece: string;
-  dastgah: string;
-  composer: string;
-  /** Literal historical spellings, for SEARCH only — never for identity. */
-  aliases: string[];
-  sessions: number[];
-  notes: string;
-  provisional?: boolean;
-  mediumConfidence?: boolean;
-  /** The source no longer describes this piece; its provenance is kept. */
-  unavailable?: boolean;
-}
-
-export type SourceRole = string;
-export type SourceKind = 'video' | 'score' | 'photo';
-
-export interface SourceResource {
-  /** Archive-RELATIVE path. Never an absolute URL: transport is per device. */
-  path: string;
-  role: SourceRole;
-  kind: SourceKind;
-  title: string;
-  part?: number | null;
-  size?: number;
-  /** Canonical piece keys this resource is material for. Empty = lesson-level. */
-  pieces: string[];
-  /** Parts of ONE logical demonstration share a group. */
-  group?: string | null;
-  unavailable?: boolean;
-}
-
-export interface SourceMember {
-  key: string;
-  roles: SourceRole[];
-}
-
-export interface SourceSession {
-  n: number;
-  date: ISODate;
-  folder: string;
-  roster: string[];
-  rosterTrusted: boolean;
-  hasClassRecording: boolean;
-  resources: SourceResource[];
-  members: SourceMember[];
-  unavailable?: boolean;
-}
-
-export interface SourceRename {
-  from: string;
-  to: string;
-}
-
-export interface SourceDiagnostic {
-  path: string;
-  reason: string;
-}
-
-export interface SourceIndex {
-  format: typeof INDEX_FORMAT;
-  version: number;
-  archiveId: string;
-  pieces: SourcePiece[];
-  sessions: SourceSession[];
-  renames: SourceRename[];
-  diagnostics: SourceDiagnostic[];
-  contentHash: string;
-}
-
-// --- what the database keeps ----------------------------------------------
-
-/** An owner decision that a refresh, a reload and a sync must all respect. */
-export interface SourceSuppression {
-  /** `piece` / `session` / `resource` (a hidden file), `link` (item-to-lesson). */
-  kind: 'piece' | 'session' | 'resource' | 'link';
-  /** Piece key, session number, resource path, or `sessionN:pieceKey`. */
-  ref: string;
-  /** A resource hidden on ONE item only — never on its siblings. */
-  itemId?: ID;
-  at: ISODateTime;
-}
-
-/**
- * The last accepted source graph, persisted so material, provenance and the
- * next refresh all work offline. One row per archive; items and lessons carry
- * only a KEY into it, so a resource is never copied per item.
- */
-export interface ArchiveSource {
-  id: ID;
-  instrumentId: ID;
-  indexHash: string;
-  acceptedAt: ISODateTime;
-  pieces: SourcePiece[];
-  sessions: SourceSession[];
-  renames: SourceRename[];
-  diagnostics: SourceDiagnostic[];
-  suppressions: SourceSuppression[];
-}
-
-/** An item's binding to a canonical piece in an archive. */
-export interface ItemSourceRef {
-  archiveId: ID;
-  pieceKey: string;
-}
-
-/** A lesson's binding to one archive session. */
-export interface LessonSourceRef {
-  archiveId: ID;
-  sessionN: number;
-}
-
-// --- path safety -----------------------------------------------------------
-
-/**
- * An archive path is a relative POSIX path of plain segments. Traversal,
- * absolute paths, backslashes, URL schemes, credentials and percent-encoded
- * separators are REFUSED, never sanitised: a rewritten path names a different
- * file, and this graph is an identity table.
- *
- * Deliberately a small copy of the scanner's own predicate rather than an
- * import — `scripts/` is a Node operator tool that must not be pulled into the
- * browser bundle, and this rule is eight lines.
- */
-export function isSafeSourcePath(p: unknown): p is string {
-  if (typeof p !== 'string' || !p) return false;
-  if (p.length > 1024) return false;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(p)) return false;
-  if (p.startsWith('/') || p.includes('\\')) return false;
-  if (/%2f|%5c/i.test(p)) return false;
-  if (p.includes('@')) return false; // no user:pass@host smuggled in
-  return p.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
-}
-
-// --- deterministic identity ------------------------------------------------
-
-const NUL = String.fromCharCode(0);
-
-/**
- * FNV-1a over the UTF-8 bytes, twice, for a stable 64-bit hex digest. Two
- * devices importing the same source must MINT THE SAME ID for the same logical
- * entity, or the next sync sees two records for one piece. A readable
- * `src:<archive>:piece:<farsi key>` would be equally deterministic but puts
- * Farsi into every route parameter; this keeps ids ASCII.
- */
-function stableHash(input: string): string {
-  const bytes = new TextEncoder().encode(input);
-  let a = 0x811c9dc5;
-  let b = 0x01000193;
-  for (const byte of bytes) {
-    a = Math.imul(a ^ byte, 0x01000193) >>> 0;
-    b = Math.imul(b ^ byte, 0x85ebca6b) >>> 0;
-  }
-  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
-}
-
-/** Deterministic id for the item a canonical piece becomes. */
-export function sourceItemId(archiveId: string, pieceKey: string): ID {
-  return `src-${stableHash(`${archiveId}${NUL}piece${NUL}${pieceKey}`)}`;
-}
-
-/** Deterministic id for the historical lesson an archive session becomes. */
-export function sourceLessonId(archiveId: string, sessionN: number): ID {
-  return `src-${stableHash(`${archiveId}${NUL}session${NUL}${sessionN}`)}`;
-}
-
-/** Deterministic id for a resource reference minted from the graph. */
-export function sourceResourceId(archiveId: string, path: string): ID {
-  return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
-}
-
-// --- decoding --------------------------------------------------------------
-
-/** The fixed role vocabulary, byte-exact from the archive's own contract. */
-export const SOURCE_ROLES: readonly string[] = [
-  'ضبط-کلاس', // class recording
-  'تمرین-من', // my practice
-  'تصحیح', // corrected notation
-  'تکلیف', // homework
-  'جزوه', // handout
-  'نمونه', // teacher demonstration
-  'نت', // clean notation
-];
-
-/**
- * Plain-English names for the archive's own role words, for UI copy only.
- * The Farsi word stays the identity everywhere else — this is a LABEL map,
- * exactly like `ITEM_STATUS_LABELS`, and never a second vocabulary.
- */
-export const SOURCE_ROLE_LABELS: Record<string, string> = {
-  [SOURCE_ROLES[0]!]: 'class recording',
-  [SOURCE_ROLES[1]!]: 'my practice',
-  [SOURCE_ROLES[2]!]: 'teacher’s corrections',
-  [SOURCE_ROLES[3]!]: 'homework',
-  [SOURCE_ROLES[4]!]: 'handout',
-  [SOURCE_ROLES[5]!]: 'teacher’s demonstration',
-  [SOURCE_ROLES[6]!]: 'notation',
-};
-
-export const CLASS_ROLE = SOURCE_ROLES[0];
-export const PERSONAL_ROLE = SOURCE_ROLES[1];
-export const CORRECTION_ROLE = SOURCE_ROLES[2];
-export const DEMO_ROLE = SOURCE_ROLES[5];
-export const NOTATION_ROLE = SOURCE_ROLES[6];
-
-const ROLE_SET = new Set<string>(SOURCE_ROLES);
-const KIND_SET = new Set<string>(['video', 'score', 'photo']);
-const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function str(v: unknown, what: string): string {
-  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
-  return v;
-}
-
-function strList(v: unknown, what: string): string[] {
-  if (v === undefined) return [];
-  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) throw new Error(`${what} must be a list of text.`);
-  return v as string[];
-}
-
-/**
- * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
- *
- * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
- * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
- * not a tolerance but a silent erasure: a session whose `resources` arrived as
- * `null` decoded to a session with NO resources, passed the grammar (it is a
- * valid empty list by then) and turned six files into zero. The same held for
- * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
- * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
- *
- * These three are that rule in one place, and they throw NAMING the record —
- * the same treatment `validatePracticeText` gives the owner's own words.
- */
-function list(v: unknown, what: string): unknown[] {
-  if (v === undefined) return [];
-  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
-  return v;
-}
-
-/**
- * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
- * same thing and quietly produced `''` for both — the very normalisation the
- * list/num/bool rule above exists to stop, left in place for every string
- * field that has a default. A resource `title: null` became an untitled row
- * the grammar was perfectly happy with. Absent is a default; null is a value,
- * and a wrong one.
- */
-function text(v: unknown, what: string): string {
-  if (v === undefined) return '';
-  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
-  return v;
-}
-
-function num(v: unknown, what: string): number | null {
-  if (v === undefined || v === null) return null;
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
-  return v;
-}
-
-/** A number that is genuinely a number — no `null`, unlike an optional part. */
-function size(v: unknown, what: string): number {
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
-  return v;
-}
-
-function bool(v: unknown, what: string, fallback: boolean): boolean {
-  if (v === undefined) return fallback;
-  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
-  return v;
-}
-
-/** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
-export function isValidSourceDate(v: unknown): v is ISODate {
-  if (typeof v !== 'string') return false;
-  const m = DATE_RE.exec(v);
-  if (!m) return false;
-  const [, y, mo, d] = m;
-  const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
-  return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
-}
-
-/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
-export function isValidSourceDateTime(v: unknown): v is ISODateTime {
-  if (typeof v !== 'string') return false;
-  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
-  if (!m) return false;
-  if (!isValidSourceDate(v.slice(0, 10))) return false;
-  return !Number.isNaN(Date.parse(v));
-}
-
-/**
- * Validate an unknown published index into a {@link SourceIndex}, or throw with
- * a message the owner can act on.
- *
- * A NEWER version is refused rather than read leniently: a future scanner may
- * mean something different by the same field, and this graph decides which
- * file is which piece.
- */
-export function decodeSourceIndex(input: unknown): SourceIndex {
-  if (!isRecord(input)) throw new Error('The source index is not a valid object.');
-  if (input.format !== INDEX_FORMAT) throw new Error('That file is not a Setar archive index.');
-  if (typeof input.version !== 'number' || !Number.isInteger(input.version)) {
-    throw new Error('The source index has no usable version.');
-  }
-  if (input.version > INDEX_VERSION) {
-    throw new Error(
-      `This index was written by a newer scanner (version ${input.version}) than this app understands (version ${INDEX_VERSION}). Update the app.`,
-    );
-  }
-  if (input.version < INDEX_VERSION) {
-    throw new Error(`This index is from an older scanner (version ${input.version}). Re-run the scanner.`);
-  }
-  const archiveId = str(input.archiveId, 'The index archive id');
-  if (!archiveId.trim()) throw new Error('The index archive id is empty.');
-  if (typeof input.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(input.contentHash)) {
-    throw new Error('The index carries no usable content hash.');
-  }
-
-  if (!Array.isArray(input.pieces)) throw new Error('The index has no piece registry.');
-  if (!Array.isArray(input.sessions)) throw new Error('The index has no sessions.');
-
-  const pieces: SourcePiece[] = [];
-  const keys = new Set<string>();
-  for (const raw of input.pieces) {
-    if (!isRecord(raw)) throw new Error('A registry entry is not an object.');
-    const key = str(raw.key, 'A registry entry key');
-    if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
-    if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
-    keys.add(key);
-    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
-    if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
-      throw new Error(`Registry entry "${key}" has an invalid session number.`);
-    }
-    pieces.push({
-      key,
-      form: text(raw.form, `Registry entry "${key}" form`),
-      piece: text(raw.piece, `Registry entry "${key}" piece`),
-      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
-      composer: text(raw.composer, `Registry entry "${key}" composer`),
-      aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
-      sessions: sessions as number[],
-      notes: text(raw.notes, `Registry entry "${key}" notes`),
-      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
-      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
-    });
-  }
-
-  const sessions: SourceSession[] = [];
-  const seenN = new Set<number>();
-  const seenPaths = new Set<string>();
-  for (const raw of input.sessions) {
-    if (!isRecord(raw)) throw new Error('A session entry is not an object.');
-    const n = raw.n;
-    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) throw new Error('A session has no usable number.');
-    if (seenN.has(n)) throw new Error(`Two entries claim session ${n}.`);
-    seenN.add(n);
-    if (!isValidSourceDate(raw.date)) throw new Error(`Session ${n} has an unreadable date.`);
-    const folder = str(raw.folder, `Session ${n} folder`);
-    if (!isSafeSourcePath(folder)) throw new Error(`Session ${n} has an unsafe folder path.`);
-    const roster = strList(raw.roster, `Session ${n} roster`);
-    for (const k of roster) {
-      if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
-    }
-    const resources: SourceResource[] = [];
-    for (const r of list(raw.resources, `Session ${n} resources`)) {
-      if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
-      const path = r.path;
-      if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
-      if (seenPaths.has(path)) throw new Error(`Two resources share the path "${path}".`);
-      seenPaths.add(path);
-      const role = str(r.role, 'A resource role');
-      if (!ROLE_SET.has(role)) throw new Error(`Resource "${path}" has an unknown role.`);
-      const kind = str(r.kind, 'A resource kind');
-      if (!KIND_SET.has(kind)) throw new Error(`Resource "${path}" has an unknown kind "${kind}".`);
-      const forPieces = strList(r.pieces, `Resource "${path}" pieces`);
-      for (const k of forPieces) {
-        if (!keys.has(k)) throw new Error(`Resource "${path}" names piece "${k}", which is not in the registry.`);
-      }
-      resources.push({
-        path,
-        role,
-        kind: kind as SourceKind,
-        title: text(r.title, `Resource "${path}" title`),
-        part: num(r.part, `Resource "${path}" part`),
-        // `part` and `group` are genuinely nullable in the published format —
-        // the scanner emits `null` for both — so null stays legal THERE and
-        // nowhere else. `size` it always emits as a number, and a present null
-        // is refused HERE rather than spread into the output as a value the
-        // declared type does not admit and left for the grammar to catch.
-        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
-        pieces: forPieces,
-        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
-      });
-    }
-    const members: SourceMember[] = [];
-    for (const m of list(raw.members, `Session ${n} members`)) {
-      if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
-      const key = str(m.key, 'A membership key');
-      if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
-      const roles = strList(m.roles, `Membership "${key}" roles`);
-      for (const role of roles) if (!ROLE_SET.has(role)) throw new Error(`Membership "${key}" has an unknown role.`);
-      members.push({ key, roles });
-    }
-    sessions.push({
-      n,
-      date: raw.date as ISODate,
-      folder,
-      roster,
-      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
-      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
-      resources,
-      members,
-    });
-  }
-
-  const renames: SourceRename[] = [];
-  const froms = new Set<string>();
-  for (const r of list(input.renames, 'The rename log')) {
-    if (!isRecord(r)) throw new Error('A rename entry is not an object.');
-    if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
-    if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
-    froms.add(r.from);
-    renames.push({ from: r.from, to: r.to });
-  }
-
-  const diagnostics: SourceDiagnostic[] = [];
-  for (const d of list(input.diagnostics, 'The diagnostic list')) {
-    if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
-    diagnostics.push({
-      path: text(d.path, 'A diagnostic path'),
-      reason: text(d.reason, 'A diagnostic reason'),
-    });
-  }
-
-  // The decoder's own normalisation, held to the SAME grammar the persisted
-  // graph is held to. Every field below has just been built here, so this can
-  // only fail if the two ever drift — which is exactly what it exists to stop.
-  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
-  if (bad) throw new Error(bad);
-
-  return {
-    format: INDEX_FORMAT,
-    version: INDEX_VERSION,
-    archiveId,
-    pieces,
-    sessions,
-    renames,
-    diagnostics,
-    contentHash: input.contentHash,
-  };
-}
-
-/**
- * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
- * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
- * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
- * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
- * that serialisation for JSON-derived data.
- */
-async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
-  const body = { ...parsed };
-  delete body.contentHash;
-  delete body.generatedAt;
-  return sha256Hex(canonicalStringify(body));
-}
-
-/**
- * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
- *
- * `contentHash` is not a checksum the app may take on faith — it is the
- * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
- * accepted to decide that nothing has changed, so content altered in transit
- * (or in the repository) under a retained old hash would be reported "Already
- * current" and the changed facts silently ignored. Recomputing it here, at the
- * ONE boundary both the GitHub fetch and the file fallback pass through, makes
- * that fail closed instead.
- *
- * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
- * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
- * that build an index object in memory call it directly and have no transport.
- *
- * Order matters: size → parse → structure → digest, so a structurally broken
- * file reports the error the owner can act on rather than a hash mismatch.
- */
-export async function parseSourceIndex(text: string): Promise<SourceIndex> {
-  if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error('That file is not valid JSON.');
-  }
-  const index = decodeSourceIndex(parsed);
-  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
-  if (actual !== index.contentHash) {
-    throw new Error(
-      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
-    );
-  }
-  return index;
-}
-
-// --- what counts as an UPCOMING class ---------------------------------------
-
-/**
- * THE one predicate for "is this lesson still ahead of me". Every caller that
- * asks about the next class — the badges, the default question target, the
- * commitment deadline that reaches practice priority — goes through this.
- *
- * A lesson imported from a source archive is a record of a class that ALREADY
- * HAPPENED. Its date can still be in the future relative to this device's
- * clock (the archive runs to September 2026 and a device may be behind it, or
- * the owner may simply be importing early), and a plain `date >= today` then
- * turns thirty-nine pieces of history into thirty-nine deadlines: urgency on
- * items nobody committed to anything, and a question sheet defaulting to a
- * class that is over. `origin: 'archive'` is checked FIRST, before the date,
- * because no date can make history upcoming.
- */
-export function isUpcomingLesson(lesson: { date: ISODate; origin?: string }, todayISO: ISODate): boolean {
-  if (lesson.origin === 'archive') return false;
-  return lesson.date >= todayISO;
-}
-
-// --- queries over the accepted graph ---------------------------------------
-
-export function archiveFor(db: PracticeDB, archiveId: string): ArchiveSource | undefined {
-  return db.archiveSources?.find((a) => a.id === archiveId);
-}
-
-function suppressed(source: ArchiveSource, kind: SourceSuppression['kind'], ref: string, itemId?: ID): boolean {
-  return source.suppressions.some(
-    (s) => s.kind === kind && s.ref === ref && (s.itemId === undefined || s.itemId === itemId),
-  );
-}
-
-/** Sessions a canonical piece appears in, numerically ordered. */
-export function sessionsForPiece(source: ArchiveSource, pieceKey: string): SourceSession[] {
-  return source.sessions.filter((s) => s.members.some((m) => m.key === pieceKey)).sort((a, b) => a.n - b.n);
-}
-
-/**
- * Consecutive runs of sessions a piece was practised in. Six sessions in a row
- * is six CLASSES worth of provenance — never six weeks, and never practice
- * this app recorded.
- */
-export function repeatChains(source: ArchiveSource, pieceKey: string): number[][] {
-  // A REPEAT is the student having been asked to play the piece again: its own
-  // practice recording, in consecutive sessions. Membership alone is the wrong
-  // input — an unnamed demonstration gives every piece in its session
-  // membership, so a chain read from membership would report a repeat nobody
-  // was asked for.
-  const ns = source.sessions
-    .filter((s) => s.members.some((m) => m.key === pieceKey && m.roles.includes(PERSONAL_ROLE)))
-    .sort((a, b) => a.n - b.n)
-    .map((s) => s.n);
-  const chains: number[][] = [];
-  for (const n of ns) {
-    const last = chains[chains.length - 1];
-    if (last && last[last.length - 1] === n - 1) last.push(n);
-    else chains.push([n]);
-  }
-  return chains.filter((c) => c.length > 1);
-}
-
-export interface ScopedResource extends SourceResource {
-  sessionN: number;
-  sessionDate: ISODate;
-}
-
-/**
- * Every archive resource that is USEFUL PRACTICE MATERIAL for one piece, in
- * session order. A class recording stays with its lesson, a resource the owner
- * hid on THIS item is dropped for this item only, and a suppressed session or
- * piece contributes nothing.
- */
-export function resourcesForPiece(source: ArchiveSource, pieceKey: string, itemId?: ID): ScopedResource[] {
-  if (suppressed(source, 'piece', pieceKey)) return [];
-  const out: ScopedResource[] = [];
-  for (const s of sessionsForPiece(source, pieceKey)) {
-    if (suppressed(source, 'session', String(s.n))) continue;
-    for (const r of s.resources) {
-      if (!r.pieces.includes(pieceKey)) continue;
-      if (suppressed(source, 'resource', r.path, itemId)) continue;
-      out.push({ ...r, sessionN: s.n, sessionDate: s.date });
-    }
-  }
-  return out;
-}
-
-/** Everything an archive session contributes to its own lesson, in role order. */
-export function resourcesForSession(source: ArchiveSource, sessionN: number): SourceResource[] {
-  const s = source.sessions.find((x) => x.n === sessionN);
-  if (!s || suppressed(source, 'session', String(sessionN))) return [];
-  return s.resources.filter((r) => !suppressed(source, 'resource', r.path));
-}
-
-/** Turn a graph resource into the app's ordinary NAS reference shape. */
-export function resourceReference(archiveId: string, r: SourceResource, date?: ISODate): LessonRecording {
-  return {
-    id: sourceResourceId(archiveId, r.path),
-    title: r.title,
-    path: r.path,
-    kind: r.kind === 'video' ? 'video' : r.kind === 'score' ? 'pdf' : 'doc',
-    ...(date ? { date } : {}),
-    ...(r.size ? { sizeBytes: r.size } : {}),
-    createdAt: '1970-01-01T00:00:00.000Z',
-  };
-}
-
-// --- the graph's own grammar, in ONE place ---------------------------------
-
-/**
- * THE grammar of a source graph — every nested field, one definition.
- *
- * `decodeSourceIndex` and `validateArchiveSources` used to state this
- * separately, and the second stated LESS of it: it checked a resource's path
- * and its part group and then walked straight past `members[].roles`,
- * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
- * `folder` and `roster`, and the rename and diagnostic rows entirely. A
- * database carrying `members[0].roles: null` was therefore accepted and
- * PERSISTED by every inbound door, and the first production reader to touch it
- * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
- * material. `planArchiveImport` had the same exposure through
- * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
- *
- * Both callers run THIS function now, so the decoder and the persisted-graph
- * validator cannot drift apart again: a reader may dereference any field this
- * grammar admits, and nothing else can reach the database.
- *
- * `unavailable` stays legal on a piece, a session and a resource — a file gone
- * from the NAS with its provenance kept is a VALID state, not a broken graph.
- */
-function checkSourceGraph(
-  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
-  label: string,
-): string | null {
-  const text = (v: unknown) => typeof v === 'string';
-  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
-  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
-
-  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
-  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
-
-  const keys = new Set<string>();
-  for (const raw of graph.pieces) {
-    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
-    const p = raw as Partial<SourcePiece>;
-    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
-    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
-    keys.add(p.key);
-    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
-      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
-    }
-    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
-    // that is not a list of text takes the whole refresh down with a TypeError.
-    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
-    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
-      return `Piece "${p.key}" has an invalid session number.`;
-    }
-    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
-      return `Piece "${p.key}" has an unreadable flag.`;
-    }
-  }
-
-  const ns = new Set<number>();
-  const paths = new Set<string>();
-  for (const raw of graph.sessions) {
-    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
-    const sess = raw as Partial<SourceSession>;
-    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
-      return `${label} has a session with no number.`;
-    }
-    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
-    ns.add(sess.n);
-    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
-    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
-    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
-    for (const k of sess.roster as string[]) {
-      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
-    }
-    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
-      return `${label} session ${sess.n} has an unreadable flag.`;
-    }
-
-    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
-    for (const rawRes of sess.resources) {
-      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
-      const r = rawRes as Partial<SourceResource>;
-      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
-      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
-      paths.add(r.path);
-      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
-      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
-      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
-      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
-        return `Resource "${r.path}" has an unreadable part number.`;
-      }
-      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
-      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
-      for (const k of r.pieces as string[]) {
-        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
-      }
-      // A demonstration's parts form ONE group; anything but a plain label
-      // here would let a part claim membership of an arbitrary structure.
-      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
-        return `Resource "${r.path}" has an invalid part group.`;
-      }
-      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
-    }
-
-    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
-    for (const rawMember of sess.members) {
-      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
-      const m = rawMember as Partial<SourceMember>;
-      if (typeof m.key !== 'string' || !keys.has(m.key)) {
-        return `${label} session ${sess.n} claims an unknown piece.`;
-      }
-      // `repeatChains` reads `roles.includes(...)` on every one of these.
-      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
-      for (const role of m.roles as string[]) {
-        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
-      }
-    }
-
-    // --- SEMANTIC RELATIONS, not merely field types ------------------------
-    //
-    // A field-type grammar says every value is READABLE; it says nothing about
-    // whether the graph agrees with itself. A resource physically sitting in
-    // class 2's folder, listed under class 1, is type-perfect and attributes
-    // someone else's file to the wrong lesson on every screen that reads it —
-    // and an arbitrary `group` on a non-demonstration invents a logical
-    // resource out of unrelated files.
-    //
-    // Scoped to what the source still DESCRIBES. `unavailable` is retained
-    // provenance about what it has STOPPED describing — a piece dropped from
-    // the registry, a file deleted from the NAS — so holding those rows to the
-    // current source's internal agreement is a category error, and would make
-    // every refresh after a removal refuse at every door.
-    if (!sess.unavailable) {
-      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
-      const rolesFor = new Map<string, Set<string>>();
-      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
-      const groups = new Map<string, SourceResource[]>();
-      let classRecordings = 0;
-      for (const r of live) {
-        const segs = r.path.split('/');
-        if (segs.length !== 2 || segs[0] !== sess.folder) {
-          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
-        }
-        if (r.role === CLASS_ROLE) {
-          classRecordings += 1;
-          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
-        }
-        for (const k of r.pieces) {
-          if (!rolesFor.get(k)?.has(r.role)) {
-            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
-          }
-        }
-        if (r.group !== null && r.group !== undefined) {
-          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
-          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
-        }
-      }
-      if (classRecordings > 0 !== sess.hasClassRecording) {
-        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
-      }
-      // Parts of ONE demonstration: the same material, told in order. Parts
-      // that are material for different pieces are not one resource, and two
-      // parts with one number have no order to be read in.
-      for (const [g, parts] of groups) {
-        const pieces = [...parts[0]!.pieces].sort().join(NUL);
-        const numbers = new Set<number | null>();
-        for (const r of parts) {
-          if ([...r.pieces].sort().join(NUL) !== pieces) {
-            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
-          }
-          const part = r.part ?? null;
-          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
-          numbers.add(part);
-        }
-      }
-    }
-  }
-
-  if (graph.renames !== undefined) {
-    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
-    const froms = new Set<string>();
-    for (const rawRename of graph.renames) {
-      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
-      const r = rawRename as Partial<SourceRename>;
-      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
-      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
-      froms.add(r.from);
-    }
-  }
-
-  if (graph.diagnostics !== undefined) {
-    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
-    for (const rawDiag of graph.diagnostics) {
-      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
-      const d = rawDiag as Partial<SourceDiagnostic>;
-      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
-    }
-  }
-
-  return null;
-}
-
-// --- inbound validation (C7) -----------------------------------------------
-
-/**
- * The v14 graph, checked at EVERY inbound door through `validateDB`. Invalid
- * structure is REFUSED with the record named, never coerced or dropped: a
- * binding that points at nothing is a claim about which file is which piece,
- * and silently discarding it loses the owner's own reconciliation decisions.
- *
- * A source entity marked `unavailable` is a VALID state (the file is gone from
- * the NAS, its provenance is kept) — not a dangling reference.
- */
-export function validateArchiveSources(db: PracticeDB): string | null {
-  const sources = db.archiveSources ?? [];
-  const ids = new Set<string>();
-  const instrumentIds = new Set(db.instruments.map((i) => i.id));
-  const byId = new Map<string, ArchiveSource>();
-
-  for (const s of sources) {
-    if (typeof s?.id !== 'string' || !s.id.trim()) return 'An archive source has no id.';
-    if (ids.has(s.id)) return `Two archive sources share the id "${s.id}".`;
-    ids.add(s.id);
-    byId.set(s.id, s);
-    if (typeof s.instrumentId !== 'string' || !instrumentIds.has(s.instrumentId)) {
-      return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
-    }
-    if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
-    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
-    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
-    // last changed, so a non-string here crashes the screen that renders it —
-    // and the fix belongs at this door, never as a guard in the component.
-    // Checked for REAL validity for the same reason `askedAt` is: a shape
-    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
-    // normalises it into March. Deliberately a local check beside
-    // `isValidSourceDate` rather than an import — this file's own pattern.
-    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
-    if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
-    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
-    // decoder always emits both, and `planArchiveImport` reads
-    // `index.renames`/`source.renames` unguarded.
-    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
-    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
-    if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
-
-    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
-    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
-    if (bad) return bad;
-
-    for (const sup of s.suppressions) {
-      if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
-        return `Archive source "${s.id}" has a suppression of an unknown kind.`;
-      }
-      if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
-      // An owner decision carries the id it was scoped to and the moment it
-      // was taken; both are read back — a resource hidden on ONE item is
-      // decided by comparing `itemId`, so a non-string silently widens it.
-      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
-        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
-      }
-      // `at` is provenance only — nothing reads it back as a date — so it is
-      // held to being real text and no further.
-      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
-    }
-  }
-
-  // Bindings: exactly one live record per source identity, resolving to a real
-  // entity of the right instrument.
-  const itemBindings = new Set<string>();
-  for (const item of db.items) {
-    const ref = item.source;
-    if (!ref) continue;
-    if (typeof ref.archiveId !== 'string' || typeof ref.pieceKey !== 'string') {
-      return `Item "${item.title}" has an unreadable archive binding.`;
-    }
-    const source = byId.get(ref.archiveId);
-    if (!source) return `Item "${item.title}" is bound to archive "${ref.archiveId}", which is not present.`;
-    if (!source.pieces.some((p) => p.key === ref.pieceKey)) {
-      return `Item "${item.title}" is bound to piece "${ref.pieceKey}", which archive "${ref.archiveId}" does not describe.`;
-    }
-    if (item.instrumentId !== source.instrumentId) {
-      return `Item "${item.title}" is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
-    }
-    const k = `${ref.archiveId}${NUL}${ref.pieceKey}`;
-    if (itemBindings.has(k)) return `Two items are bound to piece "${ref.pieceKey}".`;
-    itemBindings.add(k);
-  }
-
-  const lessonBindings = new Set<string>();
-  for (const lesson of db.lessons) {
-    const ref = lesson.source;
-    if (!ref) continue;
-    if (typeof ref.archiveId !== 'string' || typeof ref.sessionN !== 'number') {
-      return 'A lesson has an unreadable archive binding.';
-    }
-    const source = byId.get(ref.archiveId);
-    if (!source) return `A lesson is bound to archive "${ref.archiveId}", which is not present.`;
-    if (!source.sessions.some((s) => s.n === ref.sessionN)) {
-      return `A lesson is bound to session ${ref.sessionN}, which archive "${ref.archiveId}" does not describe.`;
-    }
-    if (lesson.instrumentId !== source.instrumentId) {
-      return `A lesson is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
-    }
-    const k = `${ref.archiveId}${NUL}${ref.sessionN}`;
-    if (lessonBindings.has(k)) return `Two lessons are bound to session ${ref.sessionN}.`;
-    lessonBindings.add(k);
-  }
-
-  // Manual item references: the same path rules as every other NAS reference.
-  for (const item of db.items) {
-    for (const r of item.references ?? []) {
-      if (typeof r?.path !== 'string' || !r.path.trim()) return `Item "${item.title}" has a reference with no path.`;
-      if (!/^https?:\/\//i.test(r.path) && !isSafeSourcePath(r.path)) {
-        return `Item "${item.title}" has an unsafe reference path.`;
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * The canonical pieces an archive session is associated with, honouring an
- * owner's explicit unlink of ONE piece from ONE class.
- *
- * Derived from the graph, never stored on the lesson: a session's membership
- * is a source fact, and copying it into `lesson.itemIds` would make one fact
- * two that can disagree.
- */
-export function membersForSession(source: ArchiveSource, sessionN: number): SourceMember[] {
-  const s = source.sessions.find((x) => x.n === sessionN);
-  if (!s || suppressed(source, 'session', String(sessionN))) return [];
-  return s.members.filter((m) => !suppressed(source, 'link', `${sessionN}:${m.key}`));
-}
-```
-
 ### src/domain/sourceReconcile.test.ts
 
 ```
@@ -10524,6 +6200,19 @@ import {
   followRenames,
 } from './sourceReconcile';
 import { archiveRootUrl } from './recordings';
+// The published log is the SCANNER's output, so the downstream transitions
+// below are driven by what it actually publishes for a forked log — never by
+// a hand-written approximation of it.
+// @ts-expect-error — no type declarations for the .mjs operator tool.
+import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
+const { buildIndex } = scannerModule as {
+  buildIndex(input: {
+    registryText: string;
+    inventory: never[];
+    renameLog: { present: true; text: string };
+  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
+};
+const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
 import { emptyDB } from './seed';
 import { LEGACY_SEED_PATHS } from './setarClasses';
 import { createItem, createLesson } from './factories';
@@ -11215,6 +6904,10 @@ describe('reconciling the archive with the owner’s own records', () => {
     // maps through the rename log EXACTLY. No title, size or modification-time
     // matching is involved anywhere, and none of the 67 is left to a guess.
     expect(LEGACY_SEED_PATHS).toHaveLength(67);
+    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
+    // and 257 mappings out: no row of the REAL log is dropped for any reason —
+    // not unsafe, not empty, not a loop and not a fork — so the rule below
+    // changes nothing the operator actually publishes today.
     expect(INDEX.renames).toHaveLength(257);
     const repairedPaths = new Map<string, string>();
     for (const p of LEGACY_SEED_PATHS) {
@@ -11641,6 +7334,51 @@ describe('reconciling the archive with the owner’s own records', () => {
     ).lessons.find((l) => l.id === 'L1')!;
     expect(loopLesson.recordings).toEqual(storedOne.recordings);
 
+    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
+    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
+    // log does not determine what this file is called now. The scanner used to
+    // publish the FIRST destination and diagnose the second as "not applied",
+    // so the app was handed a mapping the log cannot support and used it as
+    // exact identity — repairing an authored reference onto it and re-keying
+    // an owner's hide onto it. What it publishes for a fork is nothing, and
+    // this drives the transitions from that real output rather than a guess
+    // at it. (A forked log reaching the app from anywhere else is REFUSED at
+    // every door by the one grammar — asserted in `io.test.ts` against the
+    // persisted door, and by `checkSourceGraph` for the decoder.)
+    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
+    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
+    const scanned = buildIndex({
+      registryText: EMPTY_REGISTRY,
+      inventory: [],
+      renameLog: {
+        present: true,
+        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
+      },
+    });
+    expect(scanned.renames).toEqual([]);
+    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
+    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
+    // The READING: the file keeps the only name this log establishes — its own.
+    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
+    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
+    // either destination.
+    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
+    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
+    const afterFork = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
+    );
+    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+    // The HIDE: exactly where the owner put it, still scoped to one item — so
+    // the file they hid is still hidden and neither destination went dark.
+    const forkedSource = afterFork.archiveSources[0]!;
+    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
+      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
+    ]);
+    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
+    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
+    expect(validateArchiveSources(afterFork)).toBeNull();
+
     // A file that really IS gone still keeps its provenance, flagged.
     const removed: SourceIndex = {
       ...INDEX,
@@ -11692,2830 +7430,6 @@ describe('owner suppressions', () => {
 });
 ```
 
-### src/domain/sourceReconcile.ts
-
-```
-import type { ID, ISODate, Lesson, LessonRecording, PracticeDB, PracticeItem } from './types';
-import { createItem, createLesson } from './factories';
-import { nowISO } from './util';
-import {
-  isSafeSourcePath,
-  sourceItemId,
-  sourceLessonId,
-  type ArchiveSource,
-  type SourceDiagnostic,
-  type SourceIndex,
-  type SourcePiece,
-  type SourceSuppression,
-} from './sourceArchive';
-
-// ---------------------------------------------------------------------------
-// Reconciling a published source index with the owner's own database.
-//
-// PURE and clock-explicit. Two steps, deliberately separate: `planArchiveImport`
-// decides and explains, `applyArchiveImport` writes. The store commits the plan
-// in ONE synchronous mutation, so a partially-applied import cannot exist.
-//
-// THE RULE THIS MODULE EXISTS FOR: the archive owns what the archive knows —
-// registry facts, session facts, roles, memberships, availability. Everything
-// else is the owner's and is seeded ONCE, then never written again. An import
-// may establish repertoire membership, historical lesson provenance and source
-// material. It may never establish recorded practice, a result, a review, or a
-// deadline.
-// ---------------------------------------------------------------------------
-
-/**
- * The archive folder the owner's LEGACY references were written against. New
- * references are stored relative to the archive ROOT (the device base now ends
- * in `/setar-classes/`), so a legacy path carries one extra leading segment
- * that must come off before it can be looked up — and must not be written back.
- */
-export const LEGACY_ARCHIVE_PREFIX = 'setar-classes/';
-
-// --- decisions and questions -----------------------------------------------
-
-export type ReconcileDecision =
-  | { kind: 'link-item'; pieceKey: string; itemId: ID }
-  | { kind: 'create-item'; pieceKey: string }
-  | { kind: 'skip-item'; pieceKey: string }
-  | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
-  | { kind: 'create-lesson'; sessionN: number }
-  | { kind: 'skip-lesson'; sessionN: number }
-  /**
-   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `itemId`, the RECORD
-   * it was shown against, and `from`, the value of theirs it was chosen
-   * against. A decision is about the state the owner actually saw: the preview
-   * and the commit are two moments, and between them a note can be saved, a
-   * sync can land, another device can write.
-   *
-   * Without the PREMISE, choosing the archive's composer over an empty field
-   * and then typing one yourself before pressing Apply replaced your own new
-   * words with the registry's. Without the IDENTITY, the same answer landed on
-   * whichever record happened to hold that piece at commit time: sync a
-   * database where the piece is bound to item B instead, also with an empty
-   * composer, and a choice made about A was written to B.
-   */
-  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: string };
-
-export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
-
-export interface ReconcileCandidate {
-  id: ID;
-  title: string;
-  why: string;
-}
-
-export interface ReconcileQuestion {
-  kind: 'item' | 'lesson';
-  /** Exactly one of these is set. */
-  pieceKey?: string;
-  sessionN?: number;
-  label: string;
-  candidates: ReconcileCandidate[];
-}
-
-/** A registry improvement the owner may apply to an already-seeded item. */
-export interface MetadataSuggestion {
-  pieceKey: string;
-  itemId: ID;
-  field: MetadataField;
-  from: string;
-  to: string;
-}
-
-/**
- * Does this decision still describe THIS suggestion? The one answer, used by
- * the plan's own summary and by `applyArchiveImport`'s write — a question with
- * two answers is how a preview and a commit come to mean different things.
- */
-export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSuggestion): boolean {
-  return (
-    d.kind === 'apply-field' &&
-    d.pieceKey === s.pieceKey &&
-    // IDENTITY and PREMISE together: which record, and what of theirs it was
-    // chosen against. Either one alone lets a rebase redirect the answer.
-    d.itemId === s.itemId &&
-    d.field === s.field &&
-    d.from === s.from
-  );
-}
-
-export interface ImportSummary {
-  addedItems: number;
-  addedLessons: number;
-  updatedLessons: number;
-  questions: number;
-  attention: number;
-  /** Nothing at all would change: the same index, already accepted. */
-  unchanged: boolean;
-}
-
-export interface ImportPlan {
-  archiveId: string;
-  instrumentId: ID;
-  indexHash: string;
-  /** The graph to persist, carrying the owner's existing suppressions. */
-  source: ArchiveSource;
-  newItems: PracticeItem[];
-  newLessons: Lesson[];
-  /** Existing lessons adopted into the archive (id preserved, binding added). */
-  adoptedLessons: Lesson[];
-  /**
-   * Already-bound lessons whose stored reference PATHS the rename log moved —
-   * the row, its title and its notes untouched, only the path text rewritten.
-   */
-  repairedLessons: Lesson[];
-  /** Existing items adopted by an explicit owner decision. */
-  adoptedItems: PracticeItem[];
-  questions: ReconcileQuestion[];
-  suggestions: MetadataSuggestion[];
-  attention: SourceDiagnostic[];
-  /**
-   * Decisions whose PREMISE moved: the owner's value is no longer the one the
-   * choice was made against, or a link target has since been deleted, bound
-   * elsewhere or moved to another instrument. They are not applied and not
-   * quietly turned into some other action — the commit refuses and the owner
-   * looks again at what is actually there now.
-   */
-  staleDecisions: ReconcileDecision[];
-  summary: ImportSummary;
-}
-
-// --- helpers ---------------------------------------------------------------
-
-/** Strip the legacy archive-folder prefix; leave anything else alone. */
-export function toArchiveRelative(path: string): string {
-  return path.startsWith(LEGACY_ARCHIVE_PREFIX) ? path.slice(LEGACY_ARCHIVE_PREFIX.length) : path;
-}
-
-function suppressionKey(s: SourceSuppression): string {
-  return `${s.kind} ${s.ref} ${s.itemId ?? ''}`;
-}
-
-/**
- * WHERE DOES THIS ARCHIVE PATH POINT NOW? One reading, for everything that
- * uses a stored path as an IDENTITY.
- *
- * `repairReferencePath` followed the whole logged chain while adoption took a
- * single hop and a suppression took none at all, so one rename log gave three
- * different answers about the same file. With A -> B -> C logged, B in session
- * 1 and C in session 2, a legacy class was adopted as session 1 on the
- * strength of B and then had that very reference repaired into session 2 —
- * bound to one class, pointing at another's files. A hidden resource,
- * meanwhile, stayed keyed to the old path and simply reappeared under the new
- * one.
- *
- * A CYCLE YIELDS NO IDENTITY AT ALL, and saying so is the whole return type.
- * A log that loops says nothing about where the file is, and picking a
- * stopping point would invent one. This used to hand back
- * `{ path, cycle: true }` — a perfectly usable-looking path beside a flag —
- * and only ONE of the three callers read the flag: `hasSourcePathEvidence`
- * refused it, while the suppression re-key and `retainMissing` walked straight
- * past it. With A->B and B->A logged, an owner's hide of A was re-keyed onto
- * B, so A reappeared and the wrong file went dark. `null` is what makes that
- * unrepresentable: there is no path to drop the verdict and still use.
- */
-export function followRenames(path: string, renames: Map<string, string>): string | null {
-  let current = path;
-  const seen = new Set<string>([current]);
-  while (renames.has(current)) {
-    const next = renames.get(current)!;
-    if (seen.has(next)) return null;
-    seen.add(next);
-    current = next;
-  }
-  return current;
-}
-
-/** The registry facts an item is SEEDED from — identity, never working detail. */
-function persianFromPiece(piece: SourcePiece) {
-  return {
-    // "گوشه" is the form that identifies a gusheh. Every other form is carried
-    // verbatim; none of them is turned into a category the registry never made.
-    ...(piece.form === 'گوشه' ? { gusheh: piece.piece || piece.key } : {}),
-    ...(piece.dastgah ? { dastgahAvaz: piece.dastgah } : {}),
-    ...(piece.form ? { form: piece.form } : {}),
-    ...(piece.composer ? { composer: piece.composer } : {}),
-  };
-}
-
-/**
- * A NEW library item for a canonical piece.
- *
- * `status: 'dormant'` ("Resting") is an explicit ADMINISTRATIVE import policy,
- * not a judgement about the music: ninety-four pieces arriving as live
- * candidates would flood every recommendation and every session plan on the
- * day of the import. A resting item is still searchable, still in My
- * repertoire, and still directly startable — the owner decides what comes back.
- *
- * Nothing about practice is seeded: no last practice, no result, no review
- * date, no SM-2 state. `createItem` already leaves every one of those empty;
- * this function adds no field it does not.
- */
-function itemForPiece(archiveId: string, instrumentId: ID, piece: SourcePiece, now: Date): PracticeItem {
-  const item = createItem(
-    {
-      instrumentId,
-      // The canonical key IS the piece's name in this archive, byte for byte.
-      title: piece.key,
-      itemType: piece.form === 'گوشه' ? 'gusheh' : 'full_piece',
-      status: 'dormant',
-      persian: persianFromPiece(piece),
-    },
-    now,
-  );
-  return { ...item, id: sourceItemId(archiveId, piece.key), source: { archiveId, pieceKey: piece.key } };
-}
-
-/** A historical lesson for one archive session. */
-function lessonForSession(
-  archiveId: string,
-  instrumentId: ID,
-  session: { n: number; date: ISODate },
-  now: Date,
-): Lesson {
-  const lesson = createLesson({ instrumentId, date: session.date, number: session.n }, now);
-  return {
-    ...lesson,
-    id: sourceLessonId(archiveId, session.n),
-    source: { archiveId, sessionN: session.n },
-    // HISTORY, whatever the clock says. See `isUpcomingLesson`.
-    origin: 'archive',
-  };
-}
-
-/**
- * Read a stored reference path as an ARCHIVE-RELATIVE one.
- *
- * A full URL sitting under THIS DEVICE's own verified base names the same file
- * as the relative path beneath it — written differently, nothing more. Adoption
- * evidence and path repair therefore have to read a stored path the SAME way,
- * or one of them adopts a class the other cannot fix: a lesson whose references
- * were saved as full links would carry perfectly good evidence that nothing
- * recognised.
- *
- * Anything it cannot read as archive-relative — a foreign origin, a link with a
- * query or fragment, a URL with no verified base to measure it against, an
- * unsafe path — comes back as the repair outcome that case deserves, so the two
- * callers cannot disagree about those either.
- */
-type RelativeRead = { ok: true; relative: string; wasUrl: boolean } | { ok: false; outcome: ReferenceRepair };
-
-function readArchiveRelative(raw: string, verifiedBase?: string): RelativeRead {
-  if (!raw) return { ok: false, outcome: { status: 'attention', reason: 'This reference has no path.', code: 'no-path' } };
-
-  let relative = raw;
-  let wasUrl = false;
-  if (/^https?:\/\//i.test(raw)) {
-    wasUrl = true;
-    if (!verifiedBase) {
-      return {
-        ok: false,
-        outcome: {
-          status: 'attention',
-          reason: 'A full link cannot be converted without a verified media base.',
-          code: 'no-base',
-        },
-      };
-    }
-    let url: URL;
-    let base: URL;
-    try {
-      url = new URL(raw);
-      base = new URL(verifiedBase);
-    } catch {
-      return { ok: false, outcome: { status: 'attention', reason: 'That link could not be read as a URL.', code: 'bad-url' } };
-    }
-    if (url.search || url.hash) return { ok: false, outcome: { status: 'unchanged' } };
-    const prefix = base.toString().replace(/\/+$/, '') + '/';
-    if (!url.toString().startsWith(prefix)) return { ok: false, outcome: { status: 'unchanged' } };
-    // Decoded per SEGMENT because `resolveRecording` re-encodes on the way out;
-    // a Farsi filename copied percent-encoded would otherwise double-escape.
-    relative = url
-      .toString()
-      .slice(prefix.length)
-      .split('/')
-      .map((seg) => {
-        try {
-          return decodeURIComponent(seg);
-        } catch {
-          return seg;
-        }
-      })
-      .join('/');
-  }
-
-  const stripped = toArchiveRelative(relative);
-  if (!isSafeSourcePath(stripped)) {
-    return { ok: false, outcome: { status: 'attention', reason: 'That path is not a safe archive path.', code: 'unsafe' } };
-  }
-  return { ok: true, relative: stripped, wasUrl };
-}
-
-/**
- * Does this lesson carry EXACT source-path evidence that it is this session?
- *
- * A reference whose stored path — once the legacy archive prefix is off, and
- * once the rename log has been followed — sits inside that session's folder is
- * proof the owner's own record already points at these very files. Date and
- * number agreeing is not: two classes can share a number across years, and the
- * owner's upcoming class 38 and archive session 38 are a real, live example of
- * exactly that collision.
- */
-function hasSourcePathEvidence(
-  lesson: Lesson,
-  folder: string,
-  renames: Map<string, string>,
-  verifiedBase?: string,
-): boolean {
-  return (lesson.recordings ?? []).some((r) => {
-    const read = readArchiveRelative(r.path.trim(), verifiedBase);
-    if (!read.ok) return false;
-    const moved = followRenames(read.relative, renames);
-    if (moved === null) return false; // no reading, therefore no evidence
-    return moved.startsWith(`${folder}/`);
-  });
-}
-
-/**
- * Keep what the source has STOPPED describing, flagged unavailable.
- *
- * A piece removed from the registry, a session folder that is gone, a file that
- * was deleted — the app has an item bound to it, a lesson bound to it and
- * material listed from it. Replacing the graph with the incoming index alone
- * would leave those bindings pointing at nothing, which `validateDB` refuses at
- * every door: the next Refresh, and every one after it, would fail outright.
- *
- * So provenance is RETAINED and labelled instead. The owner sees that the file
- * is no longer in the archive and decides what to do; nothing of theirs is
- * deleted to make the two agree. A row that comes back is simply the incoming
- * row again, with no flag — the source is authoritative about what it HAS.
- */
-function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex, renames: Map<string, string>) {
-  if (!previous) return { pieces: index.pieces, sessions: index.sessions };
-
-  const incomingKeys = new Set(index.pieces.map((p) => p.key));
-  const pieces = [
-    ...index.pieces,
-    ...previous.pieces.filter((p) => !incomingKeys.has(p.key)).map((p) => ({ ...p, unavailable: true as const })),
-  ];
-
-  const incomingSessions = new Map(index.sessions.map((s) => [s.n, s]));
-  // Every path the incoming graph describes, ACROSS sessions: a rename can
-  // move a file into a different session (the log's own A -> B -> C shape), and
-  // asking only "is it still in THIS session" would flag such a file as gone
-  // while the very same bytes sit in the graph under their new name.
-  const anywhere = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-  // A cycle is NOT a move: with no readable destination there is nothing to
-  // say the bytes are elsewhere in the graph, so the row keeps its provenance
-  // and its `unavailable` flag rather than being silently dropped.
-  const movedNotGone = (path: string) => {
-    const to = followRenames(path, renames);
-    return to !== null && anywhere.has(to);
-  };
-  const sessions = index.sessions.map((s) => {
-    const before = previous.sessions.find((x) => x.n === s.n);
-    if (!before) return s;
-    const paths = new Set(s.resources.map((r) => r.path));
-    // A RENAMED FILE MOVED; IT DID NOT GO MISSING. Its old row is dropped
-    // rather than retained-and-flagged, because the log says exactly where the
-    // bytes went and the incoming row describes them. Safe to drop: only
-    // pieces and sessions carry item/lesson bindings, so no binding can dangle
-    // on a resource row, and a manual unclassified lesson's own reference
-    // reaches material through the LESSON, never through this graph.
-    const gone = before.resources
-      .filter((r) => !paths.has(r.path) && !movedNotGone(r.path))
-      .map((r) => ({ ...r, unavailable: true as const }));
-    return gone.length > 0 ? { ...s, resources: [...s.resources, ...gone] } : s;
-  });
-  for (const before of previous.sessions) {
-    if (incomingSessions.has(before.n)) continue;
-    sessions.push({
-      ...before,
-      unavailable: true,
-      // …and a file this vanished session's folder was renamed OUT of is in the
-      // graph already, under its new session. Keeping it here too would list
-      // one file twice, once falsely as missing.
-      resources: before.resources
-        .filter((r) => !movedNotGone(r.path))
-        .map((r) => ({ ...r, unavailable: true as const })),
-    });
-  }
-  sessions.sort((a, b) => a.n - b.n);
-  return { pieces, sessions };
-}
-
-// --- planning --------------------------------------------------------------
-
-export interface PlanInput {
-  db: PracticeDB;
-  index: SourceIndex;
-  instrumentId: ID;
-  decisions?: ReconcileDecision[];
-  /**
-   * This DEVICE's confirmed media base, when it has one. Only a full URL
-   * sitting under it may be rewritten to an archive-relative path; without it
-   * a stored `https://…` link is left exactly as the owner saved it.
-   */
-  verifiedBase?: string;
-  now: Date;
-}
-
-/**
- * Decide what an import would do, without doing any of it.
- *
- * EXACT SOURCE BINDING WINS. A record already bound to a source identity IS
- * that entity, whatever its title or date has since been edited to. Only an
- * UNBOUND record is a candidate for anything, and only exact evidence adopts
- * one: everything weaker becomes a question with the candidates named.
- */
-export function planArchiveImport({ db, index, instrumentId, decisions = [], verifiedBase, now }: PlanInput): ImportPlan {
-  const archiveId = index.archiveId;
-  const existing = db.archiveSources?.find((s) => s.id === archiveId);
-  const suppressions = existing?.suppressions ?? [];
-  const isSuppressed = (kind: SourceSuppression['kind'], ref: string) =>
-    suppressions.some((s) => s.kind === kind && s.ref === ref && s.itemId === undefined);
-
-  // EVERY DECISION IS ACCOUNTED FOR: applied, already realised, or STALE.
-  //
-  // The loops below start with `if (already bound) continue` / `if (already
-  // suppressed) continue`, which meant a decision about a record that had been
-  // bound between the preview and the commit was never looked at at all — no
-  // adoption, no question, and an EMPTY `staleDecisions`, so the commit
-  // reported success for an action it had not performed. Marking what is used
-  // and sweeping the rest closes that for every kind at once, rather than
-  // adding a stale check inside each early return.
-  const consumed = new Set<ReconcileDecision>();
-  const decisionFor = <T extends ReconcileDecision['kind']>(kind: T, match: (d: ReconcileDecision) => boolean) =>
-    decisions.find((d) => d.kind === kind && match(d));
-  const acted = <T,>(d: T): T => {
-    if (d) consumed.add(d as unknown as ReconcileDecision);
-    return d;
-  };
-
-  // A SKIP IS A DECISION, AND A DECISION IS PERSISTED.
-  //
-  // It used to live only in this call's `decisions` argument, so the owner's
-  // "no, not this one" survived exactly as long as the preview screen did: the
-  // next refresh — or simply a reload — asked the identical question again,
-  // with nothing in the database to show it had ever been answered. It becomes
-  // a suppression, the same record every other deliberate removal writes, which
-  // a refresh, a reload and a sync all already respect.
-  const addedSuppressions: SourceSuppression[] = [];
-  const knownSuppressions = new Set(suppressions.map(suppressionKey));
-  const suppress = (kind: SourceSuppression['kind'], ref: string) => {
-    const entry: SourceSuppression = { kind, ref, at: nowISO(now) };
-    if (knownSuppressions.has(suppressionKey(entry))) return;
-    knownSuppressions.add(suppressionKey(entry));
-    addedSuppressions.push(entry);
-  };
-
-  const renames = new Map(index.renames.map((r) => [r.from, r.to]));
-  const staleDecisions: ReconcileDecision[] = [];
-
-  // --- lessons ------------------------------------------------------------
-  const boundLessons = new Map<number, Lesson>();
-  for (const l of db.lessons) {
-    if (l.source?.archiveId === archiveId) boundLessons.set(l.source.sessionN, l);
-  }
-
-  const newLessons: Lesson[] = [];
-  const adoptedLessons: Lesson[] = [];
-  const questions: ReconcileQuestion[] = [];
-
-  for (const session of index.sessions) {
-    if (boundLessons.has(session.n)) continue;
-    if (isSuppressed('session', String(session.n))) continue;
-
-    const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
-    if (skip) {
-      acted(skip);
-      suppress('session', String(session.n));
-      continue;
-    }
-
-    // "Create separately" ends the question: the owner has said this session is
-    // NOT any of the classes already in their database. Without this branch the
-    // decision was silently dropped and the ambiguous candidates re-asked for
-    // ever — the item side had it from the start, and the lesson side did not.
-    const createSeparately = decisionFor('create-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
-    if (createSeparately) {
-      acted(createSeparately);
-      newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
-      continue;
-    }
-
-    const linked = decisionFor('link-lesson', (d) => 'sessionN' in d && d.sessionN === session.n) as
-      | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
-      | undefined;
-    if (linked) {
-      // The SAME conditions the candidate list is built from — a link may only
-      // adopt a record that is still unbound and still this instrument's.
-      // Deleted, bound elsewhere or moved since the preview, the decision is
-      // STALE, never silently turned into "create a new class instead".
-      acted(linked);
-      const target = db.lessons.find((l) => l.id === linked.lessonId);
-      if (target && !target.source && target.instrumentId === instrumentId) {
-        adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
-        continue;
-      }
-      staleDecisions.push(linked);
-    }
-
-    // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
-    // date, same number, and a reference that actually points into this
-    // session's own folder.
-    const candidates = db.lessons.filter(
-      (l) =>
-        !l.source &&
-        l.instrumentId === instrumentId &&
-        l.date === session.date &&
-        l.number === session.n &&
-        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
-    );
-    if (candidates.length === 1) {
-      adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
-      continue;
-    }
-    if (candidates.length > 1) {
-      questions.push({
-        kind: 'lesson',
-        sessionN: session.n,
-        label: `Class ${session.n} · ${session.date}`,
-        candidates: candidates.map((l) => ({
-          id: l.id,
-          title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
-          why: 'Same date and number, and it already links to this folder.',
-        })),
-      });
-      continue;
-    }
-    newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
-  }
-
-  // --- items --------------------------------------------------------------
-  const boundItems = new Map<string, PracticeItem>();
-  for (const i of db.items) {
-    if (i.source?.archiveId === archiveId) boundItems.set(i.source.pieceKey, i);
-  }
-
-  const newItems: PracticeItem[] = [];
-  const adoptedItems: PracticeItem[] = [];
-  const suggestions: MetadataSuggestion[] = [];
-
-  for (const piece of index.pieces) {
-    const bound = boundItems.get(piece.key);
-    if (bound) {
-      // SOURCE FACTS update; the owner's own fields never do. A later registry
-      // improvement is OFFERED, field by field, and applied only on an explicit
-      // decision — including when the owner's value is deliberately EMPTY.
-      for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
-        const proposed = persianFromPiece(piece)[field] ?? '';
-        const current = bound.persian?.[field] ?? '';
-        if (proposed && proposed !== current) {
-          suggestions.push({ pieceKey: piece.key, itemId: bound.id, field, from: current, to: proposed });
-        }
-      }
-      continue;
-    }
-    if (isSuppressed('piece', piece.key)) continue;
-
-    const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
-    if (skipItem) {
-      acted(skipItem);
-      suppress('piece', piece.key);
-      continue;
-    }
-    const linked = decisionFor('link-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key) as
-      | { kind: 'link-item'; pieceKey: string; itemId: ID }
-      | undefined;
-    if (linked) {
-      acted(linked);
-      const target = db.items.find((i) => i.id === linked.itemId);
-      if (target && !target.source && target.instrumentId === instrumentId) {
-        adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
-        continue;
-      }
-      staleDecisions.push(linked); // see the lesson branch above
-    }
-    const createNow = acted(decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key));
-
-    // CANDIDATES are EXACT equality only: the canonical key itself, or one of
-    // the registry's own literal aliases. Nothing is normalised, folded or
-    // transliterated here — that is search, and search is not identity. A
-    // built-in `catalogKey` is never compared at all: "iraq" is a catalogue
-    // slug, عراق is a canonical Farsi key, and equating them would merge two
-    // different things on a coincidence of meaning.
-    const literals = new Set<string>([piece.key, ...piece.aliases]);
-    const candidates = createNow
-      ? []
-      : db.items.filter(
-          (i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()),
-        );
-
-    if (candidates.length > 0) {
-      questions.push({
-        kind: 'item',
-        pieceKey: piece.key,
-        label: piece.key,
-        candidates: candidates.map((i) => ({
-          id: i.id,
-          title: i.title,
-          why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
-        })),
-      });
-      continue;
-    }
-    newItems.push(itemForPiece(archiveId, instrumentId, piece, now));
-  }
-
-  // --- EXACT REFERENCE REPAIR, inside the refresh the owner actually runs ---
-  //
-  // The rename log is published WITH the index, so the one moment the app can
-  // repair a stored path is the moment it accepts a new graph. Adopting a
-  // legacy class and leaving its own references pointing at names the archive
-  // renamed years ago is half a job: the lesson binds, and every file on it
-  // still 404s.
-  //
-  // Scope is the lessons this archive OWNS — the ones adopted by this plan and
-  // the ones already bound. A lesson the archive has no claim on is not
-  // something a refresh may rewrite.
-  //
-  // ONE pass over both, so `adoptedLessons` in the plan is byte-identical to
-  // what `applyArchiveImport` installs: a preview that shows an old path while
-  // the commit writes a new one is the plan/apply divergence this module is
-  // built to make impossible.
-  const known = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-  const repairAttention: SourceDiagnostic[] = [];
-  const repair = (l: Lesson): { lesson: Lesson; changed: boolean } => {
-    const outcome = repairLessonReferences(l, renames, known, verifiedBase);
-    for (const a of outcome.attention) {
-      // 'not-described' is NOT reported: the index describes only the material
-      // scoped to pieces and classes, so a path it never names and never
-      // renamed is outside what it knows — never evidence the file is gone.
-      // See `RepairReason`.
-      if (a.code === 'not-described') continue;
-      repairAttention.push({ path: a.path, reason: a.reason });
-    }
-    return { lesson: outcome.lesson, changed: outcome.repaired > 0 };
-  };
-
-  const repairedAdopted = adoptedLessons.map((l) => repair(l).lesson);
-  const repairedLessons: Lesson[] = [];
-  for (const bound of boundLessons.values()) {
-    const outcome = repair(bound);
-    if (outcome.changed) repairedLessons.push(outcome.lesson);
-  }
-
-  // --- the graph to persist ------------------------------------------------
-  // What the source still describes, PLUS what it has stopped describing,
-  // flagged. New records above were minted from `index.pieces` alone, so a
-  // retained-but-unavailable piece never comes back as a fresh item.
-  const retained = retainMissing(existing, index, renames);
-  const source: ArchiveSource = {
-    id: archiveId,
-    instrumentId,
-    indexHash: index.contentHash,
-    acceptedAt: nowISO(now),
-    pieces: retained.pieces,
-    sessions: retained.sessions,
-    renames: index.renames,
-    diagnostics: index.diagnostics,
-    // A HIDE FOLLOWS ITS FILE, exactly as a stored reference does. A resource
-    // suppression is keyed BY PATH, so a rename left the decision pointing at
-    // a name the archive no longer uses: the file came back into view under
-    // its new path while the old, hidden row sat there flagged unavailable.
-    // Rewriting the ref is not editing the owner's decision — it is the same
-    // decision about the same bytes, said in the archive's current words. The
-    // `itemId` scope is carried untouched, and re-keying cannot duplicate:
-    // `suppressionKey` de-duplicates the result.
-    suppressions: dedupeSuppressions([
-      ...suppressions.map((sup) => {
-        if (sup.kind !== 'resource') return sup;
-        // A HIDE FOLLOWS ITS FILE ONLY WHERE THE LOG SAYS WHERE THE FILE WENT.
-        // A cycle names no destination, so the decision stays exactly where the
-        // owner put it: moving it to an arbitrary stop on the loop would both
-        // un-hide what they hid and hide something they did not.
-        const to = followRenames(sup.ref, renames);
-        return to === null ? sup : { ...sup, ref: to };
-      }),
-      ...addedSuppressions,
-    ]),
-  };
-
-  // A field decision only counts as a change when there is a suggestion for it
-  // to apply — a stale one left over from an earlier preview changes nothing.
-  const appliedFields = decisions.filter((d) => suggestions.some((x) => decisionMatchesSuggestion(d, x)));
-  for (const d of appliedFields) acted(d);
-
-  // THE SWEEP. Anything the loops above did not act on is either an action
-  // that has ALREADY HAPPENED — the owner pressed Apply, it was written, and
-  // the same decision is still in hand on the next preview — or an answer to a
-  // question that no longer stands.
-  //
-  // The already-done branch is LOOP PREVENTION, not politeness:
-  // `ArchiveRefresh` drops a stale decision and re-previews, and a realised
-  // action can never be consumed by a loop that skips its record, so without
-  // it the same decision would go stale for ever.
-  const realised = (d: ReconcileDecision): boolean => {
-    switch (d.kind) {
-      case 'skip-item':
-        return isSuppressed('piece', d.pieceKey);
-      case 'skip-lesson':
-        return isSuppressed('session', String(d.sessionN));
-      case 'link-item':
-        return boundItems.get(d.pieceKey)?.id === d.itemId;
-      case 'create-item':
-        return boundItems.get(d.pieceKey)?.id === sourceItemId(archiveId, d.pieceKey);
-      case 'link-lesson':
-        return boundLessons.get(d.sessionN)?.id === d.lessonId;
-      case 'create-lesson':
-        return boundLessons.get(d.sessionN)?.id === sourceLessonId(archiveId, d.sessionN);
-      case 'apply-field': {
-        // No live suggestion can mean two opposite things. The registry value
-        // is already in the owner's field — done — or the registry no longer
-        // proposes one, which is a premise that moved.
-        const piece = index.pieces.find((x) => x.key === d.pieceKey);
-        const item = boundItems.get(d.pieceKey);
-        if (!piece || !item || item.id !== d.itemId) return false;
-        const proposed = persianFromPiece(piece)[d.field] ?? '';
-        return proposed !== '' && (item.persian?.[d.field] ?? '') === proposed;
-      }
-    }
-  };
-  for (const d of decisions) {
-    if (consumed.has(d) || staleDecisions.includes(d)) continue;
-    if (realised(d)) continue;
-    staleDecisions.push(d);
-  }
-  const changesRecords =
-    newItems.length > 0 ||
-    newLessons.length > 0 ||
-    adoptedLessons.length > 0 ||
-    adoptedItems.length > 0 ||
-    repairedLessons.length > 0 ||
-    addedSuppressions.length > 0 ||
-    appliedFields.length > 0;
-  const sameGraph = existing?.indexHash === index.contentHash;
-  const attention = [...index.diagnostics, ...repairAttention];
-
-  return {
-    archiveId,
-    instrumentId,
-    indexHash: index.contentHash,
-    source,
-    newItems,
-    newLessons,
-    adoptedLessons: repairedAdopted,
-    repairedLessons,
-    adoptedItems,
-    questions,
-    suggestions,
-    attention,
-    staleDecisions,
-    summary: {
-      addedItems: newItems.length,
-      addedLessons: newLessons.length,
-      updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length,
-      questions: questions.length,
-      attention: attention.length,
-      unchanged: sameGraph && !changesRecords && questions.length === 0,
-    },
-  };
-}
-
-// --- applying --------------------------------------------------------------
-
-/**
- * Apply a plan to a database, returning a NEW database — or the SAME OBJECT
- * when the plan changes nothing at all, so an unchanged refresh cannot bump the
- * revision counter or churn a timestamp.
- *
- * Nothing here touches a block, a review, an agenda entry, a practice counter,
- * a result or any scheduling field. It adds records and it replaces the source
- * graph; that is the whole of it.
- */
-export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: ReconcileDecision[] = []): PracticeDB {
-  const existing = db.archiveSources?.find((s) => s.id === plan.archiveId);
-  const graphChanged = !existing || existing.indexHash !== plan.indexHash;
-  // AN OWNER DECISION IS A CHANGE even when the index is not. A skip recorded
-  // against an already-current graph writes a suppression, and comparing the
-  // index hash alone returned the database untouched — which is precisely how
-  // "Skip" survived the preview and nothing else. The digest is verified at the
-  // reader, so an equal hash really does mean an equal graph; the suppression
-  // list is the part it says nothing about.
-  const knownSuppressions = new Set((existing?.suppressions ?? []).map(suppressionKey));
-  const suppressionsChanged =
-    plan.source.suppressions.length !== knownSuppressions.size ||
-    plan.source.suppressions.some((s) => !knownSuppressions.has(suppressionKey(s)));
-  // A field decision counts only when the plan actually OFFERS that field —
-  // the same rule the plan's own summary applies, so "nothing to do" means the
-  // same thing on both sides of the preview/commit boundary. A decision left
-  // over from an earlier preview must not make an unchanged refresh a write.
-  const applied = decisions.filter(
-    (d): d is Extract<ReconcileDecision, { kind: 'apply-field' }> =>
-      plan.suggestions.some((x) => decisionMatchesSuggestion(d, x)),
-  );
-  const nothingToDo =
-    !graphChanged &&
-    !suppressionsChanged &&
-    plan.newItems.length === 0 &&
-    plan.newLessons.length === 0 &&
-    plan.adoptedLessons.length === 0 &&
-    plan.repairedLessons.length === 0 &&
-    plan.adoptedItems.length === 0 &&
-    applied.length === 0;
-  if (nothingToDo) return db;
-
-  const adoptedLessonIds = new Set(plan.adoptedLessons.map((l) => l.id));
-  const repairedById = new Map(plan.repairedLessons.map((l) => [l.id, l]));
-  const fieldsByItem = new Map<ID, MetadataSuggestion[]>();
-  for (const s of plan.suggestions) {
-    if (!applied.some((d) => decisionMatchesSuggestion(d, s))) continue;
-    fieldsByItem.set(s.itemId, [...(fieldsByItem.get(s.itemId) ?? []), s]);
-  }
-
-  const items = db.items.map((item) => {
-    const adopted = plan.adoptedItems.find((i) => i.id === item.id);
-    const fields = fieldsByItem.get(item.id);
-    if (!adopted && !fields) return item;
-    const base = adopted ?? item;
-    if (!fields) return base;
-    return {
-      ...base,
-      persian: { ...base.persian, ...Object.fromEntries(fields.map((f) => [f.field, f.to])) },
-      updatedAt: plan.source.acceptedAt,
-    };
-  });
-
-  // A repaired path carries NO `updatedAt`: the archive renamed a file, which
-  // is a source fact about where the bytes are, not the owner revising their
-  // own record. The field application above DOES touch it, because that one is
-  // the owner choosing to change a value of theirs. The asymmetry is the point.
-  const lessons = db.lessons.map((l) => {
-    if (adoptedLessonIds.has(l.id)) return plan.adoptedLessons.find((x) => x.id === l.id)!;
-    return repairedById.get(l.id) ?? l;
-  });
-
-  const sources = (db.archiveSources ?? []).filter((s) => s.id !== plan.archiveId);
-
-  return {
-    ...db,
-    // Adopted records are rewritten IN PLACE above — they keep their own ids,
-    // their practice history and their position. Only genuinely new records are
-    // appended.
-    items: [...items, ...plan.newItems],
-    lessons: [...lessons, ...plan.newLessons],
-    archiveSources: [...sources, plan.source],
-  };
-}
-
-// --- suppression -----------------------------------------------------------
-
-/**
- * Record an owner decision that a refresh, a reload and a sync must all
- * respect. Narrowly scoped BY CONSTRUCTION: a resource hidden on one item
- * carries that item's id and leaves every sibling alone.
- *
- * Idempotent, so re-deleting the same thing does not grow the list.
- */
-export function withSuppression(
-  sources: ArchiveSource[],
-  archiveId: string,
-  suppression: SourceSuppression,
-): ArchiveSource[] {
-  return sources.map((s) => {
-    if (s.id !== archiveId) return s;
-    const key = suppressionKey(suppression);
-    if (s.suppressions.some((x) => suppressionKey(x) === key)) return s;
-    return { ...s, suppressions: [...s.suppressions, suppression] };
-  });
-}
-
-/** Keep the FIRST of each distinct decision; re-keying two refs onto one path
- * must not grow the list. */
-function dedupeSuppressions(list: SourceSuppression[]): SourceSuppression[] {
-  const seen = new Set<string>();
-  return list.filter((s) => {
-    const k = suppressionKey(s);
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
-
-/** Lift a suppression, so the next refresh may import that entity again. */
-export function withoutSuppression(
-  sources: ArchiveSource[],
-  archiveId: string,
-  match: (s: SourceSuppression) => boolean,
-): ArchiveSource[] {
-  return sources.map((s) => (s.id === archiveId ? { ...s, suppressions: s.suppressions.filter((x) => !match(x)) } : s));
-}
-
-// --- exact reference repair (no fuzzy matching, ever) ----------------------
-
-/**
- * Why a repair could not proceed. The CODE exists because one of these is not
- * something the app may state as a fact: the published index deliberately
- * describes only the material the archive scopes to pieces and classes — 125
- * of its 258 files (the owner's own practice takes) are absent from it by
- * construction — so a path that is neither renamed nor described is simply
- * OUTSIDE what the index knows, never evidence that the file is gone. Every
- * other code is a real finding about the log itself.
- */
-export type RepairReason = 'no-path' | 'unsafe' | 'no-base' | 'bad-url' | 'cycle' | 'renamed-gone' | 'not-described';
-
-export type ReferenceRepair =
-  | { status: 'repaired'; path: string }
-  | { status: 'unchanged' }
-  | { status: 'attention'; reason: string; code: RepairReason };
-
-/**
- * Repair ONE stored reference path against the archive's own rename log.
- *
- * EXACT mapping only. A path that the log does not name is left exactly as it
- * is with a reason — never matched by title, by size, by modification time or
- * by similarity. A full URL is converted only when it sits under the device's
- * VERIFIED base, and a URL carrying a query or fragment is not a plain file
- * path and stays untouched.
- */
-export function repairReferencePath(
-  path: string,
-  renames: Map<string, string>,
-  known: Set<string>,
-  verifiedBase?: string,
-): ReferenceRepair {
-  const raw = path.trim();
-  const read = readArchiveRelative(raw, verifiedBase);
-  if (!read.ok) return read.outcome;
-  const { relative: stripped, wasUrl } = read;
-
-  // Follow the rename chain — the SAME reading adoption and suppression use.
-  const moved = followRenames(stripped, renames);
-  if (moved === null) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
-  const current = moved;
-  if (current === stripped) {
-    if (known.has(current)) return !wasUrl && stripped === raw ? { status: 'unchanged' } : { status: 'repaired', path: current };
-    return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
-  }
-  if (!known.has(current)) {
-    return { status: 'attention', reason: 'This file was renamed, but the archive no longer has it.', code: 'renamed-gone' };
-  }
-  return { status: 'repaired', path: current };
-}
-
-/** Repair every reference on a lesson, preserving each row and its metadata. */
-export function repairLessonReferences(
-  lesson: Lesson,
-  renames: Map<string, string>,
-  known: Set<string>,
-  verifiedBase?: string,
-): { lesson: Lesson; repaired: number; attention: { title: string; path: string; reason: string; code: RepairReason }[] } {
-  let repaired = 0;
-  const attention: { title: string; path: string; reason: string; code: RepairReason }[] = [];
-  const recordings: LessonRecording[] = (lesson.recordings ?? []).map((r) => {
-    const outcome = repairReferencePath(r.path, renames, known, verifiedBase);
-    if (outcome.status === 'repaired') {
-      repaired += 1;
-      // The ROW survives with its own title, notes, date and size: only the
-      // path text changes. Two rows that now point at one physical file stay
-      // two rows — deleting one would delete something the owner wrote.
-      return { ...r, path: outcome.path };
-    }
-    if (outcome.status === 'attention') {
-      attention.push({ title: r.title, path: r.path, reason: outcome.reason, code: outcome.code });
-    }
-    return r;
-  });
-  return { lesson: { ...lesson, recordings }, repaired, attention };
-}
-```
-
-### src/pages/Lessons.tsx
-
-```
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import {
-  itemsCommittedForLesson,
-  type PracticeItem,
-  cleanFileTitle,
-  daysUntil,
-  CLASS_ROLE,
-  defaultInstrumentFilter,
-  formatFileSize,
-  ITEM_STATUS_LABELS,
-  LESSON_FILE_KIND_ORDER,
-  lessonFiles,
-  lessonsForInstrument,
-  isUpcomingLesson,
-  nextLessonFor,
-  nextLessonNumber,
-  normalizeBaseUrl,
-  openQuestionsForLessonId,
-  relativizeReference,
-  resolveRecording,
-  todayISODate,
-  type Instrument,
-  type Lesson,
-  type LessonFileKind,
-} from '../domain';
-import { useStore } from '../store/useStore';
-import { getNasBaseUrl } from '../store/backup';
-import { Field } from '../components/ui';
-import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/icons';
-import { relativeDay } from '../components/format';
-import Attachments from '../components/Attachments';
-import ClassQuestions from '../components/ClassQuestions';
-import LessonNotes from '../components/LessonNotes';
-import { LessonMaterial } from '../components/ItemMaterial';
-import { LessonAgendaPanel } from '../components/LessonAgenda';
-import QuickAdd from '../components/QuickAdd';
-
-/** "Class 37 · 2026-07-09" when numbered, else just the date. */
-function lessonLabel(lesson: Lesson): string {
-  return typeof lesson.number === 'number' ? `Class ${lesson.number} · ${lesson.date}` : lesson.date;
-}
-
-/**
- * The class workflow: log each lesson's date, then — after rewatching your
- * recording — write up what was said (Farsi welcome). The nearest upcoming
- * lesson becomes the deadline that prioritises items flagged "for class".
- */
-export default function Lessons() {
-  const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
-  const instruments = db.instruments.filter((i) => i.active);
-  const wide = useIsWide();
-
-  // Open on the instrument you are actually practising — 40-plus Setar classes
-  // stacked above Tar and Guitar is not a phone screen. Seeded from the same
-  // persisted session instrument every other screen reads, never written back,
-  // and always widenable to all.
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const [instrumentId, setInstrumentId] = useState(() =>
-    defaultInstrumentFilter(sessionInstrumentId, instruments),
-  );
-  const shown = instruments.filter((i) => !instrumentId || i.id === instrumentId);
-
-  return (
-    <div className="stack-lg">
-      <header className="stack-sm">
-        <h1 className="page-title">Lessons</h1>
-        <p className="page-sub">
-          Your classes, per instrument — dates and the notes you take when rewatching the recording.
-        </p>
-        {instruments.length > 1 && (
-          <select
-            className="select"
-            aria-label="Instrument"
-            style={{ width: 'fit-content' }}
-            value={instrumentId}
-            onChange={(e) => setInstrumentId(e.target.value)}
-          >
-            <option value="">All instruments</option>
-            {instruments.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </header>
-
-      {wide ? (
-        <WideLessons now={now} instruments={shown} />
-      ) : (
-        shown.map((inst) => (
-          <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
-        ))
-      )}
-    </div>
-  );
-}
-
-function useIsWide(): boolean {
-  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1000px)').matches);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1000px)');
-    const on = () => setWide(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  return wide;
-}
-
-/**
- * MacBook layout: lesson list on the left, the open lesson (long Farsi notes,
- * linked items, files) with real room on the right. Phones keep the simple
- * drill-down cards.
- */
-function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[] }) {
-  const db = useStore((s) => s.db);
-  const addLesson = useStore((s) => s.addLesson);
-  const deleteLesson = useStore((s) => s.deleteLesson);
-
-  const allLessons = useMemo(() => {
-    const ids = new Set(instruments.map((i) => i.id));
-    return db.lessons.filter((l) => ids.has(l.instrumentId)).sort((a, b) => b.date.localeCompare(a.date));
-  }, [db.lessons, instruments]);
-  const defaultSelection = useMemo(() => {
-    const upcoming = [...allLessons].reverse().find((l) => isUpcomingLesson(l, todayISODate(now)));
-    return upcoming?.id ?? allLessons[0]?.id ?? null;
-  }, [allLessons, now]);
-  const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
-  // `selectedId` is state so a click sticks across re-renders, but narrowing
-  // (or a delete) can leave it pointing at a lesson `allLessons` no longer
-  // has — falling back to the same smart default keeps the detail pane and
-  // the sidebar highlight in sync instead of silently blanking.
-  const effectiveSelectedId = allLessons.some((l) => l.id === selectedId) ? selectedId : defaultSelection;
-  const selected = allLessons.find((l) => l.id === effectiveSelectedId) ?? null;
-
-  const [addingFor, setAddingFor] = useState<string | null>(null);
-  const [date, setDate] = useState(todayISODate(now));
-  const [num, setNum] = useState('');
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
-      <div className="stack">
-        {instruments.map((inst) => {
-          const lessons = lessonsForInstrument(db.lessons, inst.id);
-          const next = nextLessonFor(db.lessons, inst.id, now);
-          const flagged = itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
-            (i: PracticeItem) => i.instrumentId === inst.id,
-          );
-          return (
-            <section key={inst.id} className="stack-sm">
-              {/* The instrument's own name leads this group (dir="auto"
-                  resolves from the first strong character), same shape as
-                  InstrumentLessons' identical row below — the badge gets its
-                  own dir="ltr" isolate so it can't inherit the name's base. */}
-              <div className="row between" dir="auto">
-                <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
-                  {inst.name}
-                </h2>
-                {next && (
-                  <span className="badge tone-progress" dir="ltr">
-                    next {relativeDay(next.date, now)}
-                  </span>
-                )}
-              </div>
-              {next && flagged.length > 0 && (
-                <div className="tiny dim">
-                  {flagged.length} item{flagged.length === 1 ? '' : 's'} to prepare · {daysUntil(next.date, now)} day
-                  {daysUntil(next.date, now) === 1 ? '' : 's'} left
-                </div>
-              )}
-              <div className="card card-flush list">
-                {lessons.map((l) => (
-                  <button
-                    key={l.id}
-                    className="list-row"
-                    style={{
-                      background: l.id === effectiveSelectedId ? 'var(--accent-soft)' : 'none',
-                      border: 'none',
-                      width: '100%',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      color: 'inherit',
-                    }}
-                    onClick={() => setSelectedId(l.id)}
-                  >
-                    <span className="grow">{lessonLabel(l)}</span>
-                    <span className="tiny faint">
-                      {l.notes ? 'notes ✓' : isUpcomingLesson(l, todayISODate(now)) ? 'upcoming' : '—'}
-                    </span>
-                  </button>
-                ))}
-                {lessons.length === 0 && <div className="list-row tiny faint">No classes logged.</div>}
-              </div>
-              {addingFor === inst.id ? (
-                <div className="row" style={{ gap: 8 }}>
-                  <input
-                    className="input"
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    aria-label="Class number (optional)"
-                    placeholder="No."
-                    value={num}
-                    onChange={(e) => setNum(e.target.value)}
-                    style={{ width: 72 }}
-                  />
-                  <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      const id = addLesson({ instrumentId: inst.id, date, number: num.trim() ? Number(num) : undefined });
-                      setAddingFor(null);
-                      setNum('');
-                      setSelectedId(id);
-                    }}
-                  >
-                    Add
-                  </button>
-                  <button className="btn btn-sm" aria-label="Cancel" onClick={() => setAddingFor(null)}>
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ width: 'fit-content' }}
-                  onClick={() => {
-                    setNum(String(nextLessonNumber(db.lessons, inst.id)));
-                    setAddingFor(inst.id);
-                  }}
-                >
-                  <PlusIcon /> Add a class
-                </button>
-              )}
-            </section>
-          );
-        })}
-      </div>
-
-      <div className="card stack-sm" style={{ minHeight: 320 }}>
-        {selected ? (
-          <>
-            <div className="row between">
-              {/* The instrument name is the owner's own editable text — its
-                  own dir="auto" isolate. lessonLabel is always digits +
-                  English by construction ("Class N · date") — its own
-                  dir="ltr" isolate keeps the two from being fused into one
-                  bare, undirected string as they used to be. */}
-              <strong>
-                <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
-                <span dir="ltr"> · {lessonLabel(selected)}</span>
-              </strong>
-              <span className="tiny faint">{relativeDay(selected.date, now)}</span>
-            </div>
-            <LessonDetail lesson={selected} onDelete={() => deleteLesson(selected.id)} />
-          </>
-        ) : (
-          <div className="small dim">Pick a class on the left — or add one.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; name: string; now: Date }) {
-  const db = useStore((s) => s.db);
-  const addLesson = useStore((s) => s.addLesson);
-  const deleteLesson = useStore((s) => s.deleteLesson);
-
-  const lessons = useMemo(() => lessonsForInstrument(db.lessons, instrumentId), [db.lessons, instrumentId]);
-  const next = nextLessonFor(db.lessons, instrumentId, now);
-  const flagged = useMemo(
-    () =>
-      itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
-        (i: PracticeItem) => i.instrumentId === instrumentId,
-      ),
-    [db.items, db.lessonAgenda, db.lessons, now, instrumentId],
-  );
-
-  const [adding, setAdding] = useState(false);
-  const [date, setDate] = useState(todayISODate(now));
-  const [num, setNum] = useState('');
-
-  return (
-    <section className="stack-sm">
-      <div className="row between" dir="auto">
-        <h2 className="title-md">{name}</h2>
-        {/* Fixed English page copy / generated metadata, never user text —
-            its own dir="ltr" isolate keeps it from inheriting the
-            instrument name's RTL base. */}
-        {next ? (
-          <span className="badge tone-progress" dir="ltr">
-            next class {relativeDay(next.date, now)}
-          </span>
-        ) : (
-          <span className="tiny faint" dir="ltr">no class planned</span>
-        )}
-      </div>
-
-      {next && flagged.length > 0 && (
-        <div className="card card-quiet small dim">
-          {flagged.length} item{flagged.length === 1 ? '' : 's'} to complete before this class ·{' '}
-          {daysUntil(next.date, now)} day{daysUntil(next.date, now) === 1 ? '' : 's'} left —{' '}
-          <Link to="/repertoire" className="link">
-            see them
-          </Link>
-        </div>
-      )}
-
-      <div className="stack-sm">
-        {lessons.map((l) => (
-          <LessonCard key={l.id} lesson={l} now={now} onDelete={() => deleteLesson(l.id)} />
-        ))}
-        {lessons.length === 0 && !adding && (
-          <div className="card card-quiet small dim">No lessons logged yet.</div>
-        )}
-      </div>
-
-      {adding ? (
-        <div className="card row" style={{ gap: 8 }}>
-          <Field label="Class no.">
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              placeholder="No."
-              value={num}
-              onChange={(e) => setNum(e.target.value)}
-              style={{ width: 72 }}
-            />
-          </Field>
-          <Field label="Class date">
-            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <button
-            className="btn btn-primary"
-            style={{ alignSelf: 'flex-end' }}
-            onClick={() => {
-              addLesson({ instrumentId, date, number: num.trim() ? Number(num) : undefined });
-              setNum('');
-              setAdding(false);
-            }}
-          >
-            Add
-          </button>
-          <button className="btn" style={{ alignSelf: 'flex-end' }} onClick={() => setAdding(false)}>
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          className="btn btn-sm"
-          style={{ width: 'fit-content' }}
-          onClick={() => {
-            setNum(String(nextLessonNumber(db.lessons, instrumentId)));
-            setAdding(true);
-          }}
-        >
-          <PlusIcon /> Add a class
-        </button>
-      )}
-    </section>
-  );
-}
-
-function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDelete: () => void }) {
-  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
-  // "No notes yet" opens a card the owner is about to write in. An IMPORTED
-  // class has no notes by construction, and thirty-nine of them opening at once
-  // turns the phone list into a wall — history starts COMPACT, and the owner
-  // opens what they want to read.
-  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || !lesson.notes);
-
-  return (
-    <article className="card stack-sm">
-      <button
-        className="row between"
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="row" style={{ gap: 8 }}>
-          <strong>{lessonLabel(lesson)}</strong>
-          <span className="tiny faint">{relativeDay(lesson.date, now)}</span>
-          {upcoming && <span className="badge tone-progress">upcoming</span>}
-        </span>
-        <span className="tiny faint">{open ? 'close' : lesson.notes ? 'notes ✓' : 'add notes'}</span>
-      </button>
-
-      {open && <LessonDetail lesson={lesson} onDelete={onDelete} />}
-    </article>
-  );
-}
-
-/** Notes, linked items, files and delete — the body of an open lesson. */
-function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
-  const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
-
-  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
-  // BY LESSON ID, never by instrument: every future class used to show the
-  // identical list, so a question meant for one class appeared on all of them.
-  const questions = useMemo(
-    // `db.blocks` supplies each question's latest recorded observation, so the
-    // list has to recompute when a block is added.
-    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id, db.blocks),
-    [db.lessonAgenda, db.items, db.blocks, lesson.id],
-  );
-  const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
-
-  return (
-    <>
-      {/* The SAME durable editor as the item's notebook. Blur-only saving
-          made a stale copy authoritative the moment anything stole focus, and
-          could not clear the text at all. */}
-      <LessonNotes lessonId={lesson.id} />
-
-      <LessonItems lesson={lesson} />
-
-      {/* This class's OWN agenda: what is committed to it, what is still to
-          ask at it, and what was already asked — history that stays here
-          rather than being carried forward to the next class by itself. */}
-      <LessonAgendaPanel lessonId={lesson.id} />
-
-      {/* The take-into-the-room list: only this class's still-open questions,
-          selected by its id. A past class keeps its unasked questions on its
-          own page (above) rather than showing an export sheet for a class
-          that has already happened. */}
-      {upcoming && (
-        <ClassQuestions
-          title="Questions for this class"
-          instrumentName={instrumentName}
-          dateLabel={lessonLabel(lesson)}
-          questions={questions}
-        />
-      )}
-
-      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
-          copy of its session's files, so only the graph can answer — and the
-          owner's OWN references and attachments are NOT repeated here: they
-          each have exactly one section on this page, the one that can also
-          edit and remove them. */}
-      <LessonMaterial lessonId={lesson.id} />
-
-      <LessonRecordings lesson={lesson} />
-
-      <Attachments
-        ownerType="lesson"
-        ownerId={lesson.id}
-        emptyHint="Attach small hand-outs for this class — PDFs of pieces, photos of notation, short audio. Full class videos are too big for the app: add them as a Class recording above (a NAS link), not here."
-      />
-
-      <button
-        className="link tiny"
-        style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
-        onClick={() => {
-          if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
-        }}
-      >
-        Delete lesson
-      </button>
-    </>
-  );
-}
-
-/** Guess a reference's kind from its path extension (used when adding). */
-function inferKind(path: string): LessonFileKind {
-  const ext = (path.split('.').pop() ?? '').toLowerCase();
-  if (['mp4', 'mov', 'm4v', 'webm', 'mkv'].includes(ext)) return 'video';
-  if (ext === 'pdf') return 'pdf';
-  if (['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(ext)) return 'audio';
-  if (['doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'heic'].includes(ext)) return 'doc';
-  return 'video';
-}
-
-function KindIcon({ kind }: { kind: LessonFileKind }) {
-  if (kind === 'video') return <PlayIcon width={16} height={16} />;
-  if (kind === 'audio') return <MusicIcon width={16} height={16} />;
-  return <ReportIcon width={16} height={16} />; // pdf / doc
-}
-
-/**
- * Lesson NAS references — the class video plus score PDFs/docs, all links,
- * never the bytes. A file is only fetched when the user taps Open; deleting a
- * reference never touches the NAS file. Video first, then scores/docs.
- */
-function LessonRecordings({ lesson }: { lesson: Lesson }) {
-  const db = useStore((s) => s.db);
-  const addLessonRecording = useStore((s) => s.addLessonRecording);
-  const removeLessonRecording = useStore((s) => s.removeLessonRecording);
-  const navigate = useNavigate();
-  const baseUrl = getNasBaseUrl();
-  const recordings = useMemo(
-    () =>
-      [...(lesson.recordings ?? [])].sort(
-        (a, b) => LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'],
-      ),
-    [lesson.recordings],
-  );
-  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
-  // historical class keeps no copy of its session's files, so `recordings` is
-  // empty and the empty-state card invited the owner to add a class recording
-  // directly beneath the one already playing above it. Read through the same
-  // composition the section above renders, so a recording the owner has HIDDEN
-  // does not count as one that is there.
-  const fromArchive = useMemo(
-    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
-    [db, lesson.id],
-  );
-
-  const browseUrl = normalizeBaseUrl(baseUrl);
-
-  const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState('');
-  const [path, setPath] = useState('');
-  const [notes, setNotes] = useState('');
-
-  function add() {
-    if (!path.trim()) return;
-    // A URL pasted from the NAS listing is stored RELATIVE to the configured
-    // base, so the reference is not pinned to this device's route to the NAS.
-    const stored = relativizeReference(baseUrl, path);
-    addLessonRecording(lesson.id, {
-      title: title.trim() || cleanFileTitle(stored) || 'Class file',
-      path: stored,
-      kind: inferKind(stored),
-      date: lesson.date,
-      notes: notes.trim() || undefined,
-    });
-    setTitle('');
-    setPath('');
-    setNotes('');
-    setAdding(false);
-  }
-
-  function open(rec: (typeof recordings)[number]) {
-    const r = resolveRecording(baseUrl, rec);
-    if (r.status !== 'ok') return; // button is disabled unless resolvable
-    window.open(r.url, '_blank', 'noopener,noreferrer');
-  }
-
-  return (
-    <div className="stack-sm">
-      <div className="row between">
-        <div className="section-label">Class recording &amp; scores</div>
-        <button className="btn btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : <><PlusIcon /> Add link</>}
-        </button>
-      </div>
-
-      {recordings.length === 0 && !fromArchive && !adding && (
-        <div className="card card-quiet small dim">
-          Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
-        </div>
-      )}
-
-      {recordings.map((rec) => {
-        const resolution = resolveRecording(baseUrl, rec);
-        const kind = rec.kind ?? 'video';
-        const size = formatFileSize(rec.sizeBytes);
-        const meta = ['Stored on NAS', kind === 'video' ? null : kind.toUpperCase(), size, rec.durationLabel]
-          .filter(Boolean)
-          .join(' · ');
-        return (
-          <div key={rec.id} className="card row between" style={{ gap: 10 }}>
-            <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
-              <KindIcon kind={kind} />
-            </span>
-            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
-              <div className="truncate">
-                {rec.title}
-              </div>
-              {/* Generated English metadata, never user text — its own
-                  dir="ltr" isolate keeps it from inheriting a Farsi title's
-                  RTL base. */}
-              <div className="tiny faint">
-                <span dir="ltr">{meta}</span>
-              </div>
-              {rec.notes && (
-                <div className="tiny dim" dir="auto">
-                  {rec.notes}
-                </div>
-              )}
-              {/* Fixed English page copy, never user text — its own dir="ltr"
-                  isolate keeps it from inheriting a Farsi title's RTL base.
-                  Inline (span), not dir="ltr" on these blocks: a block
-                  isolate resolves its OWN text-align independently of the
-                  group, splitting it from a right-aligned Farsi title. */}
-              {resolution.status === 'no-base' && (
-                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
-                  <span dir="ltr">
-                    Set your NAS base URL in{' '}
-                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                      Settings
-                    </button>{' '}
-                    to open this.
-                  </span>
-                </div>
-              )}
-              {resolution.status === 'bad-base' && (
-                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
-                  <span dir="ltr">
-                    Your NAS base URL isn’t a valid web address — fix it in{' '}
-                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                      Settings
-                    </button>
-                    .
-                  </span>
-                </div>
-              )}
-            </div>
-            <button className="btn btn-sm btn-primary" disabled={resolution.status !== 'ok'} onClick={() => open(rec)}>
-              Open
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              // Named, because a class holds several of these and "Remove this
-              // link" three times over tells a screen reader nothing about
-              // which file it is about to drop.
-              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
-              title="Remove link (the NAS file is kept)"
-              onClick={() => {
-                if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
-              }}
-            >
-              <XIcon width={14} height={14} />
-            </button>
-          </div>
-        );
-      })}
-
-      {adding && (
-        <div className="card stack-sm">
-          <input
-            className="input"
-            dir="auto"
-            placeholder="Title — e.g. Class recording"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="NAS path or https:// link — e.g. setar-classes/session-37/class.mp4 or …/score.pdf"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-          />
-          <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <div className="row between" style={{ gap: 8 }}>
-            <div className="tiny faint">
-              Stop typing paths: browse your NAS, copy the file’s URL, paste it above.
-            </div>
-            <button
-              className="btn btn-sm"
-              style={{ flex: 'none' }}
-              disabled={!browseUrl}
-              onClick={() => browseUrl && window.open(`${browseUrl}/`, '_blank', 'noopener,noreferrer')}
-            >
-              Browse NAS
-            </button>
-          </div>
-          <div className="tiny faint">
-            Video, PDF or audio — the kind is detected from the file. A relative path resolves against your NAS base
-            URL (Settings); a URL you paste from that base is stored as a relative path so it keeps working on every
-            device. The file opens only when you tap “Open”.
-          </div>
-          <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
-            Add link
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The items worked on / created in this lesson: link, create, flag, unlink. */
-function LessonItems({ lesson }: { lesson: Lesson }) {
-  const db = useStore((s) => s.db);
-  const linkItemToLesson = useStore((s) => s.linkItemToLesson);
-  const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
-  const addLessonPreparation = useStore((s) => s.addLessonPreparation);
-  const removeAgendaEntry = useStore((s) => s.removeAgendaEntry);
-  const [linking, setLinking] = useState(false);
-
-  // "Worked on in this class" (lesson.itemIds) and "prepare this FOR this
-  // class" (a preparation entry) are separate facts, exactly as they always
-  // were — the button below toggles the second without touching the first.
-  const committedHere = new Map(
-    db.lessonAgenda
-      .filter((e) => e.kind === 'preparation' && e.lessonId === lesson.id)
-      .map((e) => [(e as { itemId: string }).itemId, e.id] as const),
-  );
-
-  const linked = (lesson.itemIds ?? [])
-    .map((id) => db.items.find((i) => i.id === id))
-    .filter((i): i is NonNullable<typeof i> => !!i);
-  const linkable = db.items.filter(
-    (i) => i.instrumentId === lesson.instrumentId && !(lesson.itemIds ?? []).includes(i.id),
-  );
-
-  return (
-    <div className="stack-sm">
-      <div className="row between">
-        <div className="section-label">Worked on in this class</div>
-        {linkable.length > 0 && (
-          <button className="btn btn-ghost btn-sm" onClick={() => setLinking((v) => !v)}>
-            Link existing…
-          </button>
-        )}
-      </div>
-
-      {linking && (
-        <select
-          className="select"
-          aria-label="Link an existing item to this lesson"
-          value=""
-          onChange={(e) => {
-            if (e.target.value) {
-              linkItemToLesson(lesson.id, e.target.value);
-              setLinking(false);
-            }
-          }}
-        >
-          <option value="">Choose an item…</option>
-          {linkable.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.title}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {linked.length > 0 && (
-        <div className="card card-flush list">
-          {linked.map((item) => (
-            <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
-              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
-                <div className="truncate">
-                  {item.title}
-                </div>
-                {/* Generated English metadata, never user text — its own
-                    dir="ltr" isolate keeps it from inheriting a Farsi
-                    title's RTL base. */}
-                <div className="tiny faint">
-                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
-                </div>
-              </Link>
-              <button
-                className={`btn btn-sm${committedHere.has(item.id) ? ' btn-primary' : ''}`}
-                aria-pressed={committedHere.has(item.id)}
-                title="Commit to preparing this before this class"
-                onClick={() => {
-                  const existing = committedHere.get(item.id);
-                  if (existing) removeAgendaEntry(existing);
-                  else addLessonPreparation(item.id, lesson.id);
-                }}
-              >
-                {committedHere.has(item.id) ? 'For this class ✓' : 'Prepare for this class'}
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                title="Unlink from this lesson (the item is kept)"
-                aria-label={`Unlink ${item.title} from this lesson — the item is kept`}
-                onClick={() => unlinkItemFromLesson(lesson.id, item.id)}
-              >
-                <XIcon width={14} height={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <QuickAdd lessonId={lesson.id} />
-    </div>
-  );
-}
-```
-
-### src/store/archiveIndex.test.ts
-
-```
-import { describe, expect, it, vi } from 'vitest';
-// @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
-import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
-// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
-// against the real producer rather than a restatement of it in the test.
-import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
-import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
-import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
-import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
-import { decodeSourceIndex } from '../domain/sourceArchive';
-import { validateDB } from '../domain/io';
-import { createItem } from '../domain/factories';
-import type { PracticeDB } from '../domain/types';
-
-// ---------------------------------------------------------------------------
-// The persist storage, CONTROLLABLE per assertion — the same stub io.test.ts
-// uses, plus a settle promise this test can reject on demand. A failed
-// IndexedDB write is the one thing `commitArchiveImport` must never mistake
-// for a success, and it cannot be provoked in a real browser on purpose.
-// ---------------------------------------------------------------------------
-const fakeStorage = vi.hoisted(() => {
-  let value: string | null = null;
-  let failNextWrite = false;
-  return {
-    get: () => value,
-    set: (v: string | null) => {
-      value = v;
-    },
-    failNext: () => {
-      failNextWrite = true;
-    },
-    takeFailure: () => {
-      const f = failNextWrite;
-      failNextWrite = false;
-      return f;
-    },
-  };
-});
-vi.mock('./idb', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./idb')>();
-  let settle: Promise<void> = Promise.resolve();
-  return {
-    ...actual,
-    // Dexie itself has no IndexedDB to talk to in this environment, and
-    // `clearAll` reaches for the blob store. Stubbed so a deliberate erasure
-    // does not raise an unhandled rejection that would mask a real one.
-    clearBlobs: async () => undefined,
-    deleteBlob: async () => undefined,
-    allBlobs: async () => [],
-    heldBlobIds: async () => new Set<string>(),
-    storageSettled: () => settle,
-    idbStorage: {
-      getItem: async () => fakeStorage.get(),
-      setItem: async (_name: string, value: string) => {
-        if (fakeStorage.takeFailure()) {
-          settle = Promise.reject(new Error('the device refused the write'));
-          // Mark it handled here so the rejection reaches only the one caller
-          // that is waiting on it, exactly as the real adapter does.
-          void settle.catch(() => undefined);
-          return;
-        }
-        fakeStorage.set(value);
-        settle = Promise.resolve();
-      },
-      removeItem: async () => fakeStorage.set(null),
-    },
-  };
-});
-// Imported AFTER the mock declaration on purpose: the store's persist
-// middleware binds its storage at module load.
-const { useStore } = await import('./useStore');
-
-// ---------------------------------------------------------------------------
-// A fake git repository, small enough to assert against exactly. It records
-// EVERY write, so "this publisher cannot touch practice data" is a checked
-// property of the calls made, not a claim about intent.
-// ---------------------------------------------------------------------------
-
-interface FakeRepo {
-  refs: Map<string, string>;
-  commits: Map<string, { treeSha: string; parents: string[] }>;
-  trees: Map<string, Record<string, string>>;
-  blobs: Map<string, string>;
-  writes: { kind: string; target: string }[];
-  n: number;
-}
-
-function newRepo(): FakeRepo {
-  const repo: FakeRepo = {
-    refs: new Map(),
-    commits: new Map(),
-    trees: new Map(),
-    blobs: new Map(),
-    writes: [],
-    n: 0,
-  };
-  // The app's own data branch, exactly as the sync engine leaves it. Nothing in
-  // this test may change any of these three.
-  const tree = { 'state.json': 'blob-state', 'manifest.json': 'blob-manifest', 'files/a.pdf': 'blob-file' };
-  repo.trees.set('tree-main', tree);
-  repo.commits.set('commit-main', { treeSha: 'tree-main', parents: [] });
-  repo.refs.set('main', 'commit-main');
-  repo.refs.set('archive/2026-09-01', 'commit-main');
-  return repo;
-}
-
-function transportFor(repo: FakeRepo, opts: { failAfterCommit?: boolean; raceOnce?: () => void } = {}) {
-  const id = (p: string) => `${p}-${(repo.n += 1)}`;
-  return {
-    async getRef(branch: string) {
-      const sha = repo.refs.get(branch);
-      return sha ? { sha } : null;
-    },
-    async getCommit(sha: string) {
-      return { treeSha: repo.commits.get(sha)!.treeSha };
-    },
-    async getFile(sha: string, path: string) {
-      const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
-      const blob = tree[path];
-      return blob ? { text: repo.blobs.get(blob)! } : null;
-    },
-    async createBlob(text: string) {
-      const sha = id('blob');
-      repo.blobs.set(sha, text);
-      repo.writes.push({ kind: 'blob', target: sha });
-      return sha;
-    },
-    async createTree({ baseTreeSha, path, blobSha }: { baseTreeSha: string | null; path: string; blobSha: string }) {
-      const sha = id('tree');
-      repo.trees.set(sha, { ...(baseTreeSha ? repo.trees.get(baseTreeSha) : {}), [path]: blobSha });
-      repo.writes.push({ kind: 'tree', target: path });
-      return sha;
-    },
-    async createCommit({ treeSha, parents }: { treeSha: string; parents: string[] }) {
-      const sha = id('commit');
-      repo.commits.set(sha, { treeSha, parents });
-      repo.writes.push({ kind: 'commit', target: treeSha });
-      return sha;
-    },
-    async updateRef(branch: string, sha: string, expectedSha: string) {
-      opts.raceOnce?.();
-      if (opts.failAfterCommit) throw new Error('network dropped');
-      // NON-FORCE: the ref only advances from the commit that was read.
-      if (repo.refs.get(branch) !== expectedSha) return 'HTTP 422';
-      repo.refs.set(branch, sha);
-      repo.writes.push({ kind: 'ref', target: branch });
-      return 'ok';
-    },
-    async createRef(branch: string, sha: string) {
-      if (opts.failAfterCommit) throw new Error('network dropped');
-      if (repo.refs.has(branch)) return 'HTTP 422';
-      repo.refs.set(branch, sha);
-      repo.writes.push({ kind: 'ref', target: branch });
-      return 'ok';
-    },
-  };
-}
-
-const publishedText = (repo: FakeRepo) => {
-  const sha = repo.refs.get(SOURCE_INDEX_BRANCH);
-  if (!sha) return null;
-  const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
-  return repo.blobs.get(tree[INDEX_PATH]) ?? null;
-};
-
-// A credential-shaped placeholder — never a real token, and never a
-// contiguous 16+ char [A-Za-z0-9_-] run (the space keeps it that way) — used
-// only to prove no credential text reaches anything the publisher's output
-// touches.
-const NEVER_LEAKED_CREDENTIAL = 'publisher credential placeholder';
-const ROOT = '/volume1/media/setar-classes';
-
-describe('publishing and reading the source index', () => {
-  it('source index publication cannot replace practice data or lose a concurrent update', async () => {
-    const repo = newRepo();
-    const first = `${JSON.stringify(indexFixture, null, 1)}\n`;
-
-    // --- first publish: creates the branch, main untouched -----------------
-    const created = await publishIndex({ transport: transportFor(repo), indexText: first });
-    expect(created.status).toBe('created');
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(created.commit);
-    expect(publishedText(repo)).toBe(first);
-    expect(repo.refs.get('main')).toBe('commit-main');
-    expect(repo.refs.get('archive/2026-09-01')).toBe('commit-main');
-    expect(repo.trees.get('tree-main')).toEqual({
-      'state.json': 'blob-state',
-      'manifest.json': 'blob-manifest',
-      'files/a.pdf': 'blob-file',
-    });
-    // Every ref this publisher advanced, and every path it wrote.
-    expect(repo.writes.filter((w) => w.kind === 'ref').map((w) => w.target)).toEqual([SOURCE_INDEX_BRANCH]);
-    expect(repo.writes.filter((w) => w.kind === 'tree').map((w) => w.target)).toEqual([INDEX_PATH]);
-    expect(repo.writes.some((w) => /state\.json|manifest\.json|^files\//.test(w.target))).toBe(false);
-
-    // --- an identical scan makes NO commit ---------------------------------
-    const before = repo.refs.get(SOURCE_INDEX_BRANCH);
-    const writesBefore = repo.writes.length;
-    const again = await publishIndex({ transport: transportFor(repo), indexText: first });
-    expect(again.status).toBe('unchanged');
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(before);
-    expect(repo.writes).toHaveLength(writesBefore);
-
-    // --- a changed scan advances the branch, and only it --------------------
-    const changed = `${JSON.stringify({ ...indexFixture, diagnostics: [{ path: 'x', reason: 'y' }] }, null, 1)}\n`;
-    const second = await publishIndex({ transport: transportFor(repo), indexText: changed });
-    expect(second.status).toBe('published');
-    expect(publishedText(repo)).toBe(changed);
-    expect(repo.commits.get(second.commit)!.parents).toEqual([before]);
-    expect(repo.refs.get('main')).toBe('commit-main');
-
-    // --- interrupted BEFORE the ref advances: the old index still stands ----
-    const head = repo.refs.get(SOURCE_INDEX_BRANCH);
-    const interrupted = `${JSON.stringify({ ...indexFixture, archiveId: 'half-written' }, null, 1)}\n`;
-    await expect(
-      publishIndex({ transport: transportFor(repo, { failAfterCommit: true }), indexText: interrupted }),
-    ).rejects.toThrow(/network dropped/);
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(head);
-    expect(publishedText(repo)).toBe(changed);
-
-    // --- racing a second publisher: nothing is overwritten ------------------
-    // The other publisher lands its own commit between this one's read and its
-    // update. Non-force, so this update is refused; the retry re-reads and,
-    // because the other publisher wrote exactly what this one has, it settles
-    // on "unchanged" rather than clobbering.
-    const rival = `${JSON.stringify({ ...indexFixture, archiveId: 'setar-classes' }, null, 1)}\n`;
-    let raced = false;
-    const race = () => {
-      if (raced) return;
-      raced = true;
-      const blob = 'blob-rival';
-      repo.blobs.set(blob, rival);
-      repo.trees.set('tree-rival', { [INDEX_PATH]: blob });
-      repo.commits.set('commit-rival', { treeSha: 'tree-rival', parents: [repo.refs.get(SOURCE_INDEX_BRANCH)!] });
-      repo.refs.set(SOURCE_INDEX_BRANCH, 'commit-rival');
-    };
-    const afterRace = await publishIndex({ transport: transportFor(repo, { raceOnce: race }), indexText: rival });
-    expect(afterRace.status).toBe('unchanged');
-    expect(publishedText(repo)).toBe(rival);
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe('commit-rival');
-    // A racing publisher with DIFFERENT content gives up rather than force it.
-    let always = true;
-    const alwaysRace = () => {
-      if (!always) return;
-      repo.commits.set(`commit-rival-${(repo.n += 1)}`, { treeSha: 'tree-rival', parents: [] });
-      repo.refs.set(SOURCE_INDEX_BRANCH, `commit-rival-${repo.n}`);
-    };
-    await expect(
-      publishIndex({ transport: transportFor(repo, { raceOnce: alwaysRace }), indexText: changed }),
-    ).rejects.toThrow(/nothing was overwritten/);
-    always = false;
-
-    // --- the target is fixed in CODE, not by trusting the caller ------------
-    for (const branch of ['main', 'master', 'archive/2026-09-01', 'source-index-2']) {
-      await expect(publishIndex({ transport: transportFor(repo), indexText: first, branch })).rejects.toThrow(
-        /only writes/,
-      );
-    }
-    for (const path of ['state.json', 'manifest.json', 'files/a.pdf', 'setar/other.json']) {
-      await expect(publishIndex({ transport: transportFor(repo), indexText: first, path })).rejects.toThrow(
-        /only writes "setar\/index\.json"/,
-      );
-    }
-
-    // --- the READER pins the file to the branch's own commit ----------------
-    const requests: string[] = [];
-    const publishedCommit = repo.refs.get(SOURCE_INDEX_BRANCH)!;
-    const fakeFetch = async (url: string | URL | Request, init?: RequestInit) => {
-      const href = String(url);
-      requests.push(href);
-      // The reader must never send anything but a GET.
-      expect(init?.method ?? 'GET').toBe('GET');
-      if (href.includes('/git/ref/heads/')) {
-        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
-      }
-      const m = /contents\/(.+)\?ref=(.+)$/.exec(href)!;
-      const tree = repo.trees.get(repo.commits.get(m[2])!.treeSha)!;
-      const text = repo.blobs.get(tree[decodeURIComponent(m[1])])!;
-      return new Response(
-        JSON.stringify({ content: Buffer.from(text, 'utf8').toString('base64'), encoding: 'base64', size: text.length }),
-        { status: 200 },
-      );
-    };
-    const got = await fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: fakeFetch as typeof fetch });
-    expect(got.ok).toBe(true);
-    if (!got.ok) throw new Error(got.error);
-    expect(got.value.commitSha).toBe(publishedCommit);
-    expect(got.value.index.archiveId).toBe('setar-classes');
-    // The content request names the COMMIT, not the branch: a publish landing
-    // between the two calls cannot hand back half of one index and half of
-    // another.
-    expect(requests[1]).toContain(`?ref=${publishedCommit}`);
-    expect(requests[1]).not.toContain(SOURCE_INDEX_BRANCH);
-    expect(requests.every((r) => r.startsWith('https://api.github.com/'))).toBe(true);
-
-    // --- authentication and network failures change nothing -----------------
-    const refuse = async () => new Response('no', { status: 401 });
-    const denied = await fetchPublishedIndex({ repo: 'owner/data', token: 'bad', fetchImpl: refuse as typeof fetch });
-    expect(denied.ok).toBe(false);
-    if (denied.ok) throw new Error('expected refusal');
-    expect(denied.error).toMatch(/refused/i);
-    const offline = async () => {
-      throw new Error('offline');
-    };
-    const down = await fetchPublishedIndex({ repo: 'owner/data', token: 't', fetchImpl: offline as typeof fetch });
-    expect(down.ok).toBe(false);
-    if (down.ok) throw new Error('expected refusal');
-    expect(down.error).toMatch(/already imported is unaffected/);
-    // The published index and the app's data branch are exactly as they were.
-    expect(publishedText(repo)).toBe(rival);
-    expect(repo.refs.get('main')).toBe('commit-main');
-
-    // --- no credential and no archive root in anything that travels ---------
-    const everything = JSON.stringify([
-      [...repo.blobs.values()],
-      [...repo.trees.values()],
-      [...repo.commits.keys()],
-      requests,
-      denied.error,
-      down.error,
-    ]);
-    expect(everything).not.toContain(NEVER_LEAKED_CREDENTIAL);
-    expect(everything).not.toContain(ROOT);
-    expect(everything).not.toContain('/Volumes/');
-
-    // The file-import fallback goes through the SAME decoder.
-    expect((await readIndexFile(rival)).ok).toBe(true);
-    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
-    expect(badFile.ok).toBe(false);
-    if (badFile.ok) throw new Error('expected refusal');
-    expect(badFile.error).toMatch(/newer scanner/);
-
-    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
-    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
-    // against the hash already accepted to conclude that nothing has changed.
-    // So content altered under a RETAINED old hash would be reported "Already
-    // current" and its changed facts silently ignored. Both doors recompute
-    // the scanner's own digest and fail closed.
-    const original = JSON.parse(rival) as typeof indexFixture;
-    const altered = {
-      ...original,
-      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
-    };
-    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
-    expect(altered.contentHash).toBe(original.contentHash);
-    const alteredText = JSON.stringify(altered);
-    const tampered = await readIndexFile(alteredText);
-    expect(tampered.ok).toBe(false);
-    if (tampered.ok) throw new Error('expected refusal');
-    expect(tampered.error).toMatch(/does not match its own content hash/);
-
-    // The GitHub door refuses the identical bytes, through the same boundary.
-    const tamperedFetch = async (url: string | URL | Request) => {
-      const href = String(url);
-      if (href.includes('/git/ref/heads/')) {
-        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
-      }
-      return new Response(
-        JSON.stringify({
-          content: Buffer.from(alteredText, 'utf8').toString('base64'),
-          encoding: 'base64',
-          size: alteredText.length,
-        }),
-        { status: 200 },
-      );
-    };
-    const fetchedTampered = await fetchPublishedIndex({
-      repo: 'owner/data',
-      token: 'device-token',
-      fetchImpl: tamperedFetch as typeof fetch,
-    });
-    expect(fetchedTampered.ok).toBe(false);
-    if (fetchedTampered.ok) throw new Error('expected refusal');
-    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
-
-    // Re-scanned content — a NEW digest for the new facts — is accepted, so
-    // this is an integrity gate and not a freeze on the archive ever changing.
-    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
-    expect(rescanned.ok).toBe(true);
-    if (!rescanned.ok) throw new Error(rescanned.error);
-    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
-    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
-
-    // A STRUCTURALLY broken file still reports the structural error rather
-    // than a hash mismatch: the owner can act on the first, never the second.
-    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
-    expect(brokenStructure.ok).toBe(false);
-    if (brokenStructure.ok) throw new Error('expected refusal');
-    expect(brokenStructure.error).toMatch(/no sessions/);
-
-    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
-    // A digest proves the file is the one the scanner wrote; it says nothing
-    // about the file being well formed. The decoder normalises BEFORE the
-    // graph's grammar runs, so `resources: null` decoded to a session with no
-    // resources — a perfectly valid empty list by the time the grammar saw it
-    // — and six files became zero with a VALID digest on the front. Every
-    // absent-tolerant read in the decoder had the same shape.
-    const withDigest = (body: Record<string, unknown>) =>
-      JSON.stringify({ ...body, contentHash: indexDigest(body) });
-    const sessionZero = original.sessions[0]!;
-    const erasures: [string, Record<string, unknown>][] = [
-      ['must be a list', { ...sessionZero, resources: null }],
-      ['must be a list', { ...sessionZero, members: null }],
-      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
-      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
-    ];
-    for (const [message, session0] of erasures) {
-      const bad = await readIndexFile(
-        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
-      );
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain(message);
-    }
-    const withResource = (over: Record<string, unknown>) => ({
-      ...original,
-      sessions: [
-        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
-        ...original.sessions.slice(1),
-      ],
-    });
-    for (const [message, over] of [
-      ['must be a number', { part: '2' }],
-      ['must be a number', { size: '10mb' }],
-      ['must be text', { group: 42 }],
-    ] as [string, Record<string, unknown>][]) {
-      const bad = await readIndexFile(withDigest(withResource(over)));
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain(message);
-    }
-    for (const [message, over] of [
-      ['must be a list', { sessions: null }],
-      ['must be true or false', { provisional: 'yes' }],
-    ] as [string, Record<string, unknown>][]) {
-      const bad = await readIndexFile(
-        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
-      );
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain(message);
-    }
-    for (const over of [{ renames: null }, { diagnostics: null }]) {
-      const bad = await readIndexFile(withDigest({ ...original, ...over }));
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain('must be a list');
-    }
-    // ABSENT still reads as absent: the tolerance that was correct stays.
-    const withoutOptional = { ...(original as Record<string, unknown>) };
-    delete withoutOptional.renames;
-    delete withoutOptional.diagnostics;
-    const lean = await readIndexFile(withDigest(withoutOptional));
-    expect(lean.ok).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-11 — the commit boundary, against the REAL store.
-// ---------------------------------------------------------------------------
-
-const INDEX = decodeSourceIndex(indexFixture);
-const SETAR = 'inst-setar';
-const NOW = new Date('2026-09-17T09:00:00.000Z');
-
-function loadOwnerData(): PracticeDB {
-  const db = validateDB(JSON.parse(V13_SETAR_TEXT));
-  useStore.setState({ db, active: null, activeRoutine: null, activePlan: null, sessionInstrumentId: SETAR });
-  return db;
-}
-
-const commit = (decidedFromRev: number) =>
-  useStore.getState().commitArchiveImport({ index: INDEX, instrumentId: SETAR, decidedFromRev, now: NOW });
-
-describe('committing an archive import', () => {
-  it('archive commits survive interruption and never apply a stale preview', async () => {
-    loadOwnerData();
-
-    // --- ONE mutation, validated first, acknowledged by storage -------------
-    const { plan, rev } = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(plan.newItems).toHaveLength(94);
-    const applied = await commit(rev);
-    expect(applied).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
-    // The storage adapter holds the WHOLE new state, not a partial one.
-    const persisted = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-    expect(persisted.state.db.items.filter((i) => i.source)).toHaveLength(94);
-    expect(persisted.state.db.archiveSources).toHaveLength(1);
-
-    // --- an unchanged refresh writes NOTHING, and churns no revision --------
-    const quietRev = useStore.getState().rev;
-    const again = await commit(quietRev);
-    expect(again).toMatchObject({ ok: true, status: 'unchanged' });
-    expect(useStore.getState().rev).toBe(quietRev);
-
-    // --- a REVISION CHANGE during the fetch rebases without losing edits ----
-    loadOwnerData();
-    const stale = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    // The owner edits a notebook while the index is being read.
-    useStore.getState().updateItem('own-dashti', { notes: 'edited while the index was being read' });
-    expect(useStore.getState().rev).not.toBe(stale.rev);
-    const rebased = await commit(stale.rev);
-    expect(rebased).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-      'edited while the index was being read',
-    );
-    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
-
-    // --- a rebase that raises a NEW question refuses, and changes nothing ---
-    loadOwnerData();
-    const before = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(before.plan.questions).toEqual([]);
-    // An item appears with a canonical title while the index is being read —
-    // now there IS something to decide, and it is not this code's decision.
-    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
-    const itemsBefore = useStore.getState().db.items.length;
-    const refused = await commit(before.rev);
-    expect(refused).toMatchObject({ ok: false, status: 'stale' });
-    expect(useStore.getState().db.items).toHaveLength(itemsBefore);
-    expect(useStore.getState().db.archiveSources).toEqual([]);
-    // Answering it explicitly lets the same index through.
-    const answered = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(answered).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
-
-    // --- A RUNNING SESSION IS UNTOUCHED, and one that FINISHES is kept ------
-    loadOwnerData();
-    useStore.getState().startItemSession('own-dashti');
-    const activeBefore = useStore.getState().active;
-    expect(activeBefore).not.toBeNull();
-    const duringPractice = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const withClock = await commit(duringPractice.rev);
-    expect(withClock).toMatchObject({ ok: true, status: 'applied' });
-    // Not replaced, not nulled, not restarted: the same object, still running.
-    expect(useStore.getState().active).toBe(activeBefore);
-    expect(useStore.getState().activeRoutine).toBeNull();
-    expect(useStore.getState().activePlan).toBeNull();
-    expect(useStore.getState().sessionInstrumentId).toBe(SETAR);
-
-    loadOwnerData();
-    const beforeBlock = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    useStore.getState().startItemSession('own-dashti');
-    useStore.getState().closeSession({ durationMinutes: 12, result: 'same', answer: 'unanswered', now: NOW });
-    const blocksAfterClose = useStore.getState().db.blocks.length;
-    expect(blocksAfterClose).toBe(2);
-    const afterBlock = await commit(beforeBlock.rev);
-    expect(afterBlock).toMatchObject({ ok: true, status: 'applied' });
-    // The minute played while the index was being read is still there.
-    expect(useStore.getState().db.blocks).toHaveLength(2);
-
-    // --- A FAILED WRITE IS REPORTED, and the retry really writes -----------
-    loadOwnerData();
-    const toFail = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const persistedBefore = fakeStorage.get();
-    fakeStorage.failNext();
-    const unsaved = await commit(toFail.rev);
-    expect(unsaved).toMatchObject({ ok: false, status: 'unsaved' });
-    expect(unsaved.message).toMatch(/could not save/i);
-    // The store holds the graph; the DISK does not. A reload before the
-    // acknowledgement therefore yields the PREVIOUS complete state.
-    expect(useStore.getState().db.archiveSources).toHaveLength(1);
-    expect(fakeStorage.get()).toBe(persistedBefore);
-
-    // THE RETRY IS THE POINT: the in-memory index hash already matches, so a
-    // "nothing changed" shortcut would answer "Already current" over data that
-    // was never saved.
-    const retry = await commit(useStore.getState().rev);
-    expect(retry).toMatchObject({ ok: true, status: 'applied' });
-    const afterRetry = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-    // A COMPLETE state, not a delta: the graph, the owner's items, the blocks.
-    expect(afterRetry.state.db.archiveSources).toHaveLength(1);
-    expect(afterRetry.state.db.items.filter((i) => i.source)).toHaveLength(94);
-    expect(afterRetry.state.db.blocks).toHaveLength(1);
-    expect(afterRetry.state.db.lessonAgenda).toHaveLength(1);
-
-    // --- reload AFTER the acknowledgement yields the NEW complete state -----
-    // The bytes on disk at the moment of the acknowledgement, replayed through
-    // the app's own hydration. (Every `setState` re-persists, so the captured
-    // text is put back first — otherwise this would only prove that the store
-    // can read what it has just written.)
-    const onDisk = fakeStorage.get()!;
-    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-    fakeStorage.set(onDisk);
-    await useStore.persist.rehydrate();
-    expect(useStore.getState().db.archiveSources).toHaveLength(1);
-    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
-    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-      'Teacher: keep the mezrab light on the return.',
-    );
-
-    // --- a graph this device would REFUSE to import is never written -------
-    loadOwnerData();
-    const broken = { ...INDEX, sessions: INDEX.sessions.map((s) => ({ ...s, n: 1 })) };
-    const refusedGraph = await useStore.getState().commitArchiveImport({
-      index: broken,
-      instrumentId: SETAR,
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(refusedGraph.ok).toBe(false);
-    expect(refusedGraph.status).toBe('refused');
-    expect(useStore.getState().db.archiveSources).toEqual([]);
-
-    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
-    // The whole lifecycle, not the helper: a rendered choice becomes a
-    // decision, the commit persists it, a real rehydration reads it back, and
-    // the NEXT refresh — carrying no decisions at all — honours it.
-    loadOwnerData();
-    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
-    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
-    const skipped = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
-      decidedFromRev: asked.rev,
-      now: NOW,
-    });
-    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
-
-    // Reload: the bytes actually on disk, back through the app's hydration.
-    const skipDisk = fakeStorage.get()!;
-    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-    fakeStorage.set(skipDisk);
-    await useStore.persist.rehydrate();
-    const reloadedSource = useStore.getState().db.archiveSources[0]!;
-    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
-    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    // The owner's own record is untouched and still theirs.
-    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
-
-    // The NEXT refresh asks nothing and writes nothing.
-    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(afterReload.plan.questions).toEqual([]);
-    const quiet = await commit(afterReload.rev);
-    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
-    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-
-    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
-    // The index has not moved; the owner has only just answered. Judging
-    // "Already current" by the index hash alone reported exactly that and
-    // dropped the answer before it could ever be written.
-    const boundWithComposer = useStore
-      .getState()
-      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
-    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
-    const composer = boundWithComposer.persian!.composer!;
-    const pieceKey = boundWithComposer.source!.pieceKey;
-    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
-    // An OFFER is not a change: unanswered, this refresh genuinely writes
-    // nothing, and says so. The owner's DECISION is what makes it a write.
-    expect(offered.plan.summary.unchanged).toBe(true);
-    const answered2 = useStore.getState().previewArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
-      now: NOW,
-    });
-    expect(answered2.plan.summary.unchanged).toBe(false);
-    // Left unanswered, the same refresh really is a no-op.
-    const declined = await commit(useStore.getState().rev);
-    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
-    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
-    // Answered, it is applied — and acknowledged by storage.
-    const appliedField = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
-    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
-    // Nothing else moved with it.
-    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
-      boundWithComposer.title,
-    );
-    expect(useStore.getState().db.blocks).toHaveLength(1);
-
-    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
-    // The counterexample, through the REAL store: preview an empty composer,
-    // choose the archive's value, then write your own before pressing Apply.
-    // No new QUESTION appears, so the rebase guard alone let this through and
-    // the registry value replaced the words just typed.
-    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
-    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
-    const secondKey = second.source!.pieceKey;
-    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const choice = [
-      // Bound to the RECORD as well as the piece and the premise: a rebase that
-      // finds the piece on a different item must not hand it that answer.
-      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
-    ];
-    useStore.getState().updateItem(second.id, {
-      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
-    });
-    const refusedStale = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: choice,
-      decidedFromRev: seen.rev,
-      now: NOW,
-    });
-    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
-    expect(refusedStale.staleDecisions).toEqual(choice);
-    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
-      'Owner wrote this during refresh',
-    );
-    // Re-answered against what is actually there now, it applies.
-    const reAnswered = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
-      second.persian!.composer,
-    );
-
-    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
-    // The other half of the same family, and the one an already-bound early
-    // `continue` hid completely: the piece is held by a DIFFERENT record by
-    // the time Apply runs. A field decision keyed by piece alone was written
-    // to that other record (its composer was empty too, so nothing about the
-    // VALUE would have caught it), and a Link decision was skipped in silence
-    // — `staleDecisions` empty, the commit reporting success for an action it
-    // never performed.
-    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
-    const movedKey = movedPiece.source!.pieceKey;
-    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
-    useStore.setState((st) => ({
-      db: {
-        ...st.db,
-        items: [
-          // The approved record loses the binding; another record takes it.
-          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
-          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
-        ],
-      },
-    }));
-    for (const decisions of [
-      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
-      [
-        {
-          kind: 'apply-field' as const,
-          pieceKey: movedKey,
-          itemId: movedPiece.id,
-          field: 'composer' as const,
-          from: movedPiece.persian?.composer ?? '',
-        },
-      ],
-    ]) {
-      const refused = await useStore.getState().commitArchiveImport({
-        index: INDEX,
-        instrumentId: SETAR,
-        decisions,
-        decidedFromRev: useStore.getState().rev,
-        now: NOW,
-      });
-      expect(refused).toMatchObject({ ok: false, status: 'stale' });
-      expect(refused.staleDecisions).toEqual(decisions);
-    }
-    // Neither record was touched by either refusal.
-    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
-    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
-
-    // --- refresh NEVER runs a whole-database import or reset ---------------
-    // `importDB`, `resetDemo` and `clearAll` each null the active session and
-    // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
-    // intact across a commit. The source, too, says so:
-    const storeSource = await (await import('node:fs/promises')).readFile('src/store/useStore.ts', 'utf8');
-    const from = storeSource.indexOf('commitArchiveImport: async');
-    expect(from).toBeGreaterThan(0);
-    const body = storeSource.slice(from, storeSource.indexOf('hideArchiveResource: (', from));
-    expect(body.length).toBeGreaterThan(200);
-    // Comments stripped first — this action's own docstring NAMES the things
-    // it must not call, and a scan that matched prose would be checking the
-    // comment rather than the code.
-    const code = body.replace(/\/\/[^\n]*/g, '');
-    expect(code).not.toMatch(/importDB|installDatabase|resetDemo|clearAll|replaceAllBlobs|addAttachment/);
-    // ONE db mutation in the whole action.
-    expect(code.match(/\bset\(/g) ?? []).toHaveLength(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-9 — an import may establish membership and provenance. Never practice.
-// ---------------------------------------------------------------------------
-
-describe('what an archive import may and may not establish', () => {
-  it('archive import cannot fabricate practice or next-class urgency', async () => {
-    loadOwnerData();
-    useStore.getState().startItemSession('own-dashti');
-    useStore.getState().notNowReview('rev-1');
-    const beforeState = useStore.getState();
-    const before = JSON.parse(JSON.stringify(beforeState.db)) as PracticeDB;
-    const activeBefore = beforeState.active;
-    const notNowBefore = JSON.parse(JSON.stringify(beforeState.notNow)) as unknown;
-
-    const applied = await commit(useStore.getState().rev);
-    expect(applied).toMatchObject({ ok: true, status: 'applied' });
-    const after = useStore.getState();
-
-    // --- EVERY existing record, byte for byte ------------------------------
-    expect(after.db.blocks).toEqual(before.blocks);
-    expect(after.db.reviews).toEqual(before.reviews);
-    expect(after.db.lessonAgenda).toEqual(before.lessonAgenda);
-    expect(after.db.materials).toEqual(before.materials);
-    expect(after.db.pathways).toEqual(before.pathways);
-    expect(after.db.pathwayStages).toEqual(before.pathwayStages);
-    expect(after.db.pathwayRoutines).toEqual(before.pathwayRoutines);
-    expect(after.db.attachments).toEqual(before.attachments);
-    for (const original of before.items) {
-      const now = after.db.items.find((i) => i.id === original.id)!;
-      expect(now).toEqual(original);
-    }
-    // ...and the ephemeral session state the owner is standing in.
-    expect(after.active).toBe(activeBefore);
-    expect(after.activeRoutine).toBeNull();
-    expect(after.activePlan).toBeNull();
-    expect(after.notNow).toEqual(notNowBefore);
-    expect(after.sessionInstrumentId).toBe(SETAR);
-
-    // --- NEW items carry no practice at all ---------------------------------
-    const fresh = after.db.items.filter((i) => i.source);
-    expect(fresh).toHaveLength(94);
-    for (const item of fresh) {
-      expect(item.timesPractised).toBe(0);
-      expect(item.totalMinutes).toBe(0);
-      expect(item.lastPractisedAt).toBeUndefined();
-      expect(item.lastResult).toBeUndefined();
-      expect(item.nextReviewDate).toBeUndefined();
-      expect(item.nextReviewSource).toBeUndefined();
-      expect(item.srReps).toBeUndefined();
-      expect(item.srEase).toBeUndefined();
-      expect(item.srIntervalDays).toBeUndefined();
-      expect(item.srLastProgressDay).toBeUndefined();
-      // RESTING by explicit import policy: 94 pieces must not flood Today.
-      expect(item.status).toBe('dormant');
-      // No pathway placement, no catalogue identity, no material invented.
-      expect(item.stageId).toBeUndefined();
-      expect(item.catalogKey).toBeUndefined();
-      expect(item.materialId).toBeUndefined();
-    }
-    // No review row and no agenda entry was created for any of them.
-    expect(after.db.reviews.filter((r) => fresh.some((i) => i.id === r.practiceItemId))).toEqual([]);
-    expect(after.db.lessonAgenda).toHaveLength(1);
-    expect(after.db.blocks.filter((b) => fresh.some((i) => i.id === b.practiceItemId))).toEqual([]);
-
-    // A resting item is still DIRECTLY startable — resting is administrative,
-    // not a lock.
-    const araq = after.db.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    useStore.getState().cancelSession();
-    useStore.getState().startItemSession(araq.id);
-    expect(useStore.getState().active?.itemId).toBe(araq.id);
-    useStore.getState().cancelSession();
-
-    // --- THE OWNER'S OWN RECORDINGS ARE EVIDENCE, NOT MATERIAL -------------
-    const source = useStore.getState().db.archiveSources[0]!;
-    // 125 personal files in the real corpus, and not one of them is a resource.
-    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
-    // Their membership and role survive — that is the whole of what they leave.
-    const chainPiece = 'پیش-درامد-سه-گاه-فروتن';
-    const { repeatChains } = await import('../domain/sourceArchive');
-    // The longest repeat chain in the real archive. It is read from the
-    // PERSONAL role — a piece is a repeat because the student was asked to play
-    // it again, not because an unnamed demonstration gave it membership of a
-    // session (which would report a repeat nobody was asked for).
-    expect(repeatChains(source, chainPiece)).toEqual([[22, 23, 24, 25, 26, 27]]);
-    // The real counterexample: پیش-درامد-ماهور-هرمزی is a MEMBER of sessions
-    // 16, 17 and 18, but the student only recorded themselves playing it in 17
-    // and 18 — session 16's membership comes from a correction and a
-    // demonstration. Read from membership the chain would be three classes
-    // long; read from what was actually asked for again, it is two.
-    const hormozi = 'پیش-درامد-ماهور-هرمزی';
-    expect(source.sessions.filter((s) => s.members.some((m) => m.key === hormozi)).map((s) => s.n)).toEqual([
-      16, 17, 18,
-    ]);
-    expect(repeatChains(source, hormozi)).toEqual([[17, 18]]);
-    const chainItem = useStore.getState().db.items.find((i) => i.source?.pieceKey === chainPiece)!;
-    // Six classes of provenance, and still zero recorded practice.
-    expect(chainItem.timesPractised).toBe(0);
-    expect(chainItem.totalMinutes).toBe(0);
-    const material = (await import('../domain/itemFiles')).itemFiles(useStore.getState().db, chainItem.id);
-    expect(material.every((f) => f.source !== 'reference' || !f.path.includes('تمرین-من'))).toBe(true);
-
-    // --- HISTORY NEVER BECOMES THE NEXT CLASS ------------------------------
-    const { nextLessonFor } = await import('../domain/selectors');
-    const { preparationDatesByItem, defaultTargetLesson } = await import('../domain/lessonAgenda');
-    const db = useStore.getState().db;
-    expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-    expect(nextLessonFor(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
-    expect(defaultTargetLesson(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
-    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, NOW).values()]).toEqual([]);
-
-    // AND ON A DEVICE WHOSE CLOCK IS BEHIND THE ARCHIVE. Read from 1 June 2026,
-    // the last three imported classes are all in the FUTURE and all NEARER than
-    // the owner's own next class — the exact case a plain `date >= today` turns
-    // into a deadline. They are still history.
-    const EARLIER = new Date('2026-06-01T09:00:00.000Z');
-    const futureHistory = db.lessons.filter((l) => l.origin === 'archive' && l.date > '2026-06-01');
-    expect(futureHistory.map((l) => l.date).sort()).toEqual(['2026-06-09', '2026-07-09', '2026-08-04', '2026-09-01']);
-    expect(nextLessonFor(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
-    expect(defaultTargetLesson(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
-    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, EARLIER).values()]).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// ac-8 — an owner's deletion is a decision a refresh has to respect.
-// ---------------------------------------------------------------------------
-
-describe('deletions, unlinking and hiding', () => {
-  it('archive deletions and unlinking remain respected after refresh and reload', async () => {
-    loadOwnerData();
-    await commit(useStore.getState().rev);
-    const store = () => useStore.getState();
-    const itemFor = (key: string) => store().db.items.find((i) => i.source?.pieceKey === key)!;
-    const lessonFor = (n: number) => store().db.lessons.find((l) => l.source?.sessionN === n)!;
-    const suppressions = () => store().db.archiveSources[0]!.suppressions;
-
-    // --- deleteItem records the decision IN THE SAME mutation --------------
-    const araqId = itemFor('عراق').id;
-    store().deleteItem(araqId);
-    expect(store().db.items.some((i) => i.id === araqId)).toBe(false);
-    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'piece', ref: 'عراق' }));
-
-    // --- deleteLesson likewise ---------------------------------------------
-    const lesson13 = lessonFor(13).id;
-    store().deleteLesson(lesson13);
-    expect(store().db.lessons.some((l) => l.id === lesson13)).toBe(false);
-    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'session', ref: '13' }));
-
-    // --- REFRESHING THE SAME SOURCE MUST NOT BRING THEM BACK ---------------
-    const again = await commit(store().rev);
-    expect(again.ok).toBe(true);
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-
-    // ...nor may a RELOAD, which replays the persisted bytes through hydration.
-    const onDisk = fakeStorage.get()!;
-    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-    fakeStorage.set(onDisk);
-    await useStore.persist.rehydrate();
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-    await commit(store().rev);
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-
-    // --- lifting a suppression lets the next refresh bring it back ----------
-    store().resetArchiveSuppression('setar-classes', 'piece', 'عراق');
-    const restored = await commit(store().rev);
-    expect(restored).toMatchObject({ ok: true, status: 'applied' });
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
-
-    // --- HIDING A SHARED DEMO IS SCOPED TO ONE ITEM ------------------------
-    const { itemFiles } = await import('../domain/itemFiles');
-    const sharedDemo = 'session-13-03-09-2024/نمونه-1.mp4';
-    const oneMember = itemFor('کرشمه-در-عراق');
-    const otherMember = itemFor('حزین-در-عراق');
-    // Session 13 was suppressed above and is back only for the piece; re-run a
-    // refresh so its resources are present for both members.
-    store().resetArchiveSuppression('setar-classes', 'session', '13');
-    await commit(store().rev);
-    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(true);
-    store().hideArchiveResource('setar-classes', sharedDemo, oneMember.id);
-    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(false);
-    // Its seven siblings still have it.
-    expect(itemFiles(store().db, otherMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(
-      true,
-    );
-
-    // --- unlinking an item from an archive class is remembered -------------
-    const lesson28 = lessonFor(28);
-    const zendan = itemFor('به-زندان-شوشتری');
-    store().unlinkItemFromLesson(lesson28.id, zendan.id);
-    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'link', ref: `28:${'به-زندان-شوشتری'}` }));
-    const { membersForSession } = await import('../domain/sourceArchive');
-    expect(membersForSession(store().db.archiveSources[0]!, 28).some((m) => m.key === 'به-زندان-شوشتری')).toBe(false);
-
-    // --- a MANUAL reference is removed without touching the archive --------
-    store().addItemReference(zendan.id, { title: 'my own copy', path: 'session-28-28-10-2025/نت-به-زندان-شوشتری.pdf' });
-    const added = store().db.items.find((i) => i.id === zendan.id)!.references![0]!;
-    const suppressionsBefore = suppressions().length;
-    store().removeItemReference(zendan.id, added.id);
-    expect(store().db.items.find((i) => i.id === zendan.id)!.references).toEqual([]);
-    // Removing an owner's own link says nothing about the archive.
-    expect(suppressions()).toHaveLength(suppressionsBefore);
-
-    // --- a catalogue removal of a bound item is still lossless -------------
-    const catalogueItem = itemFor('چهار-پاره');
-    expect(store().removeCatalogItem(catalogueItem.id)).toBe(false); // no catalogKey
-    expect(store().db.items.some((i) => i.id === catalogueItem.id)).toBe(true);
-
-    // --- MOVING A BOUND ITEM TO ANOTHER INSTRUMENT IS REFUSED --------------
-    useStore.setState((s) => ({
-      db: {
-        ...s.db,
-        instruments: [
-          ...s.db.instruments,
-          { ...s.db.instruments[0]!, id: 'inst-tar', name: 'Tar' },
-        ],
-      },
-    }));
-    const boundId = itemFor('به-زندان-شوشتری').id;
-    const refusal = store().updateItem(boundId, { instrumentId: 'inst-tar' });
-    expect(refusal).toMatch(/Detach it from the archive/);
-    expect(store().db.items.find((i) => i.id === boundId)!.instrumentId).toBe(SETAR);
-    // No invalid graph was emitted: the database still validates.
-    expect(() => validateDB(store().db)).not.toThrow();
-
-    // --- a PARTIAL binding is refused, never healed by duplication ---------
-    expect(() =>
-      validateDB({
-        ...store().db,
-        items: store().db.items.map((i) =>
-          i.id === boundId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'not-a-real-piece' } } : i,
-        ),
-      }),
-    ).toThrow(/does not describe/);
-
-    // --- clearing everything takes the source state with it ----------------
-    store().clearAll();
-    expect(store().db.archiveSources).toEqual([]);
-    expect(store().db.items).toEqual([]);
-    expect(store().active).toBeNull();
-  });
-});
-```
-
 ### tests/practiceBrowser.ts
 
 ```
@@ -14547,6 +7461,69 @@ const installHint = (engine: Engine) =>
   `The Playwright ${engine} browser is not installed. Run \`npx playwright install ${engine}\` ` +
   '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
   'and an engine quietly missed is the same thing as an engine never checked.';
+
+/**
+ * ONE cancelled request, awaiting the ONE spurious error it produces.
+ *
+ * A request the BROWSER cancelled because the test navigated away while it was
+ * in flight is not an application error. WebKit reports such a fetch as
+ * "Fetch API cannot load … due to access control checks", which reads exactly
+ * like a CORS problem and is not one: instrumented, the only difference
+ * between the passing and failing runs of the same journey is a single
+ * `requestfailed` with `errorText: 'cancelled'` for a request that is
+ * otherwise fulfilled with the right CORS headers every other time. A real
+ * person navigating mid-sync cancels the same request, so treating it as a
+ * page error makes a journey fail for driving the app quickly.
+ */
+export interface CancelledRequest {
+  url: string;
+  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+  at: number;
+}
+
+/**
+ * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
+ * cancelled URL joined a permanent set, and every later page error whose
+ * message merely CONTAINED that pathname was discarded — so a genuine failure
+ * at the same path, later in the same journey, was swallowed and the journey's
+ * `pageErrors` assertion passed over it.
+ *
+ * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
+ * one cancellation excuses exactly one error.
+ *  - the message is the DIAGNOSED wording, so an error of any other shape
+ *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
+ *    for a fetch AND for an XHR, so the two words both spellings share are
+ *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
+ *    where this wording comes from, and the next intermittent "CORS" failure
+ *    belongs here before it is diagnosed from scratch. Getting the wording
+ *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
+ *    below is what stops a real failure being excused;
+ *  - it names that request's host AND path — WebKit spells the URL with the
+ *    scheme separated from the host, so the comparison is on the parts both
+ *    spellings carry verbatim;
+ *  - it arrives inside a CEILING on how long an unconsumed cancellation may
+ *    stand. Deliberately generous rather than a timing correlation: the
+ *    spurious error is emitted in the same tick as the cancellation, and a
+ *    tight window would trade an over-broad filter for a flaky one under the
+ *    contention five concurrent dev servers already create.
+ */
+export const CANCELLED_EXCUSE_MS = 30_000;
+
+export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
+  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
+  const i = pending.findIndex((c) => {
+    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
+    const url = new URL(c.url);
+    return message.includes(url.host) && message.includes(url.pathname);
+  });
+  if (i < 0) return false;
+  // CONSUMING the entry is this function's own job, not the caller's: the
+  // permanent-set version was a caller that simply never took anything out,
+  // and a boolean a caller can read without spending the cancellation would
+  // leave exactly that mistake available again.
+  pending.splice(i, 1);
+  return true;
+}
 
 export interface PracticeApp {
   page: Page;
@@ -14618,30 +7595,16 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
-    // A request the BROWSER cancelled because this test navigated away while it
-    // was in flight is not an application error. WebKit reports such a fetch as
-    // "Fetch API cannot load … due to access control checks", which reads
-    // exactly like a CORS problem and is not one: instrumented, the only
-    // difference between the passing and failing runs of the same journey is a
-    // single `requestfailed` with `errorText: 'cancelled'` for a request that
-    // is otherwise fulfilled with the right CORS headers every other time.
-    // A real person navigating mid-sync cancels the same request, so treating
-    // it as a page error makes a journey fail for driving the app quickly.
-    // Narrow by construction: only a URL this run actually saw cancelled is
-    // ever excused, and every other page error is recorded as before.
-    const cancelled = new Set<string>();
+    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
+    // every other page error is recorded exactly as before.
+    const cancelled: CancelledRequest[] = [];
     page.on('requestfailed', (r) => {
-      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
+      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
     });
     // Surface a page-level error instead of letting it become a silently
     // wrong assertion later.
     page.on('pageerror', (e) => {
-      const message = `${e.message}`;
-      // WebKit spells the URL with the scheme separated from the host, so the
-      // comparison is on the path, which both spellings carry verbatim.
-      for (const url of cancelled) {
-        if (message.includes(new URL(url).pathname)) return;
-      }
+      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
       pageErrors.push(e);
     });
     await page.clock.install({ time: options.now });
@@ -15054,376 +8017,573 @@ export async function syncMessage(page: Page): Promise<string> {
 }
 ```
 
-### tests/setarArchive.browser.test.ts
+### tests/setarInbound.browser.test.ts
 
 ```
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import INDEX_TEXT from './fixtures/setar-archive.json?raw';
-import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
 import {
+  CANCELLED_EXCUSE_MS,
   connectSync,
+  exportBackup,
   goTo,
   importBackup,
+  importOutcome,
   installFakeGitHub,
   newFakeRemote,
+  excusedCancellation,
   openPracticeApp,
-  persistedUntil,
-  publishSourceIndex,
+  persistedDb,
+  publishRemote,
   readPersistedState,
-  stampSourceIndex,
   reload,
-  type Engine,
-  type PracticeApp,
+  remoteStateText,
+  syncMessage,
+  writePersistedState,
 } from './practiceBrowser';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import { SCHEMA_VERSION, type PracticeDB } from '../src/domain/types';
+import { validateDB, serializeExport } from '../src/domain/io';
+import { decodeSourceIndex } from '../src/domain/sourceArchive';
+import { applyArchiveImport, planArchiveImport } from '../src/domain/sourceReconcile';
+import { hashState } from '../src/domain/canonical';
 
 // ---------------------------------------------------------------------------
-// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
+// ac-16 — the archive graph through every door an inbound database uses.
 //
-// Refresh → a historical class with its real material → a canonical piece →
-// the material that is genuinely useful for it → Start → open a file, with the
-// practice clock untouched. The corpus is the checked-in index derived from the
-// real archive, the clock is frozen, and every control is reached by its
-// accessible name — no debug hook, no source regex.
-//
-// A missing engine FAILS with an install instruction; it never skips.
+// Settings import (full and state-only), an automatic sync pull, "Take the
+// GitHub copy", the archive restore, BOTH hydration branches and the cold-start
+// recovery control all run the same `validateDB`. A malformed source relation
+// has to be refused at every one of them with the previous database AND the
+// previous attachment bytes exactly as they were; a valid one has to survive
+// all of them with the owner's own bindings, suppressions and fields intact.
 // ---------------------------------------------------------------------------
 
-const NOW = new Date('2026-09-17T09:00:00.000Z');
-const PHONE = { width: 390, height: 844 };
-const DESKTOP = { width: 1280, height: 900 };
+const CLOCK = new Date('2026-09-17T09:00:00');
+const SETAR = 'inst-setar';
 
-interface Db {
-  items: {
-    id: string;
-    title: string;
-    status: string;
-    persian?: { composer?: string };
-    source?: { pieceKey: string };
-  }[];
-  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
-  blocks: unknown[];
-  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
-}
-
-async function db(app: PracticeApp): Promise<Db> {
-  const { state } = await readPersistedState(app);
-  return (state as { db: Db }).db;
-}
-
-/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
-async function setUp(app: PracticeApp, indexText: string) {
-  const remote = newFakeRemote();
-  await installFakeGitHub(app.page, remote);
-  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
-  await connectSync(app);
-  publishSourceIndex(remote, indexText);
-  return remote;
-}
-
-async function refresh(app: PracticeApp) {
-  await goTo(app, '/settings');
-  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
-  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
-}
-
-/**
- * An index with one more class than the corpus — the delta a refresh applies.
- *
- * Re-STAMPED with the digest the scanner itself would have written: the app
- * recomputes that digest and refuses an index whose content and hash disagree,
- * so a journey may not hand-edit a hash to fake a new scan.
- */
-async function withSession40(text: string): Promise<string> {
-  const index = JSON.parse(text) as {
-    contentHash: string;
-    sessions: unknown[];
-    pieces: { key: string; composer: string }[];
+/** The owner's v13 data with a real, accepted graph in it — built by the real planner. */
+function v14Database(): PracticeDB {
+  const base = validateDB(JSON.parse(V13_SETAR_TEXT));
+  const index = decodeSourceIndex(JSON.parse(INDEX_TEXT));
+  const plan = planArchiveImport({ db: base, index, instrumentId: SETAR, now: CLOCK });
+  const db = applyArchiveImport(base, plan);
+  // An owner decision that every door must carry through untouched.
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((s) => ({
+      ...s,
+      suppressions: [{ kind: 'piece' as const, ref: 'عراق', at: '2026-09-17T09:05:00.000Z' }],
+    })),
+    items: db.items.filter((i) => i.source?.pieceKey !== 'عراق'),
   };
-  index.sessions = [
-    ...index.sessions,
-    {
-      n: 40,
-      date: '2026-09-29',
-      folder: 'session-40-29-09-2026',
-      roster: [index.pieces[0]!.key],
-      rosterTrusted: true,
-      hasClassRecording: true,
-      resources: [
-        {
-          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
-          role: 'ضبط-کلاس',
-          kind: 'video',
-          title: 'ضبط کلاس',
-          part: null,
-          pieces: [],
-          group: null,
-        },
-      ],
-      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
-    },
-  ];
-  return stampSourceIndex(index as unknown as Record<string, unknown>);
 }
 
-/** The composer this journey's re-scanned registry proposes for one piece. */
-const NEW_COMPOSER = 'میرزا-عبدالله';
+const V14_DB = v14Database();
+const V14_TEXT = serializeExport(V14_DB, CLOCK);
 
 /**
- * A re-scanned index whose REGISTRY has improved: one piece the owner already
- * has now names a different composer. That is a suggestion, never a write.
+ * The same database with ONE nested value inside the graph made malformed.
+ *
+ * `members[].roles` is what `repeatChains` calls `.includes` on to render an
+ * item's material, so a door that accepts this persists a database whose first
+ * reader throws. It is the sharpest member of the family — the nested fields a
+ * production reader dereferences — and every door below is given the identical
+ * bytes rather than a door-specific approximation of them.
  */
-async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
-  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
-  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
-  const was = target.composer;
-  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
-  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
+function withMalformedRoles<T extends PracticeDB>(db: T): T {
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((src, i) =>
+      i === 0
+        ? {
+            ...src,
+            sessions: src.sessions.map((sess, j) =>
+              j === 0
+                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
+                : sess,
+            ),
+          }
+        : src,
+    ),
+  } as unknown as T;
 }
 
-describe('the Setar archive, rendered', () => {
-  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
-    for (const engine of ['chromium', 'webkit'] as Engine[]) {
-      for (const viewport of [PHONE, DESKTOP]) {
-        const app = await openPracticeApp({ now: NOW, viewport, engine });
-        try {
-          const { page } = app;
-          const remote = await setUp(app, INDEX_TEXT);
+const wrap = (data: unknown, files?: unknown) =>
+  JSON.stringify({
+    app: 'practice-compass',
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: CLOCK.toISOString(),
+    data,
+    ...(files === undefined ? {} : { files }),
+  });
 
-          // --- REFRESH: one action, a readable summary, no crawler output ---
-          await refresh(app);
-          const summary = await page.locator('main').innerText();
-          // Four of the owner's own legacy classes carry EXACT source-path evidence,
-          // so they are adopted rather than duplicated; the other 35 are new.
-          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
-          // It says the index CHANGED or was FETCHED — never that a scan ran.
-          expect(summary).not.toMatch(/last scanned/i);
-          expect(summary).toMatch(/needing attention/);
-          // Import policy is stated BEFORE the import, not discovered after.
-          expect(summary).toMatch(/New pieces arrive resting/);
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+/**
+ * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
+ * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+ * and the rename log moves it here. Repair produces PERSISTED archive state, so
+ * it has to cross these doors like everything else.
+ */
+const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
 
-          const after = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.lessons.length === 40 && d.items.length === 96,
-          );
-          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-          expect(after.items.filter((i) => i.source)).toHaveLength(94);
-          // The owner's own upcoming class 38 and the archive's class 38 both
-          // exist, on their own dates.
-          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
-            '2026-08-04',
-            '2026-09-27',
-          ]);
+interface Shape {
+  items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
+  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
+  blocks: unknown[];
+  archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
+  schemaVersion: number;
+}
 
-          // --- A HISTORICAL CLASS, with its real material -------------------
-          // Lessons is a two-pane list at 1000px and stacked cards below it, so
-          // this journey drives whichever the viewport actually renders.
-          await goTo(app, '/lessons');
-          const wide = viewport.width >= 1000;
-          /**
-           * Open one class and read what it actually renders — the whole page
-           * on the wide two-pane layout, the card itself on the phone, where
-           * rows start compact and must be opened first.
-           */
-          const openClass = async (label: string, number: number): Promise<string> => {
-            if (wide) {
-              await page.getByRole('button', { name: new RegExp(label) }).first().click();
-              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-              return page.locator('main').innerText();
-            }
-            const card = page.getByRole('article').filter({ hasText: label });
-            await card.first().waitFor({ timeout: 20_000 });
-            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
-            // all open at once just because none of them has notes yet.
-            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
-            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
-            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-            return card.innerText();
-          };
-          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
-          // The class recording is here, with its part numbers; a named score
-          // is here; nothing claims a demonstration belongs to the class alone.
-          expect(lessonText).toContain('ضبط کلاس');
-          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
+const shape = async (app: Parameters<typeof persistedDb>[0]) => (await persistedDb(app)) as unknown as Shape;
 
-          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
-          //
-          // Class 25 is an ADOPTED legacy class carrying three of the owner's
-          // OWN references — personal takes the index describes nowhere, by
-          // construction — beside the archive's session material. The composed
-          // list used to include the owner's rows as well, so each of them was
-          // rendered twice: once where it can be edited and removed, and once
-          // again above it.
-          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
-          const adopted = await openClass('Class 25 · 2025-08-05', 25);
-          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
-            expect(occurrences(adopted, authored)).toBe(1);
-          }
-          // …and they are still editable where they live: the section that owns
-          // them can still remove them, by name.
-          const owning = wide
-            ? page.locator('main')
-            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
-          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
-          // A class the archive gave a recording to is NOT invited to add one.
-          // Class 12 is a purely imported class: it keeps no copy of its
-          // session's files, so its own `recordings` array is empty and the
-          // empty-state card offered to add the very video playing above it.
-          const imported = await openClass('Class 12 · 2024-08-06', 12);
-          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
-          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
+describe('the archive graph at every inbound door', () => {
+  it('archive state crosses all real inbound doors without partial installation', async () => {
+    const app = await openPracticeApp({ now: CLOCK });
+    const { page } = app;
+    try {
+      // --- a real v14 database, through the real Settings importer --------
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(app)).toContain('Imported');
+      await reload(app);
+      let db = await shape(app);
+      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+      // The owner's suppression came through, and the piece it names is absent.
+      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+      // …as did their own untouched records.
+      expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
+      expect(db.blocks).toHaveLength(1);
+      // The REPAIRED reference survived the door, with the row the owner wrote.
+      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
 
-          // --- A CANONICAL PIECE, and the material that is useful for it ----
-          await goTo(app, '/repertoire');
-          await page.getByRole('button', { name: 'Practice list' }).click();
-          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
-          // through the existing Farsi matcher.
-          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
-          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
-          await found.waitFor({ timeout: 20_000 });
-          await found.click();
-          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
+      const goodBytes = JSON.stringify(await readPersistedState(app));
 
-          const itemText = await page.locator('main').innerText();
-          // Its OWN notation, with provenance…
-          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
-          // …the demonstration that covers its session…
-          expect(itemText).toContain('teacher’s demonstration');
-          // …and NOT the class recording, and NOT anyone's practice takes.
-          expect(itemText).not.toContain('class recording');
-          expect(itemText).not.toContain('تمرین من');
-          // Imported pieces arrive resting.
-          expect(itemText).toMatch(/Resting/);
+      // --- MALFORMED SOURCE RELATIONS, refused at the import door ---------
+      const bad = V14_DB;
+      const cases: { name: string; text: string; says: RegExp }[] = [
+        {
+          name: 'two sources share an id',
+          text: wrap({ ...bad, archiveSources: [bad.archiveSources[0], bad.archiveSources[0]] }),
+          says: /share the id/,
+        },
+        {
+          name: 'a source bound to no instrument',
+          text: wrap({
+            ...bad,
+            archiveSources: [{ ...bad.archiveSources[0]!, instrumentId: 'nobody' }],
+          }),
+          says: /instrument that does not exist/,
+        },
+        {
+          name: 'a dangling item binding',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-dashti' ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'nope' } } : i,
+            ),
+          }),
+          says: /does not describe/,
+        },
+        {
+          name: 'two items bound to one piece',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-iraq' ? { ...i, source: bad.items.find((x) => x.source)!.source } : i,
+            ),
+          }),
+          says: /Two items are bound/,
+        },
+        {
+          name: 'a lesson bound to a session the source does not describe',
+          text: wrap({
+            ...bad,
+            lessons: bad.lessons.map((l) =>
+              l.id === 'L-38-upcoming' ? { ...l, source: { archiveId: 'setar-classes', sessionN: 4242 } } : l,
+            ),
+          }),
+          says: /does not describe/,
+        },
+        {
+          name: 'an unsafe resource path',
+          text: wrap({
+            ...bad,
+            archiveSources: [
+              {
+                ...bad.archiveSources[0]!,
+                sessions: bad.archiveSources[0]!.sessions.map((s, i) =>
+                  i === 0 ? { ...s, resources: [{ ...s.resources[0], path: '../../etc/passwd' }] } : s,
+                ),
+              },
+            ],
+          }),
+          says: /unsafe resource path/,
+        },
+        {
+          name: 'an unsafe direct item reference',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-iraq'
+                ? {
+                    ...i,
+                    references: [
+                      { id: 'r', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: CLOCK.toISOString() },
+                    ],
+                  }
+                : i,
+            ),
+          }),
+          says: /unsafe reference path/,
+        },
+        {
+          // The sealed counterexample: a nested value no door used to check.
+          name: 'a membership with an unreadable role list',
+          text: wrap(withMalformedRoles(bad)),
+          says: /unreadable role list/,
+        },
+        {
+          name: 'a newer schema',
+          text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
+          says: /newer version/i,
+        },
+      ];
 
-          // --- DIRECT START, and opening material with the clock untouched --
-          await page.getByRole('button', { name: 'Start a block' }).click();
-          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
-          const clockBefore = await page.locator('main').innerText();
-          // Material on the practice screen is ONE CLOSED disclosure.
-          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
-          // CLOSED until asked for: nothing is listed before the tap.
-          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
-          await materialToggle.click();
-          const openButtons = page.getByRole('button', { name: 'Open' });
-          expect(await openButtons.count()).toBeGreaterThan(0);
-          // Every control has an accessible name and is reachable by keyboard.
-          await page.keyboard.press('Tab');
-          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
-          // Opening a file never disturbs the running block.
-          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
-            clockBefore.includes('Finish'),
-          );
-          const blocksBefore = (await db(app)).blocks.length;
-          // The harness accepts the confirm() for the whole journey.
-          await page.getByRole('button', { name: 'Discard block' }).click();
-          expect((await db(app)).blocks).toHaveLength(blocksBefore);
-
-          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
-          await goTo(app, '/repertoire');
-          await page.getByRole('button', { name: 'Practice list' }).click();
-          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
-          const wrapped = await page.evaluate(() => {
-            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
-              /[؀-ۿ]/.test(n.textContent ?? ''),
-            );
-            if (!el) return null;
-            const box = el.getBoundingClientRect();
-            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
-          });
-          expect(wrapped).not.toBeNull();
-          expect(wrapped!.rtl).toBe('rtl');
-          expect(wrapped!.overflows).toBe(false);
-
-          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
-          await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: 'Already current' }).click();
-          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
-
-          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
-          await refresh(app);
-          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const delta = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.lessons.length === 41,
-          );
-          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
-
-          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
-          // The registry improves. That is an OFFER, field by field: nothing
-          // about the owner's own piece changes until they say so, and the
-          // choice must survive the commit even when the index behind it is
-          // already the one installed.
-          const better = await withBetterComposer(INDEX_TEXT);
-          publishSourceIndex(remote, better.text, 'source-index-commit-4');
-          await refresh(app);
-          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
-          await offerRow.first().waitFor({ timeout: 20_000 });
-          const offerText = await page.locator('main').innerText();
-          // The section label is rendered uppercase by the stylesheet, and
-          // innerText returns what is actually rendered.
-          expect(offerText).toMatch(/the archive knows more about these/i);
-          expect(offerText).toContain(better.key);
-          expect(offerText).toContain(NEW_COMPOSER);
-          // Applying WITHOUT answering updates the source graph and leaves the
-          // owner's own piece exactly as it was.
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const unanswered = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
-          );
-          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
-
-          // THE SAME INDEX, a NEW answer. The graph is already current, so a
-          // refresh judged by the index hash alone called this "Already
-          // current" and threw the answer away unwritten.
-          await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
-          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const answeredDb = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
-          );
-          // Only that field moved: the piece keeps its title and its history.
-          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
-          expect(answeredDb.blocks).toHaveLength(1);
-          // …and the offer is gone, because it has been taken.
-          await refresh(app);
-          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-
-          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
-          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
-          await goTo(app, '/settings');
-          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
-          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
-          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
-
-          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
-          await reload(app);
-          const persisted = await db(app);
-          expect(persisted.lessons).toHaveLength(41);
-          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
-          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
-          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
-          expect(persisted.blocks).toHaveLength(1);
-          expect(app.pageErrors).toEqual([]);
-        } finally {
-          await app.close();
-        }
+      for (const c of cases) {
+        await importBackup(app, 'bad.json', c.text);
+        expect(await importOutcome(app), c.name).toMatch(/Import failed/);
+        expect(await importOutcome(app), c.name).toMatch(c.says);
+        // NOTHING was written — not a partial graph, not a partial database.
+        expect(JSON.stringify(await readPersistedState(app)), c.name).toBe(goodBytes);
       }
+
+      // --- a STATE-ONLY import carries the graph too ----------------------
+      const renamed = {
+        ...V14_DB,
+        items: V14_DB.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'state-only import' } : i)),
+      };
+      await importBackup(app, 'state-only.json', wrap(renamed));
+      expect(await importOutcome(app)).toContain('Imported');
+      // A v14 database is 94 pieces, 39 sessions and the whole graph, and the
+      // importer validates and migrates all of it before it writes. Polled at
+      // half a second rather than the shared helper's 50ms: a continuous stream
+      // of read transactions on the same object store delays the very write
+      // this is waiting for.
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('state-only import');
+      expect((await shape(app)).archiveSources).toHaveLength(1);
+
+      // --- A SYNC PULL installs the same validated model -------------------
+      const remote = newFakeRemote();
+      await installFakeGitHub(page, remote);
+      // The first sync PUSHES what this device holds, so the pull below is a
+      // clean one-sided change rather than a conflict.
+      await connectSync(app);
+      const local = await persistedDb(app);
+      const pulled = {
+        ...local,
+        items: local.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'from the other device' } : i)),
+      };
+      publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9999);
+      await goTo(app, '/settings');
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('from the other device');
+      db = await shape(app);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      // --- A MALFORMED remote snapshot is refused, and installs nothing ----
+      const beforePull = JSON.stringify(await readPersistedState(app));
+      const brokenRemote = { ...pulled, archiveSources: [{ ...V14_DB.archiveSources[0]!, instrumentId: 'nobody' }] };
+      publishRemote(remote, remoteStateText(brokenRemote), await hashState(brokenRemote), 10_000);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // …and the NESTED malformation is refused by this door too, not only by
+      // the import one. A pull that installed it would leave a database whose
+      // own material reader throws, with nothing to undo it.
+      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
+      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
+      await goTo(app, '/items/own-dashti');
+      await page.getByRole('button', { name: 'Edit' }).first().click();
+      await goTo(app, '/settings');
+      const keepRemote = {
+        ...pulled,
+        items: pulled.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'the GitHub copy' } : i)),
+      };
+      publishRemote(remote, remoteStateText(keepRemote), await hashState(keepRemote), 11_000);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      const takeRemote = page.getByRole('button', { name: /Take the GitHub copy|Keep the GitHub copy/ });
+      if ((await takeRemote.count()) > 0) {
+        await takeRemote.first().click();
+        await expect
+          .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+            timeout: 60_000,
+            interval: 500,
+          })
+          .toBe('the GitHub copy');
+        expect((await shape(app)).archiveSources).toHaveLength(1);
+      }
+
+      // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
+      await goTo(app, '/items/own-dashti');
+      await page.getByRole('button', { name: 'Start a block' }).click();
+      await goTo(app, '/active');
+      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+      const duringPractice = JSON.stringify(await readPersistedState(app));
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(app)).toMatch(/Import failed/);
+      expect(await importOutcome(app)).toMatch(/unfinished|practice/i);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(duringPractice);
+      await goTo(app, '/active');
+      // The harness accepts the confirm() for the whole journey.
+      await page.getByRole('button', { name: 'Discard block' }).click();
+
+      // --- A FULL EXPORT: metadata for NAS refs, no bytes ------------------
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      await reload(app);
+      const exported = await exportBackup(app);
+      const parsed = JSON.parse(exported) as { data: Shape; files?: unknown[] };
+      expect(parsed.data.archiveSources).toHaveLength(1);
+      expect(parsed.data.items.filter((i) => i.source)).toHaveLength(93);
+      // The archive is DESCRIBED, never carried: no NAS bytes, and only real
+      // local attachments appear in `files` (there are none here).
+      expect(parsed.files ?? []).toEqual([]);
+      expect(exported).toContain('session-13-03-09-2024');
+      // A repaired path is exported as the archive-relative text it now is —
+      // no device base, no legacy folder prefix, and no bytes.
+      expect(exported).toContain(REPAIRED_PATH);
+      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
+      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      // --- BOTH HYDRATION BRANCHES ----------------------------------------
+      // `migrate`: a persisted database declaring the OLD version.
+      const current = await readPersistedState(app);
+      await writePersistedState(app, { ...(current.state as object), db: JSON.parse(V13_SETAR_TEXT).data }, 13);
+      await reload(app);
+      db = await shape(app);
+      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(db.archiveSources).toEqual([]);
+
+      // `merge`: a persisted database declaring the CURRENT version, carrying
+      // an invalid relation. Zustand skips `migrate` entirely here, which is
+      // exactly why the check cannot live only there.
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      await reload(app);
+      const valid = await readPersistedState(app);
+      const validDb = (valid.state as { db: Shape }).db;
+      await writePersistedState(
+        app,
+        {
+          ...(valid.state as object),
+          db: {
+            ...validDb,
+            archiveSources: [{ ...validDb.archiveSources[0]!, instrumentId: 'nobody' }],
+          },
+        },
+        SCHEMA_VERSION,
+      );
+      const refusedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/instrument that does not exist/);
+      // Rendering the refusal writes nothing at all.
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
+
+      // The same hydration branch, given the NESTED malformation instead: this
+      // is the door the sealed counterexample actually walked through, and a
+      // database it accepted would crash the first material render.
+      await writePersistedState(
+        app,
+        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
+        SCHEMA_VERSION,
+      );
+      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
+
+      // --- COLD-START RECOVERY gets the owner back in ----------------------
+      await page.getByLabel('Restore backup file').setInputFiles({
+        name: 'recover.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(V14_TEXT, 'utf8'),
+      });
+      await page.locator('main').waitFor({ timeout: 20_000 });
+      await goTo(app, '/');
+      await reload(app);
+      db = await shape(app);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
     }
+  }, 240_000);
+});
+
+// ---------------------------------------------------------------------------
+// The rollback route: the baseline app, not a description of it.
+// ---------------------------------------------------------------------------
+
+const BASELINE_COMMIT = 'b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417';
+
+function checkoutBaselineApp(): { root: string; dispose: () => void } {
+  const root = join(mkdtempSync(join(tmpdir(), 'pc-setar-baseline-')), 'app');
+  execFileSync('git', ['worktree', 'add', '--detach', root, BASELINE_COMMIT], { stdio: 'pipe' });
+  // `package.json` here gained two scripts and nothing else; `package-lock.json`
+  // is a forbidden path and is byte-identical, so the baseline's dependency
+  // tree is this checkout's. Linking is exact and far cheaper than installing.
+  symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules'));
+  return {
+    root,
+    dispose: () => {
+      try {
+        execFileSync('git', ['worktree', 'remove', '--force', root], { stdio: 'pipe' });
+      } catch {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  };
+}
+
+describe('rolling back past the archive schema', () => {
+  it('the baseline app refuses a v14 file and restores its own retained backup', async () => {
+    const baseline = checkoutBaselineApp();
+    const old = await openPracticeApp({ now: CLOCK, root: baseline.root });
+    try {
+      // The v13 app holds the owner's real v13 data, and exports it itself.
+      await importBackup(old, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+      expect(await importOutcome(old)).toContain('Imported');
+      await reload(old);
+      const oldDb = await persistedDb(old);
+      expect(oldDb.schemaVersion).toBe(13);
+      const retainedV13 = await exportBackup(old);
+      expect(JSON.parse(retainedV13).schemaVersion).toBe(13);
+
+      // IT REFUSES A v14 FILE, and writes nothing.
+      const before = JSON.stringify(await readPersistedState(old));
+      await importBackup(old, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(old)).toMatch(/Import failed/);
+      expect(await importOutcome(old)).toMatch(/newer version/i);
+      expect(JSON.stringify(await readPersistedState(old))).toBe(before);
+
+      // …and the retained v13 backup restores INTO the baseline app, which is
+      // what a rollback actually is. There is no down-migration and none is
+      // pretended: the v14 file still says 14 and still carries its graph.
+      await importBackup(old, 'retained-v13.json', retainedV13);
+      expect(await importOutcome(old)).toContain('Imported');
+      await reload(old);
+      const restored = await persistedDb(old);
+      expect(restored.schemaVersion).toBe(13);
+      expect(restored.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+        'Teacher: keep the mezrab light on the return.',
+      );
+      expect(JSON.parse(V14_TEXT).schemaVersion).toBe(SCHEMA_VERSION);
+      expect(JSON.parse(V14_TEXT).data.archiveSources).toHaveLength(1);
+      expect(old.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await old.close();
+      baseline.dispose();
+    }
+  }, 240_000);
+});
+
+describe('the journey harness itself', () => {
+  // The harness must not be able to hide the very failure a journey exists to
+  // catch. A request the browser CANCELLED (because the test navigated away
+  // mid-flight) produces a WebKit error that reads exactly like a CORS
+  // failure; excusing it used to mean adding its URL to a PERMANENT set and
+  // discarding every later page error whose message merely contained that
+  // pathname. So a genuine failure at the same path, later in the same
+  // journey, was swallowed — and `pageErrors` said nothing.
+  it('a cancelled request excuses its own error once, and never a later real one', () => {
+    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+    const spurious =
+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+    const at = 1_000_000;
+
+    // The cancellation's OWN error is excused — and CONSUMED. The identical
+    // message arriving again has no cancellation left to account for it, which
+    // is exactly the reviewer's counterexample: cancel a request to a path,
+    // then let a later one to that path fail for real.
+    // Spending it is the function's OWN job — a caller cannot forget to, which
+    // is precisely what the permanent set was.
+    const pending = [{ url, at }];
+    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
+    expect(pending).toEqual([]);
+    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
+
+    // Two cancellations excuse two errors and no more.
+    const twice = [
+      { url, at },
+      { url, at: at + 10 },
+    ];
+    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+
+    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
+    // both are the same cancelled request.
+    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
+    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
+
+    // Only the DIAGNOSED wording is ever excused: a real render crash naming
+    // the same URL is a page error, not a cancellation.
+    expect(
+      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
+    ).toBe(false);
+
+    // It names that request, not merely its path: another host, and another
+    // path on the same host, both stay errors.
+    const elsewhere =
+      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
+    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
+    const otherPath =
+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
+    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
+
+    // And an unconsumed cancellation does not stand for the whole journey: the
+    // ceiling is generous (the spurious error is emitted in the same tick), but
+    // it is a ceiling.
+    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
   });
 });
 ```
