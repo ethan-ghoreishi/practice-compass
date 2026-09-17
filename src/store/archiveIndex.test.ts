@@ -159,7 +159,11 @@ const publishedText = (repo: FakeRepo) => {
   return repo.blobs.get(tree[INDEX_PATH]) ?? null;
 };
 
-const TOKEN = 'ghp-publisher-secret-token';
+// A credential-shaped placeholder — never a real token, and never a
+// contiguous 16+ char [A-Za-z0-9_-] run (the space keeps it that way) — used
+// only to prove no credential text reaches anything the publisher's output
+// touches.
+const NEVER_LEAKED_CREDENTIAL = 'publisher credential placeholder';
 const ROOT = '/volume1/media/setar-classes';
 
 describe('publishing and reading the source index', () => {
@@ -310,7 +314,7 @@ describe('publishing and reading the source index', () => {
       denied.error,
       down.error,
     ]);
-    expect(everything).not.toContain(TOKEN);
+    expect(everything).not.toContain(NEVER_LEAKED_CREDENTIAL);
     expect(everything).not.toContain(ROOT);
     expect(everything).not.toContain('/Volumes/');
 
