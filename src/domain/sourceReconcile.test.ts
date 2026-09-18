@@ -18,7 +18,7 @@ import {
   withSuppression,
   followRenames,
 } from './sourceReconcile';
-import { archiveRootUrl } from './recordings';
+import { archiveRootUrl, resolveRecordingUrl } from './recordings';
 // The published log is the SCANNER's output, so the downstream transitions
 // below are driven by what it actually publishes for a forked log — never by
 // a hand-written approximation of it.
@@ -385,6 +385,24 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(applied.notes).toBe('my notes');
     expect(applied.title).toBe('My own title');
 
+    // --- THE ITEM'S KIND IS THE OWNER'S, SEEDED ONCE AND NEVER RE-OFFERED ---
+    // The registry's `form` decides `itemType` at CREATION and nothing after
+    // it: a piece the archive calls a گوشه that the owner works as a full piece
+    // is their reading of the music, not a source fact to be corrected back.
+    // `itemType` is not in the suggestion list at all, so no refresh can even
+    // ask, let alone revert it.
+    const reKinded = { ...owned, items: owned.items.map((i) => (i.id === araqItemId ? { ...i, itemType: 'full_piece' as const } : i)) };
+    const afterReKind = applyArchiveImport(
+      reKinded,
+      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }),
+    );
+    expect(afterReKind.items.find((i) => i.id === araqItemId)!.itemType).toBe('full_piece');
+    expect(
+      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }).suggestions.some(
+        (x) => (x.field as string) === 'itemType',
+      ),
+    ).toBe(false);
+
     // --- an UNCHANGED refresh writes nothing --------------------------------
     const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
     expect(same.summary.unchanged).toBe(true);
@@ -744,9 +762,14 @@ describe('reconciling the archive with the owner’s own records', () => {
     const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
     expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
 
-    // A path with no rename row and no file is DIAGNOSED, never guessed.
+    // A path with no rename row and no file is DIAGNOSED, never guessed — and
+    // the diagnosis is about the FILE, so it is reached only once the path is
+    // already in the current namespace. A legacy-prefixed one is first said in
+    // that namespace (same bytes, words the device base addresses); the second
+    // pass is what reports it.
     const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
-    expect(missing.status).toBe('attention');
+    expect(missing).toEqual({ status: 'repaired', path: 'session-1-26-09-2023/nothing.mp4' });
+    expect(repairReferencePath('session-1-26-09-2023/nothing.mp4', renames, known).status).toBe('attention');
     // A foreign link, and a link carrying a query, are left exactly as they are.
     const base = 'https://192.168.0.20:5010/setar-classes';
     expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
@@ -838,6 +861,22 @@ describe('reconciling the archive with the owner’s own records', () => {
     const personalRepair = repairLessonReferences(personal, renames, known);
     expect(personalRepair.lesson.recordings).toHaveLength(1);
     expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
+    // ONE NAMESPACE PER ARCHIVE-OWNED LESSON. The device base is the archive
+    // ROOT, so the legacy folder segment comes OFF even though the index
+    // describes nothing at this path: it names the same bytes in the words the
+    // base addresses. Leaving it on is what made a corrected base kill exactly
+    // the references a refresh never touches — the owner's own practice takes.
+    expect(personalRepair.lesson.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
+    // Saying so is NOT saying the file is there: no attention row is raised,
+    // because the index describes only material scoped to pieces and classes.
+    expect(personalRepair.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+    // …and it is IDEMPOTENT: once said in the current namespace there is
+    // nothing left to change, so a second refresh writes nothing.
+    expect(repairReferencePath('session-25-05-08-2025/mine.mp4', renames, known)).toEqual({
+      status: 'attention',
+      reason: 'The archive no longer has a file at this path.',
+      code: 'not-described',
+    });
     // The archive never offers a personal recording as material for a piece.
     const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
@@ -886,14 +925,34 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
     expect(validateArchiveSources(installedLegacy)).toBeNull();
 
-    // The owner's own practice takes are RETAINED, untouched — and never
-    // reported missing. The index describes only material scoped to pieces and
-    // classes, so a path it does not name is outside what it knows, never
-    // evidence that the file is gone.
+    // The owner's own practice takes are RETAINED and never reported missing —
+    // the index describes only material scoped to pieces and classes, so a path
+    // it does not name is outside what it knows, never evidence that the file is
+    // gone. RETAINED IS NOT THE SAME CLAIM AS LEFT IN THE OLD NAMESPACE: the row,
+    // its title and its notes are the owner's and are untouched, while the path
+    // text is said in the one namespace the device base addresses, exactly like
+    // every described row on the same class.
     const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
-    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
+    expect(storedPersonal.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
     expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
+    expect(storedPersonal.recordings![0]!.title).toBe('My take, August');
     expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+    // NO ARCHIVE-OWNED LESSON IS LEFT HOLDING TWO NAMESPACES AT ONCE. This is
+    // the invariant the fix is actually for: resolving any of these against the
+    // device base (the archive root) must not produce `…/setar-classes/…`.
+    // …proved against the RESOLVER and the owner's own Mac archive base, because
+    // the namespace only matters at the moment a file is opened: the reported
+    // failure was a URL, not a stored string.
+    const macBase = 'https://192.168.0.20:5010/setar-classes';
+    for (const l of installedLegacy.lessons) {
+      if (!l.source) continue;
+      for (const r of l.recordings ?? []) {
+        expect(r.path.startsWith('setar-classes/')).toBe(false);
+        expect(resolveRecordingUrl(macBase, r)).toMatch(
+          /^https:\/\/192\.168\.0\.20:5010\/setar-classes\/session-[^/]+\/[^/]+$/,
+        );
+      }
+    }
 
     // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
     // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan

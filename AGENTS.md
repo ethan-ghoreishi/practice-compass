@@ -2107,6 +2107,18 @@ sentence says WHY. That is the whole family in one place: `resolveRecording`,
 still opened as the owner saved it — their own authored link, not this device's configured
 base, and nothing here mints one.
 
+**THE MEDIA BASE IS THE ARCHIVE ROOT, NOT THE MEDIA ROOT ABOVE IT.** This is the one setting
+a device carries from before the archive existed, and this lane silently changed what it
+must contain: legacy references were written relative to the NAS media root and began
+`setar-classes/`; every reference the app writes now is relative to the ARCHIVE root and
+begins `session-…`. `resolveRecording` APPENDS to the base and preserves its whole path
+prefix (`/media/`, `/archives/v2/` — ac-14's own test), so it is correct either way and a
+base one folder too high is not a resolver defect: it is a URL that addresses nothing.
+Settings names the archive folder, shows it in the placeholder, and no longer promises that
+the base can be changed freely — for a device configured before this lane, correcting it
+once is required. There is deliberately NO second archive-specific base and no resolver
+fallback: one base per device, ending in the archive folder, is what ac-14 and ac-20 state.
+
 **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
 ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
 (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
@@ -2144,7 +2156,26 @@ rows — but `not-described` does NOT (see `RepairReason`): the index deliberate
 only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
 own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
 renamed is outside what it knows, never evidence that the file is gone. Those three personal
-references are retained historical links, untouched and unflagged.
+references are retained historical links, unflagged — and RETAINED IS NOT THE SAME CLAIM AS
+LEFT IN THE OLD NAMESPACE.
+
+**A REFRESH LEAVES AN ARCHIVE-OWNED LESSON IN ONE NAMESPACE, OR THE OWNER'S OWN FILES DIE
+WHEN THE BASE IS CORRECTED.** The device media base is the archive ROOT (below), so every
+stored path is archive-relative and the legacy `setar-classes/` folder segment is not part
+of it. `repairReferencePath` stripped that segment only on the way to a path the index
+DESCRIBES and then threw the stripped form away for a `not-described` one — so a refresh
+left the described rows archive-relative and the undescribed rows legacy-prefixed, on the
+same class. OWNER testing found the consequence: with the base still naming the media root
+above the archive, a class recording resolved to `…:5010/session-39-…/…` and opened nothing;
+correcting the base to `…:5010/setar-classes/` fixed every described row and would have
+killed exactly the rows a refresh never reports — the owner's own practice takes, at
+`…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
+that the file exists (no `attention` row is raised, `not-described` still says nothing), and
+it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
+writes nothing and cannot bump the revision. A legacy-prefixed reference on a lesson the
+archive does NOT own is still never rewritten — that rule stands — so such a reference stays
+in the old namespace and is the one known gap; it is the owner's to repoint, not a
+refresh's to guess at.
 
 **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
 (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged

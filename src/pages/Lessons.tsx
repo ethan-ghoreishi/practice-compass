@@ -642,7 +642,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
           />
           <input
             className="input"
-            placeholder="NAS path or https:// link — e.g. setar-classes/session-37/class.mp4 or …/score.pdf"
+            placeholder="Path under the archive base, or an https:// link — e.g. session-37-09-07-2026/class.mp4"
             value={path}
             onChange={(e) => setPath(e.target.value)}
           />

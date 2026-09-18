@@ -264,6 +264,66 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
 membership and role survive in the graph, the files themselves never become a
 piece's material.
 
+### Set the base to the archive FOLDER — one-off, per device
+
+Every reference the app stores is relative to the **archive root**, so a stored
+path starts at the session folder:
+
+    session-39-01-09-2026/ضبط-کلاس.mp4
+
+The base is appended to, whole path and all, so it must name the archive folder
+itself:
+
+| Device | Base | Result |
+| --- | --- | --- |
+| Mac (LAN) | `https://192.168.0.20:5010/setar-classes` | `…:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4` ✅ |
+| Mac (LAN) | `https://192.168.0.20:5010` | `…:5010/session-39-01-09-2026/ضبط-کلاس.mp4` ✗ addresses nothing |
+| iPhone (Tailscale) | `https://ds220plus.taild1d1f7.ts.net/media/setar-classes` | `…/media/setar-classes/session-39-…/…` ✅ |
+
+Before this archive existed the base named the NAS **media root** and every
+stored path began `setar-classes/`. That is the one setting a device carries
+across, and it has to be corrected once — the resolver is not at fault, and there
+is deliberately no second archive-specific setting and no fallback. **Browse** is
+the check: it opens the base, and if it does not list the `session-…` folders,
+the base is one folder too high.
+
+A refresh rewrites every reference on a class the archive owns — including your
+own practice takes, which the index does not describe — into that one namespace,
+without touching the row, its title or its notes. A reference on a class the
+archive does *not* own is never rewritten, so a hand-made lesson still holding a
+`setar-classes/…` path needs repointing yourself.
+
+### Who owns an imported field, and where to correct a wrong one
+
+**Source-owned** (replaced by the archive, but only when you say so): the piece's
+`dastgah`, `form`, `composer` and gusheh name. A later registry improvement is
+**offered field by field** and applied only on an explicit tap — including when
+your value is deliberately empty. Nothing is applied silently, and nothing can
+revert on its own.
+
+**Yours from the moment of import, and never written again**: the item's **type**
+(gusheh / full piece — seeded once from the registry's `form`, then never
+re-offered), title, status, notes, difficulty, parts, pathway placement, and
+every practice, review and scheduling field. Edit any of them freely; a refresh,
+a reload and a sync all preserve the edit.
+
+**Identity is the `canonical_fa` key, byte for byte.** So:
+
+| You want to… | Do it… | Why |
+| --- | --- | --- |
+| Treat a piece as a full piece rather than a gusheh | **in the app** (item type) | Yours; sticks for good. One tap, no re-import. |
+| Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
+| Fix one of those on this device only | **in the app** | The archive will keep offering its own value; ignore the offer. |
+| Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
+| Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
+| Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
+
+The safe workflow for exact archive renames: rename, append the `from,to` row to
+`RENAME-LOG.csv` (never a fork or a loop — both are diagnosed and neither is
+applied), let the scanner publish, then Refresh. Do not renumber a session folder
+and do not edit `canonical_fa` in the same pass as a rename: one of those changes
+where a file is, the other changes what a piece *is*.
+
 ### Open the app over HTTPS, or Refresh cannot verify anything
 
 Refresh recomputes the index's `contentHash` before trusting a byte of it, and
