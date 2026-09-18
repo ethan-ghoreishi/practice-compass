@@ -458,9 +458,10 @@ describe('publishing and reading the source index', () => {
   // branch reaches a phone as a LAN build over plain http://, and WebCrypto
   // exists only in a SECURE CONTEXT. `globalThis.crypto` is still there, but
   // `crypto.subtle` is `undefined`, so recomputing the index digest threw
-  // `Cannot read properties of undefined (reading 'digest')` — and BOTH real
-  // entry points, the GitHub refresh and the file fallback, handed that
-  // property stack trace to the owner as the explanation of their archive.
+  // `Cannot read properties of undefined (reading 'digest')` — handed to the
+  // owner as the explanation of their archive. Both doors onto the decoder are
+  // checked below: the GitHub refresh, which is the one the UI reaches, and
+  // `readIndexFile`, the same decoder behind a fallback nothing wires up yet.
   //
   // Every automated check missed it because every one of them runs where
   // `crypto.subtle` exists: Node has it unconditionally, and the browser

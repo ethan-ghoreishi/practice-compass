@@ -557,8 +557,19 @@ perfectly good is the failure mode a file-shaped error message produces. It does
 some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
 content gets reported "Already current"), and a pure-JS fallback would repair one of the
 three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
-holds this closed at both real entry points — the GitHub refresh and the file fallback —
-with `crypto.subtle` removed exactly as a browser removes it.
+holds this closed with `crypto.subtle` removed exactly as a browser removes it, at the
+GitHub refresh — the one entry point the UI actually reaches — and at `readIndexFile`
+beside it, which is the same decoder and currently has NO production caller (an
+unwired fallback, noted here rather than left to be discovered as dead code).
+
+**SYNC IS NOT FIXED BY THIS AND CANNOT BE, IN THIS LANE.** `hashState` reaches
+`crypto.subtle` through the same `sha256Hex`, so over plain http:// **Sync now still
+throws the raw `Cannot read properties of undefined (reading 'digest')`** —
+`canonical.ts` is outside this change's allowed paths and `githubSync.ts`/`syncEngine.ts`
+are forbidden by it. That failure is confined to a non-secure origin, where the app is
+not the installed PWA and has no offline capability either; on HTTPS it does not arise.
+Giving Sync the same named refusal is a separate lane, and is a WORDING change at a
+boundary, never a second hash.
 
 ## Hard "do nots" (require explicit user instruction to change)
 

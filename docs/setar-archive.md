@@ -285,12 +285,20 @@ So: **production and the installed iPhone PWA are unaffected** — both are HTTP
 Only a branch build served from a LAN address over plain HTTP hits this, and the
 fix is the route, not a setting:
 
-- On the Mac, `http://localhost:4173` is already a secure context — browsers
-  privilege localhost on purpose.
-- For a phone, mirror the build to the NAS (`npm run deploy`, which needs the web
-  share mounted) and open it over **`https://192.168.0.20/practice-compass/`**. A
-  self-signed Synology certificate is fine: HTTPS is a secure context whether or
-  not the certificate is trusted, so accept the browser's warning once.
+- **On the Mac — verified.** `http://localhost:4173` is already a secure context;
+  browsers privilege localhost on purpose, which is also why no automated check
+  in this repo can ever see this failure.
+- **For a phone — candidate route, NOT yet verified end to end.** Mirror the build
+  to the NAS (`npm run deploy`) and open it over `https://192.168.0.20/practice-compass/`.
+  What is measured: that origin is HTTPS and therefore a secure context, and a
+  self-signed Synology certificate does not change that — accept the browser
+  warning once. What is NOT measured: the mirror itself. On 2026‑09‑18 that URL
+  answered **403**, and `deploy-nas.sh`'s target share (`/Volumes/web`) was not
+  mounted on the Mac, so the build behind it is stale or absent and the script had
+  no destination. Mount the share, run `npm run deploy`, and confirm the page loads
+  and reports `window.isSecureContext === true` before treating this route as good.
+  Per ac-19's own rule, record the NAS mapping you actually find rather than
+  assuming a `/Volumes` path works.
 
 Refresh says this in as many words rather than crashing, and it says it before it
 looks at the file at all — on a device that cannot hash, no index can pass, and a
