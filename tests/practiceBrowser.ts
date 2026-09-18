@@ -28,54 +28,53 @@ const installHint = (engine: Engine) =>
   'and an engine quietly missed is the same thing as an engine never checked.';
 
 /**
- * ONE recorded outcome of a network request the harness watched, cancelled or
- * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
- * genuine failure to the same URL displace a stale cancellation instead of
- * being excused by it (see `excusedCancellation`).
+ * ONE recorded outcome of a network request the harness watched, whatever the
+ * browser's own words for it were. Tracking EVERY failure — not only
+ * cancellations — is what lets a later, genuine failure to the same URL
+ * displace a stale cancellation instead of being excused by it (see
+ * `excusedCancellation`).
  *
  * A request the BROWSER cancelled because the test navigated away while it was
  * in flight is not an application error. WebKit reports such a fetch as
  * "Fetch API cannot load … due to access control checks", which reads exactly
- * like a CORS problem and is not one: instrumented, the only difference
- * between the passing and failing runs of the same journey is a single
- * `requestfailed` with `errorText: 'cancelled'` for a request that is
- * otherwise fulfilled with the right CORS headers every other time. A real
- * person navigating mid-sync cancels the same request, so treating it as a
- * page error makes a journey fail for driving the app quickly.
+ * like a CORS problem and is not one: the request is otherwise fulfilled with
+ * the right CORS headers every other time. A real person navigating mid-sync
+ * cancels the same request, so treating it as a page error makes a journey
+ * fail for driving the app quickly.
+ *
+ * `errorText` is kept verbatim rather than reduced to a boolean, because it is
+ * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
+ * diagnosed page error is not excused, the failure has to say what the browser
+ * actually said about that request, or the next CI-only failure is as
+ * unreadable as the one this fix came from.
  */
 export interface TrackedRequestFailure {
   url: string;
   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
   at: number;
-  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
-  cancelled: boolean;
+  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
+  errorText: string;
 }
 
 /**
- * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
- * work. It once was the whole bound: a cancelled URL's entry stayed eligible
- * for this long, matched by host+path ALONE, so an unconsumed cancellation
- * that never produced its own page error remained a live "credit" any LATER,
+ * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
+ * It once was the whole bound: a cancelled URL's entry stayed eligible for
+ * this long, matched by host+path ALONE, so an unconsumed cancellation that
+ * never produced its own page error remained a live "credit" any LATER,
  * genuine access-control failure to that same URL could spend. That is a
  * sealed finding, not a hypothetical: a cancellation and a real failure are
  * indistinguishable by wording or by URL, so a window — however short — can
  * never be the thing that tells them apart. Only ORDER can: see
  * `excusedCancellation` below for the correlation that actually does the work.
- * What is left for this ceiling to do is bound how far back a request that
- * WAS genuinely the nearest one may still be trusted, in case Node's delivery
- * of the two events (`requestfailed`, then `pageerror`) is delayed under the
- * contention five concurrent dev servers create; the diagnosis says the
- * browser emits them in the same tick, so this is headroom, not a design
- * tolerance the correlation depends on.
+ * What is left for this ceiling to do is bound how far apart the two events
+ * may be and still be treated as one outcome, in case Node's delivery is
+ * delayed under the contention several concurrent dev servers create.
  */
 export const CANCELLED_EXCUSE_MS = 2_000;
 
 /**
- * Extract the URL a diagnosed WebKit access-control message names, or `null`
- * if the message is not that shape at all (a render crash, a thrown
- * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
- * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
- * host that a real URL never has, which this strips before parsing.
+ * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
+ * `XMLHttpRequest`), anchored end to end.
  *
  * The whole point of parsing into a real `URL` and comparing `host` and
  * `pathname` by EQUALITY, rather than testing whether the message merely
@@ -83,52 +82,66 @@ export const CANCELLED_EXCUSE_MS = 2_000;
  * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
  * the left) or `api.github.com.evil.test` (extended on the right), nor
  * `/state.json` from `/state.json.bak` — every one of which contains the
- * genuine value as a substring. Anchoring the match to the exact text
- * between the fixed "cannot load " / " due to access control checks" phrases
- * — the only text WebKit ever puts there — removes the ambiguity outright
- * instead of trying to out-guess it with boundary characters.
+ * genuine value as a substring. Anchoring the match to the exact text between
+ * the fixed "cannot load " / " due to access control checks" phrases — the
+ * only text WebKit ever puts there — removes the ambiguity outright instead
+ * of trying to out-guess it with boundary characters.
+ *
+ * There is deliberately no tolerance for whitespace between the scheme and
+ * the host. An earlier version of this regex allowed it, describing a space
+ * WebKit was said to insert; measured — macOS WebKit locally and Linux WebKit
+ * in CI — no such space exists, and the apparent one was an artefact of how
+ * the two halves below are put back together.
  */
-function reportedUrl(message: string): URL | null {
-  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
-    message.trim(),
-  );
-  if (!m) return null;
-  try {
-    return new URL(`${m[1]}://${m[2]}`);
-  } catch {
-    return null;
-  }
-}
+const DIAGNOSIS = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/(\S+) due to access control checks\.?$/;
 
 /**
- * The excuse correlates on ORDER, not on a window: among every tracked
- * request to the exact host+path the message names, the one that actually
- * produced this page error is whichever happened MOST RECENTLY before it —
- * because the diagnosis is that WebKit emits the spurious error in the same
- * tick as the cancellation that caused it, so nothing else to that URL can
- * have intervened by the time it arrives. That is precisely what makes a
- * cancellation with NO page error of its own safe to leave sitting in the
- * log rather than needing to expire it: the moment anything else — above
- * all a genuine failure — touches that same URL, THAT becomes the nearest
- * candidate and the stale cancellation is never reached again. A stale
- * cancellation can therefore only ever be reached by a page error that has
- * nothing more recent competing for it, which is exactly the case it is
- * supposed to excuse.
+ * Extract the URL a diagnosed WebKit access-control page error names, or
+ * `null` if it is not that shape at all (a render crash, a thrown TypeError —
+ * never excused).
  *
- * If the nearest candidate is not a cancellation at all — a genuine failure,
- * or nothing within the ceiling — this returns `false` and excuses nothing:
- * an uncertain correlation is never resolved in the excuse's favour.
+ * THE ERROR ARRIVES IN TWO HALVES, AND NEITHER HALF ALONE IS THE DIAGNOSIS.
+ * Playwright splits every page error into `name`/`message` at the FIRST colon,
+ * dropping one character after it (`splitErrorMessage`). The first colon in
+ * this diagnosis is the URL's own scheme colon, so the text WebKit emitted
  *
- * The match is CONSUMING: the winning entry is removed, so it cannot excuse
- * a second, later error too.
+ *     Fetch API cannot load https://api.github.com/… due to access control checks.
+ *
+ * reaches a test as
+ *
+ *     name:    'Fetch API cannot load https'
+ *     message: '/api.github.com/… due to access control checks.'
+ *
+ * — MEASURED, identically, on macOS WebKit here and on Linux WebKit in CI.
+ * Matching `message` alone (which is what this used to do) can therefore never
+ * succeed against a real error, on any platform: the excuse was dead code, and
+ * the first CI run that actually produced the error is what exposed it.
+ * Rejoining with the dropped `:/` recovers the original text. The unsplit
+ * form is tried as well, so a representation that ever stops being split is
+ * still understood; both go through the same anchored regex, so a wrong
+ * reconstruction simply fails to match rather than matching something loosely.
  */
-export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
-  const reported = reportedUrl(message);
-  if (!reported) return false;
-  let nearest = -1;
+function reportedUrl(error: { name?: string; message: string }): URL | null {
+  for (const text of [error.message, `${error.name ?? ''}:/${error.message}`]) {
+    const m = DIAGNOSIS.exec(text.trim());
+    if (!m) continue;
+    try {
+      return new URL(`${m[1]}://${m[2]}`);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
+function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
+  let best = -1;
+  let bestGap = Infinity;
   for (let i = 0; i < events.length; i++) {
     const e = events[i];
-    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
+    const gap = Math.abs(at - e.at);
+    if (gap > CANCELLED_EXCUSE_MS) continue;
     let url: URL;
     try {
       url = new URL(e.url);
@@ -136,11 +149,91 @@ export function excusedCancellation(events: TrackedRequestFailure[], message: st
       continue;
     }
     if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
-    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
+    // A TIE is never resolved in the excuse's favour: with two candidates the
+    // same distance away, the one that is NOT a cancellation wins, so a stale
+    // cancellation landing in the same millisecond as a genuine failure cannot
+    // excuse it.
+    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
+    if (best < 0 || better) {
+      best = i;
+      bestGap = gap;
+    }
   }
-  if (nearest < 0 || !events[nearest].cancelled) return false;
+  return best;
+}
+
+/**
+ * The excuse correlates on ORDER, not on a window: among every tracked request
+ * to the exact host+path the error names, the one that actually produced it is
+ * whichever happened NEAREST IN TIME — because the browser emits the spurious
+ * error and the request's own failure in the same tick, so nothing else to
+ * that URL can have intervened.
+ *
+ * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
+ * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
+ * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
+ * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
+ * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
+ * request. A backwards-only search therefore looked at an empty log and
+ * excused nothing — the second reason this excuse had never once fired against
+ * a real error. The sealed invariant it was written to protect is untouched by
+ * the correction: a genuine failure ALWAYS emits its own `requestfailed`
+ * adjacent to its own page error, so it is always the nearest candidate, and a
+ * stale cancellation sitting milliseconds away can never outrank it.
+ *
+ * If the nearest candidate is not a cancellation at all — a genuine failure,
+ * or nothing within the ceiling — this returns `false` and excuses nothing: an
+ * uncertain correlation is never resolved in the excuse's favour.
+ *
+ * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
+ * second, later error too.
+ */
+export function excusedCancellation(
+  events: TrackedRequestFailure[],
+  error: { name?: string; message: string },
+  at: number,
+): boolean {
+  const reported = reportedUrl(error);
+  if (!reported) return false;
+  const nearest = nearestIndex(events, reported, at);
+  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
   events.splice(nearest, 1);
   return true;
+}
+
+/**
+ * What the harness saw around a diagnosed page error it did NOT excuse, in one
+ * sentence, so the assertion that keeps it says why.
+ *
+ * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
+ * that reads like a CORS misconfiguration whatever actually happened — which
+ * is exactly how a CI-only failure became unreadable. Naming the browser's own
+ * `errorText` for every tracked request to that same resource, and how far
+ * each sat from the error, turns the next one into evidence instead of a
+ * guess. Non-consuming and never an excuse: it only describes.
+ */
+export function cancellationEvidence(
+  events: TrackedRequestFailure[],
+  error: { name?: string; message: string },
+  at: number,
+): string {
+  const reported = reportedUrl(error);
+  if (!reported) return '';
+  const where = `${reported.host}${reported.pathname}`;
+  const near = events
+    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
+    .filter((e) => {
+      try {
+        const url = new URL(e.url);
+        return url.host === reported.host && url.pathname === reported.pathname;
+      } catch {
+        return false;
+      }
+    })
+    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
+  return near.length
+    ? `tracked request failures for ${where}: ${near.join('; ')}`
+    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
 }
 
 export interface PracticeApp {
@@ -149,8 +242,16 @@ export interface PracticeApp {
   origin: string;
   /** Which engine this journey is actually running in. */
   engine: Engine;
-  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
-  pageErrors: Error[];
+  /**
+   * Uncaught page errors, so a broken render cannot pass as a quiet one.
+   *
+   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
+   * about a mid-flight request BEFORE that request's own `requestfailed`, so
+   * deciding at arrival time is deciding against a log that has not been
+   * written yet. Reading this at the end of a journey — which is when a
+   * journey asserts on it — has every event in hand.
+   */
+  readonly pageErrors: Error[];
   close(): Promise<void>;
 }
 
@@ -199,7 +300,12 @@ export async function openPracticeApp(options: {
 
   let context: BrowserContext;
   let page: Page;
+  const pending: { error: Error; at: number }[] = [];
   const pageErrors: Error[] = [];
+  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
+  // to be visible to `excusedCancellation` so it can outrank a stale
+  // cancellation to the same URL, not just a cancellation itself.
+  const requestFailures: TrackedRequestFailure[] = [];
   try {
     context = await browser.newContext({
       viewport: options.viewport ?? { width: 390, height: 844 },
@@ -213,18 +319,15 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
-    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
-    // has to be visible to `excusedCancellation` so it can outrank a stale
-    // cancellation to the same URL, not just a cancellation itself.
-    const requestFailures: TrackedRequestFailure[] = [];
     page.on('requestfailed', (r) => {
-      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
+      requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
     });
     // Surface a page-level error instead of letting it become a silently
-    // wrong assertion later.
+    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
+    // the request failure that explains a cancelled one has not been
+    // delivered yet at this point.
     page.on('pageerror', (e) => {
-      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
-      pageErrors.push(e);
+      pending.push({ error: e, at: Date.now() });
     });
     await page.clock.install({ time: options.now });
     await page.goto(origin);
@@ -240,11 +343,30 @@ export async function openPracticeApp(options: {
     throw e;
   }
 
+  /**
+   * Drain everything that arrived since the last read: excuse each page error
+   * a cancellation accounts for, and KEEP the rest — annotated with what the
+   * harness actually saw around them, so a refusal to excuse is readable
+   * rather than another bare CORS-shaped message. Idempotent: a drained error
+   * stays resolved, so reading twice reports the same list.
+   */
+  const resolve = (): Error[] => {
+    for (const { error, at } of pending.splice(0)) {
+      if (excusedCancellation(requestFailures, error, at)) continue;
+      const evidence = cancellationEvidence(requestFailures, error, at);
+      if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
+      pageErrors.push(error);
+    }
+    return pageErrors;
+  };
+
   return {
     page,
     origin,
     engine,
-    pageErrors,
+    get pageErrors() {
+      return resolve();
+    },
     async close() {
       await browser.close();
       await server.close();
