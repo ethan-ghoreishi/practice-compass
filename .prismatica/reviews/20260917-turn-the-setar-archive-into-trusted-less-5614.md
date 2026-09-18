@@ -1,34 +1,12 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 21473d5c39f5186804b30feb8d324e44f8ee9a46
+patchId: f6bdf1d780ca109cf6be81a99104c2d6600014ee
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: Browser harness cancellation correlation and real WebKit event ordering
-    summary: The cancellation veto still permits a genuine WebKit access-control
-      page error to be excused when WebKit emits no requestfailed for that
-      error. The sealed false-negative family remains open.
-    counterexample: "tests/practiceBrowser.ts:225-242 consumes a same-URL
-      cancellation whenever no non-cancelled failure is tracked. The rework
-      records a genuine CORS-shaped README.md page error with no requestfailed.
-      Put an earlier unconsumed cancellation for that exact URL inside
-      CANCELLED_EXCUSE_MS, then deliver that genuine error without
-      requestfailed: pageErrors at lines 403-409 drops it. The real-browser test
-      supplies a genuine requestfailed and therefore does not cover this case."
-  - family: ac-18 WebKit archive journey reliability
-    summary: The required WebKit archive journey remains intermittently failing; a
-      pre-existing harness race does not satisfy ac-18.
-    counterexample: tests/setarArchive.browser.test.ts:125 names the ac-18 journey
-      and line 367 requires no page errors. The reported intermittent README.md
-      access-control error reaches that assertion.
-      tests/practiceBrowser.ts:749-752 and 770 leave the fake main ref
-      perpetually absent after bootstrap, allowing repeated README.md PUTs
-      during navigation. The current Check reports journeys skipped, so it
-      supplies no passing WebKit journey evidence.
-createdAt: 2026-09-18T21:09:24.242Z
-sealedAt: 2026-09-18T21:16:13.362Z
+verdict: approve
+createdAt: 2026-09-18T22:34:12.206Z
+sealedAt: 2026-09-18T22:36:30.332Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -42,7 +20,7 @@ sealedAt: 2026-09-18T21:16:13.362Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `21473d5c39f5186804b30feb8d324e44f8ee9a46`
+- **Diff patch-id:** `f6bdf1d780ca109cf6be81a99104c2d6600014ee`
 
 ## The Delta this change was framed from
 
@@ -85,909 +63,1260 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Browser harness cancellation correlation and real WebKit event ordering** — A genuine WebKit access-control page error can be suppressed by a nearby unrelated cancelled request. The real-browser test confirms the split error shape but does not establish requestfailed/pageerror ordering or safe association.
-  _counterexample:_ tests/setarInbound.browser.test.ts:724-737 obtains a genuine CORS page error from real WebKit, then expects excusedCancellation to return true when given a nearby synthetic cancelled event. tests/practiceBrowser.ts:137-201 selects by host and pathname and timestamp, ignoring query and request identity. If a cancellation without its own page error precedes a genuine failure to the same path, and the genuine requestfailed is later, farther away, or absent when pageErrors is read, the genuine page error disappears. The ordering tests at lines 596-655 construct timestamps rather than asserting the order emitted by WebKit.
+- **Browser harness cancellation correlation and real WebKit event ordering** — The cancellation veto still permits a genuine WebKit access-control page error to be excused when WebKit emits no requestfailed for that error. The sealed false-negative family remains open.
+  _counterexample:_ tests/practiceBrowser.ts:225-242 consumes a same-URL cancellation whenever no non-cancelled failure is tracked. The rework records a genuine CORS-shaped README.md page error with no requestfailed. Put an earlier unconsumed cancellation for that exact URL inside CANCELLED_EXCUSE_MS, then deliver that genuine error without requestfailed: pageErrors at lines 403-409 drops it. The real-browser test supplies a genuine requestfailed and therefore does not cover this case.
+- **ac-18 WebKit archive journey reliability** — The required WebKit archive journey remains intermittently failing; a pre-existing harness race does not satisfy ac-18.
+  _counterexample:_ tests/setarArchive.browser.test.ts:125 names the ac-18 journey and line 367 requires no page errors. The reported intermittent README.md access-control error reaches that assertion. tests/practiceBrowser.ts:749-752 and 770 leave the fake main ref perpetually absent after bootstrap, allowing repeated README.md PUTs during navigation. The current Check reports journeys skipped, so it supplies no passing WebKit journey evidence.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index e2d5537..d0ae4eb 100644
+index d0ae4eb..8ccf16a 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1567,30 +1567,23 @@ later in the same journey, was swallowed and `pageErrors` said nothing. `excused
- excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
- naming the same URL is never excused).
+@@ -1550,141 +1550,82 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
+ automation driver (so that journey seeds state-only), and it reports
+ `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
  
--**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
--ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
-+**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
- host+path ALONE: a cancellation that produced no page error of its own stayed a live,
- unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
- a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
- the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
- cancellation's spurious error and a real access-control failure are worded the same on
--purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
--excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
--names is ITSELF a cancellation. A genuine failure to that URL always fires its own
--`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
--nearer candidate and a stale, error-less cancellation is never reached by anything but the
--specific error it was actually waiting for — which is what makes leaving it unconsumed safe
--rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
--candidates the same distance away, the one that is NOT a cancellation wins.
--`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
--under the contention five concurrent dev servers create, never the correlation itself.
-+purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
-+genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
-+DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
-+create, never the correlation itself.
- 
- A second, independent hole lived in the same function: `message.includes(url.host)` and
- `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
- one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
--(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
--`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
--more boundary characters to a string test.
-+(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
-+part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
-+adding more boundary characters to a string test.
- 
- **AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
- Every string above was a hand-written reconstruction; nothing had ever been measured. The same
-@@ -1607,12 +1600,9 @@ two facts the harness had backwards, either of which alone made the excuse unabl
-   wrong reconstruction fails to match rather than matching loosely. The whitespace the old
-   regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
-   apparent space was an artefact of that same split.
--- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
--  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
--  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
--  invariant survives the correction untouched, for the same reason it held before: a genuine
--  failure's own `requestfailed` is always adjacent to its own page error, so it always
--  outranks a stale cancellation milliseconds away.
-+- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
-+  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
-+  search read an empty log. Tracked failures are searched in BOTH directions now.
- 
- So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
- reads it after awaited page work, which round-trips the ordered transport and so has both
-@@ -1620,10 +1610,81 @@ events in hand. A judgement is made ONCE: a cancellation arriving afterwards nev
- an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
- for every tracked request to that resource and how far each sat from it
- (`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
--cancellation from a real refusal is exactly what made this failure unreadable. The regression
--tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
--feeding its REAL error object back through the rule — that the shape can never drift back to a
--reconstruction.
-+cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
-+deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
-+its own full url and saying whether it is the resource the error named — because a failure to
-+the same path under a different query is exactly what the excuse must refuse to act on and
-+exactly what the next CI-only failure needs to show.
+-A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
+-while it was in flight is reported by WebKit as
+-`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
+-problem and is not one. Instrumented, the only difference between a passing and a failing run
+-of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
+-fulfilled with the right CORS headers every other time. A real person navigating mid-sync
+-cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
+-as a page error.
+-
+-**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
+-It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
+-message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
+-later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
+-(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
+-excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
+-naming the same URL is never excused).
+-
+-**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
+-host+path ALONE: a cancellation that produced no page error of its own stayed a live,
+-unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
+-a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
+-the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
+-cancellation's spurious error and a real access-control failure are worded the same on
+-purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
+-genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
+-DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
+-create, never the correlation itself.
+-
+-A second, independent hole lived in the same function: `message.includes(url.host)` and
+-`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
+-one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
+-(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
+-part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
+-adding more boundary characters to a string test.
+-
+-**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
+-Every string above was a hand-written reconstruction; nothing had ever been measured. The same
+-commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
+-measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
+-two facts the harness had backwards, either of which alone made the excuse unable to fire:
+-
+-- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
+-  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
+-  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
+-  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
+-  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
+-  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
+-  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
+-  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
+-  apparent space was an artefact of that same split.
+-- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
+-  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
+-  search read an empty log. Tracked failures are searched in BOTH directions now.
+-
+-So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
+-reads it after awaited page work, which round-trips the ordered transport and so has both
+-events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
+-an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
+-for every tracked request to that resource and how far each sat from it
+-(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
+-cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
+-deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
+-its own full url and saying whether it is the resource the error named — because a failure to
+-the same path under a different query is exactly what the excuse must refuse to act on and
+-exactly what the next CI-only failure needs to show.
+-
+-**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
+-CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
+-"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
+-outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
+-reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
+-straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
+-genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
+-land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
+-it. TWO changes replace it, and neither is a window:
+-
+-- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
+-  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
+-  two requests the app really makes one after the other, so a cancellation of one stood ready to
+-  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
+-  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
+-  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
+-  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
+-- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
+-  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
+-  sits, and whatever sits nearer. A genuine access-control failure always emits its own
+-  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
+-  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
+-  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
+-  be. The veto is scoped: a genuine failure to another resource, or to the same path under
+-  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
+-  against a url.
+-
+-**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
+-STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
+-a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
+-cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
+-same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+-`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
+-produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
+-explanation for the CI failure, and cannot be settled from here. A cancellation being merely
+-NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
+-nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
+-so url text and order are the whole of what exists.
+-
+-The regression tests assert the measured pair verbatim, the measured ordering, the query and the
+-fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
+-vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
+-request back through the rule — that the shape can never drift back to a reconstruction. One
+-drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
+-naming it, because this excuse has been dead code twice and both times only CI could tell.
+-
+-**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
+-Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
+-in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
+-`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
+-is refused before WebKit's network layer ever sees it, because the document is being torn down by
+-the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
+-BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
+-not evidence of a fix, because nothing in that change touches this cause. There
+-is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
+-excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
+-access-control diagnosis for a faked origin would suppress a whole error class at an entire
+-origin on no per-event evidence at all, which is broader than the rule the sealed finding
+-rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
+-without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
+-re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
+-three seconds for the whole journey, each one a chance to be caught by a navigation. What
+-re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
+-own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
+-here. Making the fake remember the
+-push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
+-journey — which publishes a remote snapshot after the app's own push — then reads "Already in
+-sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
+-recorded here rather than left to be rediscovered from a red CI run.
++A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
++EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and reports
++it as an uncaught page error reading `"Fetch API cannot load … due to access control
++checks"` — which reads exactly like a CORS problem and is not one. Every `goTo`/`reload` is a
++full document load, so each one re-runs the app's own on-open sync; navigating again while
++that sync is mid-chain destroys the document around it. Instrumented through a real WebKit,
++the failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all.
 +
-+**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
-+CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
-+"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
-+outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
-+reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
-+straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
-+genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
-+land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
-+it. TWO changes replace it, and neither is a window:
++**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
++versions of an excuse were built and every one of them could withhold a genuine failure:
++a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
++a live credit any later genuine failure to that URL could spend); a rule reading the page
++error's `message` alone, which never contains the diagnosis — Playwright splits a page error
++at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
++was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
++the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
++which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
++`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
++STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
++failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
++thing in the log. That is the sealed finding that ended the attempt.
 +
-+- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
-+  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
-+  two requests the app really makes one after the other, so a cancellation of one stood ready to
-+  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
-+  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
-+  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
-+  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
-+- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
-+  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
-+  sits, and whatever sits nearer. A genuine access-control failure always emits its own
-+  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
-+  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
-+  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
-+  be. The veto is scoped: a genuine failure to another resource, or to the same path under
-+  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
-+  against a url.
++**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT.** Five cancellation shapes
++driven through a real WebKit — navigating away mid-flight, reloading mid-flight,
++`AbortController`, a same-tick `location.href`, a cancelled CORS preflight — each produced a
++`requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever. A `pageerror` hands
++a test an `Error` and no request identity. So there is no positive evidence available to bind a
++specific error to a specific cancellation at any window or resolution, and an unprovable
++correlation is resolved the only safe way: `openPracticeApp` KEEPS every page error.
++`excusedCancellation` is gone. What survives is `requestFailureEvidence`
++(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
++`errorText` for every tracked request to that resource and how far each sat from it — because
++one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
++what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
++its full-URL identity (host, path and query; the fragment ignored, since a fragment never
++reaches the network while the message keeps it verbatim) only decides whether a row is labelled
++as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
++suppression.
 +
-+**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
-+STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
-+a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
-+cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
-+same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
-+`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
-+produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
-+explanation for the CI failure, and cannot be settled from here. A cancellation being merely
-+NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
-+nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
-+so url text and order are the whole of what exists.
++**AND THE RACE IS REMOVED AT ITS ROOT, WHICH IS NOT WHERE IT LOOKED.** Vite's default
++`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
++checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
++every server ran the dependency optimizer against one directory and raced to commit it
++(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
++modules, and a committing winner forces the page to reload: BOTH shapes of the failure come
++from there. The pages that never painted failed on the cold-start wait, and a page reloaded out
++from under an in-flight sync is exactly a `fetch()` issued into a document being destroyed —
++the access-control diagnosis. Each server gets a PRIVATE `cacheDir` now.
 +
-+The regression tests assert the measured pair verbatim, the measured ordering, the query and the
-+fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
-+vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
-+request back through the rule — that the shape can never drift back to a reconstruction. One
-+drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
-+naming it, because this excuse has been dead code twice and both times only CI could tell.
++**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
++full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
++bought exactly one more run before the next. The ceiling is back at its original 60s.
 +
-+**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
-+Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
-+in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
-+`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
-+is refused before WebKit's network layer ever sees it, because the document is being torn down by
-+the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
-+BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
-+not evidence of a fix, because nothing in that change touches this cause. There
-+is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
-+excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
-+access-control diagnosis for a faked origin would suppress a whole error class at an entire
-+origin on no per-event evidence at all, which is broader than the rule the sealed finding
-+rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
-+without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
-+re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
-+three seconds for the whole journey, each one a chance to be caught by a navigation. What
-+re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
-+own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
-+here. Making the fake remember the
-+push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
-+journey — which publishes a remote snapshot after the app's own push — then reads "Already in
-+sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
-+recorded here rather than left to be rediscovered from a red CI run.
++The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
++`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
++resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
++`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
++another README PUT — measured at one every one to three seconds for a whole journey. Gating
++that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
++and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
++returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
++Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
++because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
++in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
++correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
++the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
++in place, the failure simply moved from `README.md` to `contents/manifest.json`.
++
++**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
++`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
++navigating. It addressed the mechanism, but once the shared `cacheDir` was fixed it could not be
++shown to do anything: six consecutive full-suite runs WITHOUT it were clean in every test, and
++it was dead in the two journeys that call `page.reload()` directly anyway. Keeping harness code
++whose effect cannot be measured, and a normative claim that it is what fixed this, is how the
++next reader inherits a false cause. If this diagnosis ever returns with a private `cacheDir` in
++place, the mechanism above is where to start — but bring a reproduction, not this helper back.
  
  **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
  the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
+diff --git a/DECISIONS.md b/DECISIONS.md
+index ee4c88f..3ede1c1 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -2,6 +2,58 @@
+ 
+ Durable record of non-obvious choices. Newest first.
+ 
++## Rejection: the cancellation excuse is removed, and the race is fixed instead (2026-09-18)
++
++A sixth sealed review found the excuse still able to hide a genuine WebKit access-control page
++error: full-URL identity plus a veto on genuine evidence STILL dropped a diagnosis that emitted
++no `requestfailed` of its own — exactly the CI failure's own shape — whenever an earlier
++unconsumed cancellation to that URL was the only thing in the log.
++
++The excuse is DELETED rather than narrowed a seventh time. Its premise was never observed: five
++cancellation shapes driven through a real WebKit each produce a `requestfailed` with
++`errorText: 'cancelled'` and NO page error at all, and a `pageerror` hands a test an `Error`
++carrying no request identity — so no rule over that log can prove a specific error belongs to a
++cancellation, at any window or resolution. An unprovable correlation is resolved by KEEPING the
++error. `requestFailureEvidence` survives as annotation only: it consumes nothing, withholds
++nothing, and exists so a kept CORS-shaped message says what the browser actually reported.
++
++The same review required the ac-18 WebKit archive journey to stop failing intermittently, which
++the excuse had been masking. Two harness causes, both measured:
++
++- **The fake GitHub repo forgot that `main` existed after its own bootstrap.** `git/ref/heads/main`
++  was gated on a SNAPSHOT existing, so `getHead()` kept returning null and every later sync
++  re-entered `initialize()` and issued another `PUT contents/README.md`. Gating that route on the
++  REF alone is faithful to GitHub (a Contents-API bootstrap creates the branch; `manifest.json`
++  and `state.json` are still absent) and changes nothing `decideSync` sees, so the pull/conflict
++  journeys are untouched. Making the fake REMEMBER THE PUSH is deliberately still not done — it
++  was built and reverted once because it changes `decideSync`'s input and `setarInbound`'s pull
++  journey then reads "Already in sync" instead of pulling.
++- **That alone was measured to leave the failure reproducible** (1 of 3 runs; it simply moved to
++  `contents/manifest.json?ref=head-1`), so it is a correctness fix for the fake and not the cure.
++  **The cure was a shared Vite dependency cache.** `cacheDir` defaults to `node_modules/.vite`,
++  ten test files each start their own dev server on one checkout, and the rollback journeys'
++  baseline worktree SYMLINKS that same `node_modules`; they all ran the optimizer against one
++  directory and raced to commit it (`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`).
++  A loser cannot serve its modules — its page never paints, which failed the cold-start wait —
++  and a committing winner forces a page reload, which tears a document down around an in-flight
++  sync and produces exactly this access-control diagnosis. One cause, both shapes. Each server
++  gets a private `cacheDir` now.
++
++A `settleSync` helper that made `goTo`/`reload` wait for GitHub traffic to fall quiet was built
++for the second symptom, then DELETED: with the cache fixed it could not be shown to do anything
++(six consecutive clean full-suite runs without it) and it was dead in the two journeys that call
++`page.reload()` directly. Its `PracticeApp` member, listeners and docstrings went with it.
++Separately, the cold-start ceiling was raised 60s → 120s and REVERTED: it bought exactly one more
++run before the next failure, which is what forced the search for the real cause.
++
++A timeout that fires is a question about what is blocking, not a number to raise.
++
++Evidence: ac-18 passed 4 of 4 sequential runs (both engines, both viewports) and every full
++concurrent suite run after the cache fix — nine of them, the last six with `settleSync` already
++removed — clean in every test, with no rename error and no access-control diagnosis. The
++pull/conflict journeys in `setarInbound`, `practice-information-inbound` and `review-ownership`
++are unchanged and green. No production code changed.
++
+ ## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
+ 
+ A fifth sealed review rejected the harness's cancellation excuse again. The previous round
 diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index 6113bd4..3f60bbe 100644
+index 3f60bbe..dccf491 100644
 --- a/tests/practiceBrowser.ts
 +++ b/tests/practiceBrowser.ts
-@@ -30,17 +30,32 @@ const installHint = (engine: Engine) =>
+@@ -1,4 +1,7 @@
++import { mkdtempSync, rmSync } from 'node:fs';
+ import { readFile } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
+ import { createServer, type ViteDevServer } from 'vite';
+ import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
+ 
+@@ -29,76 +32,62 @@ const installHint = (engine: Engine) =>
+ 
  /**
   * ONE recorded outcome of a network request the harness watched, whatever the
-  * browser's own words for it were. Tracking EVERY failure — not only
-- * cancellations — is what lets a later, genuine failure to the same URL
-- * displace a stale cancellation instead of being excused by it (see
-- * `excusedCancellation`).
-+ * cancellations — is what lets genuine evidence for a resource VETO the excuse
-+ * for that resource (see `excusedCancellation`).
+- * browser's own words for it were. Tracking EVERY failure — not only
+- * cancellations — is what lets genuine evidence for a resource VETO the excuse
+- * for that resource (see `excusedCancellation`).
++ * browser's own words for it were. It is EVIDENCE and nothing else: no page
++ * error is ever withheld because of what is in this log.
   *
-- * A request the BROWSER cancelled because the test navigated away while it was
-- * in flight is not an application error. WebKit reports such a fetch as
-- * "Fetch API cannot load … due to access control checks", which reads exactly
-- * like a CORS problem and is not one: the request is otherwise fulfilled with
-- * the right CORS headers every other time. A real person navigating mid-sync
-- * cancels the same request, so treating it as a page error makes a journey
-- * fail for driving the app quickly.
-+ * WHY THERE IS AN EXCUSE AT ALL, and exactly how far the evidence for it goes.
-+ * A CI run produced `Fetch API cannot load https://api.github.com/repos/owner/
-+ * practice-data/contents/README.md due to access control checks.` on two of
-+ * three runners at a commit that passed on the third — a WebKit-only,
-+ * CORS-shaped page error, while every other run fulfils that same request with
-+ * the right CORS headers. A request the browser CANCELS because the test drove
-+ * on while it was in flight is the standing explanation, and a real person
-+ * navigating mid-sync cancels the same request, so failing a journey for it
-+ * would be failing it for being driven quickly.
-+ *
-+ * That explanation is NOT measured, and this comment used to state it as fact.
-+ * Driving a real WebKit here, five different cancellation shapes — navigating
-+ * away mid-flight, reloading mid-flight, `AbortController`, a same-tick
-+ * `location.href`, a cancelled CORS preflight — each produced a
-+ * `requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever.
-+ * A reply that genuinely lacks CORS headers does produce exactly this page
-+ * error, so a raced `route.fulfill` remains a live alternative explanation
-+ * that cannot be settled from here.
-+ *
-+ * Which is precisely why the excuse below demands the strongest association
-+ * the platform makes available and refuses on anything weaker: the pairing it
-+ * exists for has never been observed, so it may never be INFERRED from a
-+ * cancellation merely being nearby.
+- * WHY THERE IS AN EXCUSE AT ALL, and exactly how far the evidence for it goes.
+- * A CI run produced `Fetch API cannot load https://api.github.com/repos/owner/
+- * practice-data/contents/README.md due to access control checks.` on two of
+- * three runners at a commit that passed on the third — a WebKit-only,
+- * CORS-shaped page error, while every other run fulfils that same request with
+- * the right CORS headers. A request the browser CANCELS because the test drove
+- * on while it was in flight is the standing explanation, and a real person
+- * navigating mid-sync cancels the same request, so failing a journey for it
+- * would be failing it for being driven quickly.
++ * WHY THERE IS NO LONGER AN EXCUSE. A CI run produced `Fetch API cannot load
++ * https://api.github.com/repos/owner/practice-data/contents/README.md due to
++ * access control checks.` on two of three runners at a commit that passed on
++ * the third — a WebKit-only, CORS-shaped page error, while every other run
++ * fulfils that same request with the right CORS headers. A request the browser
++ * CANCELS because the test drove on while it was in flight was the standing
++ * explanation, and successive versions of this harness tried to act on it: a
++ * permanent URL set, a consuming time window, a nearest-wins ranking, then
++ * full-URL identity plus a veto. Every one of them could still withhold a
++ * genuine failure, because every one rested on a pairing that has never been
++ * OBSERVED.
   *
-  * `errorText` is kept verbatim rather than reduced to a boolean, because it is
-  * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
-@@ -63,12 +78,25 @@ export interface TrackedRequestFailure {
-  * never produced its own page error remained a live "credit" any LATER,
-  * genuine access-control failure to that same URL could spend. That is a
-  * sealed finding, not a hypothetical: a cancellation and a real failure are
-- * indistinguishable by wording or by URL, so a window — however short — can
-- * never be the thing that tells them apart. Only ORDER can: see
-- * `excusedCancellation` below for the correlation that actually does the work.
-- * What is left for this ceiling to do is bound how far apart the two events
-- * may be and still be treated as one outcome, in case Node's delivery is
-- * delayed under the contention several concurrent dev servers create.
-+ * indistinguishable by wording, so a window — however short — can never be
-+ * the thing that tells them apart.
-+ *
-+ * NOR CAN PROXIMITY, AT ANY RESOLUTION. Replacing the window with "whichever
-+ * tracked failure sits NEAREST the error wins" was the previous attempt, and
-+ * measuring it is what killed it: a genuine access-control failure emits its
-+ * own `requestfailed` 74–359µs after its page error (six of six, macOS WebKit),
-+ * which reads as a gap of 0ms or 1ms at `Date.now()` granularity depending on
-+ * which side of a millisecond boundary the pair straddles. An unrelated
-+ * cancellation to the same resource landing in the error's own millisecond
-+ * therefore OUTRANKS a genuine failure 359µs away, and excuses it. Sub-
-+ * millisecond timestamps would only move that boundary, not remove it.
-+ *
-+ * What separates them is `excusedCancellation`'s VETO — genuine evidence for
-+ * the same resource forbids the excuse outright, however far away it sits —
-+ * and the full-URL identity `sameResource` insists on. All this ceiling does
-+ * is bound how far apart two events may be and still be considered one
-+ * outcome at all, in case Node's delivery is delayed under the contention
-+ * several concurrent dev servers create.
+- * That explanation is NOT measured, and this comment used to state it as fact.
+- * Driving a real WebKit here, five different cancellation shapes — navigating
+- * away mid-flight, reloading mid-flight, `AbortController`, a same-tick
+- * `location.href`, a cancelled CORS preflight — each produced a
+- * `requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever.
+- * A reply that genuinely lacks CORS headers does produce exactly this page
+- * error, so a raced `route.fulfill` remains a live alternative explanation
+- * that cannot be settled from here.
++ * Measured, driving a real WebKit: five cancellation shapes — navigating away
++ * mid-flight, reloading mid-flight, `AbortController`, a same-tick
++ * `location.href`, a cancelled CORS preflight — each produced a `requestfailed`
++ * with `errorText: 'cancelled'` and NO page error whatsoever. And the CI
++ * failure itself arrives with no `request`, no route hit and no `requestfailed`
++ * at all. So a cancellation has never been seen to CAUSE this page error, and a
++ * `pageerror` hands a test an `Error` carrying no request identity — there is
++ * nothing to prove ownership with, at any window or resolution.
+  *
+- * Which is precisely why the excuse below demands the strongest association
+- * the platform makes available and refuses on anything weaker: the pairing it
+- * exists for has never been observed, so it may never be INFERRED from a
+- * cancellation merely being nearby.
++ * An unprovable correlation is therefore resolved the only safe way: the error
++ * is KEPT. The last shape of the excuse still let an earlier, unconsumed
++ * cancellation to the same URL swallow a genuine diagnosis that emitted no
++ * `requestfailed` of its own — exactly the CI failure's own shape — which is
++ * the sealed finding that closed this line of work for good. The remaining fix
++ * is to remove the RACE — see the shared `cacheDir` in `openPracticeApp` and
++ * the `git/ref/heads/main` route in `installFakeGitHub` — never to hide its
++ * symptom.
+  *
+- * `errorText` is kept verbatim rather than reduced to a boolean, because it is
+- * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
+- * diagnosed page error is not excused, the failure has to say what the browser
+- * actually said about that request, or the next CI-only failure is as
+- * unreadable as the one this fix came from.
++ * `errorText` is kept verbatim because it is what a kept error REPORTS
++ * (`requestFailureEvidence`): a bare CORS-shaped message with nothing to
++ * distinguish a cancellation from a real refusal is exactly what made the
++ * original CI-only failure unreadable.
   */
- export const CANCELLED_EXCUSE_MS = 2_000;
- 
-@@ -76,8 +104,8 @@ export const CANCELLED_EXCUSE_MS = 2_000;
-  * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
-  * `XMLHttpRequest`), anchored end to end.
-  *
-- * The whole point of parsing into a real `URL` and comparing `host` and
-- * `pathname` by EQUALITY, rather than testing whether the message merely
-+ * The whole point of parsing into a real `URL` and comparing its parts by
-+ * EQUALITY (`sameResource`), rather than testing whether the message merely
-  * CONTAINS a candidate's host/path as substrings, is that a substring test
-  * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
-  * the left) or `api.github.com.evil.test` (extended on the right), nor
-@@ -134,59 +162,60 @@ function reportedUrl(error: { name?: string; message: string }): URL | null {
-   return null;
+ export interface TrackedRequestFailure {
+   url: string;
+   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+   at: number;
+-  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
++  /** The browser's own words — `'cancelled'`, an Access-Control refusal, anything. */
+   errorText: string;
  }
  
--/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
--function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
+ /**
+- * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
+- * It once was the whole bound: a cancelled URL's entry stayed eligible for
+- * this long, matched by host+path ALONE, so an unconsumed cancellation that
+- * never produced its own page error remained a live "credit" any LATER,
+- * genuine access-control failure to that same URL could spend. That is a
+- * sealed finding, not a hypothetical: a cancellation and a real failure are
+- * indistinguishable by wording, so a window — however short — can never be
+- * the thing that tells them apart.
++ * How far from a page error a tracked request failure may sit and still be
++ * worth PRINTING beside it. It bounds a REPORT, never a suppression: nothing
++ * in this file drops an error, so no safety claim rests on this number.
+  *
+- * NOR CAN PROXIMITY, AT ANY RESOLUTION. Replacing the window with "whichever
+- * tracked failure sits NEAREST the error wins" was the previous attempt, and
+- * measuring it is what killed it: a genuine access-control failure emits its
+- * own `requestfailed` 74–359µs after its page error (six of six, macOS WebKit),
+- * which reads as a gap of 0ms or 1ms at `Date.now()` granularity depending on
+- * which side of a millisecond boundary the pair straddles. An unrelated
+- * cancellation to the same resource landing in the error's own millisecond
+- * therefore OUTRANKS a genuine failure 359µs away, and excuses it. Sub-
+- * millisecond timestamps would only move that boundary, not remove it.
+- *
+- * What separates them is `excusedCancellation`'s VETO — genuine evidence for
+- * the same resource forbids the excuse outright, however far away it sits —
+- * and the full-URL identity `sameResource` insists on. All this ceiling does
+- * is bound how far apart two events may be and still be considered one
+- * outcome at all, in case Node's delivery is delayed under the contention
+- * several concurrent dev servers create.
++ * It is generous because Node's delivery can lag under the contention several
++ * concurrent dev servers create — and small enough that the evidence line
++ * stays about this error rather than the whole journey.
+  */
+-export const CANCELLED_EXCUSE_MS = 2_000;
++export const FAILURE_EVIDENCE_MS = 2_000;
+ 
+ /**
+  * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
+@@ -194,66 +183,21 @@ function sameResource(trackedUrl: string, reported: URL): boolean {
+ }
+ 
+ /**
+- * The excuse correlates on IDENTITY plus a VETO, never on proximity.
+- *
+- * Among the tracked failures for the exact resource the error names, within
+- * the defensive ceiling:
+- *
+- *  - if ANY of them is NOT a cancellation, nothing is excused. A genuine
+- *    access-control failure always emits its own `requestfailed` beside its
+- *    own page error (measured: 74–359µs after it, six times out of six), so
+- *    the presence of genuine evidence for this exact resource means the
+- *    cancellation's ownership of this error is unproven — and an unproven
+- *    correlation is never resolved in the excuse's favour. This is a veto, not
+- *    a ranking: it holds however far away the genuine failure sits, which is
+- *    what the previous "whichever is nearest wins" rule could not do. At
+- *    `Date.now()` granularity a genuine pair straddling a millisecond boundary
+- *    reads as 1ms apart, so an unrelated cancellation in the error's own
+- *    millisecond used to outrank it and excuse a real failure;
+- *  - otherwise the nearest cancellation is CONSUMED, so it cannot excuse a
+- *    second error too. Nearest only chooses WHICH interchangeable cancellation
+- *    to spend here; it no longer decides WHETHER anything may be spent.
+- *
+- * A message that is not the diagnosis at all — a render crash, a thrown
+- * TypeError, whatever URL it happens to name — is never excused.
+- */
+-export function excusedCancellation(
+-  events: TrackedRequestFailure[],
+-  error: { name?: string; message: string },
+-  at: number,
+-): boolean {
+-  const reported = reportedUrl(error);
+-  if (!reported) return false;
 -  let best = -1;
 -  let bestGap = Infinity;
 -  for (let i = 0; i < events.length; i++) {
 -    const e = events[i];
 -    const gap = Math.abs(at - e.at);
 -    if (gap > CANCELLED_EXCUSE_MS) continue;
--    let url: URL;
--    try {
--      url = new URL(e.url);
--    } catch {
--      continue;
--    }
--    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
--    // A TIE is never resolved in the excuse's favour: with two candidates the
--    // same distance away, the one that is NOT a cancellation wins, so a stale
--    // cancellation landing in the same millisecond as a genuine failure cannot
--    // excuse it.
--    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
--    if (best < 0 || better) {
+-    if (!sameResource(e.url, reported)) continue;
+-    if (e.errorText !== 'cancelled') return false;
+-    if (gap < bestGap) {
 -      best = i;
 -      bestGap = gap;
 -    }
-+/**
-+ * Do a tracked request's URL and the one a page error NAMES address the same
-+ * resource? Host, path AND QUERY, all three by structural equality.
+-  }
+-  if (best < 0) return false;
+-  events.splice(best, 1);
+-  return true;
+-}
+-
+-/**
+- * What the harness saw around a diagnosed page error it did NOT excuse, in one
+- * sentence, so the assertion that keeps it says why.
++ * What the harness saw around a diagnosed page error, in one sentence, so the
++ * assertion that KEEPS it says why.
+  *
+  * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
+  * that reads like a CORS misconfiguration whatever actually happened — which
+  * is exactly how a CI-only failure became unreadable. Naming the browser's own
+  * `errorText` for every tracked request to that same resource, and how far
+  * each sat from the error, turns the next one into evidence instead of a
+- * guess. Non-consuming and never an excuse: it only describes.
++ * guess.
 + *
-+ * THE QUERY IS THE PART THIS USED TO THROW AWAY, and a sealed finding is what
-+ * it cost: matching host+path alone makes
-+ * `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` — two
-+ * different requests the app really does make, one after the other — the same
-+ * resource, so a cancellation of one stood ready to excuse a genuine failure
-+ * of the other. WebKit names the FULL url in the diagnosis, query included
-+ * (measured, macOS WebKit: `…/state.json?ref=main&x=1 due to access control
-+ * checks.`), so this identity is available and there is no reason to discard
-+ * it.
-+ *
-+ * THE FRAGMENT IS THE ONE PART THAT MUST BE IGNORED, and comparing `href`
-+ * would get that wrong: a fragment never reaches the network, so
-+ * `request.url()` drops it — while WebKit's message keeps it verbatim
-+ * (measured: message `…/state.json#frag`, request url `…/state.json`). Naming
-+ * `host`/`pathname`/`search` explicitly is what keeps a later tidy-up to
-+ * `href` from silently killing the excuse for every fragment-bearing URL.
-+ */
-+function sameResource(trackedUrl: string, reported: URL): boolean {
-+  let url: URL;
-+  try {
-+    url = new URL(trackedUrl);
-+  } catch {
-+    return false;
-   }
--  return best;
-+  return url.host === reported.host && url.pathname === reported.pathname && url.search === reported.search;
- }
- 
- /**
-- * The excuse correlates on ORDER, not on a window: among every tracked request
-- * to the exact host+path the error names, the one that actually produced it is
-- * whichever happened NEAREST IN TIME — because the browser emits the spurious
-- * error and the request's own failure in the same tick, so nothing else to
-- * that URL can have intervened.
-+ * The excuse correlates on IDENTITY plus a VETO, never on proximity.
-  *
-- * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
-- * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
-- * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
-- * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
-- * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
-- * request. A backwards-only search therefore looked at an empty log and
-- * excused nothing — the second reason this excuse had never once fired against
-- * a real error. The sealed invariant it was written to protect is untouched by
-- * the correction: a genuine failure ALWAYS emits its own `requestfailed`
-- * adjacent to its own page error, so it is always the nearest candidate, and a
-- * stale cancellation sitting milliseconds away can never outrank it.
-+ * Among the tracked failures for the exact resource the error names, within
-+ * the defensive ceiling:
-  *
-- * If the nearest candidate is not a cancellation at all — a genuine failure,
-- * or nothing within the ceiling — this returns `false` and excuses nothing: an
-- * uncertain correlation is never resolved in the excuse's favour.
-+ *  - if ANY of them is NOT a cancellation, nothing is excused. A genuine
-+ *    access-control failure always emits its own `requestfailed` beside its
-+ *    own page error (measured: 74–359µs after it, six times out of six), so
-+ *    the presence of genuine evidence for this exact resource means the
-+ *    cancellation's ownership of this error is unproven — and an unproven
-+ *    correlation is never resolved in the excuse's favour. This is a veto, not
-+ *    a ranking: it holds however far away the genuine failure sits, which is
-+ *    what the previous "whichever is nearest wins" rule could not do. At
-+ *    `Date.now()` granularity a genuine pair straddling a millisecond boundary
-+ *    reads as 1ms apart, so an unrelated cancellation in the error's own
-+ *    millisecond used to outrank it and excuse a real failure;
-+ *  - otherwise the nearest cancellation is CONSUMED, so it cannot excuse a
-+ *    second error too. Nearest only chooses WHICH interchangeable cancellation
-+ *    to spend here; it no longer decides WHETHER anything may be spent.
-  *
-- * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
-- * second, later error too.
-+ * A message that is not the diagnosis at all — a render crash, a thrown
-+ * TypeError, whatever URL it happens to name — is never excused.
++ * It only DESCRIBES. It consumes nothing, decides nothing and cannot cause an
++ * error to be dropped; a message that is not the diagnosis at all (a render
++ * crash, a thrown TypeError) simply gets no annotation.
   */
- export function excusedCancellation(
+-export function cancellationEvidence(
++export function requestFailureEvidence(
    events: TrackedRequestFailure[],
-@@ -195,9 +224,21 @@ export function excusedCancellation(
- ): boolean {
-   const reported = reportedUrl(error);
-   if (!reported) return false;
--  const nearest = nearestIndex(events, reported, at);
--  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
--  events.splice(nearest, 1);
-+  let best = -1;
-+  let bestGap = Infinity;
-+  for (let i = 0; i < events.length; i++) {
-+    const e = events[i];
-+    const gap = Math.abs(at - e.at);
-+    if (gap > CANCELLED_EXCUSE_MS) continue;
-+    if (!sameResource(e.url, reported)) continue;
-+    if (e.errorText !== 'cancelled') return false;
-+    if (gap < bestGap) {
-+      best = i;
-+      bestGap = gap;
-+    }
-+  }
-+  if (best < 0) return false;
-+  events.splice(best, 1);
-   return true;
- }
- 
-@@ -219,7 +260,12 @@ export function cancellationEvidence(
- ): string {
+   error: { name?: string; message: string },
+   at: number,
+@@ -261,13 +205,13 @@ export function cancellationEvidence(
    const reported = reportedUrl(error);
    if (!reported) return '';
--  const where = `${reported.host}${reported.pathname}`;
-+  const where = `${reported.host}${reported.pathname}${reported.search}`;
-+  // DELIBERATELY BROADER THAN THE EXCUSE: same host and path, whatever the
-+  // query. A failure to the same path under a DIFFERENT query is exactly what
-+  // the excuse must refuse to act on and exactly what the reader of a CI-only
-+  // failure needs to see, so each row prints its own full url and says whether
-+  // it was the same resource the error named.
+   const where = `${reported.host}${reported.pathname}${reported.search}`;
+-  // DELIBERATELY BROADER THAN THE EXCUSE: same host and path, whatever the
+-  // query. A failure to the same path under a DIFFERENT query is exactly what
+-  // the excuse must refuse to act on and exactly what the reader of a CI-only
+-  // failure needs to see, so each row prints its own full url and says whether
+-  // it was the same resource the error named.
++  // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: same host and path,
++  // whatever the query. A failure to the same path under a DIFFERENT query is
++  // exactly what the reader of a CI-only failure needs to see, so each row
++  // prints its own full url and says whether it was the resource the error
++  // named.
    const near = events
-     .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
+-    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
++    .filter((e) => Math.abs(at - e.at) <= FAILURE_EVIDENCE_MS)
      .filter((e) => {
-@@ -230,7 +276,11 @@ export function cancellationEvidence(
-         return false;
-       }
-     })
--    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
-+    .map(
-+      (e) =>
-+        `${e.url} — ${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms` +
-+        `${sameResource(e.url, reported) ? '' : ' (different query — not the resource this error names)'}`,
-+    );
+       try {
+         const url = new URL(e.url);
+@@ -283,7 +227,7 @@ export function cancellationEvidence(
+     );
    return near.length
      ? `tracked request failures for ${where}: ${near.join('; ')}`
-     : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
-@@ -246,9 +296,9 @@ export interface PracticeApp {
+-    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
++    : `no tracked request failure for ${where} within ${FAILURE_EVIDENCE_MS}ms`;
+ }
+ 
+ export interface PracticeApp {
+@@ -295,11 +239,12 @@ export interface PracticeApp {
+   /**
     * Uncaught page errors, so a broken render cannot pass as a quiet one.
     *
-    * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
--   * about a mid-flight request BEFORE that request's own `requestfailed`, so
--   * deciding at arrival time is deciding against a log that has not been
--   * written yet. Reading this at the end of a journey — which is when a
-+   * about a request BEFORE that request's own `requestfailed` (measured:
-+   * 74–359µs ahead, six times out of six), so deciding at arrival time is
-+   * deciding against a log that has not been written yet. Reading this at the end of a journey — which is when a
-    * journey asserts on it — has every event in hand.
+-   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
+-   * about a request BEFORE that request's own `requestfailed` (measured:
+-   * 74–359µs ahead, six times out of six), so deciding at arrival time is
+-   * deciding against a log that has not been written yet. Reading this at the end of a journey — which is when a
+-   * journey asserts on it — has every event in hand.
++   * NOTHING IS EVER WITHHELD FROM THIS LIST. Each error is ANNOTATED on read
++   * rather than at arrival, because WebKit delivers a page error about a
++   * request BEFORE that request's own `requestfailed` (measured: 74–359µs
++   * ahead, six times out of six), so annotating on arrival would print against
++   * a log that has not been written yet. Reading this at the end of a journey
++   * — which is when a journey asserts on it — has every event in hand.
     */
    readonly pageErrors: Error[];
-@@ -302,9 +352,9 @@ export async function openPracticeApp(options: {
+   close(): Promise<void>;
+@@ -328,15 +273,32 @@ export async function openPracticeApp(options: {
+   root?: string;
+ }): Promise<PracticeApp> {
+   const engine = options.engine ?? 'chromium';
++  // EVERY SERVER GETS ITS OWN DEPENDENCY CACHE. Vite's default cache directory
++  // is `node_modules/.vite`, and this suite runs ten test files at once, each
++  // starting its own dev server on the same checkout — plus the rollback
++  // journeys, whose baseline worktree SYMLINKS this very `node_modules`. They
++  // all ran the dependency optimizer against one directory and raced to commit
++  // it: `ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`.
++  // The loser then cannot serve its modules at all, so its page never paints
++  // and the journey fails on the cold-start wait below — which reads as
++  // contention and is really one shared directory. Measured: that rename error
++  // appears in the same run as every one of those failures. A private cache
++  // costs one extra optimizer pass per server and removes the race outright.
++  const cacheDir = mkdtempSync(join(tmpdir(), 'practice-vite-'));
+   const server: ViteDevServer = await createServer({
+     ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
++    cacheDir,
+     logLevel: 'error',
+     server: { port: 0, strictPort: false },
+   });
++  const closeServer = async () => {
++    await server.close();
++    rmSync(cacheDir, { recursive: true, force: true });
++  };
+   await server.listen();
+   const origin = server.resolvedUrls?.local[0];
+   if (!origin) {
+-    await server.close();
++    await closeServer();
+     throw new Error('The dev server started but reported no local URL.');
+   }
+ 
+@@ -344,7 +306,7 @@ export async function openPracticeApp(options: {
+   try {
+     browser = await ENGINES[engine].launch();
+   } catch (e) {
+-    await server.close();
++    await closeServer();
+     throw new Error(installHint(engine), { cause: e });
+   }
+ 
+@@ -352,9 +314,8 @@ export async function openPracticeApp(options: {
    let page: Page;
    const pending: { error: Error; at: number }[] = [];
    const pageErrors: Error[] = [];
--  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
--  // to be visible to `excusedCancellation` so it can outrank a stale
--  // cancellation to the same URL, not just a cancellation itself.
-+  // EVERY requestfailed is tracked, cancelled or not — genuine evidence for a
-+  // resource has to be visible to `excusedCancellation` for its veto to fire,
-+  // not just the cancellations.
+-  // EVERY requestfailed is tracked, cancelled or not — genuine evidence for a
+-  // resource has to be visible to `excusedCancellation` for its veto to fire,
+-  // not just the cancellations.
++  // EVERY requestfailed is tracked, cancelled or not: a kept page error has to
++  // be able to say what the browser actually reported about that resource.
    const requestFailures: TrackedRequestFailure[] = [];
    try {
      context = await browser.newContext({
-@@ -632,7 +682,6 @@ export function publishSourceIndex(remote: FakeRemote, text: string, commit = 's
- export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
-   let headCounter = 0;
-   const blobs = new Map<string, string>();
--
-   await page.route('https://api.github.com/**', async (route) => {
-     const req = route.request();
-     const url = new URL(req.url());
+@@ -373,37 +334,42 @@ export async function openPracticeApp(options: {
+       requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
+     });
+     // Surface a page-level error instead of letting it become a silently
+-    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
+-    // the request failure that explains a cancelled one has not been
+-    // delivered yet at this point.
++    // wrong assertion later. RECORDED here, ANNOTATED in `resolve()` below —
++    // WebKit delivers a page error about a request BEFORE that request's own
++    // `requestfailed` (measured: 74–359µs ahead, six of six), so the evidence
++    // a kept error prints has not been delivered yet at this point.
+     page.on('pageerror', (e) => {
+       pending.push({ error: e, at: Date.now() });
+     });
+     await page.clock.install({ time: options.now });
+     await page.goto(origin);
+     // The store hydrates from IndexedDB before anything renders. The ceiling is
+-    // generous because this is the COLD start: five journeys run concurrently,
++    // generous because this is the COLD start: every journey runs concurrently,
+     // each starting its own dev server and browser, so the first paint of the
+-    // last one to launch competes with four others compiling modules. A longer
++    // last one to launch competes with the rest compiling modules. A longer
+     // wait cannot hide a real failure — it only refuses to call contention one.
++    //
++    // RAISING IT IS NOT THE ANSWER WHEN IT FIRES, and this lane proved that:
++    // three separate full-suite failures landed here, and raising 60s to 120s
++    // only bought one more run before the next. The cause was the shared
++    // dependency cache above, not a page that needed longer.
+     await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
+   } catch (e) {
+     await browser.close();
+-    await server.close();
++    await closeServer();
+     throw e;
+   }
+ 
+   /**
+-   * Drain everything that arrived since the last read: excuse each page error
+-   * a cancellation accounts for, and KEEP the rest — annotated with what the
+-   * harness actually saw around them, so a refusal to excuse is readable
+-   * rather than another bare CORS-shaped message. Idempotent: a drained error
+-   * stays resolved, so reading twice reports the same list.
++   * Drain everything that arrived since the last read. EVERY page error is
++   * kept — nothing here may drop one — annotated with what the harness
++   * actually saw around it, so a CORS-shaped message arrives as evidence
++   * rather than a guess. Idempotent: a drained error stays resolved, so
++   * reading twice reports the same list.
+    */
+   const resolve = (): Error[] => {
+     for (const { error, at } of pending.splice(0)) {
+-      if (excusedCancellation(requestFailures, error, at)) continue;
+-      const evidence = cancellationEvidence(requestFailures, error, at);
++      const evidence = requestFailureEvidence(requestFailures, error, at);
+       if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
+       pageErrors.push(error);
+     }
+@@ -419,7 +385,7 @@ export async function openPracticeApp(options: {
+     },
+     async close() {
+       await browser.close();
+-      await server.close();
++      await closeServer();
+     },
+   };
+ }
+@@ -721,8 +687,27 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
+         size: remote.sourceIndex.text.length,
+       });
+     }
++    // A BRANCH EXISTING AND A SNAPSHOT EXISTING ARE TWO DIFFERENT FACTS, and
++    // reading the first off the second is what made this fake behave unlike
++    // GitHub. `initialize()` bootstraps an empty repo with a Contents-API
++    // `PUT contents/README.md`, after which real GitHub resolves
++    // `git/ref/heads/main` — the branch is there; only `manifest.json` and
++    // `state.json` are still absent. This route answered 404 until a SNAPSHOT
++    // existed, so `getHead()` kept returning null and EVERY later sync
++    // re-entered `initialize()` and issued another README PUT. Each journey
++    // navigation is a full document load that re-triggers the app's on-open
++    // sync, so those extra PUTs were repeatedly issued into a document
++    // `page.goto` was tearing down — the measured amplifier behind the
++    // intermittent WebKit access-control page error in the archive journey.
++    //
++    // Gating on the REF alone fixes that without touching what `decideSync`
++    // sees: the manifest and state routes below still 404 until something
++    // publishes a snapshot, so `readRemoteMeta` still returns null, the
++    // decision is still `first-push`, and the pull/conflict journeys are
++    // unchanged. Making the fake REMEMBER the pushed snapshot would change
++    // that decision, which is why it is deliberately not done here.
+     if (method === 'GET' && rest === 'git/ref/heads/main') {
+-      if (!remote.snapshot) return json({}, 404);
++      if (!remote.refs.includes('main')) return json({}, 404);
+       return json({ object: { sha: head() } });
+     }
+     if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
+diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
+index e279f5d..3656fcb 100644
+--- a/tests/setarArchive.browser.test.ts
++++ b/tests/setarArchive.browser.test.ts
+@@ -365,6 +365,15 @@ describe('the Setar archive, rendered', () => {
+           // actually reported, and what the harness saw around it — is exactly
+           // what it withholds. Every other journey already asserts this way.
+           expect(app.pageErrors.map((e) => e.message)).toEqual([]);
++          // THE REPO IS BOOTSTRAPPED ONCE, not once per navigation. Every
++          // `goTo` above is a full document load, so each one re-runs the
++          // app's on-open sync; while the fake answered `git/ref/heads/main`
++          // with 404 after its own bootstrap, every one of those syncs
++          // re-entered `initialize()` and issued another
++          // `PUT contents/README.md` into a document the next navigation was
++          // tearing down — the measured amplifier behind the intermittent
++          // WebKit access-control page error this journey kept reporting.
++          expect(remote.calls.filter((c) => c.startsWith('PUT contents/README.md'))).toHaveLength(1);
+         } finally {
+           await app.close();
+         }
 diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
-index 0a9961f..ed92eba 100644
+index ed92eba..f09a18c 100644
 --- a/tests/setarInbound.browser.test.ts
 +++ b/tests/setarInbound.browser.test.ts
-@@ -511,9 +511,10 @@ describe('rolling back past the archive schema', () => {
+@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { describe, expect, it } from 'vitest';
+ import {
+-  CANCELLED_EXCUSE_MS,
++  FAILURE_EVIDENCE_MS,
+   connectSync,
+   exportBackup,
+   goTo,
+@@ -14,8 +14,7 @@ import {
+   importOutcome,
+   installFakeGitHub,
+   newFakeRemote,
+-  cancellationEvidence,
+-  excusedCancellation,
++  requestFailureEvidence,
+   openPracticeApp,
+   persistedDb,
+   publishRemote,
+@@ -511,40 +510,35 @@ describe('rolling back past the archive schema', () => {
  describe('the journey harness itself', () => {
    // The harness must not be able to hide the very failure a journey exists to
    // catch, and it must not manufacture one either. A request the browser
--  // CANCELLED (because the test navigated away mid-flight) produces a WebKit
--  // error that reads exactly like a CORS failure. Excusing it has now failed
--  // four different ways, and each test below is named for the specific way:
-+  // CANCELLED (because the test drove on mid-flight) is the standing
-+  // explanation for a WebKit page error that reads exactly like a CORS
-+  // failure. Excusing it has now failed five different ways, and each test
-+  // below is named for the specific way:
+-  // CANCELLED (because the test drove on mid-flight) is the standing
++  // CANCELLED (because the test drove on mid-flight) was the standing
+   // explanation for a WebKit page error that reads exactly like a CORS
+-  // failure. Excusing it has now failed five different ways, and each test
+-  // below is named for the specific way:
++  // failure, and excusing it failed six different ways:
    //  - a PERMANENT set of cancelled URLs discarded every later page error
-   //    whose message merely contained that pathname, so a genuine failure at
-   //    the same path, later in the same journey, was swallowed and
-@@ -522,9 +523,7 @@ describe('the journey harness itself', () => {
-   //    generous time window, an unconsumed cancellation — one that produced
-   //    no page error of its own — stayed a live "credit" for up to that whole
-   //    window, spendable by a genuine, later failure to the same URL that had
--  //    nothing to do with it. A window can never tell the two apart, because
--  //    a cancellation's error and a genuine one read identically; only ORDER
--  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`);
-+  //    nothing to do with it;
+-  //    whose message merely contained that pathname, so a genuine failure at
+-  //    the same path, later in the same journey, was swallowed and
+-  //    `pageErrors` said nothing;
+-  //  - even made CONSUMING (one cancellation, one error) and bounded by a
+-  //    generous time window, an unconsumed cancellation — one that produced
+-  //    no page error of its own — stayed a live "credit" for up to that whole
+-  //    window, spendable by a genuine, later failure to the same URL that had
+-  //    nothing to do with it;
++  //    whose message merely contained that pathname;
++  //  - made CONSUMING and bounded by a time window, an unconsumed cancellation
++  //    stayed a live "credit" any genuine later failure to that URL could
++  //    spend;
    //  - the excuse read the page error's `message` ALONE, which never contains
    //    the diagnosis: Playwright splits a page error at its first colon — the
-   //    URL's own scheme colon — so the wording lives in `name` and only the
-@@ -533,10 +532,19 @@ describe('the journey harness itself', () => {
-   //  - and the correlation looked only BACKWARDS in time, on the stated
-   //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
-   //    Measured, WebKit delivers them the other way round. Against a real
--  //    error the log was still empty when the excuse ran.
--  // Both of the last two were exposed by the same CI run: the journey passed
--  // on one runner and failed on two others at the identical commit, because
--  // the error had simply never been produced locally before.
-+  //    error the log was still empty when the excuse ran;
-+  //  - and, the finding this block was last reworked for, the correlation
-+  //    that replaced the window — "whichever tracked failure sits NEAREST the
-+  //    error wins", on host+path — threw away the QUERY, so two different
-+  //    requests to one path were one resource, and rested the whole safety
-+  //    claim on PROXIMITY, which the measurement below shows cannot carry it:
-+  //    a genuine failure's own `requestfailed` lands 74–359µs after its page
-+  //    error, which reads as 0ms or 1ms depending on which side of a
-+  //    millisecond boundary the pair straddles, so an unrelated cancellation
-+  //    in the error's own millisecond outranked it.
-+  // The middle two were exposed by the same CI run: the journey passed on one
-+  // runner and failed on two others at the identical commit, because the
-+  // error had simply never been produced locally before.
+-  //    URL's own scheme colon — so the wording lives in `name` and only the
+-  //    tail lives in `message`. Every string these tests used to assert on was
+-  //    a hand-written reconstruction that no browser ever emits;
+-  //  - and the correlation looked only BACKWARDS in time, on the stated
+-  //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
+-  //    Measured, WebKit delivers them the other way round. Against a real
+-  //    error the log was still empty when the excuse ran;
+-  //  - and, the finding this block was last reworked for, the correlation
+-  //    that replaced the window — "whichever tracked failure sits NEAREST the
+-  //    error wins", on host+path — threw away the QUERY, so two different
+-  //    requests to one path were one resource, and rested the whole safety
+-  //    claim on PROXIMITY, which the measurement below shows cannot carry it:
+-  //    a genuine failure's own `requestfailed` lands 74–359µs after its page
+-  //    error, which reads as 0ms or 1ms depending on which side of a
+-  //    millisecond boundary the pair straddles, so an unrelated cancellation
+-  //    in the error's own millisecond outranked it.
+-  // The middle two were exposed by the same CI run: the journey passed on one
+-  // runner and failed on two others at the identical commit, because the
+-  // error had simply never been produced locally before.
++  //    URL's own scheme colon — so the wording lives in `name`;
++  //  - the correlation looked only BACKWARDS in time, while WebKit delivers
++  //    the page error FIRST;
++  //  - "whichever tracked failure sits NEAREST wins", on host+path, threw away
++  //    the QUERY and rested the safety claim on proximity, which a 74–359µs
++  //    real gap at `Date.now()` granularity cannot carry;
++  //  - and finally, full-URL identity plus a veto on genuine evidence STILL
++  //    withheld a genuine diagnosis that emitted no `requestfailed` of its own
++  //    — precisely the CI failure's own shape — because an earlier unconsumed
++  //    cancellation to that exact URL was then the only thing in the log.
++  //
++  // That last one is the sealed finding that ended this line of work. The
++  // premise was never observed in the first place: five cancellation shapes
++  // driven through a real WebKit each produce a `requestfailed` and NO page
++  // error at all, and a `pageerror` carries no request identity, so no rule
++  // built on this log can prove a specific error belongs to a cancellation.
++  // The harness therefore KEEPS every page error and only ANNOTATES it. The
++  // tests below hold that: the shape is still parsed (so the annotation is
++  // readable), and nothing suppresses.
    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
  
    /**
-@@ -548,18 +556,34 @@ describe('the journey harness itself', () => {
-     const u = new URL(target);
-     return {
-       name: `Fetch API cannot load ${u.protocol.replace(':', '')}`,
--      message: `/${u.host}${u.pathname} due to access control checks.`,
-+      message: `/${u.host}${u.pathname}${u.search}${u.hash} due to access control checks.`,
-     };
+@@ -585,207 +579,107 @@ describe('the journey harness itself', () => {
    };
-   const spurious = diagnosed();
-   const at = 1_000_000;
--  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, errorText: 'cancelled' });
--  const genuine = (offset = 0): TrackedRequestFailure => ({
--    url,
-+  const cancelled = (offset = 0, target = url): TrackedRequestFailure => ({
-+    url: target,
-+    at: at + offset,
-+    errorText: 'cancelled',
-+  });
-+  const genuine = (offset = 0, target = url): TrackedRequestFailure => ({
-+    url: target,
-     at: at + offset,
-     errorText: 'Origin http://localhost:5173 is not allowed by Access-Control-Allow-Origin. Status code: 200',
-   });
  
-+  /**
-+   * Raise the diagnosis as a REAL uncaught page error, through the app's own
-+   * page. A top-level `throw` in an injected script, NOT a timer callback:
-+   * every journey installs `page.clock`, so a `setTimeout` here never fires at
-+   * all and the error would never be delivered.
-+   */
-+  const raiseDiagnosis = async (app: { page: import('playwright').Page }, target: string): Promise<void> => {
-+    await app.page.addScriptTag({
-+      content: `throw new Error(${JSON.stringify(`Fetch API cannot load ${target} due to access control checks.`)});`,
-+    });
-+  };
-+
    it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
-     // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
+-    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
++    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim. The annotation has
++    // to recognise this representation or a kept error says nothing useful.
      const fromCI = {
-@@ -593,10 +617,54 @@ describe('the journey harness itself', () => {
-     ).toBe(false);
-   });
+       name: 'Fetch API cannot load https',
+       message: '/api.github.com/repos/owner/practice-data/contents/README.md due to access control checks.',
+     };
+     const readme = 'https://api.github.com/repos/owner/practice-data/contents/README.md';
+-    expect(excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toBe(true);
++    expect(requestFailureEvidence([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toContain(
++      'cancelled',
++    );
  
-+  it('tells two requests to one path apart by their query, in both directions', () => {
-+    // THE SEALED FINDING THIS BLOCK WAS REWORKED FOR. Host+path alone makes
-+    // these one resource; they are two requests the app really does make, one
-+    // after the other, when it reads the published index at two commits.
-+    const refA = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-a';
-+    const refB = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-b';
-+
-+    // A cancellation of ONE never excuses the diagnosis naming the OTHER —
-+    // and the cancellation is left intact, not spent on something it does not
-+    // account for.
-+    const other = [cancelled(0, refA)];
-+    expect(excusedCancellation(other, diagnosed(refB), at + 1)).toBe(false);
-+    expect(other).toHaveLength(1);
-+
-+    // A query-less request is not the same resource as a query-bearing one,
-+    // either way round.
-+    const bare = 'https://api.github.com/repos/owner/data/contents/setar/index.json';
-+    expect(excusedCancellation([cancelled(0, bare)], diagnosed(refA), at + 1)).toBe(false);
-+    expect(excusedCancellation([cancelled(0, refA)], diagnosed(bare), at + 1)).toBe(false);
-+    // Differing only in a query VALUE is enough; so is a differing key.
-+    expect(
-+      excusedCancellation([cancelled(0, `${bare}?ref=commit-a&page=2`)], diagnosed(refA), at + 1),
-+    ).toBe(false);
-+
-+    // And the matching one still works, so this is identity, not blanket refusal.
-+    const own = [cancelled(0, refA)];
-+    expect(excusedCancellation(own, diagnosed(refA), at + 1)).toBe(true);
-+    expect(own).toEqual([]);
+     // The message half ALONE is not the diagnosis and never matches: this is
+-    // the shape the excuse used to be handed, and why it never fired.
+-    expect(
+-      excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5),
+-    ).toBe(false);
++    // the shape the old excuse used to be handed, and why it never fired.
++    expect(requestFailureEvidence([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5)).toBe(
++      '',
++    );
+ 
+     // An UNSPLIT representation is understood too, so this does not depend on
+     // Playwright continuing to split it.
+     expect(
+-      excusedCancellation([cancelled()], { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` }, at + 5),
+-    ).toBe(true);
++      requestFailureEvidence(
++        [cancelled()],
++        { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` },
++        at + 5,
++      ),
++    ).toContain(url);
+ 
+     // WebKit spells the same diagnosis for an XHR as well as for a fetch.
+     expect(
+-      excusedCancellation([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
+-    ).toBe(true);
++      requestFailureEvidence([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
++    ).toContain(url);
+ 
+-    // Only the DIAGNOSED wording is ever excused: a real render crash naming
+-    // the same URL is a page error, not a cancellation.
++    // A message that is not the diagnosis at all gets no annotation — and is
++    // still kept, like every other page error.
+     expect(
+-      excusedCancellation([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
+-    ).toBe(false);
++      requestFailureEvidence([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
++    ).toBe('');
 +  });
 +
-+  it('ignores the fragment, which the message carries and the request never does', () => {
-+    // MEASURED, macOS WebKit: the page error names `…/state.json#frag` while
-+    // `request.url()` for the very same request reports `…/state.json` — a
-+    // fragment is never sent. Comparing `href` would therefore break the
-+    // excuse for every fragment-bearing URL; comparing host/path/search does
-+    // not. (The app itself never fetches a fragment; this is what keeps a
-+    // later tidy-up to `href` from silently killing the excuse.)
-+    const own = [cancelled(0, url)];
-+    expect(excusedCancellation(own, diagnosed(`${url}#frag`), at + 1)).toBe(true);
-+    expect(own).toEqual([]);
-+    // And the fragment does not smuggle a query past the check either.
-+    expect(excusedCancellation([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toBe(false);
-+  });
-+
-   it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
--    // THE MEASURED ORDER: WebKit delivers the page error about a tenth of a
--    // millisecond ahead of the request's own failure. A backwards-only search
--    // saw an empty log here and excused nothing.
-+    // THE MEASURED ORDER: WebKit delivers the page error 74–359µs ahead of the
-+    // request's own failure. A backwards-only search saw an empty log here and
-+    // excused nothing.
-     const later = [cancelled(1)];
-     expect(excusedCancellation(later, spurious, at)).toBe(true);
-     expect(later).toEqual([]);
-@@ -624,50 +692,76 @@ describe('the journey harness itself', () => {
-     expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
++  it('keeps a diagnosed page error that has no request failure of its own, whatever cancellations are logged', () => {
++    // THE SEALED COUNTEREXAMPLE, as a unit. The CI failure arrives with no
++    // `request`, no route hit and no `requestfailed`; the last excuse still
++    // dropped it whenever an earlier unconsumed cancellation to that exact URL
++    // sat in the log. Nothing may drop it now, so the only thing the harness
++    // can do with that log is PRINT it — and it must, or the kept error is the
++    // same unreadable CORS-shaped message the whole rework came from.
++    const log = [cancelled(-5)];
++    const evidence = requestFailureEvidence(log, spurious, at);
++    expect(evidence).toContain('cancelled');
++    expect(evidence).toContain(url);
++    // Nothing is consumed: evidence stays complete for every later error too.
++    expect(log).toEqual([cancelled(-5)]);
++    expect(requestFailureEvidence(log, spurious, at)).toBe(evidence);
    });
  
--  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
--    // This is the sealed finding: the cancellation happens and nothing ever
--    // reports its own page error for it — exactly the case the harness must
--    // tolerate without turning it into a standing credit for something else.
--    const events = [cancelled()];
--    // A genuine failure to the SAME url follows moments later, and IS
--    // tracked — this is what makes it outrank the stale cancellation next.
--    events.push(genuine(50));
-+  it('genuine evidence for a resource vetoes the excuse for it, at any distance', () => {
-+    // THE SAFETY CLAIM, and it is a VETO rather than a ranking on purpose. A
-+    // genuine access-control failure always emits its own `requestfailed`
-+    // beside its own page error, so genuine evidence for this exact resource
-+    // means the cancellation's ownership of this error is unproven — and an
-+    // unproven correlation is never resolved in the excuse's favour.
-+    const events = [cancelled(), genuine(50)];
-     expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
--    // The stale cancellation is untouched: it lost to the more recent
--    // genuine failure, it was never spent.
-+    // The stale cancellation is untouched: it was refused, never spent.
-     expect(events).toContainEqual(cancelled());
-+
-+    // DISTANCE CANNOT BUY THE EXCUSE BACK. This is what the previous
-+    // nearest-wins rule could not hold: at `Date.now()` granularity a genuine
-+    // pair straddling a millisecond boundary reads as 1ms apart, so a
-+    // cancellation in the error's own millisecond outranked it by 1ms and
-+    // excused a real failure. Here the cancellation is as near as a tracked
-+    // event can be and the genuine failure is as far as the ceiling allows.
-+    const nearCancel = [cancelled(0), genuine(CANCELLED_EXCUSE_MS)];
-+    expect(excusedCancellation(nearCancel, spurious, at)).toBe(false);
-+    expect(nearCancel).toHaveLength(2);
-+
-+    // The measured shape of a real pair, exactly: page error first, its own
-+    // failure 1ms later, an unrelated cancellation in the same millisecond.
-+    const measured = [cancelled(0), genuine(1)];
-+    expect(excusedCancellation(measured, spurious, at)).toBe(false);
-+
-+    // A TIE is refused for the same reason.
-+    expect(excusedCancellation([cancelled(), genuine()], spurious, at)).toBe(false);
-   });
+-  it('tells two requests to one path apart by their query, in both directions', () => {
+-    // THE SEALED FINDING THIS BLOCK WAS REWORKED FOR. Host+path alone makes
+-    // these one resource; they are two requests the app really does make, one
+-    // after the other, when it reads the published index at two commits.
++  it('tells two requests to one path apart by their query, and ignores the fragment', () => {
++    // THE IDENTITY A PREVIOUS REWORK THREW AWAY, kept because the annotation
++    // has to say whether a tracked failure is the resource the error NAMED:
++    // `…/index.json?ref=commit-a` and `?ref=commit-b` are two requests the app
++    // really does make, one after the other.
+     const refA = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-a';
+     const refB = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-b';
++    expect(requestFailureEvidence([cancelled(0, refA)], diagnosed(refB), at + 1)).toContain('different query');
++    expect(requestFailureEvidence([cancelled(0, refA)], diagnosed(refA), at + 1)).not.toContain('different query');
  
--  it("a genuine failure reported AFTER its own page error still outranks a stale cancellation", () => {
--    // The sealed finding above, re-proved under the order the browser
--    // actually uses: the genuine failure's `requestfailed` lands a fraction
--    // of a millisecond AFTER the page error it belongs to, while a stale
--    // cancellation sits well before it. Nearest-in-either-direction is what
--    // keeps the genuine one the winner; a backwards-only search would reach
--    // the cancellation and excuse a real failure.
--    const events = [cancelled(-40), genuine(1)];
--    expect(excusedCancellation(events, spurious, at)).toBe(false);
--    expect(events).toContainEqual(cancelled(-40));
+-    // A cancellation of ONE never excuses the diagnosis naming the OTHER —
+-    // and the cancellation is left intact, not spent on something it does not
+-    // account for.
+-    const other = [cancelled(0, refA)];
+-    expect(excusedCancellation(other, diagnosed(refB), at + 1)).toBe(false);
+-    expect(other).toHaveLength(1);
 -
--    // And a TIE is never resolved in the excuse's favour either.
--    const tied = [cancelled(), genuine()];
--    expect(excusedCancellation(tied, spurious, at)).toBe(false);
-+  it('a veto is scoped to the resource, so an unrelated failure never blocks a real excuse', () => {
-+    // The veto must not become blanket suppression of the excuse: a genuine
-+    // failure to a DIFFERENT resource — including the same path under another
-+    // query — says nothing about this error.
-+    const elsewhere = [
-+      genuine(0, 'https://api.github.com/repos/owner/data/contents/manifest.json'),
-+      genuine(0, `${url}?ref=main`),
-+      genuine(0, 'https://api.example.com/repos/owner/data/contents/state.json'),
-+      cancelled(1),
-+    ];
-+    expect(excusedCancellation(elsewhere, spurious, at)).toBe(true);
-+    // Only the cancellation was consumed; the genuine rows are still tracked.
-+    expect(elsewhere).toHaveLength(3);
-+    expect(elsewhere.every((e) => e.errorText !== 'cancelled')).toBe(true);
-+
-+    // And a genuine failure to this resource OUTSIDE the ceiling is not
-+    // evidence about this error at all — the ceiling bounds the veto exactly
-+    // as it bounds the excuse.
-+    const distant = [genuine(-CANCELLED_EXCUSE_MS - 1), cancelled(1)];
-+    expect(excusedCancellation(distant, spurious, at)).toBe(true);
+-    // A query-less request is not the same resource as a query-bearing one,
+-    // either way round.
+-    const bare = 'https://api.github.com/repos/owner/data/contents/setar/index.json';
+-    expect(excusedCancellation([cancelled(0, bare)], diagnosed(refA), at + 1)).toBe(false);
+-    expect(excusedCancellation([cancelled(0, refA)], diagnosed(bare), at + 1)).toBe(false);
+-    // Differing only in a query VALUE is enough; so is a differing key.
+-    expect(
+-      excusedCancellation([cancelled(0, `${bare}?ref=commit-a&page=2`)], diagnosed(refA), at + 1),
+-    ).toBe(false);
+-
+-    // And the matching one still works, so this is identity, not blanket refusal.
+-    const own = [cancelled(0, refA)];
+-    expect(excusedCancellation(own, diagnosed(refA), at + 1)).toBe(true);
+-    expect(own).toEqual([]);
+-  });
+-
+-  it('ignores the fragment, which the message carries and the request never does', () => {
+     // MEASURED, macOS WebKit: the page error names `…/state.json#frag` while
+-    // `request.url()` for the very same request reports `…/state.json` — a
+-    // fragment is never sent. Comparing `href` would therefore break the
+-    // excuse for every fragment-bearing URL; comparing host/path/search does
+-    // not. (The app itself never fetches a fragment; this is what keeps a
+-    // later tidy-up to `href` from silently killing the excuse.)
+-    const own = [cancelled(0, url)];
+-    expect(excusedCancellation(own, diagnosed(`${url}#frag`), at + 1)).toBe(true);
+-    expect(own).toEqual([]);
+-    // And the fragment does not smuggle a query past the check either.
+-    expect(excusedCancellation([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toBe(false);
+-  });
+-
+-  it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
+-    // THE MEASURED ORDER: WebKit delivers the page error 74–359µs ahead of the
+-    // request's own failure. A backwards-only search saw an empty log here and
+-    // excused nothing.
+-    const later = [cancelled(1)];
+-    expect(excusedCancellation(later, spurious, at)).toBe(true);
+-    expect(later).toEqual([]);
+-
+-    // The other order still works: one measurement is not a proof that the
+-    // reverse can never happen.
+-    const earlier = [cancelled(-1)];
+-    expect(excusedCancellation(earlier, spurious, at)).toBe(true);
+-    expect(earlier).toEqual([]);
+-  });
+-
+-  it('a cancellation excuses its own diagnosed error once', () => {
+-    const pending = [cancelled()];
+-    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
+-    // CONSUMED — the identical error arriving again has no cancellation left
+-    // to account for it, which is the ORIGINAL reviewer counterexample.
+-    expect(pending).toEqual([]);
+-    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
+-  });
+-
+-  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
+-    const twice = [cancelled(), cancelled(10)];
+-    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+-    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+-    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+-  });
+-
+-  it('genuine evidence for a resource vetoes the excuse for it, at any distance', () => {
+-    // THE SAFETY CLAIM, and it is a VETO rather than a ranking on purpose. A
+-    // genuine access-control failure always emits its own `requestfailed`
+-    // beside its own page error, so genuine evidence for this exact resource
+-    // means the cancellation's ownership of this error is unproven — and an
+-    // unproven correlation is never resolved in the excuse's favour.
+-    const events = [cancelled(), genuine(50)];
+-    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
+-    // The stale cancellation is untouched: it was refused, never spent.
+-    expect(events).toContainEqual(cancelled());
+-
+-    // DISTANCE CANNOT BUY THE EXCUSE BACK. This is what the previous
+-    // nearest-wins rule could not hold: at `Date.now()` granularity a genuine
+-    // pair straddling a millisecond boundary reads as 1ms apart, so a
+-    // cancellation in the error's own millisecond outranked it by 1ms and
+-    // excused a real failure. Here the cancellation is as near as a tracked
+-    // event can be and the genuine failure is as far as the ceiling allows.
+-    const nearCancel = [cancelled(0), genuine(CANCELLED_EXCUSE_MS)];
+-    expect(excusedCancellation(nearCancel, spurious, at)).toBe(false);
+-    expect(nearCancel).toHaveLength(2);
+-
+-    // The measured shape of a real pair, exactly: page error first, its own
+-    // failure 1ms later, an unrelated cancellation in the same millisecond.
+-    const measured = [cancelled(0), genuine(1)];
+-    expect(excusedCancellation(measured, spurious, at)).toBe(false);
+-
+-    // A TIE is refused for the same reason.
+-    expect(excusedCancellation([cancelled(), genuine()], spurious, at)).toBe(false);
++    // `request.url()` for the same request reports `…/state.json` — a fragment
++    // is never sent, so comparing `href` would call every fragment-bearing URL
++    // a different resource.
++    expect(requestFailureEvidence([cancelled(0, url)], diagnosed(`${url}#frag`), at + 1)).not.toContain('different query');
++    expect(requestFailureEvidence([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toContain('different query');
    });
  
--  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
-+  it('a genuine failure is never excused, before or after a cancellation to the same URL', () => {
-     // Genuine failure arrives FIRST, with no cancellation recorded at all.
-     const events = [genuine()];
-     expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
- 
--    // A real cancellation follows and correctly excuses its OWN error.
-+    // A cancellation follows — and under the VETO it still excuses nothing
-+    // while that genuine failure is in the window. This assertion used to
-+    // read `true`, on the nearest-wins rule: the cancellation was 10ms away
-+    // and the genuine failure 110ms, so the nearer one won and a real failure
-+    // to that exact resource was excused. Genuine evidence for a resource now
-+    // forbids the excuse for it outright.
-     events.push(cancelled(100));
--    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
-+    expect(excusedCancellation(events, spurious, at + 110)).toBe(false);
- 
--    // Another genuine failure follows the (now-consumed) cancellation and is
--    // never excused by it either — there is nothing left pending to excuse
--    // it with, and it would not have qualified anyway.
--    events.push(genuine(200));
--    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
-+    // Once the genuine failure is old enough to be out of the window, the
-+    // cancellation excuses its own error normally — the veto expires with the
-+    // evidence, it is not a permanent mark against the URL.
-+    expect(excusedCancellation(events, spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(true);
+-  it('a veto is scoped to the resource, so an unrelated failure never blocks a real excuse', () => {
+-    // The veto must not become blanket suppression of the excuse: a genuine
+-    // failure to a DIFFERENT resource — including the same path under another
+-    // query — says nothing about this error.
+-    const elsewhere = [
+-      genuine(0, 'https://api.github.com/repos/owner/data/contents/manifest.json'),
+-      genuine(0, `${url}?ref=main`),
+-      genuine(0, 'https://api.example.com/repos/owner/data/contents/state.json'),
+-      cancelled(1),
+-    ];
+-    expect(excusedCancellation(elsewhere, spurious, at)).toBe(true);
+-    // Only the cancellation was consumed; the genuine rows are still tracked.
+-    expect(elsewhere).toHaveLength(3);
+-    expect(elsewhere.every((e) => e.errorText !== 'cancelled')).toBe(true);
+-
+-    // And a genuine failure to this resource OUTSIDE the ceiling is not
+-    // evidence about this error at all — the ceiling bounds the veto exactly
+-    // as it bounds the excuse.
+-    const distant = [genuine(-CANCELLED_EXCUSE_MS - 1), cancelled(1)];
+-    expect(excusedCancellation(distant, spurious, at)).toBe(true);
+-  });
+-
+-  it('a genuine failure is never excused, before or after a cancellation to the same URL', () => {
+-    // Genuine failure arrives FIRST, with no cancellation recorded at all.
+-    const events = [genuine()];
+-    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
+-
+-    // A cancellation follows — and under the VETO it still excuses nothing
+-    // while that genuine failure is in the window. This assertion used to
+-    // read `true`, on the nearest-wins rule: the cancellation was 10ms away
+-    // and the genuine failure 110ms, so the nearer one won and a real failure
+-    // to that exact resource was excused. Genuine evidence for a resource now
+-    // forbids the excuse for it outright.
+-    events.push(cancelled(100));
+-    expect(excusedCancellation(events, spurious, at + 110)).toBe(false);
+-
+-    // Once the genuine failure is old enough to be out of the window, the
+-    // cancellation excuses its own error normally — the veto expires with the
+-    // evidence, it is not a permanent mark against the URL.
+-    expect(excusedCancellation(events, spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(true);
+-  });
+-
+-  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
++  it('never matches a host or path that merely shares characters with a tracked one', () => {
+     // A substring test cannot tell these apart from the genuine host/path;
+-    // only structural URL equality can. Each of these contains the real
+-    // host or path as a substring while naming a DIFFERENT resource.
++    // only structural URL equality can. Each contains the real host or path as
++    // a substring while naming a DIFFERENT resource, so none of them may be
++    // reported as evidence about this error.
+     for (const trap of [
+       'https://evil-api.github.com/repos/owner/data/contents/state.json',
+       'https://api.github.com.evil.test/repos/owner/data/contents/state.json',
+       'https://api.github.com/repos/owner/data/contents/state.json.bak',
+-      // Another host entirely, and another path on the same host.
+       'https://api.example.com/repos/owner/data/contents/state.json',
+       'https://api.github.com/repos/owner/data/contents/files/x.bin',
+     ]) {
+-      expect(excusedCancellation([cancelled()], diagnosed(trap), at + 5)).toBe(false);
++      expect(requestFailureEvidence([cancelled()], diagnosed(trap), at + 5)).toMatch(/no tracked request failure/);
+     }
    });
  
-   it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
-@@ -694,19 +788,20 @@ describe('the journey harness itself', () => {
-     expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
+-  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
+-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
+-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+-    // Symmetrically in the other direction, now that both are searched.
+-    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS)], spurious, at)).toBe(true);
+-    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
++  it('reports what the browser said in both directions of the measured ordering', () => {
++    // WebKit delivers the page error 74–359µs BEFORE the request's own
++    // failure, so evidence arriving AFTER the error is the normal case, not
++    // the exception; one measurement is not proof the reverse cannot happen,
++    // so both are searched.
++    expect(requestFailureEvidence([genuine(1)], spurious, at)).toContain('Access-Control-Allow-Origin');
++    expect(requestFailureEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
++    // Outside the reporting window there is nothing useful to print.
++    expect(requestFailureEvidence([genuine(FAILURE_EVIDENCE_MS + 1)], spurious, at)).toMatch(
++      /no tracked request failure/,
++    );
++    expect(requestFailureEvidence([genuine(FAILURE_EVIDENCE_MS)], spurious, at)).toContain('Access-Control-Allow-Origin');
    });
  
--  it('parses the diagnosis a REAL WebKit produces, and still reports it when nothing excuses it', async () => {
--    // The two defects above were both about a representation and an ORDER
--    // nobody had ever measured — the strings these tests asserted on were
--    // hand-written, and the CI run that finally produced the real thing is what
--    // exposed them. This drives an actual WebKit and reads the actual error
--    // object, so the shape can never drift back to a reconstruction.
-+  it('measures what a REAL WebKit reports, and holds the rule to it', async () => {
-+    // Every string and every ORDER in the tests above was once a hand-written
-+    // reconstruction, and the CI run that finally produced the real thing is
-+    // what exposed two of them. This drives an actual WebKit and reads actual
-+    // event objects, so the shape, the query, the fragment and the ordering
-+    // can never drift back to a reconstruction.
-     //
-     // A reply from a REAL server with no CORS headers is what makes WebKit emit
-     // this diagnosis; a Playwright-fulfilled response does not go through the
-     // same check, which is why the fake GitHub repo above never produces one.
-     const blocked = createServer((req, res) => {
-       // `?slow` never answers in time, so a reload CANCELS it — the other
--      // half of this test needs a real cancellation to the same resource.
-+      // half of this test needs a REAL cancellation, with the browser's own
-+      // url, errorText and arrival time.
-       const reply = () => {
-         res.writeHead(200, { 'content-type': 'application/json' });
-         res.end('{}');
-@@ -719,25 +814,56 @@ describe('the journey harness itself', () => {
-     const target = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/README.md`;
-     const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
-     try {
--      const raw: Error[] = [];
--      app.page.on('pageerror', (e) => raw.push(e));
--      await app.page.evaluate((u) => void fetch(u).catch(() => {}), target);
--      await expect.poll(() => raw.length, { timeout: 20_000 }).toBeGreaterThan(0);
-+      // BOTH streams, in arrival order, with arrival times — so the ordering
-+      // this rule was corrected for is measured here rather than asserted
-+      // from memory.
-+      const seen: ({ kind: 'error'; error: Error; at: number } | ({ kind: 'failed'; at: number } & TrackedRequestFailure))[] = [];
-+      app.page.on('pageerror', (e) => seen.push({ kind: 'error', error: e, at: Date.now() }));
-+      app.page.on('requestfailed', (r) =>
-+        seen.push({ kind: 'failed', at: Date.now(), url: r.url(), errorText: r.failure()?.errorText ?? '' }),
-+      );
-+
-+      // A genuine access-control failure, with a QUERY and a FRAGMENT, so the
-+      // message's treatment of both is measured rather than assumed.
-+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?ref=main#frag`);
-+      await expect.poll(() => seen.filter((e) => e.kind === 'failed').length, { timeout: 20_000 }).toBeGreaterThan(0);
-+
-+      const real = seen.find((e) => e.kind === 'error');
-+      const realFailure = seen.find((e) => e.kind === 'failed');
-+      if (real?.kind !== 'error' || realFailure?.kind !== 'failed') throw new Error('WebKit reported no pair to measure.');
+   it('measures what a REAL WebKit reports, and holds the rule to it', async () => {
+@@ -850,16 +744,20 @@ describe('the journey harness itself', () => {
+       // at this clock's granularity — which is exactly why proximity cannot
+       // be what separates a genuine failure from a cancellation.)
+       expect(seen.indexOf(real)).toBeLessThan(seen.indexOf(realFailure));
+-      expect(realFailure.at - real.at).toBeLessThanOrEqual(CANCELLED_EXCUSE_MS);
++      expect(realFailure.at - real.at).toBeLessThanOrEqual(FAILURE_EVIDENCE_MS);
  
--      const real = raw[0];
-       // THE REPRESENTATION, as the browser and Playwright actually deliver it:
-       // the wording is in `name`, only the tail is in `message`. This is the
-       // identical split the failing CI run reported.
--      expect(real.name).toBe('Fetch API cannot load http');
--      expect(real.message).toBe(`/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md due to access control checks.`);
--      // Given a cancellation for that request, THIS object is excusable — the
--      // whole point, and what matching `message` alone could never do.
--      expect(excusedCancellation([{ url: target, at: Date.now(), errorText: 'cancelled' }], real, Date.now())).toBe(
--        true,
-+      expect(real.error.name).toBe('Fetch API cannot load http');
-+      // The QUERY is in the message — which is the identity the excuse used to
-+      // throw away — and so is the FRAGMENT, which the request itself drops.
-+      expect(real.error.message).toBe(
-+        `/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md?ref=main#frag due to access control checks.`,
-       );
-+      expect(realFailure.url).toBe(`${target}?ref=main`);
-+      expect(realFailure.errorText).toContain('Access-Control-Allow-Origin');
-+
-+      // THE OBSERVED ORDERING, measured rather than stated: the page error is
-+      // delivered first, and its own request failure lands beside it, well
-+      // inside the defensive ceiling. (Sub-millisecond, hence a gap of 0 or 1
-+      // at this clock's granularity — which is exactly why proximity cannot
-+      // be what separates a genuine failure from a cancellation.)
-+      expect(seen.indexOf(real)).toBeLessThan(seen.indexOf(realFailure));
-+      expect(realFailure.at - real.at).toBeLessThanOrEqual(CANCELLED_EXCUSE_MS);
-+
-+      // THE VETO, PROVED ON REAL EVENTS: this genuine failure is not excused,
-+      // not even by a cancellation to the very same resource sitting in the
-+      // error's own millisecond — the case a nearest-wins rule got wrong.
-+      const log: TrackedRequestFailure[] = [
-+        { url: realFailure.url, at: realFailure.at, errorText: realFailure.errorText },
-+        { url: realFailure.url, at: real.at, errorText: 'cancelled' },
-+      ];
-+      expect(excusedCancellation(log, real.error, real.at)).toBe(false);
-+      expect(log).toHaveLength(2);
+-      // THE VETO, PROVED ON REAL EVENTS: this genuine failure is not excused,
+-      // not even by a cancellation to the very same resource sitting in the
+-      // error's own millisecond — the case a nearest-wins rule got wrong.
++      // THE ANNOTATION, ON REAL EVENTS: a cancellation to the very same
++      // resource sitting in the error's own millisecond is REPORTED beside the
++      // genuine refusal, and takes nothing away from it. The rule that once
++      // ranked these two against each other is gone; what is left says what
++      // the browser reported about both.
+       const log: TrackedRequestFailure[] = [
+         { url: realFailure.url, at: realFailure.at, errorText: realFailure.errorText },
+         { url: realFailure.url, at: real.at, errorText: 'cancelled' },
+       ];
+-      expect(excusedCancellation(log, real.error, real.at)).toBe(false);
++      const evidence = requestFailureEvidence(log, real.error, real.at);
++      expect(evidence).toContain('Access-Control-Allow-Origin');
++      expect(evidence).toContain('cancelled');
+       expect(log).toHaveLength(2);
  
--      // But nothing cancelled it here, so the harness KEEPS it — and says what
--      // the browser reported instead of leaving a bare CORS-shaped message.
-+      // And the harness KEEPS it — saying what the browser reported instead of
-+      // leaving a bare CORS-shaped message.
-       const kept = app.pageErrors;
-       expect(kept).toHaveLength(1);
-       expect(kept[0].message).toContain('due to access control checks');
-@@ -745,12 +871,31 @@ describe('the journey harness itself', () => {
-       // Reading twice reports the same list, not a growing one.
+       // And the harness KEEPS it — saying what the browser reported instead of
+@@ -882,33 +780,39 @@ describe('the journey harness itself', () => {
+       if (realCancel?.kind !== 'failed') throw new Error('WebKit reported no cancellation to measure.');
+       expect(realCancel.url).toBe(`${target}?slow=1`);
+ 
+-      // IT EXCUSES ITS OWN RESOURCE AND NOTHING ELSE. No pairing of a
+-      // cancellation with this page error has ever been OBSERVED — five
+-      // cancellation shapes were driven through a real WebKit and each
+-      // produced a `requestfailed` and no page error at all — so the
+-      // diagnosis here is written against the url the browser really
+-      // cancelled, rather than pretending to a pairing nothing has seen.
++      // AND THE CANCELLATION ITSELF RAISES NO PAGE ERROR — the measurement the
++      // whole excuse was built on the absence of. A genuinely cancelled
++      // request produces a `requestfailed` and nothing else, so there is
++      // nothing for a cancellation rule to be safe about: `pageErrors` still
++      // holds exactly the one genuine refusal from earlier in this journey,
++      // and no rule had to withhold anything to keep it that way.
+       const cancelLog = () => [{ url: realCancel.url, at: realCancel.at, errorText: realCancel.errorText }];
+-      expect(excusedCancellation(cancelLog(), diagnosed(realCancel.url), realCancel.at)).toBe(true);
+-      // The same path WITHOUT that query is a different request instance, and
+-      // this real cancellation says nothing about it.
+-      expect(excusedCancellation(cancelLog(), diagnosed(target), realCancel.at)).toBe(false);
+-
+-      // AND A JUDGEMENT IS MADE ONCE: the genuine refusal already reported is
+-      // not taken back by this real cancellation to the same host and path.
++      expect(seen.filter((e) => e.kind === 'error')).toHaveLength(1);
        expect(app.pageErrors).toHaveLength(1);
- 
--      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
--      // cannot be taken back by a cancellation to the same resource that
--      // happens afterwards — here a real one, produced by reloading while a
--      // request to that same path is still in flight.
-+      // A REAL CANCELLATION, from a request genuinely in flight across a
-+      // reload — the browser's own url, errorText and arrival time.
-       await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
-       await reload(app);
-+      await expect
-+        .poll(() => seen.some((e) => e.kind === 'failed' && e.errorText === 'cancelled'), { timeout: 20_000 })
-+        .toBe(true);
-+      const realCancel = seen.find((e) => e.kind === 'failed' && e.errorText === 'cancelled');
-+      if (realCancel?.kind !== 'failed') throw new Error('WebKit reported no cancellation to measure.');
-+      expect(realCancel.url).toBe(`${target}?slow=1`);
-+
-+      // IT EXCUSES ITS OWN RESOURCE AND NOTHING ELSE. No pairing of a
-+      // cancellation with this page error has ever been OBSERVED — five
-+      // cancellation shapes were driven through a real WebKit and each
-+      // produced a `requestfailed` and no page error at all — so the
-+      // diagnosis here is written against the url the browser really
-+      // cancelled, rather than pretending to a pairing nothing has seen.
-+      const cancelLog = () => [{ url: realCancel.url, at: realCancel.at, errorText: realCancel.errorText }];
-+      expect(excusedCancellation(cancelLog(), diagnosed(realCancel.url), realCancel.at)).toBe(true);
 +      // The same path WITHOUT that query is a different request instance, and
-+      // this real cancellation says nothing about it.
-+      expect(excusedCancellation(cancelLog(), diagnosed(target), realCancel.at)).toBe(false);
-+
-+      // AND A JUDGEMENT IS MADE ONCE: the genuine refusal already reported is
-+      // not taken back by this real cancellation to the same host and path.
-       expect(app.pageErrors).toHaveLength(1);
++      // this real cancellation is reported as saying nothing about it.
++      expect(requestFailureEvidence(cancelLog(), diagnosed(realCancel.url), realCancel.at)).not.toContain(
++        'different query',
++      );
++      expect(requestFailureEvidence(cancelLog(), diagnosed(target), realCancel.at)).toContain('different query');
      } finally {
        await app.close();
-@@ -758,6 +903,58 @@ describe('the journey harness itself', () => {
+       await new Promise<void>((done) => blocked.close(() => done()));
      }
    }, 120_000);
  
-+  it('the wiring really excuses — a diagnosed error for a genuinely cancelled request never reaches pageErrors', async () => {
-+    // THE EXCUSE HAS NOW BEEN DEAD CODE TWICE, and both times only CI could
-+    // tell. This drives the harness END TO END: a request the browser really
-+    // cancels, and a real `pageerror` delivered through the real listener,
-+    // carrying the diagnosis for that exact url. `pageErrors` must stay empty
-+    // — and must not, if the error names a neighbouring request instead.
+-  it('the wiring really excuses — a diagnosed error for a genuinely cancelled request never reaches pageErrors', async () => {
+-    // THE EXCUSE HAS NOW BEEN DEAD CODE TWICE, and both times only CI could
+-    // tell. This drives the harness END TO END: a request the browser really
+-    // cancels, and a real `pageerror` delivered through the real listener,
+-    // carrying the diagnosis for that exact url. `pageErrors` must stay empty
+-    // — and must not, if the error names a neighbouring request instead.
++  it('the wiring keeps a diagnosed page error with no request failure of its own', async () => {
++    // THE SEALED COUNTEREXAMPLE, END TO END, through the real listeners and
++    // the real resolve path — the one thing that could never be proved by
++    // reasoning about the rule alone, because the excuse had been dead code
++    // twice and both times only CI could tell.
 +    //
-+    // The error TEXT is raised in the page rather than waited for, because no
-+    // cancellation shape driven through a real WebKit has ever produced one
-+    // (see `TrackedRequestFailure`'s comment). Everything else here is real:
-+    // the cancellation, the event objects, the listeners and the resolve path.
-+    const stalled = createServer((_req, res) => {
-+      setTimeout(() => {
-+        res.writeHead(200, { 'content-type': 'application/json' });
-+        res.end('{}');
-+      }, 30_000).unref();
-+    });
-+    await new Promise<void>((done) => stalled.listen(0, '127.0.0.1', done));
-+    const port = (stalled.address() as AddressInfo).port;
-+    const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
-+    try {
-+      const cancellations: string[] = [];
-+      app.page.on('requestfailed', (r) => {
-+        if (r.failure()?.errorText === 'cancelled') cancellations.push(r.url());
-+      });
-+      const inFlight = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/state.json?ref=main`;
-+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), inFlight);
-+      await reload(app);
-+      await expect.poll(() => cancellations.includes(inFlight), { timeout: 20_000 }).toBe(true);
-+      expect(app.pageErrors).toEqual([]);
-+
-+      // The diagnosis for a DIFFERENT request to the same path is kept: one
-+      // cancellation excuses one resource, never a neighbour.
-+      const neighbour = `${inFlight.split('?')[0]}?ref=other`;
-+      await raiseDiagnosis(app, neighbour);
-+      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
-+      expect(app.pageErrors[0].message).toContain('?ref=other');
-+      // ...and the evidence names what the harness actually saw, including the
-+      // same-path cancellation it refused to spend.
-+      expect(app.pageErrors[0].message).toContain('different query');
-+
-+      // The diagnosis for the request that WAS cancelled is excused, so the
-+      // list does not grow — the wiring, not just the rule.
++    // A request the browser really cancels lands in the log first; then the
++    // diagnosis for that EXACT url arrives as a genuine uncaught `pageerror`
++    // with no `requestfailed` of its own — precisely the shape the CI failure
++    // has (no request, no route hit, no tracked failure). Every earlier
++    // version of this harness dropped it. It must be KEPT, and it must carry
++    // the cancellation it did NOT get to hide as evidence.
+     //
+     // The error TEXT is raised in the page rather than waited for, because no
+     // cancellation shape driven through a real WebKit has ever produced one
+@@ -932,59 +836,64 @@ describe('the journey harness itself', () => {
+       await app.page.evaluate((u) => void fetch(u).catch(() => {}), inFlight);
+       await reload(app);
+       await expect.poll(() => cancellations.includes(inFlight), { timeout: 20_000 }).toBe(true);
++      // A REAL cancellation on its own raises no page error at all — measured,
++      // five shapes, every time. Nothing had to be suppressed for this to hold.
+       expect(app.pageErrors).toEqual([]);
+ 
+-      // The diagnosis for a DIFFERENT request to the same path is kept: one
+-      // cancellation excuses one resource, never a neighbour.
++      // THE COUNTEREXAMPLE: the diagnosis for the very url that was cancelled,
++      // with no request failure of its own. It is KEPT.
 +      await raiseDiagnosis(app, inFlight);
-+      await app.page.waitForTimeout(500);
-+      expect(app.pageErrors).toHaveLength(1);
-+    } finally {
-+      await app.close();
-+      await new Promise<void>((done) => stalled.close(() => done()));
-+    }
-+  }, 120_000);
++      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
++      expect(app.pageErrors[0].message).toContain('due to access control checks');
++      // ...and it says what the harness saw, the cancellation included, rather
++      // than being a bare CORS-shaped message.
++      expect(app.pageErrors[0].message).toContain('cancelled');
 +
-   it('a page error it refuses to excuse says what the browser actually reported', () => {
++      // A neighbouring request to the same path is kept too, and named as the
++      // different request it is.
+       const neighbour = `${inFlight.split('?')[0]}?ref=other`;
+       await raiseDiagnosis(app, neighbour);
+-      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
+-      expect(app.pageErrors[0].message).toContain('?ref=other');
+-      // ...and the evidence names what the harness actually saw, including the
+-      // same-path cancellation it refused to spend.
+-      expect(app.pageErrors[0].message).toContain('different query');
++      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(2);
++      expect(app.pageErrors[1].message).toContain('?ref=other');
++      expect(app.pageErrors[1].message).toContain('different query');
+ 
+-      // The diagnosis for the request that WAS cancelled is excused, so the
+-      // list does not grow — the wiring, not just the rule.
+-      await raiseDiagnosis(app, inFlight);
+-      await app.page.waitForTimeout(500);
+-      expect(app.pageErrors).toHaveLength(1);
++      // Reading twice reports the same list, not a growing one.
++      expect(app.pageErrors).toHaveLength(2);
+     } finally {
+       await app.close();
+       await new Promise<void>((done) => stalled.close(() => done()));
+     }
+   }, 120_000);
+ 
+-  it('a page error it refuses to excuse says what the browser actually reported', () => {
++  it('a kept page error says what the browser actually reported', () => {
      // The CI failure this whole rework came from was one bare CORS-shaped
      // message with nothing to distinguish a cancellation from a real refusal.
-@@ -768,6 +965,16 @@ describe('the journey harness itself', () => {
+-    // An unexcused diagnosis now carries the browser's own words for every
+-    // request to that resource, and how far each sat from the error.
+-    const withGenuine = cancellationEvidence([genuine(1)], spurious, at);
++    // A kept diagnosis carries the browser's own words for every request to
++    // that resource, and how far each sat from the error.
++    const withGenuine = requestFailureEvidence([genuine(1)], spurious, at);
+     expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
      expect(withGenuine).toContain('Access-Control-Allow-Origin');
      expect(withGenuine).toContain('+1ms');
  
-+    // DELIBERATELY BROADER THAN THE EXCUSE: a failure to the same path under a
-+    // different query is exactly what the excuse must refuse to act on, and
-+    // exactly what the reader of a CI-only failure needs to see. It is named
-+    // as the different request it is.
-+    const nearMiss = cancellationEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
-+    expect(nearMiss).toContain('?ref=main');
-+    expect(nearMiss).toContain('different query');
-+    // The resource the error actually names is not labelled that way.
-+    expect(cancellationEvidence([cancelled()], spurious, at)).not.toContain('different query');
-+
+-    // DELIBERATELY BROADER THAN THE EXCUSE: a failure to the same path under a
+-    // different query is exactly what the excuse must refuse to act on, and
+-    // exactly what the reader of a CI-only failure needs to see. It is named
+-    // as the different request it is.
+-    const nearMiss = cancellationEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
++    // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: a failure to the
++    // same path under a different query is exactly what the reader of a
++    // CI-only failure needs to see. It is named as the different request it is.
++    const nearMiss = requestFailureEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
+     expect(nearMiss).toContain('?ref=main');
+     expect(nearMiss).toContain('different query');
+     // The resource the error actually names is not labelled that way.
+-    expect(cancellationEvidence([cancelled()], spurious, at)).not.toContain('different query');
++    expect(requestFailureEvidence([cancelled()], spurious, at)).not.toContain('different query');
+ 
      // NOTHING tracked at all is itself the evidence — it says so rather than
      // saying nothing.
-     expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
+-    expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
++    expect(requestFailureEvidence([], spurious, at)).toMatch(/no tracked request failure/);
+     // A request that failed BEFORE the error is reported with its sign.
+-    expect(cancellationEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
+-    // It only ever describes: nothing is consumed and nothing is excused.
++    expect(requestFailureEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
++    // It only ever describes: nothing is consumed and nothing is withheld.
+     const events = [cancelled()];
+-    expect(cancellationEvidence(events, spurious, at + 5)).toContain('cancelled');
++    expect(requestFailureEvidence(events, spurious, at + 5)).toContain('cancelled');
+     expect(events).toEqual([cancelled()]);
+     // A page error that is not this diagnosis at all has nothing to say.
+-    expect(cancellationEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
++    expect(requestFailureEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
+   });
+ });
 ```
 
 **Full current text of every file the rework touched:**
@@ -2547,141 +2876,82 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
 automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
-A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
-while it was in flight is reported by WebKit as
-`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
-problem and is not one. Instrumented, the only difference between a passing and a failing run
-of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
-fulfilled with the right CORS headers every other time. A real person navigating mid-sync
-cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
-as a page error.
+A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
+EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and reports
+it as an uncaught page error reading `"Fetch API cannot load … due to access control
+checks"` — which reads exactly like a CORS problem and is not one. Every `goTo`/`reload` is a
+full document load, so each one re-runs the app's own on-open sync; navigating again while
+that sync is mid-chain destroys the document around it. Instrumented through a real WebKit,
+the failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all.
 
-**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
-It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
-message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
-later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
-(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
-excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
-naming the same URL is never excused).
+**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
+versions of an excuse were built and every one of them could withhold a genuine failure:
+a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
+a live credit any later genuine failure to that URL could spend); a rule reading the page
+error's `message` alone, which never contains the diagnosis — Playwright splits a page error
+at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
+was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
+the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
+which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
+`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
+STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
+failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
+thing in the log. That is the sealed finding that ended the attempt.
 
-**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
-host+path ALONE: a cancellation that produced no page error of its own stayed a live,
-unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
-a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
-the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
-cancellation's spurious error and a real access-control failure are worded the same on
-purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
-genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
-DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
-create, never the correlation itself.
+**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT.** Five cancellation shapes
+driven through a real WebKit — navigating away mid-flight, reloading mid-flight,
+`AbortController`, a same-tick `location.href`, a cancelled CORS preflight — each produced a
+`requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever. A `pageerror` hands
+a test an `Error` and no request identity. So there is no positive evidence available to bind a
+specific error to a specific cancellation at any window or resolution, and an unprovable
+correlation is resolved the only safe way: `openPracticeApp` KEEPS every page error.
+`excusedCancellation` is gone. What survives is `requestFailureEvidence`
+(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
+`errorText` for every tracked request to that resource and how far each sat from it — because
+one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
+what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
+its full-URL identity (host, path and query; the fragment ignored, since a fragment never
+reaches the network while the message keeps it verbatim) only decides whether a row is labelled
+as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
+suppression.
 
-A second, independent hole lived in the same function: `message.includes(url.host)` and
-`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
-one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
-part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
-adding more boundary characters to a string test.
+**AND THE RACE IS REMOVED AT ITS ROOT, WHICH IS NOT WHERE IT LOOKED.** Vite's default
+`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
+checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
+every server ran the dependency optimizer against one directory and raced to commit it
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
+modules, and a committing winner forces the page to reload: BOTH shapes of the failure come
+from there. The pages that never painted failed on the cold-start wait, and a page reloaded out
+from under an in-flight sync is exactly a `fetch()` issued into a document being destroyed —
+the access-control diagnosis. Each server gets a PRIVATE `cacheDir` now.
 
-**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
-Every string above was a hand-written reconstruction; nothing had ever been measured. The same
-commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
-measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
-two facts the harness had backwards, either of which alone made the excuse unable to fire:
+**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
+full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
+bought exactly one more run before the next. The ceiling is back at its original 60s.
 
-- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
-  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
-  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
-  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
-  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
-  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
-  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
-  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
-  apparent space was an artefact of that same split.
-- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
-  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
-  search read an empty log. Tracked failures are searched in BOTH directions now.
+The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
+`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
+resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
+`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
+another README PUT — measured at one every one to three seconds for a whole journey. Gating
+that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
+and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
+returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
+Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
+because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
+in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
+correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
+the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
+in place, the failure simply moved from `README.md` to `contents/manifest.json`.
 
-So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
-reads it after awaited page work, which round-trips the ordered transport and so has both
-events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
-an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
-for every tracked request to that resource and how far each sat from it
-(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
-cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
-deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
-its own full url and saying whether it is the resource the error named — because a failure to
-the same path under a different query is exactly what the excuse must refuse to act on and
-exactly what the next CI-only failure needs to show.
-
-**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
-CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
-"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
-outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
-reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
-straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
-genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
-land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
-it. TWO changes replace it, and neither is a window:
-
-- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
-  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
-  two requests the app really makes one after the other, so a cancellation of one stood ready to
-  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
-  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
-  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
-  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
-- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
-  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
-  sits, and whatever sits nearer. A genuine access-control failure always emits its own
-  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
-  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
-  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
-  be. The veto is scoped: a genuine failure to another resource, or to the same path under
-  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
-  against a url.
-
-**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
-STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
-a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
-cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
-same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
-`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
-produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
-explanation for the CI failure, and cannot be settled from here. A cancellation being merely
-NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
-nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
-so url text and order are the whole of what exists.
-
-The regression tests assert the measured pair verbatim, the measured ordering, the query and the
-fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
-vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
-request back through the rule — that the shape can never drift back to a reconstruction. One
-drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
-naming it, because this excuse has been dead code twice and both times only CI could tell.
-
-**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
-Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
-in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
-`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
-is refused before WebKit's network layer ever sees it, because the document is being torn down by
-the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
-BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
-not evidence of a fix, because nothing in that change touches this cause. There
-is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
-excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
-access-control diagnosis for a faked origin would suppress a whole error class at an entire
-origin on no per-event evidence at all, which is broader than the rule the sealed finding
-rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
-without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
-re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
-three seconds for the whole journey, each one a chance to be caught by a navigation. What
-re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
-own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
-here. Making the fake remember the
-push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
-journey — which publishes a remote snapshot after the app's own push — then reads "Already in
-sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
-recorded here rather than left to be rediscovered from a red CI run.
+**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
+`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
+navigating. It addressed the mechanism, but once the shared `cacheDir` was fixed it could not be
+shown to do anything: six consecutive full-suite runs WITHOUT it were clean in every test, and
+it was dead in the two journeys that call `page.reload()` directly anyway. Keeping harness code
+whose effect cannot be measured, and a normative claim that it is what fixed this, is how the
+next reader inherits a false cause. If this diagnosis ever returns with a private `cacheDir` in
+place, the mechanism above is where to start — but bring a reproduction, not this helper back.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -3743,10 +4013,1274 @@ the philosophy. Anything that contradicts the "do nots" above needs an explicit 
 from the user, recorded here.
 ```
 
+### DECISIONS.md
+
+```
+# Decisions
+
+Durable record of non-obvious choices. Newest first.
+
+## Rejection: the cancellation excuse is removed, and the race is fixed instead (2026-09-18)
+
+A sixth sealed review found the excuse still able to hide a genuine WebKit access-control page
+error: full-URL identity plus a veto on genuine evidence STILL dropped a diagnosis that emitted
+no `requestfailed` of its own — exactly the CI failure's own shape — whenever an earlier
+unconsumed cancellation to that URL was the only thing in the log.
+
+The excuse is DELETED rather than narrowed a seventh time. Its premise was never observed: five
+cancellation shapes driven through a real WebKit each produce a `requestfailed` with
+`errorText: 'cancelled'` and NO page error at all, and a `pageerror` hands a test an `Error`
+carrying no request identity — so no rule over that log can prove a specific error belongs to a
+cancellation, at any window or resolution. An unprovable correlation is resolved by KEEPING the
+error. `requestFailureEvidence` survives as annotation only: it consumes nothing, withholds
+nothing, and exists so a kept CORS-shaped message says what the browser actually reported.
+
+The same review required the ac-18 WebKit archive journey to stop failing intermittently, which
+the excuse had been masking. Two harness causes, both measured:
+
+- **The fake GitHub repo forgot that `main` existed after its own bootstrap.** `git/ref/heads/main`
+  was gated on a SNAPSHOT existing, so `getHead()` kept returning null and every later sync
+  re-entered `initialize()` and issued another `PUT contents/README.md`. Gating that route on the
+  REF alone is faithful to GitHub (a Contents-API bootstrap creates the branch; `manifest.json`
+  and `state.json` are still absent) and changes nothing `decideSync` sees, so the pull/conflict
+  journeys are untouched. Making the fake REMEMBER THE PUSH is deliberately still not done — it
+  was built and reverted once because it changes `decideSync`'s input and `setarInbound`'s pull
+  journey then reads "Already in sync" instead of pulling.
+- **That alone was measured to leave the failure reproducible** (1 of 3 runs; it simply moved to
+  `contents/manifest.json?ref=head-1`), so it is a correctness fix for the fake and not the cure.
+  **The cure was a shared Vite dependency cache.** `cacheDir` defaults to `node_modules/.vite`,
+  ten test files each start their own dev server on one checkout, and the rollback journeys'
+  baseline worktree SYMLINKS that same `node_modules`; they all ran the optimizer against one
+  directory and raced to commit it (`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`).
+  A loser cannot serve its modules — its page never paints, which failed the cold-start wait —
+  and a committing winner forces a page reload, which tears a document down around an in-flight
+  sync and produces exactly this access-control diagnosis. One cause, both shapes. Each server
+  gets a private `cacheDir` now.
+
+A `settleSync` helper that made `goTo`/`reload` wait for GitHub traffic to fall quiet was built
+for the second symptom, then DELETED: with the cache fixed it could not be shown to do anything
+(six consecutive clean full-suite runs without it) and it was dead in the two journeys that call
+`page.reload()` directly. Its `PracticeApp` member, listeners and docstrings went with it.
+Separately, the cold-start ceiling was raised 60s → 120s and REVERTED: it bought exactly one more
+run before the next failure, which is what forced the search for the real cause.
+
+A timeout that fires is a question about what is blocking, not a number to raise.
+
+Evidence: ac-18 passed 4 of 4 sequential runs (both engines, both viewports) and every full
+concurrent suite run after the cache fix — nine of them, the last six with `settleSync` already
+removed — clean in every test, with no rename error and no access-control diagnosis. The
+pull/conflict journeys in `setarInbound`, `practice-information-inbound` and `review-ownership`
+are unchanged and green. No production code changed.
+
+## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
+
+A fifth sealed review rejected the harness's cancellation excuse again. The previous round
+(below) made it CONSUMING and bounded by a generous ceiling, but the ceiling was still the
+whole bound, matched by host+path alone — and a cancellation that never produced its own page
+error stayed a live, unconsumed "credit" for the full ceiling, spendable by ANY later error to
+the same URL, including a genuine one that had nothing to do with it. Wording and URL cannot
+tell a cancellation's spurious error apart from a real access-control failure — they read
+identically by design (that is the whole diagnosis) — so no window, however short, can be the
+thing that distinguishes them. Only ORDER can: `excusedCancellation` now tracks EVERY
+`requestfailed`, not only cancelled ones, and excuses a page error only when the temporally
+NEAREST tracked request to the exact host+path it names is itself a cancellation. A genuine
+failure to that URL always fires its own `requestfailed` first, so it automatically becomes the
+nearer candidate the instant it happens — a stale cancellation with no error of its own is
+never reachable by anything but the error it was actually waiting for. The ceiling
+(`CANCELLED_EXCUSE_MS`, shrunk from 30s to 2s) is now purely DEFENSIVE headroom against
+delivery lag under contention, not the correlation itself.
+
+A second, independent hole in the same function was found and closed in the same pass:
+`message.includes(url.host)` and `message.includes(url.pathname)` are substring tests, and a
+crafted host (`evil-api.github.com`, `api.github.com.evil.test`) or path (`state.json.bak`)
+that merely CONTAINS the genuine value as a substring passed them. The message is now parsed
+into a real `URL` (stripping the space WebKit inserts after the scheme) and compared to each
+candidate by `host`/`pathname` EQUALITY, which removes the ambiguity structurally instead of
+trying to add more boundary characters to a string test.
+
+Six mutations were run and all six fail their named acceptance test: nearest-event selection
+reverted to first-match, the consuming `splice` removed, host/path equality loosened back to
+substring `includes`, the diagnosed-wording anchor dropped, the cancelled-type requirement
+dropped (any nearest match excuses), and the ceiling check removed outright.
+
+## Rejection: two rules that held for one shape of the same defect (2026-09-17)
+
+A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
+the previous fix covering one shape of a defect and not the shape beside it, so each fix
+here is the rule the shapes share — and the narrower mechanism is subsumed rather than left
+next to the new one.
+
+- **A rename source with two destinations still published its first one.** The loop rule
+  ("a log that loops names no file") had been closed at every consumer, and the fork sitting
+  beside it — `A→B` and `A→C` in the same log — was diagnosed as "not applied" while `A→B`
+  was published and used as exact identity: Refresh repaired an authored reference onto B and
+  re-keyed an owner's item-scoped hide onto B, although the log never established which file
+  A became. A fork and a loop are ONE defect said two ways, so the scanner now publishes a
+  replacement name only where the log determines it UNIQUELY and TERMINALLY — a fork
+  publishes nothing, a loop publishes nothing, and a chain walking into either publishes
+  nothing. The conflicted sources are removed from the map BEFORE the reachability walk, or
+  a chain ending at one would still publish a name on the strength of a mapping that was
+  meant to be gone. Its diagnostic names every destination seen, once and sorted, because
+  `diagnostics` is inside `contentHash` and ac-4's own claim is that a shuffled source yields
+  the same semantic index. Refusing the whole index was rejected for the reason the loop case
+  already records: an unimportable archive is a worse answer than an unrepaired path. No app
+  change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
+  decoder and at the persisted door — and ac-12's named test now drives the downstream
+  reference and suppression transitions from the scanner's ACTUAL output for a forked log.
+  It changes nothing the operator publishes TODAY, and that is checked rather than assumed:
+  the corpus baseline records 257 rows in RENAME-LOG.csv and the index carries 257 mappings,
+  so no row of the real log is dropped for any reason — there is no fork in it to drop.
+- **The harness's excuse for a cancelled request was permanent.** The WebKit
+  cancelled-request diagnosis recorded in the previous round was implemented as a permanent
+  set of cancelled URLs, with any later page error whose message merely CONTAINED that
+  pathname discarded — so a genuine failure at the same path, later in the same journey, was
+  swallowed and the journey's `pageErrors` assertion passed over it. A check that can hide
+  the failure it exists to catch is worse than no check. `excusedCancellation` is consuming
+  (one cancellation, one error) and additionally requires the diagnosed wording and the
+  request's host as well as its path, inside a generous ceiling on how long an unconsumed
+  cancellation may stand. The ceiling is not a timing correlation: the spurious error arrives
+  in the same tick, and a tight window would trade an over-broad filter for a flaky one under
+  the contention five concurrent dev servers already create. Matching the request's METHOD
+  was considered and is not possible — the page error carries no method.
+
+Four mutations were run and all four fail their named acceptance test: the fork's first
+destination published again, the walks-into-a-fork extension removed, the cancellation excuse
+made permanent (non-consuming), and the diagnosed-wording requirement dropped.
+
+## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
+
+A third sealed review rejected the reworked Setar-archive diff. Each finding was the
+PREVIOUS fix holding for exactly the case it was written against, so each fix here is the
+rule the whole family shares — and the previous narrower mechanism is subsumed rather than
+left beside it.
+
+- **A read failure was valid empty source data.** The two-read consistency check was
+  extended to every input, and `catch { renameLogText = '' }` then made an unreadable
+  RENAME-LOG.csv agree with itself: both readings held `''`, the check passed, and the scan
+  published an index with no renames — so a file that moved in that window is flagged
+  unavailable and its saved references can never be repaired. Absence is an OBSERVATION now
+  (`{present:false}`, ENOENT only) and travels in the compared reading; anything else fails
+  the scan. The walk had the deeper version of the same gap: two readings agree about a file
+  neither looked at, so a skipped symlink or a session-named non-directory is a published
+  diagnostic instead of a silent omission. The compared reading also carries `mtimeMs`,
+  which `buildIndex` never reads, so an in-place edit at the same byte length is visible to
+  the check and invisible to the index.
+- **The absent/present rule reached the lists and the scalars, not the strings.**
+  `str(raw.form ?? '')` still read absent and present-and-null alike, so a `title: null`
+  decoded to an untitled row behind a correct digest. `text()` is that rule for strings.
+  Separately, a grammar of FIELD TYPES says every value is readable and nothing about
+  whether the graph agrees with itself: a resource in class 2's folder listed under class 1
+  passed every door. `checkSourceGraph` now also checks path ownership, resource-to-member
+  agreement by role, demo-group coherence and `hasClassRecording` — over rows the source
+  still DESCRIBES, because holding retained `unavailable` provenance to the current
+  source's internal agreement would refuse every refresh after a removal.
+- **A decision named its piece, not its record.** Both reconciliation loops open with
+  "already bound? nothing to decide", so a decision about a record bound between the preview
+  and the commit was never examined: no adoption, no question, an EMPTY `staleDecisions`,
+  and a commit reporting success for an action it had not performed. `apply-field` was worse
+  than ignored — keyed by piece and value alone, it was redirected onto whichever record held
+  that piece by commit time. It carries `itemId` now, and `planArchiveImport` marks every
+  decision it acts on and sweeps the rest: unmarked is either already realised (loop
+  prevention — the screen drops a stale decision and re-previews) or stale. The `from`
+  premise rule is an outcome of that sweep rather than a second mechanism beside it.
+- **"A cycle is reported" was reported in a value callers could ignore.** `followRenames`
+  returned `{ path, cycle: true }` and only adoption read the flag; the suppression re-key
+  and `retainMissing` walked past it, so A→B plus B→A moved the owner's hide onto B and the
+  wrong file went dark. It returns `string | null`, so dropping the verdict and keeping a
+  path is unrepresentable. The scanner drops every row in a loop — and every row walking into
+  one — with a diagnostic, per ac-12's own "cycles diagnose, never guess"; refusing the whole
+  index was rejected, because a name swap is a legitimate archive operation and an
+  unimportable archive is a worse answer than an unrepaired path.
+- **One lesson file had two sections.** `lessonFiles` composed the lesson's own references
+  and attachments as well as the archive's, and the lesson page renders both in the sections
+  that can edit and remove them — so an authored file appeared twice, once where nothing
+  could be done with it. `lessonFiles` is the ARCHIVE's contribution alone; an ITEM keeps the
+  whole composition, because its material comes from records its own page has no section for.
+  And "has a recording" is read through that composition, not `lesson.recordings`, so an
+  imported class is no longer invited to add the video already playing above the prompt.
+
+A separate, reproduced HARNESS diagnosis came out of the same round and is recorded here
+because a flaky heavy check is worse than a missing one: WebKit reports a request the browser
+CANCELLED (because the test navigated away mid-flight) as "Fetch API cannot load … due to
+access control checks", which reads as a CORS failure and is not one. Instrumenting the
+journey showed the only difference between a passing and a failing run was one `requestfailed`
+with `errorText: 'cancelled'` against a request fulfilled with correct CORS headers every
+other time. `openPracticeApp` no longer counts such an error, narrowly and by URL. Filtering
+the wording alone, or seeding the fake remote so the bootstrap PUT never happens, were both
+rejected: the first excuses a real CORS bug, the second changes what the other journeys mean
+by an empty remote.
+
+Eight mutations were run and all eight fail their named acceptance test: the optional-read
+swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
+`itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson
+composition's authored half (in the real browser, both engines), and the empty-recording
+prompt's guard.
+
+## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
+
+A second sealed review rejected the reworked Setar-archive diff with five findings. Every
+one of them was a rule that genuinely existed and covered LESS than it read as covering, so
+each fix is the boundary all the callers share rather than the caller the counterexample
+named.
+
+- **One scan was one consistent view of the registry only.** PIECES.csv was re-read after
+  the walk; the rename log and the media inventory were read once and compared against
+  nothing — and the media is what a non-atomic NAS copy actually perturbs. A resource moved
+  out before its folder is enumerated and restored while later folders are walked produces a
+  valid index that omits it, and the next Refresh marks still-present material unavailable.
+  `readSource` is now every input in one place, read twice and compared. It is a CONSISTENCY
+  check and the comment says so: a perturbation stable across both readings is
+  indistinguishable, from here, from the archive genuinely being in that state.
+- **The decoder normalised before the grammar ran.** `checkSourceGraph` was made the one
+  grammar in the previous rework — but the decoder hands it the decoder's OWN output, so
+  `resources: null` became a valid empty list before the grammar ever saw it, and six files
+  became zero behind a correct digest. The scalars had the same shape (`part: "3"` → `null`,
+  a wrong-typed `size` dropped, `rosterTrusted: 'yes'` → a boolean). `list`/`num`/`bool`
+  replace every absent-tolerant read: absent is a default, present-and-wrong is a refusal
+  naming the record. Separately, `acceptedAt` was the one persisted field with no check at
+  all while Settings renders it — validated at the door, never guarded in the component.
+- **A decision was matched to its target, not to its premise.** The rebase refused only on a
+  NEW question, so choosing the archive's composer over an empty field and then typing your
+  own before Apply raised nothing to ask about and overwrote the new words. An `apply-field`
+  decision carries `from` now, `decisionMatchesSuggestion` is the one test the summary and
+  the write share, and a link may only adopt a record that is still unbound and still this
+  instrument's. Both land in `plan.staleDecisions` — ONE channel — and the commit refuses on
+  either, whether or not `rev` moved. Silently creating a record instead of linking one was
+  rejected as an answer: it is not the action the owner chose.
+- **The rename chain had three readings.** Repair followed the whole chain, adoption took one
+  hop, a suppression took none. A→B→C with B in session 1 and C in session 2 adopted a class
+  as session 1 and then repaired its reference into session 2. `followRenames` is the one
+  reading; a resource suppression is re-keyed through it (the same decision about the same
+  bytes, in the archive's current words), and a renamed row is dropped from the retained
+  graph rather than flagged `unavailable` — the log says where the bytes went. Dropping is
+  safe for a RESOURCE specifically: only pieces and sessions carry bindings.
+- **A media base was validated as a URL, not as a base.** Everything appends a path after it,
+  so `https://user:pass@nas/media?token=secret` put a password in every device URL and
+  addressed no file. `normalizeBaseUrl` refuses credentials, query and fragment — refuses,
+  not strips, because a rewritten base names a different server — and every caller,
+  `verifiedBase` included, already passes through it.
+
+Fifteen mutations were run and all fifteen fail their named acceptance test: each decoder
+site reverted INDIVIDUALLY (a single-site test would have passed a partial fix), the
+scanner's second reading, the `acceptedAt` and rename-log checks, the one-hop evidence, the
+un-migrated suppression ref, the re-flagged renamed row, `from` dropped from the predicate,
+the staleness detector disabled, the bound-target link guard, and the base-URL refusal.
+
+## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
+
+A sealed review rejected the first Setar-archive diff with four findings. Each was reported
+as one counterexample; each was really a FAMILY, and the fixes are family-shaped.
+
+- **The nested graph had two grammars.** `decodeSourceIndex` stated the shape of a session;
+  `validateArchiveSources` stated LESS of it and was the one every inbound door ran. So
+  `members[0].roles: null` was accepted, persisted, and thrown on by `repeatChains` while
+  rendering material — and `piece.aliases` had the identical exposure through
+  `planArchiveImport`'s own spread. `checkSourceGraph` is now that grammar in ONE place,
+  run by both callers. The alternative — guarding the reader — was rejected outright: a
+  reader written against a validated graph is the whole point of validating it, and a guard
+  in `ItemMaterial` would leave the invalid data on disk for the next reader.
+- **The reference repair had no production caller.** The 67-path mapping was proved against
+  the real rename log and then never wired in, so a uniquely adoptable legacy class was
+  adopted and left pointing at names the archive renamed. The repair runs inside
+  `planArchiveImport` now, in ONE pass whose output is both what the preview shows and what
+  the commit installs. Scope is the lessons the archive owns; `not-described` is deliberately
+  NOT reported, because the index omits 125 of 258 files by construction and "I have never
+  heard of this path" is not "this file is gone".
+- **Owner answers were transient.** Skip lived only in the preview's argument list; Create
+  separately was honoured for items and dropped for lessons; and any decision taken against
+  an already-current index was reported "Already current" and discarded. Skip writes a
+  suppression, the lesson branch exists, and `commitArchiveImport` asks `applyArchiveImport`
+  itself — which returns the same object when a plan changes nothing — instead of keeping a
+  second opinion about what "unchanged" means.
+- **The digest was format-checked, never verified.** `contentHash` is the refresh IDENTITY,
+  so altered content under a retained hash was reported unchanged and its facts ignored.
+  `parseSourceIndex` recomputes the scanner's own digest at the one boundary both readers
+  share. It is async because the platform's SHA-256 is; a hand-rolled synchronous one to
+  avoid two `await`s would be a second implementation of a primitive the app already has.
+
+Each fix was mutation-checked: the roles check, the `create-lesson` branch, the suppression
+write and the digest comparison were each reverted in turn and confirmed to fail the named
+acceptance test — the suppression one failing specifically AFTER a reload, which is where
+the defect actually lived.
+
+## The archive describes; it never testifies (2026-09-17)
+
+The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,
+normalised so that every filename parses. Turning that into lessons, repertoire items and
+material raised one question over and over, and the answer is always the same shape:
+**archive evidence may establish membership, provenance and material. It may never
+establish practice.**
+
+**The scanner is on the NAS, and the app reads a published index.** Four architectures were
+weighed. Browser filesystem access is Mac-only and useless on the phone. A bundled
+TypeScript array (what the old `scan:setar` produced) needs a rebuild and a deploy for every
+new class. Browser crawling of a NAS directory listing means dozens of requests, fragile
+HTML, a CORS refusal, a CSP change and a certificate problem — and `no-cors` cannot produce
+readable data at all. A live scan service is a new authenticated runtime nobody asked for.
+So: a read-only Node scanner on the NAS emits a deterministic JSON index; the publisher
+commits it to a SEPARATE branch of the existing private data repo; the app GETs it with the
+GitHub connection it already has. Both devices get the same small file with no NAS fetch
+permission, no new service and no large-file storage, and media still opens directly from
+each device's own base.
+
+**A separate branch, not a sidecar.** `gitRemote.createTree` builds `main`'s whole tree with
+no `base_tree`, so anything placed beside `state.json` is deleted by the next sync. That is a
+fact about the sync engine, and the answer is to stay out of its way — not to change the one
+part of this app whose job is never losing data.
+
+**The token is repository-scoped, and saying otherwise would be a lie.** GitHub does not
+issue branch-scoped tokens. `publish-setar-index.mjs` refuses every target but
+`source-index`/`setar/index.json`, and that is a property of the CODE. The docs say so in
+those words, because "the credential can only touch the index branch" is exactly the kind of
+comfortable sentence that turns into a breach.
+
+**Identity is byte-exact and archive-relative.** `canonical_fa` is the join key, unfolded and
+untransliterated; `aliases_seen` is literal SEARCH data and is never consulted to decide
+which piece a record is. App ids are deterministic hashes of the source identity, so two
+devices importing the same index independently agree on which record is which. Paths are
+stored relative to the archive root, so changing the transport — LAN today, Tailscale on the
+phone, something else later — rewrites no stored record.
+
+**Weak equivalences ask; they do not merge.** A legacy class is auto-adopted only on
+instrument + date + number + exact source-path evidence. The owner's real upcoming class 38
+(2026‑09‑27) and archive session 38 (2026‑08‑04) are a live counterexample to merging on a
+number. An exact title or alias match produces Link / Create separately / Skip; a catalogue
+slug (`iraq`) is never equated with a canonical Farsi key (عراق), however obviously they
+"mean" the same thing.
+
+**Imported pieces arrive resting.** Ninety-four live candidates would flood every
+recommendation and every session plan on the day of the import. Resting is an administrative
+import policy, stated before the import — the items stay searchable, stay in My repertoire,
+and start directly whenever the owner wants.
+
+**History is history, whatever the clock says.** The archive runs to September 2026, so on a
+device whose clock is behind it an imported class is dated in the FUTURE. `date >= today`
+would turn thirty-nine records of classes that already happened into thirty-nine deadlines.
+`isUpcomingLesson` checks `origin === 'archive'` FIRST, and all four next-class selectors
+plus every Lessons badge go through it.
+
+**The bug that was not in the editor.** Lesson notes could not be cleared. The editor was
+blameless: `updateLesson` read `patch.notes ?? l.notes`, which cannot tell an omitted field
+from a deliberately empty one, so deleting the text wrote the old text straight back. Fixed
+at the patch boundary, on the PRESENCE of the key — the same distinction `resolveReviewDate`
+already makes for a date — and the lesson editor now shares `ItemNotes`' durability model
+(explicit Done, tagged draft, acknowledged persistence, retry) through one extracted
+component rather than a second copy of it.
+
+## A check that lives in one door is a check with five doors missing (2026-09-16)
+
+Two more sealed findings, and the same shape underneath both: a rule that was genuinely
+correct, sitting somewhere only one caller reaches.
+
+**Attachment identity.** "Two attachments may not share an id" lived in
+`decodeBackupFiles` — which returns on its FIRST line when a file carries no `files` key.
+So it ran for a full backup and for nothing else: a state-only import, a sync pull, an
+archive restore and both halves of hydration all installed duplicates unchecked. Not
+cosmetic, because the export emits one file per describing row: the device's own next
+backup then carried two files sharing an id and was refused by its own importer, here and
+on every device a sync published it to. The check moved to `validateDB`, the one function
+every inbound door already runs, and `decodeBackupFiles` keeps none of its own. Bounded to
+attachment ids on purpose — an id is what the bytes are KEYED by — and not widened into a
+duplicate-id sweep over every collection, which this change's own non-goals rule out.
+
+**The review-date draft.** `seeded` held "the item's date, or today when it had none", so
+"no date" and "a date that is today" were the same value. That forced an exemption —
+skip the whole comparison when the item has no date — and the exemption is what a live
+update CLEARING the date fell into: the box went on showing, and Save date went on
+writing, a schedule the item no longer had. Fixed by separating the two facts rather than
+special-casing the symptom: `seeded` is the item's own date (empty when absent), `offered`
+is what the box was filled with, and untouched is `text === offered`. All three
+transitions — to a different date, to none, from none — are now one rule. Proved in the
+browser through a real sync pull, the only thing that changes an item's date while that
+panel stays mounted.
+
+## A draft belongs to what it was typed for, not to whatever is on screen (2026-09-16)
+
+Two sealed findings, one rule, in two editors.
+
+**Working notes.** `ItemNotes` cleared its draft and showed "Saved." whenever the
+IndexedDB write it had issued settled — but the textarea stays live while that write is
+acknowledged, so anything typed in that window is NEWER than what was written. Pressing
+Done, typing one more word, and letting the write land threw that word away and put a
+success message over the older text. A settling write now speaks only for the text it
+actually CARRIED: same text ⇒ clear the draft and say saved; different ⇒ re-issue the
+write for what is on screen, which is what pressing Done asked for and is what keeps the
+words when the screen is LEFT mid-write. Switching ITEM is the opposite case and stays as
+it was: `saveSeq` is bumped, the write says nothing, and the draft is abandoned — those
+words were typed for a notebook that is no longer on screen. Try again does the same as
+Done on the failure path.
+Only the latest save may act (`saveSeq`, bumped by a retry and by switching item), and the
+draft is read through a ref: `storageSettled()` resolves in a microtask that can land
+between a keystroke and React's next render, so neither the issuing closure nor an
+effect-mirrored ref is sound.
+
+**The review date.** `ScheduleAgain` kept `open`/`date` in plain state, and `/items/A` →
+`/items/B` is a route PARAMETER change — same component instance, new props — so an open
+draft survived it and "Save date" wrote A's date through B's callback. The draft now
+carries the item it was opened for and that item's own pending date, and
+`reviewDateDraftFor` (pure, tested) reconciles it on every render: another item drops it;
+an untouched seed follows a date that moved beneath it, rather than silently reverting a
+change the owner never saw; text the owner typed survives, because that is intent, not a
+stale capture. Deliberately NOT an effect that resets state — a derivation cannot leave a
+paint in which the box shows one item's date while Save points at another.
+
+Both are the same sentence: an editor's draft is bound to what it was typed for, and
+neither time nor a route change may re-point it.
+
+## The export is derived from the metadata, so the app cannot write a backup it refuses (2026-09-16)
+
+Amends "A strict “metadata without bytes” refusal needs the same rule at the other door" below, which closed one mouth of that trap and left the other open. A
+sealed review found the mirror case: with a blob stored locally, a valid STATE-ONLY import
+whose `data` describes no attachments is accepted and — correctly, by that door's own
+contract — preserves the bytes. The database now names nothing, but
+`buildFullBackupWithRev` derived `files` from the blobs actually STORED, so the next full
+export carried orphan bytes and `decodeBackupFiles` refused its own device's backup
+("belongs to nothing this file describes"). Not exotic either: `deleteItem`,
+`deleteLesson` and `resetDemo` remove metadata synchronously while their
+`void deleteBlob(...)` cleanup can fail on its own.
+
+`files` is now built from `db.attachments` ∩ the blobs held, carrying the METADATA's
+`ownerId` — the field the importer validates against and writes back onto the blob row, so
+the round trip is idempotent rather than a second opinion about ownership. Unreferenced
+bytes stay on the device UNTOUCHED; deleting them to make the two agree is exactly what the
+state-only contract forbids, and they are simply not part of the database the backup is OF.
+
+Fixing it at the export rather than at the state-only door was the point: the door must
+preserve those bytes, so the inconsistency is legitimate and it is the EXPORT that has to
+be honest about which of them the backup is for.
+
+## One canonical home per kind of practice information — schema v13 (2026-09-16)
+
+Four things the musician writes, four homes: **Working notes** (`item.notes`) belong to the
+item and last as long as it does; an **observation** and a **next action** belong to one
+recorded block; a **question** belongs to a class, in the lesson agenda. Nothing copies one
+into another automatically. The problem was never that any of these were missing — it was
+that nineteen other persisted fields competed with them, so the same fact could be written
+in two places and disagree, and the notebook that should have been in front of you while
+practising was not reachable from the practice screen at all.
+
+**The waiver, stated exactly.** `currentProblem`, `bestStrategy`, `tags`, the item's cached
+`lastObservation`, the block's `bodyNote`, and fourteen Persian/Guitar WORKING-DETAIL
+fields (`shahed`, `ist`, `foroud`, `phraseLabel`, `importantNote`, `ornamentIssue`,
+`mezrabIssue`, `rightHandIssue`, `leftHandIssue`, `toneIssue`, `fingering`, `tempo`,
+`stringNoiseIssue`, `bodyTensionNote`) are REMOVED by the v12 → v13 migration, not merged
+into `notes`. The owner established that their current content is dummy test data and
+waived lossless preservation for these enumerated fields only. Merging dummy text into the
+one real notebook is the failure mode, not the fix — and this app's own rule is that
+nothing silently loses meaningful practice, which is why the exception had to be named,
+bounded and signed rather than assumed. The Persian/Guitar IDENTITY fields (`dastgahAvaz`,
+`gusheh`, `form`, `composer`, `lessonNumber`, `barRange`) are kept: they say what the piece
+IS and they group the repertoire.
+
+**What makes it safe to re-run.** `retirePracticeText` is DELETION ONLY — it never writes a
+value — so a second pass over its own output is a no-op and it is structurally incapable of
+resetting canonical text. It reads no clock, so two devices migrate the same database
+identically on different days. It runs on EVERY inbound database rather than only one
+declaring `fromVersion < 13`, for the reason `migrateToV12` already records: a database
+claiming the current schema can still carry a stray retired key from a partial conversion
+or a hand-edited file.
+
+**`lastObservation` was deleted rather than replaced** because the fact is derivable:
+`latestObservation(blocks)` reads the most recent block observation and returns its DATE
+with it, so the teacher sheet and the question list say *when* the observation was made
+instead of presenting a stale line as current. A cached copy of a derivable fact is two
+facts that can disagree.
+
+**The surviving text is checked, never coerced.** `validatePracticeText` (the four homes'
+own string fields — the block's legacy `constraint` included — and nothing else) joins
+`validateDB`, so every inbound door refuses the same
+thing. `null` reads as ABSENT — it is what a serialiser writes for "no value" and every
+reader already treats it as missing — and empty is legitimate, because emptying a notebook
+is a deliberate act. A present value of the wrong type is refused with the record named:
+`String({})` is how a note becomes the literal text "[object Object]". The unfinished
+block's scratch observation lives outside `PracticeDB`, on the store's ephemeral `active`,
+so it gets the same rule from `validateUnfinishedText` at the same hydration boundary.
+
+**Rollback is by restoring the backup you kept, never by a down-migration**, and the check
+proves it against the app that actually wrote the file: a disposable `git worktree` at the
+baseline commit, served by its own Vite server, refuses the v13 export by version with its
+stored bytes unchanged, and then restores the retained v12 export with its attachment
+intact and readable. A block recorded after the upgrade exists only in the v13 export —
+that limitation is stated rather than papered over.
+
+## A strict "metadata without bytes" refusal needs the same rule at the other door (2026-09-16)
+
+`decodeBackupFiles` now refuses a full backup that describes an attachment it does not
+carry (it used to `continue` past unreadable entries and install metadata for bytes that
+never arrived, reporting "Imported (3 files)"). Tightening that alone creates a ONE-WAY
+TRAP, which is the part worth recording: an export can only carry bytes it actually holds,
+so a device holding metadata for a blob it does not have exports a file it will then refuse
+on import — and publishes a sync snapshot every other device refuses too. Permanent, with
+no owner-visible way out.
+
+The state-only import (`files` absent) was the one door that could create it. So the same
+invariant is enforced there: **after any install, every attachment the database describes
+has bytes on this device.** A state-only file naming an attachment this device does not
+hold is refused, naming the file, with the local bytes and the local database untouched —
+at the one moment the owner can still do something about it. `heldBlobIds()` answers that
+question from the key index rather than loading every blob to ask it.
+
+The alternative — dropping the metadata for absent bytes — was rejected: that is silent
+loss of the owner's own record, which is exactly what the refusal exists to prevent.
+
+## Handing a review date back to the engine is administration, not evidence (2026-09-16)
+
+`transferToAutomaticReview` moves an item to `reviewMode: 'auto'` with
+`nextReviewSource: 'auto'` and KEEPS the pending date byte-for-byte. Together those two
+fields mean the engine now has AUTHORITY over that date — not that the date was calculated
+and not that a review happened. `srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`,
+every statistic, every status and every completed row are untouched, so the next eligible
+close resumes from the rung the item was already on. The button's explanation must never
+call the retained date a new engine calculation; that sentence is the whole point.
+
+It REFUSES rather than guesses on an ambiguous schedule — open rows disagreeing with the
+item or with each other, or rows pending with no item date — because that is a decision the
+owner makes with "Change review date". `updateItem` refuses such a save WHOLE rather than
+applying the other fields and dropping the transfer. An ordinary save never releases a
+protected date: only this explicit control transfers ownership, and only an explicit date
+change, a snooze or "Schedule again" re-establishes the owner's.
+
+Building the rendered control surfaced a real defect: "Review today" wrote the day the
+panel had been RENDERED with (`useDecisionNow` polls every 30s), so a device left open
+across local midnight saved yesterday. It now resolves the day at the moment of the tap —
+the same action-time guard `CloseBlock`'s Save already uses.
+
+## `text-align: start` is not portable, and Chromium cannot show you that (2026-09-16)
+
+The owner had reported a Safari-only question-alignment symptom that nine rounds of
+Chromium checking never reproduced, and the source left several plausible causes. Driving
+the same page in WebKit reproduced it immediately and it was none of them: `ClassQuestions`'
+`<li dir="auto">` inherits `text-align` from an LTR ancestor, and **WebKit inherits the
+RESOLVED PHYSICAL value (`left`) where Chromium inherits the LOGICAL keyword (`start`)** and
+re-resolves it against the `<li>`'s own direction. Identical DOM, identical CSS, two
+different pictures: a Farsi question rendered hard against the English edge while its
+ordinal — a direction-aware flex child, correct on its own terms — sat on the right.
+
+The fix is one declaration: a block whose own direction is resolved by its content must
+RE-DECLARE `textAlign: 'start'` on itself. An inherited `start` is not the same thing as an
+own `start`. This generalises past `ClassQuestions` and past this lane.
+
+The durable lesson is the other half: **a direction fix verified in one engine is verified
+in one engine.** `tests/practice-information-layout.browser.test.ts` now drives the changed
+surfaces in Chromium AND WebKit, at 390×844 and desktop, asserting measured bounding
+positions. A missing WebKit binary fails with the install command; it never skips. Two
+WebKit-only environment facts encountered on the way, neither an app bug: it cannot store a
+`Blob` in IndexedDB under the automation driver (so that journey seeds state-only), and it
+reports `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was
+aborted.
+
+## Two deliberate limits recorded rather than quietly worked around (2026-09-16)
+
+**The iPhone keyboard/shell symptom stays an OWNER diagnostic, with zero code.** The
+reported displacement is a device-and-shell interaction the browser checks above cannot
+reproduce, and `useViewportGuard.ts`, the shell height, `visualViewport` scrolling and nav
+positioning are all deliberately untouched here. Guessing a timeout to make a symptom go
+away is exactly the change this repo's own rules forbid, and no timeout increase is
+authorised. The Farsi half of that report WAS reproduced and fixed (the WebKit entry
+above); the keyboard half needs the specified capture first, on the deployed revision:
+
+- device / iOS / app version, and standalone PWA versus Safari;
+- repeat focus, keyboard dismissed with the field still focused, blur, field-to-field
+  focus, route exit and orientation change — on item notes, Close, and lesson questions;
+- at each transition (before / during / after), timestamped: `innerHeight`,
+  `visualViewport.height` / `offsetTop` / `pageTop` / `scale`, `window.scrollY`,
+  `document`/`body`/`main` `scrollTop`, `document.activeElement`'s tag, and the rectangles
+  of the app shell, `main`, the tab bar and the focused field.
+
+That set is what distinguishes layout scrolling from visual-viewport displacement from
+residual internal scrolling from keyboard timing from focus scroll — five different fixes.
+Prescribing one before the capture would be guessing.
+
+**A DST assertion that only runs in some timezones is not an assertion.** The report's
+local-day boundary check originally ran `if (the machine's offset changes this year)`,
+which never executes on a UTC CI runner and would have reported as passing having proved
+nothing. It now forces `TZ=Europe/London` around that one assertion (Node re-reads `TZ` per
+call) and restores it immediately, so the case genuinely runs everywhere.
+
+## Tenth rejection: a resolved direction that never reaches the alignment, and lines that share one (2026-09-13)
+
+Two counterexamples, one family — and both were invisible to the guard, which is the third
+thing this entry fixes.
+
+**A user-authored title under a forced physical alignment.** Repertoire's `PathwayCard`
+rendered `pathway.name` inside `<button style={{ textAlign: 'left' }}>` with no
+direction-resolving group between them. The browser shaped a Farsi pathway name correctly
+(bidi needs no help for that) and then pinned it to the English edge, split from its own
+instrument/stage caption. The inline `<span dir="auto">` already on that caption could
+never have fixed it: `text-align` is a BLOCK concept, and this repo's own "an isolate must
+be inline" rule exists precisely because a `<span>` never participates in one. Fixed by
+wrapping the name and its caption in ONE `dir="auto"` group that also re-declares
+`textAlign: 'start'` — both halves, because either alone leaves the name where it was. The
+group sits INSIDE the button rather than on it (the Balance-row precedent: the progress bar
+and its counter below are layout, not text). Measured against the live page: before,
+the Farsi name occupied x 41–184 of a 1068px card; after, 884–1027, with its caption on the
+same edge. The English card is byte-identical in layout (`start` === `left` under LTR).
+
+Auditing the same shape across the app found two more real instances, fixed with it:
+Insights' per-instrument `<th style={CELL} dir="auto">{r.instrumentName}</th>`, where
+`CELL` pinned `textAlign: 'left'` over an instrument name the owner can rename to Farsi
+(CELL now uses `'start'`), and RoutineRunner's "Recorded" rows, whose `dir="auto"` row sat
+under a card pinning `'left'`. `center` is deliberately NOT treated as forcing: centred text
+points at no edge, so it cannot misalign an RTL run — which is also what keeps this from
+demanding an unrequested layout change on the deliberately centred practice screens.
+
+**Lines of one field that are not one language.** The bulleted multi-line renderer added
+for `teacherQuestion`/`currentProblem`/`lastObservation` left every bullet bare, arguing
+that lines typed into one box share one direction. They do not: a musician who types a
+Farsi question and an English one into the same field gets two lines whose languages
+genuinely differ, and bare lines all inherit the FIRST line's direction — an English line
+dragged RTL with its bullet on the wrong side, or the reverse.
+
+The catch that argument was right about is real, though, and is why this is not simply
+"isolate every line": `dir="auto"` skips any descendant carrying its own `dir`, and the
+enclosing `<li dir="auto">` (and the Problem/Last-time value wrapper) has nothing else left
+to hunt, since the Ninth rejection above already isolated the title. Isolating every line
+would leave the whole item with no resolution source and a silent LTR fallback — the Ninth
+rejection, back again. Both hold one way only: the FIRST line is the ANCHOR and stays bare
+(it still follows its own language, because the direction it inherits is the one it
+produced), and every line AFTER it carries its own `dir="auto"` on the row, so its text and
+its bullet both follow that line alone. The two branches are written out literally rather
+than as `dir={i === 0 ? undefined : 'auto'}`, because `direction.test.ts` is a source
+scanner and a computed attribute is invisible to every guard in it.
+
+Verified against the real running Teacher Report page with DELIBERATELY MISMATCHED data in
+both directions (Farsi question line followed by an English one, and the reverse; an English
+item title over a Farsi question, and the reverse), at a 350px forced width: each bullet's
+computed `direction` and its bullet dot's measured x-position follow that line alone, while
+the item's ordinal still tracks the question's first line. In the Farsi-titled item, the
+bare Farsi first line computes `rtl` with its dot at x 327–333 (the right edge) and the
+isolated English second line computes `ltr` with its dot at 0–6; in the English-titled item
+the mirror holds — bare English line `ltr`, dot at 19–25, isolated Farsi line `rtl`, dot at
+344–350 — with the ordinal at 0–11 rather than 341–350. The `direction.test.ts` checks are
+shape checks over the source, so these measured figures are the only evidence that what the
+shape encodes actually renders; the discovery set behind the alignment check spans four
+files (Repertoire ×2, RoutineRunner, StartBlock, Today), not the counterexample's own file
+alone, so it cannot pass by having quietly emptied.
+
+**The guard.** The sealed finding was right that the existing ac-5 check only required one
+direction-aware group SOMEWHERE per file, which neither counterexample could fail.
+`direction.test.ts` adds two checks that assert the invariants themselves. The first
+discovers, mechanically, every element carrying a title class whose body renders an opaque
+data expression, and — when anything above it forces `textAlign: 'left'`/`'right'`, inline
+OR through a module-level style constant it names (which is how the Insights counterexample
+was written) — requires a `dir="auto"` group below that forcing element which re-declares
+`textAlign: 'start'`; it also fails any `dir="auto"` group that pins a physical alignment on
+itself. The second asserts the anchor shape of the multi-line renderer: exactly one bare
+line branch, exactly one `dir="auto"` branch, and the isolate on the branch chosen for lines
+AFTER the first. Seven mutations were confirmed to fail the suite before this was committed
+— dropping the group's `textAlign: 'start'`, dropping its `dir`, making both bullets bare,
+making both bullets isolated, moving the anchor to the last line, reverting `CELL` to
+`'left'`, and dropping RoutineRunner's `'start'`.
+
+## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
+
+The Eighth review below concluded no further structural change was needed, using seed data
+where the item's title and its `teacherQuestion` share a language (both Farsi). An OWNER
+pass reported the marker was STILL not attached to the question on the real, current build
+— and, tested directly against the real running app (the actual Teacher Report page, not a
+synthetic clone), with a title and question set to DIFFERENT languages, this was true and
+was a genuinely different, previously undiagnosed bug: the Eighth review's own conclusion
+does not extend past the one language combination its evidence used.
+
+Root cause: `<li dir="auto">`'s hunt for a first strong character skips any descendant that
+carries its own `dir`. The question and the Problem/Last-time rows all already carried
+their own `dir="auto"` isolates, so the hunt could only ever land on the bare TITLE —
+meaning the ordinal's side was decided by the TITLE's language alone, regardless of the
+QUESTION's. With matching languages this is invisible (title and question agree on which
+side to hug); with an English title and a Farsi question (or the reverse), the ordinal and
+title land on one side while the question — correctly right- or left-aligned by its own
+independent isolate — lands on the OTHER, unattached from the marker entirely. Reproduced
+both ways by temporarily setting an English title on the real seeded Farsi item via the
+live store (`useStore.getState().updateItem(...)`) against the actual running page, at both
+a 390px-forced real DOM width and the full desktop width.
+
+Fixed by reversing which field is left bare: `questionsForNextClass` guarantees
+`q.question` is non-empty on every row this component renders (that is its filter); `q.title`
+carries no such guarantee. The title now carries its own `dir="auto"` isolate (out of the
+`<li>`'s hunt, rendering in its own correct direction independently); the question is left
+bare, so the `<li>`'s `dir="auto"` — and therefore the ordinal's side — always tracks it.
+Verified at both widths, both mismatch directions, and confirmed the original
+matching-language case is unaffected. `direction.test.ts` adds a dedicated, mutation-tested
+shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the title's tag
+carries `dir="auto"` and the question's does not; both reverting the title and re-marking
+the question were confirmed to fail it (and, independently, `GROUP_SITE_INVENTORY`'s exact
+count) before this was committed. The stale `ISOLATED_VALUE_SITES` entry for the question's
+old isolate was removed; no new entry was needed for the title's new one since it is a
+plain `GROUP_SITE_INVENTORY` site (same tag/class the old entry already tracked).
+
+The general lesson, restated because this is the second time this file has learned it: a
+verification built entirely from matching-language seed data proves a fix holds when the
+two sides AGREE and says nothing about what happens when they DISAGREE. The Seventh
+rejection's row-direction fix and this Ninth rejection are the same shape of gap, closed
+twice because the same seed data was trusted twice.
+
+## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
+
+**Scope note (superseded in part by the Ninth rejection above):** this review's conclusion
+— that no further structural change was warranted — was correct only for the ragged-edge
+question it actually measured, using seed data with a Farsi title AND a Farsi question. It
+was not, and should not have been read as, a claim that every marker-attachment complaint
+on this screenshot was closed; a real, different bug (title/question language mismatch)
+was still open and is fixed above.
+
+A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
+the "1." marker looked detached from the Farsi question because the Problem/Last-time
+lines sat at the opposite (left) edge from the title and question — a visible asymmetry a
+screenshot reads as "not attached" even where the title itself was correctly positioned.
+Rather than trust that reading, both edges were measured directly against the live DOM:
+the real seeded Farsi item, cloned into a fixed-width harness at 340px, with each line's
+actual rendered text extent read via `Range.getClientRects()` (glyph bounds, not
+`getBoundingClientRect()` on the containing boxes). Result: all four lines — title,
+question, Problem, Last time — right-align flush at 330px, an 8px gap from the ordinal's
+own right edge at 338px, matching the authored `gap: 8` exactly. The LEFT edges spread
+across 62px-205px (143px), because the four lines differ in length and each is
+right-aligned inside a box whose right edge is pinned to the ordinal regardless of the
+box's own width.
+
+A specific fix was proposed and tested before being rejected: swap the value wrapper's
+`flex: 1` (`.grow`) for shrink-to-fit sizing, on the theory that a narrower box would pull
+the ragged edges together. Patched live and re-measured, the result was byte-for-byte
+identical — same 143px spread, same individual line positions — because for right-aligned
+text, `left edge = box_right − line_width`, and `box_right` never moves: it stays flush
+against the ordinal no matter how the box itself is sized. There is no flex-sizing change
+that touches this, because the sizing was never the defect.
+
+Conclusion: a ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same shape any right-aligned paragraph or an address block has), not a
+resolvable structural defect. The actual defect the owner was reacting to was fixed by the
+Seventh rejection below, before this measurement was taken: Problem/Last-time used to sit
+at the FAR left (~25px, the opposite edge entirely) while title/question sat at ~330px — a
+hard two-line/two-line split, not mere length variance. Once the row-direction fix made
+all four lines agree on which edge they hug, what's left is ordinary variance in line
+length, and no further structural or padding change is warranted. No source change
+accompanies this entry; it exists so a future review does not reopen the same screenshot
+and re-diagnose an already-closed gap as a new one.
+
+## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
+
+A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's
+`display: 'inline-block'` fix for `ClassQuestions`' `Problem:`/`Last time:` rows still
+wrong — not merely incomplete. That fix gave the VALUE its own bidi character order and
+its own wrap-line alignment, but left the ROW that positions "Label: value" as a unit
+BARE, so the row inherited whichever direction the TITLE above it resolved to — right for
+a Farsi title, left for an English one — regardless of what script the value was actually
+written in. For the common case (title and value the same language) this looked correct
+by coincidence; for an English-titled item with a Farsi problem note, the whole row
+stayed pinned left, exactly where the inherited direction put it, with the value's
+internal shaping correct but its POSITION wrong. This is the same root cause the
+"A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN"
+section already named for other files, just not yet applied to a LABEL-plus-VALUE row.
+
+Fixed by moving `dir="auto"` from the value to the ROW itself, and marking the LABEL —
+never the value — with its own `dir="ltr"`. This is not because the label's text ever
+changes; `dir="auto"` skips a descendant that carries its own `dir` when hunting for a
+first strong character, so marking the label takes it OUT of that hunt and leaves the
+(deliberately bare) value as the row's only resolution source. Marking the value too
+would take BOTH out, leaving the row with nothing to resolve from and a silent fallback
+to LTR regardless of the value's own script — confirmed to fail the new test when tried.
+Verified across all four combinations (Farsi/English title × Farsi/English value) at both
+a narrow (350px, iPhone-card-width) and a wide (700px, desktop) container: a value's own
+language now determines its row's alignment independently of the title, in both
+directions, at both widths. This also resolved the number/title "detachment" the same
+finding reported: with all four lines (title, question, Problem, Last time) correctly
+right-aligning together, the block reads as one coherent unit against the marker instead
+of two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the `ISOLATED_VALUE_SITES` ledger entries for these rows
+with a shape check, `isLabelFirstAutoRow` / "a label-first auto row's value stays bare":
+any `dir="auto"` group whose body opens with a `<span dir="ltr">…</span>` must have no
+other `dir=` anywhere else in its body, or the row has nothing left to resolve from. It is
+a SHAPE check, not a ClassQuestions-specific one, so it would catch the same regression in
+any future file using this pattern. Two mutations were confirmed to fail before this was
+committed: marking the value `dir="auto"` too (caught by the new check and by
+`GROUP_SITE_INVENTORY`'s exact-order equality), and removing the label's `dir="ltr"`
+entirely — reverting to the original bug — which the PRE-EXISTING `unexemptedPhrase` check
+also catches on its own (the bare "Problem" label plus the value's opaque expression reads
+as a 2-word exposed phrase), giving this shape two independent guards.
+
+## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
+
+A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
+question number still escaping the card despite the third rejection's symmetric
+`paddingInline` fix — proof that an outside `::marker`'s exact position for a
+direction-variable `<li>` is a browser implementation detail no gutter measurement can
+guarantee (jsdom cannot compute it either, which is why a padding proxy was ever trusted
+to stand in for it). Fixed by removing the native marker mechanism entirely rather than
+reserving room for it: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a
+real element, the FIRST child of a flex `<li dir="auto">` — flexbox's row axis is
+direction-aware by specification, so the number leads on the correct side and sits inside
+the content box it can never escape. The wrapper around title/question/details carries no
+`dir` of its own, deliberately: `dir="auto"` skips a descendant that has its own `dir`
+when hunting for a first strong character, so giving the wrapper one would leave the
+`<li>` with no resolution source at all. `direction.test.ts`'s list-marker check
+(`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
+now asserts the mechanism directly — no native marker, and the `<li>` is itself a
+flex/grid container — rather than measuring a proxy for it; each half was confirmed to
+fail on its own when reverted. `role="list"` on the `<ol>` pays back the one accessibility
+cost of removing the marker: WebKit drops an `<ol>`'s list semantics from the
+accessibility tree once `list-style: none` takes its marker away, which would have gone
+unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
+surfaced.
+
+The same finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed at
+the time as a wrap-alignment gap and fixed with `display: 'inline-block'` on the value's
+own isolate. A seventh sealed finding (below) found that diagnosis incomplete — the value
+having its own bidi order was never the same claim as the ROW having the right
+alignment — and replaced it with a different fix entirely. See "Seventh rejection" above
+for what actually shipped.
+
+## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
+
+A fifth sealed review found the fourth rejection's fix was still a negative check —
+banning `dir="ltr"`/`"rtl"` around an instrument name — which cannot detect a name with
+NO direction treatment at all, an alias beyond the two literal anchors the check knew
+(`instrumentName`, `{inst}`), or a name fused into a template string before anything
+renders. Real, live instances of all three: Repertoire's `PathwayCard`, Session Plan's
+two page titles, wide Lessons' sidebar heading and detail-pane header, Today's
+cross-instrument "in progress"/"plan"/"routine" rows (built as pre-joined template
+strings), Today's instrument switcher and `EmptyState` title and "Before your … class"
+heading, and ActiveBlock's/CloseBlock's own eyebrow (mis-classifying the instrument's own
+name as fixed English in their own comments). Fixed by replacing the ban with a positive,
+mechanically-discovering check in `direction.test.ts`: `instrumentNameOccurrences` finds
+every current renderer from the SHAPES this codebase uses to produce one (the helper call,
+a property read, a local alias of either via destructure-rename/const-binding/find-and-name,
+or a per-item `.name` read inside an `instruments` iteration) rather than a location list,
+and `resolvesOwnDirection` asserts the invariant itself — the nearest ancestor `dir` must
+be `"auto"` AND nothing else may render before the name within that ancestor's body, or
+the ancestor's resolution belongs to whatever precedes it, not to the name riding along
+beside it. Two sites deliberately stay bare because they are already the first strong
+content of their own dir="auto" ancestor (Insights.tsx's `<th>`, Today.tsx's
+cross-instrument `{inst.name}` row) — isolating either would break, not fix, them, the
+same reasoning that earlier reverted isolating `stage.title`. Two gaps are named rather
+than silently left: `QuickAdd.tsx`'s instrument-picker button has the identical bare-name
+defect but sits in a file this lane's own contract puts out of scope, so the check
+explicitly excludes it instead of failing on a bug this lane cannot fix; and
+`src/domain/insights.ts` fuses an instrument name into a generated sentence one layer
+below where a presentation-only lane can reach, left open for its own lane. See
+AGENTS.md's "A FIFTH REJECTION..." section for the full account.
+
+## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
+
+A sealed review found four sites (`ItemCard.tsx`, `ItemDetail.tsx`,
+`PathwayDetail.tsx`, `Repertoire.tsx`) forcing an item's or work's instrument name under
+`dir="ltr"` as if it were generated metadata like `ITEM_TYPE_LABELS` sitting next to
+it — but an instrument is renameable in Settings, Farsi included, so it is the owner's
+own editable text and needed its own `dir="auto"` isolate instead. Auditing every
+remaining `LTR_ISOLATE_SITES` entry against its real source (not just the four named)
+found a fifth of the identical shape (`Today.tsx`'s "routine running" row, bundling the
+instrument name and a fixed English suffix into one `dir="ltr"` span) and two with no
+direction treatment at all — invisible to that audit because it can only see spans that
+already carry a `dir`: the Plan doorway's mismatched-instrument row (the exact twin of
+the routine row) and the weekly Balance row's instrument name, bare inside a
+`.truncate` title span whose row is a CSS grid (isolating the row itself, rather than
+the name, would have reversed its three columns for a Farsi instrument). All seven now
+carry their own `dir="auto"`, and `direction.test.ts` bans the SHAPE going forward — any
+`dir="ltr"`/`"rtl"` isolate whose body references `instrumentName` (a call, a bare
+identifier, or a property access like `b.instrumentName`) fails — rather than
+re-closing whichever locations a reviewer happened to enumerate.
+
+## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
+
+A third sealed review of the direction lane found the SAME family — mixed-content
+groups, alignment, list markers, completeness — still open in `ItemMaterial.tsx`,
+`Materials.tsx`, `ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx` and
+`ClassQuestions.tsx`, closed as three root causes rather than as seven counterexamples.
+
+1. **A block-level isolate resolves its own alignment, independently of the group.**
+   `ItemMaterial.tsx`'s detail line carried `<div className="tiny faint" dir="ltr">…
+   </div>` — the isolate fixed the sentence's own bidi ordering but, because
+   `text-align: start` is a per-box computed value resolved against that box's OWN
+   `direction`, gave the div's `text-align` a LEFT resolution regardless of the group's
+   (possibly RTL) one — the detail split from a right-aligned Farsi title exactly as
+   before, one level down. Fixed by moving every such isolate to an inline `<span>`
+   nested inside a `dir`-less block (the shape already used everywhere else in the
+   file), and closed for good with a mechanical rule in `direction.test.ts`: no
+   `dir="ltr"`/`dir="rtl"` may sit on anything but `span`/`bdi`. One rejected review
+   found one file doing this; a structural ban is what stops a second file doing it
+   next lane.
+
+2. **A native list marker follows its OWN list item's direction, not the list's.**
+   `ClassQuestions.tsx`'s `<ol>` reserved gutter space with `paddingInlineStart` alone
+   while each `<li>` resolves its own direction via `dir="auto"` — the browser positions
+   the outside `::marker` on that li's OWN start edge, so a Farsi item's marker lands on
+   the right, the side the list reserved no room for, and gets pressed against or past
+   the content border. Fixed with symmetric `paddingInline`. `direction.test.ts` scans
+   every `<ol>`/`<ul>` for this shape now, not just this one list.
+
+3. **The scanner itself skipped every `{…}` expression as opaque, contributing zero
+   words — hiding a run built ENTIRELY from expressions.** `Materials.tsx`'s
+   `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '} {itemCount(...)}
+   item{...}` reads as zero literal words to a scanner counting only literal text, while
+   rendering three always-English fragments in a row, unisolated, next to a title that
+   could resolve RTL. `unexemptedPhrase` now counts an opaque, non-JSX-bearing
+   expression as ONE token (its content stays invisible from source, but its
+   unisolated PRESENCE next to other content is the shape being caught); an expression
+   containing its own nested JSX stays fully opaque, since its children are already
+   reachable by the outer whole-file scan. That one change, plus re-auditing every
+   recorded group by hand, surfaced the five named sites and further, unnamed ones of
+   the identical shape: `Repertoire.tsx`'s second, near-duplicate work-count span (the
+   non-Persian branch mirrors the fixed one and had simply been missed), `ActiveBlock`'s
+   own mode/focus chips, `Attachments`'/`ItemDetail`'s file kind/size line,
+   `StartBlock`'s/`Today`'s item-type/status labels, `StageDetail`'s strand/status
+   line, `PathwayDetail`'s "Current"/"Done"/item-count badges and piece-count fallback,
+   `Today`'s "routine running" indicator and its cross-instrument Overview row (a fixed
+   sentence embedding the next item's own possibly-Farsi title, isolated the way
+   `StageDetail`'s undo banner already does), and `Insights`' generated observation
+   sentences. Two sites needed `dir="auto"` rather than `dir="ltr"` — a value authored
+   independently of its neighbour, not generated copy: `RoutineRunner`'s upcoming
+   segment label and `PathwayDetail`'s pathway `source`. A stage's own `title` was
+   tried the same way and REVERTED: `stage.title` is not authored independently of
+   `stage.code` — it is the SAME stage's fuller name, rendered only when it differs
+   from the code — and a prior lane already settled that the two should AGREE on
+   whichever direction the group resolves rather than one overriding the other
+   (`PathwayDetail`'s stage rows, 2026-09-11 entry below: "even where a group DOES
+   resolve LTR from its code, that is the point"). Isolating `stage.title` in its own
+   `dir="auto"` would have pulled it OUT of the button's own auto-detection (a nested
+   `dir` attribute is skipped by the HTML algorithm), which can flip the group's OWN
+   resolved direction whenever `stage.code` itself has no strong character — the
+   opposite of "agree." It stays a bare `<span>`, exactly like `stage.code`. Two
+   flagged sites were genuine exceptions, recorded visibly in a new
+   `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: a numeric progress counter
+   (`{sp.done}/{sp.total}` — digits carry no bidi risk) and a compound "Pathway — Stage"
+   breadcrumb built from two fields (one continuous label, not a title split from a
+   foreign caption).
+
+4. **`elementBody`'s depth counter did not recognise React's Fragment shorthand as an
+   opening tag, only as a closing one — silently truncating the body several checks
+   scan.** `</>` starts with `/`, so it matched the ordinary CLOSING-tag branch and
+   decremented depth; `<>` starts with neither `/` nor a letter, so it matched nothing
+   and never incremented it. Every `<>…</>` pair inside a group's body therefore
+   decremented depth once more than it was ever incremented — and this codebase's own
+   established shape for a conditional detail (`{stage && (<><span>…</span>
+   <Link>…</Link></>)}`, `ItemDetail.tsx`'s header) uses exactly that shorthand. On
+   that header, depth hit zero several tags before the `</header>` actually closes,
+   so `unexemptedPhrase` silently stopped scanning before ever reaching
+   `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a real,
+   unisolated generated-English phrase that had been sitting in the group the whole
+   time, invisible to a scanner whose whole claim is "detectable, not enumerated."
+   Fixed by giving `<>` the same weight as any other opening tag; the fix surfaced
+   this one concrete violation across every file the suite scans (no others were
+   hiding behind it), now fixed with the same `dir="ltr"`/`dir="auto"` split as its
+   sibling `row-wrap` (`instrumentName`/`ITEM_TYPE_LABELS` generated, `stage.code`/
+   the material label left bare since both can be Farsi themselves) and its
+   importance/difficulty/saturated row. A structural bug in the TEST's own tag
+   traversal is exactly the kind of gap a purely example-driven fix cannot close —
+   only re-deriving the traversal from first principles (does this construct open or
+   close a nesting level?) finds it.
+
+**A restructure, not a pure direction-only edit, in `Repertoire.tsx`'s `WorkRow`.**
+Its metadata line was `[form, composer, gusheh, instrumentName, lastPractised]
+.filter(Boolean).join(' · ')` — a single STRING assembled from fields in two
+different authorships (Persian identity fields, genuinely Farsi; instrument name and
+the last-practised phrase, generated English). A joined string has no seam to hang a
+`dir=` on partway through, so isolating it correctly required rebuilding the array as
+JSX nodes (`<span dir="auto">`/`<span dir="ltr">` per fragment) joined with an
+explicit separator, rather than adding an attribute to existing markup. This is more
+than the "direction wiring only" the contract asks of a non-loop file, but there was
+no lighter way to give each fragment its own bidi base — flagged here rather than
+left for a reviewer to have to notice on their own.
+
+**The scanner's own comment-stripping had a latent bug this work exposed, not
+introduced.** `stripComments` treated any `'`/`"` as a real string delimiter and
+scanned forward, unbounded, for its match. Plain JSX text containing an apostrophe
+(`StageDetail.tsx`: "That stage doesn't exist.") is not a string at all; hitting that
+apostrophe put the scanner into a phantom "inside a string" state that swallowed
+everything after it — including real comments — until an unrelated quote later
+happened to close it, cascading through the rest of the file. This had been silently
+true all along and only surfaced because a new comment inside the corrupted span
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the new block-isolate scan as a phantom real attribute. Fixed at the
+root: a `'`/`"` now starts a real string only if its match appears before the next
+newline (every real string/attribute value here is single-line); otherwise it passes
+through as ordinary text. Backtick template literals keep their unbounded, multi-line
+scan. This makes every check in the file more trustworthy, not just the new ones.
+
+## The content leads: direction on the group, and a colour list that is bounded on purpose (2026-09-11)
+
+**Direction lives on the GROUP, never on the title.** `dir="auto"` was on 47 title
+elements and on no container anywhere, so a Farsi title resolved RTL and hugged the right
+edge of its cell while its own English caption hugged the left. The fix is not a new
+mechanism — it is moving the SAME native attribute up one level, to the element that
+holds a title together with the details belonging to it. Two consequences are worth
+recording because they are not obvious:
+
+1. `dir="auto"` resolves from the FIRST STRONG CHARACTER in the subtree, so where an
+   English eyebrow precedes the title in the DOM (Today's Practise-now card, the close
+   screen's header, Session Plan's minutes/bucket line) the group is drawn around
+   title + details and the eyebrow is deliberately left OUTSIDE it. Wrapping the whole
+   card would pin the group LTR and change nothing.
+2. Direction alone does not move text. Several groups sit under an ancestor pinning
+   `text-align: left` (a picker row button, the practice screen's centred column), and
+   `left` is inherited as a COMPUTED value — it does not re-resolve per element. Those
+   groups set `text-align: start` on themselves.
+
+The sweep is held closed by `src/components/direction.test.ts` rather than by care, and
+its exception allowlist came out EMPTY: every title on every surface had a group it could
+join. `PathwayDetail`'s stage rows were the candidate exception (an ascii-looking code
+like "2A" leading a Farsi title) — but the Setar and Tar seeds author stage codes in
+Farsi (`نشست`, `شور`, `ماهور`), so grouping code + title is both correct and what the
+owner actually sees. Even where a group DOES resolve LTR from its code, that is the point:
+the code and the title then agree instead of pointing at opposite edges.
+
+**The colour list is bounded, and the planner's "six failing tokens" was an undercount.**
+The plan measured each foreground token against `--bg` only. Two tokens fail there and
+were missed (`--tone-progress` 4.41, `--tone-rest` 4.26), and more importantly `--bg` is
+not where several of them RENDER: `--tone-rest` only ever appears as `.badge`/`.chip`
+text over its own translucent `--tone-rest-soft` fill. `src/styles/contrast.test.ts`
+therefore lists the pairs each token is ACTUALLY rendered on, compositing a translucent
+fill over the card it sits in, and asserts them in all three palette blocks.
+
+That honest list moves EIGHT light tokens (`--text-faint`, `--accent`, `--gold`,
+`--tone-alert`, `--tone-warn`, `--tone-progress`, `--tone-good`, `--tone-rest`) and FOUR
+dark ones (`--text-faint`, `--tone-alert`, `--tone-progress`, `--tone-rest`) rather than
+the six + one the plan predicted. The list was NOT trimmed to make that arithmetic come
+out right: an uncovered token is supposed to be a visible omission, and dropping badges
+would have left two of the five tone tokens with no coverage at all. Three of the four
+dark moves are 1–7 units and imperceptible. `--accent-contrast` (white on the primary
+Start button, 3.95 at HEAD) needed no move of its own — darkening `--accent` to clear AA
+against the page took that pair to 5.94. Every `-soft` fill, `--text`, `--text-dim` and
+`--accent-dim` are untouched, because they pass.
+
+**Both light blocks, every time.** `global.css` declares the light palette twice — at
+`:root[data-theme='light']` and again inside `@media (prefers-color-scheme: light)
+{ :root:not([data-theme]) }`. The duplicate is what an owner who never picked a theme
+sees, so the test asserts both blocks AND that they agree token for token.
+
+**Reading the stylesheet needed a workaround, not a config change.** `src` is typechecked
+by `tsconfig.app.json`, which does not enable node types, and Vitest blanks every `.css`
+module — `?raw` included — unless `test.css` is on in `vite.config.ts`. Both files are
+outside this lane's scope. So the contrast test reads the real file through a dynamic
+import whose specifier the compiler cannot resolve statically. Reading the REAL file is
+the whole point: a table of colours copied into the test would keep passing while the app
+shipped something else. The direction test needs no such trick — `import.meta.glob` with
+`?raw` works for `.tsx`, and a glob also means a NEW page is swept in automatically.
+
+**One ReviewPlan on the close screen.** The collapsed summary line and the expanded date
+field are two renderings of ONE value, with a manual correction folded into it rather
+than held beside it. The guarantee had to be structural: `CloseBlock` previously called
+`planNextReview` twice (once for the preview hint, once inside `pickResult` to seed the
+field), which is exactly the drift r-explainable-scheduling exists to prevent. A pure
+formatter (`reviewSummaryLine`) renders the line and computes nothing, so a divergent
+date is unrepresentable rather than merely remembered about.
+
+**Today's order was built the other way round, tried, and REVERTED — by design.** The
+lane built Practise now directly under the instrument switcher with Plan and Routines as
+two compact peer doorways beneath it, on the argument that orchestrating a session is a
+choice you make INSTEAD of taking the suggestion. It shipped as one ordering change with
+no data or state implication precisely so the owner's own device could settle it. It did:
+on 2026-09-11 the owner judged the original order better — Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural — so the
+order went back. That reversal is a PASSING outcome of the check, not a failure of the
+lane, and everything else the lane built stands.
+
+Worth recording for whoever reads the code next: BOTH orders keep the recommendation
+above the fold at 390×844, so nothing about this ordering follows from the phone
+constraint or from any other rule in AGENTS.md. It is a taste judgement that only the
+owner can make, and the argument for recommendation-first is genuinely available to
+re-derive — which is exactly why `Today.tsx` and AGENTS.md now say, in so many words,
+not to act on it without asking.
+
+**Rejection findings, addressed (fresh review, 2026-09-11).** A sealed fresh review of
+this lane's diff returned `request_changes` against two families, fixed comprehensively
+rather than by patching the two cited examples:
+
+1. **Mixed-content groups and completeness.** Grouping a Farsi title with an
+   ALWAYS-ENGLISH generated detail (`buildReason`, `planSegmentReason`) under one
+   `dir="auto"` fixed the ALIGNMENT but broke the detail's own bidi ordering: the Farsi
+   title's resolved RTL base became the detail's base too, and FriBidi renders a trailing
+   neutral character (the sentence's own full stop) using that base when nothing more
+   specific claims it — so it visually jumped to the start. Fixed by nesting a
+   `dir="ltr"` isolate around each such detail (Today's Practise-now card and secondary
+   recommendations, ItemDetail's "practise this part now", Session Plan's segment
+   list and runner) — grouping and alignment are unchanged, only the isolate's own
+   internal ordering is fixed. A structurally identical bug existed the other way round
+   for FREE TEXT the owner typed after a fixed English label (ActiveBlock's
+   `constraint`/`problem`, "last time you decided to try"): the label was the subtree's
+   first strong text, so `dir="auto"` on the whole line resolved from the label and never
+   saw the owner's own (possibly Farsi) words — fixed the same way the codebase already
+   excludes an eyebrow, by giving the VALUE its own nested `dir="auto"` and leaving the
+   label outside it. Today's Routines doorway had the same eyebrow-first bug at the
+   button level ("Resume your routine"/"Routines" decided the direction, not the routine's
+   own name) — fixed by moving `dir="auto"` off the button and onto a block wrapper
+   around just the name, mirroring the shape `ElsewhereSessions` already used a few lines
+   above it (an inline `<span>` there would silently break `.truncate`'s ellipsis, since
+   `overflow`/`text-overflow` do nothing on a non-replaced inline box). ActiveBlock's
+   header stayed CENTRED despite the contract requiring Farsi right / English left on that
+   screen — the page's own `text-align: center` (correct for the timer ring and buttons)
+   was never overridden for the title group; it now sets `text-align: start` on itself,
+   which is a deliberate LAYOUT CHANGE for English on that one screen and is documented in
+   AGENTS.md as not conflicting with "English keeps its layout" elsewhere (that non-goal
+   guards against a Farsi-style right-align, not against ac-6's explicit left-for-English
+   requirement on Active).
+
+   The COMPLETENESS gap: `direction.test.ts`'s "every surface has a group" check passed
+   as long as ONE group survived anywhere in the file, so deleting the Practise-now card's
+   own `dir="auto"` still passed because Today.tsx has several unrelated groups. Fixed
+   with `GROUP_SITE_INVENTORY` — every group-level site recorded in order, duplicates
+   included, asserted with `toEqual` against the live scan, so removing any ONE recorded
+   site anywhere fails regardless of what else survives in the same file. Building that
+   inventory surfaced a second, unrelated defect in the scanner itself: this file's own
+   prose repeatedly writes the literal string `dir="auto"` in comments, and the naive
+   regex scan matched those too — usually producing a site with no real enclosing tag, but
+   at least once walking backward out of a long comment and mis-attributing an unrelated
+   component tag from elsewhere in the file as if it were the match's real element. The
+   scanner now strips `//` and `/* */` comments (copying string/template literals through
+   verbatim, since that is where a REAL `dir="auto"` attribute value lives) before
+   matching.
+
+2. **CloseBlock manual-date preservation.** `pickResult` cleared the manual `override` on
+   every result change — correct when the engine actually re-plans (a fresh judgement
+   deserves a fresh plan, not a stale correction pinned to the old one), wrong when it
+   doesn't: a manual-mode item (`item.reviewMode === 'manual'`) has no automatic plan for
+   ANY result, so a date the owner had just typed in was never tied to a particular
+   judgement, and clearing it turned a deliberate "come back on this date" into an
+   accidental decline the moment they picked a different result. Fixed by gating the
+   clear on `reviewOverrideSurvivesResultChange(item.reviewMode)`
+   (`src/components/format.ts`) rather than calling `planNextReview` a second time inside
+   `pickResult` — CloseBlock's single `ReviewPlan` derivation is unchanged; this is a
+   boolean read of the item's own mode, not a second value that could disagree with it.
+   The predicate is tested against the real engine across all six results for both a
+   manual- and an auto-mode item, not asserted in prose alone.
+
+**Second rejection, closed as a family rather than as four counterexamples
+(2026-09-11).** A second sealed review found the FIRST fix's isolate pattern had not
+been applied everywhere it was needed: `CloseBlock`'s own "A few seconds to capture
+what happened." sat bare in the item-title group (the identical defect the first
+rejection fixed elsewhere in the same file's neighbours), and `ClassQuestions`'
+question/problem/last-observation carried no isolate of any kind, unlike the
+`ActiveBlock` shape the first fix established. Rather than patching just those two
+call sites, the whole surface list was re-audited for the same two shapes:
+
+- **Fixed English copy/metadata bare in a group** — beyond the two named sites, the
+  same "N segments · M min" phrase existed identically in THREE places
+  (`Today.tsx`'s `TodayRoutineRow`, `PathwayDetail.tsx`'s `RoutineRow`,
+  `StageDetail.tsx`'s `RoutineCard` — one component per surface a routine can be
+  started from, never refactored into one shared component), `StaleNote`'s "Running
+  far past its target…" (rendered inside two different title groups), Today's due-review
+  caption ("due `relativeDay(...)`"), the NAS-reference warning sentences
+  (`Lessons.tsx`, `ItemMaterial.tsx`), `ItemDetail.tsx`'s "Study source:" label and
+  `StageDetail.tsx`'s "Added "…" — not practised yet." undo banner. Every one now
+  carries the same nested `dir="ltr"` isolate as the first fix's `reason` spans.
+- **Independently-authored values bare in a group** — `PathwayDetail.tsx`'s
+  `pathway.description`/`pathway.note`, editable independently of the pathway's own
+  name, needed the same `dir="auto"` isolate `ActiveBlock`'s `constraint`/`problem`
+  already carry.
+
+**The test itself was the real gap, not just the four sites.** `direction.test.ts`
+proved a GROUP carries direction; it never proved a CHILD inside it does. A generic
+"no bare Latin text in a group" rule would have forced changes to the already-correct
+`ActiveBlock` label shape (`Constraint: ` stays bare on purpose, immediately followed
+by its own isolate), so the new check (`unexemptedPhrase`) walks a group's body in
+source order, judges an accumulated run of exposed text at each TAG boundary (never at
+an expression boundary, or `{n} segments · {m} min` fragments into single innocent
+words), and exempts a run — regardless of its length — the moment it is immediately
+followed by an element carrying its own `dir=`. Two recorded ledgers
+(`ISOLATED_VALUE_SITES`, `LTR_ISOLATE_SITES`) cover what no source scan can prove:
+an expression's own content (`{q.currentProblem}`) is opaque from source, and a
+component like `StaleNote` renders its isolate from its OWN definition, invisible from
+any of its call sites. Both carry the same visibility contract as
+`GROUP_SITE_INVENTORY` — a new site must be added, visibly, never inferred silently.
+
+## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
+
+**Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores
+live on the Synology NAS under `homes/ethan/SNDK/video-courses` (on disk:
+`/volume1/homes/ethan/SNDK/video-courses`). A lesson reference stores a *relative*
+path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a **NAS
+base URL** set in Settings. Two things must be true for playback:
+
+1. The base URL must be a real `https://` origin. (A scheme-less value like
+   `ds220plus.taild1d1f7.ts.net` was previously concatenated raw and treated as a
+   *relative* URL against the Pages origin — so every recording opened the same
+   in-app 404. Fixed in `normalizeBaseUrl` / `resolveRecording`,
+   `src/domain/recordings.ts`.)
+2. The folder must be served over HTTPS. DSM on `:5000` does **not** serve raw
+   files, and plain `http://` links are mixed content that iOS blocks.
+
+**What is ACTUALLY running (probed 2026-09-10, and this corrects what this record
+used to claim).** This file previously recorded *Tailscale Serve on the Synology* as
+the chosen mechanism, with a runbook. That is **not** what is in place, and an agent
+following that runbook would have configured the wrong thing:
+
+- There is **no Tailscale CLI and no Tailscale.app on this Mac**.
+- `https://192.168.0.20:5010/` answers **HTTP 200 from nginx** and already serves
+  **real browsable directory listings** (mod_autoindex-style "Index of /"), whose
+  document root IS the `video-courses` folder — it lists `setar-classes/`,
+  `tar-classes/` and `classical-guitar/`, and `/setar-classes/` answers 200. So the
+  existing relative references already resolve against it, and a **Browse** link
+  needs no server change whatsoever; the capability was already there and unused.
+- The certificate is Synology's own default (`CN=synology`, issuer
+  `Synology Inc. CA`) and does **not** match `192.168.0.20`. That is why this works
+  on the MacBook, where the exception has been accepted, and why **each new device
+  must accept the certificate once** before NAS links open there. A certificate
+  prompt on the iPhone is INFRASTRUCTURE, not an app defect.
+
+**Current base URL:** `https://192.168.0.20:5010` (LAN only).
+
+**The app is deliberately TRANSPORT-AGNOSTIC, and that is now enforced rather than
+hoped for.** A reference pasted from the NAS listing is stored **relative** to the
+configured base (`relativizeReference`, `recordings.ts`, tested) instead of as the
+absolute URL the browser gave you. An absolute URL would pin that reference to one
+route to the NAS — dead on a phone away from home, and dead everywhere the day the
+base URL changes. Because only the path is stored, **choosing the transport is a
+decision that can be changed later without rewriting a single stored reference.**
+
+**That choice is deliberately left OPEN.** Staying on the LAN address, moving to
+Tailscale (`ts.net` gives a valid certificate and tailnet-only access; Go's file
+server supports Range requests, so video seeking works), or putting a reverse proxy
+in front are all still available. Whichever is chosen, only the Settings base URL
+changes.
+
+**Rejected alternatives.** WebDAV (auth prompts break iOS inline video); per-file
+File Station share links (unmaintainable — one link per file). Also deliberately NOT
+built: a `scan:nas` index feeding an in-app file picker — the NAS already renders
+browsable listings, so browse → copy → paste closes most of the gap without adding a
+build script, a generated reference module, a staleness story and a Mac-only
+dependency. Revisit only if browsing and pasting proves insufficient in real use.
+
+**Never modify the recordings themselves** — the app only stores references, and
+removing a reference never touches the NAS file.
+
+---
+
+## Session Plan — algorithm & evidence (2026-07-18)
+
+The Session Plan (`src/domain/plan.ts`) lays out a time-budgeted session as ordered
+segments in five buckets (warm-up · lesson · review · deep · cool-down). It reuses the
+recommendation engine's `scoreItems` — no second ranking — and is pure and deterministic.
+
+**Decisions.**
+- **Minutes always sum to the budget.** A largest-remainder split by bucket weight, each
+  segment ≥ 2 min; when the budget can't seat every segment, the lowest-priority ones are
+  dropped before allocation. This is the one load-bearing invariant and is tested across
+  15/20/30/45/60 and the edge cases.
+- **The plan runs REAL blocks, not a countdown.** The runner drives the existing
+  start→active→close flow; `closeSession` advances the plan only when the closed block was
+  the current segment. `RoutineRunner` (the warm-up timer) is deliberately left untouched.
+- **The running plan is ephemeral** (store-only, never in `PracticeDB`) so it never syncs
+  or lands in a backup as data.
+- **Shares are sane defaults, adjustable, never "optimal".** Bucket minute shares come from
+  `SchedulingParams` (Settings) — the app makes no claim of an ideal ratio.
+
+**Evidence (used as rationale for the SHAPE, not as precise prescriptions).**
+- Spacing effect → short, spaced segments + SM-2 (Cepeda et al. 2006; Simmons 2012).
+- Contextual interference / interleaving → the no-adjacent-same-item mix and the "it feels
+  harder; that's the point" framing (Shea & Morgan 1979; Carter & Grahn 2016; Stambaugh 2011).
+- Retrieval practice → short review slots (Roediger & Karpicke 2006).
+- Deliberate, goal-directed practice → one focus per segment (Ericsson et al. 1993;
+  Duke, Simmons & Cash 2009).
+- Sleep consolidation → cool-down / end-on-stability (Simmons & Duke 2006).
+
+No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.
+```
+
 ### tests/practiceBrowser.ts
 
 ```
+import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 
@@ -3777,76 +5311,62 @@ const installHint = (engine: Engine) =>
 
 /**
  * ONE recorded outcome of a network request the harness watched, whatever the
- * browser's own words for it were. Tracking EVERY failure — not only
- * cancellations — is what lets genuine evidence for a resource VETO the excuse
- * for that resource (see `excusedCancellation`).
+ * browser's own words for it were. It is EVIDENCE and nothing else: no page
+ * error is ever withheld because of what is in this log.
  *
- * WHY THERE IS AN EXCUSE AT ALL, and exactly how far the evidence for it goes.
- * A CI run produced `Fetch API cannot load https://api.github.com/repos/owner/
- * practice-data/contents/README.md due to access control checks.` on two of
- * three runners at a commit that passed on the third — a WebKit-only,
- * CORS-shaped page error, while every other run fulfils that same request with
- * the right CORS headers. A request the browser CANCELS because the test drove
- * on while it was in flight is the standing explanation, and a real person
- * navigating mid-sync cancels the same request, so failing a journey for it
- * would be failing it for being driven quickly.
+ * WHY THERE IS NO LONGER AN EXCUSE. A CI run produced `Fetch API cannot load
+ * https://api.github.com/repos/owner/practice-data/contents/README.md due to
+ * access control checks.` on two of three runners at a commit that passed on
+ * the third — a WebKit-only, CORS-shaped page error, while every other run
+ * fulfils that same request with the right CORS headers. A request the browser
+ * CANCELS because the test drove on while it was in flight was the standing
+ * explanation, and successive versions of this harness tried to act on it: a
+ * permanent URL set, a consuming time window, a nearest-wins ranking, then
+ * full-URL identity plus a veto. Every one of them could still withhold a
+ * genuine failure, because every one rested on a pairing that has never been
+ * OBSERVED.
  *
- * That explanation is NOT measured, and this comment used to state it as fact.
- * Driving a real WebKit here, five different cancellation shapes — navigating
- * away mid-flight, reloading mid-flight, `AbortController`, a same-tick
- * `location.href`, a cancelled CORS preflight — each produced a
- * `requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever.
- * A reply that genuinely lacks CORS headers does produce exactly this page
- * error, so a raced `route.fulfill` remains a live alternative explanation
- * that cannot be settled from here.
+ * Measured, driving a real WebKit: five cancellation shapes — navigating away
+ * mid-flight, reloading mid-flight, `AbortController`, a same-tick
+ * `location.href`, a cancelled CORS preflight — each produced a `requestfailed`
+ * with `errorText: 'cancelled'` and NO page error whatsoever. And the CI
+ * failure itself arrives with no `request`, no route hit and no `requestfailed`
+ * at all. So a cancellation has never been seen to CAUSE this page error, and a
+ * `pageerror` hands a test an `Error` carrying no request identity — there is
+ * nothing to prove ownership with, at any window or resolution.
  *
- * Which is precisely why the excuse below demands the strongest association
- * the platform makes available and refuses on anything weaker: the pairing it
- * exists for has never been observed, so it may never be INFERRED from a
- * cancellation merely being nearby.
+ * An unprovable correlation is therefore resolved the only safe way: the error
+ * is KEPT. The last shape of the excuse still let an earlier, unconsumed
+ * cancellation to the same URL swallow a genuine diagnosis that emitted no
+ * `requestfailed` of its own — exactly the CI failure's own shape — which is
+ * the sealed finding that closed this line of work for good. The remaining fix
+ * is to remove the RACE — see the shared `cacheDir` in `openPracticeApp` and
+ * the `git/ref/heads/main` route in `installFakeGitHub` — never to hide its
+ * symptom.
  *
- * `errorText` is kept verbatim rather than reduced to a boolean, because it is
- * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
- * diagnosed page error is not excused, the failure has to say what the browser
- * actually said about that request, or the next CI-only failure is as
- * unreadable as the one this fix came from.
+ * `errorText` is kept verbatim because it is what a kept error REPORTS
+ * (`requestFailureEvidence`): a bare CORS-shaped message with nothing to
+ * distinguish a cancellation from a real refusal is exactly what made the
+ * original CI-only failure unreadable.
  */
 export interface TrackedRequestFailure {
   url: string;
   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
   at: number;
-  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
+  /** The browser's own words — `'cancelled'`, an Access-Control refusal, anything. */
   errorText: string;
 }
 
 /**
- * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
- * It once was the whole bound: a cancelled URL's entry stayed eligible for
- * this long, matched by host+path ALONE, so an unconsumed cancellation that
- * never produced its own page error remained a live "credit" any LATER,
- * genuine access-control failure to that same URL could spend. That is a
- * sealed finding, not a hypothetical: a cancellation and a real failure are
- * indistinguishable by wording, so a window — however short — can never be
- * the thing that tells them apart.
+ * How far from a page error a tracked request failure may sit and still be
+ * worth PRINTING beside it. It bounds a REPORT, never a suppression: nothing
+ * in this file drops an error, so no safety claim rests on this number.
  *
- * NOR CAN PROXIMITY, AT ANY RESOLUTION. Replacing the window with "whichever
- * tracked failure sits NEAREST the error wins" was the previous attempt, and
- * measuring it is what killed it: a genuine access-control failure emits its
- * own `requestfailed` 74–359µs after its page error (six of six, macOS WebKit),
- * which reads as a gap of 0ms or 1ms at `Date.now()` granularity depending on
- * which side of a millisecond boundary the pair straddles. An unrelated
- * cancellation to the same resource landing in the error's own millisecond
- * therefore OUTRANKS a genuine failure 359µs away, and excuses it. Sub-
- * millisecond timestamps would only move that boundary, not remove it.
- *
- * What separates them is `excusedCancellation`'s VETO — genuine evidence for
- * the same resource forbids the excuse outright, however far away it sits —
- * and the full-URL identity `sameResource` insists on. All this ceiling does
- * is bound how far apart two events may be and still be considered one
- * outcome at all, in case Node's delivery is delayed under the contention
- * several concurrent dev servers create.
+ * It is generous because Node's delivery can lag under the contention several
+ * concurrent dev servers create — and small enough that the evidence line
+ * stays about this error rather than the whole journey.
  */
-export const CANCELLED_EXCUSE_MS = 2_000;
+export const FAILURE_EVIDENCE_MS = 2_000;
 
 /**
  * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
@@ -3942,66 +5462,21 @@ function sameResource(trackedUrl: string, reported: URL): boolean {
 }
 
 /**
- * The excuse correlates on IDENTITY plus a VETO, never on proximity.
- *
- * Among the tracked failures for the exact resource the error names, within
- * the defensive ceiling:
- *
- *  - if ANY of them is NOT a cancellation, nothing is excused. A genuine
- *    access-control failure always emits its own `requestfailed` beside its
- *    own page error (measured: 74–359µs after it, six times out of six), so
- *    the presence of genuine evidence for this exact resource means the
- *    cancellation's ownership of this error is unproven — and an unproven
- *    correlation is never resolved in the excuse's favour. This is a veto, not
- *    a ranking: it holds however far away the genuine failure sits, which is
- *    what the previous "whichever is nearest wins" rule could not do. At
- *    `Date.now()` granularity a genuine pair straddling a millisecond boundary
- *    reads as 1ms apart, so an unrelated cancellation in the error's own
- *    millisecond used to outrank it and excuse a real failure;
- *  - otherwise the nearest cancellation is CONSUMED, so it cannot excuse a
- *    second error too. Nearest only chooses WHICH interchangeable cancellation
- *    to spend here; it no longer decides WHETHER anything may be spent.
- *
- * A message that is not the diagnosis at all — a render crash, a thrown
- * TypeError, whatever URL it happens to name — is never excused.
- */
-export function excusedCancellation(
-  events: TrackedRequestFailure[],
-  error: { name?: string; message: string },
-  at: number,
-): boolean {
-  const reported = reportedUrl(error);
-  if (!reported) return false;
-  let best = -1;
-  let bestGap = Infinity;
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i];
-    const gap = Math.abs(at - e.at);
-    if (gap > CANCELLED_EXCUSE_MS) continue;
-    if (!sameResource(e.url, reported)) continue;
-    if (e.errorText !== 'cancelled') return false;
-    if (gap < bestGap) {
-      best = i;
-      bestGap = gap;
-    }
-  }
-  if (best < 0) return false;
-  events.splice(best, 1);
-  return true;
-}
-
-/**
- * What the harness saw around a diagnosed page error it did NOT excuse, in one
- * sentence, so the assertion that keeps it says why.
+ * What the harness saw around a diagnosed page error, in one sentence, so the
+ * assertion that KEEPS it says why.
  *
  * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
  * that reads like a CORS misconfiguration whatever actually happened — which
  * is exactly how a CI-only failure became unreadable. Naming the browser's own
  * `errorText` for every tracked request to that same resource, and how far
  * each sat from the error, turns the next one into evidence instead of a
- * guess. Non-consuming and never an excuse: it only describes.
+ * guess.
+ *
+ * It only DESCRIBES. It consumes nothing, decides nothing and cannot cause an
+ * error to be dropped; a message that is not the diagnosis at all (a render
+ * crash, a thrown TypeError) simply gets no annotation.
  */
-export function cancellationEvidence(
+export function requestFailureEvidence(
   events: TrackedRequestFailure[],
   error: { name?: string; message: string },
   at: number,
@@ -4009,13 +5484,13 @@ export function cancellationEvidence(
   const reported = reportedUrl(error);
   if (!reported) return '';
   const where = `${reported.host}${reported.pathname}${reported.search}`;
-  // DELIBERATELY BROADER THAN THE EXCUSE: same host and path, whatever the
-  // query. A failure to the same path under a DIFFERENT query is exactly what
-  // the excuse must refuse to act on and exactly what the reader of a CI-only
-  // failure needs to see, so each row prints its own full url and says whether
-  // it was the same resource the error named.
+  // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: same host and path,
+  // whatever the query. A failure to the same path under a DIFFERENT query is
+  // exactly what the reader of a CI-only failure needs to see, so each row
+  // prints its own full url and says whether it was the resource the error
+  // named.
   const near = events
-    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
+    .filter((e) => Math.abs(at - e.at) <= FAILURE_EVIDENCE_MS)
     .filter((e) => {
       try {
         const url = new URL(e.url);
@@ -4031,7 +5506,7 @@ export function cancellationEvidence(
     );
   return near.length
     ? `tracked request failures for ${where}: ${near.join('; ')}`
-    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
+    : `no tracked request failure for ${where} within ${FAILURE_EVIDENCE_MS}ms`;
 }
 
 export interface PracticeApp {
@@ -4043,11 +5518,12 @@ export interface PracticeApp {
   /**
    * Uncaught page errors, so a broken render cannot pass as a quiet one.
    *
-   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
-   * about a request BEFORE that request's own `requestfailed` (measured:
-   * 74–359µs ahead, six times out of six), so deciding at arrival time is
-   * deciding against a log that has not been written yet. Reading this at the end of a journey — which is when a
-   * journey asserts on it — has every event in hand.
+   * NOTHING IS EVER WITHHELD FROM THIS LIST. Each error is ANNOTATED on read
+   * rather than at arrival, because WebKit delivers a page error about a
+   * request BEFORE that request's own `requestfailed` (measured: 74–359µs
+   * ahead, six times out of six), so annotating on arrival would print against
+   * a log that has not been written yet. Reading this at the end of a journey
+   * — which is when a journey asserts on it — has every event in hand.
    */
   readonly pageErrors: Error[];
   close(): Promise<void>;
@@ -4076,15 +5552,32 @@ export async function openPracticeApp(options: {
   root?: string;
 }): Promise<PracticeApp> {
   const engine = options.engine ?? 'chromium';
+  // EVERY SERVER GETS ITS OWN DEPENDENCY CACHE. Vite's default cache directory
+  // is `node_modules/.vite`, and this suite runs ten test files at once, each
+  // starting its own dev server on the same checkout — plus the rollback
+  // journeys, whose baseline worktree SYMLINKS this very `node_modules`. They
+  // all ran the dependency optimizer against one directory and raced to commit
+  // it: `ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`.
+  // The loser then cannot serve its modules at all, so its page never paints
+  // and the journey fails on the cold-start wait below — which reads as
+  // contention and is really one shared directory. Measured: that rename error
+  // appears in the same run as every one of those failures. A private cache
+  // costs one extra optimizer pass per server and removes the race outright.
+  const cacheDir = mkdtempSync(join(tmpdir(), 'practice-vite-'));
   const server: ViteDevServer = await createServer({
     ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
+    cacheDir,
     logLevel: 'error',
     server: { port: 0, strictPort: false },
   });
+  const closeServer = async () => {
+    await server.close();
+    rmSync(cacheDir, { recursive: true, force: true });
+  };
   await server.listen();
   const origin = server.resolvedUrls?.local[0];
   if (!origin) {
-    await server.close();
+    await closeServer();
     throw new Error('The dev server started but reported no local URL.');
   }
 
@@ -4092,7 +5585,7 @@ export async function openPracticeApp(options: {
   try {
     browser = await ENGINES[engine].launch();
   } catch (e) {
-    await server.close();
+    await closeServer();
     throw new Error(installHint(engine), { cause: e });
   }
 
@@ -4100,9 +5593,8 @@ export async function openPracticeApp(options: {
   let page: Page;
   const pending: { error: Error; at: number }[] = [];
   const pageErrors: Error[] = [];
-  // EVERY requestfailed is tracked, cancelled or not — genuine evidence for a
-  // resource has to be visible to `excusedCancellation` for its veto to fire,
-  // not just the cancellations.
+  // EVERY requestfailed is tracked, cancelled or not: a kept page error has to
+  // be able to say what the browser actually reported about that resource.
   const requestFailures: TrackedRequestFailure[] = [];
   try {
     context = await browser.newContext({
@@ -4121,37 +5613,42 @@ export async function openPracticeApp(options: {
       requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
     });
     // Surface a page-level error instead of letting it become a silently
-    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
-    // the request failure that explains a cancelled one has not been
-    // delivered yet at this point.
+    // wrong assertion later. RECORDED here, ANNOTATED in `resolve()` below —
+    // WebKit delivers a page error about a request BEFORE that request's own
+    // `requestfailed` (measured: 74–359µs ahead, six of six), so the evidence
+    // a kept error prints has not been delivered yet at this point.
     page.on('pageerror', (e) => {
       pending.push({ error: e, at: Date.now() });
     });
     await page.clock.install({ time: options.now });
     await page.goto(origin);
     // The store hydrates from IndexedDB before anything renders. The ceiling is
-    // generous because this is the COLD start: five journeys run concurrently,
+    // generous because this is the COLD start: every journey runs concurrently,
     // each starting its own dev server and browser, so the first paint of the
-    // last one to launch competes with four others compiling modules. A longer
+    // last one to launch competes with the rest compiling modules. A longer
     // wait cannot hide a real failure — it only refuses to call contention one.
+    //
+    // RAISING IT IS NOT THE ANSWER WHEN IT FIRES, and this lane proved that:
+    // three separate full-suite failures landed here, and raising 60s to 120s
+    // only bought one more run before the next. The cause was the shared
+    // dependency cache above, not a page that needed longer.
     await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
   } catch (e) {
     await browser.close();
-    await server.close();
+    await closeServer();
     throw e;
   }
 
   /**
-   * Drain everything that arrived since the last read: excuse each page error
-   * a cancellation accounts for, and KEEP the rest — annotated with what the
-   * harness actually saw around them, so a refusal to excuse is readable
-   * rather than another bare CORS-shaped message. Idempotent: a drained error
-   * stays resolved, so reading twice reports the same list.
+   * Drain everything that arrived since the last read. EVERY page error is
+   * kept — nothing here may drop one — annotated with what the harness
+   * actually saw around it, so a CORS-shaped message arrives as evidence
+   * rather than a guess. Idempotent: a drained error stays resolved, so
+   * reading twice reports the same list.
    */
   const resolve = (): Error[] => {
     for (const { error, at } of pending.splice(0)) {
-      if (excusedCancellation(requestFailures, error, at)) continue;
-      const evidence = cancellationEvidence(requestFailures, error, at);
+      const evidence = requestFailureEvidence(requestFailures, error, at);
       if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
       pageErrors.push(error);
     }
@@ -4167,7 +5664,7 @@ export async function openPracticeApp(options: {
     },
     async close() {
       await browser.close();
-      await server.close();
+      await closeServer();
     },
   };
 }
@@ -4469,8 +5966,27 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
         size: remote.sourceIndex.text.length,
       });
     }
+    // A BRANCH EXISTING AND A SNAPSHOT EXISTING ARE TWO DIFFERENT FACTS, and
+    // reading the first off the second is what made this fake behave unlike
+    // GitHub. `initialize()` bootstraps an empty repo with a Contents-API
+    // `PUT contents/README.md`, after which real GitHub resolves
+    // `git/ref/heads/main` — the branch is there; only `manifest.json` and
+    // `state.json` are still absent. This route answered 404 until a SNAPSHOT
+    // existed, so `getHead()` kept returning null and EVERY later sync
+    // re-entered `initialize()` and issued another README PUT. Each journey
+    // navigation is a full document load that re-triggers the app's on-open
+    // sync, so those extra PUTs were repeatedly issued into a document
+    // `page.goto` was tearing down — the measured amplifier behind the
+    // intermittent WebKit access-control page error in the archive journey.
+    //
+    // Gating on the REF alone fixes that without touching what `decideSync`
+    // sees: the manifest and state routes below still 404 until something
+    // publishes a snapshot, so `readRemoteMeta` still returns null, the
+    // decision is still `first-push`, and the pull/conflict journeys are
+    // unchanged. Making the fake REMEMBER the pushed snapshot would change
+    // that decision, which is why it is deliberately not done here.
     if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return json({}, 404);
+      if (!remote.refs.includes('main')) return json({}, 404);
       return json({ object: { sha: head() } });
     }
     if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
@@ -4555,6 +6071,394 @@ export async function syncMessage(page: Page): Promise<string> {
 }
 ```
 
+### tests/setarArchive.browser.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import {
+  connectSync,
+  goTo,
+  importBackup,
+  installFakeGitHub,
+  newFakeRemote,
+  openPracticeApp,
+  persistedUntil,
+  publishSourceIndex,
+  readPersistedState,
+  stampSourceIndex,
+  reload,
+  type Engine,
+  type PracticeApp,
+} from './practiceBrowser';
+
+// ---------------------------------------------------------------------------
+// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
+//
+// Refresh → a historical class with its real material → a canonical piece →
+// the material that is genuinely useful for it → Start → open a file, with the
+// practice clock untouched. The corpus is the checked-in index derived from the
+// real archive, the clock is frozen, and every control is reached by its
+// accessible name — no debug hook, no source regex.
+//
+// A missing engine FAILS with an install instruction; it never skips.
+// ---------------------------------------------------------------------------
+
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 900 };
+
+interface Db {
+  items: {
+    id: string;
+    title: string;
+    status: string;
+    persian?: { composer?: string };
+    source?: { pieceKey: string };
+  }[];
+  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
+  blocks: unknown[];
+  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
+}
+
+async function db(app: PracticeApp): Promise<Db> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: Db }).db;
+}
+
+/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
+async function setUp(app: PracticeApp, indexText: string) {
+  const remote = newFakeRemote();
+  await installFakeGitHub(app.page, remote);
+  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+  await connectSync(app);
+  publishSourceIndex(remote, indexText);
+  return remote;
+}
+
+async function refresh(app: PracticeApp) {
+  await goTo(app, '/settings');
+  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
+}
+
+/**
+ * An index with one more class than the corpus — the delta a refresh applies.
+ *
+ * Re-STAMPED with the digest the scanner itself would have written: the app
+ * recomputes that digest and refuses an index whose content and hash disagree,
+ * so a journey may not hand-edit a hash to fake a new scan.
+ */
+async function withSession40(text: string): Promise<string> {
+  const index = JSON.parse(text) as {
+    contentHash: string;
+    sessions: unknown[];
+    pieces: { key: string; composer: string }[];
+  };
+  index.sessions = [
+    ...index.sessions,
+    {
+      n: 40,
+      date: '2026-09-29',
+      folder: 'session-40-29-09-2026',
+      roster: [index.pieces[0]!.key],
+      rosterTrusted: true,
+      hasClassRecording: true,
+      resources: [
+        {
+          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
+          role: 'ضبط-کلاس',
+          kind: 'video',
+          title: 'ضبط کلاس',
+          part: null,
+          pieces: [],
+          group: null,
+        },
+      ],
+      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
+    },
+  ];
+  return stampSourceIndex(index as unknown as Record<string, unknown>);
+}
+
+/** The composer this journey's re-scanned registry proposes for one piece. */
+const NEW_COMPOSER = 'میرزا-عبدالله';
+
+/**
+ * A re-scanned index whose REGISTRY has improved: one piece the owner already
+ * has now names a different composer. That is a suggestion, never a write.
+ */
+async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
+  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
+  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
+  const was = target.composer;
+  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
+  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
+}
+
+describe('the Setar archive, rendered', () => {
+  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const viewport of [PHONE, DESKTOP]) {
+        const app = await openPracticeApp({ now: NOW, viewport, engine });
+        try {
+          const { page } = app;
+          const remote = await setUp(app, INDEX_TEXT);
+
+          // --- REFRESH: one action, a readable summary, no crawler output ---
+          await refresh(app);
+          const summary = await page.locator('main').innerText();
+          // Four of the owner's own legacy classes carry EXACT source-path evidence,
+          // so they are adopted rather than duplicated; the other 35 are new.
+          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
+          // It says the index CHANGED or was FETCHED — never that a scan ran.
+          expect(summary).not.toMatch(/last scanned/i);
+          expect(summary).toMatch(/needing attention/);
+          // Import policy is stated BEFORE the import, not discovered after.
+          expect(summary).toMatch(/New pieces arrive resting/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+
+          const after = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 40 && d.items.length === 96,
+          );
+          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+          expect(after.items.filter((i) => i.source)).toHaveLength(94);
+          // The owner's own upcoming class 38 and the archive's class 38 both
+          // exist, on their own dates.
+          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
+            '2026-08-04',
+            '2026-09-27',
+          ]);
+
+          // --- A HISTORICAL CLASS, with its real material -------------------
+          // Lessons is a two-pane list at 1000px and stacked cards below it, so
+          // this journey drives whichever the viewport actually renders.
+          await goTo(app, '/lessons');
+          const wide = viewport.width >= 1000;
+          /**
+           * Open one class and read what it actually renders — the whole page
+           * on the wide two-pane layout, the card itself on the phone, where
+           * rows start compact and must be opened first.
+           */
+          const openClass = async (label: string, number: number): Promise<string> => {
+            if (wide) {
+              await page.getByRole('button', { name: new RegExp(label) }).first().click();
+              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+              return page.locator('main').innerText();
+            }
+            const card = page.getByRole('article').filter({ hasText: label });
+            await card.first().waitFor({ timeout: 20_000 });
+            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
+            // all open at once just because none of them has notes yet.
+            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
+            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
+            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+            return card.innerText();
+          };
+          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
+          // The class recording is here, with its part numbers; a named score
+          // is here; nothing claims a demonstration belongs to the class alone.
+          expect(lessonText).toContain('ضبط کلاس');
+          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
+
+          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
+          //
+          // Class 25 is an ADOPTED legacy class carrying three of the owner's
+          // OWN references — personal takes the index describes nowhere, by
+          // construction — beside the archive's session material. The composed
+          // list used to include the owner's rows as well, so each of them was
+          // rendered twice: once where it can be edited and removed, and once
+          // again above it.
+          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+          const adopted = await openClass('Class 25 · 2025-08-05', 25);
+          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
+            expect(occurrences(adopted, authored)).toBe(1);
+          }
+          // …and they are still editable where they live: the section that owns
+          // them can still remove them, by name.
+          const owning = wide
+            ? page.locator('main')
+            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
+          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
+          // A class the archive gave a recording to is NOT invited to add one.
+          // Class 12 is a purely imported class: it keeps no copy of its
+          // session's files, so its own `recordings` array is empty and the
+          // empty-state card offered to add the very video playing above it.
+          const imported = await openClass('Class 12 · 2024-08-06', 12);
+          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
+          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
+
+          // --- A CANONICAL PIECE, and the material that is useful for it ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
+          // through the existing Farsi matcher.
+          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
+          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
+          await found.waitFor({ timeout: 20_000 });
+          await found.click();
+          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
+
+          const itemText = await page.locator('main').innerText();
+          // Its OWN notation, with provenance…
+          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
+          // …the demonstration that covers its session…
+          expect(itemText).toContain('teacher’s demonstration');
+          // …and NOT the class recording, and NOT anyone's practice takes.
+          expect(itemText).not.toContain('class recording');
+          expect(itemText).not.toContain('تمرین من');
+          // Imported pieces arrive resting.
+          expect(itemText).toMatch(/Resting/);
+
+          // --- DIRECT START, and opening material with the clock untouched --
+          await page.getByRole('button', { name: 'Start a block' }).click();
+          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+          const clockBefore = await page.locator('main').innerText();
+          // Material on the practice screen is ONE CLOSED disclosure.
+          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
+          // CLOSED until asked for: nothing is listed before the tap.
+          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
+          await materialToggle.click();
+          const openButtons = page.getByRole('button', { name: 'Open' });
+          expect(await openButtons.count()).toBeGreaterThan(0);
+          // Every control has an accessible name and is reachable by keyboard.
+          await page.keyboard.press('Tab');
+          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
+          // Opening a file never disturbs the running block.
+          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
+            clockBefore.includes('Finish'),
+          );
+          const blocksBefore = (await db(app)).blocks.length;
+          // The harness accepts the confirm() for the whole journey.
+          await page.getByRole('button', { name: 'Discard block' }).click();
+          expect((await db(app)).blocks).toHaveLength(blocksBefore);
+
+          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
+          const wrapped = await page.evaluate(() => {
+            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
+              /[؀-ۿ]/.test(n.textContent ?? ''),
+            );
+            if (!el) return null;
+            const box = el.getBoundingClientRect();
+            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
+          });
+          expect(wrapped).not.toBeNull();
+          expect(wrapped!.rtl).toBe('rtl');
+          expect(wrapped!.overflows).toBe(false);
+
+          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: 'Already current' }).click();
+          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
+
+          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
+          await refresh(app);
+          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const delta = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 41,
+          );
+          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
+
+          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
+          // The registry improves. That is an OFFER, field by field: nothing
+          // about the owner's own piece changes until they say so, and the
+          // choice must survive the commit even when the index behind it is
+          // already the one installed.
+          const better = await withBetterComposer(INDEX_TEXT);
+          publishSourceIndex(remote, better.text, 'source-index-commit-4');
+          await refresh(app);
+          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
+          await offerRow.first().waitFor({ timeout: 20_000 });
+          const offerText = await page.locator('main').innerText();
+          // The section label is rendered uppercase by the stylesheet, and
+          // innerText returns what is actually rendered.
+          expect(offerText).toMatch(/the archive knows more about these/i);
+          expect(offerText).toContain(better.key);
+          expect(offerText).toContain(NEW_COMPOSER);
+          // Applying WITHOUT answering updates the source graph and leaves the
+          // owner's own piece exactly as it was.
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const unanswered = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
+          );
+          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
+
+          // THE SAME INDEX, a NEW answer. The graph is already current, so a
+          // refresh judged by the index hash alone called this "Already
+          // current" and threw the answer away unwritten.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const answeredDb = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
+          );
+          // Only that field moved: the piece keeps its title and its history.
+          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
+          expect(answeredDb.blocks).toHaveLength(1);
+          // …and the offer is gone, because it has been taken.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+
+          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
+          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
+          await goTo(app, '/settings');
+          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
+          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
+
+          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
+          await reload(app);
+          const persisted = await db(app);
+          expect(persisted.lessons).toHaveLength(41);
+          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
+          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
+          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
+          expect(persisted.blocks).toHaveLength(1);
+          // MESSAGES, not Error objects: `toEqual([])` on an array of Errors
+          // reports "expected [ …(1) ] to deeply equal []" and nothing else,
+          // so the one thing a CI-only failure needs to say — what the browser
+          // actually reported, and what the harness saw around it — is exactly
+          // what it withholds. Every other journey already asserts this way.
+          expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+          // THE REPO IS BOOTSTRAPPED ONCE, not once per navigation. Every
+          // `goTo` above is a full document load, so each one re-runs the
+          // app's on-open sync; while the fake answered `git/ref/heads/main`
+          // with 404 after its own bootstrap, every one of those syncs
+          // re-entered `initialize()` and issued another
+          // `PUT contents/README.md` into a document the next navigation was
+          // tearing down — the measured amplifier behind the intermittent
+          // WebKit access-control page error this journey kept reporting.
+          expect(remote.calls.filter((c) => c.startsWith('PUT contents/README.md'))).toHaveLength(1);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  });
+});
+```
+
 ### tests/setarInbound.browser.test.ts
 
 ```
@@ -4566,7 +6470,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  CANCELLED_EXCUSE_MS,
+  FAILURE_EVIDENCE_MS,
   connectSync,
   exportBackup,
   goTo,
@@ -4574,8 +6478,7 @@ import {
   importOutcome,
   installFakeGitHub,
   newFakeRemote,
-  cancellationEvidence,
-  excusedCancellation,
+  requestFailureEvidence,
   openPracticeApp,
   persistedDb,
   publishRemote,
@@ -5071,40 +6974,35 @@ describe('rolling back past the archive schema', () => {
 describe('the journey harness itself', () => {
   // The harness must not be able to hide the very failure a journey exists to
   // catch, and it must not manufacture one either. A request the browser
-  // CANCELLED (because the test drove on mid-flight) is the standing
+  // CANCELLED (because the test drove on mid-flight) was the standing
   // explanation for a WebKit page error that reads exactly like a CORS
-  // failure. Excusing it has now failed five different ways, and each test
-  // below is named for the specific way:
+  // failure, and excusing it failed six different ways:
   //  - a PERMANENT set of cancelled URLs discarded every later page error
-  //    whose message merely contained that pathname, so a genuine failure at
-  //    the same path, later in the same journey, was swallowed and
-  //    `pageErrors` said nothing;
-  //  - even made CONSUMING (one cancellation, one error) and bounded by a
-  //    generous time window, an unconsumed cancellation — one that produced
-  //    no page error of its own — stayed a live "credit" for up to that whole
-  //    window, spendable by a genuine, later failure to the same URL that had
-  //    nothing to do with it;
+  //    whose message merely contained that pathname;
+  //  - made CONSUMING and bounded by a time window, an unconsumed cancellation
+  //    stayed a live "credit" any genuine later failure to that URL could
+  //    spend;
   //  - the excuse read the page error's `message` ALONE, which never contains
   //    the diagnosis: Playwright splits a page error at its first colon — the
-  //    URL's own scheme colon — so the wording lives in `name` and only the
-  //    tail lives in `message`. Every string these tests used to assert on was
-  //    a hand-written reconstruction that no browser ever emits;
-  //  - and the correlation looked only BACKWARDS in time, on the stated
-  //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
-  //    Measured, WebKit delivers them the other way round. Against a real
-  //    error the log was still empty when the excuse ran;
-  //  - and, the finding this block was last reworked for, the correlation
-  //    that replaced the window — "whichever tracked failure sits NEAREST the
-  //    error wins", on host+path — threw away the QUERY, so two different
-  //    requests to one path were one resource, and rested the whole safety
-  //    claim on PROXIMITY, which the measurement below shows cannot carry it:
-  //    a genuine failure's own `requestfailed` lands 74–359µs after its page
-  //    error, which reads as 0ms or 1ms depending on which side of a
-  //    millisecond boundary the pair straddles, so an unrelated cancellation
-  //    in the error's own millisecond outranked it.
-  // The middle two were exposed by the same CI run: the journey passed on one
-  // runner and failed on two others at the identical commit, because the
-  // error had simply never been produced locally before.
+  //    URL's own scheme colon — so the wording lives in `name`;
+  //  - the correlation looked only BACKWARDS in time, while WebKit delivers
+  //    the page error FIRST;
+  //  - "whichever tracked failure sits NEAREST wins", on host+path, threw away
+  //    the QUERY and rested the safety claim on proximity, which a 74–359µs
+  //    real gap at `Date.now()` granularity cannot carry;
+  //  - and finally, full-URL identity plus a veto on genuine evidence STILL
+  //    withheld a genuine diagnosis that emitted no `requestfailed` of its own
+  //    — precisely the CI failure's own shape — because an earlier unconsumed
+  //    cancellation to that exact URL was then the only thing in the log.
+  //
+  // That last one is the sealed finding that ended this line of work. The
+  // premise was never observed in the first place: five cancellation shapes
+  // driven through a real WebKit each produce a `requestfailed` and NO page
+  // error at all, and a `pageerror` carries no request identity, so no rule
+  // built on this log can prove a specific error belongs to a cancellation.
+  // The harness therefore KEEPS every page error and only ANNOTATES it. The
+  // tests below hold that: the shape is still parsed (so the annotation is
+  // readable), and nothing suppresses.
   const url = 'https://api.github.com/repos/owner/data/contents/state.json';
 
   /**
@@ -5145,207 +7043,107 @@ describe('the journey harness itself', () => {
   };
 
   it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
-    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
+    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim. The annotation has
+    // to recognise this representation or a kept error says nothing useful.
     const fromCI = {
       name: 'Fetch API cannot load https',
       message: '/api.github.com/repos/owner/practice-data/contents/README.md due to access control checks.',
     };
     const readme = 'https://api.github.com/repos/owner/practice-data/contents/README.md';
-    expect(excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toBe(true);
+    expect(requestFailureEvidence([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toContain(
+      'cancelled',
+    );
 
     // The message half ALONE is not the diagnosis and never matches: this is
-    // the shape the excuse used to be handed, and why it never fired.
-    expect(
-      excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5),
-    ).toBe(false);
+    // the shape the old excuse used to be handed, and why it never fired.
+    expect(requestFailureEvidence([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5)).toBe(
+      '',
+    );
 
     // An UNSPLIT representation is understood too, so this does not depend on
     // Playwright continuing to split it.
     expect(
-      excusedCancellation([cancelled()], { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` }, at + 5),
-    ).toBe(true);
+      requestFailureEvidence(
+        [cancelled()],
+        { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` },
+        at + 5,
+      ),
+    ).toContain(url);
 
     // WebKit spells the same diagnosis for an XHR as well as for a fetch.
     expect(
-      excusedCancellation([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
-    ).toBe(true);
+      requestFailureEvidence([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
+    ).toContain(url);
 
-    // Only the DIAGNOSED wording is ever excused: a real render crash naming
-    // the same URL is a page error, not a cancellation.
+    // A message that is not the diagnosis at all gets no annotation — and is
+    // still kept, like every other page error.
     expect(
-      excusedCancellation([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
-    ).toBe(false);
+      requestFailureEvidence([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
+    ).toBe('');
   });
 
-  it('tells two requests to one path apart by their query, in both directions', () => {
-    // THE SEALED FINDING THIS BLOCK WAS REWORKED FOR. Host+path alone makes
-    // these one resource; they are two requests the app really does make, one
-    // after the other, when it reads the published index at two commits.
+  it('keeps a diagnosed page error that has no request failure of its own, whatever cancellations are logged', () => {
+    // THE SEALED COUNTEREXAMPLE, as a unit. The CI failure arrives with no
+    // `request`, no route hit and no `requestfailed`; the last excuse still
+    // dropped it whenever an earlier unconsumed cancellation to that exact URL
+    // sat in the log. Nothing may drop it now, so the only thing the harness
+    // can do with that log is PRINT it — and it must, or the kept error is the
+    // same unreadable CORS-shaped message the whole rework came from.
+    const log = [cancelled(-5)];
+    const evidence = requestFailureEvidence(log, spurious, at);
+    expect(evidence).toContain('cancelled');
+    expect(evidence).toContain(url);
+    // Nothing is consumed: evidence stays complete for every later error too.
+    expect(log).toEqual([cancelled(-5)]);
+    expect(requestFailureEvidence(log, spurious, at)).toBe(evidence);
+  });
+
+  it('tells two requests to one path apart by their query, and ignores the fragment', () => {
+    // THE IDENTITY A PREVIOUS REWORK THREW AWAY, kept because the annotation
+    // has to say whether a tracked failure is the resource the error NAMED:
+    // `…/index.json?ref=commit-a` and `?ref=commit-b` are two requests the app
+    // really does make, one after the other.
     const refA = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-a';
     const refB = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-b';
+    expect(requestFailureEvidence([cancelled(0, refA)], diagnosed(refB), at + 1)).toContain('different query');
+    expect(requestFailureEvidence([cancelled(0, refA)], diagnosed(refA), at + 1)).not.toContain('different query');
 
-    // A cancellation of ONE never excuses the diagnosis naming the OTHER —
-    // and the cancellation is left intact, not spent on something it does not
-    // account for.
-    const other = [cancelled(0, refA)];
-    expect(excusedCancellation(other, diagnosed(refB), at + 1)).toBe(false);
-    expect(other).toHaveLength(1);
-
-    // A query-less request is not the same resource as a query-bearing one,
-    // either way round.
-    const bare = 'https://api.github.com/repos/owner/data/contents/setar/index.json';
-    expect(excusedCancellation([cancelled(0, bare)], diagnosed(refA), at + 1)).toBe(false);
-    expect(excusedCancellation([cancelled(0, refA)], diagnosed(bare), at + 1)).toBe(false);
-    // Differing only in a query VALUE is enough; so is a differing key.
-    expect(
-      excusedCancellation([cancelled(0, `${bare}?ref=commit-a&page=2`)], diagnosed(refA), at + 1),
-    ).toBe(false);
-
-    // And the matching one still works, so this is identity, not blanket refusal.
-    const own = [cancelled(0, refA)];
-    expect(excusedCancellation(own, diagnosed(refA), at + 1)).toBe(true);
-    expect(own).toEqual([]);
-  });
-
-  it('ignores the fragment, which the message carries and the request never does', () => {
     // MEASURED, macOS WebKit: the page error names `…/state.json#frag` while
-    // `request.url()` for the very same request reports `…/state.json` — a
-    // fragment is never sent. Comparing `href` would therefore break the
-    // excuse for every fragment-bearing URL; comparing host/path/search does
-    // not. (The app itself never fetches a fragment; this is what keeps a
-    // later tidy-up to `href` from silently killing the excuse.)
-    const own = [cancelled(0, url)];
-    expect(excusedCancellation(own, diagnosed(`${url}#frag`), at + 1)).toBe(true);
-    expect(own).toEqual([]);
-    // And the fragment does not smuggle a query past the check either.
-    expect(excusedCancellation([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toBe(false);
+    // `request.url()` for the same request reports `…/state.json` — a fragment
+    // is never sent, so comparing `href` would call every fragment-bearing URL
+    // a different resource.
+    expect(requestFailureEvidence([cancelled(0, url)], diagnosed(`${url}#frag`), at + 1)).not.toContain('different query');
+    expect(requestFailureEvidence([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toContain('different query');
   });
 
-  it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
-    // THE MEASURED ORDER: WebKit delivers the page error 74–359µs ahead of the
-    // request's own failure. A backwards-only search saw an empty log here and
-    // excused nothing.
-    const later = [cancelled(1)];
-    expect(excusedCancellation(later, spurious, at)).toBe(true);
-    expect(later).toEqual([]);
-
-    // The other order still works: one measurement is not a proof that the
-    // reverse can never happen.
-    const earlier = [cancelled(-1)];
-    expect(excusedCancellation(earlier, spurious, at)).toBe(true);
-    expect(earlier).toEqual([]);
-  });
-
-  it('a cancellation excuses its own diagnosed error once', () => {
-    const pending = [cancelled()];
-    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
-    // CONSUMED — the identical error arriving again has no cancellation left
-    // to account for it, which is the ORIGINAL reviewer counterexample.
-    expect(pending).toEqual([]);
-    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
-  });
-
-  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
-    const twice = [cancelled(), cancelled(10)];
-    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
-  });
-
-  it('genuine evidence for a resource vetoes the excuse for it, at any distance', () => {
-    // THE SAFETY CLAIM, and it is a VETO rather than a ranking on purpose. A
-    // genuine access-control failure always emits its own `requestfailed`
-    // beside its own page error, so genuine evidence for this exact resource
-    // means the cancellation's ownership of this error is unproven — and an
-    // unproven correlation is never resolved in the excuse's favour.
-    const events = [cancelled(), genuine(50)];
-    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
-    // The stale cancellation is untouched: it was refused, never spent.
-    expect(events).toContainEqual(cancelled());
-
-    // DISTANCE CANNOT BUY THE EXCUSE BACK. This is what the previous
-    // nearest-wins rule could not hold: at `Date.now()` granularity a genuine
-    // pair straddling a millisecond boundary reads as 1ms apart, so a
-    // cancellation in the error's own millisecond outranked it by 1ms and
-    // excused a real failure. Here the cancellation is as near as a tracked
-    // event can be and the genuine failure is as far as the ceiling allows.
-    const nearCancel = [cancelled(0), genuine(CANCELLED_EXCUSE_MS)];
-    expect(excusedCancellation(nearCancel, spurious, at)).toBe(false);
-    expect(nearCancel).toHaveLength(2);
-
-    // The measured shape of a real pair, exactly: page error first, its own
-    // failure 1ms later, an unrelated cancellation in the same millisecond.
-    const measured = [cancelled(0), genuine(1)];
-    expect(excusedCancellation(measured, spurious, at)).toBe(false);
-
-    // A TIE is refused for the same reason.
-    expect(excusedCancellation([cancelled(), genuine()], spurious, at)).toBe(false);
-  });
-
-  it('a veto is scoped to the resource, so an unrelated failure never blocks a real excuse', () => {
-    // The veto must not become blanket suppression of the excuse: a genuine
-    // failure to a DIFFERENT resource — including the same path under another
-    // query — says nothing about this error.
-    const elsewhere = [
-      genuine(0, 'https://api.github.com/repos/owner/data/contents/manifest.json'),
-      genuine(0, `${url}?ref=main`),
-      genuine(0, 'https://api.example.com/repos/owner/data/contents/state.json'),
-      cancelled(1),
-    ];
-    expect(excusedCancellation(elsewhere, spurious, at)).toBe(true);
-    // Only the cancellation was consumed; the genuine rows are still tracked.
-    expect(elsewhere).toHaveLength(3);
-    expect(elsewhere.every((e) => e.errorText !== 'cancelled')).toBe(true);
-
-    // And a genuine failure to this resource OUTSIDE the ceiling is not
-    // evidence about this error at all — the ceiling bounds the veto exactly
-    // as it bounds the excuse.
-    const distant = [genuine(-CANCELLED_EXCUSE_MS - 1), cancelled(1)];
-    expect(excusedCancellation(distant, spurious, at)).toBe(true);
-  });
-
-  it('a genuine failure is never excused, before or after a cancellation to the same URL', () => {
-    // Genuine failure arrives FIRST, with no cancellation recorded at all.
-    const events = [genuine()];
-    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
-
-    // A cancellation follows — and under the VETO it still excuses nothing
-    // while that genuine failure is in the window. This assertion used to
-    // read `true`, on the nearest-wins rule: the cancellation was 10ms away
-    // and the genuine failure 110ms, so the nearer one won and a real failure
-    // to that exact resource was excused. Genuine evidence for a resource now
-    // forbids the excuse for it outright.
-    events.push(cancelled(100));
-    expect(excusedCancellation(events, spurious, at + 110)).toBe(false);
-
-    // Once the genuine failure is old enough to be out of the window, the
-    // cancellation excuses its own error normally — the veto expires with the
-    // evidence, it is not a permanent mark against the URL.
-    expect(excusedCancellation(events, spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(true);
-  });
-
-  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
+  it('never matches a host or path that merely shares characters with a tracked one', () => {
     // A substring test cannot tell these apart from the genuine host/path;
-    // only structural URL equality can. Each of these contains the real
-    // host or path as a substring while naming a DIFFERENT resource.
+    // only structural URL equality can. Each contains the real host or path as
+    // a substring while naming a DIFFERENT resource, so none of them may be
+    // reported as evidence about this error.
     for (const trap of [
       'https://evil-api.github.com/repos/owner/data/contents/state.json',
       'https://api.github.com.evil.test/repos/owner/data/contents/state.json',
       'https://api.github.com/repos/owner/data/contents/state.json.bak',
-      // Another host entirely, and another path on the same host.
       'https://api.example.com/repos/owner/data/contents/state.json',
       'https://api.github.com/repos/owner/data/contents/files/x.bin',
     ]) {
-      expect(excusedCancellation([cancelled()], diagnosed(trap), at + 5)).toBe(false);
+      expect(requestFailureEvidence([cancelled()], diagnosed(trap), at + 5)).toMatch(/no tracked request failure/);
     }
   });
 
-  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
-    // Symmetrically in the other direction, now that both are searched.
-    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS)], spurious, at)).toBe(true);
-    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
+  it('reports what the browser said in both directions of the measured ordering', () => {
+    // WebKit delivers the page error 74–359µs BEFORE the request's own
+    // failure, so evidence arriving AFTER the error is the normal case, not
+    // the exception; one measurement is not proof the reverse cannot happen,
+    // so both are searched.
+    expect(requestFailureEvidence([genuine(1)], spurious, at)).toContain('Access-Control-Allow-Origin');
+    expect(requestFailureEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
+    // Outside the reporting window there is nothing useful to print.
+    expect(requestFailureEvidence([genuine(FAILURE_EVIDENCE_MS + 1)], spurious, at)).toMatch(
+      /no tracked request failure/,
+    );
+    expect(requestFailureEvidence([genuine(FAILURE_EVIDENCE_MS)], spurious, at)).toContain('Access-Control-Allow-Origin');
   });
 
   it('measures what a REAL WebKit reports, and holds the rule to it', async () => {
@@ -5410,16 +7208,20 @@ describe('the journey harness itself', () => {
       // at this clock's granularity — which is exactly why proximity cannot
       // be what separates a genuine failure from a cancellation.)
       expect(seen.indexOf(real)).toBeLessThan(seen.indexOf(realFailure));
-      expect(realFailure.at - real.at).toBeLessThanOrEqual(CANCELLED_EXCUSE_MS);
+      expect(realFailure.at - real.at).toBeLessThanOrEqual(FAILURE_EVIDENCE_MS);
 
-      // THE VETO, PROVED ON REAL EVENTS: this genuine failure is not excused,
-      // not even by a cancellation to the very same resource sitting in the
-      // error's own millisecond — the case a nearest-wins rule got wrong.
+      // THE ANNOTATION, ON REAL EVENTS: a cancellation to the very same
+      // resource sitting in the error's own millisecond is REPORTED beside the
+      // genuine refusal, and takes nothing away from it. The rule that once
+      // ranked these two against each other is gone; what is left says what
+      // the browser reported about both.
       const log: TrackedRequestFailure[] = [
         { url: realFailure.url, at: realFailure.at, errorText: realFailure.errorText },
         { url: realFailure.url, at: real.at, errorText: 'cancelled' },
       ];
-      expect(excusedCancellation(log, real.error, real.at)).toBe(false);
+      const evidence = requestFailureEvidence(log, real.error, real.at);
+      expect(evidence).toContain('Access-Control-Allow-Origin');
+      expect(evidence).toContain('cancelled');
       expect(log).toHaveLength(2);
 
       // And the harness KEEPS it — saying what the browser reported instead of
@@ -5442,33 +7244,39 @@ describe('the journey harness itself', () => {
       if (realCancel?.kind !== 'failed') throw new Error('WebKit reported no cancellation to measure.');
       expect(realCancel.url).toBe(`${target}?slow=1`);
 
-      // IT EXCUSES ITS OWN RESOURCE AND NOTHING ELSE. No pairing of a
-      // cancellation with this page error has ever been OBSERVED — five
-      // cancellation shapes were driven through a real WebKit and each
-      // produced a `requestfailed` and no page error at all — so the
-      // diagnosis here is written against the url the browser really
-      // cancelled, rather than pretending to a pairing nothing has seen.
+      // AND THE CANCELLATION ITSELF RAISES NO PAGE ERROR — the measurement the
+      // whole excuse was built on the absence of. A genuinely cancelled
+      // request produces a `requestfailed` and nothing else, so there is
+      // nothing for a cancellation rule to be safe about: `pageErrors` still
+      // holds exactly the one genuine refusal from earlier in this journey,
+      // and no rule had to withhold anything to keep it that way.
       const cancelLog = () => [{ url: realCancel.url, at: realCancel.at, errorText: realCancel.errorText }];
-      expect(excusedCancellation(cancelLog(), diagnosed(realCancel.url), realCancel.at)).toBe(true);
-      // The same path WITHOUT that query is a different request instance, and
-      // this real cancellation says nothing about it.
-      expect(excusedCancellation(cancelLog(), diagnosed(target), realCancel.at)).toBe(false);
-
-      // AND A JUDGEMENT IS MADE ONCE: the genuine refusal already reported is
-      // not taken back by this real cancellation to the same host and path.
+      expect(seen.filter((e) => e.kind === 'error')).toHaveLength(1);
       expect(app.pageErrors).toHaveLength(1);
+      // The same path WITHOUT that query is a different request instance, and
+      // this real cancellation is reported as saying nothing about it.
+      expect(requestFailureEvidence(cancelLog(), diagnosed(realCancel.url), realCancel.at)).not.toContain(
+        'different query',
+      );
+      expect(requestFailureEvidence(cancelLog(), diagnosed(target), realCancel.at)).toContain('different query');
     } finally {
       await app.close();
       await new Promise<void>((done) => blocked.close(() => done()));
     }
   }, 120_000);
 
-  it('the wiring really excuses — a diagnosed error for a genuinely cancelled request never reaches pageErrors', async () => {
-    // THE EXCUSE HAS NOW BEEN DEAD CODE TWICE, and both times only CI could
-    // tell. This drives the harness END TO END: a request the browser really
-    // cancels, and a real `pageerror` delivered through the real listener,
-    // carrying the diagnosis for that exact url. `pageErrors` must stay empty
-    // — and must not, if the error names a neighbouring request instead.
+  it('the wiring keeps a diagnosed page error with no request failure of its own', async () => {
+    // THE SEALED COUNTEREXAMPLE, END TO END, through the real listeners and
+    // the real resolve path — the one thing that could never be proved by
+    // reasoning about the rule alone, because the excuse had been dead code
+    // twice and both times only CI could tell.
+    //
+    // A request the browser really cancels lands in the log first; then the
+    // diagnosis for that EXACT url arrives as a genuine uncaught `pageerror`
+    // with no `requestfailed` of its own — precisely the shape the CI failure
+    // has (no request, no route hit, no tracked failure). Every earlier
+    // version of this harness dropped it. It must be KEPT, and it must carry
+    // the cancellation it did NOT get to hide as evidence.
     //
     // The error TEXT is raised in the page rather than waited for, because no
     // cancellation shape driven through a real WebKit has ever produced one
@@ -5492,60 +7300,65 @@ describe('the journey harness itself', () => {
       await app.page.evaluate((u) => void fetch(u).catch(() => {}), inFlight);
       await reload(app);
       await expect.poll(() => cancellations.includes(inFlight), { timeout: 20_000 }).toBe(true);
+      // A REAL cancellation on its own raises no page error at all — measured,
+      // five shapes, every time. Nothing had to be suppressed for this to hold.
       expect(app.pageErrors).toEqual([]);
 
-      // The diagnosis for a DIFFERENT request to the same path is kept: one
-      // cancellation excuses one resource, never a neighbour.
+      // THE COUNTEREXAMPLE: the diagnosis for the very url that was cancelled,
+      // with no request failure of its own. It is KEPT.
+      await raiseDiagnosis(app, inFlight);
+      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
+      expect(app.pageErrors[0].message).toContain('due to access control checks');
+      // ...and it says what the harness saw, the cancellation included, rather
+      // than being a bare CORS-shaped message.
+      expect(app.pageErrors[0].message).toContain('cancelled');
+
+      // A neighbouring request to the same path is kept too, and named as the
+      // different request it is.
       const neighbour = `${inFlight.split('?')[0]}?ref=other`;
       await raiseDiagnosis(app, neighbour);
-      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
-      expect(app.pageErrors[0].message).toContain('?ref=other');
-      // ...and the evidence names what the harness actually saw, including the
-      // same-path cancellation it refused to spend.
-      expect(app.pageErrors[0].message).toContain('different query');
+      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(2);
+      expect(app.pageErrors[1].message).toContain('?ref=other');
+      expect(app.pageErrors[1].message).toContain('different query');
 
-      // The diagnosis for the request that WAS cancelled is excused, so the
-      // list does not grow — the wiring, not just the rule.
-      await raiseDiagnosis(app, inFlight);
-      await app.page.waitForTimeout(500);
-      expect(app.pageErrors).toHaveLength(1);
+      // Reading twice reports the same list, not a growing one.
+      expect(app.pageErrors).toHaveLength(2);
     } finally {
       await app.close();
       await new Promise<void>((done) => stalled.close(() => done()));
     }
   }, 120_000);
 
-  it('a page error it refuses to excuse says what the browser actually reported', () => {
+  it('a kept page error says what the browser actually reported', () => {
     // The CI failure this whole rework came from was one bare CORS-shaped
     // message with nothing to distinguish a cancellation from a real refusal.
-    // An unexcused diagnosis now carries the browser's own words for every
-    // request to that resource, and how far each sat from the error.
-    const withGenuine = cancellationEvidence([genuine(1)], spurious, at);
+    // A kept diagnosis carries the browser's own words for every request to
+    // that resource, and how far each sat from the error.
+    const withGenuine = requestFailureEvidence([genuine(1)], spurious, at);
     expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
     expect(withGenuine).toContain('Access-Control-Allow-Origin');
     expect(withGenuine).toContain('+1ms');
 
-    // DELIBERATELY BROADER THAN THE EXCUSE: a failure to the same path under a
-    // different query is exactly what the excuse must refuse to act on, and
-    // exactly what the reader of a CI-only failure needs to see. It is named
-    // as the different request it is.
-    const nearMiss = cancellationEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
+    // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: a failure to the
+    // same path under a different query is exactly what the reader of a
+    // CI-only failure needs to see. It is named as the different request it is.
+    const nearMiss = requestFailureEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
     expect(nearMiss).toContain('?ref=main');
     expect(nearMiss).toContain('different query');
     // The resource the error actually names is not labelled that way.
-    expect(cancellationEvidence([cancelled()], spurious, at)).not.toContain('different query');
+    expect(requestFailureEvidence([cancelled()], spurious, at)).not.toContain('different query');
 
     // NOTHING tracked at all is itself the evidence — it says so rather than
     // saying nothing.
-    expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
+    expect(requestFailureEvidence([], spurious, at)).toMatch(/no tracked request failure/);
     // A request that failed BEFORE the error is reported with its sign.
-    expect(cancellationEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
-    // It only ever describes: nothing is consumed and nothing is excused.
+    expect(requestFailureEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
+    // It only ever describes: nothing is consumed and nothing is withheld.
     const events = [cancelled()];
-    expect(cancellationEvidence(events, spurious, at + 5)).toContain('cancelled');
+    expect(requestFailureEvidence(events, spurious, at + 5)).toContain('cancelled');
     expect(events).toEqual([cancelled()]);
     // A page error that is not this diagnosis at all has nothing to say.
-    expect(cancellationEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
+    expect(requestFailureEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
   });
 });
 ```
