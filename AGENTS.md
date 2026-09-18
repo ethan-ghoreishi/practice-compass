@@ -1551,12 +1551,21 @@ automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
 A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
-EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and reports
-it as an uncaught page error reading `"Fetch API cannot load … due to access control
-checks"` — which reads exactly like a CORS problem and is not one. Every `goTo`/`reload` is a
-full document load, so each one re-runs the app's own on-open sync; navigating again while
-that sync is mid-chain destroys the document around it. Instrumented through a real WebKit,
-the failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all.
+EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and — on
+GitHub's LINUX WebKit — reports it as an uncaught page error reading `"Fetch API cannot load …
+due to access control checks"`, which reads exactly like a CORS problem and is not one. The
+failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all. It cannot
+be reproduced on the Mac: macOS WebKit reports the same teardown as `requestfailed: cancelled`
+with no page error, and a torn-down CORS PREFLIGHT as nothing whatsoever (measured, both). What
+tears a document down is NOT every navigation: the app is hash-routed, and `page.goto` to a
+different `#/route` is a same-document navigation in BOTH engines (a `window` marker survives).
+Only a `goto` to the URL the page is ALREADY on differs — Chromium keeps it same-document
+(firing `popstate`, so the router re-renders), WebKit performs a full document load. A journey
+therefore never calls `goTo` for the route it is already on: ac-18 reaches Settings through
+`openSettings` (More → Settings, the owner's own tap) and only `reload` loads a document. Making
+`goTo` a no-op for that case was tried and REVERTED: Chromium's `popstate` navigation is slack
+another journey's route wait relies on after an in-app navigation, and removing it made that
+journey race under a full-suite run. The trap is documented on `goTo` itself.
 
 **THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
 versions of an excuse were built and every one of them could withhold a genuine failure:
@@ -1572,13 +1581,19 @@ STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exa
 failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
 thing in the log. That is the sealed finding that ended the attempt.
 
-**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT.** Five cancellation shapes
-driven through a real WebKit — navigating away mid-flight, reloading mid-flight,
-`AbortController`, a same-tick `location.href`, a cancelled CORS preflight — each produced a
-`requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever. A `pageerror` hands
-a test an `Error` and no request identity. So there is no positive evidence available to bind a
-specific error to a specific cancellation at any window or resolution, and an unprovable
-correlation is resolved the only safe way: `openPracticeApp` KEEPS every page error.
+**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT — AND WHAT A CANCELLATION
+LOOKS LIKE IS NOT EVEN PORTABLE.** Five cancellation shapes driven through macOS WebKit —
+navigating away mid-flight, reloading mid-flight, `AbortController`, a same-tick
+`location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+`errorText: 'cancelled'` and NO page error. GitHub's Linux WebKit reports the same teardown as
+the access-control page error with no `requestfailed`, and does not reliably emit `cancelled`
+for a fetch reloaded across at all: two harness tests that asserted the macOS shape as a WebKit
+invariant failed on every Linux run and were removed (the genuine-refusal measurement and the
+end-to-end "kept and annotated" wiring check stay; neither needs a cancellation). A `pageerror`
+hands a test an `Error` and no request identity. So there is no positive evidence available to
+bind a specific error to a specific cancellation at any window or resolution, on either port,
+and an unprovable correlation is resolved the only safe way: `openPracticeApp` KEEPS every page
+error.
 `excusedCancellation` is gone. What survives is `requestFailureEvidence`
 (`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
 `errorText` for every tracked request to that resource and how far each sat from it — because
@@ -1589,15 +1604,25 @@ reaches the network while the message keeps it verbatim) only decides whether a 
 as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
 suppression.
 
-**AND THE RACE IS REMOVED AT ITS ROOT, WHICH IS NOT WHERE IT LOOKED.** Vite's default
+**THERE WERE TWO RACES, AND FIXING THE FIRST WAS MISREAD AS FIXING BOTH.** Vite's default
 `cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
 checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
 every server ran the dependency optimizer against one directory and raced to commit it
 (`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
-modules, and a committing winner forces the page to reload: BOTH shapes of the failure come
-from there. The pages that never painted failed on the cold-start wait, and a page reloaded out
-from under an in-flight sync is exactly a `fetch()` issued into a document being destroyed —
-the access-control diagnosis. Each server gets a PRIVATE `cacheDir` now.
+modules, so its page never paints and the cold-start wait fires. Each server gets a PRIVATE
+`cacheDir` now, and that race is gone. It was recorded as the cause of the access-control
+diagnosis too, and GitHub disproved that: with the private cache in place ac-18 still failed on
+Linux WebKit naming `README.md`. THE SECOND RACE IS A SYNC LEFT IN FLIGHT BY THE HARNESS.
+Settings' `connectAndSync` stores the config — which renders "Sync now" at once — and only then
+awaits `syncNow()`, holding the button DISABLED until that sync resolves. `connectSync` waited
+for the button to APPEAR, so every journey drove on while the repo bootstrap
+(`PUT contents/README.md`, behind a CORS preflight) was still running; ac-18's very next step is
+`goTo('/settings')` from `#/settings`, which in WebKit alone was a full document load (above).
+README is the only request the journey ever had in flight at a document load, which is why the
+failure never named anything else. `connectSync` now waits for the ENABLED button — the sync's
+own completion, read through the real control — and ac-18 no longer `goTo`s a route it is on.
+A journey may only drive on from a document with nothing in flight; that is the rule, and it is
+enforced by ordering, never by hiding what a torn-down request reports.
 
 **A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
 full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
@@ -1620,12 +1645,14 @@ in place, the failure simply moved from `README.md` to `contents/manifest.json`.
 
 **AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
 `reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
-navigating. It addressed the mechanism, but once the shared `cacheDir` was fixed it could not be
-shown to do anything: six consecutive full-suite runs WITHOUT it were clean in every test, and
-it was dead in the two journeys that call `page.reload()` directly anyway. Keeping harness code
-whose effect cannot be measured, and a normative claim that it is what fixed this, is how the
-next reader inherits a false cause. If this diagnosis ever returns with a private `cacheDir` in
-place, the mechanism above is where to start — but bring a reproduction, not this helper back.
+navigating. It could not be shown to do anything on the Mac — where, as above, the failure is
+unreproducible by construction — and it was dead in the two journeys that call `page.reload()`
+directly anyway. It is still not the answer: waiting for traffic to go quiet before EVERY
+navigation treats the symptom everywhere, where the cause was one helper returning mid-sync and
+one engine-specific hidden reload, each fixed at its own line. Keeping harness code whose effect
+cannot be measured, and a normative claim that it is what fixed this, is how the next reader
+inherits a false cause — which is exactly what the private-cache claim above became for one
+round. Six clean local runs are not evidence about a Linux-only report shape; the CI log is.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the

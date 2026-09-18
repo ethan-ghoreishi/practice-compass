@@ -8,6 +8,7 @@ import {
   installFakeGitHub,
   newFakeRemote,
   openPracticeApp,
+  openSettings,
   persistedUntil,
   publishSourceIndex,
   readPersistedState,
@@ -57,12 +58,27 @@ async function setUp(app: PracticeApp, indexText: string) {
   await installFakeGitHub(app.page, remote);
   await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
   await connectSync(app);
+  // NOTHING IS IN FLIGHT WHEN THIS JOURNEY DRIVES ON. `connectSync` returns
+  // only once the first sync has resolved, and the first sync on an empty repo
+  // is bootstrap → first push, whose LAST request is the ref update. Asserted
+  // on the fake's own log, so a helper that ever again returns on the button
+  // merely appearing fails here, in every engine, rather than surfacing on
+  // GitHub's Linux WebKit as a torn-down README PUT reported as a CORS error.
+  expect(remote.calls).toContain('PATCH git/refs/heads/main');
   publishSourceIndex(remote, indexText);
   return remote;
 }
 
+/**
+ * Reach the refresh control the way the owner does: More → Settings. NOT
+ * `goTo('/settings')` — this journey is often ALREADY on Settings when it
+ * refreshes, and `page.goto` to the URL the page is already on is a full
+ * document load in WebKit alone (see `goTo`), tearing down whatever the app
+ * has in flight. The owner taps a tab; they do not reload the screen to reach
+ * it.
+ */
 async function refresh(app: PracticeApp) {
-  await goTo(app, '/settings');
+  await openSettings(app);
   await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
   await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
 }
@@ -346,7 +362,7 @@ describe('the Setar archive, rendered', () => {
 
           // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
           publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
-          await goTo(app, '/settings');
+          await openSettings(app);
           await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
           await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
           expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
@@ -365,14 +381,14 @@ describe('the Setar archive, rendered', () => {
           // actually reported, and what the harness saw around it — is exactly
           // what it withholds. Every other journey already asserts this way.
           expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-          // THE REPO IS BOOTSTRAPPED ONCE, not once per navigation. Every
-          // `goTo` above is a full document load, so each one re-runs the
-          // app's on-open sync; while the fake answered `git/ref/heads/main`
-          // with 404 after its own bootstrap, every one of those syncs
-          // re-entered `initialize()` and issued another
-          // `PUT contents/README.md` into a document the next navigation was
-          // tearing down — the measured amplifier behind the intermittent
-          // WebKit access-control page error this journey kept reporting.
+          // THE REPO IS BOOTSTRAPPED ONCE. While the fake answered
+          // `git/ref/heads/main` with 404 after its own bootstrap, every later
+          // sync — the reload above, the manual ones — re-entered `initialize()`
+          // and issued another `PUT contents/README.md`. The one README PUT that
+          // remains is the first sync's, and `connectSync` now waits for it to
+          // FINISH before this journey drives on: a bootstrap still in flight
+          // when the next navigation tore the document down is what GitHub's
+          // Linux WebKit reported as the access-control page error above.
           expect(remote.calls.filter((c) => c.startsWith('PUT contents/README.md'))).toHaveLength(1);
         } finally {
           await app.close();

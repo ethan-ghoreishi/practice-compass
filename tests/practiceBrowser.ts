@@ -47,23 +47,25 @@ const installHint = (engine: Engine) =>
  * genuine failure, because every one rested on a pairing that has never been
  * OBSERVED.
  *
- * Measured, driving a real WebKit: five cancellation shapes — navigating away
- * mid-flight, reloading mid-flight, `AbortController`, a same-tick
- * `location.href`, a cancelled CORS preflight — each produced a `requestfailed`
- * with `errorText: 'cancelled'` and NO page error whatsoever. And the CI
- * failure itself arrives with no `request`, no route hit and no `requestfailed`
- * at all. So a cancellation has never been seen to CAUSE this page error, and a
- * `pageerror` hands a test an `Error` carrying no request identity — there is
- * nothing to prove ownership with, at any window or resolution.
+ * WHAT A CANCELLATION LOOKS LIKE IS NOT PORTABLE, which is the deeper reason
+ * no excuse could ever be built on it. On macOS WebKit a request torn down by
+ * navigation produces a `requestfailed` with `errorText: 'cancelled'` and no
+ * page error; a torn-down CORS PREFLIGHT produces no event at all. On GitHub's
+ * Linux WebKit the same teardown arrives as this access-control page error
+ * with NO `requestfailed` — and a plain in-flight fetch cancelled by a reload
+ * does not reliably produce a `cancelled` event there either. A `pageerror`
+ * hands a test an `Error` carrying no request identity. So there is nothing to
+ * prove ownership with on either platform, and nothing about one platform's
+ * event shape may be asserted as a WebKit invariant.
  *
  * An unprovable correlation is therefore resolved the only safe way: the error
  * is KEPT. The last shape of the excuse still let an earlier, unconsumed
  * cancellation to the same URL swallow a genuine diagnosis that emitted no
  * `requestfailed` of its own — exactly the CI failure's own shape — which is
  * the sealed finding that closed this line of work for good. The remaining fix
- * is to remove the RACE — see the shared `cacheDir` in `openPracticeApp` and
- * the `git/ref/heads/main` route in `installFakeGitHub` — never to hide its
- * symptom.
+ * is to make sure NO REQUEST IS IN FLIGHT when a journey navigates — see
+ * `connectSync` (wait for the first sync to finish) and `goTo`'s docstring (never
+ * `goto` the route you are already on) — never to hide the symptom.
  *
  * `errorText` is kept verbatim because it is what a kept error REPORTS
  * (`requestFailureEvidence`): a bare CORS-shaped message with nothing to
@@ -437,6 +439,21 @@ export async function importOutcome(app: PracticeApp): Promise<string> {
  * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
  * the tab bar — they are the one place the app asks for undivided attention —
  * so those routes wait on their own first control instead.
+ *
+ * WHAT `page.goto` ACTUALLY DOES HERE IS ENGINE-DEPENDENT, AND MEASURED. The
+ * app is hash-routed, so `goto` to a DIFFERENT `#/route` is a same-document
+ * navigation in Chromium and WebKit alike (a `window` marker survives it).
+ * `goto` to the URL the page is ALREADY on is not: Chromium keeps it
+ * same-document (it fires `popstate`, so the router re-renders and Playwright
+ * waits on a real navigation), while WebKit performs a FULL DOCUMENT LOAD —
+ * tearing down whatever the app has in flight, which GitHub's Linux WebKit
+ * then reports as an access-control page error. So a journey must never call
+ * this for the route it is already on: an owner already on a screen does not
+ * reload it to "go" there — use the in-app control (`openSettings`) instead,
+ * and call `reload` when a fresh document is the point. The same-URL case is
+ * deliberately NOT turned into a no-op here: Chromium's `popstate` navigation
+ * is slack that other journeys' route waits currently rely on, and removing
+ * it made one of them race its own in-app navigation under a full-suite run.
  */
 const FOCUSED_ROUTES = /^\/(active|close|routine)/;
 
@@ -694,11 +711,10 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
     // `git/ref/heads/main` — the branch is there; only `manifest.json` and
     // `state.json` are still absent. This route answered 404 until a SNAPSHOT
     // existed, so `getHead()` kept returning null and EVERY later sync
-    // re-entered `initialize()` and issued another README PUT. Each journey
-    // navigation is a full document load that re-triggers the app's on-open
-    // sync, so those extra PUTs were repeatedly issued into a document
-    // `page.goto` was tearing down — the measured amplifier behind the
-    // intermittent WebKit access-control page error in the archive journey.
+    // re-entered `initialize()` and issued another README PUT — one per
+    // document load, and one per quiet-period or manual sync besides. That
+    // stream of needless writes is gone; it was never the cause of the archive
+    // journey's WebKit page error (see `connectSync`).
     //
     // Gating on the REF alone fixes that without touching what `decideSync`
     // sees: the manifest and state routes below still 404 until something
@@ -783,7 +799,17 @@ export async function connectSync(app: PracticeApp): Promise<void> {
   await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
   await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
   await page.getByRole('button', { name: 'Connect & sync' }).click();
-  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
+  // WAIT FOR THE FIRST SYNC TO FINISH, NOT FOR THE BUTTON TO APPEAR. Settings'
+  // `connectAndSync` stores the config — which renders "Sync now" at once —
+  // and only THEN awaits `syncNow()`, holding the button DISABLED (`busy`)
+  // until that sync resolves. Returning on the button's mere presence handed
+  // the journey on while the repo bootstrap (`PUT contents/README.md`, behind
+  // a CORS preflight) was still in flight; the next navigation then tore the
+  // document down around it — the one place ac-18's WebKit failure ever named
+  // README.md. A cold document with no request in flight is the only state a
+  // journey may drive on from, so this waits for the ENABLED button: the
+  // sync's own completion, read through the real control.
+  await page.getByRole('button', { name: 'Sync now', disabled: false }).waitFor({ timeout: 20_000 });
 }
 
 /** The sync section's own status line, whatever it currently says. */

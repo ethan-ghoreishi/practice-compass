@@ -2,6 +2,57 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Correction: the private Vite cache was one race, not the cure; the remaining one was a sync left in flight (2026-09-19)
+
+GitHub disproved the previous entry's "one cause, both shapes" claim: with a private `cacheDir`
+in place, ac-18 still failed intermittently on Linux WebKit with the same
+`…/contents/README.md due to access control checks` page error and no tracked request failure —
+and two new harness tests failed on every Linux run. Treated as authoritative evidence and
+re-derived from first principles, measured in both engines:
+
+- **`connectSync` returned while the first sync was still running.** Settings' `connectAndSync`
+  stores the config — which renders "Sync now" immediately — and only then awaits `syncNow()`,
+  holding the button DISABLED until it resolves. The helper waited for the button to APPEAR, so
+  every journey drove on with the repo bootstrap (`PUT contents/README.md`, behind a CORS
+  preflight) still in flight. That is the only place the journey ever has README in flight, which
+  is why the failure only ever named README. `connectSync` now waits for the ENABLED button —
+  the sync's own completion, read through the real control.
+- **A `goTo` to the URL the page is already on was a full document load in WebKit only.** The app
+  is hash-routed; `page.goto` to a different `#/route` is a same-document navigation in BOTH
+  engines (a `window` marker survives), and Chromium keeps it same-document even for the
+  identical URL. WebKit performs a full load for the identical URL. ac-18's `refresh()` calls
+  `goTo('/settings')` straight after `connectSync` — already on `#/settings` — so in WebKit, and
+  nowhere else, that call tore the document down around the bootstrap. ac-18 now reaches Settings
+  through `openSettings` (More → Settings, the owner's own tap): an owner already on a screen does
+  not reload it to "go" there, and a journey that needs a fresh document calls `reload`. Making
+  `goTo` itself a no-op for the same-URL case was built and REVERTED the same day: Chromium's
+  same-document `goto` fires `popstate`, a real navigation Playwright waits on, and the notes
+  journey relies on that slack after its own in-app navigation to `/active` — two full-suite
+  runs failed there, and restoring the old `goTo` was green. The trap is documented on `goTo`.
+- **Why GitHub differed from the local measurements.** On macOS WebKit a request torn down by
+  navigation produces `requestfailed: cancelled` and no page error, and a torn-down CORS PREFLIGHT
+  produces no event at all — so the failure is unreproducible on the Mac by construction. On
+  GitHub's Linux WebKit the same teardown is reported as the access-control page error with no
+  `requestfailed` (matching "no tracked request failure" in every CI log), and a plain in-flight
+  fetch reloaded across does not reliably emit `cancelled` either. Two WebKit ports, two event
+  shapes. Nothing about one port's cancellation reporting is a WebKit invariant.
+
+**Tests removed or corrected.** The "measures what a REAL WebKit reports" test loses its second
+half (stall a fetch, reload, expect `requestfailed: cancelled` and no page error) and its
+delivery-order assertion; it keeps the genuine-refusal measurement (real server, no CORS headers →
+the name/message split, query kept, fragment kept, `errorText`), which passed on Linux. "The
+wiring keeps a diagnosed page error with no request failure of its own" no longer stages a real
+cancellation first: it raises the diagnosis in the real page and asserts the real resolve path
+KEEPS it and annotates it with "no tracked request failure" — the CI failure's own shape, end to
+end. How a logged cancellation is annotated is already proved on a synthetic log.
+
+Why the private cache was insufficient: it removed a real, measured race (`ENOTEMPTY` on a shared
+`node_modules/.vite`, which blanked pages and forced reloads) and the runs that followed happened
+to be clean, so the second race was read as closed. It was a different race with the same
+symptom, and it needed a WebKit port this machine does not have to show itself. Nothing is
+suppressed and no error filtering is widened: every page error is still kept, ac-18 still asserts
+`pageErrors` is empty and that README is PUT exactly once.
+
 ## Rejection: the cancellation excuse is removed, and the race is fixed instead (2026-09-18)
 
 A sixth sealed review found the excuse still able to hide a genuine WebKit access-control page
