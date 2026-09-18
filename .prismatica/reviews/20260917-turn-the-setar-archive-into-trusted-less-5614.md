@@ -1,23 +1,27 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 2b801d6b01837feb3662e3a4819475e98cf7553a
-reviewer: codex
+patchId: 511b034a8229c4650884cc0257244fed0f73bf66
+reviewer: claude
 state: sealed
 verdict: request_changes
 findings:
-  - family: Browser journey error visibility after cancelled requests
-    summary: A cancelled request can still suppress a genuine later WebKit
-      access-control page error at the same URL when the cancellation emitted no
-      page error of its own.
-    counterexample: Cancel a request to a GitHub URL without a pageerror. Within 30
-      seconds, make a later request to that URL fail genuinely with WebKit's
-      cannot-load/access-control wording. excusedCancellation consumes the
-      earlier cancellation and returns true, so openPracticeApp omits the real
-      error from pageErrors. The named test only covers a later failure after
-      the cancellation entry has already been consumed.
-createdAt: 2026-09-17T20:10:15.918Z
-sealedAt: 2026-09-17T20:24:54.975Z
+  - family: OWNER ac-19 live GitHub integration and archive refresh
+    summary: "P1: The real NAS publisher successfully created
+      source-index/setar/index.json with data main unchanged, but the production
+      app now throws `Cannot read properties of undefined (reading 'digest')` in
+      both normal GitHub Sync and Refresh Setar archive."
+    counterexample: During manual OWNER ac-19 against the real private
+      practice-compass-data repository, the NAS task successfully published
+      branch source-index with setar/index.json. The data main branch remained
+      unchanged at 7b47648f4772f453794491633e0ba16602198c35. In the app,
+      pressing Sync now produces `Cannot read properties of undefined (reading
+      'digest')`, and pressing Refresh Setar archive produces the identical
+      error before any index is accepted. No data was replaced. Reproduce
+      against the real production response shapes and fix the shared failing
+      path without modifying owner data or weakening sync/archive safety.
+createdAt: 2026-09-17T22:00:13.478Z
+sealedAt: 2026-09-18T13:58:23.562Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -31,7 +35,7 @@ sealedAt: 2026-09-17T20:24:54.975Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `2b801d6b01837feb3662e3a4819475e98cf7553a`
+- **Diff patch-id:** `511b034a8229c4650884cc0257244fed0f73bf66`
 
 ## The Delta this change was framed from
 
@@ -74,611 +78,440 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Exact rename identity across scanning, repair and suppression** — A rename source with two different destinations is diagnosed but its first destination is still published and used as exact identity.
-  _counterexample:_ Give RENAME-LOG.csv two rows A->B and A->C. buildIndex publishes A->B, as the named test currently asserts. Refresh can repair an authored A reference to B or move an item-scoped hide from A to B although the log does not establish which file A became. Remove every conflicting source mapping while retaining an actionable diagnostic, and check downstream reference and suppression transitions.
-- **Browser journey error visibility after cancelled requests** — The WebKit harness can suppress a genuine later page error after an unrelated or earlier cancellation with the same URL path.
-  _counterexample:_ During one journey, cancel a PUT to a GitHub path, then cause a later request to that path to fail genuinely. requestfailed adds the URL to a permanent set; pageerror discards the later error whenever its message contains the pathname, without checking request identity, method, timing or the diagnosed cancellation error. The journey's pageErrors assertion can pass despite the real failure.
+- **Browser journey error visibility after cancelled requests** — A cancelled request can still suppress a genuine later WebKit access-control page error at the same URL when the cancellation emitted no page error of its own.
+  _counterexample:_ Cancel a request to a GitHub URL without a pageerror. Within 30 seconds, make a later request to that URL fail genuinely with WebKit's cannot-load/access-control wording. excusedCancellation consumes the earlier cancellation and returns true, so openPracticeApp omits the real error from pageErrors. The named test only covers a later failure after the cancellation entry has already been consumed.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index d1fda0a..26c6274 100644
+index 26c6274..a303387 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1514,7 +1514,19 @@ problem and is not one. Instrumented, the only difference between a passing and
- of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
- fulfilled with the right CORS headers every other time. A real person navigating mid-sync
- cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
--as a page error — narrowly, by URL, and only for a URL that run actually saw cancelled.
-+as a page error.
+@@ -1522,11 +1522,31 @@ message merely CONTAINED that pathname discarded — so a genuine failure at the
+ later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
+ (`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
+ excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
+-naming the same URL is never excused), names that request's HOST as well as its path, and
+-arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
+-ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
+-tick, and a tight window would trade an over-broad filter for a flaky one under the
+-contention five concurrent dev servers already create.
++naming the same URL is never excused).
 +
-+**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
-+It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
-+message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
-+later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
-+(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
-+excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
-+naming the same URL is never excused), names that request's HOST as well as its path, and
-+arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
-+ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
-+tick, and a tight window would trade an over-broad filter for a flaky one under the
-+contention five concurrent dev servers already create.
++**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
++ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
++host+path ALONE: a cancellation that produced no page error of its own stayed a live,
++unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
++a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
++the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
++cancellation's spurious error and a real access-control failure are worded the same on
++purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
++(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
++tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
++that URL always fires its own `requestfailed` before its own page error, so the instant one
++happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
++by anything but the specific error it was actually waiting for — which is what makes leaving
++it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
++now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
++servers create, never the correlation itself.
++
++A second, independent hole lived in the same function: `message.includes(url.host)` and
++`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
++one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
++(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
++WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
++the ambiguity structurally rather than adding more boundary characters to a string test.
  
  **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
  the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
-@@ -1885,12 +1897,21 @@ the owner's hide onto B: A came back into view and the wrong file went dark. It
- stays exactly where the owner put it, a row the incoming index no longer lists keeps its
- provenance flagged rather than being deleted on the strength of a destination nothing can
- read, and repair says "the rename log loops on this path" instead of rewriting to an
--arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place — every
--row in a loop, and every row that walks into one, is dropped with a diagnostic rather than
--published (ac-12's own rule: cycles and multiple destinations DIAGNOSE, never guess) — so a
--published index carries no cycle, and the app still refuses to read one from any other
--source. An ordinary chain beside a loop still publishes: one bad topology does not cost the
--archive its good provenance.
-+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place, and it is
-+ONE rule rather than a mechanism per shape: A REPLACEMENT NAME IS PUBLISHED ONLY WHERE THE
-+LOG DETERMINES IT UNIQUELY AND TERMINALLY. A loop names no file; a path given TWO
-+destinations names no file either; and a chain walking into either cannot say where it
-+ended. All of them are dropped with a diagnostic (ac-12's own rule: cycles and multiple
-+destinations DIAGNOSE, never guess), so a published index carries neither, and the app still
-+refuses to read one from any other source — `checkSourceGraph` rejects a second row for one
-+`from` at the decoder AND at the persisted door. The fork case had exactly the defect the
-+loop rule exists to prevent, said the other way round: the scanner published the FIRST
-+destination and diagnosed the second as "not applied", so the app was handed a mapping the
-+log cannot support and used it as EXACT IDENTITY — repairing an authored reference onto it
-+and re-keying an owner's hide onto it. The diagnostic names every destination it saw, once
-+and in sorted order, because `diagnostics` is inside `contentHash` and a shuffled log must
-+still produce the same index. An ordinary chain beside a loop or a fork still publishes: one
-+bad topology does not cost the archive its good provenance.
- 
- A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
- a hidden file simply reappeared under the new one while the old row sat there flagged
 diff --git a/DECISIONS.md b/DECISIONS.md
-index decd7f0..1140393 100644
+index 1140393..ee4c88f 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
-@@ -2,6 +2,50 @@
+@@ -2,6 +2,37 @@
  
  Durable record of non-obvious choices. Newest first.
  
-+## Rejection: two rules that held for one shape of the same defect (2026-09-17)
++## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
 +
-+A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
-+the previous fix covering one shape of a defect and not the shape beside it, so each fix
-+here is the rule the shapes share — and the narrower mechanism is subsumed rather than left
-+next to the new one.
++A fifth sealed review rejected the harness's cancellation excuse again. The previous round
++(below) made it CONSUMING and bounded by a generous ceiling, but the ceiling was still the
++whole bound, matched by host+path alone — and a cancellation that never produced its own page
++error stayed a live, unconsumed "credit" for the full ceiling, spendable by ANY later error to
++the same URL, including a genuine one that had nothing to do with it. Wording and URL cannot
++tell a cancellation's spurious error apart from a real access-control failure — they read
++identically by design (that is the whole diagnosis) — so no window, however short, can be the
++thing that distinguishes them. Only ORDER can: `excusedCancellation` now tracks EVERY
++`requestfailed`, not only cancelled ones, and excuses a page error only when the temporally
++NEAREST tracked request to the exact host+path it names is itself a cancellation. A genuine
++failure to that URL always fires its own `requestfailed` first, so it automatically becomes the
++nearer candidate the instant it happens — a stale cancellation with no error of its own is
++never reachable by anything but the error it was actually waiting for. The ceiling
++(`CANCELLED_EXCUSE_MS`, shrunk from 30s to 2s) is now purely DEFENSIVE headroom against
++delivery lag under contention, not the correlation itself.
 +
-+- **A rename source with two destinations still published its first one.** The loop rule
-+  ("a log that loops names no file") had been closed at every consumer, and the fork sitting
-+  beside it — `A→B` and `A→C` in the same log — was diagnosed as "not applied" while `A→B`
-+  was published and used as exact identity: Refresh repaired an authored reference onto B and
-+  re-keyed an owner's item-scoped hide onto B, although the log never established which file
-+  A became. A fork and a loop are ONE defect said two ways, so the scanner now publishes a
-+  replacement name only where the log determines it UNIQUELY and TERMINALLY — a fork
-+  publishes nothing, a loop publishes nothing, and a chain walking into either publishes
-+  nothing. The conflicted sources are removed from the map BEFORE the reachability walk, or
-+  a chain ending at one would still publish a name on the strength of a mapping that was
-+  meant to be gone. Its diagnostic names every destination seen, once and sorted, because
-+  `diagnostics` is inside `contentHash` and ac-4's own claim is that a shuffled source yields
-+  the same semantic index. Refusing the whole index was rejected for the reason the loop case
-+  already records: an unimportable archive is a worse answer than an unrepaired path. No app
-+  change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
-+  decoder and at the persisted door — and ac-12's named test now drives the downstream
-+  reference and suppression transitions from the scanner's ACTUAL output for a forked log.
-+  It changes nothing the operator publishes TODAY, and that is checked rather than assumed:
-+  the corpus baseline records 257 rows in RENAME-LOG.csv and the index carries 257 mappings,
-+  so no row of the real log is dropped for any reason — there is no fork in it to drop.
-+- **The harness's excuse for a cancelled request was permanent.** The WebKit
-+  cancelled-request diagnosis recorded in the previous round was implemented as a permanent
-+  set of cancelled URLs, with any later page error whose message merely CONTAINED that
-+  pathname discarded — so a genuine failure at the same path, later in the same journey, was
-+  swallowed and the journey's `pageErrors` assertion passed over it. A check that can hide
-+  the failure it exists to catch is worse than no check. `excusedCancellation` is consuming
-+  (one cancellation, one error) and additionally requires the diagnosed wording and the
-+  request's host as well as its path, inside a generous ceiling on how long an unconsumed
-+  cancellation may stand. The ceiling is not a timing correlation: the spurious error arrives
-+  in the same tick, and a tight window would trade an over-broad filter for a flaky one under
-+  the contention five concurrent dev servers already create. Matching the request's METHOD
-+  was considered and is not possible — the page error carries no method.
++A second, independent hole in the same function was found and closed in the same pass:
++`message.includes(url.host)` and `message.includes(url.pathname)` are substring tests, and a
++crafted host (`evil-api.github.com`, `api.github.com.evil.test`) or path (`state.json.bak`)
++that merely CONTAINS the genuine value as a substring passed them. The message is now parsed
++into a real `URL` (stripping the space WebKit inserts after the scheme) and compared to each
++candidate by `host`/`pathname` EQUALITY, which removes the ambiguity structurally instead of
++trying to add more boundary characters to a string test.
 +
-+Four mutations were run and all four fail their named acceptance test: the fork's first
-+destination published again, the walks-into-a-fork extension removed, the cancellation excuse
-+made permanent (non-consuming), and the diagnosed-wording requirement dropped.
++Six mutations were run and all six fail their named acceptance test: nearest-event selection
++reverted to first-match, the consuming `splice` removed, host/path equality loosened back to
++substring `includes`, the diagnosed-wording anchor dropped, the cancelled-type requirement
++dropped (any nearest match excuses), and the ceiling check removed outright.
 +
- ## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
+ ## Rejection: two rules that held for one shape of the same defect (2026-09-17)
  
- A third sealed review rejected the reworked Setar-archive diff. Each finding was the
-diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index 6d1f4be..8ba9e0b 100644
---- a/docs/setar-archive.md
-+++ b/docs/setar-archive.md
-@@ -80,10 +80,16 @@ unsupported extension, a class recording claiming a piece, an unnamed demo in a
- session whose roster and filenames disagree, a symbolic link (never followed —
- but never silently dropped either, since two readings agree about a file neither
- of them looked at), a session-named entry that is not a real directory, and
--every row of a rename LOOP. A log that loops names no file, so those rows — and
--any row that walks into a loop — are dropped with a diagnostic rather than
--published; an ordinary chain beside a loop still publishes. Dotfiles, `@eaDir`
--and out-of-scope root folders stay silent: they are not archive content.
-+every rename row whose destination this log does not determine. That is ONE
-+rule, not two: a replacement name is published only where the log names it
-+UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
-+destinations names no file either; and a chain walking into either of those
-+cannot say where it ended. Every such row is dropped with a diagnostic rather
-+than published — the fork case used to publish its FIRST destination and
-+diagnose the second as "not applied", which handed the app an identity this log
-+cannot support. An ordinary chain beside a loop or a fork still publishes.
-+Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
-+archive content.
- 
- The output is written **outside the archive** via a temp file + rename, and the
- scanner refuses an `--out` path inside `--root`.
-diff --git a/scripts/scan-setar-classes.mjs b/scripts/scan-setar-classes.mjs
-index 60a1e71..a76181b 100644
---- a/scripts/scan-setar-classes.mjs
-+++ b/scripts/scan-setar-classes.mjs
-@@ -428,9 +428,18 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
-   }
- 
-   // --- rename provenance --------------------------------------------------
--  // EXACT old→new pairs only. This is path provenance, not a similarity model:
--  // an old path with two destinations is reported, never resolved by guessing.
--  const renames = [];
-+  // EXACT old→new pairs only. This is path provenance, not a similarity model.
-+  //
-+  // ONE RULE, NOT TWO MECHANISMS: a path publishes a replacement name only
-+  // when this log determines it UNIQUELY and TERMINALLY. A source named with
-+  // two destinations does not say which file it became; a chain that walks
-+  // into a loop — or into such a source — cannot say either. Every one of
-+  // those publishes NOTHING and is diagnosed instead. The conflict case used
-+  // to publish the FIRST destination and diagnose the second as "not
-+  // applied", which is exactly backwards: the mapping the log cannot support
-+  // was handed to the app as exact identity, and the app then repaired an
-+  // authored reference onto it and re-keyed an owner's hide onto it.
-+  let renames = [];
-   // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
-   // A present-but-empty log has no header and `readTable` says so, exactly as
-   // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
-@@ -438,6 +447,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
-   if (renameLog && renameLog.present) {
-     const rows = readTable(renameLog.text, ['old_path', 'new_path']);
-     const dest = new Map();
-+    const forks = new Map(); // from → every destination the log names for it
-     for (const r of rows) {
-       const from = r.old_path.trim();
-       const to = r.new_path.trim();
-@@ -447,41 +457,52 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
-         continue;
-       }
-       const prior = dest.get(from);
--      if (prior && prior !== to) {
--        diag(from, `Rename log maps this path to both "${prior}" and "${to}" — not applied.`);
-+      if (prior !== undefined && prior !== to) {
-+        forks.set(from, (forks.get(from) ?? new Set([prior])).add(to));
-         continue;
-       }
--      if (prior === to) continue;
-       dest.set(from, to);
--      renames.push({ from, to });
-     }
--    // A LOOP NAMES NO FILE. A->B->A (or any chain that walks into one) says
--    // only that two names were swapped; picking a stopping point would invent
--    // an identity, and every path that LEADS INTO a loop is equally unusable.
--    // Those rows are dropped with a diagnostic rather than published: the app
--    // must never be handed a replacement identity this log cannot support.
--    const cyclic = new Set();
-+    // A conflicted source stops being a mapping BEFORE anything walks the
-+    // graph: left in `dest`, its first destination would still be published,
-+    // and a chain ending there would publish a name on its strength too.
-+    for (const from of forks.keys()) dest.delete(from);
-+
-+    // Each path is judged by ITS OWN walk, so the verdict does not depend on
-+    // the order rows arrived in — `diagnostics` is inside `contentHash`, and
-+    // ac-4's claim is that a shuffled source yields the same semantic index.
-+    const unresolvable = new Map();
-     for (const from of dest.keys()) {
--      const walked = new Set([from]);
-+      const seen = new Set([from]);
-       let cur = from;
-+      let loops = false;
-       while (dest.has(cur)) {
-         const next = dest.get(cur);
--        if (walked.has(next)) {
--          for (const p of walked) cyclic.add(p);
--          cyclic.add(next);
-+        if (seen.has(next)) {
-+          loops = true;
-           break;
-         }
--        walked.add(next);
-+        seen.add(next);
-         cur = next;
-       }
-+      if (loops) {
-+        unresolvable.set(from, 'Rename log loops through this path — no replacement name can be read from it.');
-+      } else if (forks.has(cur)) {
-+        unresolvable.set(
-+          from,
-+          `Rename log renames this path into "${cur}", which it names more than one destination for — no replacement name can be read from it.`,
-+        );
-+      }
-+    }
-+    for (const [from, reason] of unresolvable) {
-+      dest.delete(from);
-+      diag(from, reason);
-     }
--    for (const from of cyclic) {
--      if (dest.has(from)) diag(from, 'Rename log loops through this path — no replacement name can be read from it.');
-+    for (const [from, tos] of forks) {
-+      const named = [...tos].sort(cmp).map((t) => `"${t}"`).join(' and ');
-+      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`);
-     }
--    const kept = renames.filter((r) => !cyclic.has(r.from));
--    renames.length = 0;
--    renames.push(...kept);
--    renames.sort((a, b) => cmp(a.from, b.from));
-+    renames = [...dest].map(([from, to]) => ({ from, to })).sort((a, b) => cmp(a.from, b.from));
-   }
- 
-   const body = {
-diff --git a/src/domain/scanSetarClasses.test.ts b/src/domain/scanSetarClasses.test.ts
-index 65559a3..c5241b2 100644
---- a/src/domain/scanSetarClasses.test.ts
-+++ b/src/domain/scanSetarClasses.test.ts
-@@ -666,14 +666,65 @@ describe('scanning the archive', () => {
-         },
-       });
-       expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
--      // An old path with TWO destinations was already refused, and still is.
-+      // AN OLD PATH WITH TWO DESTINATIONS PUBLISHES NEITHER. This used to
-+      // publish the FIRST row and diagnose the second as "not applied", which
-+      // is the same defect the loop rule exists to prevent, said the other way
-+      // round: a log that cannot say which file A became was handed to the app
-+      // as exact identity anyway. It is ONE rule now — a replacement name is
-+      // published only where this log determines it uniquely and terminally.
-+      const forkLog = 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n';
-       const forked = buildIndex({
-         registryText: REGISTRY,
-         inventory: INVENTORY,
--        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
-+        renameLog: { present: true, text: forkLog },
-       });
--      expect(forked.renames).toEqual([{ from: 'x/a.mp4', to: 'x/b.mp4' }]);
--      expect(forked.diagnostics.some((d) => /both/.test(d.reason))).toBe(true);
-+      expect(forked.renames).toEqual([]);
-+      expect(forked.diagnostics.filter((d) => d.path === 'x/a.mp4')).toEqual([
-+        {
-+          path: 'x/a.mp4',
-+          reason:
-+            'Rename log names more than one destination for this path ("x/b.mp4" and "x/c.mp4") — no replacement name can be read from it.',
-+        },
-+      ]);
-+      // ONE diagnostic naming its destinations in a stable order, whatever
-+      // order the rows arrived in: `diagnostics` is inside `contentHash`, and
-+      // a shuffled source must still yield the same semantic index. A third
-+      // destination joins that one row rather than emitting a second pair.
-+      const forkRowsSwapped = buildIndex({
-+        registryText: REGISTRY,
-+        inventory: INVENTORY,
-+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/c.mp4\nx/a.mp4,x/b.mp4\n' },
-+      });
-+      expect(forkRowsSwapped.contentHash).toBe(forked.contentHash);
-+      const three = buildIndex({
-+        registryText: REGISTRY,
-+        inventory: INVENTORY,
-+        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/d.mp4\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
-+      });
-+      expect(three.diagnostics.filter((d) => d.path === 'x/a.mp4')).toHaveLength(1);
-+      expect(three.diagnostics.find((d) => d.path === 'x/a.mp4')!.reason).toContain(
-+        '("x/b.mp4" and "x/c.mp4" and "x/d.mp4")',
-+      );
-+      // And a chain that walks INTO a forked path publishes nothing either —
-+      // the same extension the loop rule already makes, for the same reason:
-+      // x/z.mp4 became x/a.mp4, and what x/a.mp4 is called now is unreadable.
-+      const intoFork = buildIndex({
-+        registryText: REGISTRY,
-+        inventory: INVENTORY,
-+        renameLog: { present: true, text: `old_path,new_path\nx/z.mp4,x/a.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
-+      });
-+      expect(intoFork.renames).toEqual([]);
-+      expect(intoFork.diagnostics.find((d) => d.path === 'x/z.mp4')!.reason).toContain(
-+        'renames this path into "x/a.mp4", which it names more than one destination for',
-+      );
-+      // An ordinary chain beside a FORK still publishes, exactly as one beside
-+      // a loop does.
-+      const besideFork = buildIndex({
-+        registryText: REGISTRY,
-+        inventory: INVENTORY,
-+        renameLog: { present: true, text: `old_path,new_path\nx/p.mp4,x/q.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
-+      });
-+      expect(besideFork.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
- 
-       // And the scan itself reads the WHOLE source twice and refuses on any
-       // difference. Nothing can mutate a filesystem between two synchronous
-diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
-index c795bc3..082dcef 100644
---- a/src/domain/sourceReconcile.test.ts
-+++ b/src/domain/sourceReconcile.test.ts
-@@ -19,6 +19,19 @@ import {
-   followRenames,
- } from './sourceReconcile';
- import { archiveRootUrl } from './recordings';
-+// The published log is the SCANNER's output, so the downstream transitions
-+// below are driven by what it actually publishes for a forked log — never by
-+// a hand-written approximation of it.
-+// @ts-expect-error — no type declarations for the .mjs operator tool.
-+import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
-+const { buildIndex } = scannerModule as {
-+  buildIndex(input: {
-+    registryText: string;
-+    inventory: never[];
-+    renameLog: { present: true; text: string };
-+  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
-+};
-+const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
- import { emptyDB } from './seed';
- import { LEGACY_SEED_PATHS } from './setarClasses';
- import { createItem, createLesson } from './factories';
-@@ -710,6 +723,10 @@ describe('reconciling the archive with the owner’s own records', () => {
-     // maps through the rename log EXACTLY. No title, size or modification-time
-     // matching is involved anywhere, and none of the 67 is left to a guess.
-     expect(LEGACY_SEED_PATHS).toHaveLength(67);
-+    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
-+    // and 257 mappings out: no row of the REAL log is dropped for any reason —
-+    // not unsafe, not empty, not a loop and not a fork — so the rule below
-+    // changes nothing the operator actually publishes today.
-     expect(INDEX.renames).toHaveLength(257);
-     const repairedPaths = new Map<string, string>();
-     for (const p of LEGACY_SEED_PATHS) {
-@@ -1136,6 +1153,51 @@ describe('reconciling the archive with the owner’s own records', () => {
-     ).lessons.find((l) => l.id === 'L1')!;
-     expect(loopLesson.recordings).toEqual(storedOne.recordings);
- 
-+    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
-+    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
-+    // log does not determine what this file is called now. The scanner used to
-+    // publish the FIRST destination and diagnose the second as "not applied",
-+    // so the app was handed a mapping the log cannot support and used it as
-+    // exact identity — repairing an authored reference onto it and re-keying
-+    // an owner's hide onto it. What it publishes for a fork is nothing, and
-+    // this drives the transitions from that real output rather than a guess
-+    // at it. (A forked log reaching the app from anywhere else is REFUSED at
-+    // every door by the one grammar — asserted in `io.test.ts` against the
-+    // persisted door, and by `checkSourceGraph` for the decoder.)
-+    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
-+    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
-+    const scanned = buildIndex({
-+      registryText: EMPTY_REGISTRY,
-+      inventory: [],
-+      renameLog: {
-+        present: true,
-+        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
-+      },
-+    });
-+    expect(scanned.renames).toEqual([]);
-+    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
-+    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
-+    // The READING: the file keeps the only name this log establishes — its own.
-+    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
-+    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
-+    // either destination.
-+    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
-+    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
-+    const afterFork = applyArchiveImport(
-+      hidden,
-+      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
-+    );
-+    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
-+    // The HIDE: exactly where the owner put it, still scoped to one item — so
-+    // the file they hid is still hidden and neither destination went dark.
-+    const forkedSource = afterFork.archiveSources[0]!;
-+    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
-+      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
-+    ]);
-+    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
-+    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
-+    expect(validateArchiveSources(afterFork)).toBeNull();
-+
-     // A file that really IS gone still keeps its provenance, flagged.
-     const removed: SourceIndex = {
-       ...INDEX,
+ A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
 diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index 74e4c0e..5266472 100644
+index 5266472..e80781a 100644
 --- a/tests/practiceBrowser.ts
 +++ b/tests/practiceBrowser.ts
-@@ -27,6 +27,69 @@ const installHint = (engine: Engine) =>
-   '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
+@@ -28,7 +28,10 @@ const installHint = (engine: Engine) =>
    'and an engine quietly missed is the same thing as an engine never checked.';
  
-+/**
-+ * ONE cancelled request, awaiting the ONE spurious error it produces.
-+ *
-+ * A request the BROWSER cancelled because the test navigated away while it was
-+ * in flight is not an application error. WebKit reports such a fetch as
-+ * "Fetch API cannot load … due to access control checks", which reads exactly
-+ * like a CORS problem and is not one: instrumented, the only difference
-+ * between the passing and failing runs of the same journey is a single
-+ * `requestfailed` with `errorText: 'cancelled'` for a request that is
-+ * otherwise fulfilled with the right CORS headers every other time. A real
-+ * person navigating mid-sync cancels the same request, so treating it as a
-+ * page error makes a journey fail for driving the app quickly.
+ /**
+- * ONE cancelled request, awaiting the ONE spurious error it produces.
++ * ONE recorded outcome of a network request the harness watched, cancelled or
++ * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
++ * genuine failure to the same URL displace a stale cancellation instead of
++ * being excused by it (see `excusedCancellation`).
+  *
+  * A request the BROWSER cancelled because the test navigated away while it was
+  * in flight is not an application error. WebKit reports such a fetch as
+@@ -40,53 +43,103 @@ const installHint = (engine: Engine) =>
+  * person navigating mid-sync cancels the same request, so treating it as a
+  * page error makes a journey fail for driving the app quickly.
+  */
+-export interface CancelledRequest {
++export interface TrackedRequestFailure {
+   url: string;
+   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+   at: number;
++  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
++  cancelled: boolean;
+ }
+ 
+ /**
+- * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
+- * cancelled URL joined a permanent set, and every later page error whose
+- * message merely CONTAINED that pathname was discarded — so a genuine failure
+- * at the same path, later in the same journey, was swallowed and the journey's
+- * `pageErrors` assertion passed over it.
++ * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
++ * work. It once was the whole bound: a cancelled URL's entry stayed eligible
++ * for this long, matched by host+path ALONE, so an unconsumed cancellation
++ * that never produced its own page error remained a live "credit" any LATER,
++ * genuine access-control failure to that same URL could spend. That is a
++ * sealed finding, not a hypothetical: a cancellation and a real failure are
++ * indistinguishable by wording or by URL, so a window — however short — can
++ * never be the thing that tells them apart. Only ORDER can: see
++ * `excusedCancellation` below for the correlation that actually does the work.
++ * What is left for this ceiling to do is bound how far back a request that
++ * WAS genuinely the nearest one may still be trusted, in case Node's delivery
++ * of the two events (`requestfailed`, then `pageerror`) is delayed under the
++ * contention five concurrent dev servers create; the diagnosis says the
++ * browser emits them in the same tick, so this is headroom, not a design
++ * tolerance the correlation depends on.
 + */
-+export interface CancelledRequest {
-+  url: string;
-+  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
-+  at: number;
++export const CANCELLED_EXCUSE_MS = 2_000;
++
++/**
++ * Extract the URL a diagnosed WebKit access-control message names, or `null`
++ * if the message is not that shape at all (a render crash, a thrown
++ * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
++ * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
++ * host that a real URL never has, which this strips before parsing.
+  *
+- * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
+- * one cancellation excuses exactly one error.
+- *  - the message is the DIAGNOSED wording, so an error of any other shape
+- *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
+- *    for a fetch AND for an XHR, so the two words both spellings share are
+- *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
+- *    where this wording comes from, and the next intermittent "CORS" failure
+- *    belongs here before it is diagnosed from scratch. Getting the wording
+- *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
+- *    below is what stops a real failure being excused;
+- *  - it names that request's host AND path — WebKit spells the URL with the
+- *    scheme separated from the host, so the comparison is on the parts both
+- *    spellings carry verbatim;
+- *  - it arrives inside a CEILING on how long an unconsumed cancellation may
+- *    stand. Deliberately generous rather than a timing correlation: the
+- *    spurious error is emitted in the same tick as the cancellation, and a
+- *    tight window would trade an over-broad filter for a flaky one under the
+- *    contention five concurrent dev servers already create.
++ * The whole point of parsing into a real `URL` and comparing `host` and
++ * `pathname` by EQUALITY, rather than testing whether the message merely
++ * CONTAINS a candidate's host/path as substrings, is that a substring test
++ * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
++ * the left) or `api.github.com.evil.test` (extended on the right), nor
++ * `/state.json` from `/state.json.bak` — every one of which contains the
++ * genuine value as a substring. Anchoring the match to the exact text
++ * between the fixed "cannot load " / " due to access control checks" phrases
++ * — the only text WebKit ever puts there — removes the ambiguity outright
++ * instead of trying to out-guess it with boundary characters.
+  */
+-export const CANCELLED_EXCUSE_MS = 30_000;
+-
+-export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
+-  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
+-  const i = pending.findIndex((c) => {
+-    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
+-    const url = new URL(c.url);
+-    return message.includes(url.host) && message.includes(url.pathname);
+-  });
+-  if (i < 0) return false;
+-  // CONSUMING the entry is this function's own job, not the caller's: the
+-  // permanent-set version was a caller that simply never took anything out,
+-  // and a boolean a caller can read without spending the cancellation would
+-  // leave exactly that mistake available again.
+-  pending.splice(i, 1);
++function reportedUrl(message: string): URL | null {
++  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
++    message.trim(),
++  );
++  if (!m) return null;
++  try {
++    return new URL(`${m[1]}://${m[2]}`);
++  } catch {
++    return null;
++  }
 +}
 +
 +/**
-+ * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
-+ * cancelled URL joined a permanent set, and every later page error whose
-+ * message merely CONTAINED that pathname was discarded — so a genuine failure
-+ * at the same path, later in the same journey, was swallowed and the journey's
-+ * `pageErrors` assertion passed over it.
++ * The excuse correlates on ORDER, not on a window: among every tracked
++ * request to the exact host+path the message names, the one that actually
++ * produced this page error is whichever happened MOST RECENTLY before it —
++ * because the diagnosis is that WebKit emits the spurious error in the same
++ * tick as the cancellation that caused it, so nothing else to that URL can
++ * have intervened by the time it arrives. That is precisely what makes a
++ * cancellation with NO page error of its own safe to leave sitting in the
++ * log rather than needing to expire it: the moment anything else — above
++ * all a genuine failure — touches that same URL, THAT becomes the nearest
++ * candidate and the stale cancellation is never reached again. A stale
++ * cancellation can therefore only ever be reached by a page error that has
++ * nothing more recent competing for it, which is exactly the case it is
++ * supposed to excuse.
 + *
-+ * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
-+ * one cancellation excuses exactly one error.
-+ *  - the message is the DIAGNOSED wording, so an error of any other shape
-+ *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
-+ *    for a fetch AND for an XHR, so the two words both spellings share are
-+ *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
-+ *    where this wording comes from, and the next intermittent "CORS" failure
-+ *    belongs here before it is diagnosed from scratch. Getting the wording
-+ *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
-+ *    below is what stops a real failure being excused;
-+ *  - it names that request's host AND path — WebKit spells the URL with the
-+ *    scheme separated from the host, so the comparison is on the parts both
-+ *    spellings carry verbatim;
-+ *  - it arrives inside a CEILING on how long an unconsumed cancellation may
-+ *    stand. Deliberately generous rather than a timing correlation: the
-+ *    spurious error is emitted in the same tick as the cancellation, and a
-+ *    tight window would trade an over-broad filter for a flaky one under the
-+ *    contention five concurrent dev servers already create.
++ * If the nearest candidate is not a cancellation at all — a genuine failure,
++ * or nothing within the ceiling — this returns `false` and excuses nothing:
++ * an uncertain correlation is never resolved in the excuse's favour.
++ *
++ * The match is CONSUMING: the winning entry is removed, so it cannot excuse
++ * a second, later error too.
 + */
-+export const CANCELLED_EXCUSE_MS = 30_000;
-+
-+export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
-+  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
-+  const i = pending.findIndex((c) => {
-+    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
-+    const url = new URL(c.url);
-+    return message.includes(url.host) && message.includes(url.pathname);
-+  });
-+  if (i < 0) return false;
-+  // CONSUMING the entry is this function's own job, not the caller's: the
-+  // permanent-set version was a caller that simply never took anything out,
-+  // and a boolean a caller can read without spending the cancellation would
-+  // leave exactly that mistake available again.
-+  pending.splice(i, 1);
-+  return true;
-+}
-+
- export interface PracticeApp {
-   page: Page;
-   /** The dev server origin this journey is isolated on. */
-@@ -97,30 +160,16 @@ export async function openPracticeApp(options: {
++export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
++  const reported = reportedUrl(message);
++  if (!reported) return false;
++  let nearest = -1;
++  for (let i = 0; i < events.length; i++) {
++    const e = events[i];
++    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
++    let url: URL;
++    try {
++      url = new URL(e.url);
++    } catch {
++      continue;
++    }
++    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
++    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
++  }
++  if (nearest < 0 || !events[nearest].cancelled) return false;
++  events.splice(nearest, 1);
+   return true;
+ }
+ 
+@@ -160,16 +213,17 @@ export async function openPracticeApp(options: {
      page.on('dialog', (d) => {
        void d.accept().catch(() => {});
      });
--    // A request the BROWSER cancelled because this test navigated away while it
--    // was in flight is not an application error. WebKit reports such a fetch as
--    // "Fetch API cannot load … due to access control checks", which reads
--    // exactly like a CORS problem and is not one: instrumented, the only
--    // difference between the passing and failing runs of the same journey is a
--    // single `requestfailed` with `errorText: 'cancelled'` for a request that
--    // is otherwise fulfilled with the right CORS headers every other time.
--    // A real person navigating mid-sync cancels the same request, so treating
--    // it as a page error makes a journey fail for driving the app quickly.
--    // Narrow by construction: only a URL this run actually saw cancelled is
--    // ever excused, and every other page error is recorded as before.
--    const cancelled = new Set<string>();
-+    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
-+    // every other page error is recorded exactly as before.
-+    const cancelled: CancelledRequest[] = [];
+-    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
+-    // every other page error is recorded exactly as before.
+-    const cancelled: CancelledRequest[] = [];
++    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
++    // has to be visible to `excusedCancellation` so it can outrank a stale
++    // cancellation to the same URL, not just a cancellation itself.
++    const requestFailures: TrackedRequestFailure[] = [];
      page.on('requestfailed', (r) => {
--      if (r.failure()?.errorText === 'cancelled') cancelled.add(r.url());
-+      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
+-      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
++      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
      });
      // Surface a page-level error instead of letting it become a silently
      // wrong assertion later.
      page.on('pageerror', (e) => {
--      const message = `${e.message}`;
--      // WebKit spells the URL with the scheme separated from the host, so the
--      // comparison is on the path, which both spellings carry verbatim.
--      for (const url of cancelled) {
--        if (message.includes(new URL(url).pathname)) return;
--      }
-+      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
+-      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
++      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
        pageErrors.push(e);
      });
      await page.clock.install({ time: options.now });
 diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
-index ca649cc..ba90650 100644
+index ba90650..2b9b4a1 100644
 --- a/tests/setarInbound.browser.test.ts
 +++ b/tests/setarInbound.browser.test.ts
-@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
- import { join } from 'node:path';
- import { describe, expect, it } from 'vitest';
- import {
-+  CANCELLED_EXCUSE_MS,
-   connectSync,
-   exportBackup,
-   goTo,
-@@ -11,6 +12,7 @@ import {
-   importOutcome,
-   installFakeGitHub,
-   newFakeRemote,
-+  excusedCancellation,
-   openPracticeApp,
-   persistedDb,
-   publishRemote,
-@@ -501,3 +503,64 @@ describe('rolling back past the archive schema', () => {
-     }
-   }, 240_000);
- });
+@@ -20,6 +20,7 @@ import {
+   reload,
+   remoteStateText,
+   syncMessage,
++  type TrackedRequestFailure,
+   writePersistedState,
+ } from './practiceBrowser';
+ import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+@@ -508,59 +509,109 @@ describe('the journey harness itself', () => {
+   // The harness must not be able to hide the very failure a journey exists to
+   // catch. A request the browser CANCELLED (because the test navigated away
+   // mid-flight) produces a WebKit error that reads exactly like a CORS
+-  // failure; excusing it used to mean adding its URL to a PERMANENT set and
+-  // discarding every later page error whose message merely contained that
+-  // pathname. So a genuine failure at the same path, later in the same
+-  // journey, was swallowed — and `pageErrors` said nothing.
+-  it('a cancelled request excuses its own error once, and never a later real one', () => {
+-    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+-    const spurious =
+-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+-    const at = 1_000_000;
+-
+-    // The cancellation's OWN error is excused — and CONSUMED. The identical
+-    // message arriving again has no cancellation left to account for it, which
+-    // is exactly the reviewer's counterexample: cancel a request to a path,
+-    // then let a later one to that path fail for real.
+-    // Spending it is the function's OWN job — a caller cannot forget to, which
+-    // is precisely what the permanent set was.
+-    const pending = [{ url, at }];
+-    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
++  // failure. Excusing it has failed two different ways so far, and each test
++  // below is named for the specific way:
++  //  - a PERMANENT set of cancelled URLs discarded every later page error
++  //    whose message merely contained that pathname, so a genuine failure at
++  //    the same path, later in the same journey, was swallowed and
++  //    `pageErrors` said nothing;
++  //  - even made CONSUMING (one cancellation, one error) and bounded by a
++  //    generous time window, an unconsumed cancellation — one that produced
++  //    no page error of its own — stayed a live "credit" for up to that whole
++  //    window, spendable by a genuine, later failure to the same URL that had
++  //    nothing to do with it. A window can never tell the two apart, because
++  //    a cancellation's error and a genuine one read identically; only ORDER
++  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
++  const url = 'https://api.github.com/repos/owner/data/contents/state.json';
++  const spurious =
++    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
++  const at = 1_000_000;
++  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
++  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
 +
-+describe('the journey harness itself', () => {
-+  // The harness must not be able to hide the very failure a journey exists to
-+  // catch. A request the browser CANCELLED (because the test navigated away
-+  // mid-flight) produces a WebKit error that reads exactly like a CORS
-+  // failure; excusing it used to mean adding its URL to a PERMANENT set and
-+  // discarding every later page error whose message merely contained that
-+  // pathname. So a genuine failure at the same path, later in the same
-+  // journey, was swallowed — and `pageErrors` said nothing.
-+  it('a cancelled request excuses its own error once, and never a later real one', () => {
-+    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
-+    const spurious =
-+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-+    const at = 1_000_000;
-+
-+    // The cancellation's OWN error is excused — and CONSUMED. The identical
-+    // message arriving again has no cancellation left to account for it, which
-+    // is exactly the reviewer's counterexample: cancel a request to a path,
-+    // then let a later one to that path fail for real.
-+    // Spending it is the function's OWN job — a caller cannot forget to, which
-+    // is precisely what the permanent set was.
-+    const pending = [{ url, at }];
-+    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
-+    expect(pending).toEqual([]);
-+    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
-+
-+    // Two cancellations excuse two errors and no more.
-+    const twice = [
-+      { url, at },
-+      { url, at: at + 10 },
-+    ];
-+    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-+    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-+    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
-+
-+    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
-+    // both are the same cancelled request.
++  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
++    const pending = [cancelled()];
++    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
++    // CONSUMED — the identical message arriving again has no cancellation
++    // left to account for it, which is the ORIGINAL reviewer counterexample.
+     expect(pending).toEqual([]);
+-    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
++    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
+ 
+-    // Two cancellations excuse two errors and no more.
+-    const twice = [
+-      { url, at },
+-      { url, at: at + 10 },
+-    ];
++    // WebKit spells the same diagnosis for an XHR as well as for a fetch.
 +    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
-+    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
++    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
 +
 +    // Only the DIAGNOSED wording is ever excused: a real render crash naming
 +    // the same URL is a page error, not a cancellation.
-+    expect(
-+      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
-+    ).toBe(false);
-+
-+    // It names that request, not merely its path: another host, and another
-+    // path on the same host, both stay errors.
-+    const elsewhere =
-+      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
-+    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
-+    const otherPath =
-+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
-+    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
-+
-+    // And an unconsumed cancellation does not stand for the whole journey: the
-+    // ceiling is generous (the spurious error is emitted in the same tick), but
-+    // it is a ceiling.
-+    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
++    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
++      false,
++    );
 +  });
-+});
++
++  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
++    const twice = [cancelled(), cancelled(10)];
+     expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+     expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+     expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
++  });
+ 
+-    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
+-    // both are the same cancelled request.
+-    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
+-    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
++  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
++    // This is the sealed finding: the cancellation happens and nothing ever
++    // reports its own page error for it — exactly the case the harness must
++    // tolerate without turning it into a standing credit for something else.
++    const events = [cancelled()];
++    // A genuine failure to the SAME url follows moments later, and IS
++    // tracked — this is what makes it outrank the stale cancellation next.
++    events.push(genuine(50));
++    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
++    // The stale cancellation is untouched: it lost to the more recent
++    // genuine failure, it was never spent.
++    expect(events).toContainEqual(cancelled());
++  });
+ 
+-    // Only the DIAGNOSED wording is ever excused: a real render crash naming
+-    // the same URL is a page error, not a cancellation.
+-    expect(
+-      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
+-    ).toBe(false);
++  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
++    // Genuine failure arrives FIRST, with no cancellation recorded at all.
++    const events = [genuine()];
++    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
++
++    // A real cancellation follows and correctly excuses its OWN error.
++    events.push(cancelled(100));
++    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
++
++    // Another genuine failure follows the (now-consumed) cancellation and is
++    // never excused by it either — there is nothing left pending to excuse
++    // it with, and it would not have qualified anyway.
++    events.push(genuine(200));
++    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
++  });
+ 
+-    // It names that request, not merely its path: another host, and another
+-    // path on the same host, both stay errors.
++  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
++    // A substring test cannot tell these apart from the genuine host/path;
++    // only structural URL equality can. Each of these contains the real
++    // host or path as a substring while naming a DIFFERENT resource.
++    const hostPrefixTrap =
++      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
++    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
++
++    const hostSuffixTrap =
++      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
++    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
++
++    const pathSuffixTrap =
++      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
++    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
++
++    // Another host entirely, and another path on the same host, both stay errors.
+     const elsewhere =
+       'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
+-    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
++    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
+     const otherPath =
+       'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
+-    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
++    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
++  });
+ 
+-    // And an unconsumed cancellation does not stand for the whole journey: the
+-    // ceiling is generous (the spurious error is emitted in the same tick), but
+-    // it is a ceiling.
+-    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
++  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
++    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
++    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+   });
+ });
 ```
 
 **Full current text of every file the rework touched:**
@@ -2210,11 +2043,31 @@ message merely CONTAINED that pathname discarded — so a genuine failure at the
 later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
 (`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
 excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
-naming the same URL is never excused), names that request's HOST as well as its path, and
-arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
-ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
-tick, and a tight window would trade an over-broad filter for a flaky one under the
-contention five concurrent dev servers already create.
+naming the same URL is never excused).
+
+**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
+ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
+host+path ALONE: a cancellation that produced no page error of its own stayed a live,
+unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
+a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
+the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
+cancellation's spurious error and a real access-control failure are worded the same on
+purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
+(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
+tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
+that URL always fires its own `requestfailed` before its own page error, so the instant one
+happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
+by anything but the specific error it was actually waiting for — which is what makes leaving
+it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
+now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
+servers create, never the correlation itself.
+
+A second, independent hole lived in the same function: `message.includes(url.host)` and
+`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
+one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
+(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
+WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
+the ambiguity structurally rather than adding more boundary characters to a string test.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -3248,6 +3101,37 @@ from the user, recorded here.
 # Decisions
 
 Durable record of non-obvious choices. Newest first.
+
+## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
+
+A fifth sealed review rejected the harness's cancellation excuse again. The previous round
+(below) made it CONSUMING and bounded by a generous ceiling, but the ceiling was still the
+whole bound, matched by host+path alone — and a cancellation that never produced its own page
+error stayed a live, unconsumed "credit" for the full ceiling, spendable by ANY later error to
+the same URL, including a genuine one that had nothing to do with it. Wording and URL cannot
+tell a cancellation's spurious error apart from a real access-control failure — they read
+identically by design (that is the whole diagnosis) — so no window, however short, can be the
+thing that distinguishes them. Only ORDER can: `excusedCancellation` now tracks EVERY
+`requestfailed`, not only cancelled ones, and excuses a page error only when the temporally
+NEAREST tracked request to the exact host+path it names is itself a cancellation. A genuine
+failure to that URL always fires its own `requestfailed` first, so it automatically becomes the
+nearer candidate the instant it happens — a stale cancellation with no error of its own is
+never reachable by anything but the error it was actually waiting for. The ceiling
+(`CANCELLED_EXCUSE_MS`, shrunk from 30s to 2s) is now purely DEFENSIVE headroom against
+delivery lag under contention, not the correlation itself.
+
+A second, independent hole in the same function was found and closed in the same pass:
+`message.includes(url.host)` and `message.includes(url.pathname)` are substring tests, and a
+crafted host (`evil-api.github.com`, `api.github.com.evil.test`) or path (`state.json.bak`)
+that merely CONTAINS the genuine value as a substring passed them. The message is now parsed
+into a real `URL` (stripping the space WebKit inserts after the scheme) and compared to each
+candidate by `host`/`pathname` EQUALITY, which removes the ambiguity structurally instead of
+trying to add more boundary characters to a string test.
+
+Six mutations were run and all six fail their named acceptance test: nearest-event selection
+reverted to first-match, the consuming `splice` removed, host/path equality loosened back to
+substring `includes`, the diagnosed-wording anchor dropped, the cancelled-type requirement
+dropped (any nearest match excuses), and the ceiling check removed outright.
 
 ## Rejection: two rules that held for one shape of the same defect (2026-09-17)
 
@@ -4420,3016 +4304,6 @@ recommendation engine's `scoreItems` — no second ranking — and is pure and d
 No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.
 ```
 
-### docs/setar-archive.md
-
-````
-# The Setar archive: scanner, index and refresh
-
-How the normalised Setar class archive becomes historical lessons, canonical
-repertoire items and useful practice material — and exactly how the unattended
-part of it is installed, run and rolled back.
-
-Nothing here writes to the archive. Ever.
-
----
-
-## 1. The shape of it
-
-```
-NAS (read-only)                     GitHub (private data repo)        App
-┌────────────────────────┐          ┌───────────────────────┐        ┌──────────────┐
-│ setar-classes/         │  scan    │ branch: source-index  │  GET   │ Refresh      │
-│   session-N-DD-MM-YYYY │ ───────▶ │   setar/index.json    │ ─────▶ │ Setar archive│
-│   PIECES.csv           │ publish  └───────────────────────┘        └──────────────┘
-│   RENAME-LOG.csv       │                     ▲                            │
-└────────────────────────┘                     │                            ▼
-         ▲                            branch: main (app data)     one validated
-         │ media, opened directly              UNTOUCHED           store mutation
-         └──────────────────────────────────────────────────────────────┘
-```
-
-Three separations do the work:
-
-- **The app never parses a filename.** The grammar lives once, in the scanner.
-- **The index is on its OWN branch.** The app's sync writes `main`'s whole tree
-  with no `base_tree`, so a sidecar next to `state.json` would disappear on the
-  next sync. `source-index` is outside that, and outside `archive/…` recovery
-  branches too.
-- **Media never travels.** Only paths do. Each device resolves them through its
-  own base URL, so changing the transport rewrites no stored record.
-
----
-
-## 2. The scanner
-
-`scripts/scan-setar-classes.mjs` — Node stdlib only, no dependencies, read-only
-over the archive.
-
-```sh
-node scripts/scan-setar-classes.mjs --root /volume1/media/setar-classes --out /volume1/practice-compass-index/setar-index.json
-node scripts/scan-setar-classes.mjs --root <archive>            # to stdout
-```
-
-It reads `PIECES.csv` (the canonical registry) with a real quoting-aware CSV
-parser, walks the `session-N-DD-MM-YYYY` folders, applies the filename grammar
-from the archive's own `CRAWLER-BRIEF.md`, and emits a **clock-free** JSON index
-with a `contentHash` over its semantic body. The same archive always produces
-byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
-
-What it refuses outright (and produces no index for): a malformed or ambiguous
-registry, a duplicate canonical key, two folders claiming one session number, an
-unsafe path, more than 5000 files, **any input that changed during the scan** —
-the registry, the rename log or the media inventory, all three read twice and
-compared, sizes included, so a file still being copied is caught too. That is a
-CONSISTENCY check, not atomicity: a perturbation that is stable across both
-readings agrees with itself, and from here is indistinguishable from the archive
-genuinely being in that state. What it removes is the transient — which is what a
-copy in flight looks like, and what would otherwise publish an index missing a
-file that is still there.
-
-A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
-stops it being read — missing, unreadable, a directory where a file should be —
-refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
-nothing else: it travels in the compared reading as `{present:false}`, never as
-empty text, because `catch { text = '' }` made a permission change or an I/O
-error agree with itself across both readings and publish an index with no
-renames at all. A present but EMPTY log is refused like an empty registry — a
-zero-byte file is what a copy in flight looks like.
-
-Each file's `mtimeMs` is part of the compared reading and is never read by the
-index builder, so a file edited IN PLACE at the same byte length fails the scan
-while altered mtimes still produce a byte-identical index.
-
-What it reports and skips: a file with no known role, an unknown piece, an
-unsupported extension, a class recording claiming a piece, an unnamed demo in a
-session whose roster and filenames disagree, a symbolic link (never followed —
-but never silently dropped either, since two readings agree about a file neither
-of them looked at), a session-named entry that is not a real directory, and
-every rename row whose destination this log does not determine. That is ONE
-rule, not two: a replacement name is published only where the log names it
-UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
-destinations names no file either; and a chain walking into either of those
-cannot say where it ended. Every such row is dropped with a diagnostic rather
-than published — the fork case used to publish its FIRST destination and
-diagnose the second as "not applied", which handed the app an identity this log
-cannot support. An ordinary chain beside a loop or a fork still publishes.
-Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
-archive content.
-
-The output is written **outside the archive** via a temp file + rename, and the
-scanner refuses an `--out` path inside `--root`.
-
-### Corpus baseline
-
-Verified directly against the real archive on 2026‑09‑17:
-
-| | |
-|---|---|
-| sessions | 39 |
-| files in session folders | 258 |
-| parseable | 257 |
-| known exception | 1 (`session-16-26-11-2024/video-2024-10-29-15-32-35.mp4`) |
-| canonical pieces | 94 |
-| personal recordings (`تمرین-من`) | 125 |
-| useful resources | 132 (45 class · 57 demo clips · 24 notation · 6 corrections) |
-| logical demonstrations | 37 |
-| rename-log rows | 257 |
-
-Source hashes (sha256), so a changed input is visible rather than assumed:
-
-```
-PIECES.csv        1f68366e32f0f5ddc8b8db0c1027893b724e16d496f0dca0502fa0a0cd133524
-RENAME-PLAN.csv   795faf11c1538e69905e245e9c45d0b13ebcd3469a1b18a2db097786e576b39c
-RENAME-LOG.csv    0c276d5e50fc93904ecfb76c71b1c78dca1cda2610f1569f28c9828013278373
-CRAWLER-BRIEF.md  ee76dbc17351fdcc33662b7c467652f5b90728005ef48071bdb35bcf8843a9bc
-sorted path inventory (LF-joined, trailing newline)
-                  0286b07549ad55b0f84166dc2c7b8c2d5949f96a282f03ebaa5837ebf5b22ae7
-```
-
-These are evidence of one corpus, not a limit: sessions 40+ need no code change.
-
----
-
-## 3. The publisher
-
-`scripts/publish-setar-index.mjs` writes **one file on one branch**:
-`source-index` / `setar/index.json`. Both are fixed in the code, and every other
-target is refused before a request is made.
-
-- **Unchanged content makes no commit.** The index is clock-free, so identical
-  bytes mean an identical archive.
-- The branch ref advances **non-force** from the commit that was read, with
-  `expected_head_sha`, so a racing publisher loses the update rather than
-  overwriting it; the retry re-reads before deciding anything.
-- An interruption before the ref advances leaves the previous index published —
-  a blob and a commit nothing points at are invisible.
-- Error messages are built from the HTTP status and the endpoint name only.
-  **No token, no repository URL and no archive path ever reaches a log.**
-
-### The credential
-
-A GitHub token scoped to **this one private repository**, with **Contents:
-write** and **Metadata: read**, and no workflow or admin permission.
-
-> GitHub does not issue branch-scoped tokens. The branch and path restriction is
-> a property of *this code* (and, optionally, of repository rules). It must not
-> be described as credential isolation.
-
-It lives in the NAS runtime's own protected configuration file and nowhere
-else — never in the archive, the app, a backup, sync, a commit or a log line.
-The app's own GitHub connection (Settings → Sync) is a *different* credential and
-is used here for **GETs only**.
-
----
-
-## 4. Installing the unattended job on the NAS
-
-The production host is the Synology NAS, not the Mac. The Mac can run the same
-two scripts by hand; that is the development fallback, not the deployment.
-
-1. **Runtime.** Install a supported Node runtime (Package Center → Node.js).
-   Record the actual binary path — `which node` under the task's own shell — and
-   set `PC_NODE` if it is not on `PATH`.
-2. **Directories.** Create a runtime/output directory *outside* the archive,
-   e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
-   Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
-   `scripts/run-setar-index.sh` into it.
-3. **Permissions.** Give that user **read-only** access to the archive share and
-   read/write to the runtime directory only.
-4. **Configuration.** Create `config.env` in the runtime directory, `chmod 600`:
-
-   ```sh
-   PC_ARCHIVE_ROOT=/volume1/<share>/setar-classes   # the REAL mount, not /Volumes/…
-   PC_INDEX_REPO=<owner>/practice-compass-data
-   PC_INDEX_TOKEN=<the publisher token>
-   ```
-
-   The real internal mount path is discovered during installation. **Do not
-   assume the Mac's `/Volumes/...` path exists on DSM.**
-5. **Schedule.** DSM → Control Panel → Task Scheduler → Create → Scheduled Task
-   → User-defined script. Run as the service user, every **15 minutes**, command:
-
-   ```sh
-   sh /volume1/practice-compass-index/run-setar-index.sh
-   ```
-
-   Enable "Send run details by email" only on error: the script prints counts and
-   a truncated commit id, never a secret.
-6. **Verify.** Run the task once by hand and confirm: a commit on `source-index`,
-   `main` unchanged (`git log --oneline main` has no new entry), and the app's
-   Refresh finding the new index. Then confirm an **unattended** run with the Mac
-   off.
-
-### What has been exercised, and what only the owner can
-
-`run-setar-index.sh` was run end to end on the Mac against the real archive with a
-deliberately invalid `PC_INDEX_TOKEN` (2026‑09‑17). It scanned the live corpus to the same
-content hash as every other run (`924125427f61`), wrote `setar-index.json` into the runtime
-directory, failed the publish with `GitHub refused the branch reference (HTTP 401)`, exited
-non-zero so a scheduler reports it, and left the archive byte-for-byte untouched. The
-output contains **no token, no repository name, no API URL and no archive path** — checked,
-not assumed.
-
-What that cannot prove, and what the OWNER has to confirm on the NAS itself: the real
-internal mount path, the DSM Node runtime, the service user's read-only permissions, the
-scheduled task firing unattended with the Mac off, a real publish landing on `source-index`
-with `main` unchanged, and the behaviour when the token is revoked.
-
-### Rollback
-
-Disable the scheduled task. The app keeps the source graph it last accepted and
-goes on working offline from it. To go back to an earlier index,
-`git push --force-with-lease` an earlier `source-index` commit. Neither touches
-the app's own data on `main`. Revoking the token stops publication and leaves the
-last good index exactly where it is.
-
----
-
-## 5. What the app does with it
-
-**Refresh Setar archive** (Settings, reachable from Lessons) fetches the branch
-ref, then the file **at that commit**, validates it, shows what would change, and
-applies the lot in one store mutation.
-
-- **Refresh means "the latest published index", not "rescan the NAS now."** The
-  UI says when the index was last *fetched* and last *changed*. It never says
-  "last scanned", because nothing here can know that.
-- **Exact source binding wins.** A record already bound to a source identity *is*
-  that entity, whatever its title or date has since been edited to.
-- A legacy class is auto-adopted only on **instrument + date + number + exact
-  source-path evidence**. Date alone, number alone or title alone cannot merge.
-- An exact title or literal alias match produces **Link / Create separately /
-  Skip** — never an automatic merge, and never "pick the first candidate".
-- New pieces arrive **resting**, by explicit import policy, so ninety-four items
-  do not flood Today. They stay searchable and directly startable.
-- **Nothing about practice is ever seeded**: no minutes, no result, no review
-  date, no SM‑2 state. An imported class is history even when its date is in the
-  future relative to this device's clock.
-- Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
-  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
-  its file through the rename log, so a renamed resource does not reappear —
-  including when the rename moves it into a different session's folder, where
-  the old row is dropped rather than reported missing. A rename LOOP names no
-  file, so a hide stays exactly where you put it and nothing is re-keyed.
-- **A decision is about the state you saw, and about the record you saw it on.**
-  If the value you chose the archive's over has changed since — or the record you
-  chose to link or apply a field to has been deleted, bound elsewhere or moved
-  instrument — the commit refuses and re-previews rather than applying an answer
-  to a question that no longer stands, or handing it to some other record.
-- **Every file on a class has exactly one section.** The archive's own session
-  material is composed for you (an imported class keeps no copy of it, so nothing
-  else can show it); your own links and attachments stay in the sections that can
-  edit and remove them, and are never repeated above. An imported class recording
-  counts as a recording, so you are not invited to add the video already playing.
-- **Your media base is an address and a folder.** A base carrying a username,
-  password, `?query` or `#fragment` is refused, not silently cleaned up: every
-  file URL is built by appending a path to it.
-
-The owner's own `تمرین-من` recordings are evidence, not material: their
-membership and role survive in the graph, the files themselves never become a
-piece's material.
-
----
-
-## 6. Notes for whoever changes this next
-
-- **`scripts/setar-index.test.mjs` is deliberately absent.** Vitest's `include`
-  is `src/**/*.test.ts` and `tests/**/*.test.ts` (and `vite.config.ts` is a
-  forbidden path in the lane that built this), so a test file under `scripts/`
-  would never run. The scanner and publisher are tested from
-  `src/domain/scanSetarClasses.test.ts` and `src/store/archiveIndex.test.ts`,
-  which import the `.mjs` modules directly.
-- **`src/domain/sourceArchive.test.ts` is deliberately absent too.** The decoder, the
-  deterministic ids, the suppression queries and `validateArchiveSources` are all exercised
-  where they are actually used — `scanSetarClasses.test.ts` (the grammar that feeds it),
-  `io.test.ts` (the validation boundary every door runs), `sourceReconcile.test.ts` and
-  `archiveIndex.test.ts` (the store). A fourth file asserting the same functions in
-  isolation would add a place to forget, not a place to look.
-- **`src/domain/setarClasses.ts` is frozen.** It is no longer a workflow; it is
-  the ledger of the 67 obsolete paths the old bundled importer wrote, and the
-  reference-repair check runs against all 67 of them.
-- `npm test` must never need the NAS, the Sandisk drive or the network. The
-  checked-in fixture `tests/fixtures/setar-archive.json` is the real corpus with
-  registry notes trimmed to their first sentence.
-````
-
-### scripts/scan-setar-classes.mjs
-
-```
-#!/usr/bin/env node
-// Scan the normalised Setar class archive into a deterministic JSON index.
-//
-//   node scripts/scan-setar-classes.mjs --root <archive> --out <file>
-//   node scripts/scan-setar-classes.mjs --root <archive>          # stdout
-//
-// READ-ONLY over the archive: nothing is written, renamed or deleted inside
-// `--root`, and the output must live outside it. Node stdlib only — the app's
-// dependencies are not available to an operator running this on a NAS.
-//
-// The app never parses a filename: it consumes the published index. That is
-// the whole reason this grammar lives here once rather than twice.
-//
-// Source contract: <ARCHIVE_ROOT>/CRAWLER-BRIEF.md.
-
-import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync, readdirSync, lstatSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { parseArgs } from 'node:util';
-
-export const ARCHIVE_ID = 'setar-classes';
-export const INDEX_FORMAT = 'setar-archive-index';
-export const INDEX_VERSION = 1;
-
-/**
- * Roles are NOT single hyphen-tokens — "ضبط-کلاس" and "تمرین-من" each contain
- * one — so a role is matched as a LONGEST prefix at a hyphen boundary, never
- * by splitting the stem on "-" and taking token 0 (which yields "تمرین" for
- * تمرین-من-عراق.mp4).
- */
-export const ROLES = ['ضبط-کلاس', 'تمرین-من', 'تصحیح', 'تکلیف', 'جزوه', 'نمونه', 'نت'];
-
-/** The student's own recordings: real evidence of work, never useful material. */
-export const PERSONAL_ROLE = 'تمرین-من';
-/** The teacher's demonstration. See §4 of the brief — its attribution is special. */
-export const DEMO_ROLE = 'نمونه';
-/** The whole class recording. Attaches to the SESSION; never carries a piece. */
-export const CLASS_ROLE = 'ضبط-کلاس';
-
-const KIND_BY_EXT = { '.mp4': 'video', '.pdf': 'score', '.jpg': 'photo' };
-
-/** NAS housekeeping and dotfiles are never archive content. */
-const IGNORED_DIRS = new Set(['@eaDir', '#recycle']);
-
-// Bounds. A runaway mount or a wrong --root must fail loudly, not be indexed.
-const MAX_FILES = 5000;
-const MAX_CSV_BYTES = 4 * 1024 * 1024;
-
-// ---------------------------------------------------------------------------
-// CSV
-// ---------------------------------------------------------------------------
-
-/**
- * Quoting-aware CSV reader. The registry's `notes` column carries commas and
- * doubled quotes inside quoted fields, so splitting on "," loses rows and
- * silently shifts every column after it.
- *
- * Malformed quoting (a quoted field that never closes, or a stray quote after
- * a closing one) THROWS — a half-read registry is an ambiguous identity table,
- * which is exactly what this lane may not guess at.
- */
-export function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let quoted = false;
-  let started = false; // this field opened with a quote
-  let i = 0;
-  const src = text.replace(/^﻿/, '');
-
-  const endField = () => {
-    row.push(field);
-    field = '';
-    started = false;
-  };
-  const endRow = () => {
-    endField();
-    rows.push(row);
-    row = [];
-  };
-
-  while (i < src.length) {
-    const c = src[i];
-    if (quoted) {
-      if (c === '"') {
-        if (src[i + 1] === '"') {
-          field += '"';
-          i += 2;
-          continue;
-        }
-        quoted = false;
-        i += 1;
-        continue;
-      }
-      field += c;
-      i += 1;
-      continue;
-    }
-    if (c === '"') {
-      if (field !== '' || started) throw new Error(`Malformed CSV: unexpected quote at offset ${i}.`);
-      quoted = true;
-      started = true;
-      i += 1;
-      continue;
-    }
-    if (c === ',') {
-      endField();
-      i += 1;
-      continue;
-    }
-    if (c === '\r') {
-      i += 1;
-      continue;
-    }
-    if (c === '\n') {
-      endRow();
-      i += 1;
-      continue;
-    }
-    field += c;
-    i += 1;
-  }
-  if (quoted) throw new Error('Malformed CSV: a quoted field is never closed.');
-  if (field !== '' || row.length > 0) endRow();
-  return rows.filter((r) => r.length > 1 || r[0] !== '');
-}
-
-/** Rows as objects, checked against the exact headers a caller requires. */
-export function readTable(text, requiredHeaders) {
-  if (text.length > MAX_CSV_BYTES) throw new Error('CSV is larger than this scanner accepts.');
-  const rows = parseCsv(text);
-  if (rows.length === 0) throw new Error('CSV is empty.');
-  const header = rows[0].map((h) => h.trim());
-  for (const h of requiredHeaders) {
-    if (!header.includes(h)) throw new Error(`CSV is missing the "${h}" column.`);
-  }
-  return rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ''])));
-}
-
-// ---------------------------------------------------------------------------
-// PIECES.csv — the canonical registry
-// ---------------------------------------------------------------------------
-
-const REGISTRY_HEADERS = ['canonical_fa', 'form', 'piece', 'dastgah', 'composer', 'aliases_seen', 'sessions', 'notes'];
-
-/**
- * `canonical_fa` is the BYTE-EXACT join key: it is the `<piece>` segment of
- * every filename, unchanged. Nothing here folds spellings, transliterates or
- * normalises it — `aliases_seen` is literal SEARCH data and is never consulted
- * for identity.
- */
-export function parseRegistry(text) {
-  const rows = readTable(text, REGISTRY_HEADERS);
-  const pieces = [];
-  const seen = new Set();
-  for (const r of rows) {
-    const key = r.canonical_fa;
-    if (!key || !key.trim()) throw new Error('Registry has a row with an empty canonical_fa.');
-    if (seen.has(key)) throw new Error(`Registry has two rows for the canonical piece "${key}".`);
-    seen.add(key);
-    const sessions = [];
-    for (const raw of r.sessions.split(',')) {
-      const s = raw.trim();
-      if (!s) continue;
-      if (!/^\d+$/.test(s)) throw new Error(`Registry row "${key}" has an invalid session number "${s}".`);
-      const n = Number(s);
-      if (n < 1) throw new Error(`Registry row "${key}" has an invalid session number "${s}".`);
-      if (!sessions.includes(n)) sessions.push(n);
-    }
-    sessions.sort((a, b) => a - b);
-    const notes = r.notes ?? '';
-    pieces.push({
-      key,
-      form: r.form ?? '',
-      piece: r.piece ?? '',
-      dastgah: r.dastgah ?? '',
-      composer: r.composer ?? '',
-      aliases: r.aliases_seen ? r.aliases_seen.split('|').map((a) => a.trim()).filter(Boolean) : [],
-      sessions,
-      notes,
-      // Caveats are SOURCE evidence, surfaced as flags — never a licence to
-      // invent a category or to merge one piece into another.
-      provisional: /PROVISIONAL/.test(notes),
-      mediumConfidence: /MEDIUM confidence/i.test(notes),
-    });
-  }
-  pieces.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-  return pieces;
-}
-
-// ---------------------------------------------------------------------------
-// Filenames and folders
-// ---------------------------------------------------------------------------
-
-/** "session-12-06-08-2024" → { n: 12, date: "2024-08-06" }, else null. */
-export function parseSessionFolderName(name) {
-  const m = /^session-(\d+)-(\d{2})-(\d{2})-(\d{4})$/.exec(name);
-  if (!m) return null;
-  const [, n, dd, mm, yyyy] = m;
-  // Round-trip through Date.UTC: /^\d{2}$/ happily matches "30-02-2024".
-  const d = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd)));
-  if (
-    d.getUTCFullYear() !== Number(yyyy) ||
-    d.getUTCMonth() !== Number(mm) - 1 ||
-    d.getUTCDate() !== Number(dd)
-  ) {
-    return null;
-  }
-  return { n: Number(n), date: `${yyyy}-${mm}-${dd}` };
-}
-
-/** File extension, lowercased, including the dot ("" when there is none). */
-export function fileExt(name) {
-  const i = name.lastIndexOf('.');
-  return i <= 0 ? '' : name.slice(i).toLowerCase();
-}
-
-/**
- * `<role>-<canonical_piece>[-<n>]` — the exact algorithm from §2 of the brief.
- * Returns null when no role matches: an unparseable file is SURFACED, never
- * guessed at.
- */
-export function parseAssetStem(stem) {
-  let role = null;
-  for (const r of ROLES) {
-    if (stem === r || stem.startsWith(`${r}-`)) {
-      if (!role || r.length > role.length) role = r;
-    }
-  }
-  if (!role) return null;
-  const rest = stem.slice(role.length).replace(/^-+/, '');
-  // A TRAILING "-<digits>" is always a part number: no canonical piece name
-  // ends in a digit, so this cannot eat one. An EMBEDDED digit
-  // (تمرین-دشتی-1-علیزاده) is piece identity and stays.
-  let piece = null;
-  let part = null;
-  const trailing = /^(.*?)-(\d+)$/.exec(rest);
-  if (trailing) {
-    piece = trailing[1] || null;
-    part = Number(trailing[2]);
-  } else if (/^\d+$/.test(rest)) {
-    part = Number(rest);
-  } else {
-    piece = rest || null;
-  }
-  return { role, piece, part };
-}
-
-/** Display title: the stem with "-"/"_" as spaces. Never used as identity. */
-export function displayTitle(stem) {
-  return stem.replace(/[-_]+/g, ' ').trim();
-}
-
-/**
- * A path is only ever an archive-relative POSIX path of plain segments.
- * Traversal, absolute paths, backslashes, URL schemes and percent-encoded
- * separators are refused rather than sanitised — a rewritten path is a
- * DIFFERENT file, and this index is an identity table.
- */
-export function isSafeRelativePath(p) {
-  if (typeof p !== 'string' || !p) return false;
-  if (p.length > 1024) return false;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(p)) return false; // http:, file:, data:…
-  if (p.startsWith('/') || p.includes('\\')) return false;
-  if (/%2f|%5c/i.test(p)) return false;
-  const segs = p.split('/');
-  return segs.every((s) => s !== '' && s !== '.' && s !== '..');
-}
-
-// ---------------------------------------------------------------------------
-// Index
-// ---------------------------------------------------------------------------
-
-const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-
-/**
- * Build the semantic index from the registry text and a flat inventory of
- * `{ path, size }` entries (archive-relative). PURE and clock-free: the same
- * inventory in any order, with any mtimes, produces byte-identical output.
- *
- * Throws only for input that makes the whole index untrustworthy (a malformed
- * or ambiguous registry, a duplicate identity, an unsafe path, too many
- * files). Individual unhandled FILES are reported in `diagnostics` and left
- * out — surfaced for the owner, never relabelled.
- */
-export function buildIndex({ registryText, inventory, renameLog, skipped = [] }) {
-  const pieces = parseRegistry(registryText);
-  const byKey = new Map(pieces.map((p) => [p.key, p]));
-
-  if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
-
-  const diagnostics = [];
-  const diag = (path, reason) => diagnostics.push({ path, reason });
-  // Everything the WALK could not take in. A symlink is not followed and a
-  // device node is not a file, but dropping either in silence publishes an
-  // index that is quietly narrower than the archive — the same "partial view
-  // sold as complete" this scanner's two-read check exists to refuse.
-  for (const s of skipped) diag(s.path, s.reason);
-
-  // --- sessions -----------------------------------------------------------
-  const sessions = new Map(); // n -> { n, date, folder, assets: [] }
-  const seenPaths = new Set();
-  for (const entry of inventory) {
-    const path = entry.path;
-    if (!isSafeRelativePath(path)) throw new Error(`Refusing an unsafe archive path: ${JSON.stringify(path)}`);
-    if (seenPaths.has(path)) throw new Error(`Two inventory entries share the path "${path}".`);
-    seenPaths.add(path);
-
-    const segs = path.split('/');
-    if (segs.length !== 2) {
-      diag(path, 'Outside a session folder — not indexed.');
-      continue;
-    }
-    const [folder, name] = segs;
-    const parsed = parseSessionFolderName(folder);
-    if (!parsed) {
-      diag(path, 'Not in a session-N-DD-MM-YYYY folder — not indexed.');
-      continue;
-    }
-    const existing = sessions.get(parsed.n);
-    if (existing && existing.folder !== folder) {
-      throw new Error(`Two folders claim session ${parsed.n}: "${existing.folder}" and "${folder}".`);
-    }
-    const session = existing ?? { n: parsed.n, date: parsed.date, folder, assets: [] };
-    sessions.set(parsed.n, session);
-
-    const ext = fileExt(name);
-    const kind = KIND_BY_EXT[ext];
-    const stem = ext ? name.slice(0, -ext.length) : name;
-    const parsedName = parseAssetStem(stem);
-    if (!parsedName) {
-      diag(path, 'Filename carries no known role — left for the owner to name or move.');
-      continue;
-    }
-    if (!kind) {
-      diag(path, `Unsupported file type "${ext || '(none)'}" — not indexed.`);
-      continue;
-    }
-    if (parsedName.piece && !byKey.has(parsedName.piece)) {
-      diag(path, `Piece "${parsedName.piece}" is not in the registry — not indexed.`);
-      continue;
-    }
-    if (parsedName.piece && parsedName.role === CLASS_ROLE) {
-      diag(path, 'A class recording covers the whole lesson and cannot name a piece.');
-      continue;
-    }
-    session.assets.push({
-      path,
-      role: parsedName.role,
-      piece: parsedName.piece,
-      part: parsedName.part,
-      kind,
-      title: displayTitle(stem),
-      size: entry.size ?? 0,
-    });
-  }
-
-  const ordered = [...sessions.values()].sort((a, b) => a.n - b.n);
-
-  // --- attribution --------------------------------------------------------
-  const out = [];
-  for (const s of ordered) {
-    s.assets.sort((a, b) => cmp(a.role, b.role) || cmp(a.piece ?? '', b.piece ?? '') || (a.part ?? 0) - (b.part ?? 0) || cmp(a.path, b.path));
-
-    // The ROSTER is the registry's own answer to "which pieces were assigned
-    // at class N" — never a set inferred from the filenames present.
-    const roster = pieces.filter((p) => p.sessions.includes(s.n)).map((p) => p.key);
-    const named = [...new Set(s.assets.map((a) => a.piece).filter(Boolean))];
-    const strays = named.filter((k) => !roster.includes(k));
-    // A named piece the roster does not claim means the two halves of the
-    // source disagree. An unnamed demo expands across the roster, so expanding
-    // it here would spread a guess: block that one inference and say so.
-    const rosterTrusted = strays.length === 0;
-    for (const k of strays) diag(`${s.folder}`, `Piece "${k}" appears in this folder but the registry does not list session ${s.n} for it.`);
-
-    const resources = [];
-    const memberships = new Map(); // pieceKey -> Set(role)
-    const member = (key, role) => {
-      if (!memberships.has(key)) memberships.set(key, new Set());
-      memberships.get(key).add(role);
-    };
-
-    for (const a of s.assets) {
-      if (a.piece) member(a.piece, a.role);
-      // The student's own playing is EVIDENCE, not material: its membership
-      // and role survive, the individual file does not.
-      if (a.role === PERSONAL_ROLE) continue;
-      const pieces_ =
-        a.role === DEMO_ROLE && !a.piece
-          ? rosterTrusted
-            ? roster
-            : []
-          : a.piece
-            ? [a.piece]
-            : [];
-      if (a.role === DEMO_ROLE && !a.piece && !rosterTrusted) {
-        diag(a.path, `Unnamed demonstration not attributed: session ${s.n}'s roster disagrees with its filenames.`);
-      }
-      for (const k of pieces_) member(k, a.role);
-      resources.push({
-        path: a.path,
-        role: a.role,
-        kind: a.kind,
-        title: a.title,
-        part: a.part,
-        size: a.size,
-        // A class recording, an unnamed handout and an unattributed demo stay
-        // with the LESSON. Only a resource that names its pieces is scoped.
-        pieces: a.role === CLASS_ROLE ? [] : pieces_,
-        // Parts of one demonstration are ONE logical resource, ordered by part.
-        group: a.role === DEMO_ROLE ? `${DEMO_ROLE}:${a.piece ?? ''}` : null,
-      });
-    }
-
-    out.push({
-      n: s.n,
-      date: s.date,
-      folder: s.folder,
-      roster,
-      rosterTrusted,
-      hasClassRecording: s.assets.some((a) => a.role === CLASS_ROLE),
-      resources: resources.sort((a, b) => cmp(a.role, b.role) || cmp(a.group ?? '', b.group ?? '') || (a.part ?? 0) - (b.part ?? 0) || cmp(a.path, b.path)),
-      members: [...memberships.entries()]
-        .map(([key, roles]) => ({ key, roles: [...roles].sort(cmp) }))
-        .sort((a, b) => cmp(a.key, b.key)),
-    });
-  }
-
-  // --- rename provenance --------------------------------------------------
-  // EXACT old→new pairs only. This is path provenance, not a similarity model.
-  //
-  // ONE RULE, NOT TWO MECHANISMS: a path publishes a replacement name only
-  // when this log determines it UNIQUELY and TERMINALLY. A source named with
-  // two destinations does not say which file it became; a chain that walks
-  // into a loop — or into such a source — cannot say either. Every one of
-  // those publishes NOTHING and is diagnosed instead. The conflict case used
-  // to publish the FIRST destination and diagnose the second as "not
-  // applied", which is exactly backwards: the mapping the log cannot support
-  // was handed to the app as exact identity, and the app then repaired an
-  // authored reference onto it and re-keyed an owner's hide onto it.
-  let renames = [];
-  // ABSENT is a source fact; UNREADABLE never reaches here (readSource throws).
-  // A present-but-empty log has no header and `readTable` says so, exactly as
-  // it would for PIECES.csv — a zero-byte file is what a copy in flight looks
-  // like, and guessing "no renames" from it is the failure this lane closed.
-  if (renameLog && renameLog.present) {
-    const rows = readTable(renameLog.text, ['old_path', 'new_path']);
-    const dest = new Map();
-    const forks = new Map(); // from → every destination the log names for it
-    for (const r of rows) {
-      const from = r.old_path.trim();
-      const to = r.new_path.trim();
-      if (!from || !to) continue;
-      if (!isSafeRelativePath(from) || !isSafeRelativePath(to)) {
-        diag(from, 'Rename row carries an unsafe path — ignored.');
-        continue;
-      }
-      const prior = dest.get(from);
-      if (prior !== undefined && prior !== to) {
-        forks.set(from, (forks.get(from) ?? new Set([prior])).add(to));
-        continue;
-      }
-      dest.set(from, to);
-    }
-    // A conflicted source stops being a mapping BEFORE anything walks the
-    // graph: left in `dest`, its first destination would still be published,
-    // and a chain ending there would publish a name on its strength too.
-    for (const from of forks.keys()) dest.delete(from);
-
-    // Each path is judged by ITS OWN walk, so the verdict does not depend on
-    // the order rows arrived in — `diagnostics` is inside `contentHash`, and
-    // ac-4's claim is that a shuffled source yields the same semantic index.
-    const unresolvable = new Map();
-    for (const from of dest.keys()) {
-      const seen = new Set([from]);
-      let cur = from;
-      let loops = false;
-      while (dest.has(cur)) {
-        const next = dest.get(cur);
-        if (seen.has(next)) {
-          loops = true;
-          break;
-        }
-        seen.add(next);
-        cur = next;
-      }
-      if (loops) {
-        unresolvable.set(from, 'Rename log loops through this path — no replacement name can be read from it.');
-      } else if (forks.has(cur)) {
-        unresolvable.set(
-          from,
-          `Rename log renames this path into "${cur}", which it names more than one destination for — no replacement name can be read from it.`,
-        );
-      }
-    }
-    for (const [from, reason] of unresolvable) {
-      dest.delete(from);
-      diag(from, reason);
-    }
-    for (const [from, tos] of forks) {
-      const named = [...tos].sort(cmp).map((t) => `"${t}"`).join(' and ');
-      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`);
-    }
-    renames = [...dest].map(([from, to]) => ({ from, to })).sort((a, b) => cmp(a.from, b.from));
-  }
-
-  const body = {
-    format: INDEX_FORMAT,
-    version: INDEX_VERSION,
-    archiveId: ARCHIVE_ID,
-    pieces,
-    sessions: out,
-    renames,
-    diagnostics: diagnostics.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason)),
-  };
-  return { ...body, contentHash: contentHash(body) };
-}
-
-/** Stable digest of the SEMANTIC body — no clock, no mtimes, no ordering luck. */
-export function contentHash(body) {
-  const { contentHash: _ignored, generatedAt: _also, ...rest } = body;
-  return createHash('sha256').update(canonicalJson(rest)).digest('hex');
-}
-
-/** Key-sorted JSON, so an object-literal reordering cannot change the hash. */
-export function canonicalJson(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
-  if (value && typeof value === 'object') {
-    const keys = Object.keys(value).filter((k) => value[k] !== undefined).sort();
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJson(value[k])}`).join(',')}}`;
-  }
-  return JSON.stringify(value === undefined ? null : value);
-}
-
-// ---------------------------------------------------------------------------
-// Filesystem (the only impure part)
-// ---------------------------------------------------------------------------
-
-/**
- * Inventory the archive: one pass, session folders only, dotfiles and NAS
- * housekeeping skipped, symlinks never followed (a link out of the archive is
- * a path this scanner has no authority over). Read-only by construction —
- * nothing here opens a file for writing.
- */
-export function scanArchive(root) {
-  const base = resolve(root);
-  const inventory = [];
-  const skipped = [];
-  for (const entry of readdirSync(base, { withFileTypes: true })) {
-    if (entry.name.startsWith('.') || IGNORED_DIRS.has(entry.name)) continue;
-    if (!parseSessionFolderName(entry.name)) continue; // root folders out of scope
-    if (!entry.isDirectory()) {
-      // It CLAIMS to be a session and this walk will not open it. Silence here
-      // would drop a whole class out of a "complete" index.
-      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.' });
-      continue;
-    }
-    const dir = join(base, entry.name);
-    for (const f of readdirSync(dir, { withFileTypes: true })) {
-      if (f.name.startsWith('.') || IGNORED_DIRS.has(f.name)) continue;
-      const full = join(dir, f.name);
-      const st = lstatSync(full);
-      const path = `${entry.name}/${f.name}`;
-      if (st.isSymbolicLink()) {
-        // Never FOLLOWED — a link out of the archive is a path this scanner
-        // has no authority over — but always SAID, so the owner can see that
-        // the index is not describing something the folder holds.
-        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed.' });
-        continue;
-      }
-      if (!st.isFile()) {
-        skipped.push({ path, reason: 'Not a regular file — not indexed.' });
-        continue;
-      }
-      if (!full.startsWith(base + sep)) continue;
-      // `mtimeMs` is deliberately NOT semantic — `buildIndex` reads `size` and
-      // nothing else, so an altered time cannot change the published index. It
-      // is here for the two-read comparison below: a file edited IN PLACE at
-      // the same byte length is otherwise invisible to it.
-      inventory.push({ path, size: st.size, mtimeMs: st.mtimeMs });
-      if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
-    }
-  }
-  inventory.sort((a, b) => cmp(a.path, b.path));
-  skipped.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason));
-  return { inventory, skipped };
-}
-
-/** Write via a temp file + rename, so a reader never sees a half-written index. */
-export function writeIndexAtomically(outPath, text, root) {
-  const out = resolve(outPath);
-  if (root && (out === resolve(root) || out.startsWith(resolve(root) + sep))) {
-    throw new Error('Refusing to write the index inside the archive it describes.');
-  }
-  const tmp = `${out}.tmp-${process.pid}`;
-  writeFileSync(tmp, text);
-  renameSync(tmp, out);
-  return out;
-}
-
-/**
- * EVERY input this scanner reads, in one place — so "read it twice and compare"
- * below covers all of them by construction, including one added later.
- */
-export function readSource(base) {
-  const registryText = readRequired(join(base, 'PIECES.csv'), 'PIECES.csv');
-  const renameLog = readOptional(join(base, 'RENAME-LOG.csv'), 'RENAME-LOG.csv');
-  const { inventory, skipped } = scanArchive(base);
-  return { registryText, renameLog, inventory, skipped };
-}
-
-/** A required input. Any failure to read it is a failure to scan. */
-function readRequired(path, label) {
-  try {
-    return readFileSync(path, 'utf8');
-  } catch (err) {
-    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
-  }
-}
-
-/**
- * AN OPTIONAL INPUT IS ABSENT OR PRESENT — NEVER "EMPTY BECAUSE IT THREW".
- *
- * `catch { text = '' }` made every failure to read RENAME-LOG.csv — a
- * permission change, an I/O error, a mount that went away mid-copy — look
- * exactly like an archive that has no rename log. Both readings then agreed
- * with each other, so the consistency check below passed and the scan
- * published an index with no renames at all: a file that moved during that
- * window is flagged unavailable and its saved references can never be
- * repaired. Only ENOENT is an observation; everything else is a failure.
- */
-function readOptional(path, label) {
-  try {
-    return { present: true, text: readFileSync(path, 'utf8') };
-  } catch (err) {
-    if (err?.code === 'ENOENT') return { present: false };
-    throw new Error(`Could not read ${label}: ${err?.code ?? err?.message ?? 'unreadable'}.`);
-  }
-}
-
-/**
- * Read the archive and build its index — from ONE consistent view, or none.
- *
- * The registry used to be the only input re-read after the walk, which made
- * the guarantee exactly as narrow as the file it named: the MEDIA is what a
- * non-atomic NAS copy actually perturbs. Move a resource out before its folder
- * is enumerated and put it back while later folders are walked, and PIECES.csv
- * never changes — the scan publishes an index missing that file, and the next
- * Refresh marks still-present material unavailable. The rename log had the
- * same exposure, read once and never checked.
- *
- * So the whole source is read TWICE and the two readings compared. `size` is
- * part of the comparison, so a file still being copied is caught too.
- *
- * This is a CONSISTENCY check, not atomicity: a perturbation that is stable
- * across both readings agrees with itself and is indistinguishable, from here,
- * from the archive genuinely being in that state. What it removes is the
- * transient, which is what a copy in flight actually looks like.
- */
-export function scanToIndex(root) {
-  const base = resolve(root);
-  const before = readSource(base);
-  const after = readSource(base);
-  if (canonicalJson(before) !== canonicalJson(after)) {
-    throw new Error('The archive changed during the scan; no index was produced.');
-  }
-  return buildIndex(before);
-}
-
-function main() {
-  const { values } = parseArgs({
-    options: { root: { type: 'string' }, out: { type: 'string' } },
-  });
-  if (!values.root) {
-    console.error('Usage: scan-setar-classes.mjs --root <archive> [--out <file>]');
-    process.exit(2);
-  }
-  let index;
-  try {
-    index = scanToIndex(values.root);
-  } catch (err) {
-    console.error(`Scan failed: ${err.message}`);
-    console.error('The last published index is left exactly as it is.');
-    process.exit(1);
-  }
-  const text = `${JSON.stringify(index, null, 2)}\n`;
-  if (values.out) {
-    const written = writeIndexAtomically(values.out, text, values.root);
-    const files = index.sessions.reduce((n, s) => n + s.resources.length, 0);
-    console.error(`${index.sessions.length} sessions, ${index.pieces.length} pieces, ${files} useful resources, ${index.diagnostics.length} needing attention.`);
-    console.error(`Wrote ${written} (${index.contentHash.slice(0, 12)}).`);
-  } else {
-    process.stdout.write(text);
-  }
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
-```
-
-### src/domain/scanSetarClasses.test.ts
-
-```
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, utimesSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { describe, expect, it } from 'vitest';
-// The scanner is an operator-run Node tool (.mjs) so a NAS needs no bundler and
-// no app dependencies — but its grammar is the ONE place a filename becomes an
-// identity, so every rule in it is exercised here. The facade below is the
-// shape under test; the module itself carries no types.
-interface Piece {
-  key: string;
-  form: string;
-  piece: string;
-  dastgah: string;
-  composer: string;
-  aliases: string[];
-  sessions: number[];
-  notes: string;
-  provisional: boolean;
-  mediumConfidence: boolean;
-}
-interface Resource {
-  path: string;
-  role: string;
-  kind: string;
-  title: string;
-  part: number | null;
-  size: number;
-  pieces: string[];
-  group: string | null;
-}
-interface Session {
-  n: number;
-  date: string;
-  folder: string;
-  roster: string[];
-  rosterTrusted: boolean;
-  hasClassRecording: boolean;
-  resources: Resource[];
-  members: { key: string; roles: string[] }[];
-}
-interface Index {
-  pieces: Piece[];
-  sessions: Session[];
-  renames: { from: string; to: string }[];
-  diagnostics: { path: string; reason: string }[];
-  contentHash: string;
-}
-interface Entry {
-  path: string;
-  size: number;
-  mtimeMs?: number;
-}
-interface Skipped {
-  path: string;
-  reason: string;
-}
-/** An optional input is ABSENT or PRESENT — never "empty because it threw". */
-type OptionalInput = { present: false } | { present: true; text: string };
-interface Scanner {
-  buildIndex(input: {
-    registryText: string;
-    inventory: Entry[];
-    renameLog?: OptionalInput;
-    skipped?: Skipped[];
-  }): Index;
-  contentHash(body: unknown): string;
-  parseAssetStem(stem: string): { role: string; piece: string | null; part: number | null } | null;
-  parseCsv(text: string): string[][];
-  parseRegistry(text: string): Piece[];
-  parseSessionFolderName(name: string): { n: number; date: string } | null;
-  scanArchive(root: string): { inventory: Entry[]; skipped: Skipped[] };
-  scanToIndex(root: string): Index;
-  readSource(root: string): {
-    registryText: string;
-    renameLog: OptionalInput;
-    inventory: Entry[];
-    skipped: Skipped[];
-  };
-  canonicalJson(value: unknown): string;
-  writeIndexAtomically(outPath: string, text: string, root?: string): string;
-  isSafeRelativePath(p: string): boolean;
-  displayTitle(stem: string): string;
-}
-// @ts-expect-error — no type declarations for the .mjs operator tool.
-import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
-const {
-  buildIndex,
-  contentHash,
-  parseAssetStem,
-  parseCsv,
-  parseRegistry,
-  parseSessionFolderName,
-  scanArchive,
-  scanToIndex,
-  readSource,
-  canonicalJson,
-  writeIndexAtomically,
-  isSafeRelativePath,
-  displayTitle,
-} = scannerModule as Scanner;
-
-// ---------------------------------------------------------------------------
-// Real rows from the archive's own PIECES.csv. Registry notes are trimmed to
-// their first sentence — the caveat survives, the research prose does not
-// travel into a checked-in fixture — EXCEPT the one row kept verbatim because
-// its quoting is the thing under test.
-// ---------------------------------------------------------------------------
-
-const HEADER = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes';
-
-const REGISTRY_ROWS = [
-  'چهارمضراب-اول-دشتی-صبا,چهارمضراب,دشتی(اول),دشتی,صبا,chahar-mezarabe-avale-dashti|4mez-aval-dashti,1,Confirmed from PDF and jpg score.',
-  // Verbatim: embedded commas AND doubled quotes inside one quoted field.
-  'رنگ-ماهور-درویش-خان,رنگ,ماهور,ماهور,درویش-خان,renge-mahoor-darvish|renge-mahoor-darvish-sevom-1402-05-22,1,"Confirmed from PDF. ""sevom"" in filename is a version/take marker, not part of the name. Distinct from رنگ-ماهور-راک-برومند (session 21), a different arrangement."',
-  'تمرین-دشتی-1-علیزاده,تمرین,دشتی-1,دشتی,علیزاده,study-of-dashti-1-alizadeh|تمرین-دشتی-۳,"4,5",Repeat chain 4->5.',
-  'عراق,(standalone),عراق,,,araq,12,Matches the brief\'s own worked example exactly.',
-  'رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان,رنگ,اصفهان(پریچهر-و-پریزاد),اصفهان,درویش-خان,renge-esfehan-paricherandparizad-darvish,16,Confirmed from PDF.',
-  'پیش-درامد-ماهور-هرمزی,پیش-درامد,ماهور,ماهور,هرمزی,pishdaramade-mahur-hormozi,"16,17,18",Repeat chain 16->17->18 (3 sessions).',
-  'چهارمضراب-ماهور-صبا,چهارمضراب,ماهور,ماهور,صبا,chaharmezrabe-mahur-sabaa,"9,10,11,12,16",Repeat chain 9->10->11->12.',
-  'به-زندان-شوشتری,(قطعه),به-زندان,شوشتری,,be-zendan-shushtari,"28,29",Repeat chain 28->29 (2 parts).',
-  'ضربی-شکسته-لطفی,ضربی,شکسته,,لطفی,zarbiye-shekasteh-lotfi-1,"27,28",Repeat chain 27->28 (2 parts).',
-  'پیش-درامد-سه-گاه-فروتن,پیش-درامد,سه-گاه,سه-گاه,فروتن,pish-daramade-segah-forutan-1|pish-daramade-segah-forutan-6,"22,23,24,25,26,27","Longest repeat chain in the archive: 22->23->24->25->26->27 (6 sessions, only session 22 should get a نمونه)."',
-  'ماهور-ردیف-میرزاعبدالله,(ردیف),ماهور,ماهور,,movie-on-16-04-2024-at-*,7,PROVISIONAL dastgah-level name.',
-  'هفت-ضربی-چهارگاه-علیزاده,هفت-ضربی,چهارگاه,چهارگاه,علیزاده,haft-zarbi-chahargah-alizadeh-1,"5,6",Repeat chain 5->6 (2 parts).',
-  'چهار-پاره,چهارپاره,چهار-پاره,ابوعطا,,abouata-chaharpareh-1,"4,5",Repeat chain 4->5 (2 parts).',
-  'سیخی-ابوعطا,گوشه,سیخی,ابوعطا,,abouata-sayakhi,3,MEDIUM confidence.',
-  // Session 13's full roster: eight canonical pieces.
-  'ضربی-عراق-ماهور-میرزا-حسینقلی,ضربی,عراق,ماهور,میرزا-حسینقلی,zarbi-araaq-mahur-mirzahoseyngholi,13,Confirmed from PDF.',
-  'اصفهانک-در-عراق,گوشه,اصفهانک,عراق(ماهور),,esfahaanak-dar-araaq,13,Part of the عراق gusheh-sequence.',
-  'حزین-در-عراق,گوشه,حزین,عراق(ماهور),,hazin-dar-araaq,13,Confirmed via web search.',
-  'کرشمه-در-عراق,گوشه,کرشمه,عراق(ماهور),,kereshmeh-dar-araaq,13,Distinct from کرشمه-راک.',
-  'محیر-در-عراق,گوشه,محیر,عراق(ماهور),,mohayyer-dar-araaq,13,Confirmed spelling محیّر via web search.',
-  'نهیب-در-عراق,گوشه,نهیب,عراق(ماهور),,nahib-dar-araaq,13,Confirmed via web search.',
-  'زنگوله-در-عراق,گوشه,زنگوله,عراق(ماهور),,zanguleh-dar-araaq,13,Distinct from زنگوله-بیات-ترک.',
-  'آشوراوند,(standalone),آشوراوند,راک(ماهور),,ashur-aavand,13,Confirmed via web search as one solid word.',
-];
-
-const REGISTRY = [HEADER, ...REGISTRY_ROWS].join('\n') + '\n';
-
-/** A real slice of the archive: paths exactly as they are on disk. */
-const INVENTORY: Entry[] = [
-  { path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', size: 47_321_598 },
-  { path: 'session-1-26-09-2023/ضبط-کلاس-2.mp4', size: 41_770_634 },
-  { path: 'session-1-26-09-2023/ضبط-کلاس-3.mp4', size: 16_587_151 },
-  { path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf', size: 120_000 },
-  { path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.jpg', size: 90_000 },
-  { path: 'session-1-26-09-2023/نت-رنگ-ماهور-درویش-خان.pdf', size: 110_000 },
-  { path: 'session-1-26-09-2023/تمرین-من-رنگ-ماهور-درویش-خان.mp4', size: 15_200_000 },
-  { path: 'session-5-23-01-2024/تمرین-من-تمرین-دشتی-1-علیزاده.mp4', size: 9_000_000 },
-  { path: 'session-5-23-01-2024/تمرین-من-چهار-پاره.mp4', size: 8_000_000 },
-  { path: 'session-5-23-01-2024/تمرین-من-هفت-ضربی-چهارگاه-علیزاده.mp4', size: 7_000_000 },
-  { path: 'session-5-23-01-2024/نت-هفت-ضربی-چهارگاه-علیزاده.pdf', size: 100_000 },
-  { path: 'session-5-23-01-2024/ضبط-کلاس.mp4', size: 402_863_504 },
-  { path: 'session-5-23-01-2024/نمونه-1.mp4', size: 60_000_000 },
-  { path: 'session-5-23-01-2024/نمونه-2.mp4', size: 30_000_000 },
-  { path: 'session-9-14-05-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4', size: 5_000_000 },
-  { path: 'session-10-11-06-2024/تمرین-من-چهارمضراب-ماهور-صبا.mp4', size: 5_100_000 },
-  { path: 'session-12-06-08-2024/تمرین-من-عراق.mp4', size: 4_000_000 },
-  { path: 'session-12-06-08-2024/ضبط-کلاس.mp4', size: 99_765_911 },
-  { path: 'session-13-03-09-2024/ضبط-کلاس.mp4', size: 90_002_728 },
-  { path: 'session-13-03-09-2024/نمونه-1.mp4', size: 55_000_000 },
-  { path: 'session-13-03-09-2024/نمونه-2.mp4', size: 22_000_000 },
-  { path: 'session-13-03-09-2024/نت-ضربی-عراق-ماهور-میرزا-حسینقلی.pdf', size: 130_000 },
-  { path: 'session-13-03-09-2024/تمرین-من-کرشمه-در-عراق.mp4', size: 3_000_000 },
-  { path: 'session-16-26-11-2024/ضبط-کلاس.mp4', size: 84_518_794 },
-  { path: 'session-16-26-11-2024/تصحیح-پیش-درامد-ماهور-هرمزی.pdf', size: 210_000 },
-  { path: 'session-16-26-11-2024/تصحیح-چهارمضراب-ماهور-صبا.pdf', size: 190_000 },
-  { path: 'session-16-26-11-2024/نت-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.pdf', size: 150_000 },
-  { path: 'session-16-26-11-2024/تمرین-من-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان.mp4', size: 6_000_000 },
-  // The one un-normalised file in the whole archive (brief §8.1).
-  { path: 'session-16-26-11-2024/video-2024-10-29-15-32-35.mp4', size: 12_000_000 },
-  { path: 'session-22-13-05-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_500_000 },
-  { path: 'session-22-13-05-2025/نمونه.mp4', size: 40_000_000 },
-  { path: 'session-23-10-06-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_600_000 },
-  { path: 'session-24-08-07-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_700_000 },
-  { path: 'session-25-05-08-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_800_000 },
-  { path: 'session-26-02-09-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 3_900_000 },
-  { path: 'session-27-30-09-2025/تمرین-من-پیش-درامد-سه-گاه-فروتن.mp4', size: 4_100_000 },
-  { path: 'session-27-30-09-2025/تمرین-من-ضربی-شکسته-لطفی.mp4', size: 2_100_000 },
-  { path: 'session-27-30-09-2025/ضبط-کلاس-1.mp4', size: 50_000_000 },
-  { path: 'session-27-30-09-2025/ضبط-کلاس-2.mp4', size: 43_432_037 },
-  { path: 'session-27-30-09-2025/نمونه.mp4', size: 38_000_000 },
-  { path: 'session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4', size: 20_000_000 },
-  { path: 'session-28-28-10-2025/نت-به-زندان-شوشتری.pdf', size: 140_000 },
-  { path: 'session-28-28-10-2025/تمرین-من-به-زندان-شوشتری.mp4', size: 2_500_000 },
-  { path: 'session-28-28-10-2025/تمرین-من-ضربی-شکسته-لطفی.mp4', size: 2_600_000 },
-];
-
-const build = (over: Partial<{ registryText: string; inventory: Entry[] }> = {}): Index =>
-  buildIndex({ registryText: REGISTRY, inventory: INVENTORY, ...over });
-
-const session = (index: Index, n: number): Session => index.sessions.find((s) => s.n === n)!;
-
-const resource = (index: Index, path: string): Resource | undefined =>
-  index.sessions.flatMap((s) => s.resources).find((r) => r.path === path);
-
-// ---------------------------------------------------------------------------
-
-describe('the Setar source registry', () => {
-  it('setar registry keeps exact Farsi keys and rejects ambiguous CSV input', () => {
-    const pieces = parseRegistry(REGISTRY);
-    const byKey = new Map(pieces.map((p) => [p.key, p]));
-    const pieceOf = (k: string): Piece => byKey.get(k)!;
-
-    // A quoted field carrying commas AND doubled quotes stays ONE field, and
-    // every column after it stays in its own column. Splitting on "," would
-    // shift dastgah/composer/sessions onto fragments of this sentence.
-    const reng = pieceOf('رنگ-ماهور-درویش-خان');
-    expect(reng.composer).toBe('درویش-خان');
-    expect(reng.sessions).toEqual([1]);
-    expect(reng.notes).toContain('"sevom" in filename is a version/take marker');
-    expect(reng.notes).toContain('a different arrangement.');
-
-    // Byte identity. The key is the join key with the filenames: an embedded
-    // ASCII digit is piece identity, and "-و-" is INSIDE one name.
-    expect(byKey.has('تمرین-دشتی-1-علیزاده')).toBe(true);
-    expect(pieceOf('تمرین-دشتی-1-علیزاده').sessions).toEqual([4, 5]);
-    expect(byKey.has('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان')).toBe(true);
-    expect(pieces.every((p) => p.key === p.key.normalize('NFC'))).toBe(true);
-
-    // Real forms, carried verbatim. Neither is invented, folded into a
-    // neighbouring form, or turned into a categorical claim of its own.
-    expect(pieceOf('هفت-ضربی-چهارگاه-علیزاده').form).toBe('هفت-ضربی');
-    expect(pieceOf('چهار-پاره').form).toBe('چهارپاره');
-
-    // Caveats are flags on the source row, never a reason to merge or rename.
-    expect(pieceOf('ماهور-ردیف-میرزاعبدالله').provisional).toBe(true);
-    expect(pieceOf('سیخی-ابوعطا').mediumConfidence).toBe(true);
-    expect(pieceOf('چهارمضراب-ماهور-صبا').provisional).toBe(false);
-
-    // aliases_seen is LITERAL SEARCH DATA. It is split on "|" and stored as
-    // given — no wildcard is expanded, nothing is transliterated, and no alias
-    // is ever consulted to decide which piece a file belongs to.
-    expect(pieceOf('ماهور-ردیف-میرزاعبدالله').aliases).toEqual(['movie-on-16-04-2024-at-*']);
-    expect(pieceOf('چهارمضراب-اول-دشتی-صبا').aliases).toEqual([
-      'chahar-mezarabe-avale-dashti',
-      '4mez-aval-dashti',
-    ]);
-    // The alias "abouata-sayakhi" belongs to سیخی-ابوعطا and to nothing else —
-    // it never becomes a second key or a match for another row.
-    expect(pieces.filter((p) => p.aliases.includes('abouata-sayakhi'))).toHaveLength(1);
-
-    // --- refusals: an ambiguous registry is not a registry -----------------
-    const rowFor = (key: string) => REGISTRY_ROWS.find((r) => r.startsWith(`${key},`))!;
-    expect(() => parseRegistry([HEADER, rowFor('عراق'), rowFor('عراق')].join('\n'))).toThrow(
-      /two rows for the canonical piece/i,
-    );
-    expect(() => parseRegistry([HEADER, ',(standalone),x,,,,,12,'].join('\n'))).toThrow(/empty canonical_fa/i);
-    expect(() => parseRegistry(['canonical_fa,form,piece', 'x,y,z'].join('\n'))).toThrow(/missing the "dastgah" column/);
-    expect(() =>
-      parseRegistry([HEADER, 'ابوعطا-تست,گوشه,x,ابوعطا,,,"12,twelve",'].join('\n')),
-    ).toThrow(/invalid session number "twelve"/);
-    expect(() => parseRegistry([HEADER, 'x,y,z,,,,0,'].join('\n'))).toThrow(/invalid session number "0"/);
-    // Malformed quoting: a field that opens a quote and never closes it, and a
-    // stray quote in the middle of an unquoted field.
-    expect(() => parseCsv('a,b\n"never closed,c')).toThrow(/never closed/i);
-    expect(() => parseCsv('a,b\nx"y,c')).toThrow(/unexpected quote/i);
-  });
-});
-
-describe('the Setar filename grammar', () => {
-  it('setar filenames preserve compound roles and report unhandled assets', () => {
-    // All seven worked examples from the archive's own brief, asserted exactly.
-    expect(parseAssetStem('ضبط-کلاس-2')).toEqual({ role: 'ضبط-کلاس', piece: null, part: 2 });
-    expect(parseAssetStem('تمرین-من-عراق')).toEqual({ role: 'تمرین-من', piece: 'عراق', part: null });
-    expect(parseAssetStem('نمونه-1')).toEqual({ role: 'نمونه', piece: null, part: 1 });
-    expect(parseAssetStem('نمونه-به-زندان-شوشتری')).toEqual({
-      role: 'نمونه',
-      piece: 'به-زندان-شوشتری',
-      part: null,
-    });
-    expect(parseAssetStem('تصحیح-پیش-درامد-ماهور-هرمزی')).toEqual({
-      role: 'تصحیح',
-      piece: 'پیش-درامد-ماهور-هرمزی',
-      part: null,
-    });
-    // ROLE BOUNDARY, LONGEST MATCH: "تمرین-من" wins over nothing, and the
-    // piece keeps its own leading "تمرین" — token-0 splitting yields "تمرین".
-    expect(parseAssetStem('تمرین-من-تمرین-دشتی-1-علیزاده')).toEqual({
-      role: 'تمرین-من',
-      piece: 'تمرین-دشتی-1-علیزاده',
-      part: null,
-    });
-    // The embedded "-و-" stays INSIDE one canonical name; one file, one piece.
-    expect(parseAssetStem('تمرین-من-رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان')).toEqual({
-      role: 'تمرین-من',
-      piece: 'رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان',
-      part: null,
-    });
-
-    // A part number is TRAILING digits only; an embedded digit is identity.
-    expect(parseAssetStem('نت-تمرین-دشتی-1-علیزاده')!.piece).toBe('تمرین-دشتی-1-علیزاده');
-    expect(parseAssetStem('نمونه')!.part).toBe(null);
-    expect(parseAssetStem('نمونه')!.piece).toBe(null);
-    expect(displayTitle('تمرین-من-عراق')).toBe('تمرین من عراق');
-
-    const index = build();
-
-    // The known exception: not parsed, not reassigned to session 15, and named
-    // in the diagnostics with something the owner can act on.
-    const exception = index.diagnostics.find((d) => d.path.endsWith('video-2024-10-29-15-32-35.mp4'))!;
-    expect(exception).toBeDefined();
-    expect(exception.reason).toMatch(/no known role/i);
-    expect(exception.path.startsWith('session-16-')).toBe(true);
-    expect(resource(index, 'session-16-26-11-2024/video-2024-10-29-15-32-35.mp4')).toBeUndefined();
-    expect(session(index, 15)).toBeUndefined();
-    // No role was guessed for it anywhere.
-    expect(
-      index.sessions.every((s: { resources: { path: string }[] }) =>
-        s.resources.every((r) => !r.path.includes('video-2024-10-29')),
-      ),
-    ).toBe(true);
-
-    // An unknown piece, an unknown role and an unsupported extension are each
-    // SURFACED rather than relabelled into something the archive didn't say.
-    const odd = build({
-      inventory: [
-        { path: 'session-1-26-09-2023/نت-یک-قطعه-ناشناخته.pdf', size: 10 },
-        { path: 'session-1-26-09-2023/راهنما-چیزی.pdf', size: 10 },
-        { path: 'session-1-26-09-2023/نت-عراق.txt', size: 10 },
-      ],
-    });
-    expect(odd.sessions[0].resources).toEqual([]);
-    expect(odd.diagnostics.map((d) => d.reason)).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/not in the registry/),
-        expect.stringMatching(/no known role/),
-        expect.stringMatching(/Unsupported file type "\.txt"/),
-      ]),
-    );
-
-    // A class recording NEVER carries a piece: a filename claiming one is a
-    // contradiction in the source, reported instead of silently scoped.
-    const named = build({ inventory: [{ path: 'session-12-06-08-2024/ضبط-کلاس-عراق.mp4', size: 10 }] });
-    expect(named.sessions[0].resources).toEqual([]);
-    expect(named.diagnostics[0]!.reason).toMatch(/cannot name a piece/);
-
-    // NO LARGEST-FILE HEURISTIC anywhere: the class recording of session 5 is
-    // the one NAMED ضبط-کلاس, and the biggest file in session 13 is a demo.
-    const s5 = session(index, 5);
-    expect(s5.resources.filter((r) => r.role === 'ضبط-کلاس').map((r) => r.path)).toEqual([
-      'session-5-23-01-2024/ضبط-کلاس.mp4',
-    ]);
-    const s13 = session(index, 13);
-    const biggest = [...INVENTORY.filter((f) => f.path.startsWith('session-13-'))].sort((a, b) => b.size - a.size)[0]!;
-    expect(biggest.path).toBe('session-13-03-09-2024/ضبط-کلاس.mp4');
-    expect(s13.hasClassRecording).toBe(true);
-    // ...and session 28, whose biggest file is a demo, still has NO class
-    // recording rather than the largest video promoted into one.
-    const s28 = session(index, 28);
-    expect(s28.hasClassRecording).toBe(false);
-    expect(s28.resources.some((r) => r.role === 'ضبط-کلاس')).toBe(false);
-  });
-});
-
-describe('Setar session attribution', () => {
-  it('setar session material follows exact roster and demonstration attribution', () => {
-    const index = build();
-
-    // Session 13: an UNNAMED two-part demonstration belongs to every canonical
-    // member of that session — all eight — because there is no single piece to
-    // attribute it to and the information simply is not in the filename.
-    const s13 = session(index, 13);
-    expect(s13.roster).toHaveLength(8);
-    const demo13 = s13.resources.filter((r) => r.role === 'نمونه');
-    expect(demo13.map((r) => r.path)).toEqual([
-      'session-13-03-09-2024/نمونه-1.mp4',
-      'session-13-03-09-2024/نمونه-2.mp4',
-    ]);
-    for (const part of demo13) expect([...part.pieces].sort()).toEqual([...s13.roster].sort());
-    // Its numbered parts are ONE logical demonstration, ordered by part.
-    expect(new Set(demo13.map((r) => r.group)).size).toBe(1);
-    expect(demo13.map((r) => r.part)).toEqual([1, 2]);
-
-    // Session 28: a NAMED demo belongs to that piece only — never to its
-    // sibling ضربی-شکسته-لطفی, which is also a member of session 28.
-    const s28 = session(index, 28);
-    expect([...s28.roster].sort()).toEqual(['به-زندان-شوشتری', 'ضربی-شکسته-لطفی'].sort());
-    const demo28 = s28.resources.filter((r) => r.role === 'نمونه');
-    expect(demo28).toHaveLength(1);
-    expect(demo28[0].pieces).toEqual(['به-زندان-شوشتری']);
-    // ...and no class recording is fabricated for it.
-    expect(s28.hasClassRecording).toBe(false);
-
-    // Session 27: two class parts, ordered NUMERICALLY, and each stays with
-    // the lesson rather than being scoped to a piece.
-    const s27 = session(index, 27);
-    const class27 = s27.resources.filter((r) => r.role === 'ضبط-کلاس');
-    expect(class27.map((r) => r.part)).toEqual([1, 2]);
-    expect(class27.every((r) => r.pieces.length === 0)).toBe(true);
-
-    // FOLDER MEMBERSHIP, not mtime: session 9's and 10's practice recordings
-    // of one piece belong to their own folders, and nothing here reads a time.
-    expect(index.sessions.map((s) => s.n)).toEqual([...index.sessions.map((s) => s.n)].sort((a: number, b: number) => a - b));
-    expect(session(index, 9).members.map((m) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
-    expect(session(index, 10).members.map((m) => m.key)).toEqual(['چهارمضراب-ماهور-صبا']);
-
-    // Provisional identities are REAL, linkable pieces that keep their caveat.
-    const provisional = index.pieces.find((p) => p.key === 'ماهور-ردیف-میرزاعبدالله')!;
-    expect(provisional.provisional).toBe(true);
-    expect(provisional.sessions).toEqual([7]);
-
-    // The six-session repeat chain is PROVENANCE: six sessions the piece was
-    // practised in, carried as membership and roles and nothing else. No
-    // resource, no minute, no result and no "six weeks" claim is produced.
-    const chain = [22, 23, 24, 25, 26, 27];
-    for (const n of chain) {
-      const s = session(index, n);
-      const member = s.members.find((m) => m.key === 'پیش-درامد-سه-گاه-فروتن')!;
-      expect(member.roles).toContain('تمرین-من');
-      // The student's own recording is evidence, never material: it is not a
-      // resource anywhere in the index.
-      expect(s.resources.some((r) => r.path.includes('تمرین-من'))).toBe(false);
-    }
-    expect(JSON.stringify(index)).not.toContain('week');
-    // Only the FIRST session of the chain has a demonstration for it.
-    expect(session(index, 22).resources.some((r) => r.role === 'نمونه')).toBe(true);
-    expect(session(index, 23).resources).toEqual([]);
-
-    // ROSTER DISAGREEMENT: a folder naming a piece the registry does not place
-    // in that session must NOT expand the unnamed demo across a guessed set.
-    const disputed = build({
-      inventory: [
-        { path: 'session-13-03-09-2024/نمونه-1.mp4', size: 10 },
-        // عراق is a real registry piece, but its only session is 12.
-        { path: 'session-13-03-09-2024/نت-عراق.pdf', size: 10 },
-      ],
-    });
-    const bad13 = session(disputed, 13);
-    expect(bad13.rosterTrusted).toBe(false);
-    expect(bad13.resources.find((r) => r.role === 'نمونه')!.pieces).toEqual([]);
-    expect(disputed.diagnostics.map((d) => d.reason)).toEqual(
-      expect.arrayContaining([
-        expect.stringMatching(/registry does not list session 13/),
-        expect.stringMatching(/Unnamed demonstration not attributed/),
-      ]),
-    );
-    // The NAMED score still attaches to its own named piece — only the
-    // ambiguous inference is blocked.
-    expect(bad13.resources.find((r) => r.role === 'نت')!.pieces).toEqual(['عراق']);
-  });
-});
-
-describe('scanning the archive', () => {
-  it('setar scanning is bounded read-only and produces stable complete indexes', () => {
-    const root = mkdtempSync(join(tmpdir(), 'setar-scan-'));
-    const out = mkdtempSync(join(tmpdir(), 'setar-out-'));
-    try {
-      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
-      const folders = new Set(INVENTORY.map((f) => f.path.split('/')[0]));
-      for (const folder of folders) mkdirSync(join(root, folder));
-      for (const f of INVENTORY) writeFileSync(join(root, f.path), Buffer.alloc(Math.min(f.size, 16)));
-      // Things a scan must ignore, all real: a dotfile, NAS housekeeping, an
-      // out-of-scope root folder, and a symlink pointing outside the archive.
-      writeFileSync(join(root, 'session-1-26-09-2023/.DS_Store'), 'x');
-      mkdirSync(join(root, 'session-1-26-09-2023/@eaDir'), { recursive: true });
-      mkdirSync(join(root, 'practice'));
-      writeFileSync(join(root, 'practice/نت-عراق.pdf'), 'x');
-      writeFileSync(join(out, 'outside.mp4'), 'x');
-      symlinkSync(join(out, 'outside.mp4'), join(root, 'session-1-26-09-2023/نت-عراق.pdf'));
-
-      const { inventory: first, skipped: firstSkipped } = scanArchive(root);
-      expect(first.some((f) => f.path.includes('.DS_Store'))).toBe(false);
-      expect(first.some((f) => f.path.includes('@eaDir'))).toBe(false);
-      expect(first.some((f) => f.path.startsWith('practice/'))).toBe(false);
-      // The symlink is not followed: its target is outside the archive root.
-      expect(first.some((f) => f.path.endsWith('نت-عراق.pdf'))).toBe(false);
-      expect(first).toHaveLength(INVENTORY.length);
-      // …but "not followed" is SAID, never silent. A walk that drops a file the
-      // folder really holds and reports nothing publishes an index that is
-      // quietly narrower than the archive — the same "partial view sold as
-      // complete" the two-read check below refuses, arriving through the door
-      // the two-read check cannot see, because BOTH readings agree on it.
-      expect(firstSkipped.map((x) => x.path)).toEqual(['session-1-26-09-2023/نت-عراق.pdf']);
-      expect(firstSkipped[0]!.reason).toMatch(/symbolic link/i);
-      expect(
-        buildIndex({ registryText: REGISTRY, inventory: first, skipped: firstSkipped }).diagnostics.some(
-          (d) => d.path === 'session-1-26-09-2023/نت-عراق.pdf' && /symbolic link/i.test(d.reason),
-        ),
-      ).toBe(true);
-
-      // DETERMINISM. Shuffled directory order and altered mtimes produce a
-      // byte-identical semantic index: nothing here reads a time or trusts the
-      // order the filesystem happened to hand back.
-      const scanned = buildIndex({ registryText: REGISTRY, inventory: first });
-      const shuffled = [...first].reverse();
-      expect(buildIndex({ registryText: REGISTRY, inventory: shuffled }).contentHash).toBe(scanned.contentHash);
-      const old = new Date('2001-01-01T00:00:00Z');
-      for (const f of INVENTORY) utimesSync(join(root, f.path), old, old);
-      expect(buildIndex({ registryText: REGISTRY, inventory: scanArchive(root).inventory }).contentHash).toBe(scanned.contentHash);
-      expect(contentHash(scanned)).toBe(scanned.contentHash);
-      // ...and the hash is not vacuous: a file whose SIZE changed is a changed
-      // archive, so the semantic index changes with it.
-      expect(buildIndex({ registryText: REGISTRY, inventory: INVENTORY }).contentHash).not.toBe(scanned.contentHash);
-
-      // Session 9 sorts BEFORE session 10 — numerically, never lexically.
-      const ns = scanned.sessions.map((s) => s.n);
-      expect(ns.indexOf(9)).toBeLessThan(ns.indexOf(10));
-      expect(ns).toEqual([1, 5, 9, 10, 12, 13, 16, 22, 23, 24, 25, 26, 27, 28]);
-
-      // COMPLETENESS: every parseable useful file is in the index exactly once,
-      // and the personal recordings are represented only as membership.
-      const useful = INVENTORY.filter(
-        (f) => !f.path.includes('تمرین-من') && !f.path.includes('video-2024-10-29'),
-      );
-      const indexed = scanned.sessions.flatMap((s: { resources: { path: string }[] }) => s.resources.map((r) => r.path));
-      expect([...indexed].sort()).toEqual(useful.map((f) => f.path).sort());
-
-      // --- refusals ---------------------------------------------------------
-      expect(isSafeRelativePath('session-1-26-09-2023/ضبط-کلاس.mp4')).toBe(true);
-      for (const unsafe of [
-        '../PIECES.csv',
-        'session-1/../../etc/passwd',
-        '/etc/passwd',
-        'session-1\\ضبط.mp4',
-        'https://nas.example/x.mp4',
-        'file:///etc/passwd',
-        'session-1%2F..%2Fx.mp4',
-        '',
-      ]) {
-        expect(isSafeRelativePath(unsafe)).toBe(false);
-        expect(() => buildIndex({ registryText: REGISTRY, inventory: [{ path: unsafe, size: 1 }] })).toThrow();
-      }
-      expect(() =>
-        buildIndex({
-          registryText: REGISTRY,
-          inventory: [
-            { path: 'session-1-26-09-2023/نمونه.mp4', size: 1 },
-            { path: 'session-1-26-09-2023/نمونه.mp4', size: 2 },
-          ],
-        }),
-      ).toThrow(/share the path/);
-      // Two folders claiming one session number are two different identities
-      // for one lesson — refused, never merged.
-      expect(() =>
-        buildIndex({
-          registryText: REGISTRY,
-          inventory: [
-            { path: 'session-1-26-09-2023/نمونه.mp4', size: 1 },
-            { path: 'session-1-27-09-2023/نمونه.mp4', size: 1 },
-          ],
-        }),
-      ).toThrow(/Two folders claim session 1/);
-      // A folder date that is not a real calendar day is not a session.
-      expect(parseSessionFolderName('session-3-30-02-2024')).toBeNull();
-      expect(parseSessionFolderName('session-9-14-05-2024')).toEqual({ n: 9, date: '2024-05-14' });
-      const oversize = Array.from({ length: 5001 }, (_, i) => ({ path: `session-1-26-09-2023/نمونه-${i}.mp4`, size: 1 }));
-      expect(() => buildIndex({ registryText: REGISTRY, inventory: oversize })).toThrow(/more than 5000 files/);
-
-      // --- publication is atomic, outside the archive, read-only over it ----
-      const target = join(out, 'index.json');
-      writeIndexAtomically(target, 'last good\n', root);
-      expect(() => writeIndexAtomically(join(root, 'index.json'), 'x', root)).toThrow(/inside the archive/);
-      // --- ONE CONSISTENT VIEW, OF EVERY INPUT, NOT JUST THE REGISTRY -------
-      // The registry used to be the only input re-read after the walk, so the
-      // one thing a non-atomic NAS copy actually perturbs — THE MEDIA — was
-      // never checked: move a resource out before its folder is enumerated and
-      // put it back while later folders are walked, and the scan publishes an
-      // index that omits it while PIECES.csv never changes. The next Refresh
-      // then marks still-present material unavailable.
-      const renameLog = 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\n';
-      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-      const settled = readSource(root);
-      // Every input this scanner reads is in the reading that gets compared.
-      expect(Object.keys(settled).sort()).toEqual(['inventory', 'registryText', 'renameLog', 'skipped']);
-      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-
-      // Each of the inputs, perturbed in turn, is VISIBLE to that comparison.
-      const moved = INVENTORY[0]!.path;
-      const bytes = readFileSync(join(root, moved));
-      const when = new Date(settled.inventory.find((f) => f.path === moved)!.mtimeMs!);
-      // Put a file back EXACTLY as it was — bytes and metadata — or the
-      // restore is itself a mutation, which is the whole point of observing
-      // more than the size.
-      const restore = () => {
-        writeFileSync(join(root, moved), bytes);
-        utimesSync(join(root, moved), when, when);
-      };
-      rmSync(join(root, moved));
-      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      restore(); // …and back, as a copy would
-      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-      // A file still being COPIED is a size change, and is caught the same way.
-      writeFileSync(join(root, moved), Buffer.concat([bytes, Buffer.alloc(8)]));
-      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      restore();
-      writeFileSync(join(root, 'RENAME-LOG.csv'), `${renameLog}session-1/x.mp4,session-1/y.mp4\n`);
-      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-      writeFileSync(join(root, 'PIECES.csv'), `${REGISTRY}\n`);
-      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      writeFileSync(join(root, 'PIECES.csv'), REGISTRY);
-      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-      // A file edited IN PLACE at the same byte length changes no size and no
-      // CSV: `mtimeMs` is what makes that mutation visible to the comparison,
-      // and it is deliberately NOT semantic — the determinism check above
-      // altered every mtime in the archive and the index hash did not move.
-      const later = new Date(Date.now() + 60_000);
-      utimesSync(join(root, moved), later, later);
-      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      utimesSync(join(root, moved), when, when);
-      expect(canonicalJson(readSource(root))).toBe(canonicalJson(settled));
-
-      // A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA. `catch { text = '' }`
-      // made an unreadable RENAME-LOG.csv indistinguishable from an archive
-      // that has none: both readings agreed, the consistency check passed, and
-      // the scan published an index with NO renames — so a file that moved in
-      // that window is flagged unavailable and its saved references can never
-      // be repaired. Absence is an OBSERVATION and is recorded as one;
-      // anything else fails the scan.
-      expect(settled.renameLog).toEqual({ present: true, text: renameLog });
-      rmSync(join(root, 'RENAME-LOG.csv'));
-      expect(readSource(root).renameLog).toEqual({ present: false });
-      // …and the two are not the same reading, so a log that VANISHES between
-      // the readings is a change, not a quiet "there was never one".
-      expect(canonicalJson(readSource(root))).not.toBe(canonicalJson(settled));
-      // A present-but-EMPTY log is a zero-byte file — what a copy in flight
-      // looks like — and is refused exactly as PIECES.csv would be, rather
-      // than read as "no renames".
-      writeFileSync(join(root, 'RENAME-LOG.csv'), '');
-      expect(() => scanToIndex(root)).toThrow(/CSV is empty/);
-      // An unreadable required input fails the scan; it is never an empty one.
-      writeFileSync(join(root, 'RENAME-LOG.csv'), renameLog);
-      const hidden = join(root, 'PIECES.csv');
-      const registryBytes = readFileSync(hidden);
-      rmSync(hidden);
-      mkdirSync(hidden); // a directory where a file must be: EISDIR, not ENOENT
-      expect(() => readSource(root)).toThrow(/Could not read PIECES\.csv/);
-      expect(() => scanToIndex(root)).toThrow(/Could not read PIECES\.csv/);
-      rmSync(hidden, { recursive: true });
-      writeFileSync(hidden, registryBytes);
-
-      // A RENAME LOOP NAMES NO FILE, and is dropped with a diagnostic rather
-      // than published. Every path that walks INTO the loop is equally
-      // unusable: A->B, B->C, C->B leaves no readable destination for A.
-      const swap = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: {
-          present: true,
-          text: 'old_path,new_path\nsession-1-26-09-2023/a.mp4,session-1-26-09-2023/b.mp4\nsession-1-26-09-2023/b.mp4,session-1-26-09-2023/a.mp4\n',
-        },
-      });
-      expect(swap.renames).toEqual([]);
-      expect(swap.diagnostics.filter((d) => /loops through this path/.test(d.reason)).map((d) => d.path).sort()).toEqual([
-        'session-1-26-09-2023/a.mp4',
-        'session-1-26-09-2023/b.mp4',
-      ]);
-      const intoLoop = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: {
-          present: true,
-          text: 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/b.mp4,x/c.mp4\nx/c.mp4,x/b.mp4\n',
-        },
-      });
-      expect(intoLoop.renames).toEqual([]);
-      // An ordinary chain beside a loop still publishes — one bad topology
-      // does not cost the archive its good provenance.
-      const mixed = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: {
-          present: true,
-          text: 'old_path,new_path\nx/p.mp4,x/q.mp4\nx/a.mp4,x/b.mp4\nx/b.mp4,x/a.mp4\n',
-        },
-      });
-      expect(mixed.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
-      // AN OLD PATH WITH TWO DESTINATIONS PUBLISHES NEITHER. This used to
-      // publish the FIRST row and diagnose the second as "not applied", which
-      // is the same defect the loop rule exists to prevent, said the other way
-      // round: a log that cannot say which file A became was handed to the app
-      // as exact identity anyway. It is ONE rule now — a replacement name is
-      // published only where this log determines it uniquely and terminally.
-      const forkLog = 'old_path,new_path\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n';
-      const forked = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: { present: true, text: forkLog },
-      });
-      expect(forked.renames).toEqual([]);
-      expect(forked.diagnostics.filter((d) => d.path === 'x/a.mp4')).toEqual([
-        {
-          path: 'x/a.mp4',
-          reason:
-            'Rename log names more than one destination for this path ("x/b.mp4" and "x/c.mp4") — no replacement name can be read from it.',
-        },
-      ]);
-      // ONE diagnostic naming its destinations in a stable order, whatever
-      // order the rows arrived in: `diagnostics` is inside `contentHash`, and
-      // a shuffled source must still yield the same semantic index. A third
-      // destination joins that one row rather than emitting a second pair.
-      const forkRowsSwapped = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/c.mp4\nx/a.mp4,x/b.mp4\n' },
-      });
-      expect(forkRowsSwapped.contentHash).toBe(forked.contentHash);
-      const three = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: { present: true, text: 'old_path,new_path\nx/a.mp4,x/d.mp4\nx/a.mp4,x/b.mp4\nx/a.mp4,x/c.mp4\n' },
-      });
-      expect(three.diagnostics.filter((d) => d.path === 'x/a.mp4')).toHaveLength(1);
-      expect(three.diagnostics.find((d) => d.path === 'x/a.mp4')!.reason).toContain(
-        '("x/b.mp4" and "x/c.mp4" and "x/d.mp4")',
-      );
-      // And a chain that walks INTO a forked path publishes nothing either —
-      // the same extension the loop rule already makes, for the same reason:
-      // x/z.mp4 became x/a.mp4, and what x/a.mp4 is called now is unreadable.
-      const intoFork = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: { present: true, text: `old_path,new_path\nx/z.mp4,x/a.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
-      });
-      expect(intoFork.renames).toEqual([]);
-      expect(intoFork.diagnostics.find((d) => d.path === 'x/z.mp4')!.reason).toContain(
-        'renames this path into "x/a.mp4", which it names more than one destination for',
-      );
-      // An ordinary chain beside a FORK still publishes, exactly as one beside
-      // a loop does.
-      const besideFork = buildIndex({
-        registryText: REGISTRY,
-        inventory: INVENTORY,
-        renameLog: { present: true, text: `old_path,new_path\nx/p.mp4,x/q.mp4\n${forkLog.split('\n').slice(1).join('\n')}` },
-      });
-      expect(besideFork.renames).toEqual([{ from: 'x/p.mp4', to: 'x/q.mp4' }]);
-
-      // And the scan itself reads the WHOLE source twice and refuses on any
-      // difference. Nothing can mutate a filesystem between two synchronous
-      // reads from inside this process, so the WIRING is held structurally —
-      // the same way `commitArchiveImport`'s "no whole-DB import" is.
-      const scannerSrc = readFileSync('scripts/scan-setar-classes.mjs', 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-      const scanBody = scannerSrc.slice(
-        scannerSrc.indexOf('export function scanToIndex'),
-        scannerSrc.indexOf('function main('),
-      );
-      expect(scanBody.match(/readSource\(base\)/g) ?? []).toHaveLength(2);
-      expect(scanBody).toMatch(/canonicalJson\(before\) !== canonicalJson\(after\)/);
-      expect(scanBody).toMatch(/changed during the scan/);
-      rmSync(join(root, 'RENAME-LOG.csv'));
-
-      // A scan that cannot produce a complete consistent view throws BEFORE
-      // anything is written, so the last good output still stands.
-      rmSync(join(root, 'PIECES.csv'));
-      expect(() => scanToIndex(root)).toThrow();
-      expect(readFileSync(target, 'utf8')).toBe('last good\n');
-      // And the archive itself is untouched by any of the above.
-      expect(scanArchive(root).inventory).toHaveLength(INVENTORY.length);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-      rmSync(out, { recursive: true, force: true });
-    }
-  });
-});
-```
-
-### src/domain/sourceReconcile.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
-import {
-  decodeSourceIndex,
-  resourcesForPiece,
-  resourcesForSession,
-  sourceItemId,
-  sourceLessonId,
-  validateArchiveSources,
-  type SourceIndex,
-} from './sourceArchive';
-import {
-  applyArchiveImport,
-  planArchiveImport,
-  repairReferencePath,
-  repairLessonReferences,
-  toArchiveRelative,
-  withSuppression,
-  followRenames,
-} from './sourceReconcile';
-import { archiveRootUrl } from './recordings';
-// The published log is the SCANNER's output, so the downstream transitions
-// below are driven by what it actually publishes for a forked log — never by
-// a hand-written approximation of it.
-// @ts-expect-error — no type declarations for the .mjs operator tool.
-import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
-const { buildIndex } = scannerModule as {
-  buildIndex(input: {
-    registryText: string;
-    inventory: never[];
-    renameLog: { present: true; text: string };
-  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
-};
-const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
-import { emptyDB } from './seed';
-import { LEGACY_SEED_PATHS } from './setarClasses';
-import { createItem, createLesson } from './factories';
-import type { Lesson, PracticeDB, PracticeItem } from './types';
-
-const NOW = new Date('2026-09-17T09:00:00.000Z');
-const INDEX: SourceIndex = decodeSourceIndex(rawIndex);
-const SETAR = 'inst-setar';
-
-function baseDB(over: Partial<PracticeDB> = {}): PracticeDB {
-  return {
-    ...emptyDB(),
-    instruments: [
-      { id: SETAR, name: 'Setar', family: 'Persian', active: true, createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z' },
-    ],
-    ...over,
-  };
-}
-
-const item = (over: Partial<PracticeItem>): PracticeItem => ({
-  ...createItem({ instrumentId: SETAR, title: 'x' }, NOW),
-  ...over,
-});
-
-const lesson = (over: Partial<Lesson>): Lesson => ({
-  ...createLesson({ instrumentId: SETAR, date: '2026-01-01' }, NOW),
-  ...over,
-});
-
-const plan = (db: PracticeDB, index = INDEX, decisions = undefined as never) =>
-  planArchiveImport({ db, index, instrumentId: SETAR, decisions, now: NOW });
-
-describe('reconciling the archive with the owner’s own records', () => {
-  it('setar reconciliation binds exact identities without merging owner records', () => {
-    // --- a first import of an empty database --------------------------------
-    const first = plan(baseDB());
-    expect(first.newLessons).toHaveLength(39);
-    expect(first.newItems).toHaveLength(94);
-    expect(first.questions).toEqual([]);
-    expect(first.newLessons.every((l) => l.origin === 'archive')).toBe(true);
-    const after = applyArchiveImport(baseDB(), first);
-    expect(after.lessons).toHaveLength(39);
-    expect(after.items).toHaveLength(94);
-    expect(after.archiveSources).toHaveLength(1);
-
-    // Canonical keys survive BYTE-EXACT as the items' own titles.
-    expect(after.items.map((i) => i.title)).toContain('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان');
-    expect(after.items.map((i) => i.title)).toContain('تمرین-دشتی-1-علیزاده');
-
-    // --- repeating it adds NOTHING -----------------------------------------
-    const second = plan(after);
-    expect(second.newLessons).toEqual([]);
-    expect(second.newItems).toEqual([]);
-    expect(second.summary.unchanged).toBe(true);
-    // ...and applying it returns the very same database object, so an
-    // unchanged refresh cannot bump a revision or churn a timestamp.
-    expect(applyArchiveImport(after, second)).toBe(after);
-
-    // --- DETERMINISTIC IDENTITY across devices ------------------------------
-    // Two devices importing the same published index separately must agree on
-    // which record is which, or the next sync sees two of everything.
-    const other = applyArchiveImport(baseDB(), plan(baseDB()));
-    expect(other.items.map((i) => i.id).sort()).toEqual(after.items.map((i) => i.id).sort());
-    expect(other.lessons.map((l) => l.id).sort()).toEqual(after.lessons.map((l) => l.id).sort());
-    expect(after.items.some((i) => i.id === sourceItemId('setar-classes', 'عراق'))).toBe(true);
-    expect(after.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
-
-    // --- EXISTING BINDINGS WIN, across edited titles and dates --------------
-    const edited: PracticeDB = {
-      ...after,
-      items: after.items.map((i) =>
-        i.source?.pieceKey === 'عراق' ? { ...i, title: 'Iraq — my own name for it', notes: 'teacher said…' } : i,
-      ),
-      lessons: after.lessons.map((l) => (l.source?.sessionN === 13 ? { ...l, date: '2020-01-01', number: 999 } : l)),
-    };
-    const third = plan(edited);
-    expect(third.newItems).toEqual([]);
-    expect(third.newLessons).toEqual([]);
-    const applied = applyArchiveImport(edited, third);
-    // The owner's edits are still there: a binding identifies, it never rewrites.
-    expect(applied.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('Iraq — my own name for it');
-    expect(applied.lessons.find((l) => l.source?.sessionN === 13)!.date).toBe('2020-01-01');
-
-    // --- adopting ONE legacy lesson, on EXACT evidence ----------------------
-    const evidence = lesson({
-      id: 'legacy-13',
-      date: '2024-09-03',
-      number: 13,
-      // The owner's own old reference — legacy prefix and pre-rename name.
-      recordings: [
-        {
-          id: 'r1',
-          title: 'Class 13',
-          path: 'setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4',
-          kind: 'video',
-          createdAt: '2024-09-04T00:00:00.000Z',
-        },
-      ],
-      notes: 'What the teacher said that day.',
-    });
-    const withLegacy = plan(baseDB({ lessons: [evidence] }));
-    const adopted = withLegacy.adoptedLessons.find((l) => l.source?.sessionN === 13);
-    expect(adopted).toBeDefined();
-    expect(adopted!.id).toBe('legacy-13'); // the owner's record KEEPS its id
-    expect(adopted!.notes).toBe('What the teacher said that day.');
-    expect(withLegacy.newLessons).toHaveLength(38);
-
-    // --- weaker equivalences CANNOT auto-merge ------------------------------
-    const dateOnly = lesson({ id: 'date-only', date: '2024-09-03' });
-    const numberOnly = lesson({ id: 'number-only', date: '2019-05-05', number: 13 });
-    const dateAndNumber = lesson({ id: 'date-and-number', date: '2024-09-03', number: 13 });
-    const weak = plan(baseDB({ lessons: [dateOnly, numberOnly, dateAndNumber] }));
-    expect(weak.adoptedLessons).toEqual([]);
-    expect(weak.newLessons).toHaveLength(39);
-    // Two identical candidates do not pick the first: the owner is asked.
-    const twin = { ...evidence, id: 'legacy-13-twin' };
-    const ambiguous = plan(baseDB({ lessons: [evidence, twin] }));
-    expect(ambiguous.adoptedLessons).toEqual([]);
-    const q = ambiguous.questions.find((x) => x.sessionN === 13)!;
-    expect(q.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-twin']);
-
-    // --- the owner's real upcoming class 38 survives ------------------------
-    const upcoming = lesson({ id: 'class-38-upcoming', date: '2026-09-27', number: 38 });
-    const withUpcoming = plan(baseDB({ lessons: [upcoming] }));
-    expect(withUpcoming.adoptedLessons).toEqual([]);
-    expect(withUpcoming.newLessons).toHaveLength(39);
-    const installed = applyArchiveImport(baseDB({ lessons: [upcoming] }), withUpcoming);
-    const thirtyEights = installed.lessons.filter((l) => l.number === 38);
-    expect(thirtyEights.map((l) => l.date).sort()).toEqual(['2026-08-04', '2026-09-27']);
-    expect(installed.lessons.find((l) => l.id === 'class-38-upcoming')!.origin).toBeUndefined();
-
-    // --- a catalogue slug is NEVER a canonical Farsi key --------------------
-    const catalogued = item({ id: 'cat-iraq', title: 'Iraq', catalogKey: 'iraq' });
-    const withCatalogue = plan(baseDB({ items: [catalogued] }));
-    expect(withCatalogue.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    expect(withCatalogue.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
-    const cataloguedAfter = applyArchiveImport(baseDB({ items: [catalogued] }), withCatalogue);
-    expect(cataloguedAfter.items.find((i) => i.id === 'cat-iraq')!.source).toBeUndefined();
-
-    // --- exact title / literal alias equality ASKS, never merges ------------
-    const sameTitle = item({ id: 'mine-araq', title: 'عراق' });
-    const aliasTitle = item({ id: 'mine-alias', title: 'araq' });
-    const asked = plan(baseDB({ items: [sameTitle, aliasTitle] }));
-    const itemQ = asked.questions.find((x) => x.pieceKey === 'عراق')!;
-    expect(itemQ.candidates.map((c) => c.id).sort()).toEqual(['mine-alias', 'mine-araq']);
-    expect(asked.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    const untouched = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), asked);
-    expect(untouched.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
-
-    // Link: the owner's record keeps its id and gains the binding.
-    const linked = planArchiveImport({
-      db: baseDB({ items: [sameTitle, aliasTitle] }),
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'link-item', pieceKey: 'عراق', itemId: 'mine-araq' }],
-      now: NOW,
-    });
-    expect(linked.adoptedItems.map((i) => i.id)).toEqual(['mine-araq']);
-    expect(linked.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    const linkedDb = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), linked);
-    expect(linkedDb.items.find((i) => i.id === 'mine-araq')!.source).toEqual({
-      archiveId: 'setar-classes',
-      pieceKey: 'عراق',
-    });
-    // ...and the binding PERSISTS: a later refresh asks nothing more about it.
-    expect(plan(linkedDb).questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-
-    // Create separately: two records, both kept, only one bound.
-    const separate = planArchiveImport({
-      db: baseDB({ items: [sameTitle] }),
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'create-item', pieceKey: 'عراق' }],
-      now: NOW,
-    });
-    const separateDb = applyArchiveImport(baseDB({ items: [sameTitle] }), separate);
-    expect(separateDb.items.filter((i) => i.title === 'عراق')).toHaveLength(2);
-    expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-    expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
-
-    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
-    // It used to live only in the preview's own `decisions` argument, so "no,
-    // not this one" survived exactly as long as the screen did: a reload, or
-    // simply the next refresh, asked the identical question again with nothing
-    // in the database to show it had ever been answered.
-    const skipDb = baseDB({ items: [sameTitle] });
-    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
-    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
-    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
-    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
-    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
-    expect(validateArchiveSources(afterSkip)).toBeNull();
-    // ...and it survives the persisted shape. A LATER refresh, carrying no
-    // decisions at all, neither asks nor re-creates.
-    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
-    const afterReload = plan(reloaded);
-    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(afterReload.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
-    // Skipping the same thing twice does not grow the list either.
-    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
-    expect(skipTwice.source.suppressions).toHaveLength(1);
-    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
-
-    // The same holds for a CLASS the owner skips.
-    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
-    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
-    expect(lessonSkipped.newLessons).toHaveLength(38);
-    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
-    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
-    expect(plan(lessonReloaded).newLessons).toEqual([]);
-    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-
-    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
-    // Two indistinguishable candidates; the owner says neither of them is this
-    // session. The decision used to be dropped on the floor for lessons — the
-    // item side had it from the start — and the question came back for ever.
-    const twinDb = baseDB({ lessons: [evidence, twin] });
-    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
-    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
-    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
-    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
-    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
-    // Three records for that day now: the archive's own, and BOTH of the
-    // owner's, each keeping its id, its notes and its unbound status.
-    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
-    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
-    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
-    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
-    expect(validateArchiveSources(afterCreate)).toBeNull();
-    // ...and the binding it did create is the archive's own deterministic one.
-    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
-
-    // --- the source/instrument binding is explicit and validated -----------
-    expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
-    expect(after.archiveSources[0]!.id).toBe('setar-classes');
-    expect(after.items.every((i) => i.instrumentId === SETAR)).toBe(true);
-  });
-
-  it('archive refresh preserves owner edits and applies only the new source delta', () => {
-    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
-
-    // The owner then works on their own records.
-    const owned: PracticeDB = {
-      ...installed,
-      items: installed.items.map((i) =>
-        i.source?.pieceKey === 'عراق'
-          ? { ...i, title: 'My own title', notes: 'my notes', status: 'usable', persian: { ...i.persian, composer: '' } }
-          : i,
-      ),
-      lessons: installed.lessons.map((l) => (l.source?.sessionN === 1 ? { ...l, notes: 'class one notes' } : l)),
-    };
-
-    // --- ONE new session, plus one new score on an existing session ---------
-    const session40 = {
-      n: 40,
-      date: '2026-09-29',
-      folder: 'session-40-29-09-2026',
-      roster: ['عراق'],
-      rosterTrusted: true,
-      hasClassRecording: true,
-      resources: [
-        {
-          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
-          role: 'ضبط-کلاس',
-          kind: 'video' as const,
-          title: 'ضبط کلاس',
-          part: null,
-          pieces: [],
-          group: null,
-        },
-      ],
-      members: [{ key: 'عراق', roles: ['ضبط-کلاس'] }],
-    };
-    const addedScore = {
-      path: 'session-12-06-08-2024/نت-عراق.pdf',
-      role: 'نت',
-      kind: 'score' as const,
-      title: 'نت عراق',
-      part: null,
-      pieces: ['عراق'],
-      group: null,
-    };
-    const next: SourceIndex = {
-      ...INDEX,
-      contentHash: 'b'.repeat(64),
-      sessions: [
-        // A scan records the MEMBERSHIP a new resource creates in the same
-        // pass that lists the resource, so a fixture that adds one without the
-        // other is a graph disagreeing with itself — refused at every door.
-        ...INDEX.sessions.map((s) =>
-          s.n === 12
-            ? {
-                ...s,
-                resources: [...s.resources, addedScore],
-                members: [
-                  ...s.members.filter((m) => m.key !== 'عراق'),
-                  {
-                    key: 'عراق',
-                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
-                  },
-                ],
-              }
-            : s,
-        ),
-        session40,
-      ],
-      // A later registry improvement on a piece already seeded.
-      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, composer: 'میرزا-حسینقلی' } : p)),
-    };
-
-    const delta = planArchiveImport({ db: owned, index: next, instrumentId: SETAR, now: NOW });
-    // ONLY the delta: one lesson, no items (عراق is already bound).
-    expect(delta.newLessons.map((l) => l.source?.sessionN)).toEqual([40]);
-    expect(delta.newItems).toEqual([]);
-
-    const refreshed = applyArchiveImport(owned, delta);
-    expect(refreshed.lessons).toHaveLength(40);
-    // AUTHORED FIELDS ARE SEEDED ONCE AND THEN PRESERVED — including the
-    // deliberately EMPTY composer the owner cleared.
-    const araq = refreshed.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(araq.title).toBe('My own title');
-    expect(araq.notes).toBe('my notes');
-    expect(araq.status).toBe('usable');
-    expect(araq.persian?.composer).toBe('');
-    expect(refreshed.lessons.find((l) => l.source?.sessionN === 1)!.notes).toBe('class one notes');
-    // Source facts DID update: the new score is in the graph.
-    const source = refreshed.archiveSources.find((s) => s.id === 'setar-classes')!;
-    expect(source.sessions.find((s) => s.n === 12)!.resources.some((r) => r.path === addedScore.path)).toBe(true);
-    expect(source.indexHash).toBe('b'.repeat(64));
-
-    // The registry improvement is OFFERED, never applied behind the owner.
-    const suggestion = delta.suggestions.find((s) => s.pieceKey === 'عراق' && s.field === 'composer')!;
-    expect(suggestion).toBeDefined();
-    expect(suggestion.from).toBe('');
-    expect(suggestion.to).toBe('میرزا-حسینقلی');
-    // A field decision names the RECORD it was shown against, not just the
-    // piece: a rebase must not hand the answer to whichever item happens to
-    // hold that piece by the time Apply is pressed.
-    const araqItemId = suggestion.itemId;
-    const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
-    ]);
-    const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
-    // ...and applying a field NEVER touches the notebook or the title.
-    expect(applied.notes).toBe('my notes');
-    expect(applied.title).toBe('My own title');
-
-    // --- an UNCHANGED refresh writes nothing --------------------------------
-    const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
-    expect(same.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
-
-    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
-    // The suggestion stands until it is answered, and it may be answered days
-    // later against the very same published index. Judging "already current"
-    // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
-    ];
-    const lateDecision = planArchiveImport({
-      db: refreshed,
-      index: next,
-      instrumentId: SETAR,
-      decisions: lateField,
-      now: NOW,
-    });
-    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
-    expect(lateDecision.summary.unchanged).toBe(false);
-    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
-    expect(lateApplied).not.toBe(refreshed);
-    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
-    // Only that field: the notebook, the title and the status are the owner's.
-    expect(lateItem.notes).toBe('my notes');
-    expect(lateItem.title).toBe('My own title');
-    expect(lateItem.status).toBe('usable');
-    expect(lateApplied.blocks).toEqual(refreshed.blocks);
-    // Applied, the suggestion is gone: the next refresh has nothing to offer.
-    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
-    // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
-    ];
-    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
-    expect(noop.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
-
-    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
-    // Choose the archive's composer over an EMPTY field, then write one of
-    // your own before the plan is applied. The choice was an answer about the
-    // empty field; it is not an instruction to replace the new words.
-    const ownWrote = {
-      ...refreshed,
-      items: refreshed.items.map((i) =>
-        i.source?.pieceKey === 'عراق'
-          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
-          : i,
-      ),
-    };
-    const rebased = planArchiveImport({
-      db: ownWrote,
-      index: next,
-      instrumentId: SETAR,
-      decisions: lateField,
-      now: NOW,
-    });
-    expect(rebased.staleDecisions).toEqual(lateField);
-    // Not applied, and not counted as a change either: both sides of the
-    // preview/commit boundary agree that this decision no longer stands.
-    expect(rebased.summary.unchanged).toBe(true);
-    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
-    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
-      'Owner wrote this during refresh',
-    );
-    // The suggestion is re-offered against what is there NOW, so the owner can
-    // answer the question that actually stands.
-    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
-      'Owner wrote this during refresh',
-    );
-    // A decision carrying the CURRENT value still applies, on the same data.
-    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
-    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
-    expect(fresh.staleDecisions).toEqual([]);
-    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
-      ?.composer).toBe('میرزا-حسینقلی');
-
-    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
-    // Bound elsewhere, moved instrument or deleted: never silently turned into
-    // "create a new record instead".
-    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
-    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
-    const unbound: PracticeDB = {
-      ...owned,
-      items: owned.items.map((i) => {
-        const { source, ...rest } = i;
-        void source;
-        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
-      }),
-    };
-    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
-    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
-    expect(linkable.staleDecisions).toEqual([]);
-    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
-    const takenElsewhere: PracticeDB = {
-      ...unbound,
-      items: unbound.items.map((i) =>
-        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
-      ),
-    };
-    const stalelink = planArchiveImport({
-      db: takenElsewhere,
-      index: next,
-      instrumentId: SETAR,
-      decisions: linkDecision,
-      now: NOW,
-    });
-    expect(stalelink.staleDecisions).toEqual(linkDecision);
-    expect(stalelink.adoptedItems).toEqual([]);
-
-    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
-    //
-    // The loops start with "already bound? nothing to decide" / "already
-    // suppressed? nothing to decide", so a decision about a record that became
-    // bound between the preview and the commit was never looked at: no
-    // adoption, no question, and an EMPTY `staleDecisions` — the commit
-    // reported success for an action it had not performed. And a field
-    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
-    // onto whichever record held that piece by the time Apply ran.
-    const otherItemId = 'someone-elses-item';
-    const boundToAnother: PracticeDB = {
-      ...unbound,
-      items: [
-        ...unbound.items,
-        item({
-          id: otherItemId,
-          instrumentId: SETAR,
-          title: 'Another record',
-          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
-        }),
-      ],
-    };
-    // LINK: the approved record is not the one holding the piece now, so the
-    // choice is stale — never quietly satisfied by the other record.
-    const redirectedLink = planArchiveImport({
-      db: boundToAnother,
-      index: next,
-      instrumentId: SETAR,
-      decisions: linkDecision,
-      now: NOW,
-    });
-    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
-    expect(redirectedLink.adoptedItems).toEqual([]);
-    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
-      .toBeUndefined();
-    // APPLY-FIELD: the archive's composer, chosen against item A's empty
-    // field, must not be written to the item that holds the piece now — whose
-    // composer is also empty, so nothing about the VALUE would have caught it.
-    const fieldForA = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
-    ];
-    const redirectedField = planArchiveImport({
-      db: boundToAnother,
-      index: next,
-      instrumentId: SETAR,
-      decisions: fieldForA,
-      now: NOW,
-    });
-    expect(redirectedField.staleDecisions).toEqual(fieldForA);
-    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
-    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
-    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
-    // SKIP and CREATE are the same rule: an answer about a record that has
-    // since been bound is an answer to a question that no longer stands.
-    for (const decision of [
-      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
-      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
-    ]) {
-      const swept = planArchiveImport({
-        db: boundToAnother,
-        index: next,
-        instrumentId: SETAR,
-        decisions: decision,
-        now: NOW,
-      });
-      expect(swept.staleDecisions).toEqual(decision);
-      expect(swept.newItems).toEqual([]);
-    }
-    // …and LOOP PREVENTION: the action the owner approved, once it HAS
-    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
-    // re-previews, so a realised action that could never be consumed again
-    // would go stale for ever.
-    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
-    const again = planArchiveImport({
-      db: afterLink,
-      index: next,
-      instrumentId: SETAR,
-      decisions: linkDecision,
-      now: NOW,
-    });
-    expect(again.staleDecisions).toEqual([]);
-    const skipped = applyArchiveImport(
-      unbound,
-      planArchiveImport({
-        db: unbound,
-        index: next,
-        instrumentId: SETAR,
-        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
-        now: NOW,
-      }),
-    );
-    expect(
-      planArchiveImport({
-        db: skipped,
-        index: next,
-        instrumentId: SETAR,
-        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
-        now: NOW,
-      }).staleDecisions,
-    ).toEqual([]);
-
-    // --- a missing FILE keeps its provenance, flagged ----------------------
-    const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
-    const shrunk: SourceIndex = {
-      ...next,
-      contentHash: 'c'.repeat(64),
-      // A session that has lost every file has lost its class recording with
-      // them: a scan recomputes that flag, and a hand-built index that keeps
-      // it is a graph disagreeing with itself — which `checkSourceGraph` now
-      // refuses at every door, so it cannot be used to prove anything else.
-      sessions: next.sessions.map((s) =>
-        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
-      ),
-    };
-    const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
-    const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
-    // The LESSON and the ITEM are still there — a vanished file never deletes
-    // an owner record, it only changes what the source can offer.
-    expect(afterShrink.lessons).toHaveLength(40);
-    expect(afterShrink.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('My own title');
-    expect(afterShrink.blocks).toEqual(refreshed.blocks);
-    const shrunkSource = afterShrink.archiveSources.find((s) => s.id === 'setar-classes')!;
-    const goneRow = shrunkSource.sessions.find((s) => s.n === 12)!.resources.find((r) => r.path === goneFile)!;
-    expect(goneRow.unavailable).toBe(true);
-    // ...and the database this produced is one every inbound door accepts.
-    expect(validateArchiveSources(afterShrink)).toBeNull();
-
-    // --- a missing REGISTRY ROW is the case that used to lock refresh out ---
-    // Dropping a piece the owner has an item bound to would leave that binding
-    // pointing at nothing — which `validateDB` refuses at every door, so the
-    // next Refresh, and every one after it, would fail outright. Provenance is
-    // RETAINED and flagged instead.
-    const withoutPiece: SourceIndex = {
-      ...next,
-      contentHash: 'e'.repeat(64),
-      pieces: next.pieces.filter((p) => p.key !== 'عراق'),
-      sessions: next.sessions.map((s) => ({
-        ...s,
-        roster: s.roster.filter((k) => k !== 'عراق'),
-        members: s.members.filter((m) => m.key !== 'عراق'),
-        resources: s.resources.map((r) => ({ ...r, pieces: r.pieces.filter((k) => k !== 'عراق') })),
-      })),
-    };
-    const withoutPlan = planArchiveImport({ db: refreshed, index: withoutPiece, instrumentId: SETAR, now: NOW });
-    const afterWithout = applyArchiveImport(refreshed, withoutPlan);
-    expect(validateArchiveSources(afterWithout)).toBeNull();
-    const keptPiece = afterWithout.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!;
-    expect(keptPiece.unavailable).toBe(true);
-    // The owner's item, its title and its binding are all still there.
-    const keptItem = afterWithout.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(keptItem.title).toBe('My own title');
-    expect(keptItem.notes).toBe('my notes');
-    // It is not re-created as a second item either.
-    expect(afterWithout.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-    // A WHOLE SESSION that disappears is retained the same way.
-    const withoutSession: SourceIndex = {
-      ...next,
-      contentHash: 'f'.repeat(64),
-      sessions: next.sessions.filter((s) => s.n !== 13),
-    };
-    const afterNoSession = applyArchiveImport(
-      refreshed,
-      planArchiveImport({ db: refreshed, index: withoutSession, instrumentId: SETAR, now: NOW }),
-    );
-    expect(validateArchiveSources(afterNoSession)).toBeNull();
-    expect(afterNoSession.archiveSources[0]!.sessions.find((s) => s.n === 13)!.unavailable).toBe(true);
-    expect(afterNoSession.lessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
-    // ...and the source coming BACK clears the flag: the source is
-    // authoritative about what it has.
-    const restoredPlan = planArchiveImport({ db: afterWithout, index: next, instrumentId: SETAR, now: NOW });
-    const afterRestore = applyArchiveImport(afterWithout, restoredPlan);
-    expect(afterRestore.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!.unavailable).toBeUndefined();
-    expect(afterRestore.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-
-    // --- a CHANGED canonical key is a NEW identity, never a rename ----------
-    const renamedKey: SourceIndex = {
-      ...INDEX,
-      contentHash: 'd'.repeat(64),
-      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, key: 'عراق-جدید' } : p)),
-      sessions: INDEX.sessions.map((s) => ({
-        ...s,
-        roster: s.roster.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
-        members: s.members.map((m) => (m.key === 'عراق' ? { ...m, key: 'عراق-جدید' } : m)),
-        resources: s.resources.map((r) => ({
-          ...r,
-          pieces: r.pieces.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
-        })),
-      })),
-    };
-    const keyChange = planArchiveImport({ db: refreshed, index: renamedKey, instrumentId: SETAR, now: NOW });
-    // A NEW piece appears; the old binding is NOT silently carried across.
-    expect(keyChange.newItems.map((i) => i.source?.pieceKey)).toEqual(['عراق-جدید']);
-    expect(keyChange.adoptedItems).toEqual([]);
-
-    // --- an unresolved question stays a question until answered ------------
-    const stranger = item({ id: 'stranger', title: 'چهار-پاره' });
-    const strangerDb = { ...baseDB(), items: [stranger] };
-    const asked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(asked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
-    const stillAsked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(stillAsked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
-    // The SAME index with a NEW owner decision resolves it, with no re-scan.
-    const resolved = planArchiveImport({
-      db: strangerDb,
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'skip-item', pieceKey: 'چهار-پاره' }],
-      now: NOW,
-    });
-    expect(resolved.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(false);
-    expect(resolved.newItems.some((i) => i.source?.pieceKey === 'چهار-پاره')).toBe(false);
-  });
-
-  it('exact Setar rename repair preserves saved references and their metadata', () => {
-    const renames = new Map(INDEX.renames.map((r) => [r.from, r.to]));
-    const known = new Set(INDEX.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-
-    // The archive prefix the owner's legacy paths carry is not part of the
-    // archive-relative identity; the device base now ends in it.
-    expect(toArchiveRelative('setar-classes/session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
-    expect(toArchiveRelative('session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
-
-    // EVERY legacy seed path the old importer ever wrote — all 67 of them —
-    // maps through the rename log EXACTLY. No title, size or modification-time
-    // matching is involved anywhere, and none of the 67 is left to a guess.
-    expect(LEGACY_SEED_PATHS).toHaveLength(67);
-    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
-    // and 257 mappings out: no row of the REAL log is dropped for any reason —
-    // not unsafe, not empty, not a loop and not a fork — so the rule below
-    // changes nothing the operator actually publishes today.
-    expect(INDEX.renames).toHaveLength(257);
-    const repairedPaths = new Map<string, string>();
-    for (const p of LEGACY_SEED_PATHS) {
-      const outcome = repairReferencePath(p, renames, known);
-      expect(outcome.status).toBe('repaired');
-      if (outcome.status !== 'repaired') throw new Error('unreachable');
-      expect(outcome.path.startsWith('session-')).toBe(true);
-      expect(known.has(outcome.path)).toBe(true);
-      repairedPaths.set(p, outcome.path);
-    }
-    expect(repairedPaths.size).toBe(67);
-    // Session 28's "main video" is really a NAMED DEMONSTRATION; the repair
-    // says so by landing on the demo file, and nothing invents a class
-    // recording for a session that has none.
-    const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
-    expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
-
-    // A path with no rename row and no file is DIAGNOSED, never guessed.
-    const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
-    expect(missing.status).toBe('attention');
-    // A foreign link, and a link carrying a query, are left exactly as they are.
-    const base = 'https://192.168.0.20:5010/setar-classes';
-    expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
-    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4?download=1`, renames, known, base).status).toBe(
-      'unchanged',
-    );
-    // Without a VERIFIED base a full URL is not converted at all.
-    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4`, renames, known).status).toBe('attention');
-    // Under the verified base it converts, decoding each segment once.
-    const encoded = `${base}/${encodeURIComponent('session-13-03-09-2024')}/${encodeURIComponent('نمونه-1.mp4')}`;
-    const converted = repairReferencePath(encoded, renames, known, base);
-    expect(converted.status === 'repaired' && converted.path).toBe('session-13-03-09-2024/نمونه-1.mp4');
-    // A cycle in the log is reported rather than followed forever.
-    const cyclic = new Map([
-      ['a/b.mp4', 'a/c.mp4'],
-      ['a/c.mp4', 'a/b.mp4'],
-    ]);
-    expect(repairReferencePath('a/b.mp4', cyclic, new Set(['a/c.mp4'])).status).toBe('attention');
-
-    // --- both rows of a real collision survive, with their own metadata -----
-    // Session 1's class part 1 and the first Dashti score each have an OLD and
-    // a CURRENT row that now point at one physical file. Repairing them keeps
-    // TWO rows, because each carries something the owner wrote.
-    const collided = lesson({
-      id: 'L1',
-      date: '2023-09-26',
-      number: 1,
-      recordings: [
-        {
-          id: 'old-video',
-          title: 'Class 1 (old link)',
-          path: 'setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4',
-          kind: 'video',
-          notes: 'The half I watched first.',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-        {
-          id: 'current-video',
-          title: 'Class 1 part 1',
-          path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4',
-          kind: 'video',
-          createdAt: '2026-09-10T00:00:00.000Z',
-        },
-        {
-          id: 'old-score',
-          title: 'First Dashti score (old link)',
-          path: 'setar-classes/session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf',
-          kind: 'pdf',
-          notes: 'Teacher marked bar 12.',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-        {
-          id: 'current-score',
-          title: 'Dashti score',
-          path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf',
-          kind: 'pdf',
-          createdAt: '2026-09-10T00:00:00.000Z',
-        },
-      ],
-    });
-    const repaired = repairLessonReferences(collided, renames, known);
-    expect(repaired.repaired).toBe(2);
-    expect(repaired.attention).toEqual([]);
-    expect(repaired.lesson.recordings).toHaveLength(4);
-    const byId = new Map(repaired.lesson.recordings!.map((r) => [r.id, r]));
-    // The two old rows now resolve to the same physical files as the new ones…
-    expect(byId.get('old-video')!.path).toBe(byId.get('current-video')!.path);
-    expect(byId.get('old-score')!.path).toBe(byId.get('current-score')!.path);
-    // …and neither authored row, nor its notes or title, was deleted.
-    expect(byId.get('old-video')!.notes).toBe('The half I watched first.');
-    expect(byId.get('old-video')!.title).toBe('Class 1 (old link)');
-    expect(byId.get('old-score')!.notes).toBe('Teacher marked bar 12.');
-
-    // --- the owner's own practice recordings stay, outside useful material --
-    const personal = lesson({
-      id: 'L2',
-      date: '2025-08-05',
-      recordings: [
-        {
-          id: 'mine-1',
-          title: 'My take, August',
-          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
-          kind: 'video',
-          notes: 'Slow but even.',
-          createdAt: '2025-08-06T00:00:00.000Z',
-        },
-      ],
-    });
-    const personalRepair = repairLessonReferences(personal, renames, known);
-    expect(personalRepair.lesson.recordings).toHaveLength(1);
-    expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
-    // The archive never offers a personal recording as material for a piece.
-    const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
-    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
-
-    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
-    // The helper above proves the mapping. THIS proves the production journey:
-    // the rename log arrives WITH the index, so the one moment the app can
-    // repair a stored path is the moment it accepts a new graph — and a lesson
-    // adopted with its own references still pointing at names the archive
-    // renamed is half a job, bound and broken.
-    const ownPersonal = lesson({
-      id: 'L25',
-      date: '2025-08-05',
-      number: 25,
-      recordings: [
-        {
-          id: 'mine-1',
-          title: 'My take, August',
-          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
-          kind: 'video',
-          notes: 'Slow but even.',
-          createdAt: '2025-08-06T00:00:00.000Z',
-        },
-      ],
-    });
-    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
-    const refresh = plan(legacyDb);
-    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
-    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
-    // The PLAN already shows the repaired paths, so the preview and the commit
-    // cannot disagree about what is about to be written.
-    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
-    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
-    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
-
-    const installedLegacy = applyArchiveImport(legacyDb, refresh);
-    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
-    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
-    // BOTH rows of each collision survive, with everything the owner wrote.
-    expect(storedOne.recordings).toHaveLength(4);
-    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
-    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
-    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
-    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
-    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
-    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
-    expect(validateArchiveSources(installedLegacy)).toBeNull();
-
-    // The owner's own practice takes are RETAINED, untouched — and never
-    // reported missing. The index describes only material scoped to pieces and
-    // classes, so a path it does not name is outside what it knows, never
-    // evidence that the file is gone.
-    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
-    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
-    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
-    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
-
-    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
-    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
-    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
-    // literal: a trailing-slash or prefix mismatch between the two would fail
-    // silently, leaving the link exactly as it was with nothing to show why.
-    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
-    const absolute = lesson({
-      id: 'L-abs',
-      date: '2023-09-26',
-      number: 1,
-      recordings: [
-        {
-          id: 'abs-1',
-          title: 'Class 1, saved as a full link',
-          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
-          kind: 'video',
-          notes: 'Typed in from the browser bar.',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-        {
-          id: 'foreign',
-          title: 'Somewhere else entirely',
-          path: 'https://elsewhere.example/x.mp4',
-          kind: 'video',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-      ],
-    });
-    const absDb = baseDB({ lessons: [absolute] });
-    const urlRepaired = applyArchiveImport(
-      absDb,
-      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
-    );
-    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
-    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
-    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
-    // A link to somewhere else is not this archive's to rewrite.
-    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
-    // WITHOUT a base, nothing is converted and nothing is mangled.
-    const noBase = applyArchiveImport(absDb, plan(absDb));
-    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
-    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
-    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
-
-    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
-    const again = plan(installedLegacy);
-    expect(again.repairedLessons).toEqual([]);
-    expect(again.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
-
-    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
-    // The archive moves a file the owner's bound class already points at. The
-    // next refresh follows the log; the row, its title and its notes stay.
-    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
-    const moved: SourceIndex = {
-      ...INDEX,
-      contentHash: '9'.repeat(64),
-      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
-      sessions: INDEX.sessions.map((sess) =>
-        sess.n === 1
-          ? {
-              ...sess,
-              resources: sess.resources.map((r) =>
-                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
-              ),
-            }
-          : sess,
-      ),
-    };
-    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
-    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
-    const afterMove = applyArchiveImport(installedLegacy, later);
-    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
-    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
-    expect(movedRows.get('old-video')!.path).toBe(movedTo);
-    expect(movedRows.get('current-video')!.path).toBe(movedTo);
-    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
-    // The score, which did not move, is exactly as it was.
-    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
-    // Nothing about practice moved with it.
-    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
-    expect(validateArchiveSources(afterMove)).toBeNull();
-
-    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
-    // A rename whose destination the archive no longer has: the stored path is
-    // left exactly as it is, and the owner is told which file and why.
-    const dangling: SourceIndex = {
-      ...INDEX,
-      contentHash: '8'.repeat(64),
-      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
-    };
-    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
-    expect(broken.repairedLessons).toEqual([]);
-    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
-    const afterBroken = applyArchiveImport(installedLegacy, broken);
-    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
-
-    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
-    // Adoption took a single hop while repair followed the whole chain, so one
-    // rename log gave two different answers about the same file. With
-    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
-    // class was adopted AS SESSION 1 on the strength of B, and then had that
-    // very reference repaired into session 2's folder: bound to one class,
-    // pointing at another's files.
-    const hopA = 'session-1-26-09-2023/first-name.mp4';
-    const hopB = 'session-1-26-09-2023/second-name.mp4';
-    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
-    expect(known.has(hopC)).toBe(true);
-    const chained: SourceIndex = {
-      ...INDEX,
-      contentHash: '7'.repeat(64),
-      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
-    };
-    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
-    expect(followRenames(hopA, chainRenames)).toBe(hopC);
-    const legacyClass = lesson({
-      id: 'L-chain',
-      date: '2023-09-26',
-      number: 1,
-      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
-    });
-    const chainDb = baseDB({ lessons: [legacyClass] });
-    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
-    // Its ONLY reference now points into session 5, so it is NOT evidence of
-    // session 1 — and the class is not adopted on it.
-    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
-    // A CYCLE is no reading at all, so it is no evidence either.
-    const cyclicIndex: SourceIndex = {
-      ...INDEX,
-      contentHash: '6'.repeat(64),
-      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
-    };
-    expect(
-      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
-        (l) => l.id === 'L-chain',
-      ),
-    ).toBe(false);
-
-    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
-    // A resource suppression is keyed BY PATH. Left on the old name, the file
-    // came back into view under its new one while the old row sat there
-    // flagged unavailable — the owner's decision silently undone by a rename.
-    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
-    const hidden: PracticeDB = {
-      ...installedLegacy,
-      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
-        kind: 'resource',
-        ref: hiddenPath,
-        itemId: 'item-x',
-        at: NOW.toISOString(),
-      }),
-    };
-    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
-    const renamedSource = afterRename.archiveSources[0]!;
-    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
-    expect(hide.ref).toBe(movedTo);
-    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
-    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
-    // And the old row is GONE rather than retained-and-flagged: the log says
-    // exactly where the bytes went, so this file moved, it did not disappear.
-    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
-    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
-    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
-    // ACROSS sessions too — a rename can move a file into a different session,
-    // which is exactly the shape of the A -> B -> C log above. Asking only
-    // "is it still in THIS session" flagged the old row as missing while the
-    // very same bytes sat in the graph under their new name.
-    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
-    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
-    const crossSession: SourceIndex = {
-      ...INDEX,
-      contentHash: '4'.repeat(64),
-      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
-      sessions: INDEX.sessions.map((sess) =>
-        sess.n === 1
-          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
-          : sess.n === 5
-            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
-            : sess,
-      ),
-    };
-    const afterCross = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
-    );
-    const crossSource = afterCross.archiveSources[0]!;
-    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
-    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
-    // The hide went WITH it, into the other session, still scoped to one item.
-    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
-      ref: crossTo,
-      itemId: 'item-x',
-    });
-    expect(validateArchiveSources(afterCross)).toBeNull();
-
-    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
-    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
-    // usable-looking path beside a flag — and only ONE of its three callers
-    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
-    // straight past the verdict and moved the owner's hide onto B, so A came
-    // back into view and the wrong file went dark. It returns `null` now, so
-    // there is no way to drop the verdict and still have a path.
-    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
-    const cyclicLog: SourceIndex = {
-      ...INDEX,
-      contentHash: '3'.repeat(64),
-      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
-    };
-    const afterCycle = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
-    );
-    const cycledSource = afterCycle.archiveSources[0]!;
-    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
-    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
-    expect(cycledHide.itemId).toBe('item-x');
-    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
-    // …so the file the owner hid is still hidden, and its sibling is not.
-    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
-    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
-
-    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
-    // incoming index has dropped keeps its provenance flagged rather than
-    // being silently deleted on the strength of a destination nothing can read.
-    const cyclicAndRemoved: SourceIndex = {
-      ...cyclicLog,
-      contentHash: '2'.repeat(64),
-      sessions: cyclicLog.sessions.map((sess) =>
-        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
-      ),
-    };
-    const afterCyclicRemoval = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
-    );
-    expect(
-      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
-        (r) => r.path === hiddenPath,
-      )?.unavailable,
-    ).toBe(true);
-    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
-
-    // REPAIR says so out loud rather than rewriting the path to a stop on the
-    // loop — and ADOPTION, which reads the same verdict, takes it as no
-    // evidence at all (asserted above for the same shape).
-    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
-    expect(followRenames(hiddenPath, loopMap)).toBeNull();
-    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
-      status: 'attention',
-      reason: 'The rename log loops on this path.',
-      code: 'cycle',
-    });
-    const loopLesson = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
-    ).lessons.find((l) => l.id === 'L1')!;
-    expect(loopLesson.recordings).toEqual(storedOne.recordings);
-
-    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
-    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
-    // log does not determine what this file is called now. The scanner used to
-    // publish the FIRST destination and diagnose the second as "not applied",
-    // so the app was handed a mapping the log cannot support and used it as
-    // exact identity — repairing an authored reference onto it and re-keying
-    // an owner's hide onto it. What it publishes for a fork is nothing, and
-    // this drives the transitions from that real output rather than a guess
-    // at it. (A forked log reaching the app from anywhere else is REFUSED at
-    // every door by the one grammar — asserted in `io.test.ts` against the
-    // persisted door, and by `checkSourceGraph` for the decoder.)
-    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
-    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
-    const scanned = buildIndex({
-      registryText: EMPTY_REGISTRY,
-      inventory: [],
-      renameLog: {
-        present: true,
-        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
-      },
-    });
-    expect(scanned.renames).toEqual([]);
-    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
-    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
-    // The READING: the file keeps the only name this log establishes — its own.
-    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
-    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
-    // either destination.
-    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
-    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
-    const afterFork = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
-    );
-    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
-    // The HIDE: exactly where the owner put it, still scoped to one item — so
-    // the file they hid is still hidden and neither destination went dark.
-    const forkedSource = afterFork.archiveSources[0]!;
-    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
-      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
-    ]);
-    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
-    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
-    expect(validateArchiveSources(afterFork)).toBeNull();
-
-    // A file that really IS gone still keeps its provenance, flagged.
-    const removed: SourceIndex = {
-      ...INDEX,
-      contentHash: '5'.repeat(64),
-      sessions: INDEX.sessions.map((sess) =>
-        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
-      ),
-    };
-    const afterRemoval = applyArchiveImport(
-      installedLegacy,
-      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
-    );
-    expect(
-      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
-        ?.unavailable,
-    ).toBe(true);
-    expect(validateArchiveSources(afterRename)).toBeNull();
-  });
-});
-
-describe('owner suppressions', () => {
-  it('a suppressed piece or session is never re-created by a later refresh', () => {
-    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
-    const stripped: PracticeDB = {
-      ...installed,
-      items: installed.items.filter((i) => i.source?.pieceKey !== 'عراق'),
-      lessons: installed.lessons.filter((l) => l.source?.sessionN !== 13),
-      archiveSources: withSuppression(
-        withSuppression(installed.archiveSources, 'setar-classes', {
-          kind: 'piece',
-          ref: 'عراق',
-          at: NOW.toISOString(),
-        }),
-        'setar-classes',
-        { kind: 'session', ref: '13', at: NOW.toISOString() },
-      ),
-    };
-    const again = plan(stripped);
-    expect(again.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(again.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-    // Idempotent: suppressing the same thing twice does not grow the list.
-    const twice = withSuppression(stripped.archiveSources, 'setar-classes', {
-      kind: 'piece',
-      ref: 'عراق',
-      at: '2027-01-01T00:00:00.000Z',
-    });
-    expect(twice[0]!.suppressions).toHaveLength(2);
-  });
-});
-```
-
 ### tests/practiceBrowser.ts
 
 ```
@@ -7463,7 +4337,10 @@ const installHint = (engine: Engine) =>
   'and an engine quietly missed is the same thing as an engine never checked.';
 
 /**
- * ONE cancelled request, awaiting the ONE spurious error it produces.
+ * ONE recorded outcome of a network request the harness watched, cancelled or
+ * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
+ * genuine failure to the same URL displace a stale cancellation instead of
+ * being excused by it (see `excusedCancellation`).
  *
  * A request the BROWSER cancelled because the test navigated away while it was
  * in flight is not an application error. WebKit reports such a fetch as
@@ -7475,53 +4352,103 @@ const installHint = (engine: Engine) =>
  * person navigating mid-sync cancels the same request, so treating it as a
  * page error makes a journey fail for driving the app quickly.
  */
-export interface CancelledRequest {
+export interface TrackedRequestFailure {
   url: string;
   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
   at: number;
+  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
+  cancelled: boolean;
 }
 
 /**
- * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
- * cancelled URL joined a permanent set, and every later page error whose
- * message merely CONTAINED that pathname was discarded — so a genuine failure
- * at the same path, later in the same journey, was swallowed and the journey's
- * `pageErrors` assertion passed over it.
- *
- * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
- * one cancellation excuses exactly one error.
- *  - the message is the DIAGNOSED wording, so an error of any other shape
- *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
- *    for a fetch AND for an XHR, so the two words both spellings share are
- *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
- *    where this wording comes from, and the next intermittent "CORS" failure
- *    belongs here before it is diagnosed from scratch. Getting the wording
- *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
- *    below is what stops a real failure being excused;
- *  - it names that request's host AND path — WebKit spells the URL with the
- *    scheme separated from the host, so the comparison is on the parts both
- *    spellings carry verbatim;
- *  - it arrives inside a CEILING on how long an unconsumed cancellation may
- *    stand. Deliberately generous rather than a timing correlation: the
- *    spurious error is emitted in the same tick as the cancellation, and a
- *    tight window would trade an over-broad filter for a flaky one under the
- *    contention five concurrent dev servers already create.
+ * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
+ * work. It once was the whole bound: a cancelled URL's entry stayed eligible
+ * for this long, matched by host+path ALONE, so an unconsumed cancellation
+ * that never produced its own page error remained a live "credit" any LATER,
+ * genuine access-control failure to that same URL could spend. That is a
+ * sealed finding, not a hypothetical: a cancellation and a real failure are
+ * indistinguishable by wording or by URL, so a window — however short — can
+ * never be the thing that tells them apart. Only ORDER can: see
+ * `excusedCancellation` below for the correlation that actually does the work.
+ * What is left for this ceiling to do is bound how far back a request that
+ * WAS genuinely the nearest one may still be trusted, in case Node's delivery
+ * of the two events (`requestfailed`, then `pageerror`) is delayed under the
+ * contention five concurrent dev servers create; the diagnosis says the
+ * browser emits them in the same tick, so this is headroom, not a design
+ * tolerance the correlation depends on.
  */
-export const CANCELLED_EXCUSE_MS = 30_000;
+export const CANCELLED_EXCUSE_MS = 2_000;
 
-export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
-  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
-  const i = pending.findIndex((c) => {
-    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
-    const url = new URL(c.url);
-    return message.includes(url.host) && message.includes(url.pathname);
-  });
-  if (i < 0) return false;
-  // CONSUMING the entry is this function's own job, not the caller's: the
-  // permanent-set version was a caller that simply never took anything out,
-  // and a boolean a caller can read without spending the cancellation would
-  // leave exactly that mistake available again.
-  pending.splice(i, 1);
+/**
+ * Extract the URL a diagnosed WebKit access-control message names, or `null`
+ * if the message is not that shape at all (a render crash, a thrown
+ * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
+ * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
+ * host that a real URL never has, which this strips before parsing.
+ *
+ * The whole point of parsing into a real `URL` and comparing `host` and
+ * `pathname` by EQUALITY, rather than testing whether the message merely
+ * CONTAINS a candidate's host/path as substrings, is that a substring test
+ * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
+ * the left) or `api.github.com.evil.test` (extended on the right), nor
+ * `/state.json` from `/state.json.bak` — every one of which contains the
+ * genuine value as a substring. Anchoring the match to the exact text
+ * between the fixed "cannot load " / " due to access control checks" phrases
+ * — the only text WebKit ever puts there — removes the ambiguity outright
+ * instead of trying to out-guess it with boundary characters.
+ */
+function reportedUrl(message: string): URL | null {
+  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
+    message.trim(),
+  );
+  if (!m) return null;
+  try {
+    return new URL(`${m[1]}://${m[2]}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The excuse correlates on ORDER, not on a window: among every tracked
+ * request to the exact host+path the message names, the one that actually
+ * produced this page error is whichever happened MOST RECENTLY before it —
+ * because the diagnosis is that WebKit emits the spurious error in the same
+ * tick as the cancellation that caused it, so nothing else to that URL can
+ * have intervened by the time it arrives. That is precisely what makes a
+ * cancellation with NO page error of its own safe to leave sitting in the
+ * log rather than needing to expire it: the moment anything else — above
+ * all a genuine failure — touches that same URL, THAT becomes the nearest
+ * candidate and the stale cancellation is never reached again. A stale
+ * cancellation can therefore only ever be reached by a page error that has
+ * nothing more recent competing for it, which is exactly the case it is
+ * supposed to excuse.
+ *
+ * If the nearest candidate is not a cancellation at all — a genuine failure,
+ * or nothing within the ceiling — this returns `false` and excuses nothing:
+ * an uncertain correlation is never resolved in the excuse's favour.
+ *
+ * The match is CONSUMING: the winning entry is removed, so it cannot excuse
+ * a second, later error too.
+ */
+export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
+  const reported = reportedUrl(message);
+  if (!reported) return false;
+  let nearest = -1;
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
+    let url: URL;
+    try {
+      url = new URL(e.url);
+    } catch {
+      continue;
+    }
+    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
+    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
+  }
+  if (nearest < 0 || !events[nearest].cancelled) return false;
+  events.splice(nearest, 1);
   return true;
 }
 
@@ -7595,16 +4522,17 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
-    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
-    // every other page error is recorded exactly as before.
-    const cancelled: CancelledRequest[] = [];
+    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
+    // has to be visible to `excusedCancellation` so it can outrank a stale
+    // cancellation to the same URL, not just a cancellation itself.
+    const requestFailures: TrackedRequestFailure[] = [];
     page.on('requestfailed', (r) => {
-      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
+      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
     });
     // Surface a page-level error instead of letting it become a silently
     // wrong assertion later.
     page.on('pageerror', (e) => {
-      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
+      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
       pageErrors.push(e);
     });
     await page.clock.install({ time: options.now });
@@ -8042,6 +4970,7 @@ import {
   reload,
   remoteStateText,
   syncMessage,
+  type TrackedRequestFailure,
   writePersistedState,
 } from './practiceBrowser';
 import INDEX_TEXT from './fixtures/setar-archive.json?raw';
@@ -8530,60 +5459,110 @@ describe('the journey harness itself', () => {
   // The harness must not be able to hide the very failure a journey exists to
   // catch. A request the browser CANCELLED (because the test navigated away
   // mid-flight) produces a WebKit error that reads exactly like a CORS
-  // failure; excusing it used to mean adding its URL to a PERMANENT set and
-  // discarding every later page error whose message merely contained that
-  // pathname. So a genuine failure at the same path, later in the same
-  // journey, was swallowed — and `pageErrors` said nothing.
-  it('a cancelled request excuses its own error once, and never a later real one', () => {
-    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
-    const spurious =
-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-    const at = 1_000_000;
+  // failure. Excusing it has failed two different ways so far, and each test
+  // below is named for the specific way:
+  //  - a PERMANENT set of cancelled URLs discarded every later page error
+  //    whose message merely contained that pathname, so a genuine failure at
+  //    the same path, later in the same journey, was swallowed and
+  //    `pageErrors` said nothing;
+  //  - even made CONSUMING (one cancellation, one error) and bounded by a
+  //    generous time window, an unconsumed cancellation — one that produced
+  //    no page error of its own — stayed a live "credit" for up to that whole
+  //    window, spendable by a genuine, later failure to the same URL that had
+  //    nothing to do with it. A window can never tell the two apart, because
+  //    a cancellation's error and a genuine one read identically; only ORDER
+  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
+  const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+  const spurious =
+    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+  const at = 1_000_000;
+  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
+  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
 
-    // The cancellation's OWN error is excused — and CONSUMED. The identical
-    // message arriving again has no cancellation left to account for it, which
-    // is exactly the reviewer's counterexample: cancel a request to a path,
-    // then let a later one to that path fail for real.
-    // Spending it is the function's OWN job — a caller cannot forget to, which
-    // is precisely what the permanent set was.
-    const pending = [{ url, at }];
-    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
+  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
+    const pending = [cancelled()];
+    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
+    // CONSUMED — the identical message arriving again has no cancellation
+    // left to account for it, which is the ORIGINAL reviewer counterexample.
     expect(pending).toEqual([]);
-    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
+    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
 
-    // Two cancellations excuse two errors and no more.
-    const twice = [
-      { url, at },
-      { url, at: at + 10 },
-    ];
-    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
-
-    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
-    // both are the same cancelled request.
+    // WebKit spells the same diagnosis for an XHR as well as for a fetch.
     const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
-    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
+    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
 
     // Only the DIAGNOSED wording is ever excused: a real render crash naming
     // the same URL is a page error, not a cancellation.
-    expect(
-      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
-    ).toBe(false);
+    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
+      false,
+    );
+  });
 
-    // It names that request, not merely its path: another host, and another
-    // path on the same host, both stay errors.
+  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
+    const twice = [cancelled(), cancelled(10)];
+    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+  });
+
+  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
+    // This is the sealed finding: the cancellation happens and nothing ever
+    // reports its own page error for it — exactly the case the harness must
+    // tolerate without turning it into a standing credit for something else.
+    const events = [cancelled()];
+    // A genuine failure to the SAME url follows moments later, and IS
+    // tracked — this is what makes it outrank the stale cancellation next.
+    events.push(genuine(50));
+    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
+    // The stale cancellation is untouched: it lost to the more recent
+    // genuine failure, it was never spent.
+    expect(events).toContainEqual(cancelled());
+  });
+
+  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
+    // Genuine failure arrives FIRST, with no cancellation recorded at all.
+    const events = [genuine()];
+    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
+
+    // A real cancellation follows and correctly excuses its OWN error.
+    events.push(cancelled(100));
+    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
+
+    // Another genuine failure follows the (now-consumed) cancellation and is
+    // never excused by it either — there is nothing left pending to excuse
+    // it with, and it would not have qualified anyway.
+    events.push(genuine(200));
+    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
+  });
+
+  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
+    // A substring test cannot tell these apart from the genuine host/path;
+    // only structural URL equality can. Each of these contains the real
+    // host or path as a substring while naming a DIFFERENT resource.
+    const hostPrefixTrap =
+      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
+
+    const hostSuffixTrap =
+      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
+    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
+
+    const pathSuffixTrap =
+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
+    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
+
+    // Another host entirely, and another path on the same host, both stay errors.
     const elsewhere =
       'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
-    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
+    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
     const otherPath =
       'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
-    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
+    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
+  });
 
-    // And an unconsumed cancellation does not stand for the whole journey: the
-    // ceiling is generous (the spurious error is emitted in the same tick), but
-    // it is a ceiling.
-    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
   });
 });
 ```
@@ -8799,22 +5778,10 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
+If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
 
-**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json`
 
-```bash
-cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json'
-```
-
-**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
-
-**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
-
-```bash
-prismatica seal '20260917-turn-the-setar-archive-into-trusted-less-5614' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json'
-```
-
-You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
+with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
