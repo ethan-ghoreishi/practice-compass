@@ -7,7 +7,7 @@ import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs
 import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
 import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
 import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
-import { decodeSourceIndex } from '../domain/sourceArchive';
+import { decodeSourceIndex, INSECURE_CONTEXT_REFUSAL } from '../domain/sourceArchive';
 import { validateDB } from '../domain/io';
 import { createItem } from '../domain/factories';
 import type { PracticeDB } from '../domain/types';
@@ -451,6 +451,66 @@ describe('publishing and reading the source index', () => {
     delete withoutOptional.diagnostics;
     const lean = await readIndexFile(withDigest(withoutOptional));
     expect(lean.ok).toBe(true);
+  });
+
+  // --- THE DEVICE, NOT THE FILE ------------------------------------------
+  // Found by OWNER acceptance testing, not by any check here: an unmerged
+  // branch reaches a phone as a LAN build over plain http://, and WebCrypto
+  // exists only in a SECURE CONTEXT. `globalThis.crypto` is still there, but
+  // `crypto.subtle` is `undefined`, so recomputing the index digest threw
+  // `Cannot read properties of undefined (reading 'digest')` — and BOTH real
+  // entry points, the GitHub refresh and the file fallback, handed that
+  // property stack trace to the owner as the explanation of their archive.
+  //
+  // Every automated check missed it because every one of them runs where
+  // `crypto.subtle` exists: Node has it unconditionally, and the browser
+  // journeys are served from localhost, which browsers privilege as secure
+  // precisely so that http://localhost development works.
+  it('an insecure context refuses by naming itself, not by a property stack trace', async () => {
+    const text = JSON.stringify({ ...indexFixture, contentHash: indexDigest(indexFixture as Record<string, unknown>) });
+    // The REAL GitHub reply shape for this file: base64 `content`, `encoding`
+    // and `size`, exactly as api.github.com answers a contents request.
+    const github = async (url: string | URL | Request) =>
+      String(url).includes('/git/ref/heads/')
+        ? new Response(JSON.stringify({ object: { sha: 'c0ffee'.repeat(6) + 'aa' } }), { status: 200 })
+        : new Response(
+            JSON.stringify({
+              content: Buffer.from(text, 'utf8').toString('base64'),
+              encoding: 'base64',
+              size: text.length,
+            }),
+            { status: 200 },
+          );
+    const refresh = () =>
+      fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: github as typeof fetch });
+
+    // Both paths succeed on THIS device, so nothing below is about the file.
+    expect((await refresh()).ok).toBe(true);
+    expect((await readIndexFile(text)).ok).toBe(true);
+
+    // An insecure context, exactly as a browser presents one: `crypto` is
+    // present and `crypto.subtle` is not.
+    const secure = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: secure.getRandomValues.bind(secure) });
+    try {
+      expect(globalThis.crypto.subtle).toBeUndefined();
+      for (const result of [await refresh(), await readIndexFile(text)]) {
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('expected refusal');
+        // The one fact the owner can act on — and never the shape of the crash.
+        expect(result.error).toBe(INSECURE_CONTEXT_REFUSAL);
+        expect(result.error).toMatch(/https:\/\//);
+        expect(result.error).not.toMatch(/digest|undefined|Cannot read/i);
+        // Refusing is not reporting a broken file: the owner must not be sent
+        // to republish an index that is perfectly good.
+        expect(result.error).not.toMatch(/content hash.*altered|not valid JSON/i);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    // And the refusal was about the device alone: the SAME bytes pass again.
+    expect((await refresh()).ok).toBe(true);
   });
 });
 

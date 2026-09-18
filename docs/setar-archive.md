@@ -264,6 +264,38 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
 membership and role survive in the graph, the files themselves never become a
 piece's material.
 
+### Open the app over HTTPS, or Refresh cannot verify anything
+
+Refresh recomputes the index's `contentHash` before trusting a byte of it, and
+that needs `crypto.subtle`, which **browsers expose only in a secure context**.
+Open the app over plain `http://` at a LAN address and `crypto` is still there
+while `crypto.subtle` is not, so Refresh — and **Sync now**, which hashes the
+whole database through the same function — both refuse.
+
+Measured on this network, 2026‑09‑18:
+
+| Origin | `isSecureContext` | `crypto.subtle` |
+| --- | --- | --- |
+| `http://192.168.0.113:4173/` (Mac LAN preview) | `false` | absent |
+| `https://192.168.0.20:5010/` (NAS, self-signed) | `true` | present |
+| `http://localhost:4173/` | `true` | present |
+| GitHub Pages (production) | `true` | present |
+
+So: **production and the installed iPhone PWA are unaffected** — both are HTTPS.
+Only a branch build served from a LAN address over plain HTTP hits this, and the
+fix is the route, not a setting:
+
+- On the Mac, `http://localhost:4173` is already a secure context — browsers
+  privilege localhost on purpose.
+- For a phone, mirror the build to the NAS (`npm run deploy`, which needs the web
+  share mounted) and open it over **`https://192.168.0.20/practice-compass/`**. A
+  self-signed Synology certificate is fine: HTTPS is a secure context whether or
+  not the certificate is trusted, so accept the browser's warning once.
+
+Refresh says this in as many words rather than crashing, and it says it before it
+looks at the file at all — on a device that cannot hash, no index can pass, and a
+file-shaped error would send you to republish an index that is perfectly good.
+
 ---
 
 ## 6. Notes for whoever changes this next

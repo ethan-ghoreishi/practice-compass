@@ -518,15 +518,47 @@ reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the 
 React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
 real port, and wires `visibilitychange`.
 
-**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
-Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
-deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
-plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
-(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
-environment gap). Before drawing any conclusion about this feature (or any future
-secure-context-dependent work) from an unmerged branch, first confirm
-`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
-establish a genuine HTTPS route for it first.
+**Secure-context constraint, and it is NOT only the wake lock.** This note began as a
+wake-lock note and was read as one, which is how the same environment gap came back as a
+production-looking failure. THREE of this app's capabilities are withheld outside a secure
+context, and plain http:// on a LAN address is not one:
+
+- `navigator.wakeLock` — `undefined`, so hands-free practice cannot be exercised at all.
+- **`crypto.subtle` — `undefined`, while `crypto` itself is still present.** This is the
+  sharp one, because nothing about it reads as an environment gap: `sha256Hex`
+  (`canonical.ts`) is the content-identity hash behind BOTH whole-state sync comparison
+  and `parseSourceIndex`'s recomputation of the published index digest, so Sync now and
+  Refresh Setar archive fail TOGETHER, in one shared function, with the property stack
+  trace `Cannot read properties of undefined (reading 'digest')`.
+- The **service worker**, therefore the installed PWA and its offline capability — the
+  app's core promise — does not register at all.
+
+MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:4173/` gives
+`isSecureContext: false`, `typeof crypto.subtle === 'undefined'`; the NAS over
+`https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
+self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
+certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
+mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
+`http://localhost` also qualifies, because browsers privilege localhost deliberately, which
+is exactly why no test here can see any of this.
+
+Production (GitHub Pages) is HTTPS and unaffected, and so is the installed iPhone PWA. This
+repo has no branch-preview deployment — `.github/workflows/deploy.yml` publishes only on
+push to `main` — so plain-HTTP LAN serving of an unmerged branch cannot exercise any of the
+three. Before drawing any conclusion about a secure-context-dependent feature from an
+unmerged branch, confirm `window.isSecureContext` on the ACTUAL test device and establish a
+genuine HTTPS route first.
+
+**The answer to this is a route, never a fallback.** `parseSourceIndex` REFUSES with a named,
+actionable sentence (`INSECURE_CONTEXT_REFUSAL`, `sourceArchive.ts`) checked BEFORE the
+file's own size/JSON/structure/digest order, because it is a fact about the DEVICE and no
+file can pass on a device that cannot hash — sending the owner to fix an index that is
+perfectly good is the failure mode a file-shaped error message produces. It does NOT hash
+some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
+content gets reported "Already current"), and a pure-JS fallback would repair one of the
+three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
+holds this closed at both real entry points — the GitHub refresh and the file fallback —
+with `crypto.subtle` removed exactly as a browser removes it.
 
 ## Hard "do nots" (require explicit user instruction to change)
 

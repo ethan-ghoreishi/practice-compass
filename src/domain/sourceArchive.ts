@@ -485,6 +485,42 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
 }
 
 /**
+ * The message a device that cannot hash anything gets, instead of a TypeError.
+ *
+ * Exported so the reader boundary and its test name ONE string rather than two
+ * copies of a sentence that must stay identical.
+ */
+export const INSECURE_CONTEXT_REFUSAL =
+  'This device opened the app over an insecure connection (plain http://), so the browser withholds the ' +
+  'cryptography needed to verify the index against its own content hash. Open the app over https:// (or ' +
+  'localhost) and refresh again. Nothing was changed.';
+
+/**
+ * WebCrypto EXISTS ONLY IN A SECURE CONTEXT, and this app can be opened outside
+ * one — a build served from a LAN address over plain http:// is the ordinary way
+ * an unmerged branch reaches a phone. There `globalThis.crypto` is present but
+ * `crypto.subtle` is `undefined`, so `sha256Hex` threw
+ * `Cannot read properties of undefined (reading 'digest')` — a stack trace about
+ * a property, handed to the owner in place of the one fact they can act on.
+ *
+ * This is a precondition of the DEVICE, not a defect in the FILE, which is why
+ * it is checked BEFORE the size/JSON/structure order below rather than folded
+ * into it: a device that cannot compute a digest cannot verify ANY index, so
+ * reporting the first thing that happens to be wrong with the file would send
+ * the owner to fix a file that is fine. It is also why this refuses rather than
+ * degrading to an unverified read — `contentHash` is the refresh identity, and
+ * skipping it is how altered content gets reported "Already current".
+ *
+ * Deliberately NOT a fallback implementation: the hash is only one of this
+ * app's secure-context dependencies (the service worker that makes it work
+ * offline is another), so hashing without one would leave the app still broken
+ * while implying plain http:// were supported.
+ */
+function requireDigest(): void {
+  if (!globalThis.crypto?.subtle) throw new Error(INSECURE_CONTEXT_REFUSAL);
+}
+
+/**
  * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
  * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
  * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
@@ -514,9 +550,13 @@ async function computeIndexDigest(parsed: Record<string, unknown>): Promise<stri
  * that build an index object in memory call it directly and have no transport.
  *
  * Order matters: size → parse → structure → digest, so a structurally broken
- * file reports the error the owner can act on rather than a hash mismatch.
+ * file reports the error the owner can act on rather than a hash mismatch. The
+ * secure-context precondition sits ahead of all four, for the reason
+ * `requireDigest` records: it is a fact about the DEVICE, and no file can pass
+ * on a device that cannot hash.
  */
 export async function parseSourceIndex(text: string): Promise<SourceIndex> {
+  requireDigest();
   if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
   let parsed: unknown;
   try {
