@@ -1574,22 +1574,56 @@ unconsumed credit for the whole ceiling, spendable by ANY later error to that UR
 a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
 the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
 cancellation's spurious error and a real access-control failure are worded the same on
-purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
-(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
-tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
-that URL always fires its own `requestfailed` before its own page error, so the instant one
-happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
-by anything but the specific error it was actually waiting for — which is what makes leaving
-it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
-now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
-servers create, never the correlation itself.
+purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
+excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
+names is ITSELF a cancellation. A genuine failure to that URL always fires its own
+`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
+nearer candidate and a stale, error-less cancellation is never reached by anything but the
+specific error it was actually waiting for — which is what makes leaving it unconsumed safe
+rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
+candidates the same distance away, the one that is NOT a cancellation wins.
+`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
+under the contention five concurrent dev servers create, never the correlation itself.
 
 A second, independent hole lived in the same function: `message.includes(url.host)` and
 `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
 one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
-WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
-the ambiguity structurally rather than adding more boundary characters to a string test.
+(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
+`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
+more boundary characters to a string test.
+
+**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
+Every string above was a hand-written reconstruction; nothing had ever been measured. The same
+commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
+measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
+two facts the harness had backwards, either of which alone made the excuse unable to fire:
+
+- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
+  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
+  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
+  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
+  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
+  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
+  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
+  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
+  apparent space was an artefact of that same split.
+- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
+  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
+  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
+  invariant survives the correction untouched, for the same reason it held before: a genuine
+  failure's own `requestfailed` is always adjacent to its own page error, so it always
+  outranks a stale cancellation milliseconds away.
+
+So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
+reads it after awaited page work, which round-trips the ordered transport and so has both
+events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
+an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
+for every tracked request to that resource and how far each sat from it
+(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
+cancellation from a real refusal is exactly what made this failure unreadable. The regression
+tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
+feeding its REAL error object back through the rule — that the shape can never drift back to a
+reconstruction.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the

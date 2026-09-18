@@ -704,9 +704,15 @@ describe('the journey harness itself', () => {
     // A reply from a REAL server with no CORS headers is what makes WebKit emit
     // this diagnosis; a Playwright-fulfilled response does not go through the
     // same check, which is why the fake GitHub repo above never produces one.
-    const blocked = createServer((_req, res) => {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end('{}');
+    const blocked = createServer((req, res) => {
+      // `?slow` never answers in time, so a reload CANCELS it — the other
+      // half of this test needs a real cancellation to the same resource.
+      const reply = () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      };
+      if (req.url?.includes('slow')) setTimeout(reply, 30_000).unref();
+      else reply();
     });
     await new Promise<void>((done) => blocked.listen(0, '127.0.0.1', done));
     const port = (blocked.address() as AddressInfo).port;
@@ -737,6 +743,14 @@ describe('the journey harness itself', () => {
       expect(kept[0].message).toContain('due to access control checks');
       expect(kept[0].message).toContain('Access-Control-Allow-Origin');
       // Reading twice reports the same list, not a growing one.
+      expect(app.pageErrors).toHaveLength(1);
+
+      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
+      // cannot be taken back by a cancellation to the same resource that
+      // happens afterwards — here a real one, produced by reloading while a
+      // request to that same path is still in flight.
+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
+      await reload(app);
       expect(app.pageErrors).toHaveLength(1);
     } finally {
       await app.close();
