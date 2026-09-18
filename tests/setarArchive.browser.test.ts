@@ -359,7 +359,12 @@ describe('the Setar archive, rendered', () => {
           expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
           expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
           expect(persisted.blocks).toHaveLength(1);
-          expect(app.pageErrors).toEqual([]);
+          // MESSAGES, not Error objects: `toEqual([])` on an array of Errors
+          // reports "expected [ …(1) ] to deeply equal []" and nothing else,
+          // so the one thing a CI-only failure needs to say — what the browser
+          // actually reported, and what the harness saw around it — is exactly
+          // what it withholds. Every other journey already asserts this way.
+          expect(app.pageErrors.map((e) => e.message)).toEqual([]);
         } finally {
           await app.close();
         }
