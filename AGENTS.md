@@ -1567,30 +1567,23 @@ later in the same journey, was swallowed and `pageErrors` said nothing. `excused
 excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
 naming the same URL is never excused).
 
-**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
-ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
+**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
 host+path ALONE: a cancellation that produced no page error of its own stayed a live,
 unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
 a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
 the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
 cancellation's spurious error and a real access-control failure are worded the same on
-purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
-excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
-names is ITSELF a cancellation. A genuine failure to that URL always fires its own
-`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
-nearer candidate and a stale, error-less cancellation is never reached by anything but the
-specific error it was actually waiting for — which is what makes leaving it unconsumed safe
-rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
-candidates the same distance away, the one that is NOT a cancellation wins.
-`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
-under the contention five concurrent dev servers create, never the correlation itself.
+purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
+genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
+DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
+create, never the correlation itself.
 
 A second, independent hole lived in the same function: `message.includes(url.host)` and
 `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
 one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
-`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
-more boundary characters to a string test.
+(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
+part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
+adding more boundary characters to a string test.
 
 **AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
 Every string above was a hand-written reconstruction; nothing had ever been measured. The same
@@ -1607,12 +1600,9 @@ two facts the harness had backwards, either of which alone made the excuse unabl
   wrong reconstruction fails to match rather than matching loosely. The whitespace the old
   regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
   apparent space was an artefact of that same split.
-- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
-  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
-  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
-  invariant survives the correction untouched, for the same reason it held before: a genuine
-  failure's own `requestfailed` is always adjacent to its own page error, so it always
-  outranks a stale cancellation milliseconds away.
+- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
+  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
+  search read an empty log. Tracked failures are searched in BOTH directions now.
 
 So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
 reads it after awaited page work, which round-trips the ordered transport and so has both
@@ -1620,10 +1610,76 @@ events in hand. A judgement is made ONCE: a cancellation arriving afterwards nev
 an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
 for every tracked request to that resource and how far each sat from it
 (`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
-cancellation from a real refusal is exactly what made this failure unreadable. The regression
-tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
-feeding its REAL error object back through the rule — that the shape can never drift back to a
-reconstruction.
+cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
+deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
+its own full url and saying whether it is the resource the error named — because a failure to
+the same path under a different query is exactly what the excuse must refuse to act on and
+exactly what the next CI-only failure needs to show.
+
+**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
+CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
+"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
+outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
+reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
+straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
+genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
+land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
+it. TWO changes replace it, and neither is a window:
+
+- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
+  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
+  two requests the app really makes one after the other, so a cancellation of one stood ready to
+  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
+  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
+  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
+  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
+- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
+  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
+  sits, and whatever sits nearer. A genuine access-control failure always emits its own
+  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
+  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
+  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
+  be. The veto is scoped: a genuine failure to another resource, or to the same path under
+  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
+  against a url.
+
+**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
+STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
+a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
+cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
+same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
+produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
+explanation for the CI failure, and cannot be settled from here. A cancellation being merely
+NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
+nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
+so url text and order are the whole of what exists.
+
+The regression tests assert the measured pair verbatim, the measured ordering, the query and the
+fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
+vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
+request back through the rule — that the shape can never drift back to a reconstruction. One
+drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
+naming it, because this excuse has been dead code twice and both times only CI could tell.
+
+**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
+Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed (it fails on
+roughly one run in six here, more often under concurrent load) shows the CORS-shaped page error
+for `contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the
+fetch is refused before WebKit's network layer ever sees it, because the document is being torn
+down by the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. There
+is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
+excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
+access-control diagnosis for a faked origin would suppress a whole error class at an entire
+origin on no per-event evidence at all, which is broader than the rule the sealed finding
+rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
+without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
+re-bootstraps the repo with another `PUT contents/README.md` — about one per second for the
+whole journey, each one a chance to be caught by a navigation. Making the fake remember the
+push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
+journey — which publishes a remote snapshot after the app's own push — then reads "Already in
+sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
+recorded here rather than left to be rediscovered from a red CI run.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
