@@ -1,27 +1,27 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 511b034a8229c4650884cc0257244fed0f73bf66
-reviewer: claude
+patchId: 18bac9c00b90646a72f07ff57aaa6a8b2297229e
+reviewer: unassigned
 state: sealed
 verdict: request_changes
 findings:
-  - family: OWNER ac-19 live GitHub integration and archive refresh
-    summary: "P1: The real NAS publisher successfully created
-      source-index/setar/index.json with data main unchanged, but the production
-      app now throws `Cannot read properties of undefined (reading 'digest')` in
-      both normal GitHub Sync and Refresh Setar archive."
-    counterexample: During manual OWNER ac-19 against the real private
-      practice-compass-data repository, the NAS task successfully published
-      branch source-index with setar/index.json. The data main branch remained
-      unchanged at 7b47648f4772f453794491633e0ba16602198c35. In the app,
-      pressing Sync now produces `Cannot read properties of undefined (reading
-      'digest')`, and pressing Refresh Setar archive produces the identical
-      error before any index is accepted. No data was replaced. Reproduce
-      against the real production response shapes and fix the shared failing
-      path without modifying owner data or weakening sync/archive safety.
-createdAt: 2026-09-17T22:00:13.478Z
-sealedAt: 2026-09-18T13:58:23.562Z
+  - family: Device archive media-base resolution
+    summary: "P1: Real OWNER testing shows Setar archive resources are imported with
+      correct archive-relative paths, but the production resolver omits the
+      Setar archive-root segment when composing NAS URLs, so all imported Setar
+      media links are unusable with the current device configuration."
+    counterexample: The imported resource path `session-39-01-09-2026/ضبط-کلاس.mp4`
+      is correct. The real file opens at
+      `https://192.168.0.20:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4`,
+      but Practice Compass resolves it as
+      `https://192.168.0.20:5010/session-39-01-09-2026/ضبط-کلاس.mp4`. Manually
+      inserting `/setar-classes/` makes the link work. Determine whether the
+      defect is device configuration, archive-specific base mapping, resolver
+      composition, legacy media-root interaction, or another cause, and fix the
+      authoritative model without rewriting archive-relative source identity.
+createdAt: 2026-09-18T15:23:04.529Z
+sealedAt: 2026-09-18T15:23:19.573Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -35,7 +35,7 @@ sealedAt: 2026-09-18T13:58:23.562Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `511b034a8229c4650884cc0257244fed0f73bf66`
+- **Diff patch-id:** `18bac9c00b90646a72f07ff57aaa6a8b2297229e`
 
 ## The Delta this change was framed from
 
@@ -78,440 +78,278 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Browser journey error visibility after cancelled requests** — A cancelled request can still suppress a genuine later WebKit access-control page error at the same URL when the cancellation emitted no page error of its own.
-  _counterexample:_ Cancel a request to a GitHub URL without a pageerror. Within 30 seconds, make a later request to that URL fail genuinely with WebKit's cannot-load/access-control wording. excusedCancellation consumes the earlier cancellation and returns true, so openPracticeApp omits the real error from pageErrors. The named test only covers a later failure after the cancellation entry has already been consumed.
+- **OWNER ac-19 live GitHub integration and archive refresh** — P1: The real NAS publisher successfully created source-index/setar/index.json with data main unchanged, but the production app now throws `Cannot read properties of undefined (reading 'digest')` in both normal GitHub Sync and Refresh Setar archive.
+  _counterexample:_ During manual OWNER ac-19 against the real private practice-compass-data repository, the NAS task successfully published branch source-index with setar/index.json. The data main branch remained unchanged at 7b47648f4772f453794491633e0ba16602198c35. In the app, pressing Sync now produces `Cannot read properties of undefined (reading 'digest')`, and pressing Refresh Setar archive produces the identical error before any index is accepted. No data was replaced. Reproduce against the real production response shapes and fix the shared failing path without modifying owner data or weakening sync/archive safety.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 26c6274..a303387 100644
+index a303387..412cfb1 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1522,11 +1522,31 @@ message merely CONTAINED that pathname discarded — so a genuine failure at the
- later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
- (`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
- excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
--naming the same URL is never excused), names that request's HOST as well as its path, and
--arrives inside a generous ceiling on how long an unconsumed cancellation may stand. The
--ceiling is deliberately not a timing correlation — the spurious error is emitted in the same
--tick, and a tight window would trade an over-broad filter for a flaky one under the
--contention five concurrent dev servers already create.
-+naming the same URL is never excused).
-+
-+**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
-+ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
-+host+path ALONE: a cancellation that produced no page error of its own stayed a live,
-+unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
-+a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
-+the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
-+cancellation's spurious error and a real access-control failure are worded the same on
-+purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
-+(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
-+tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
-+that URL always fires its own `requestfailed` before its own page error, so the instant one
-+happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
-+by anything but the specific error it was actually waiting for — which is what makes leaving
-+it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
-+now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
-+servers create, never the correlation itself.
-+
-+A second, independent hole lived in the same function: `message.includes(url.host)` and
-+`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
-+one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-+(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
-+WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
-+the ambiguity structurally rather than adding more boundary characters to a string test.
+@@ -518,15 +518,58 @@ reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the
+ React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
+ real port, and wires `visibilitychange`.
  
- **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
- the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
-diff --git a/DECISIONS.md b/DECISIONS.md
-index 1140393..ee4c88f 100644
---- a/DECISIONS.md
-+++ b/DECISIONS.md
-@@ -2,6 +2,37 @@
- 
- Durable record of non-obvious choices. Newest first.
- 
-+## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
+-**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
+-Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
+-deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
+-plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
+-(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
+-environment gap). Before drawing any conclusion about this feature (or any future
+-secure-context-dependent work) from an unmerged branch, first confirm
+-`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
+-establish a genuine HTTPS route for it first.
++**Secure-context constraint, and it is NOT only the wake lock.** This note began as a
++wake-lock note and was read as one, which is how the same environment gap came back as a
++production-looking failure. THREE of this app's capabilities are withheld outside a secure
++context, and plain http:// on a LAN address is not one:
 +
-+A fifth sealed review rejected the harness's cancellation excuse again. The previous round
-+(below) made it CONSUMING and bounded by a generous ceiling, but the ceiling was still the
-+whole bound, matched by host+path alone — and a cancellation that never produced its own page
-+error stayed a live, unconsumed "credit" for the full ceiling, spendable by ANY later error to
-+the same URL, including a genuine one that had nothing to do with it. Wording and URL cannot
-+tell a cancellation's spurious error apart from a real access-control failure — they read
-+identically by design (that is the whole diagnosis) — so no window, however short, can be the
-+thing that distinguishes them. Only ORDER can: `excusedCancellation` now tracks EVERY
-+`requestfailed`, not only cancelled ones, and excuses a page error only when the temporally
-+NEAREST tracked request to the exact host+path it names is itself a cancellation. A genuine
-+failure to that URL always fires its own `requestfailed` first, so it automatically becomes the
-+nearer candidate the instant it happens — a stale cancellation with no error of its own is
-+never reachable by anything but the error it was actually waiting for. The ceiling
-+(`CANCELLED_EXCUSE_MS`, shrunk from 30s to 2s) is now purely DEFENSIVE headroom against
-+delivery lag under contention, not the correlation itself.
++- `navigator.wakeLock` — `undefined`, so hands-free practice cannot be exercised at all.
++- **`crypto.subtle` — `undefined`, while `crypto` itself is still present.** This is the
++  sharp one, because nothing about it reads as an environment gap: `sha256Hex`
++  (`canonical.ts`) is the content-identity hash behind BOTH whole-state sync comparison
++  and `parseSourceIndex`'s recomputation of the published index digest, so Sync now and
++  Refresh Setar archive fail TOGETHER, in one shared function, with the property stack
++  trace `Cannot read properties of undefined (reading 'digest')`.
++- The **service worker**, therefore the installed PWA and its offline capability — the
++  app's core promise — does not register at all.
 +
-+A second, independent hole in the same function was found and closed in the same pass:
-+`message.includes(url.host)` and `message.includes(url.pathname)` are substring tests, and a
-+crafted host (`evil-api.github.com`, `api.github.com.evil.test`) or path (`state.json.bak`)
-+that merely CONTAINS the genuine value as a substring passed them. The message is now parsed
-+into a real `URL` (stripping the space WebKit inserts after the scheme) and compared to each
-+candidate by `host`/`pathname` EQUALITY, which removes the ambiguity structurally instead of
-+trying to add more boundary characters to a string test.
++MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:4173/` gives
++`isSecureContext: false`, `typeof crypto.subtle === 'undefined'`; the NAS over
++`https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
++self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
++certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
++mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
++`http://localhost` also qualifies, because browsers privilege localhost deliberately, which
++is exactly why no test here can see any of this.
 +
-+Six mutations were run and all six fail their named acceptance test: nearest-event selection
-+reverted to first-match, the consuming `splice` removed, host/path equality loosened back to
-+substring `includes`, the diagnosed-wording anchor dropped, the cancelled-type requirement
-+dropped (any nearest match excuses), and the ceiling check removed outright.
++Production (GitHub Pages) is HTTPS and unaffected, and so is the installed iPhone PWA. This
++repo has no branch-preview deployment — `.github/workflows/deploy.yml` publishes only on
++push to `main` — so plain-HTTP LAN serving of an unmerged branch cannot exercise any of the
++three. Before drawing any conclusion about a secure-context-dependent feature from an
++unmerged branch, confirm `window.isSecureContext` on the ACTUAL test device and establish a
++genuine HTTPS route first.
 +
- ## Rejection: two rules that held for one shape of the same defect (2026-09-17)
++**The answer to this is a route, never a fallback.** `parseSourceIndex` REFUSES with a named,
++actionable sentence (`INSECURE_CONTEXT_REFUSAL`, `sourceArchive.ts`) checked BEFORE the
++file's own size/JSON/structure/digest order, because it is a fact about the DEVICE and no
++file can pass on a device that cannot hash — sending the owner to fix an index that is
++perfectly good is the failure mode a file-shaped error message produces. It does NOT hash
++some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
++content gets reported "Already current"), and a pure-JS fallback would repair one of the
++three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
++holds this closed with `crypto.subtle` removed exactly as a browser removes it, at the
++GitHub refresh — the one entry point the UI actually reaches — and at `readIndexFile`
++beside it, which is the same decoder and currently has NO production caller (an
++unwired fallback, noted here rather than left to be discovered as dead code).
++
++**SYNC IS NOT FIXED BY THIS AND CANNOT BE, IN THIS LANE.** `hashState` reaches
++`crypto.subtle` through the same `sha256Hex`, so over plain http:// **Sync now still
++throws the raw `Cannot read properties of undefined (reading 'digest')`** —
++`canonical.ts` is outside this change's allowed paths and `githubSync.ts`/`syncEngine.ts`
++are forbidden by it. That failure is confined to a non-secure origin, where the app is
++not the installed PWA and has no offline capability either; on HTTPS it does not arise.
++Giving Sync the same named refusal is a separate lane, and is a WORDING change at a
++boundary, never a second hash.
  
- A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
-diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index 5266472..e80781a 100644
---- a/tests/practiceBrowser.ts
-+++ b/tests/practiceBrowser.ts
-@@ -28,7 +28,10 @@ const installHint = (engine: Engine) =>
-   'and an engine quietly missed is the same thing as an engine never checked.';
+ ## Hard "do nots" (require explicit user instruction to change)
  
- /**
-- * ONE cancelled request, awaiting the ONE spurious error it produces.
-+ * ONE recorded outcome of a network request the harness watched, cancelled or
-+ * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
-+ * genuine failure to the same URL displace a stale cancellation instead of
-+ * being excused by it (see `excusedCancellation`).
-  *
-  * A request the BROWSER cancelled because the test navigated away while it was
-  * in flight is not an application error. WebKit reports such a fetch as
-@@ -40,53 +43,103 @@ const installHint = (engine: Engine) =>
-  * person navigating mid-sync cancels the same request, so treating it as a
-  * page error makes a journey fail for driving the app quickly.
-  */
--export interface CancelledRequest {
-+export interface TrackedRequestFailure {
-   url: string;
-   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
-   at: number;
-+  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
-+  cancelled: boolean;
+diff --git a/docs/setar-archive.md b/docs/setar-archive.md
+index 8ba9e0b..9069489 100644
+--- a/docs/setar-archive.md
++++ b/docs/setar-archive.md
+@@ -264,6 +264,46 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
+ membership and role survive in the graph, the files themselves never become a
+ piece's material.
+ 
++### Open the app over HTTPS, or Refresh cannot verify anything
++
++Refresh recomputes the index's `contentHash` before trusting a byte of it, and
++that needs `crypto.subtle`, which **browsers expose only in a secure context**.
++Open the app over plain `http://` at a LAN address and `crypto` is still there
++while `crypto.subtle` is not, so Refresh — and **Sync now**, which hashes the
++whole database through the same function — both refuse.
++
++Measured on this network, 2026‑09‑18:
++
++| Origin | `isSecureContext` | `crypto.subtle` |
++| --- | --- | --- |
++| `http://192.168.0.113:4173/` (Mac LAN preview) | `false` | absent |
++| `https://192.168.0.20:5010/` (NAS, self-signed) | `true` | present |
++| `http://localhost:4173/` | `true` | present |
++| GitHub Pages (production) | `true` | present |
++
++So: **production and the installed iPhone PWA are unaffected** — both are HTTPS.
++Only a branch build served from a LAN address over plain HTTP hits this, and the
++fix is the route, not a setting:
++
++- **On the Mac — verified.** `http://localhost:4173` is already a secure context;
++  browsers privilege localhost on purpose, which is also why no automated check
++  in this repo can ever see this failure.
++- **For a phone — candidate route, NOT yet verified end to end.** Mirror the build
++  to the NAS (`npm run deploy`) and open it over `https://192.168.0.20/practice-compass/`.
++  What is measured: that origin is HTTPS and therefore a secure context, and a
++  self-signed Synology certificate does not change that — accept the browser
++  warning once. What is NOT measured: the mirror itself. On 2026‑09‑18 that URL
++  answered **403**, and `deploy-nas.sh`'s target share (`/Volumes/web`) was not
++  mounted on the Mac, so the build behind it is stale or absent and the script had
++  no destination. Mount the share, run `npm run deploy`, and confirm the page loads
++  and reports `window.isSecureContext === true` before treating this route as good.
++  Per ac-19's own rule, record the NAS mapping you actually find rather than
++  assuming a `/Volumes` path works.
++
++Refresh says this in as many words rather than crashing, and it says it before it
++looks at the file at all — on a device that cannot hash, no index can pass, and a
++file-shaped error would send you to republish an index that is perfectly good.
++
+ ---
+ 
+ ## 6. Notes for whoever changes this next
+diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
+index b156fab..6f1241c 100644
+--- a/src/domain/sourceArchive.ts
++++ b/src/domain/sourceArchive.ts
+@@ -484,6 +484,42 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
+   };
  }
  
- /**
-- * The excuse is BOUNDED, never a blanket pass for a URL. It used to be: a
-- * cancelled URL joined a permanent set, and every later page error whose
-- * message merely CONTAINED that pathname was discarded — so a genuine failure
-- * at the same path, later in the same journey, was swallowed and the journey's
-- * `pageErrors` assertion passed over it.
-+ * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
-+ * work. It once was the whole bound: a cancelled URL's entry stayed eligible
-+ * for this long, matched by host+path ALONE, so an unconsumed cancellation
-+ * that never produced its own page error remained a live "credit" any LATER,
-+ * genuine access-control failure to that same URL could spend. That is a
-+ * sealed finding, not a hypothetical: a cancellation and a real failure are
-+ * indistinguishable by wording or by URL, so a window — however short — can
-+ * never be the thing that tells them apart. Only ORDER can: see
-+ * `excusedCancellation` below for the correlation that actually does the work.
-+ * What is left for this ceiling to do is bound how far back a request that
-+ * WAS genuinely the nearest one may still be trusted, in case Node's delivery
-+ * of the two events (`requestfailed`, then `pageerror`) is delayed under the
-+ * contention five concurrent dev servers create; the diagnosis says the
-+ * browser emits them in the same tick, so this is headroom, not a design
-+ * tolerance the correlation depends on.
++/**
++ * The message a device that cannot hash anything gets, instead of a TypeError.
++ *
++ * Exported so the reader boundary and its test name ONE string rather than two
++ * copies of a sentence that must stay identical.
 + */
-+export const CANCELLED_EXCUSE_MS = 2_000;
++export const INSECURE_CONTEXT_REFUSAL =
++  'This device opened the app over an insecure connection (plain http://), so the browser withholds the ' +
++  'cryptography needed to verify the index against its own content hash. Open the app over https:// (or ' +
++  'localhost) and refresh again. Nothing was changed.';
 +
 +/**
-+ * Extract the URL a diagnosed WebKit access-control message names, or `null`
-+ * if the message is not that shape at all (a render crash, a thrown
-+ * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
-+ * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
-+ * host that a real URL never has, which this strips before parsing.
-  *
-- * Three bounds, all of which must hold, and the entry is CONSUMED when they do:
-- * one cancellation excuses exactly one error.
-- *  - the message is the DIAGNOSED wording, so an error of any other shape
-- *    (a render crash, a thrown TypeError) is never excused. WebKit spells this
-- *    for a fetch AND for an XHR, so the two words both spellings share are
-- *    what is matched; the recorded diagnosis (DECISIONS.md, 2026-09-17) is
-- *    where this wording comes from, and the next intermittent "CORS" failure
-- *    belongs here before it is diagnosed from scratch. Getting the wording
-- *    WRONG costs a flaky journey, never a wrong verdict: the consuming bound
-- *    below is what stops a real failure being excused;
-- *  - it names that request's host AND path — WebKit spells the URL with the
-- *    scheme separated from the host, so the comparison is on the parts both
-- *    spellings carry verbatim;
-- *  - it arrives inside a CEILING on how long an unconsumed cancellation may
-- *    stand. Deliberately generous rather than a timing correlation: the
-- *    spurious error is emitted in the same tick as the cancellation, and a
-- *    tight window would trade an over-broad filter for a flaky one under the
-- *    contention five concurrent dev servers already create.
-+ * The whole point of parsing into a real `URL` and comparing `host` and
-+ * `pathname` by EQUALITY, rather than testing whether the message merely
-+ * CONTAINS a candidate's host/path as substrings, is that a substring test
-+ * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
-+ * the left) or `api.github.com.evil.test` (extended on the right), nor
-+ * `/state.json` from `/state.json.bak` — every one of which contains the
-+ * genuine value as a substring. Anchoring the match to the exact text
-+ * between the fixed "cannot load " / " due to access control checks" phrases
-+ * — the only text WebKit ever puts there — removes the ambiguity outright
-+ * instead of trying to out-guess it with boundary characters.
-  */
--export const CANCELLED_EXCUSE_MS = 30_000;
--
--export function excusedCancellation(pending: CancelledRequest[], message: string, at: number): boolean {
--  if (!/cannot load/.test(message) || !/access control checks/.test(message)) return false;
--  const i = pending.findIndex((c) => {
--    if (at - c.at > CANCELLED_EXCUSE_MS) return false;
--    const url = new URL(c.url);
--    return message.includes(url.host) && message.includes(url.pathname);
--  });
--  if (i < 0) return false;
--  // CONSUMING the entry is this function's own job, not the caller's: the
--  // permanent-set version was a caller that simply never took anything out,
--  // and a boolean a caller can read without spending the cancellation would
--  // leave exactly that mistake available again.
--  pending.splice(i, 1);
-+function reportedUrl(message: string): URL | null {
-+  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
-+    message.trim(),
-+  );
-+  if (!m) return null;
-+  try {
-+    return new URL(`${m[1]}://${m[2]}`);
-+  } catch {
-+    return null;
-+  }
++ * WebCrypto EXISTS ONLY IN A SECURE CONTEXT, and this app can be opened outside
++ * one — a build served from a LAN address over plain http:// is the ordinary way
++ * an unmerged branch reaches a phone. There `globalThis.crypto` is present but
++ * `crypto.subtle` is `undefined`, so `sha256Hex` threw
++ * `Cannot read properties of undefined (reading 'digest')` — a stack trace about
++ * a property, handed to the owner in place of the one fact they can act on.
++ *
++ * This is a precondition of the DEVICE, not a defect in the FILE, which is why
++ * it is checked BEFORE the size/JSON/structure order below rather than folded
++ * into it: a device that cannot compute a digest cannot verify ANY index, so
++ * reporting the first thing that happens to be wrong with the file would send
++ * the owner to fix a file that is fine. It is also why this refuses rather than
++ * degrading to an unverified read — `contentHash` is the refresh identity, and
++ * skipping it is how altered content gets reported "Already current".
++ *
++ * Deliberately NOT a fallback implementation: the hash is only one of this
++ * app's secure-context dependencies (the service worker that makes it work
++ * offline is another), so hashing without one would leave the app still broken
++ * while implying plain http:// were supported.
++ */
++function requireDigest(): void {
++  if (!globalThis.crypto?.subtle) throw new Error(INSECURE_CONTEXT_REFUSAL);
 +}
 +
-+/**
-+ * The excuse correlates on ORDER, not on a window: among every tracked
-+ * request to the exact host+path the message names, the one that actually
-+ * produced this page error is whichever happened MOST RECENTLY before it —
-+ * because the diagnosis is that WebKit emits the spurious error in the same
-+ * tick as the cancellation that caused it, so nothing else to that URL can
-+ * have intervened by the time it arrives. That is precisely what makes a
-+ * cancellation with NO page error of its own safe to leave sitting in the
-+ * log rather than needing to expire it: the moment anything else — above
-+ * all a genuine failure — touches that same URL, THAT becomes the nearest
-+ * candidate and the stale cancellation is never reached again. A stale
-+ * cancellation can therefore only ever be reached by a page error that has
-+ * nothing more recent competing for it, which is exactly the case it is
-+ * supposed to excuse.
-+ *
-+ * If the nearest candidate is not a cancellation at all — a genuine failure,
-+ * or nothing within the ceiling — this returns `false` and excuses nothing:
-+ * an uncertain correlation is never resolved in the excuse's favour.
-+ *
-+ * The match is CONSUMING: the winning entry is removed, so it cannot excuse
-+ * a second, later error too.
-+ */
-+export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
-+  const reported = reportedUrl(message);
-+  if (!reported) return false;
-+  let nearest = -1;
-+  for (let i = 0; i < events.length; i++) {
-+    const e = events[i];
-+    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
-+    let url: URL;
-+    try {
-+      url = new URL(e.url);
-+    } catch {
-+      continue;
-+    }
-+    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
-+    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
-+  }
-+  if (nearest < 0 || !events[nearest].cancelled) return false;
-+  events.splice(nearest, 1);
-   return true;
- }
- 
-@@ -160,16 +213,17 @@ export async function openPracticeApp(options: {
-     page.on('dialog', (d) => {
-       void d.accept().catch(() => {});
-     });
--    // ONE cancellation excuses ONE diagnosed error (see `excusedCancellation`);
--    // every other page error is recorded exactly as before.
--    const cancelled: CancelledRequest[] = [];
-+    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
-+    // has to be visible to `excusedCancellation` so it can outrank a stale
-+    // cancellation to the same URL, not just a cancellation itself.
-+    const requestFailures: TrackedRequestFailure[] = [];
-     page.on('requestfailed', (r) => {
--      if (r.failure()?.errorText === 'cancelled') cancelled.push({ url: r.url(), at: Date.now() });
-+      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
-     });
-     // Surface a page-level error instead of letting it become a silently
-     // wrong assertion later.
-     page.on('pageerror', (e) => {
--      if (excusedCancellation(cancelled, `${e.message}`, Date.now())) return;
-+      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
-       pageErrors.push(e);
-     });
-     await page.clock.install({ time: options.now });
-diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
-index ba90650..2b9b4a1 100644
---- a/tests/setarInbound.browser.test.ts
-+++ b/tests/setarInbound.browser.test.ts
-@@ -20,6 +20,7 @@ import {
-   reload,
-   remoteStateText,
-   syncMessage,
-+  type TrackedRequestFailure,
-   writePersistedState,
- } from './practiceBrowser';
- import INDEX_TEXT from './fixtures/setar-archive.json?raw';
-@@ -508,59 +509,109 @@ describe('the journey harness itself', () => {
-   // The harness must not be able to hide the very failure a journey exists to
-   // catch. A request the browser CANCELLED (because the test navigated away
-   // mid-flight) produces a WebKit error that reads exactly like a CORS
--  // failure; excusing it used to mean adding its URL to a PERMANENT set and
--  // discarding every later page error whose message merely contained that
--  // pathname. So a genuine failure at the same path, later in the same
--  // journey, was swallowed — and `pageErrors` said nothing.
--  it('a cancelled request excuses its own error once, and never a later real one', () => {
--    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
--    const spurious =
--      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
--    const at = 1_000_000;
--
--    // The cancellation's OWN error is excused — and CONSUMED. The identical
--    // message arriving again has no cancellation left to account for it, which
--    // is exactly the reviewer's counterexample: cancel a request to a path,
--    // then let a later one to that path fail for real.
--    // Spending it is the function's OWN job — a caller cannot forget to, which
--    // is precisely what the permanent set was.
--    const pending = [{ url, at }];
--    expect(excusedCancellation(pending, spurious, at + 50)).toBe(true);
-+  // failure. Excusing it has failed two different ways so far, and each test
-+  // below is named for the specific way:
-+  //  - a PERMANENT set of cancelled URLs discarded every later page error
-+  //    whose message merely contained that pathname, so a genuine failure at
-+  //    the same path, later in the same journey, was swallowed and
-+  //    `pageErrors` said nothing;
-+  //  - even made CONSUMING (one cancellation, one error) and bounded by a
-+  //    generous time window, an unconsumed cancellation — one that produced
-+  //    no page error of its own — stayed a live "credit" for up to that whole
-+  //    window, spendable by a genuine, later failure to the same URL that had
-+  //    nothing to do with it. A window can never tell the two apart, because
-+  //    a cancellation's error and a genuine one read identically; only ORDER
-+  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
-+  const url = 'https://api.github.com/repos/owner/data/contents/state.json';
-+  const spurious =
-+    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-+  const at = 1_000_000;
-+  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
-+  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
-+
-+  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
-+    const pending = [cancelled()];
-+    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
-+    // CONSUMED — the identical message arriving again has no cancellation
-+    // left to account for it, which is the ORIGINAL reviewer counterexample.
-     expect(pending).toEqual([]);
--    expect(excusedCancellation(pending, spurious, at + 60)).toBe(false);
-+    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
- 
--    // Two cancellations excuse two errors and no more.
--    const twice = [
--      { url, at },
--      { url, at: at + 10 },
--    ];
-+    // WebKit spells the same diagnosis for an XHR as well as for a fetch.
-+    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
-+    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
-+
-+    // Only the DIAGNOSED wording is ever excused: a real render crash naming
-+    // the same URL is a page error, not a cancellation.
-+    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
-+      false,
-+    );
-+  });
-+
-+  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
-+    const twice = [cancelled(), cancelled(10)];
-     expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-     expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-     expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
-+  });
- 
--    // WebKit spells the same diagnosis for an XHR as well as for a fetch, and
--    // both are the same cancelled request.
--    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
--    expect(excusedCancellation([{ url, at }], xhrSpelling, at + 50)).toBe(true);
-+  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
-+    // This is the sealed finding: the cancellation happens and nothing ever
-+    // reports its own page error for it — exactly the case the harness must
-+    // tolerate without turning it into a standing credit for something else.
-+    const events = [cancelled()];
-+    // A genuine failure to the SAME url follows moments later, and IS
-+    // tracked — this is what makes it outrank the stale cancellation next.
-+    events.push(genuine(50));
-+    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
-+    // The stale cancellation is untouched: it lost to the more recent
-+    // genuine failure, it was never spent.
-+    expect(events).toContainEqual(cancelled());
-+  });
- 
--    // Only the DIAGNOSED wording is ever excused: a real render crash naming
--    // the same URL is a page error, not a cancellation.
--    expect(
--      excusedCancellation([{ url, at }], `TypeError: undefined is not an object — ${url}`, at + 50),
--    ).toBe(false);
-+  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
-+    // Genuine failure arrives FIRST, with no cancellation recorded at all.
-+    const events = [genuine()];
-+    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
-+
-+    // A real cancellation follows and correctly excuses its OWN error.
-+    events.push(cancelled(100));
-+    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
-+
-+    // Another genuine failure follows the (now-consumed) cancellation and is
-+    // never excused by it either — there is nothing left pending to excuse
-+    // it with, and it would not have qualified anyway.
-+    events.push(genuine(200));
-+    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
-+  });
- 
--    // It names that request, not merely its path: another host, and another
--    // path on the same host, both stay errors.
-+  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
-+    // A substring test cannot tell these apart from the genuine host/path;
-+    // only structural URL equality can. Each of these contains the real
-+    // host or path as a substring while naming a DIFFERENT resource.
-+    const hostPrefixTrap =
-+      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-+    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
-+
-+    const hostSuffixTrap =
-+      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
-+    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
-+
-+    const pathSuffixTrap =
-+      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
-+    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
-+
-+    // Another host entirely, and another path on the same host, both stay errors.
-     const elsewhere =
-       'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
--    expect(excusedCancellation([{ url, at }], elsewhere, at + 50)).toBe(false);
-+    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
-     const otherPath =
-       'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
--    expect(excusedCancellation([{ url, at }], otherPath, at + 50)).toBe(false);
-+    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
-+  });
- 
--    // And an unconsumed cancellation does not stand for the whole journey: the
--    // ceiling is generous (the spurious error is emitted in the same tick), but
--    // it is a ceiling.
--    expect(excusedCancellation([{ url, at }], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
-+  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
-+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
-+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+ /**
+  * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
+  * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
+@@ -514,9 +550,13 @@ async function computeIndexDigest(parsed: Record<string, unknown>): Promise<stri
+  * that build an index object in memory call it directly and have no transport.
+  *
+  * Order matters: size → parse → structure → digest, so a structurally broken
+- * file reports the error the owner can act on rather than a hash mismatch.
++ * file reports the error the owner can act on rather than a hash mismatch. The
++ * secure-context precondition sits ahead of all four, for the reason
++ * `requireDigest` records: it is a fact about the DEVICE, and no file can pass
++ * on a device that cannot hash.
+  */
+ export async function parseSourceIndex(text: string): Promise<SourceIndex> {
++  requireDigest();
+   if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
+   let parsed: unknown;
+   try {
+diff --git a/src/store/archiveIndex.test.ts b/src/store/archiveIndex.test.ts
+index e08aa95..cbbe9ac 100644
+--- a/src/store/archiveIndex.test.ts
++++ b/src/store/archiveIndex.test.ts
+@@ -7,7 +7,7 @@ import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs
+ import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
+ import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+ import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+-import { decodeSourceIndex } from '../domain/sourceArchive';
++import { decodeSourceIndex, INSECURE_CONTEXT_REFUSAL } from '../domain/sourceArchive';
+ import { validateDB } from '../domain/io';
+ import { createItem } from '../domain/factories';
+ import type { PracticeDB } from '../domain/types';
+@@ -452,6 +452,67 @@ describe('publishing and reading the source index', () => {
+     const lean = await readIndexFile(withDigest(withoutOptional));
+     expect(lean.ok).toBe(true);
    });
++
++  // --- THE DEVICE, NOT THE FILE ------------------------------------------
++  // Found by OWNER acceptance testing, not by any check here: an unmerged
++  // branch reaches a phone as a LAN build over plain http://, and WebCrypto
++  // exists only in a SECURE CONTEXT. `globalThis.crypto` is still there, but
++  // `crypto.subtle` is `undefined`, so recomputing the index digest threw
++  // `Cannot read properties of undefined (reading 'digest')` — handed to the
++  // owner as the explanation of their archive. Both doors onto the decoder are
++  // checked below: the GitHub refresh, which is the one the UI reaches, and
++  // `readIndexFile`, the same decoder behind a fallback nothing wires up yet.
++  //
++  // Every automated check missed it because every one of them runs where
++  // `crypto.subtle` exists: Node has it unconditionally, and the browser
++  // journeys are served from localhost, which browsers privilege as secure
++  // precisely so that http://localhost development works.
++  it('an insecure context refuses by naming itself, not by a property stack trace', async () => {
++    const text = JSON.stringify({ ...indexFixture, contentHash: indexDigest(indexFixture as Record<string, unknown>) });
++    // The REAL GitHub reply shape for this file: base64 `content`, `encoding`
++    // and `size`, exactly as api.github.com answers a contents request.
++    const github = async (url: string | URL | Request) =>
++      String(url).includes('/git/ref/heads/')
++        ? new Response(JSON.stringify({ object: { sha: 'c0ffee'.repeat(6) + 'aa' } }), { status: 200 })
++        : new Response(
++            JSON.stringify({
++              content: Buffer.from(text, 'utf8').toString('base64'),
++              encoding: 'base64',
++              size: text.length,
++            }),
++            { status: 200 },
++          );
++    const refresh = () =>
++      fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: github as typeof fetch });
++
++    // Both paths succeed on THIS device, so nothing below is about the file.
++    expect((await refresh()).ok).toBe(true);
++    expect((await readIndexFile(text)).ok).toBe(true);
++
++    // An insecure context, exactly as a browser presents one: `crypto` is
++    // present and `crypto.subtle` is not.
++    const secure = globalThis.crypto;
++    vi.stubGlobal('crypto', { getRandomValues: secure.getRandomValues.bind(secure) });
++    try {
++      expect(globalThis.crypto.subtle).toBeUndefined();
++      for (const result of [await refresh(), await readIndexFile(text)]) {
++        expect(result.ok).toBe(false);
++        if (result.ok) throw new Error('expected refusal');
++        // The one fact the owner can act on — and never the shape of the crash.
++        expect(result.error).toBe(INSECURE_CONTEXT_REFUSAL);
++        expect(result.error).toMatch(/https:\/\//);
++        expect(result.error).not.toMatch(/digest|undefined|Cannot read/i);
++        // Refusing is not reporting a broken file: the owner must not be sent
++        // to republish an index that is perfectly good.
++        expect(result.error).not.toMatch(/content hash.*altered|not valid JSON/i);
++      }
++    } finally {
++      vi.unstubAllGlobals();
++    }
++
++    // And the refusal was about the device alone: the SAME bytes pass again.
++    expect((await refresh()).ok).toBe(true);
++  });
  });
+ 
+ // ---------------------------------------------------------------------------
 ```
 
 **Full current text of every file the rework touched:**
@@ -1039,15 +877,58 @@ reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the 
 React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
 real port, and wires `visibilitychange`.
 
-**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
-Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
-deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
-plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
-(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
-environment gap). Before drawing any conclusion about this feature (or any future
-secure-context-dependent work) from an unmerged branch, first confirm
-`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
-establish a genuine HTTPS route for it first.
+**Secure-context constraint, and it is NOT only the wake lock.** This note began as a
+wake-lock note and was read as one, which is how the same environment gap came back as a
+production-looking failure. THREE of this app's capabilities are withheld outside a secure
+context, and plain http:// on a LAN address is not one:
+
+- `navigator.wakeLock` — `undefined`, so hands-free practice cannot be exercised at all.
+- **`crypto.subtle` — `undefined`, while `crypto` itself is still present.** This is the
+  sharp one, because nothing about it reads as an environment gap: `sha256Hex`
+  (`canonical.ts`) is the content-identity hash behind BOTH whole-state sync comparison
+  and `parseSourceIndex`'s recomputation of the published index digest, so Sync now and
+  Refresh Setar archive fail TOGETHER, in one shared function, with the property stack
+  trace `Cannot read properties of undefined (reading 'digest')`.
+- The **service worker**, therefore the installed PWA and its offline capability — the
+  app's core promise — does not register at all.
+
+MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:4173/` gives
+`isSecureContext: false`, `typeof crypto.subtle === 'undefined'`; the NAS over
+`https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
+self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
+certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
+mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
+`http://localhost` also qualifies, because browsers privilege localhost deliberately, which
+is exactly why no test here can see any of this.
+
+Production (GitHub Pages) is HTTPS and unaffected, and so is the installed iPhone PWA. This
+repo has no branch-preview deployment — `.github/workflows/deploy.yml` publishes only on
+push to `main` — so plain-HTTP LAN serving of an unmerged branch cannot exercise any of the
+three. Before drawing any conclusion about a secure-context-dependent feature from an
+unmerged branch, confirm `window.isSecureContext` on the ACTUAL test device and establish a
+genuine HTTPS route first.
+
+**The answer to this is a route, never a fallback.** `parseSourceIndex` REFUSES with a named,
+actionable sentence (`INSECURE_CONTEXT_REFUSAL`, `sourceArchive.ts`) checked BEFORE the
+file's own size/JSON/structure/digest order, because it is a fact about the DEVICE and no
+file can pass on a device that cannot hash — sending the owner to fix an index that is
+perfectly good is the failure mode a file-shaped error message produces. It does NOT hash
+some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
+content gets reported "Already current"), and a pure-JS fallback would repair one of the
+three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
+holds this closed with `crypto.subtle` removed exactly as a browser removes it, at the
+GitHub refresh — the one entry point the UI actually reaches — and at `readIndexFile`
+beside it, which is the same decoder and currently has NO production caller (an
+unwired fallback, noted here rather than left to be discovered as dead code).
+
+**SYNC IS NOT FIXED BY THIS AND CANNOT BE, IN THIS LANE.** `hashState` reaches
+`crypto.subtle` through the same `sha256Hex`, so over plain http:// **Sync now still
+throws the raw `Cannot read properties of undefined (reading 'digest')`** —
+`canonical.ts` is outside this change's allowed paths and `githubSync.ts`/`syncEngine.ts`
+are forbidden by it. That failure is confined to a non-secure origin, where the app is
+not the installed PWA and has no offline capability either; on HTTPS it does not arise.
+Giving Sync the same named refusal is a separate lane, and is a WORDING change at a
+boundary, never a second hash.
 
 ## Hard "do nots" (require explicit user instruction to change)
 
@@ -3095,2474 +2976,2456 @@ the philosophy. Anything that contradicts the "do nots" above needs an explicit 
 from the user, recorded here.
 ```
 
-### DECISIONS.md
+### docs/setar-archive.md
 
-```
-# Decisions
+````
+# The Setar archive: scanner, index and refresh
 
-Durable record of non-obvious choices. Newest first.
+How the normalised Setar class archive becomes historical lessons, canonical
+repertoire items and useful practice material — and exactly how the unattended
+part of it is installed, run and rolled back.
 
-## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
-
-A fifth sealed review rejected the harness's cancellation excuse again. The previous round
-(below) made it CONSUMING and bounded by a generous ceiling, but the ceiling was still the
-whole bound, matched by host+path alone — and a cancellation that never produced its own page
-error stayed a live, unconsumed "credit" for the full ceiling, spendable by ANY later error to
-the same URL, including a genuine one that had nothing to do with it. Wording and URL cannot
-tell a cancellation's spurious error apart from a real access-control failure — they read
-identically by design (that is the whole diagnosis) — so no window, however short, can be the
-thing that distinguishes them. Only ORDER can: `excusedCancellation` now tracks EVERY
-`requestfailed`, not only cancelled ones, and excuses a page error only when the temporally
-NEAREST tracked request to the exact host+path it names is itself a cancellation. A genuine
-failure to that URL always fires its own `requestfailed` first, so it automatically becomes the
-nearer candidate the instant it happens — a stale cancellation with no error of its own is
-never reachable by anything but the error it was actually waiting for. The ceiling
-(`CANCELLED_EXCUSE_MS`, shrunk from 30s to 2s) is now purely DEFENSIVE headroom against
-delivery lag under contention, not the correlation itself.
-
-A second, independent hole in the same function was found and closed in the same pass:
-`message.includes(url.host)` and `message.includes(url.pathname)` are substring tests, and a
-crafted host (`evil-api.github.com`, `api.github.com.evil.test`) or path (`state.json.bak`)
-that merely CONTAINS the genuine value as a substring passed them. The message is now parsed
-into a real `URL` (stripping the space WebKit inserts after the scheme) and compared to each
-candidate by `host`/`pathname` EQUALITY, which removes the ambiguity structurally instead of
-trying to add more boundary characters to a string test.
-
-Six mutations were run and all six fail their named acceptance test: nearest-event selection
-reverted to first-match, the consuming `splice` removed, host/path equality loosened back to
-substring `includes`, the diagnosed-wording anchor dropped, the cancelled-type requirement
-dropped (any nearest match excuses), and the ceiling check removed outright.
-
-## Rejection: two rules that held for one shape of the same defect (2026-09-17)
-
-A fourth sealed review rejected the reworked Setar-archive diff with two findings. Both are
-the previous fix covering one shape of a defect and not the shape beside it, so each fix
-here is the rule the shapes share — and the narrower mechanism is subsumed rather than left
-next to the new one.
-
-- **A rename source with two destinations still published its first one.** The loop rule
-  ("a log that loops names no file") had been closed at every consumer, and the fork sitting
-  beside it — `A→B` and `A→C` in the same log — was diagnosed as "not applied" while `A→B`
-  was published and used as exact identity: Refresh repaired an authored reference onto B and
-  re-keyed an owner's item-scoped hide onto B, although the log never established which file
-  A became. A fork and a loop are ONE defect said two ways, so the scanner now publishes a
-  replacement name only where the log determines it UNIQUELY and TERMINALLY — a fork
-  publishes nothing, a loop publishes nothing, and a chain walking into either publishes
-  nothing. The conflicted sources are removed from the map BEFORE the reachability walk, or
-  a chain ending at one would still publish a name on the strength of a mapping that was
-  meant to be gone. Its diagnostic names every destination seen, once and sorted, because
-  `diagnostics` is inside `contentHash` and ac-4's own claim is that a shuffled source yields
-  the same semantic index. Refusing the whole index was rejected for the reason the loop case
-  already records: an unimportable archive is a worse answer than an unrepaired path. No app
-  change was needed — `checkSourceGraph` already refuses a second row for one `from` at the
-  decoder and at the persisted door — and ac-12's named test now drives the downstream
-  reference and suppression transitions from the scanner's ACTUAL output for a forked log.
-  It changes nothing the operator publishes TODAY, and that is checked rather than assumed:
-  the corpus baseline records 257 rows in RENAME-LOG.csv and the index carries 257 mappings,
-  so no row of the real log is dropped for any reason — there is no fork in it to drop.
-- **The harness's excuse for a cancelled request was permanent.** The WebKit
-  cancelled-request diagnosis recorded in the previous round was implemented as a permanent
-  set of cancelled URLs, with any later page error whose message merely CONTAINED that
-  pathname discarded — so a genuine failure at the same path, later in the same journey, was
-  swallowed and the journey's `pageErrors` assertion passed over it. A check that can hide
-  the failure it exists to catch is worse than no check. `excusedCancellation` is consuming
-  (one cancellation, one error) and additionally requires the diagnosed wording and the
-  request's host as well as its path, inside a generous ceiling on how long an unconsumed
-  cancellation may stand. The ceiling is not a timing correlation: the spurious error arrives
-  in the same tick, and a tight window would trade an over-broad filter for a flaky one under
-  the contention five concurrent dev servers already create. Matching the request's METHOD
-  was considered and is not possible — the page error carries no method.
-
-Four mutations were run and all four fail their named acceptance test: the fork's first
-destination published again, the walks-into-a-fork extension removed, the cancellation excuse
-made permanent (non-consuming), and the diagnosed-wording requirement dropped.
-
-## Rejection: five rules that closed their own counterexample and not its family (2026-09-17)
-
-A third sealed review rejected the reworked Setar-archive diff. Each finding was the
-PREVIOUS fix holding for exactly the case it was written against, so each fix here is the
-rule the whole family shares — and the previous narrower mechanism is subsumed rather than
-left beside it.
-
-- **A read failure was valid empty source data.** The two-read consistency check was
-  extended to every input, and `catch { renameLogText = '' }` then made an unreadable
-  RENAME-LOG.csv agree with itself: both readings held `''`, the check passed, and the scan
-  published an index with no renames — so a file that moved in that window is flagged
-  unavailable and its saved references can never be repaired. Absence is an OBSERVATION now
-  (`{present:false}`, ENOENT only) and travels in the compared reading; anything else fails
-  the scan. The walk had the deeper version of the same gap: two readings agree about a file
-  neither looked at, so a skipped symlink or a session-named non-directory is a published
-  diagnostic instead of a silent omission. The compared reading also carries `mtimeMs`,
-  which `buildIndex` never reads, so an in-place edit at the same byte length is visible to
-  the check and invisible to the index.
-- **The absent/present rule reached the lists and the scalars, not the strings.**
-  `str(raw.form ?? '')` still read absent and present-and-null alike, so a `title: null`
-  decoded to an untitled row behind a correct digest. `text()` is that rule for strings.
-  Separately, a grammar of FIELD TYPES says every value is readable and nothing about
-  whether the graph agrees with itself: a resource in class 2's folder listed under class 1
-  passed every door. `checkSourceGraph` now also checks path ownership, resource-to-member
-  agreement by role, demo-group coherence and `hasClassRecording` — over rows the source
-  still DESCRIBES, because holding retained `unavailable` provenance to the current
-  source's internal agreement would refuse every refresh after a removal.
-- **A decision named its piece, not its record.** Both reconciliation loops open with
-  "already bound? nothing to decide", so a decision about a record bound between the preview
-  and the commit was never examined: no adoption, no question, an EMPTY `staleDecisions`,
-  and a commit reporting success for an action it had not performed. `apply-field` was worse
-  than ignored — keyed by piece and value alone, it was redirected onto whichever record held
-  that piece by commit time. It carries `itemId` now, and `planArchiveImport` marks every
-  decision it acts on and sweeps the rest: unmarked is either already realised (loop
-  prevention — the screen drops a stale decision and re-previews) or stale. The `from`
-  premise rule is an outcome of that sweep rather than a second mechanism beside it.
-- **"A cycle is reported" was reported in a value callers could ignore.** `followRenames`
-  returned `{ path, cycle: true }` and only adoption read the flag; the suppression re-key
-  and `retainMissing` walked past it, so A→B plus B→A moved the owner's hide onto B and the
-  wrong file went dark. It returns `string | null`, so dropping the verdict and keeping a
-  path is unrepresentable. The scanner drops every row in a loop — and every row walking into
-  one — with a diagnostic, per ac-12's own "cycles diagnose, never guess"; refusing the whole
-  index was rejected, because a name swap is a legitimate archive operation and an
-  unimportable archive is a worse answer than an unrepaired path.
-- **One lesson file had two sections.** `lessonFiles` composed the lesson's own references
-  and attachments as well as the archive's, and the lesson page renders both in the sections
-  that can edit and remove them — so an authored file appeared twice, once where nothing
-  could be done with it. `lessonFiles` is the ARCHIVE's contribution alone; an ITEM keeps the
-  whole composition, because its material comes from records its own page has no section for.
-  And "has a recording" is read through that composition, not `lesson.recordings`, so an
-  imported class is no longer invited to add the video already playing above the prompt.
-
-A separate, reproduced HARNESS diagnosis came out of the same round and is recorded here
-because a flaky heavy check is worse than a missing one: WebKit reports a request the browser
-CANCELLED (because the test navigated away mid-flight) as "Fetch API cannot load … due to
-access control checks", which reads as a CORS failure and is not one. Instrumenting the
-journey showed the only difference between a passing and a failing run was one `requestfailed`
-with `errorText: 'cancelled'` against a request fulfilled with correct CORS headers every
-other time. `openPracticeApp` no longer counts such an error, narrowly and by URL. Filtering
-the wording alone, or seeding the fake remote so the bootstrap PUT never happens, were both
-rejected: the first excuses a real CORS bug, the second changes what the other journeys mean
-by an empty remote.
-
-Eight mutations were run and all eight fail their named acceptance test: the optional-read
-swallow restored, the folder-ownership check, the demo-group check, the decision sweep,
-`itemId` dropped from the suggestion predicate, the cyclic suppression re-key, the lesson
-composition's authored half (in the real browser, both engines), and the empty-recording
-prompt's guard.
-
-## Rejection: five checks that each held for one caller, one input or one hop (2026-09-17)
-
-A second sealed review rejected the reworked Setar-archive diff with five findings. Every
-one of them was a rule that genuinely existed and covered LESS than it read as covering, so
-each fix is the boundary all the callers share rather than the caller the counterexample
-named.
-
-- **One scan was one consistent view of the registry only.** PIECES.csv was re-read after
-  the walk; the rename log and the media inventory were read once and compared against
-  nothing — and the media is what a non-atomic NAS copy actually perturbs. A resource moved
-  out before its folder is enumerated and restored while later folders are walked produces a
-  valid index that omits it, and the next Refresh marks still-present material unavailable.
-  `readSource` is now every input in one place, read twice and compared. It is a CONSISTENCY
-  check and the comment says so: a perturbation stable across both readings is
-  indistinguishable, from here, from the archive genuinely being in that state.
-- **The decoder normalised before the grammar ran.** `checkSourceGraph` was made the one
-  grammar in the previous rework — but the decoder hands it the decoder's OWN output, so
-  `resources: null` became a valid empty list before the grammar ever saw it, and six files
-  became zero behind a correct digest. The scalars had the same shape (`part: "3"` → `null`,
-  a wrong-typed `size` dropped, `rosterTrusted: 'yes'` → a boolean). `list`/`num`/`bool`
-  replace every absent-tolerant read: absent is a default, present-and-wrong is a refusal
-  naming the record. Separately, `acceptedAt` was the one persisted field with no check at
-  all while Settings renders it — validated at the door, never guarded in the component.
-- **A decision was matched to its target, not to its premise.** The rebase refused only on a
-  NEW question, so choosing the archive's composer over an empty field and then typing your
-  own before Apply raised nothing to ask about and overwrote the new words. An `apply-field`
-  decision carries `from` now, `decisionMatchesSuggestion` is the one test the summary and
-  the write share, and a link may only adopt a record that is still unbound and still this
-  instrument's. Both land in `plan.staleDecisions` — ONE channel — and the commit refuses on
-  either, whether or not `rev` moved. Silently creating a record instead of linking one was
-  rejected as an answer: it is not the action the owner chose.
-- **The rename chain had three readings.** Repair followed the whole chain, adoption took one
-  hop, a suppression took none. A→B→C with B in session 1 and C in session 2 adopted a class
-  as session 1 and then repaired its reference into session 2. `followRenames` is the one
-  reading; a resource suppression is re-keyed through it (the same decision about the same
-  bytes, in the archive's current words), and a renamed row is dropped from the retained
-  graph rather than flagged `unavailable` — the log says where the bytes went. Dropping is
-  safe for a RESOURCE specifically: only pieces and sessions carry bindings.
-- **A media base was validated as a URL, not as a base.** Everything appends a path after it,
-  so `https://user:pass@nas/media?token=secret` put a password in every device URL and
-  addressed no file. `normalizeBaseUrl` refuses credentials, query and fragment — refuses,
-  not strips, because a rewritten base names a different server — and every caller,
-  `verifiedBase` included, already passes through it.
-
-Fifteen mutations were run and all fifteen fail their named acceptance test: each decoder
-site reverted INDIVIDUALLY (a single-site test would have passed a partial fix), the
-scanner's second reading, the `acceptedAt` and rename-log checks, the one-hop evidence, the
-un-migrated suppression ref, the re-flagged renamed row, `from` dropped from the predicate,
-the staleness detector disabled, the bound-target link guard, and the base-URL refusal.
-
-## Rejection: four invariants that were stated in one place and enforced in none (2026-09-17)
-
-A sealed review rejected the first Setar-archive diff with four findings. Each was reported
-as one counterexample; each was really a FAMILY, and the fixes are family-shaped.
-
-- **The nested graph had two grammars.** `decodeSourceIndex` stated the shape of a session;
-  `validateArchiveSources` stated LESS of it and was the one every inbound door ran. So
-  `members[0].roles: null` was accepted, persisted, and thrown on by `repeatChains` while
-  rendering material — and `piece.aliases` had the identical exposure through
-  `planArchiveImport`'s own spread. `checkSourceGraph` is now that grammar in ONE place,
-  run by both callers. The alternative — guarding the reader — was rejected outright: a
-  reader written against a validated graph is the whole point of validating it, and a guard
-  in `ItemMaterial` would leave the invalid data on disk for the next reader.
-- **The reference repair had no production caller.** The 67-path mapping was proved against
-  the real rename log and then never wired in, so a uniquely adoptable legacy class was
-  adopted and left pointing at names the archive renamed. The repair runs inside
-  `planArchiveImport` now, in ONE pass whose output is both what the preview shows and what
-  the commit installs. Scope is the lessons the archive owns; `not-described` is deliberately
-  NOT reported, because the index omits 125 of 258 files by construction and "I have never
-  heard of this path" is not "this file is gone".
-- **Owner answers were transient.** Skip lived only in the preview's argument list; Create
-  separately was honoured for items and dropped for lessons; and any decision taken against
-  an already-current index was reported "Already current" and discarded. Skip writes a
-  suppression, the lesson branch exists, and `commitArchiveImport` asks `applyArchiveImport`
-  itself — which returns the same object when a plan changes nothing — instead of keeping a
-  second opinion about what "unchanged" means.
-- **The digest was format-checked, never verified.** `contentHash` is the refresh IDENTITY,
-  so altered content under a retained hash was reported unchanged and its facts ignored.
-  `parseSourceIndex` recomputes the scanner's own digest at the one boundary both readers
-  share. It is async because the platform's SHA-256 is; a hand-rolled synchronous one to
-  avoid two `await`s would be a second implementation of a primitive the app already has.
-
-Each fix was mutation-checked: the roles check, the `create-lesson` branch, the suppression
-write and the digest comparison were each reverted in turn and confirmed to fail the named
-acceptance test — the suppression one failing specifically AFTER a reload, which is where
-the defect actually lived.
-
-## The archive describes; it never testifies (2026-09-17)
-
-The Setar archive is thirty-nine class folders, 258 files and a 94-row canonical registry,
-normalised so that every filename parses. Turning that into lessons, repertoire items and
-material raised one question over and over, and the answer is always the same shape:
-**archive evidence may establish membership, provenance and material. It may never
-establish practice.**
-
-**The scanner is on the NAS, and the app reads a published index.** Four architectures were
-weighed. Browser filesystem access is Mac-only and useless on the phone. A bundled
-TypeScript array (what the old `scan:setar` produced) needs a rebuild and a deploy for every
-new class. Browser crawling of a NAS directory listing means dozens of requests, fragile
-HTML, a CORS refusal, a CSP change and a certificate problem — and `no-cors` cannot produce
-readable data at all. A live scan service is a new authenticated runtime nobody asked for.
-So: a read-only Node scanner on the NAS emits a deterministic JSON index; the publisher
-commits it to a SEPARATE branch of the existing private data repo; the app GETs it with the
-GitHub connection it already has. Both devices get the same small file with no NAS fetch
-permission, no new service and no large-file storage, and media still opens directly from
-each device's own base.
-
-**A separate branch, not a sidecar.** `gitRemote.createTree` builds `main`'s whole tree with
-no `base_tree`, so anything placed beside `state.json` is deleted by the next sync. That is a
-fact about the sync engine, and the answer is to stay out of its way — not to change the one
-part of this app whose job is never losing data.
-
-**The token is repository-scoped, and saying otherwise would be a lie.** GitHub does not
-issue branch-scoped tokens. `publish-setar-index.mjs` refuses every target but
-`source-index`/`setar/index.json`, and that is a property of the CODE. The docs say so in
-those words, because "the credential can only touch the index branch" is exactly the kind of
-comfortable sentence that turns into a breach.
-
-**Identity is byte-exact and archive-relative.** `canonical_fa` is the join key, unfolded and
-untransliterated; `aliases_seen` is literal SEARCH data and is never consulted to decide
-which piece a record is. App ids are deterministic hashes of the source identity, so two
-devices importing the same index independently agree on which record is which. Paths are
-stored relative to the archive root, so changing the transport — LAN today, Tailscale on the
-phone, something else later — rewrites no stored record.
-
-**Weak equivalences ask; they do not merge.** A legacy class is auto-adopted only on
-instrument + date + number + exact source-path evidence. The owner's real upcoming class 38
-(2026‑09‑27) and archive session 38 (2026‑08‑04) are a live counterexample to merging on a
-number. An exact title or alias match produces Link / Create separately / Skip; a catalogue
-slug (`iraq`) is never equated with a canonical Farsi key (عراق), however obviously they
-"mean" the same thing.
-
-**Imported pieces arrive resting.** Ninety-four live candidates would flood every
-recommendation and every session plan on the day of the import. Resting is an administrative
-import policy, stated before the import — the items stay searchable, stay in My repertoire,
-and start directly whenever the owner wants.
-
-**History is history, whatever the clock says.** The archive runs to September 2026, so on a
-device whose clock is behind it an imported class is dated in the FUTURE. `date >= today`
-would turn thirty-nine records of classes that already happened into thirty-nine deadlines.
-`isUpcomingLesson` checks `origin === 'archive'` FIRST, and all four next-class selectors
-plus every Lessons badge go through it.
-
-**The bug that was not in the editor.** Lesson notes could not be cleared. The editor was
-blameless: `updateLesson` read `patch.notes ?? l.notes`, which cannot tell an omitted field
-from a deliberately empty one, so deleting the text wrote the old text straight back. Fixed
-at the patch boundary, on the PRESENCE of the key — the same distinction `resolveReviewDate`
-already makes for a date — and the lesson editor now shares `ItemNotes`' durability model
-(explicit Done, tagged draft, acknowledged persistence, retry) through one extracted
-component rather than a second copy of it.
-
-## A check that lives in one door is a check with five doors missing (2026-09-16)
-
-Two more sealed findings, and the same shape underneath both: a rule that was genuinely
-correct, sitting somewhere only one caller reaches.
-
-**Attachment identity.** "Two attachments may not share an id" lived in
-`decodeBackupFiles` — which returns on its FIRST line when a file carries no `files` key.
-So it ran for a full backup and for nothing else: a state-only import, a sync pull, an
-archive restore and both halves of hydration all installed duplicates unchecked. Not
-cosmetic, because the export emits one file per describing row: the device's own next
-backup then carried two files sharing an id and was refused by its own importer, here and
-on every device a sync published it to. The check moved to `validateDB`, the one function
-every inbound door already runs, and `decodeBackupFiles` keeps none of its own. Bounded to
-attachment ids on purpose — an id is what the bytes are KEYED by — and not widened into a
-duplicate-id sweep over every collection, which this change's own non-goals rule out.
-
-**The review-date draft.** `seeded` held "the item's date, or today when it had none", so
-"no date" and "a date that is today" were the same value. That forced an exemption —
-skip the whole comparison when the item has no date — and the exemption is what a live
-update CLEARING the date fell into: the box went on showing, and Save date went on
-writing, a schedule the item no longer had. Fixed by separating the two facts rather than
-special-casing the symptom: `seeded` is the item's own date (empty when absent), `offered`
-is what the box was filled with, and untouched is `text === offered`. All three
-transitions — to a different date, to none, from none — are now one rule. Proved in the
-browser through a real sync pull, the only thing that changes an item's date while that
-panel stays mounted.
-
-## A draft belongs to what it was typed for, not to whatever is on screen (2026-09-16)
-
-Two sealed findings, one rule, in two editors.
-
-**Working notes.** `ItemNotes` cleared its draft and showed "Saved." whenever the
-IndexedDB write it had issued settled — but the textarea stays live while that write is
-acknowledged, so anything typed in that window is NEWER than what was written. Pressing
-Done, typing one more word, and letting the write land threw that word away and put a
-success message over the older text. A settling write now speaks only for the text it
-actually CARRIED: same text ⇒ clear the draft and say saved; different ⇒ re-issue the
-write for what is on screen, which is what pressing Done asked for and is what keeps the
-words when the screen is LEFT mid-write. Switching ITEM is the opposite case and stays as
-it was: `saveSeq` is bumped, the write says nothing, and the draft is abandoned — those
-words were typed for a notebook that is no longer on screen. Try again does the same as
-Done on the failure path.
-Only the latest save may act (`saveSeq`, bumped by a retry and by switching item), and the
-draft is read through a ref: `storageSettled()` resolves in a microtask that can land
-between a keystroke and React's next render, so neither the issuing closure nor an
-effect-mirrored ref is sound.
-
-**The review date.** `ScheduleAgain` kept `open`/`date` in plain state, and `/items/A` →
-`/items/B` is a route PARAMETER change — same component instance, new props — so an open
-draft survived it and "Save date" wrote A's date through B's callback. The draft now
-carries the item it was opened for and that item's own pending date, and
-`reviewDateDraftFor` (pure, tested) reconciles it on every render: another item drops it;
-an untouched seed follows a date that moved beneath it, rather than silently reverting a
-change the owner never saw; text the owner typed survives, because that is intent, not a
-stale capture. Deliberately NOT an effect that resets state — a derivation cannot leave a
-paint in which the box shows one item's date while Save points at another.
-
-Both are the same sentence: an editor's draft is bound to what it was typed for, and
-neither time nor a route change may re-point it.
-
-## The export is derived from the metadata, so the app cannot write a backup it refuses (2026-09-16)
-
-Amends "A strict “metadata without bytes” refusal needs the same rule at the other door" below, which closed one mouth of that trap and left the other open. A
-sealed review found the mirror case: with a blob stored locally, a valid STATE-ONLY import
-whose `data` describes no attachments is accepted and — correctly, by that door's own
-contract — preserves the bytes. The database now names nothing, but
-`buildFullBackupWithRev` derived `files` from the blobs actually STORED, so the next full
-export carried orphan bytes and `decodeBackupFiles` refused its own device's backup
-("belongs to nothing this file describes"). Not exotic either: `deleteItem`,
-`deleteLesson` and `resetDemo` remove metadata synchronously while their
-`void deleteBlob(...)` cleanup can fail on its own.
-
-`files` is now built from `db.attachments` ∩ the blobs held, carrying the METADATA's
-`ownerId` — the field the importer validates against and writes back onto the blob row, so
-the round trip is idempotent rather than a second opinion about ownership. Unreferenced
-bytes stay on the device UNTOUCHED; deleting them to make the two agree is exactly what the
-state-only contract forbids, and they are simply not part of the database the backup is OF.
-
-Fixing it at the export rather than at the state-only door was the point: the door must
-preserve those bytes, so the inconsistency is legitimate and it is the EXPORT that has to
-be honest about which of them the backup is for.
-
-## One canonical home per kind of practice information — schema v13 (2026-09-16)
-
-Four things the musician writes, four homes: **Working notes** (`item.notes`) belong to the
-item and last as long as it does; an **observation** and a **next action** belong to one
-recorded block; a **question** belongs to a class, in the lesson agenda. Nothing copies one
-into another automatically. The problem was never that any of these were missing — it was
-that nineteen other persisted fields competed with them, so the same fact could be written
-in two places and disagree, and the notebook that should have been in front of you while
-practising was not reachable from the practice screen at all.
-
-**The waiver, stated exactly.** `currentProblem`, `bestStrategy`, `tags`, the item's cached
-`lastObservation`, the block's `bodyNote`, and fourteen Persian/Guitar WORKING-DETAIL
-fields (`shahed`, `ist`, `foroud`, `phraseLabel`, `importantNote`, `ornamentIssue`,
-`mezrabIssue`, `rightHandIssue`, `leftHandIssue`, `toneIssue`, `fingering`, `tempo`,
-`stringNoiseIssue`, `bodyTensionNote`) are REMOVED by the v12 → v13 migration, not merged
-into `notes`. The owner established that their current content is dummy test data and
-waived lossless preservation for these enumerated fields only. Merging dummy text into the
-one real notebook is the failure mode, not the fix — and this app's own rule is that
-nothing silently loses meaningful practice, which is why the exception had to be named,
-bounded and signed rather than assumed. The Persian/Guitar IDENTITY fields (`dastgahAvaz`,
-`gusheh`, `form`, `composer`, `lessonNumber`, `barRange`) are kept: they say what the piece
-IS and they group the repertoire.
-
-**What makes it safe to re-run.** `retirePracticeText` is DELETION ONLY — it never writes a
-value — so a second pass over its own output is a no-op and it is structurally incapable of
-resetting canonical text. It reads no clock, so two devices migrate the same database
-identically on different days. It runs on EVERY inbound database rather than only one
-declaring `fromVersion < 13`, for the reason `migrateToV12` already records: a database
-claiming the current schema can still carry a stray retired key from a partial conversion
-or a hand-edited file.
-
-**`lastObservation` was deleted rather than replaced** because the fact is derivable:
-`latestObservation(blocks)` reads the most recent block observation and returns its DATE
-with it, so the teacher sheet and the question list say *when* the observation was made
-instead of presenting a stale line as current. A cached copy of a derivable fact is two
-facts that can disagree.
-
-**The surviving text is checked, never coerced.** `validatePracticeText` (the four homes'
-own string fields — the block's legacy `constraint` included — and nothing else) joins
-`validateDB`, so every inbound door refuses the same
-thing. `null` reads as ABSENT — it is what a serialiser writes for "no value" and every
-reader already treats it as missing — and empty is legitimate, because emptying a notebook
-is a deliberate act. A present value of the wrong type is refused with the record named:
-`String({})` is how a note becomes the literal text "[object Object]". The unfinished
-block's scratch observation lives outside `PracticeDB`, on the store's ephemeral `active`,
-so it gets the same rule from `validateUnfinishedText` at the same hydration boundary.
-
-**Rollback is by restoring the backup you kept, never by a down-migration**, and the check
-proves it against the app that actually wrote the file: a disposable `git worktree` at the
-baseline commit, served by its own Vite server, refuses the v13 export by version with its
-stored bytes unchanged, and then restores the retained v12 export with its attachment
-intact and readable. A block recorded after the upgrade exists only in the v13 export —
-that limitation is stated rather than papered over.
-
-## A strict "metadata without bytes" refusal needs the same rule at the other door (2026-09-16)
-
-`decodeBackupFiles` now refuses a full backup that describes an attachment it does not
-carry (it used to `continue` past unreadable entries and install metadata for bytes that
-never arrived, reporting "Imported (3 files)"). Tightening that alone creates a ONE-WAY
-TRAP, which is the part worth recording: an export can only carry bytes it actually holds,
-so a device holding metadata for a blob it does not have exports a file it will then refuse
-on import — and publishes a sync snapshot every other device refuses too. Permanent, with
-no owner-visible way out.
-
-The state-only import (`files` absent) was the one door that could create it. So the same
-invariant is enforced there: **after any install, every attachment the database describes
-has bytes on this device.** A state-only file naming an attachment this device does not
-hold is refused, naming the file, with the local bytes and the local database untouched —
-at the one moment the owner can still do something about it. `heldBlobIds()` answers that
-question from the key index rather than loading every blob to ask it.
-
-The alternative — dropping the metadata for absent bytes — was rejected: that is silent
-loss of the owner's own record, which is exactly what the refusal exists to prevent.
-
-## Handing a review date back to the engine is administration, not evidence (2026-09-16)
-
-`transferToAutomaticReview` moves an item to `reviewMode: 'auto'` with
-`nextReviewSource: 'auto'` and KEEPS the pending date byte-for-byte. Together those two
-fields mean the engine now has AUTHORITY over that date — not that the date was calculated
-and not that a review happened. `srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`,
-every statistic, every status and every completed row are untouched, so the next eligible
-close resumes from the rung the item was already on. The button's explanation must never
-call the retained date a new engine calculation; that sentence is the whole point.
-
-It REFUSES rather than guesses on an ambiguous schedule — open rows disagreeing with the
-item or with each other, or rows pending with no item date — because that is a decision the
-owner makes with "Change review date". `updateItem` refuses such a save WHOLE rather than
-applying the other fields and dropping the transfer. An ordinary save never releases a
-protected date: only this explicit control transfers ownership, and only an explicit date
-change, a snooze or "Schedule again" re-establishes the owner's.
-
-Building the rendered control surfaced a real defect: "Review today" wrote the day the
-panel had been RENDERED with (`useDecisionNow` polls every 30s), so a device left open
-across local midnight saved yesterday. It now resolves the day at the moment of the tap —
-the same action-time guard `CloseBlock`'s Save already uses.
-
-## `text-align: start` is not portable, and Chromium cannot show you that (2026-09-16)
-
-The owner had reported a Safari-only question-alignment symptom that nine rounds of
-Chromium checking never reproduced, and the source left several plausible causes. Driving
-the same page in WebKit reproduced it immediately and it was none of them: `ClassQuestions`'
-`<li dir="auto">` inherits `text-align` from an LTR ancestor, and **WebKit inherits the
-RESOLVED PHYSICAL value (`left`) where Chromium inherits the LOGICAL keyword (`start`)** and
-re-resolves it against the `<li>`'s own direction. Identical DOM, identical CSS, two
-different pictures: a Farsi question rendered hard against the English edge while its
-ordinal — a direction-aware flex child, correct on its own terms — sat on the right.
-
-The fix is one declaration: a block whose own direction is resolved by its content must
-RE-DECLARE `textAlign: 'start'` on itself. An inherited `start` is not the same thing as an
-own `start`. This generalises past `ClassQuestions` and past this lane.
-
-The durable lesson is the other half: **a direction fix verified in one engine is verified
-in one engine.** `tests/practice-information-layout.browser.test.ts` now drives the changed
-surfaces in Chromium AND WebKit, at 390×844 and desktop, asserting measured bounding
-positions. A missing WebKit binary fails with the install command; it never skips. Two
-WebKit-only environment facts encountered on the way, neither an app bug: it cannot store a
-`Blob` in IndexedDB under the automation driver (so that journey seeds state-only), and it
-reports `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was
-aborted.
-
-## Two deliberate limits recorded rather than quietly worked around (2026-09-16)
-
-**The iPhone keyboard/shell symptom stays an OWNER diagnostic, with zero code.** The
-reported displacement is a device-and-shell interaction the browser checks above cannot
-reproduce, and `useViewportGuard.ts`, the shell height, `visualViewport` scrolling and nav
-positioning are all deliberately untouched here. Guessing a timeout to make a symptom go
-away is exactly the change this repo's own rules forbid, and no timeout increase is
-authorised. The Farsi half of that report WAS reproduced and fixed (the WebKit entry
-above); the keyboard half needs the specified capture first, on the deployed revision:
-
-- device / iOS / app version, and standalone PWA versus Safari;
-- repeat focus, keyboard dismissed with the field still focused, blur, field-to-field
-  focus, route exit and orientation change — on item notes, Close, and lesson questions;
-- at each transition (before / during / after), timestamped: `innerHeight`,
-  `visualViewport.height` / `offsetTop` / `pageTop` / `scale`, `window.scrollY`,
-  `document`/`body`/`main` `scrollTop`, `document.activeElement`'s tag, and the rectangles
-  of the app shell, `main`, the tab bar and the focused field.
-
-That set is what distinguishes layout scrolling from visual-viewport displacement from
-residual internal scrolling from keyboard timing from focus scroll — five different fixes.
-Prescribing one before the capture would be guessing.
-
-**A DST assertion that only runs in some timezones is not an assertion.** The report's
-local-day boundary check originally ran `if (the machine's offset changes this year)`,
-which never executes on a UTC CI runner and would have reported as passing having proved
-nothing. It now forces `TZ=Europe/London` around that one assertion (Node re-reads `TZ` per
-call) and restores it immediately, so the case genuinely runs everywhere.
-
-## Tenth rejection: a resolved direction that never reaches the alignment, and lines that share one (2026-09-13)
-
-Two counterexamples, one family — and both were invisible to the guard, which is the third
-thing this entry fixes.
-
-**A user-authored title under a forced physical alignment.** Repertoire's `PathwayCard`
-rendered `pathway.name` inside `<button style={{ textAlign: 'left' }}>` with no
-direction-resolving group between them. The browser shaped a Farsi pathway name correctly
-(bidi needs no help for that) and then pinned it to the English edge, split from its own
-instrument/stage caption. The inline `<span dir="auto">` already on that caption could
-never have fixed it: `text-align` is a BLOCK concept, and this repo's own "an isolate must
-be inline" rule exists precisely because a `<span>` never participates in one. Fixed by
-wrapping the name and its caption in ONE `dir="auto"` group that also re-declares
-`textAlign: 'start'` — both halves, because either alone leaves the name where it was. The
-group sits INSIDE the button rather than on it (the Balance-row precedent: the progress bar
-and its counter below are layout, not text). Measured against the live page: before,
-the Farsi name occupied x 41–184 of a 1068px card; after, 884–1027, with its caption on the
-same edge. The English card is byte-identical in layout (`start` === `left` under LTR).
-
-Auditing the same shape across the app found two more real instances, fixed with it:
-Insights' per-instrument `<th style={CELL} dir="auto">{r.instrumentName}</th>`, where
-`CELL` pinned `textAlign: 'left'` over an instrument name the owner can rename to Farsi
-(CELL now uses `'start'`), and RoutineRunner's "Recorded" rows, whose `dir="auto"` row sat
-under a card pinning `'left'`. `center` is deliberately NOT treated as forcing: centred text
-points at no edge, so it cannot misalign an RTL run — which is also what keeps this from
-demanding an unrequested layout change on the deliberately centred practice screens.
-
-**Lines of one field that are not one language.** The bulleted multi-line renderer added
-for `teacherQuestion`/`currentProblem`/`lastObservation` left every bullet bare, arguing
-that lines typed into one box share one direction. They do not: a musician who types a
-Farsi question and an English one into the same field gets two lines whose languages
-genuinely differ, and bare lines all inherit the FIRST line's direction — an English line
-dragged RTL with its bullet on the wrong side, or the reverse.
-
-The catch that argument was right about is real, though, and is why this is not simply
-"isolate every line": `dir="auto"` skips any descendant carrying its own `dir`, and the
-enclosing `<li dir="auto">` (and the Problem/Last-time value wrapper) has nothing else left
-to hunt, since the Ninth rejection above already isolated the title. Isolating every line
-would leave the whole item with no resolution source and a silent LTR fallback — the Ninth
-rejection, back again. Both hold one way only: the FIRST line is the ANCHOR and stays bare
-(it still follows its own language, because the direction it inherits is the one it
-produced), and every line AFTER it carries its own `dir="auto"` on the row, so its text and
-its bullet both follow that line alone. The two branches are written out literally rather
-than as `dir={i === 0 ? undefined : 'auto'}`, because `direction.test.ts` is a source
-scanner and a computed attribute is invisible to every guard in it.
-
-Verified against the real running Teacher Report page with DELIBERATELY MISMATCHED data in
-both directions (Farsi question line followed by an English one, and the reverse; an English
-item title over a Farsi question, and the reverse), at a 350px forced width: each bullet's
-computed `direction` and its bullet dot's measured x-position follow that line alone, while
-the item's ordinal still tracks the question's first line. In the Farsi-titled item, the
-bare Farsi first line computes `rtl` with its dot at x 327–333 (the right edge) and the
-isolated English second line computes `ltr` with its dot at 0–6; in the English-titled item
-the mirror holds — bare English line `ltr`, dot at 19–25, isolated Farsi line `rtl`, dot at
-344–350 — with the ordinal at 0–11 rather than 341–350. The `direction.test.ts` checks are
-shape checks over the source, so these measured figures are the only evidence that what the
-shape encodes actually renders; the discovery set behind the alignment check spans four
-files (Repertoire ×2, RoutineRunner, StartBlock, Today), not the counterexample's own file
-alone, so it cannot pass by having quietly emptied.
-
-**The guard.** The sealed finding was right that the existing ac-5 check only required one
-direction-aware group SOMEWHERE per file, which neither counterexample could fail.
-`direction.test.ts` adds two checks that assert the invariants themselves. The first
-discovers, mechanically, every element carrying a title class whose body renders an opaque
-data expression, and — when anything above it forces `textAlign: 'left'`/`'right'`, inline
-OR through a module-level style constant it names (which is how the Insights counterexample
-was written) — requires a `dir="auto"` group below that forcing element which re-declares
-`textAlign: 'start'`; it also fails any `dir="auto"` group that pins a physical alignment on
-itself. The second asserts the anchor shape of the multi-line renderer: exactly one bare
-line branch, exactly one `dir="auto"` branch, and the isolate on the branch chosen for lines
-AFTER the first. Seven mutations were confirmed to fail the suite before this was committed
-— dropping the group's `textAlign: 'start'`, dropping its `dir`, making both bullets bare,
-making both bullets isolated, moving the anchor to the last line, reverting `CELL` to
-`'left'`, and dropping RoutineRunner's `'start'`.
-
-## Ninth rejection: the `<li>` anchored on the optional title, not the guaranteed question (2026-09-13)
-
-The Eighth review below concluded no further structural change was needed, using seed data
-where the item's title and its `teacherQuestion` share a language (both Farsi). An OWNER
-pass reported the marker was STILL not attached to the question on the real, current build
-— and, tested directly against the real running app (the actual Teacher Report page, not a
-synthetic clone), with a title and question set to DIFFERENT languages, this was true and
-was a genuinely different, previously undiagnosed bug: the Eighth review's own conclusion
-does not extend past the one language combination its evidence used.
-
-Root cause: `<li dir="auto">`'s hunt for a first strong character skips any descendant that
-carries its own `dir`. The question and the Problem/Last-time rows all already carried
-their own `dir="auto"` isolates, so the hunt could only ever land on the bare TITLE —
-meaning the ordinal's side was decided by the TITLE's language alone, regardless of the
-QUESTION's. With matching languages this is invisible (title and question agree on which
-side to hug); with an English title and a Farsi question (or the reverse), the ordinal and
-title land on one side while the question — correctly right- or left-aligned by its own
-independent isolate — lands on the OTHER, unattached from the marker entirely. Reproduced
-both ways by temporarily setting an English title on the real seeded Farsi item via the
-live store (`useStore.getState().updateItem(...)`) against the actual running page, at both
-a 390px-forced real DOM width and the full desktop width.
-
-Fixed by reversing which field is left bare: `questionsForNextClass` guarantees
-`q.question` is non-empty on every row this component renders (that is its filter); `q.title`
-carries no such guarantee. The title now carries its own `dir="auto"` isolate (out of the
-`<li>`'s hunt, rendering in its own correct direction independently); the question is left
-bare, so the `<li>`'s `dir="auto"` — and therefore the ordinal's side — always tracks it.
-Verified at both widths, both mismatch directions, and confirmed the original
-matching-language case is unaffected. `direction.test.ts` adds a dedicated, mutation-tested
-shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the title's tag
-carries `dir="auto"` and the question's does not; both reverting the title and re-marking
-the question were confirmed to fail it (and, independently, `GROUP_SITE_INVENTORY`'s exact
-count) before this was committed. The stale `ISOLATED_VALUE_SITES` entry for the question's
-old isolate was removed; no new entry was needed for the title's new one since it is a
-plain `GROUP_SITE_INVENTORY` site (same tag/class the old entry already tracked).
-
-The general lesson, restated because this is the second time this file has learned it: a
-verification built entirely from matching-language seed data proves a fix holds when the
-two sides AGREE and says nothing about what happens when they DISAGREE. The Seventh
-rejection's row-direction fix and this Ninth rejection are the same shape of gap, closed
-twice because the same seed data was trusted twice.
-
-## Eighth review: the ragged left edge is measured, not assumed, and needed no further fix (2026-09-13)
-
-**Scope note (superseded in part by the Ninth rejection above):** this review's conclusion
-— that no further structural change was warranted — was correct only for the ragged-edge
-question it actually measured, using seed data with a Farsi title AND a Farsi question. It
-was not, and should not have been read as, a claim that every marker-attachment complaint
-on this screenshot was closed; a real, different bug (title/question language mismatch)
-was still open and is fixed above.
-
-A follow-up OWNER pass on the same `ClassQuestions` finding read as a further complaint:
-the "1." marker looked detached from the Farsi question because the Problem/Last-time
-lines sat at the opposite (left) edge from the title and question — a visible asymmetry a
-screenshot reads as "not attached" even where the title itself was correctly positioned.
-Rather than trust that reading, both edges were measured directly against the live DOM:
-the real seeded Farsi item, cloned into a fixed-width harness at 340px, with each line's
-actual rendered text extent read via `Range.getClientRects()` (glyph bounds, not
-`getBoundingClientRect()` on the containing boxes). Result: all four lines — title,
-question, Problem, Last time — right-align flush at 330px, an 8px gap from the ordinal's
-own right edge at 338px, matching the authored `gap: 8` exactly. The LEFT edges spread
-across 62px-205px (143px), because the four lines differ in length and each is
-right-aligned inside a box whose right edge is pinned to the ordinal regardless of the
-box's own width.
-
-A specific fix was proposed and tested before being rejected: swap the value wrapper's
-`flex: 1` (`.grow`) for shrink-to-fit sizing, on the theory that a narrower box would pull
-the ragged edges together. Patched live and re-measured, the result was byte-for-byte
-identical — same 143px spread, same individual line positions — because for right-aligned
-text, `left edge = box_right − line_width`, and `box_right` never moves: it stays flush
-against the ordinal no matter how the box itself is sized. There is no flex-sizing change
-that touches this, because the sizing was never the defect.
-
-Conclusion: a ragged left edge on right-aligned lines of differing length is ordinary
-typography (the same shape any right-aligned paragraph or an address block has), not a
-resolvable structural defect. The actual defect the owner was reacting to was fixed by the
-Seventh rejection below, before this measurement was taken: Problem/Last-time used to sit
-at the FAR left (~25px, the opposite edge entirely) while title/question sat at ~330px — a
-hard two-line/two-line split, not mere length variance. Once the row-direction fix made
-all four lines agree on which edge they hug, what's left is ordinary variance in line
-length, and no further structural or padding change is warranted. No source change
-accompanies this entry; it exists so a future review does not reopen the same screenshot
-and re-diagnose an already-closed gap as a new one.
-
-## Seventh rejection: the ROW's own alignment must come from the value, not an inherited direction (2026-09-13)
-
-A seventh sealed finding, checked on the owner's own iPhone, found the sixth rejection's
-`display: 'inline-block'` fix for `ClassQuestions`' `Problem:`/`Last time:` rows still
-wrong — not merely incomplete. That fix gave the VALUE its own bidi character order and
-its own wrap-line alignment, but left the ROW that positions "Label: value" as a unit
-BARE, so the row inherited whichever direction the TITLE above it resolved to — right for
-a Farsi title, left for an English one — regardless of what script the value was actually
-written in. For the common case (title and value the same language) this looked correct
-by coincidence; for an English-titled item with a Farsi problem note, the whole row
-stayed pinned left, exactly where the inherited direction put it, with the value's
-internal shaping correct but its POSITION wrong. This is the same root cause the
-"A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN"
-section already named for other files, just not yet applied to a LABEL-plus-VALUE row.
-
-Fixed by moving `dir="auto"` from the value to the ROW itself, and marking the LABEL —
-never the value — with its own `dir="ltr"`. This is not because the label's text ever
-changes; `dir="auto"` skips a descendant that carries its own `dir` when hunting for a
-first strong character, so marking the label takes it OUT of that hunt and leaves the
-(deliberately bare) value as the row's only resolution source. Marking the value too
-would take BOTH out, leaving the row with nothing to resolve from and a silent fallback
-to LTR regardless of the value's own script — confirmed to fail the new test when tried.
-Verified across all four combinations (Farsi/English title × Farsi/English value) at both
-a narrow (350px, iPhone-card-width) and a wide (700px, desktop) container: a value's own
-language now determines its row's alignment independently of the title, in both
-directions, at both widths. This also resolved the number/title "detachment" the same
-finding reported: with all four lines (title, question, Problem, Last time) correctly
-right-aligning together, the block reads as one coherent unit against the marker instead
-of two aligned lines and two stray ones.
-
-`direction.test.ts` replaces the `ISOLATED_VALUE_SITES` ledger entries for these rows
-with a shape check, `isLabelFirstAutoRow` / "a label-first auto row's value stays bare":
-any `dir="auto"` group whose body opens with a `<span dir="ltr">…</span>` must have no
-other `dir=` anywhere else in its body, or the row has nothing left to resolve from. It is
-a SHAPE check, not a ClassQuestions-specific one, so it would catch the same regression in
-any future file using this pattern. Two mutations were confirmed to fail before this was
-committed: marking the value `dir="auto"` too (caught by the new check and by
-`GROUP_SITE_INVENTORY`'s exact-order equality), and removing the label's `dir="ltr"`
-entirely — reverting to the original bug — which the PRE-EXISTING `unexemptedPhrase` check
-also catches on its own (the bare "Problem" label plus the value's opaque expression reads
-as a 2-word exposed phrase), giving this shape two independent guards.
-
-## Sixth rejection: a native marker is removed, not accommodated; a value's alignment is its own (2026-09-13)
-
-A sixth sealed finding, checked on the owner's own iPhone, found `ClassQuestions.tsx`'s
-question number still escaping the card despite the third rejection's symmetric
-`paddingInline` fix — proof that an outside `::marker`'s exact position for a
-direction-variable `<li>` is a browser implementation detail no gutter measurement can
-guarantee (jsdom cannot compute it either, which is why a padding proxy was ever trusted
-to stand in for it). Fixed by removing the native marker mechanism entirely rather than
-reserving room for it: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a
-real element, the FIRST child of a flex `<li dir="auto">` — flexbox's row axis is
-direction-aware by specification, so the number leads on the correct side and sits inside
-the content box it can never escape. The wrapper around title/question/details carries no
-`dir` of its own, deliberately: `dir="auto"` skips a descendant that has its own `dir`
-when hunting for a first strong character, so giving the wrapper one would leave the
-`<li>` with no resolution source at all. `direction.test.ts`'s list-marker check
-(`disablesNativeMarker`/`isDirectionAwareContainer`, replacing `reservesRoomOnBothSides`)
-now asserts the mechanism directly — no native marker, and the `<li>` is itself a
-flex/grid container — rather than measuring a proxy for it; each half was confirmed to
-fail on its own when reverted. `role="list"` on the `<ol>` pays back the one accessibility
-cost of removing the marker: WebKit drops an `<ol>`'s list semantics from the
-accessibility tree once `list-style: none` takes its marker away, which would have gone
-unnoticed here — VoiceOver on the owner's own iPhone is exactly where it would have
-surfaced.
-
-The same finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed at
-the time as a wrap-alignment gap and fixed with `display: 'inline-block'` on the value's
-own isolate. A seventh sealed finding (below) found that diagnosis incomplete — the value
-having its own bidi order was never the same claim as the ROW having the right
-alignment — and replaced it with a different fix entirely. See "Seventh rejection" above
-for what actually shipped.
-
-## Fifth rejection: the instrument-name check had to become positive, not just a ban (2026-09-12)
-
-A fifth sealed review found the fourth rejection's fix was still a negative check —
-banning `dir="ltr"`/`"rtl"` around an instrument name — which cannot detect a name with
-NO direction treatment at all, an alias beyond the two literal anchors the check knew
-(`instrumentName`, `{inst}`), or a name fused into a template string before anything
-renders. Real, live instances of all three: Repertoire's `PathwayCard`, Session Plan's
-two page titles, wide Lessons' sidebar heading and detail-pane header, Today's
-cross-instrument "in progress"/"plan"/"routine" rows (built as pre-joined template
-strings), Today's instrument switcher and `EmptyState` title and "Before your … class"
-heading, and ActiveBlock's/CloseBlock's own eyebrow (mis-classifying the instrument's own
-name as fixed English in their own comments). Fixed by replacing the ban with a positive,
-mechanically-discovering check in `direction.test.ts`: `instrumentNameOccurrences` finds
-every current renderer from the SHAPES this codebase uses to produce one (the helper call,
-a property read, a local alias of either via destructure-rename/const-binding/find-and-name,
-or a per-item `.name` read inside an `instruments` iteration) rather than a location list,
-and `resolvesOwnDirection` asserts the invariant itself — the nearest ancestor `dir` must
-be `"auto"` AND nothing else may render before the name within that ancestor's body, or
-the ancestor's resolution belongs to whatever precedes it, not to the name riding along
-beside it. Two sites deliberately stay bare because they are already the first strong
-content of their own dir="auto" ancestor (Insights.tsx's `<th>`, Today.tsx's
-cross-instrument `{inst.name}` row) — isolating either would break, not fix, them, the
-same reasoning that earlier reverted isolating `stage.title`. Two gaps are named rather
-than silently left: `QuickAdd.tsx`'s instrument-picker button has the identical bare-name
-defect but sits in a file this lane's own contract puts out of scope, so the check
-explicitly excludes it instead of failing on a bug this lane cannot fix; and
-`src/domain/insights.ts` fuses an instrument name into a generated sentence one layer
-below where a presentation-only lane can reach, left open for its own lane. See
-AGENTS.md's "A FIFTH REJECTION..." section for the full account.
-
-## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
-
-A sealed review found four sites (`ItemCard.tsx`, `ItemDetail.tsx`,
-`PathwayDetail.tsx`, `Repertoire.tsx`) forcing an item's or work's instrument name under
-`dir="ltr"` as if it were generated metadata like `ITEM_TYPE_LABELS` sitting next to
-it — but an instrument is renameable in Settings, Farsi included, so it is the owner's
-own editable text and needed its own `dir="auto"` isolate instead. Auditing every
-remaining `LTR_ISOLATE_SITES` entry against its real source (not just the four named)
-found a fifth of the identical shape (`Today.tsx`'s "routine running" row, bundling the
-instrument name and a fixed English suffix into one `dir="ltr"` span) and two with no
-direction treatment at all — invisible to that audit because it can only see spans that
-already carry a `dir`: the Plan doorway's mismatched-instrument row (the exact twin of
-the routine row) and the weekly Balance row's instrument name, bare inside a
-`.truncate` title span whose row is a CSS grid (isolating the row itself, rather than
-the name, would have reversed its three columns for a Farsi instrument). All seven now
-carry their own `dir="auto"`, and `direction.test.ts` bans the SHAPE going forward — any
-`dir="ltr"`/`"rtl"` isolate whose body references `instrumentName` (a call, a bare
-identifier, or a property access like `b.instrumentName`) fails — rather than
-re-closing whichever locations a reviewer happened to enumerate.
-
-## Third rejection: an isolate must be inline, a marker needs room on both sides, and the scanner's own blind spot (2026-09-12)
-
-A third sealed review of the direction lane found the SAME family — mixed-content
-groups, alignment, list markers, completeness — still open in `ItemMaterial.tsx`,
-`Materials.tsx`, `ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx` and
-`ClassQuestions.tsx`, closed as three root causes rather than as seven counterexamples.
-
-1. **A block-level isolate resolves its own alignment, independently of the group.**
-   `ItemMaterial.tsx`'s detail line carried `<div className="tiny faint" dir="ltr">…
-   </div>` — the isolate fixed the sentence's own bidi ordering but, because
-   `text-align: start` is a per-box computed value resolved against that box's OWN
-   `direction`, gave the div's `text-align` a LEFT resolution regardless of the group's
-   (possibly RTL) one — the detail split from a right-aligned Farsi title exactly as
-   before, one level down. Fixed by moving every such isolate to an inline `<span>`
-   nested inside a `dir`-less block (the shape already used everywhere else in the
-   file), and closed for good with a mechanical rule in `direction.test.ts`: no
-   `dir="ltr"`/`dir="rtl"` may sit on anything but `span`/`bdi`. One rejected review
-   found one file doing this; a structural ban is what stops a second file doing it
-   next lane.
-
-2. **A native list marker follows its OWN list item's direction, not the list's.**
-   `ClassQuestions.tsx`'s `<ol>` reserved gutter space with `paddingInlineStart` alone
-   while each `<li>` resolves its own direction via `dir="auto"` — the browser positions
-   the outside `::marker` on that li's OWN start edge, so a Farsi item's marker lands on
-   the right, the side the list reserved no room for, and gets pressed against or past
-   the content border. Fixed with symmetric `paddingInline`. `direction.test.ts` scans
-   every `<ol>`/`<ul>` for this shape now, not just this one list.
-
-3. **The scanner itself skipped every `{…}` expression as opaque, contributing zero
-   words — hiding a run built ENTIRELY from expressions.** `Materials.tsx`'s
-   `{MATERIAL_SOURCE_LABELS[...]} · {MATERIAL_STATUS_LABELS[...]} ·{' '} {itemCount(...)}
-   item{...}` reads as zero literal words to a scanner counting only literal text, while
-   rendering three always-English fragments in a row, unisolated, next to a title that
-   could resolve RTL. `unexemptedPhrase` now counts an opaque, non-JSX-bearing
-   expression as ONE token (its content stays invisible from source, but its
-   unisolated PRESENCE next to other content is the shape being caught); an expression
-   containing its own nested JSX stays fully opaque, since its children are already
-   reachable by the outer whole-file scan. That one change, plus re-auditing every
-   recorded group by hand, surfaced the five named sites and further, unnamed ones of
-   the identical shape: `Repertoire.tsx`'s second, near-duplicate work-count span (the
-   non-Persian branch mirrors the fixed one and had simply been missed), `ActiveBlock`'s
-   own mode/focus chips, `Attachments`'/`ItemDetail`'s file kind/size line,
-   `StartBlock`'s/`Today`'s item-type/status labels, `StageDetail`'s strand/status
-   line, `PathwayDetail`'s "Current"/"Done"/item-count badges and piece-count fallback,
-   `Today`'s "routine running" indicator and its cross-instrument Overview row (a fixed
-   sentence embedding the next item's own possibly-Farsi title, isolated the way
-   `StageDetail`'s undo banner already does), and `Insights`' generated observation
-   sentences. Two sites needed `dir="auto"` rather than `dir="ltr"` — a value authored
-   independently of its neighbour, not generated copy: `RoutineRunner`'s upcoming
-   segment label and `PathwayDetail`'s pathway `source`. A stage's own `title` was
-   tried the same way and REVERTED: `stage.title` is not authored independently of
-   `stage.code` — it is the SAME stage's fuller name, rendered only when it differs
-   from the code — and a prior lane already settled that the two should AGREE on
-   whichever direction the group resolves rather than one overriding the other
-   (`PathwayDetail`'s stage rows, 2026-09-11 entry below: "even where a group DOES
-   resolve LTR from its code, that is the point"). Isolating `stage.title` in its own
-   `dir="auto"` would have pulled it OUT of the button's own auto-detection (a nested
-   `dir` attribute is skipped by the HTML algorithm), which can flip the group's OWN
-   resolved direction whenever `stage.code` itself has no strong character — the
-   opposite of "agree." It stays a bare `<span>`, exactly like `stage.code`. Two
-   flagged sites were genuine exceptions, recorded visibly in a new
-   `UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: a numeric progress counter
-   (`{sp.done}/{sp.total}` — digits carry no bidi risk) and a compound "Pathway — Stage"
-   breadcrumb built from two fields (one continuous label, not a title split from a
-   foreign caption).
-
-4. **`elementBody`'s depth counter did not recognise React's Fragment shorthand as an
-   opening tag, only as a closing one — silently truncating the body several checks
-   scan.** `</>` starts with `/`, so it matched the ordinary CLOSING-tag branch and
-   decremented depth; `<>` starts with neither `/` nor a letter, so it matched nothing
-   and never incremented it. Every `<>…</>` pair inside a group's body therefore
-   decremented depth once more than it was ever incremented — and this codebase's own
-   established shape for a conditional detail (`{stage && (<><span>…</span>
-   <Link>…</Link></>)}`, `ItemDetail.tsx`'s header) uses exactly that shorthand. On
-   that header, depth hit zero several tags before the `</header>` actually closes,
-   so `unexemptedPhrase` silently stopped scanning before ever reaching
-   `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a real,
-   unisolated generated-English phrase that had been sitting in the group the whole
-   time, invisible to a scanner whose whole claim is "detectable, not enumerated."
-   Fixed by giving `<>` the same weight as any other opening tag; the fix surfaced
-   this one concrete violation across every file the suite scans (no others were
-   hiding behind it), now fixed with the same `dir="ltr"`/`dir="auto"` split as its
-   sibling `row-wrap` (`instrumentName`/`ITEM_TYPE_LABELS` generated, `stage.code`/
-   the material label left bare since both can be Farsi themselves) and its
-   importance/difficulty/saturated row. A structural bug in the TEST's own tag
-   traversal is exactly the kind of gap a purely example-driven fix cannot close —
-   only re-deriving the traversal from first principles (does this construct open or
-   close a nesting level?) finds it.
-
-**A restructure, not a pure direction-only edit, in `Repertoire.tsx`'s `WorkRow`.**
-Its metadata line was `[form, composer, gusheh, instrumentName, lastPractised]
-.filter(Boolean).join(' · ')` — a single STRING assembled from fields in two
-different authorships (Persian identity fields, genuinely Farsi; instrument name and
-the last-practised phrase, generated English). A joined string has no seam to hang a
-`dir=` on partway through, so isolating it correctly required rebuilding the array as
-JSX nodes (`<span dir="auto">`/`<span dir="ltr">` per fragment) joined with an
-explicit separator, rather than adding an attribute to existing markup. This is more
-than the "direction wiring only" the contract asks of a non-loop file, but there was
-no lighter way to give each fragment its own bidi base — flagged here rather than
-left for a reviewer to have to notice on their own.
-
-**The scanner's own comment-stripping had a latent bug this work exposed, not
-introduced.** `stripComments` treated any `'`/`"` as a real string delimiter and
-scanned forward, unbounded, for its match. Plain JSX text containing an apostrophe
-(`StageDetail.tsx`: "That stage doesn't exist.") is not a string at all; hitting that
-apostrophe put the scanner into a phantom "inside a string" state that swallowed
-everything after it — including real comments — until an unrelated quote later
-happened to close it, cascading through the rest of the file. This had been silently
-true all along and only surfaced because a new comment inside the corrupted span
-happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
-then exposed to the new block-isolate scan as a phantom real attribute. Fixed at the
-root: a `'`/`"` now starts a real string only if its match appears before the next
-newline (every real string/attribute value here is single-line); otherwise it passes
-through as ordinary text. Backtick template literals keep their unbounded, multi-line
-scan. This makes every check in the file more trustworthy, not just the new ones.
-
-## The content leads: direction on the group, and a colour list that is bounded on purpose (2026-09-11)
-
-**Direction lives on the GROUP, never on the title.** `dir="auto"` was on 47 title
-elements and on no container anywhere, so a Farsi title resolved RTL and hugged the right
-edge of its cell while its own English caption hugged the left. The fix is not a new
-mechanism — it is moving the SAME native attribute up one level, to the element that
-holds a title together with the details belonging to it. Two consequences are worth
-recording because they are not obvious:
-
-1. `dir="auto"` resolves from the FIRST STRONG CHARACTER in the subtree, so where an
-   English eyebrow precedes the title in the DOM (Today's Practise-now card, the close
-   screen's header, Session Plan's minutes/bucket line) the group is drawn around
-   title + details and the eyebrow is deliberately left OUTSIDE it. Wrapping the whole
-   card would pin the group LTR and change nothing.
-2. Direction alone does not move text. Several groups sit under an ancestor pinning
-   `text-align: left` (a picker row button, the practice screen's centred column), and
-   `left` is inherited as a COMPUTED value — it does not re-resolve per element. Those
-   groups set `text-align: start` on themselves.
-
-The sweep is held closed by `src/components/direction.test.ts` rather than by care, and
-its exception allowlist came out EMPTY: every title on every surface had a group it could
-join. `PathwayDetail`'s stage rows were the candidate exception (an ascii-looking code
-like "2A" leading a Farsi title) — but the Setar and Tar seeds author stage codes in
-Farsi (`نشست`, `شور`, `ماهور`), so grouping code + title is both correct and what the
-owner actually sees. Even where a group DOES resolve LTR from its code, that is the point:
-the code and the title then agree instead of pointing at opposite edges.
-
-**The colour list is bounded, and the planner's "six failing tokens" was an undercount.**
-The plan measured each foreground token against `--bg` only. Two tokens fail there and
-were missed (`--tone-progress` 4.41, `--tone-rest` 4.26), and more importantly `--bg` is
-not where several of them RENDER: `--tone-rest` only ever appears as `.badge`/`.chip`
-text over its own translucent `--tone-rest-soft` fill. `src/styles/contrast.test.ts`
-therefore lists the pairs each token is ACTUALLY rendered on, compositing a translucent
-fill over the card it sits in, and asserts them in all three palette blocks.
-
-That honest list moves EIGHT light tokens (`--text-faint`, `--accent`, `--gold`,
-`--tone-alert`, `--tone-warn`, `--tone-progress`, `--tone-good`, `--tone-rest`) and FOUR
-dark ones (`--text-faint`, `--tone-alert`, `--tone-progress`, `--tone-rest`) rather than
-the six + one the plan predicted. The list was NOT trimmed to make that arithmetic come
-out right: an uncovered token is supposed to be a visible omission, and dropping badges
-would have left two of the five tone tokens with no coverage at all. Three of the four
-dark moves are 1–7 units and imperceptible. `--accent-contrast` (white on the primary
-Start button, 3.95 at HEAD) needed no move of its own — darkening `--accent` to clear AA
-against the page took that pair to 5.94. Every `-soft` fill, `--text`, `--text-dim` and
-`--accent-dim` are untouched, because they pass.
-
-**Both light blocks, every time.** `global.css` declares the light palette twice — at
-`:root[data-theme='light']` and again inside `@media (prefers-color-scheme: light)
-{ :root:not([data-theme]) }`. The duplicate is what an owner who never picked a theme
-sees, so the test asserts both blocks AND that they agree token for token.
-
-**Reading the stylesheet needed a workaround, not a config change.** `src` is typechecked
-by `tsconfig.app.json`, which does not enable node types, and Vitest blanks every `.css`
-module — `?raw` included — unless `test.css` is on in `vite.config.ts`. Both files are
-outside this lane's scope. So the contrast test reads the real file through a dynamic
-import whose specifier the compiler cannot resolve statically. Reading the REAL file is
-the whole point: a table of colours copied into the test would keep passing while the app
-shipped something else. The direction test needs no such trick — `import.meta.glob` with
-`?raw` works for `.tsx`, and a glob also means a NEW page is swept in automatically.
-
-**One ReviewPlan on the close screen.** The collapsed summary line and the expanded date
-field are two renderings of ONE value, with a manual correction folded into it rather
-than held beside it. The guarantee had to be structural: `CloseBlock` previously called
-`planNextReview` twice (once for the preview hint, once inside `pickResult` to seed the
-field), which is exactly the drift r-explainable-scheduling exists to prevent. A pure
-formatter (`reviewSummaryLine`) renders the line and computes nothing, so a divergent
-date is unrepresentable rather than merely remembered about.
-
-**Today's order was built the other way round, tried, and REVERTED — by design.** The
-lane built Practise now directly under the instrument switcher with Plan and Routines as
-two compact peer doorways beneath it, on the argument that orchestrating a session is a
-choice you make INSTEAD of taking the suggestion. It shipped as one ordering change with
-no data or state implication precisely so the owner's own device could settle it. It did:
-on 2026-09-11 the owner judged the original order better — Plan and Routines read as
-belonging at the top of the page, and recommendation-first felt less natural — so the
-order went back. That reversal is a PASSING outcome of the check, not a failure of the
-lane, and everything else the lane built stands.
-
-Worth recording for whoever reads the code next: BOTH orders keep the recommendation
-above the fold at 390×844, so nothing about this ordering follows from the phone
-constraint or from any other rule in AGENTS.md. It is a taste judgement that only the
-owner can make, and the argument for recommendation-first is genuinely available to
-re-derive — which is exactly why `Today.tsx` and AGENTS.md now say, in so many words,
-not to act on it without asking.
-
-**Rejection findings, addressed (fresh review, 2026-09-11).** A sealed fresh review of
-this lane's diff returned `request_changes` against two families, fixed comprehensively
-rather than by patching the two cited examples:
-
-1. **Mixed-content groups and completeness.** Grouping a Farsi title with an
-   ALWAYS-ENGLISH generated detail (`buildReason`, `planSegmentReason`) under one
-   `dir="auto"` fixed the ALIGNMENT but broke the detail's own bidi ordering: the Farsi
-   title's resolved RTL base became the detail's base too, and FriBidi renders a trailing
-   neutral character (the sentence's own full stop) using that base when nothing more
-   specific claims it — so it visually jumped to the start. Fixed by nesting a
-   `dir="ltr"` isolate around each such detail (Today's Practise-now card and secondary
-   recommendations, ItemDetail's "practise this part now", Session Plan's segment
-   list and runner) — grouping and alignment are unchanged, only the isolate's own
-   internal ordering is fixed. A structurally identical bug existed the other way round
-   for FREE TEXT the owner typed after a fixed English label (ActiveBlock's
-   `constraint`/`problem`, "last time you decided to try"): the label was the subtree's
-   first strong text, so `dir="auto"` on the whole line resolved from the label and never
-   saw the owner's own (possibly Farsi) words — fixed the same way the codebase already
-   excludes an eyebrow, by giving the VALUE its own nested `dir="auto"` and leaving the
-   label outside it. Today's Routines doorway had the same eyebrow-first bug at the
-   button level ("Resume your routine"/"Routines" decided the direction, not the routine's
-   own name) — fixed by moving `dir="auto"` off the button and onto a block wrapper
-   around just the name, mirroring the shape `ElsewhereSessions` already used a few lines
-   above it (an inline `<span>` there would silently break `.truncate`'s ellipsis, since
-   `overflow`/`text-overflow` do nothing on a non-replaced inline box). ActiveBlock's
-   header stayed CENTRED despite the contract requiring Farsi right / English left on that
-   screen — the page's own `text-align: center` (correct for the timer ring and buttons)
-   was never overridden for the title group; it now sets `text-align: start` on itself,
-   which is a deliberate LAYOUT CHANGE for English on that one screen and is documented in
-   AGENTS.md as not conflicting with "English keeps its layout" elsewhere (that non-goal
-   guards against a Farsi-style right-align, not against ac-6's explicit left-for-English
-   requirement on Active).
-
-   The COMPLETENESS gap: `direction.test.ts`'s "every surface has a group" check passed
-   as long as ONE group survived anywhere in the file, so deleting the Practise-now card's
-   own `dir="auto"` still passed because Today.tsx has several unrelated groups. Fixed
-   with `GROUP_SITE_INVENTORY` — every group-level site recorded in order, duplicates
-   included, asserted with `toEqual` against the live scan, so removing any ONE recorded
-   site anywhere fails regardless of what else survives in the same file. Building that
-   inventory surfaced a second, unrelated defect in the scanner itself: this file's own
-   prose repeatedly writes the literal string `dir="auto"` in comments, and the naive
-   regex scan matched those too — usually producing a site with no real enclosing tag, but
-   at least once walking backward out of a long comment and mis-attributing an unrelated
-   component tag from elsewhere in the file as if it were the match's real element. The
-   scanner now strips `//` and `/* */` comments (copying string/template literals through
-   verbatim, since that is where a REAL `dir="auto"` attribute value lives) before
-   matching.
-
-2. **CloseBlock manual-date preservation.** `pickResult` cleared the manual `override` on
-   every result change — correct when the engine actually re-plans (a fresh judgement
-   deserves a fresh plan, not a stale correction pinned to the old one), wrong when it
-   doesn't: a manual-mode item (`item.reviewMode === 'manual'`) has no automatic plan for
-   ANY result, so a date the owner had just typed in was never tied to a particular
-   judgement, and clearing it turned a deliberate "come back on this date" into an
-   accidental decline the moment they picked a different result. Fixed by gating the
-   clear on `reviewOverrideSurvivesResultChange(item.reviewMode)`
-   (`src/components/format.ts`) rather than calling `planNextReview` a second time inside
-   `pickResult` — CloseBlock's single `ReviewPlan` derivation is unchanged; this is a
-   boolean read of the item's own mode, not a second value that could disagree with it.
-   The predicate is tested against the real engine across all six results for both a
-   manual- and an auto-mode item, not asserted in prose alone.
-
-**Second rejection, closed as a family rather than as four counterexamples
-(2026-09-11).** A second sealed review found the FIRST fix's isolate pattern had not
-been applied everywhere it was needed: `CloseBlock`'s own "A few seconds to capture
-what happened." sat bare in the item-title group (the identical defect the first
-rejection fixed elsewhere in the same file's neighbours), and `ClassQuestions`'
-question/problem/last-observation carried no isolate of any kind, unlike the
-`ActiveBlock` shape the first fix established. Rather than patching just those two
-call sites, the whole surface list was re-audited for the same two shapes:
-
-- **Fixed English copy/metadata bare in a group** — beyond the two named sites, the
-  same "N segments · M min" phrase existed identically in THREE places
-  (`Today.tsx`'s `TodayRoutineRow`, `PathwayDetail.tsx`'s `RoutineRow`,
-  `StageDetail.tsx`'s `RoutineCard` — one component per surface a routine can be
-  started from, never refactored into one shared component), `StaleNote`'s "Running
-  far past its target…" (rendered inside two different title groups), Today's due-review
-  caption ("due `relativeDay(...)`"), the NAS-reference warning sentences
-  (`Lessons.tsx`, `ItemMaterial.tsx`), `ItemDetail.tsx`'s "Study source:" label and
-  `StageDetail.tsx`'s "Added "…" — not practised yet." undo banner. Every one now
-  carries the same nested `dir="ltr"` isolate as the first fix's `reason` spans.
-- **Independently-authored values bare in a group** — `PathwayDetail.tsx`'s
-  `pathway.description`/`pathway.note`, editable independently of the pathway's own
-  name, needed the same `dir="auto"` isolate `ActiveBlock`'s `constraint`/`problem`
-  already carry.
-
-**The test itself was the real gap, not just the four sites.** `direction.test.ts`
-proved a GROUP carries direction; it never proved a CHILD inside it does. A generic
-"no bare Latin text in a group" rule would have forced changes to the already-correct
-`ActiveBlock` label shape (`Constraint: ` stays bare on purpose, immediately followed
-by its own isolate), so the new check (`unexemptedPhrase`) walks a group's body in
-source order, judges an accumulated run of exposed text at each TAG boundary (never at
-an expression boundary, or `{n} segments · {m} min` fragments into single innocent
-words), and exempts a run — regardless of its length — the moment it is immediately
-followed by an element carrying its own `dir=`. Two recorded ledgers
-(`ISOLATED_VALUE_SITES`, `LTR_ISOLATE_SITES`) cover what no source scan can prove:
-an expression's own content (`{q.currentProblem}`) is opaque from source, and a
-component like `StaleNote` renders its isolate from its OWN definition, invisible from
-any of its call sites. Both carry the same visibility contract as
-`GROUP_SITE_INVENTORY` — a new site must be added, visibly, never inferred silently.
-
-## Serving NAS class recordings over HTTPS (Task 3, 2026-07; CORRECTED 2026-09-10)
-
-**Problem.** The app runs on an HTTPS origin (GitHub Pages). Class videos and scores
-live on the Synology NAS under `homes/ethan/SNDK/video-courses` (on disk:
-`/volume1/homes/ethan/SNDK/video-courses`). A lesson reference stores a *relative*
-path (e.g. `setar-classes/session-1-…/video.mp4`); the app joins it under a **NAS
-base URL** set in Settings. Two things must be true for playback:
-
-1. The base URL must be a real `https://` origin. (A scheme-less value like
-   `ds220plus.taild1d1f7.ts.net` was previously concatenated raw and treated as a
-   *relative* URL against the Pages origin — so every recording opened the same
-   in-app 404. Fixed in `normalizeBaseUrl` / `resolveRecording`,
-   `src/domain/recordings.ts`.)
-2. The folder must be served over HTTPS. DSM on `:5000` does **not** serve raw
-   files, and plain `http://` links are mixed content that iOS blocks.
-
-**What is ACTUALLY running (probed 2026-09-10, and this corrects what this record
-used to claim).** This file previously recorded *Tailscale Serve on the Synology* as
-the chosen mechanism, with a runbook. That is **not** what is in place, and an agent
-following that runbook would have configured the wrong thing:
-
-- There is **no Tailscale CLI and no Tailscale.app on this Mac**.
-- `https://192.168.0.20:5010/` answers **HTTP 200 from nginx** and already serves
-  **real browsable directory listings** (mod_autoindex-style "Index of /"), whose
-  document root IS the `video-courses` folder — it lists `setar-classes/`,
-  `tar-classes/` and `classical-guitar/`, and `/setar-classes/` answers 200. So the
-  existing relative references already resolve against it, and a **Browse** link
-  needs no server change whatsoever; the capability was already there and unused.
-- The certificate is Synology's own default (`CN=synology`, issuer
-  `Synology Inc. CA`) and does **not** match `192.168.0.20`. That is why this works
-  on the MacBook, where the exception has been accepted, and why **each new device
-  must accept the certificate once** before NAS links open there. A certificate
-  prompt on the iPhone is INFRASTRUCTURE, not an app defect.
-
-**Current base URL:** `https://192.168.0.20:5010` (LAN only).
-
-**The app is deliberately TRANSPORT-AGNOSTIC, and that is now enforced rather than
-hoped for.** A reference pasted from the NAS listing is stored **relative** to the
-configured base (`relativizeReference`, `recordings.ts`, tested) instead of as the
-absolute URL the browser gave you. An absolute URL would pin that reference to one
-route to the NAS — dead on a phone away from home, and dead everywhere the day the
-base URL changes. Because only the path is stored, **choosing the transport is a
-decision that can be changed later without rewriting a single stored reference.**
-
-**That choice is deliberately left OPEN.** Staying on the LAN address, moving to
-Tailscale (`ts.net` gives a valid certificate and tailnet-only access; Go's file
-server supports Range requests, so video seeking works), or putting a reverse proxy
-in front are all still available. Whichever is chosen, only the Settings base URL
-changes.
-
-**Rejected alternatives.** WebDAV (auth prompts break iOS inline video); per-file
-File Station share links (unmaintainable — one link per file). Also deliberately NOT
-built: a `scan:nas` index feeding an in-app file picker — the NAS already renders
-browsable listings, so browse → copy → paste closes most of the gap without adding a
-build script, a generated reference module, a staleness story and a Mac-only
-dependency. Revisit only if browsing and pasting proves insufficient in real use.
-
-**Never modify the recordings themselves** — the app only stores references, and
-removing a reference never touches the NAS file.
+Nothing here writes to the archive. Ever.
 
 ---
 
-## Session Plan — algorithm & evidence (2026-07-18)
-
-The Session Plan (`src/domain/plan.ts`) lays out a time-budgeted session as ordered
-segments in five buckets (warm-up · lesson · review · deep · cool-down). It reuses the
-recommendation engine's `scoreItems` — no second ranking — and is pure and deterministic.
-
-**Decisions.**
-- **Minutes always sum to the budget.** A largest-remainder split by bucket weight, each
-  segment ≥ 2 min; when the budget can't seat every segment, the lowest-priority ones are
-  dropped before allocation. This is the one load-bearing invariant and is tested across
-  15/20/30/45/60 and the edge cases.
-- **The plan runs REAL blocks, not a countdown.** The runner drives the existing
-  start→active→close flow; `closeSession` advances the plan only when the closed block was
-  the current segment. `RoutineRunner` (the warm-up timer) is deliberately left untouched.
-- **The running plan is ephemeral** (store-only, never in `PracticeDB`) so it never syncs
-  or lands in a backup as data.
-- **Shares are sane defaults, adjustable, never "optimal".** Bucket minute shares come from
-  `SchedulingParams` (Settings) — the app makes no claim of an ideal ratio.
-
-**Evidence (used as rationale for the SHAPE, not as precise prescriptions).**
-- Spacing effect → short, spaced segments + SM-2 (Cepeda et al. 2006; Simmons 2012).
-- Contextual interference / interleaving → the no-adjacent-same-item mix and the "it feels
-  harder; that's the point" framing (Shea & Morgan 1979; Carter & Grahn 2016; Stambaugh 2011).
-- Retrieval practice → short review slots (Roediger & Karpicke 2006).
-- Deliberate, goal-directed practice → one focus per segment (Ericsson et al. 1993;
-  Duke, Simmons & Cash 2009).
-- Sleep consolidation → cool-down / end-on-stability (Simmons & Duke 2006).
-
-No claim of an optimal minute ratio is made; the shares are defaults the user can adjust.
-```
-
-### tests/practiceBrowser.ts
+## 1. The shape of it
 
 ```
-import { readFile } from 'node:fs/promises';
-import { createServer, type ViteDevServer } from 'vite';
-import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
+NAS (read-only)                     GitHub (private data repo)        App
+┌────────────────────────┐          ┌───────────────────────┐        ┌──────────────┐
+│ setar-classes/         │  scan    │ branch: source-index  │  GET   │ Refresh      │
+│   session-N-DD-MM-YYYY │ ───────▶ │   setar/index.json    │ ─────▶ │ Setar archive│
+│   PIECES.csv           │ publish  └───────────────────────┘        └──────────────┘
+│   RENAME-LOG.csv       │                     ▲                            │
+└────────────────────────┘                     │                            ▼
+         ▲                            branch: main (app data)     one validated
+         │ media, opened directly              UNTOUCHED           store mutation
+         └──────────────────────────────────────────────────────────────┘
+```
+
+Three separations do the work:
+
+- **The app never parses a filename.** The grammar lives once, in the scanner.
+- **The index is on its OWN branch.** The app's sync writes `main`'s whole tree
+  with no `base_tree`, so a sidecar next to `state.json` would disappear on the
+  next sync. `source-index` is outside that, and outside `archive/…` recovery
+  branches too.
+- **Media never travels.** Only paths do. Each device resolves them through its
+  own base URL, so changing the transport rewrites no stored record.
+
+---
+
+## 2. The scanner
+
+`scripts/scan-setar-classes.mjs` — Node stdlib only, no dependencies, read-only
+over the archive.
+
+```sh
+node scripts/scan-setar-classes.mjs --root /volume1/media/setar-classes --out /volume1/practice-compass-index/setar-index.json
+node scripts/scan-setar-classes.mjs --root <archive>            # to stdout
+```
+
+It reads `PIECES.csv` (the canonical registry) with a real quoting-aware CSV
+parser, walks the `session-N-DD-MM-YYYY` folders, applies the filename grammar
+from the archive's own `CRAWLER-BRIEF.md`, and emits a **clock-free** JSON index
+with a `contentHash` over its semantic body. The same archive always produces
+byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
+
+What it refuses outright (and produces no index for): a malformed or ambiguous
+registry, a duplicate canonical key, two folders claiming one session number, an
+unsafe path, more than 5000 files, **any input that changed during the scan** —
+the registry, the rename log or the media inventory, all three read twice and
+compared, sizes included, so a file still being copied is caught too. That is a
+CONSISTENCY check, not atomicity: a perturbation that is stable across both
+readings agrees with itself, and from here is indistinguishable from the archive
+genuinely being in that state. What it removes is the transient — which is what a
+copy in flight looks like, and what would otherwise publish an index missing a
+file that is still there.
+
+A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
+stops it being read — missing, unreadable, a directory where a file should be —
+refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
+nothing else: it travels in the compared reading as `{present:false}`, never as
+empty text, because `catch { text = '' }` made a permission change or an I/O
+error agree with itself across both readings and publish an index with no
+renames at all. A present but EMPTY log is refused like an empty registry — a
+zero-byte file is what a copy in flight looks like.
+
+Each file's `mtimeMs` is part of the compared reading and is never read by the
+index builder, so a file edited IN PLACE at the same byte length fails the scan
+while altered mtimes still produce a byte-identical index.
+
+What it reports and skips: a file with no known role, an unknown piece, an
+unsupported extension, a class recording claiming a piece, an unnamed demo in a
+session whose roster and filenames disagree, a symbolic link (never followed —
+but never silently dropped either, since two readings agree about a file neither
+of them looked at), a session-named entry that is not a real directory, and
+every rename row whose destination this log does not determine. That is ONE
+rule, not two: a replacement name is published only where the log names it
+UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
+destinations names no file either; and a chain walking into either of those
+cannot say where it ended. Every such row is dropped with a diagnostic rather
+than published — the fork case used to publish its FIRST destination and
+diagnose the second as "not applied", which handed the app an identity this log
+cannot support. An ordinary chain beside a loop or a fork still publishes.
+Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
+archive content.
+
+The output is written **outside the archive** via a temp file + rename, and the
+scanner refuses an `--out` path inside `--root`.
+
+### Corpus baseline
+
+Verified directly against the real archive on 2026‑09‑17:
+
+| | |
+|---|---|
+| sessions | 39 |
+| files in session folders | 258 |
+| parseable | 257 |
+| known exception | 1 (`session-16-26-11-2024/video-2024-10-29-15-32-35.mp4`) |
+| canonical pieces | 94 |
+| personal recordings (`تمرین-من`) | 125 |
+| useful resources | 132 (45 class · 57 demo clips · 24 notation · 6 corrections) |
+| logical demonstrations | 37 |
+| rename-log rows | 257 |
+
+Source hashes (sha256), so a changed input is visible rather than assumed:
+
+```
+PIECES.csv        1f68366e32f0f5ddc8b8db0c1027893b724e16d496f0dca0502fa0a0cd133524
+RENAME-PLAN.csv   795faf11c1538e69905e245e9c45d0b13ebcd3469a1b18a2db097786e576b39c
+RENAME-LOG.csv    0c276d5e50fc93904ecfb76c71b1c78dca1cda2610f1569f28c9828013278373
+CRAWLER-BRIEF.md  ee76dbc17351fdcc33662b7c467652f5b90728005ef48071bdb35bcf8843a9bc
+sorted path inventory (LF-joined, trailing newline)
+                  0286b07549ad55b0f84166dc2c7b8c2d5949f96a282f03ebaa5837ebf5b22ae7
+```
+
+These are evidence of one corpus, not a limit: sessions 40+ need no code change.
+
+---
+
+## 3. The publisher
+
+`scripts/publish-setar-index.mjs` writes **one file on one branch**:
+`source-index` / `setar/index.json`. Both are fixed in the code, and every other
+target is refused before a request is made.
+
+- **Unchanged content makes no commit.** The index is clock-free, so identical
+  bytes mean an identical archive.
+- The branch ref advances **non-force** from the commit that was read, with
+  `expected_head_sha`, so a racing publisher loses the update rather than
+  overwriting it; the retry re-reads before deciding anything.
+- An interruption before the ref advances leaves the previous index published —
+  a blob and a commit nothing points at are invisible.
+- Error messages are built from the HTTP status and the endpoint name only.
+  **No token, no repository URL and no archive path ever reaches a log.**
+
+### The credential
+
+A GitHub token scoped to **this one private repository**, with **Contents:
+write** and **Metadata: read**, and no workflow or admin permission.
+
+> GitHub does not issue branch-scoped tokens. The branch and path restriction is
+> a property of *this code* (and, optionally, of repository rules). It must not
+> be described as credential isolation.
+
+It lives in the NAS runtime's own protected configuration file and nowhere
+else — never in the archive, the app, a backup, sync, a commit or a log line.
+The app's own GitHub connection (Settings → Sync) is a *different* credential and
+is used here for **GETs only**.
+
+---
+
+## 4. Installing the unattended job on the NAS
+
+The production host is the Synology NAS, not the Mac. The Mac can run the same
+two scripts by hand; that is the development fallback, not the deployment.
+
+1. **Runtime.** Install a supported Node runtime (Package Center → Node.js).
+   Record the actual binary path — `which node` under the task's own shell — and
+   set `PC_NODE` if it is not on `PATH`.
+2. **Directories.** Create a runtime/output directory *outside* the archive,
+   e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
+   Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
+   `scripts/run-setar-index.sh` into it.
+3. **Permissions.** Give that user **read-only** access to the archive share and
+   read/write to the runtime directory only.
+4. **Configuration.** Create `config.env` in the runtime directory, `chmod 600`:
+
+   ```sh
+   PC_ARCHIVE_ROOT=/volume1/<share>/setar-classes   # the REAL mount, not /Volumes/…
+   PC_INDEX_REPO=<owner>/practice-compass-data
+   PC_INDEX_TOKEN=<the publisher token>
+   ```
+
+   The real internal mount path is discovered during installation. **Do not
+   assume the Mac's `/Volumes/...` path exists on DSM.**
+5. **Schedule.** DSM → Control Panel → Task Scheduler → Create → Scheduled Task
+   → User-defined script. Run as the service user, every **15 minutes**, command:
+
+   ```sh
+   sh /volume1/practice-compass-index/run-setar-index.sh
+   ```
+
+   Enable "Send run details by email" only on error: the script prints counts and
+   a truncated commit id, never a secret.
+6. **Verify.** Run the task once by hand and confirm: a commit on `source-index`,
+   `main` unchanged (`git log --oneline main` has no new entry), and the app's
+   Refresh finding the new index. Then confirm an **unattended** run with the Mac
+   off.
+
+### What has been exercised, and what only the owner can
+
+`run-setar-index.sh` was run end to end on the Mac against the real archive with a
+deliberately invalid `PC_INDEX_TOKEN` (2026‑09‑17). It scanned the live corpus to the same
+content hash as every other run (`924125427f61`), wrote `setar-index.json` into the runtime
+directory, failed the publish with `GitHub refused the branch reference (HTTP 401)`, exited
+non-zero so a scheduler reports it, and left the archive byte-for-byte untouched. The
+output contains **no token, no repository name, no API URL and no archive path** — checked,
+not assumed.
+
+What that cannot prove, and what the OWNER has to confirm on the NAS itself: the real
+internal mount path, the DSM Node runtime, the service user's read-only permissions, the
+scheduled task firing unattended with the Mac off, a real publish landing on `source-index`
+with `main` unchanged, and the behaviour when the token is revoked.
+
+### Rollback
+
+Disable the scheduled task. The app keeps the source graph it last accepted and
+goes on working offline from it. To go back to an earlier index,
+`git push --force-with-lease` an earlier `source-index` commit. Neither touches
+the app's own data on `main`. Revoking the token stops publication and leaves the
+last good index exactly where it is.
+
+---
+
+## 5. What the app does with it
+
+**Refresh Setar archive** (Settings, reachable from Lessons) fetches the branch
+ref, then the file **at that commit**, validates it, shows what would change, and
+applies the lot in one store mutation.
+
+- **Refresh means "the latest published index", not "rescan the NAS now."** The
+  UI says when the index was last *fetched* and last *changed*. It never says
+  "last scanned", because nothing here can know that.
+- **Exact source binding wins.** A record already bound to a source identity *is*
+  that entity, whatever its title or date has since been edited to.
+- A legacy class is auto-adopted only on **instrument + date + number + exact
+  source-path evidence**. Date alone, number alone or title alone cannot merge.
+- An exact title or literal alias match produces **Link / Create separately /
+  Skip** — never an automatic merge, and never "pick the first candidate".
+- New pieces arrive **resting**, by explicit import policy, so ninety-four items
+  do not flood Today. They stay searchable and directly startable.
+- **Nothing about practice is ever seeded**: no minutes, no result, no review
+  date, no SM‑2 state. An imported class is history even when its date is in the
+  future relative to this device's clock.
+- Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
+  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
+  its file through the rename log, so a renamed resource does not reappear —
+  including when the rename moves it into a different session's folder, where
+  the old row is dropped rather than reported missing. A rename LOOP names no
+  file, so a hide stays exactly where you put it and nothing is re-keyed.
+- **A decision is about the state you saw, and about the record you saw it on.**
+  If the value you chose the archive's over has changed since — or the record you
+  chose to link or apply a field to has been deleted, bound elsewhere or moved
+  instrument — the commit refuses and re-previews rather than applying an answer
+  to a question that no longer stands, or handing it to some other record.
+- **Every file on a class has exactly one section.** The archive's own session
+  material is composed for you (an imported class keeps no copy of it, so nothing
+  else can show it); your own links and attachments stay in the sections that can
+  edit and remove them, and are never repeated above. An imported class recording
+  counts as a recording, so you are not invited to add the video already playing.
+- **Your media base is an address and a folder.** A base carrying a username,
+  password, `?query` or `#fragment` is refused, not silently cleaned up: every
+  file URL is built by appending a path to it.
+
+The owner's own `تمرین-من` recordings are evidence, not material: their
+membership and role survive in the graph, the files themselves never become a
+piece's material.
+
+### Open the app over HTTPS, or Refresh cannot verify anything
+
+Refresh recomputes the index's `contentHash` before trusting a byte of it, and
+that needs `crypto.subtle`, which **browsers expose only in a secure context**.
+Open the app over plain `http://` at a LAN address and `crypto` is still there
+while `crypto.subtle` is not, so Refresh — and **Sync now**, which hashes the
+whole database through the same function — both refuse.
+
+Measured on this network, 2026‑09‑18:
+
+| Origin | `isSecureContext` | `crypto.subtle` |
+| --- | --- | --- |
+| `http://192.168.0.113:4173/` (Mac LAN preview) | `false` | absent |
+| `https://192.168.0.20:5010/` (NAS, self-signed) | `true` | present |
+| `http://localhost:4173/` | `true` | present |
+| GitHub Pages (production) | `true` | present |
+
+So: **production and the installed iPhone PWA are unaffected** — both are HTTPS.
+Only a branch build served from a LAN address over plain HTTP hits this, and the
+fix is the route, not a setting:
+
+- **On the Mac — verified.** `http://localhost:4173` is already a secure context;
+  browsers privilege localhost on purpose, which is also why no automated check
+  in this repo can ever see this failure.
+- **For a phone — candidate route, NOT yet verified end to end.** Mirror the build
+  to the NAS (`npm run deploy`) and open it over `https://192.168.0.20/practice-compass/`.
+  What is measured: that origin is HTTPS and therefore a secure context, and a
+  self-signed Synology certificate does not change that — accept the browser
+  warning once. What is NOT measured: the mirror itself. On 2026‑09‑18 that URL
+  answered **403**, and `deploy-nas.sh`'s target share (`/Volumes/web`) was not
+  mounted on the Mac, so the build behind it is stale or absent and the script had
+  no destination. Mount the share, run `npm run deploy`, and confirm the page loads
+  and reports `window.isSecureContext === true` before treating this route as good.
+  Per ac-19's own rule, record the NAS mapping you actually find rather than
+  assuming a `/Volumes` path works.
+
+Refresh says this in as many words rather than crashing, and it says it before it
+looks at the file at all — on a device that cannot hash, no index can pass, and a
+file-shaped error would send you to republish an index that is perfectly good.
+
+---
+
+## 6. Notes for whoever changes this next
+
+- **`scripts/setar-index.test.mjs` is deliberately absent.** Vitest's `include`
+  is `src/**/*.test.ts` and `tests/**/*.test.ts` (and `vite.config.ts` is a
+  forbidden path in the lane that built this), so a test file under `scripts/`
+  would never run. The scanner and publisher are tested from
+  `src/domain/scanSetarClasses.test.ts` and `src/store/archiveIndex.test.ts`,
+  which import the `.mjs` modules directly.
+- **`src/domain/sourceArchive.test.ts` is deliberately absent too.** The decoder, the
+  deterministic ids, the suppression queries and `validateArchiveSources` are all exercised
+  where they are actually used — `scanSetarClasses.test.ts` (the grammar that feeds it),
+  `io.test.ts` (the validation boundary every door runs), `sourceReconcile.test.ts` and
+  `archiveIndex.test.ts` (the store). A fourth file asserting the same functions in
+  isolation would add a place to forget, not a place to look.
+- **`src/domain/setarClasses.ts` is frozen.** It is no longer a workflow; it is
+  the ledger of the 67 obsolete paths the old bundled importer wrote, and the
+  reference-repair check runs against all 67 of them.
+- `npm test` must never need the NAS, the Sandisk drive or the network. The
+  checked-in fixture `tests/fixtures/setar-archive.json` is the real corpus with
+  registry notes trimmed to their first sentence.
+````
+
+### src/domain/sourceArchive.ts
+
+```
+import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
+import { canonicalStringify, sha256Hex } from './canonical';
 
 // ---------------------------------------------------------------------------
-// A small harness for driving the REAL app in a real browser from an ordinary
-// Vitest test.
+// The Setar class archive as the APP sees it.
 //
-// Deliberately a LIBRARY, not a second test runner: the installed check engine
-// traces acceptance through the Vitest report, so a standalone Playwright exit
-// code would prove nothing to it. Each journey gets its own Vite dev server and
-// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
-// localStorage — no fixture from one journey can reach the other, and neither
-// can touch the owner's real data, GitHub or NAS.
+// The app never parses a filename. A read-only scanner (scripts/scan-setar-
+// classes.mjs) publishes a deterministic JSON index; everything here decodes
+// that index, keeps the accepted graph, and answers questions about it.
 //
-// A missing browser is a FAILURE with a setup message, never a skip: a check
-// that quietly passes because it did not run is worse than no check at all.
+// Pure: no React, no clock, no network. The decoder is a TRUST BOUNDARY — it
+// refuses what it cannot vouch for rather than coercing it, because every
+// identity downstream (which lesson, which piece, which file) is taken from
+// this data verbatim.
 // ---------------------------------------------------------------------------
 
-/** The two engines this app is actually used in: Chrome on the Mac, Safari on the iPhone. */
-export type Engine = 'chromium' | 'webkit';
+export const INDEX_FORMAT = 'setar-archive-index';
+export const INDEX_VERSION = 1;
+/** The one archive this lane knows. Tar/Guitar do not share this grammar. */
+export const SETAR_ARCHIVE_ID = 'setar-classes';
 
-const ENGINES: Record<Engine, BrowserType> = { chromium, webkit };
+/** A published index larger than this is refused rather than parsed. */
+export const MAX_INDEX_BYTES = 4 * 1024 * 1024;
 
-const installHint = (engine: Engine) =>
-  `The Playwright ${engine} browser is not installed. Run \`npx playwright install ${engine}\` ` +
-  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
-  'and an engine quietly missed is the same thing as an engine never checked.';
+// --- the published index ---------------------------------------------------
 
-/**
- * ONE recorded outcome of a network request the harness watched, cancelled or
- * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
- * genuine failure to the same URL displace a stale cancellation instead of
- * being excused by it (see `excusedCancellation`).
- *
- * A request the BROWSER cancelled because the test navigated away while it was
- * in flight is not an application error. WebKit reports such a fetch as
- * "Fetch API cannot load … due to access control checks", which reads exactly
- * like a CORS problem and is not one: instrumented, the only difference
- * between the passing and failing runs of the same journey is a single
- * `requestfailed` with `errorText: 'cancelled'` for a request that is
- * otherwise fulfilled with the right CORS headers every other time. A real
- * person navigating mid-sync cancels the same request, so treating it as a
- * page error makes a journey fail for driving the app quickly.
- */
-export interface TrackedRequestFailure {
-  url: string;
-  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
-  at: number;
-  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
-  cancelled: boolean;
+export interface SourcePiece {
+  /** `canonical_fa` — the BYTE-EXACT join key. Never folded or transliterated. */
+  key: string;
+  form: string;
+  piece: string;
+  dastgah: string;
+  composer: string;
+  /** Literal historical spellings, for SEARCH only — never for identity. */
+  aliases: string[];
+  sessions: number[];
+  notes: string;
+  provisional?: boolean;
+  mediumConfidence?: boolean;
+  /** The source no longer describes this piece; its provenance is kept. */
+  unavailable?: boolean;
+}
+
+export type SourceRole = string;
+export type SourceKind = 'video' | 'score' | 'photo';
+
+export interface SourceResource {
+  /** Archive-RELATIVE path. Never an absolute URL: transport is per device. */
+  path: string;
+  role: SourceRole;
+  kind: SourceKind;
+  title: string;
+  part?: number | null;
+  size?: number;
+  /** Canonical piece keys this resource is material for. Empty = lesson-level. */
+  pieces: string[];
+  /** Parts of ONE logical demonstration share a group. */
+  group?: string | null;
+  unavailable?: boolean;
+}
+
+export interface SourceMember {
+  key: string;
+  roles: SourceRole[];
+}
+
+export interface SourceSession {
+  n: number;
+  date: ISODate;
+  folder: string;
+  roster: string[];
+  rosterTrusted: boolean;
+  hasClassRecording: boolean;
+  resources: SourceResource[];
+  members: SourceMember[];
+  unavailable?: boolean;
+}
+
+export interface SourceRename {
+  from: string;
+  to: string;
+}
+
+export interface SourceDiagnostic {
+  path: string;
+  reason: string;
+}
+
+export interface SourceIndex {
+  format: typeof INDEX_FORMAT;
+  version: number;
+  archiveId: string;
+  pieces: SourcePiece[];
+  sessions: SourceSession[];
+  renames: SourceRename[];
+  diagnostics: SourceDiagnostic[];
+  contentHash: string;
+}
+
+// --- what the database keeps ----------------------------------------------
+
+/** An owner decision that a refresh, a reload and a sync must all respect. */
+export interface SourceSuppression {
+  /** `piece` / `session` / `resource` (a hidden file), `link` (item-to-lesson). */
+  kind: 'piece' | 'session' | 'resource' | 'link';
+  /** Piece key, session number, resource path, or `sessionN:pieceKey`. */
+  ref: string;
+  /** A resource hidden on ONE item only — never on its siblings. */
+  itemId?: ID;
+  at: ISODateTime;
 }
 
 /**
- * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
- * work. It once was the whole bound: a cancelled URL's entry stayed eligible
- * for this long, matched by host+path ALONE, so an unconsumed cancellation
- * that never produced its own page error remained a live "credit" any LATER,
- * genuine access-control failure to that same URL could spend. That is a
- * sealed finding, not a hypothetical: a cancellation and a real failure are
- * indistinguishable by wording or by URL, so a window — however short — can
- * never be the thing that tells them apart. Only ORDER can: see
- * `excusedCancellation` below for the correlation that actually does the work.
- * What is left for this ceiling to do is bound how far back a request that
- * WAS genuinely the nearest one may still be trusted, in case Node's delivery
- * of the two events (`requestfailed`, then `pageerror`) is delayed under the
- * contention five concurrent dev servers create; the diagnosis says the
- * browser emits them in the same tick, so this is headroom, not a design
- * tolerance the correlation depends on.
+ * The last accepted source graph, persisted so material, provenance and the
+ * next refresh all work offline. One row per archive; items and lessons carry
+ * only a KEY into it, so a resource is never copied per item.
  */
-export const CANCELLED_EXCUSE_MS = 2_000;
+export interface ArchiveSource {
+  id: ID;
+  instrumentId: ID;
+  indexHash: string;
+  acceptedAt: ISODateTime;
+  pieces: SourcePiece[];
+  sessions: SourceSession[];
+  renames: SourceRename[];
+  diagnostics: SourceDiagnostic[];
+  suppressions: SourceSuppression[];
+}
+
+/** An item's binding to a canonical piece in an archive. */
+export interface ItemSourceRef {
+  archiveId: ID;
+  pieceKey: string;
+}
+
+/** A lesson's binding to one archive session. */
+export interface LessonSourceRef {
+  archiveId: ID;
+  sessionN: number;
+}
+
+// --- path safety -----------------------------------------------------------
 
 /**
- * Extract the URL a diagnosed WebKit access-control message names, or `null`
- * if the message is not that shape at all (a render crash, a thrown
- * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
- * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
- * host that a real URL never has, which this strips before parsing.
+ * An archive path is a relative POSIX path of plain segments. Traversal,
+ * absolute paths, backslashes, URL schemes, credentials and percent-encoded
+ * separators are REFUSED, never sanitised: a rewritten path names a different
+ * file, and this graph is an identity table.
  *
- * The whole point of parsing into a real `URL` and comparing `host` and
- * `pathname` by EQUALITY, rather than testing whether the message merely
- * CONTAINS a candidate's host/path as substrings, is that a substring test
- * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
- * the left) or `api.github.com.evil.test` (extended on the right), nor
- * `/state.json` from `/state.json.bak` — every one of which contains the
- * genuine value as a substring. Anchoring the match to the exact text
- * between the fixed "cannot load " / " due to access control checks" phrases
- * — the only text WebKit ever puts there — removes the ambiguity outright
- * instead of trying to out-guess it with boundary characters.
+ * Deliberately a small copy of the scanner's own predicate rather than an
+ * import — `scripts/` is a Node operator tool that must not be pulled into the
+ * browser bundle, and this rule is eight lines.
  */
-function reportedUrl(message: string): URL | null {
-  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
-    message.trim(),
-  );
-  if (!m) return null;
-  try {
-    return new URL(`${m[1]}://${m[2]}`);
-  } catch {
-    return null;
+export function isSafeSourcePath(p: unknown): p is string {
+  if (typeof p !== 'string' || !p) return false;
+  if (p.length > 1024) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(p)) return false;
+  if (p.startsWith('/') || p.includes('\\')) return false;
+  if (/%2f|%5c/i.test(p)) return false;
+  if (p.includes('@')) return false; // no user:pass@host smuggled in
+  return p.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
+}
+
+// --- deterministic identity ------------------------------------------------
+
+const NUL = String.fromCharCode(0);
+
+/**
+ * FNV-1a over the UTF-8 bytes, twice, for a stable 64-bit hex digest. Two
+ * devices importing the same source must MINT THE SAME ID for the same logical
+ * entity, or the next sync sees two records for one piece. A readable
+ * `src:<archive>:piece:<farsi key>` would be equally deterministic but puts
+ * Farsi into every route parameter; this keeps ids ASCII.
+ */
+function stableHash(input: string): string {
+  const bytes = new TextEncoder().encode(input);
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (const byte of bytes) {
+    a = Math.imul(a ^ byte, 0x01000193) >>> 0;
+    b = Math.imul(b ^ byte, 0x85ebca6b) >>> 0;
   }
+  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
+}
+
+/** Deterministic id for the item a canonical piece becomes. */
+export function sourceItemId(archiveId: string, pieceKey: string): ID {
+  return `src-${stableHash(`${archiveId}${NUL}piece${NUL}${pieceKey}`)}`;
+}
+
+/** Deterministic id for the historical lesson an archive session becomes. */
+export function sourceLessonId(archiveId: string, sessionN: number): ID {
+  return `src-${stableHash(`${archiveId}${NUL}session${NUL}${sessionN}`)}`;
+}
+
+/** Deterministic id for a resource reference minted from the graph. */
+export function sourceResourceId(archiveId: string, path: string): ID {
+  return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
+}
+
+// --- decoding --------------------------------------------------------------
+
+/** The fixed role vocabulary, byte-exact from the archive's own contract. */
+export const SOURCE_ROLES: readonly string[] = [
+  'ضبط-کلاس', // class recording
+  'تمرین-من', // my practice
+  'تصحیح', // corrected notation
+  'تکلیف', // homework
+  'جزوه', // handout
+  'نمونه', // teacher demonstration
+  'نت', // clean notation
+];
+
+/**
+ * Plain-English names for the archive's own role words, for UI copy only.
+ * The Farsi word stays the identity everywhere else — this is a LABEL map,
+ * exactly like `ITEM_STATUS_LABELS`, and never a second vocabulary.
+ */
+export const SOURCE_ROLE_LABELS: Record<string, string> = {
+  [SOURCE_ROLES[0]!]: 'class recording',
+  [SOURCE_ROLES[1]!]: 'my practice',
+  [SOURCE_ROLES[2]!]: 'teacher’s corrections',
+  [SOURCE_ROLES[3]!]: 'homework',
+  [SOURCE_ROLES[4]!]: 'handout',
+  [SOURCE_ROLES[5]!]: 'teacher’s demonstration',
+  [SOURCE_ROLES[6]!]: 'notation',
+};
+
+export const CLASS_ROLE = SOURCE_ROLES[0];
+export const PERSONAL_ROLE = SOURCE_ROLES[1];
+export const CORRECTION_ROLE = SOURCE_ROLES[2];
+export const DEMO_ROLE = SOURCE_ROLES[5];
+export const NOTATION_ROLE = SOURCE_ROLES[6];
+
+const ROLE_SET = new Set<string>(SOURCE_ROLES);
+const KIND_SET = new Set<string>(['video', 'score', 'photo']);
+const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+function str(v: unknown, what: string): string {
+  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
+  return v;
+}
+
+function strList(v: unknown, what: string): string[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) throw new Error(`${what} must be a list of text.`);
+  return v as string[];
 }
 
 /**
- * The excuse correlates on ORDER, not on a window: among every tracked
- * request to the exact host+path the message names, the one that actually
- * produced this page error is whichever happened MOST RECENTLY before it —
- * because the diagnosis is that WebKit emits the spurious error in the same
- * tick as the cancellation that caused it, so nothing else to that URL can
- * have intervened by the time it arrives. That is precisely what makes a
- * cancellation with NO page error of its own safe to leave sitting in the
- * log rather than needing to expire it: the moment anything else — above
- * all a genuine failure — touches that same URL, THAT becomes the nearest
- * candidate and the stale cancellation is never reached again. A stale
- * cancellation can therefore only ever be reached by a page error that has
- * nothing more recent competing for it, which is exactly the case it is
- * supposed to excuse.
+ * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
  *
- * If the nearest candidate is not a cancellation at all — a genuine failure,
- * or nothing within the ceiling — this returns `false` and excuses nothing:
- * an uncertain correlation is never resolved in the excuse's favour.
+ * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
+ * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
+ * not a tolerance but a silent erasure: a session whose `resources` arrived as
+ * `null` decoded to a session with NO resources, passed the grammar (it is a
+ * valid empty list by then) and turned six files into zero. The same held for
+ * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
+ * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
  *
- * The match is CONSUMING: the winning entry is removed, so it cannot excuse
- * a second, later error too.
+ * These three are that rule in one place, and they throw NAMING the record —
+ * the same treatment `validatePracticeText` gives the owner's own words.
  */
-export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
-  const reported = reportedUrl(message);
-  if (!reported) return false;
-  let nearest = -1;
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i];
-    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
-    let url: URL;
-    try {
-      url = new URL(e.url);
-    } catch {
-      continue;
+function list(v: unknown, what: string): unknown[] {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
+  return v;
+}
+
+/**
+ * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
+ * same thing and quietly produced `''` for both — the very normalisation the
+ * list/num/bool rule above exists to stop, left in place for every string
+ * field that has a default. A resource `title: null` became an untitled row
+ * the grammar was perfectly happy with. Absent is a default; null is a value,
+ * and a wrong one.
+ */
+function text(v: unknown, what: string): string {
+  if (v === undefined) return '';
+  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
+  return v;
+}
+
+function num(v: unknown, what: string): number | null {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+  return v;
+}
+
+/** A number that is genuinely a number — no `null`, unlike an optional part. */
+function size(v: unknown, what: string): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
+  return v;
+}
+
+function bool(v: unknown, what: string, fallback: boolean): boolean {
+  if (v === undefined) return fallback;
+  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
+  return v;
+}
+
+/** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
+export function isValidSourceDate(v: unknown): v is ISODate {
+  if (typeof v !== 'string') return false;
+  const m = DATE_RE.exec(v);
+  if (!m) return false;
+  const [, y, mo, d] = m;
+  const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
+}
+
+/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
+export function isValidSourceDateTime(v: unknown): v is ISODateTime {
+  if (typeof v !== 'string') return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
+  if (!m) return false;
+  if (!isValidSourceDate(v.slice(0, 10))) return false;
+  return !Number.isNaN(Date.parse(v));
+}
+
+/**
+ * Validate an unknown published index into a {@link SourceIndex}, or throw with
+ * a message the owner can act on.
+ *
+ * A NEWER version is refused rather than read leniently: a future scanner may
+ * mean something different by the same field, and this graph decides which
+ * file is which piece.
+ */
+export function decodeSourceIndex(input: unknown): SourceIndex {
+  if (!isRecord(input)) throw new Error('The source index is not a valid object.');
+  if (input.format !== INDEX_FORMAT) throw new Error('That file is not a Setar archive index.');
+  if (typeof input.version !== 'number' || !Number.isInteger(input.version)) {
+    throw new Error('The source index has no usable version.');
+  }
+  if (input.version > INDEX_VERSION) {
+    throw new Error(
+      `This index was written by a newer scanner (version ${input.version}) than this app understands (version ${INDEX_VERSION}). Update the app.`,
+    );
+  }
+  if (input.version < INDEX_VERSION) {
+    throw new Error(`This index is from an older scanner (version ${input.version}). Re-run the scanner.`);
+  }
+  const archiveId = str(input.archiveId, 'The index archive id');
+  if (!archiveId.trim()) throw new Error('The index archive id is empty.');
+  if (typeof input.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(input.contentHash)) {
+    throw new Error('The index carries no usable content hash.');
+  }
+
+  if (!Array.isArray(input.pieces)) throw new Error('The index has no piece registry.');
+  if (!Array.isArray(input.sessions)) throw new Error('The index has no sessions.');
+
+  const pieces: SourcePiece[] = [];
+  const keys = new Set<string>();
+  for (const raw of input.pieces) {
+    if (!isRecord(raw)) throw new Error('A registry entry is not an object.');
+    const key = str(raw.key, 'A registry entry key');
+    if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
+    if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
+    keys.add(key);
+    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
+    if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
+      throw new Error(`Registry entry "${key}" has an invalid session number.`);
     }
-    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
-    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
-  }
-  if (nearest < 0 || !events[nearest].cancelled) return false;
-  events.splice(nearest, 1);
-  return true;
-}
-
-export interface PracticeApp {
-  page: Page;
-  /** The dev server origin this journey is isolated on. */
-  origin: string;
-  /** Which engine this journey is actually running in. */
-  engine: Engine;
-  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
-  pageErrors: Error[];
-  close(): Promise<void>;
-}
-
-/**
- * Start the app and open it in a fresh, isolated browser context.
- *
- * `now` fixes the browser's clock before any script runs, so every date the
- * app derives — due reviews, lesson deadlines, the local calendar day a block
- * belongs to — is deterministic. `page.clock` can then move it forward within
- * a journey (across local midnight, for instance) exactly as a real device
- * left open overnight would experience it.
- */
-export async function openPracticeApp(options: {
-  now: Date;
-  viewport?: { width: number; height: number };
-  /** Which engine to drive. Defaults to Chromium; ac-14 drives both. */
-  engine?: Engine;
-  /**
-   * Serve a DIFFERENT checkout of this app — used to stand up a disposable
-   * copy of an older release (a git worktree at an earlier commit) so a
-   * rollback can be tested against the app that actually wrote the backup,
-   * rather than against a description of it. Defaults to this checkout.
-   */
-  root?: string;
-}): Promise<PracticeApp> {
-  const engine = options.engine ?? 'chromium';
-  const server: ViteDevServer = await createServer({
-    ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
-    logLevel: 'error',
-    server: { port: 0, strictPort: false },
-  });
-  await server.listen();
-  const origin = server.resolvedUrls?.local[0];
-  if (!origin) {
-    await server.close();
-    throw new Error('The dev server started but reported no local URL.');
+    pieces.push({
+      key,
+      form: text(raw.form, `Registry entry "${key}" form`),
+      piece: text(raw.piece, `Registry entry "${key}" piece`),
+      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
+      composer: text(raw.composer, `Registry entry "${key}" composer`),
+      aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
+      sessions: sessions as number[],
+      notes: text(raw.notes, `Registry entry "${key}" notes`),
+      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
+      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
+    });
   }
 
-  let browser: Browser;
-  try {
-    browser = await ENGINES[engine].launch();
-  } catch (e) {
-    await server.close();
-    throw new Error(installHint(engine), { cause: e });
+  const sessions: SourceSession[] = [];
+  const seenN = new Set<number>();
+  const seenPaths = new Set<string>();
+  for (const raw of input.sessions) {
+    if (!isRecord(raw)) throw new Error('A session entry is not an object.');
+    const n = raw.n;
+    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) throw new Error('A session has no usable number.');
+    if (seenN.has(n)) throw new Error(`Two entries claim session ${n}.`);
+    seenN.add(n);
+    if (!isValidSourceDate(raw.date)) throw new Error(`Session ${n} has an unreadable date.`);
+    const folder = str(raw.folder, `Session ${n} folder`);
+    if (!isSafeSourcePath(folder)) throw new Error(`Session ${n} has an unsafe folder path.`);
+    const roster = strList(raw.roster, `Session ${n} roster`);
+    for (const k of roster) {
+      if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
+    }
+    const resources: SourceResource[] = [];
+    for (const r of list(raw.resources, `Session ${n} resources`)) {
+      if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
+      const path = r.path;
+      if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
+      if (seenPaths.has(path)) throw new Error(`Two resources share the path "${path}".`);
+      seenPaths.add(path);
+      const role = str(r.role, 'A resource role');
+      if (!ROLE_SET.has(role)) throw new Error(`Resource "${path}" has an unknown role.`);
+      const kind = str(r.kind, 'A resource kind');
+      if (!KIND_SET.has(kind)) throw new Error(`Resource "${path}" has an unknown kind "${kind}".`);
+      const forPieces = strList(r.pieces, `Resource "${path}" pieces`);
+      for (const k of forPieces) {
+        if (!keys.has(k)) throw new Error(`Resource "${path}" names piece "${k}", which is not in the registry.`);
+      }
+      resources.push({
+        path,
+        role,
+        kind: kind as SourceKind,
+        title: text(r.title, `Resource "${path}" title`),
+        part: num(r.part, `Resource "${path}" part`),
+        // `part` and `group` are genuinely nullable in the published format —
+        // the scanner emits `null` for both — so null stays legal THERE and
+        // nowhere else. `size` it always emits as a number, and a present null
+        // is refused HERE rather than spread into the output as a value the
+        // declared type does not admit and left for the grammar to catch.
+        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
+        pieces: forPieces,
+        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
+      });
+    }
+    const members: SourceMember[] = [];
+    for (const m of list(raw.members, `Session ${n} members`)) {
+      if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
+      const key = str(m.key, 'A membership key');
+      if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
+      const roles = strList(m.roles, `Membership "${key}" roles`);
+      for (const role of roles) if (!ROLE_SET.has(role)) throw new Error(`Membership "${key}" has an unknown role.`);
+      members.push({ key, roles });
+    }
+    sessions.push({
+      n,
+      date: raw.date as ISODate,
+      folder,
+      roster,
+      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
+      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
+      resources,
+      members,
+    });
   }
 
-  let context: BrowserContext;
-  let page: Page;
-  const pageErrors: Error[] = [];
-  try {
-    context = await browser.newContext({
-      viewport: options.viewport ?? { width: 390, height: 844 },
-      // The owner's phone. Deliberately the constraint the product is held to.
-      deviceScaleFactor: 2,
-    });
-    page = await context.newPage();
-    // ONE handler for the whole journey. The app's destructive actions ask
-    // first with confirm(); an unanswered dialog blocks every later command,
-    // and registering a second handler makes the first one's accept() throw.
-    page.on('dialog', (d) => {
-      void d.accept().catch(() => {});
-    });
-    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
-    // has to be visible to `excusedCancellation` so it can outrank a stale
-    // cancellation to the same URL, not just a cancellation itself.
-    const requestFailures: TrackedRequestFailure[] = [];
-    page.on('requestfailed', (r) => {
-      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
-    });
-    // Surface a page-level error instead of letting it become a silently
-    // wrong assertion later.
-    page.on('pageerror', (e) => {
-      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
-      pageErrors.push(e);
-    });
-    await page.clock.install({ time: options.now });
-    await page.goto(origin);
-    // The store hydrates from IndexedDB before anything renders. The ceiling is
-    // generous because this is the COLD start: five journeys run concurrently,
-    // each starting its own dev server and browser, so the first paint of the
-    // last one to launch competes with four others compiling modules. A longer
-    // wait cannot hide a real failure — it only refuses to call contention one.
-    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
-  } catch (e) {
-    await browser.close();
-    await server.close();
-    throw e;
+  const renames: SourceRename[] = [];
+  const froms = new Set<string>();
+  for (const r of list(input.renames, 'The rename log')) {
+    if (!isRecord(r)) throw new Error('A rename entry is not an object.');
+    if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
+    if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
+    froms.add(r.from);
+    renames.push({ from: r.from, to: r.to });
   }
+
+  const diagnostics: SourceDiagnostic[] = [];
+  for (const d of list(input.diagnostics, 'The diagnostic list')) {
+    if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
+    diagnostics.push({
+      path: text(d.path, 'A diagnostic path'),
+      reason: text(d.reason, 'A diagnostic reason'),
+    });
+  }
+
+  // The decoder's own normalisation, held to the SAME grammar the persisted
+  // graph is held to. Every field below has just been built here, so this can
+  // only fail if the two ever drift — which is exactly what it exists to stop.
+  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
+  if (bad) throw new Error(bad);
 
   return {
-    page,
-    origin,
-    engine,
-    pageErrors,
-    async close() {
-      await browser.close();
-      await server.close();
-    },
+    format: INDEX_FORMAT,
+    version: INDEX_VERSION,
+    archiveId,
+    pieces,
+    sessions,
+    renames,
+    diagnostics,
+    contentHash: input.contentHash,
   };
 }
 
 /**
- * Import a backup through the REAL Settings control — the same path the owner
- * uses, file picker and confirmation included. No debug hook, no direct store
- * access: a journey that seeded itself through a back door would prove nothing
- * about the door the owner actually walks through.
- */
-export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
-  const { page } = app;
-  await openSettings(app);
-  await page.getByLabel('Import backup file').setInputFiles({
-    name,
-    mimeType: 'application/json',
-    buffer: Buffer.from(json, 'utf8'),
-  });
-  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
-}
-
-/**
- * Reach Settings the way the owner does — More → Settings. The practice
- * screens hide the tab bar (they are the one place the app asks for undivided
- * attention), so from one of those this takes the route directly instead of
- * waiting forever for a nav that is deliberately not there.
- */
-export async function openSettings(app: PracticeApp): Promise<void> {
-  const { page } = app;
-  if (await page.getByRole('navigation', { name: 'Primary' }).isVisible()) {
-    await page.getByRole('link', { name: 'More' }).click();
-    // "Settings" also names a link inside Settings' own copy once the page is
-    // open, so take the one on the More menu — the first in the document.
-    await page.getByRole('link', { name: 'Settings' }).first().click();
-  } else {
-    await goTo(app, '/settings');
-  }
-  await page.getByLabel('Import backup file').waitFor({ state: 'attached', timeout: 20_000 });
-}
-
-/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
-export async function importOutcome(app: PracticeApp): Promise<string> {
-  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
-}
-
-/**
- * Go to a route the way the owner does, then wait for the app to settle.
+ * The message a device that cannot hash anything gets, instead of a TypeError.
  *
- * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
- * the tab bar — they are the one place the app asks for undivided attention —
- * so those routes wait on their own first control instead.
+ * Exported so the reader boundary and its test name ONE string rather than two
+ * copies of a sentence that must stay identical.
  */
-const FOCUSED_ROUTES = /^\/(active|close|routine)/;
-
-export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
-  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
-  if (FOCUSED_ROUTES.test(hashPath)) {
-    await app.page.locator('main').waitFor({ timeout: 20_000 });
-    await app.page.waitForFunction(() => (document.querySelector('main')?.textContent ?? '').length > 0);
-    return;
-  }
-  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
-}
-
-/** Reload, proving a claim survived in IndexedDB rather than in React state. */
-export async function reload(app: PracticeApp): Promise<void> {
-  // The store persists to IndexedDB asynchronously (that is the whole reason
-  // App gates render on `hydrated`), so a reload fired in the same tick as the
-  // click can outrun the write. This wait is about the storage platform, not
-  // about the app: it is real wall-clock time in Node, unaffected by the
-  // page's faked clock.
-  await app.page.waitForTimeout(400);
-  await app.page.reload();
-  await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
-}
-
-const KV_KEY = 'practice-compass';
+export const INSECURE_CONTEXT_REFUSAL =
+  'This device opened the app over an insecure connection (plain http://), so the browser withholds the ' +
+  'cryptography needed to verify the index against its own content hash. Open the app over https:// (or ' +
+  'localhost) and refresh again. Nothing was changed.';
 
 /**
- * Read the raw bytes the app's own persist middleware would read on the next
- * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
- * the Settings importer. `{ state, version }` is exactly the shape Zustand's
- * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
- */
-export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
-  return app.page.evaluate(
-    (key) =>
-      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
-        const req = indexedDB.open('practice-compass');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('kv', 'readonly');
-          const get = tx.objectStore('kv').get(key);
-          get.onsuccess = () => {
-            db.close();
-            resolve(JSON.parse((get.result as { value: string }).value));
-          };
-          get.onerror = () => reject(get.error);
-        };
-      }),
-    KV_KEY,
-  );
-}
-
-/**
- * Write directly into the app's own IndexedDB `kv` store — the way an
- * ALREADY-hydrated device holds its persisted state — bypassing every
- * import/migration door entirely. The one way to reach the "persisted
- * version already matches the current schema" hydration path: Zustand's
- * persist middleware only calls `migrate` when the persisted version differs
- * from the current one, and every JSON-import door runs `validateDB`
- * regardless of what version a FILE claims.
- */
-export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
-  await app.page.evaluate(
-    ({ key, state, version }) =>
-      new Promise<void>((resolve, reject) => {
-        const req = indexedDB.open('practice-compass');
-        req.onerror = () => reject(req.error);
-        req.onsuccess = () => {
-          const db = req.result;
-          const tx = db.transaction('kv', 'readwrite');
-          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
-          tx.oncomplete = () => {
-            db.close();
-            resolve();
-          };
-          tx.onerror = () => reject(tx.error);
-        };
-      }),
-    { key: KV_KEY, state, version },
-  );
-}
-
-/**
- * Export a full backup through the REAL Settings control and return its text.
- * Same button the owner presses, same file the browser would save — the point
- * of a rollback test is the artefact the app actually produces, not one a test
- * rebuilt from the store.
- */
-export async function exportBackup(app: PracticeApp): Promise<string> {
-  const { page } = app;
-  await openSettings(app);
-  const [download] = await Promise.all([
-    page.waitForEvent('download', { timeout: 30_000 }),
-    page.getByRole('button', { name: /Export backup/ }).click(),
-  ]);
-  const path = await download.path();
-  return readFile(path, 'utf8');
-}
-
-/**
- * Wait until the app's OWN persisted bytes satisfy a predicate — a real
- * IndexedDB acknowledgement of a write, never a sleep. A timeout fails with
- * the state actually found, so a slow write and a missing write look different.
- */
-export async function persistedUntil<T>(
-  app: PracticeApp,
-  read: (state: { state: unknown; version: number }) => T,
-  predicate: (value: T) => boolean,
-  timeoutMs = 10_000,
-): Promise<T> {
-  const deadline = Date.now() + timeoutMs;
-  let last: T | undefined;
-  for (;;) {
-    last = read(await readPersistedState(app));
-    if (predicate(last)) return last;
-    if (Date.now() > deadline) {
-      throw new Error(`Persisted state never satisfied the check. Last value: ${JSON.stringify(last)}`);
-    }
-    await app.page.waitForTimeout(50);
-  }
-}
-
-/** The database as the app has actually PERSISTED it, not as it is rendering it. */
-export async function persistedDb(app: PracticeApp): Promise<{
-  items: Record<string, unknown>[];
-  blocks: Record<string, unknown>[];
-  reviews: Record<string, unknown>[];
-  lessonAgenda: Record<string, unknown>[];
-  schemaVersion: number;
-}> {
-  const { state } = await readPersistedState(app);
-  return (state as { db: never }).db;
-}
-
-// ---------------------------------------------------------------------------
-// A GitHub data repo that lives in this test process.
-//
-// It is installed at the REAL transport boundary — the `fetch` calls
-// `gitRemote.ts` makes to api.github.com — so everything above it runs for
-// real: `syncNow`, `resolveConflict`, `runSync`, `decideSync`, the pre-sync
-// archive, and `importFullBackup`'s own guards. Nothing in the app is stubbed
-// or bypassed, and no request ever leaves the machine.
-// ---------------------------------------------------------------------------
-
-export interface FakeRemote {
-  /** The snapshot the repo currently holds, or null for an empty repo. */
-  snapshot: { stateText: string; hash: string; rev: number; deviceName?: string; savedAt: string } | null;
-  /** Every ref this repo has, so an archive branch is observable. */
-  refs: string[];
-  /** How many times each endpoint was called, so "it really went there" is checkable. */
-  calls: string[];
-  /**
-   * The published Setar source index — the ONE file on the source-index
-   * branch that the NAS scanner writes and the app only ever GETs. Null until
-   * something publishes it.
-   */
-  sourceIndex: { text: string; commit: string } | null;
-}
-
-export function newFakeRemote(): FakeRemote {
-  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
-}
-
-/** Put a snapshot in the repo as if another device had pushed it. */
-export function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
-  remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
-  if (!remote.refs.includes('main')) remote.refs.push('main');
-}
-
-/**
- * Re-stamp an index with the digest the SCANNER would have written for it.
+ * WebCrypto EXISTS ONLY IN A SECURE CONTEXT, and this app can be opened outside
+ * one — a build served from a LAN address over plain http:// is the ordinary way
+ * an unmerged branch reaches a phone. There `globalThis.crypto` is present but
+ * `crypto.subtle` is `undefined`, so `sha256Hex` threw
+ * `Cannot read properties of undefined (reading 'digest')` — a stack trace about
+ * a property, handed to the owner in place of the one fact they can act on.
  *
- * The app recomputes this digest at its reader boundary and refuses an index
- * whose content and hash disagree, so a journey that edits a fixture index must
- * publish a genuinely re-scanned one — exactly what the NAS publisher does.
- * ONE implementation, here beside `publishSourceIndex`, so no journey can
- * quietly hand-edit a hash instead.
+ * This is a precondition of the DEVICE, not a defect in the FILE, which is why
+ * it is checked BEFORE the size/JSON/structure order below rather than folded
+ * into it: a device that cannot compute a digest cannot verify ANY index, so
+ * reporting the first thing that happens to be wrong with the file would send
+ * the owner to fix a file that is fine. It is also why this refuses rather than
+ * degrading to an unverified read — `contentHash` is the refresh identity, and
+ * skipping it is how altered content gets reported "Already current".
+ *
+ * Deliberately NOT a fallback implementation: the hash is only one of this
+ * app's secure-context dependencies (the service worker that makes it work
+ * offline is another), so hashing without one would leave the app still broken
+ * while implying plain http:// were supported.
  */
-export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
-  const body = { ...index };
+function requireDigest(): void {
+  if (!globalThis.crypto?.subtle) throw new Error(INSECURE_CONTEXT_REFUSAL);
+}
+
+/**
+ * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
+ * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
+ * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
+ * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
+ * that serialisation for JSON-derived data.
+ */
+async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
+  const body = { ...parsed };
   delete body.contentHash;
   delete body.generatedAt;
-  const sorted = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(sorted);
-    if (value && typeof value === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
-        const v = (value as Record<string, unknown>)[k];
-        if (v !== undefined) out[k] = sorted(v);
-      }
-      return out;
-    }
-    return value;
-  };
-  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-  return JSON.stringify({ ...index, contentHash });
-}
-
-/** Put a source index on the source-index branch, as the NAS publisher would. */
-export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
-  remote.sourceIndex = { text, commit };
-  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
-}
-
-export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
-  let headCounter = 0;
-  const blobs = new Map<string, string>();
-
-  await page.route('https://api.github.com/**', async (route) => {
-    const req = route.request();
-    const url = new URL(req.url());
-    // /repos/<owner>/<name>/<rest…>
-    const rest = url.pathname.split('/').slice(4).join('/');
-    const method = req.method();
-    remote.calls.push(`${method} ${rest}`);
-    // A FULFILLED response is still subject to the browser's own CORS check.
-    // Chromium lets a routed cross-origin request through; WebKit does not, and
-    // an unadorned reply surfaces as "Fetch API cannot load … due to access
-    // control checks" — a harness artefact that looks exactly like an app bug.
-    // The real api.github.com sends these headers, so sending them here is the
-    // fake behaving like the thing it stands in for.
-    const CORS = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
-    };
-    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
-    const json = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
-    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
-    const head = () => `head-${headCounter}`;
-
-    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
-    // the file "on the branch" instead would be a second, later state.
-    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
-      if (!remote.sourceIndex) return json({}, 404);
-      return json({ object: { sha: remote.sourceIndex.commit } });
-    }
-    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
-      const ref = url.searchParams.get('ref');
-      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
-      return json({
-        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
-        encoding: 'base64',
-        size: remote.sourceIndex.text.length,
-      });
-    }
-    if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return json({}, 404);
-      return json({ object: { sha: head() } });
-    }
-    if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
-      if (!remote.snapshot) return json({}, 404);
-      return raw(
-        JSON.stringify({
-          formatVersion: 2,
-          hash: remote.snapshot.hash,
-          rev: remote.snapshot.rev,
-          deviceName: remote.snapshot.deviceName,
-          savedAt: remote.snapshot.savedAt,
-          attachments: [],
-        }),
-      );
-    }
-    if (method === 'GET' && rest.startsWith('contents/state.json')) {
-      if (!remote.snapshot) return json({}, 404);
-      return raw(remote.snapshot.stateText);
-    }
-    if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
-    if (method === 'GET' && rest.startsWith('git/blobs/')) {
-      return json({ content: blobs.get(rest.slice('git/blobs/'.length)) ?? '' });
-    }
-    if (method === 'PUT' && rest.startsWith('contents/README.md')) {
-      headCounter += 1;
-      if (!remote.refs.includes('main')) remote.refs.push('main');
-      return json({ commit: { sha: head() } });
-    }
-    if (method === 'POST' && rest === 'git/blobs') {
-      const body = req.postDataJSON() as { content: string };
-      const sha = `blob-${blobs.size}`;
-      blobs.set(sha, body.content);
-      return json({ sha });
-    }
-    if (method === 'POST' && rest === 'git/trees') return json({ sha: 'tree-1' });
-    if (method === 'POST' && rest === 'git/commits') {
-      headCounter += 1;
-      return json({ sha: head() });
-    }
-    if (method === 'POST' && rest === 'git/refs') {
-      const body = req.postDataJSON() as { ref: string };
-      remote.refs.push(body.ref.replace('refs/heads/', ''));
-      return json({});
-    }
-    if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
-    return json({ message: 'not routed' }, 404);
-  });
+  return sha256Hex(canonicalStringify(body));
 }
 
 /**
- * Wrap a database in the shape `state.json` holds: a full backup with NO file
- * payloads (attachments travel as separate git blobs).
- */
-export function remoteStateText(db: unknown, deviceName = 'the other device'): string {
-  return JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: (db as { schemaVersion?: number }).schemaVersion ?? 13,
-    exportedAt: new Date().toISOString(),
-    deviceName,
-    data: db,
-    files: [],
-  });
-}
-
-/** Connect sync through the REAL Settings form and run the first sync. */
-export async function connectSync(app: PracticeApp): Promise<void> {
-  const { page } = app;
-  await goTo(app, '/settings');
-  // The sync form's fields sit inside a labelled group rather than carrying
-  // their own accessible names. That is pre-existing Settings markup this lane
-  // is explicitly not reshaping, so this reaches them the way they actually
-  // are rather than pretending otherwise.
-  await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
-  await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
-  await page.getByRole('button', { name: 'Connect & sync' }).click();
-  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
-}
-
-/** The sync section's own status line, whatever it currently says. */
-export async function syncMessage(page: Page): Promise<string> {
-  return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
-}
-```
-
-### tests/setarInbound.browser.test.ts
-
-```
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import {
-  CANCELLED_EXCUSE_MS,
-  connectSync,
-  exportBackup,
-  goTo,
-  importBackup,
-  importOutcome,
-  installFakeGitHub,
-  newFakeRemote,
-  excusedCancellation,
-  openPracticeApp,
-  persistedDb,
-  publishRemote,
-  readPersistedState,
-  reload,
-  remoteStateText,
-  syncMessage,
-  type TrackedRequestFailure,
-  writePersistedState,
-} from './practiceBrowser';
-import INDEX_TEXT from './fixtures/setar-archive.json?raw';
-import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
-import { SCHEMA_VERSION, type PracticeDB } from '../src/domain/types';
-import { validateDB, serializeExport } from '../src/domain/io';
-import { decodeSourceIndex } from '../src/domain/sourceArchive';
-import { applyArchiveImport, planArchiveImport } from '../src/domain/sourceReconcile';
-import { hashState } from '../src/domain/canonical';
-
-// ---------------------------------------------------------------------------
-// ac-16 — the archive graph through every door an inbound database uses.
-//
-// Settings import (full and state-only), an automatic sync pull, "Take the
-// GitHub copy", the archive restore, BOTH hydration branches and the cold-start
-// recovery control all run the same `validateDB`. A malformed source relation
-// has to be refused at every one of them with the previous database AND the
-// previous attachment bytes exactly as they were; a valid one has to survive
-// all of them with the owner's own bindings, suppressions and fields intact.
-// ---------------------------------------------------------------------------
-
-const CLOCK = new Date('2026-09-17T09:00:00');
-const SETAR = 'inst-setar';
-
-/** The owner's v13 data with a real, accepted graph in it — built by the real planner. */
-function v14Database(): PracticeDB {
-  const base = validateDB(JSON.parse(V13_SETAR_TEXT));
-  const index = decodeSourceIndex(JSON.parse(INDEX_TEXT));
-  const plan = planArchiveImport({ db: base, index, instrumentId: SETAR, now: CLOCK });
-  const db = applyArchiveImport(base, plan);
-  // An owner decision that every door must carry through untouched.
-  return {
-    ...db,
-    archiveSources: db.archiveSources.map((s) => ({
-      ...s,
-      suppressions: [{ kind: 'piece' as const, ref: 'عراق', at: '2026-09-17T09:05:00.000Z' }],
-    })),
-    items: db.items.filter((i) => i.source?.pieceKey !== 'عراق'),
-  };
-}
-
-const V14_DB = v14Database();
-const V14_TEXT = serializeExport(V14_DB, CLOCK);
-
-/**
- * The same database with ONE nested value inside the graph made malformed.
+ * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
  *
- * `members[].roles` is what `repeatChains` calls `.includes` on to render an
- * item's material, so a door that accepts this persists a database whose first
- * reader throws. It is the sharpest member of the family — the nested fields a
- * production reader dereferences — and every door below is given the identical
- * bytes rather than a door-specific approximation of them.
+ * `contentHash` is not a checksum the app may take on faith — it is the
+ * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
+ * accepted to decide that nothing has changed, so content altered in transit
+ * (or in the repository) under a retained old hash would be reported "Already
+ * current" and the changed facts silently ignored. Recomputing it here, at the
+ * ONE boundary both the GitHub fetch and the file fallback pass through, makes
+ * that fail closed instead.
+ *
+ * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
+ * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
+ * that build an index object in memory call it directly and have no transport.
+ *
+ * Order matters: size → parse → structure → digest, so a structurally broken
+ * file reports the error the owner can act on rather than a hash mismatch. The
+ * secure-context precondition sits ahead of all four, for the reason
+ * `requireDigest` records: it is a fact about the DEVICE, and no file can pass
+ * on a device that cannot hash.
  */
-function withMalformedRoles<T extends PracticeDB>(db: T): T {
-  return {
-    ...db,
-    archiveSources: db.archiveSources.map((src, i) =>
-      i === 0
-        ? {
-            ...src,
-            sessions: src.sessions.map((sess, j) =>
-              j === 0
-                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
-                : sess,
-            ),
-          }
-        : src,
-    ),
-  } as unknown as T;
+export async function parseSourceIndex(text: string): Promise<SourceIndex> {
+  requireDigest();
+  if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error('That file is not valid JSON.');
+  }
+  const index = decodeSourceIndex(parsed);
+  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
+  if (actual !== index.contentHash) {
+    throw new Error(
+      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
+    );
+  }
+  return index;
 }
 
-const wrap = (data: unknown, files?: unknown) =>
-  JSON.stringify({
-    app: 'practice-compass',
-    schemaVersion: SCHEMA_VERSION,
-    exportedAt: CLOCK.toISOString(),
-    data,
-    ...(files === undefined ? {} : { files }),
-  });
+// --- what counts as an UPCOMING class ---------------------------------------
 
 /**
- * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
- * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
- * and the rename log moves it here. Repair produces PERSISTED archive state, so
- * it has to cross these doors like everything else.
+ * THE one predicate for "is this lesson still ahead of me". Every caller that
+ * asks about the next class — the badges, the default question target, the
+ * commitment deadline that reaches practice priority — goes through this.
+ *
+ * A lesson imported from a source archive is a record of a class that ALREADY
+ * HAPPENED. Its date can still be in the future relative to this device's
+ * clock (the archive runs to September 2026 and a device may be behind it, or
+ * the owner may simply be importing early), and a plain `date >= today` then
+ * turns thirty-nine pieces of history into thirty-nine deadlines: urgency on
+ * items nobody committed to anything, and a question sheet defaulting to a
+ * class that is over. `origin: 'archive'` is checked FIRST, before the date,
+ * because no date can make history upcoming.
  */
-const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
-
-interface Shape {
-  items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
-  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
-  blocks: unknown[];
-  archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
-  schemaVersion: number;
+export function isUpcomingLesson(lesson: { date: ISODate; origin?: string }, todayISO: ISODate): boolean {
+  if (lesson.origin === 'archive') return false;
+  return lesson.date >= todayISO;
 }
 
-const shape = async (app: Parameters<typeof persistedDb>[0]) => (await persistedDb(app)) as unknown as Shape;
+// --- queries over the accepted graph ---------------------------------------
 
-describe('the archive graph at every inbound door', () => {
-  it('archive state crosses all real inbound doors without partial installation', async () => {
-    const app = await openPracticeApp({ now: CLOCK });
-    const { page } = app;
-    try {
-      // --- a real v14 database, through the real Settings importer --------
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      expect(await importOutcome(app)).toContain('Imported');
-      await reload(app);
-      let db = await shape(app);
-      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
-      expect(db.archiveSources).toHaveLength(1);
-      expect(db.items.filter((i) => i.source)).toHaveLength(93);
-      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-      // The owner's suppression came through, and the piece it names is absent.
-      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
-      expect(db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-      // …as did their own untouched records.
-      expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
-      expect(db.blocks).toHaveLength(1);
-      // The REPAIRED reference survived the door, with the row the owner wrote.
-      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
-      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+export function archiveFor(db: PracticeDB, archiveId: string): ArchiveSource | undefined {
+  return db.archiveSources?.find((a) => a.id === archiveId);
+}
 
-      const goodBytes = JSON.stringify(await readPersistedState(app));
+function suppressed(source: ArchiveSource, kind: SourceSuppression['kind'], ref: string, itemId?: ID): boolean {
+  return source.suppressions.some(
+    (s) => s.kind === kind && s.ref === ref && (s.itemId === undefined || s.itemId === itemId),
+  );
+}
 
-      // --- MALFORMED SOURCE RELATIONS, refused at the import door ---------
-      const bad = V14_DB;
-      const cases: { name: string; text: string; says: RegExp }[] = [
-        {
-          name: 'two sources share an id',
-          text: wrap({ ...bad, archiveSources: [bad.archiveSources[0], bad.archiveSources[0]] }),
-          says: /share the id/,
-        },
-        {
-          name: 'a source bound to no instrument',
-          text: wrap({
-            ...bad,
-            archiveSources: [{ ...bad.archiveSources[0]!, instrumentId: 'nobody' }],
-          }),
-          says: /instrument that does not exist/,
-        },
-        {
-          name: 'a dangling item binding',
-          text: wrap({
-            ...bad,
-            items: bad.items.map((i) =>
-              i.id === 'own-dashti' ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'nope' } } : i,
-            ),
-          }),
-          says: /does not describe/,
-        },
-        {
-          name: 'two items bound to one piece',
-          text: wrap({
-            ...bad,
-            items: bad.items.map((i) =>
-              i.id === 'own-iraq' ? { ...i, source: bad.items.find((x) => x.source)!.source } : i,
-            ),
-          }),
-          says: /Two items are bound/,
-        },
-        {
-          name: 'a lesson bound to a session the source does not describe',
-          text: wrap({
-            ...bad,
-            lessons: bad.lessons.map((l) =>
-              l.id === 'L-38-upcoming' ? { ...l, source: { archiveId: 'setar-classes', sessionN: 4242 } } : l,
-            ),
-          }),
-          says: /does not describe/,
-        },
-        {
-          name: 'an unsafe resource path',
-          text: wrap({
-            ...bad,
-            archiveSources: [
-              {
-                ...bad.archiveSources[0]!,
-                sessions: bad.archiveSources[0]!.sessions.map((s, i) =>
-                  i === 0 ? { ...s, resources: [{ ...s.resources[0], path: '../../etc/passwd' }] } : s,
-                ),
-              },
-            ],
-          }),
-          says: /unsafe resource path/,
-        },
-        {
-          name: 'an unsafe direct item reference',
-          text: wrap({
-            ...bad,
-            items: bad.items.map((i) =>
-              i.id === 'own-iraq'
-                ? {
-                    ...i,
-                    references: [
-                      { id: 'r', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: CLOCK.toISOString() },
-                    ],
-                  }
-                : i,
-            ),
-          }),
-          says: /unsafe reference path/,
-        },
-        {
-          // The sealed counterexample: a nested value no door used to check.
-          name: 'a membership with an unreadable role list',
-          text: wrap(withMalformedRoles(bad)),
-          says: /unreadable role list/,
-        },
-        {
-          name: 'a newer schema',
-          text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
-          says: /newer version/i,
-        },
-      ];
+/** Sessions a canonical piece appears in, numerically ordered. */
+export function sessionsForPiece(source: ArchiveSource, pieceKey: string): SourceSession[] {
+  return source.sessions.filter((s) => s.members.some((m) => m.key === pieceKey)).sort((a, b) => a.n - b.n);
+}
 
-      for (const c of cases) {
-        await importBackup(app, 'bad.json', c.text);
-        expect(await importOutcome(app), c.name).toMatch(/Import failed/);
-        expect(await importOutcome(app), c.name).toMatch(c.says);
-        // NOTHING was written — not a partial graph, not a partial database.
-        expect(JSON.stringify(await readPersistedState(app)), c.name).toBe(goodBytes);
-      }
+/**
+ * Consecutive runs of sessions a piece was practised in. Six sessions in a row
+ * is six CLASSES worth of provenance — never six weeks, and never practice
+ * this app recorded.
+ */
+export function repeatChains(source: ArchiveSource, pieceKey: string): number[][] {
+  // A REPEAT is the student having been asked to play the piece again: its own
+  // practice recording, in consecutive sessions. Membership alone is the wrong
+  // input — an unnamed demonstration gives every piece in its session
+  // membership, so a chain read from membership would report a repeat nobody
+  // was asked for.
+  const ns = source.sessions
+    .filter((s) => s.members.some((m) => m.key === pieceKey && m.roles.includes(PERSONAL_ROLE)))
+    .sort((a, b) => a.n - b.n)
+    .map((s) => s.n);
+  const chains: number[][] = [];
+  for (const n of ns) {
+    const last = chains[chains.length - 1];
+    if (last && last[last.length - 1] === n - 1) last.push(n);
+    else chains.push([n]);
+  }
+  return chains.filter((c) => c.length > 1);
+}
 
-      // --- a STATE-ONLY import carries the graph too ----------------------
-      const renamed = {
-        ...V14_DB,
-        items: V14_DB.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'state-only import' } : i)),
-      };
-      await importBackup(app, 'state-only.json', wrap(renamed));
-      expect(await importOutcome(app)).toContain('Imported');
-      // A v14 database is 94 pieces, 39 sessions and the whole graph, and the
-      // importer validates and migrates all of it before it writes. Polled at
-      // half a second rather than the shared helper's 50ms: a continuous stream
-      // of read transactions on the same object store delays the very write
-      // this is waiting for.
-      await expect
-        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe('state-only import');
-      expect((await shape(app)).archiveSources).toHaveLength(1);
+export interface ScopedResource extends SourceResource {
+  sessionN: number;
+  sessionDate: ISODate;
+}
 
-      // --- A SYNC PULL installs the same validated model -------------------
-      const remote = newFakeRemote();
-      await installFakeGitHub(page, remote);
-      // The first sync PUSHES what this device holds, so the pull below is a
-      // clean one-sided change rather than a conflict.
-      await connectSync(app);
-      const local = await persistedDb(app);
-      const pulled = {
-        ...local,
-        items: local.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'from the other device' } : i)),
-      };
-      publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9999);
-      await goTo(app, '/settings');
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
-      await expect
-        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe('from the other device');
-      db = await shape(app);
-      expect(db.archiveSources).toHaveLength(1);
-      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
-      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
-
-      // --- A MALFORMED remote snapshot is refused, and installs nothing ----
-      const beforePull = JSON.stringify(await readPersistedState(app));
-      const brokenRemote = { ...pulled, archiveSources: [{ ...V14_DB.archiveSources[0]!, instrumentId: 'nobody' }] };
-      publishRemote(remote, remoteStateText(brokenRemote), await hashState(brokenRemote), 10_000);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect
-        .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe(true);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
-
-      // …and the NESTED malformation is refused by this door too, not only by
-      // the import one. A pull that installed it would leave a database whose
-      // own material reader throws, with nothing to undo it.
-      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
-      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect
-        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
-          timeout: 60_000,
-          interval: 500,
-        })
-        .toBe(true);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
-
-      // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
-      await goTo(app, '/items/own-dashti');
-      await page.getByRole('button', { name: 'Edit' }).first().click();
-      await goTo(app, '/settings');
-      const keepRemote = {
-        ...pulled,
-        items: pulled.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'the GitHub copy' } : i)),
-      };
-      publishRemote(remote, remoteStateText(keepRemote), await hashState(keepRemote), 11_000);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      const takeRemote = page.getByRole('button', { name: /Take the GitHub copy|Keep the GitHub copy/ });
-      if ((await takeRemote.count()) > 0) {
-        await takeRemote.first().click();
-        await expect
-          .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-            timeout: 60_000,
-            interval: 500,
-          })
-          .toBe('the GitHub copy');
-        expect((await shape(app)).archiveSources).toHaveLength(1);
-      }
-
-      // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
-      await goTo(app, '/items/own-dashti');
-      await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
-      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
-      const duringPractice = JSON.stringify(await readPersistedState(app));
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      expect(await importOutcome(app)).toMatch(/Import failed/);
-      expect(await importOutcome(app)).toMatch(/unfinished|practice/i);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(duringPractice);
-      await goTo(app, '/active');
-      // The harness accepts the confirm() for the whole journey.
-      await page.getByRole('button', { name: 'Discard block' }).click();
-
-      // --- A FULL EXPORT: metadata for NAS refs, no bytes ------------------
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      await reload(app);
-      const exported = await exportBackup(app);
-      const parsed = JSON.parse(exported) as { data: Shape; files?: unknown[] };
-      expect(parsed.data.archiveSources).toHaveLength(1);
-      expect(parsed.data.items.filter((i) => i.source)).toHaveLength(93);
-      // The archive is DESCRIBED, never carried: no NAS bytes, and only real
-      // local attachments appear in `files` (there are none here).
-      expect(parsed.files ?? []).toEqual([]);
-      expect(exported).toContain('session-13-03-09-2024');
-      // A repaired path is exported as the archive-relative text it now is —
-      // no device base, no legacy folder prefix, and no bytes.
-      expect(exported).toContain(REPAIRED_PATH);
-      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
-      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
-
-      // --- BOTH HYDRATION BRANCHES ----------------------------------------
-      // `migrate`: a persisted database declaring the OLD version.
-      const current = await readPersistedState(app);
-      await writePersistedState(app, { ...(current.state as object), db: JSON.parse(V13_SETAR_TEXT).data }, 13);
-      await reload(app);
-      db = await shape(app);
-      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
-      expect(db.archiveSources).toEqual([]);
-
-      // `merge`: a persisted database declaring the CURRENT version, carrying
-      // an invalid relation. Zustand skips `migrate` entirely here, which is
-      // exactly why the check cannot live only there.
-      await importBackup(app, 'setar-v14.json', V14_TEXT);
-      await reload(app);
-      const valid = await readPersistedState(app);
-      const validDb = (valid.state as { db: Shape }).db;
-      await writePersistedState(
-        app,
-        {
-          ...(valid.state as object),
-          db: {
-            ...validDb,
-            archiveSources: [{ ...validDb.archiveSources[0]!, instrumentId: 'nobody' }],
-          },
-        },
-        SCHEMA_VERSION,
-      );
-      const refusedBytes = JSON.stringify(await readPersistedState(app));
-      await page.reload();
-      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
-      expect(await page.locator('body').innerText()).toMatch(/instrument that does not exist/);
-      // Rendering the refusal writes nothing at all.
-      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
-
-      // The same hydration branch, given the NESTED malformation instead: this
-      // is the door the sealed counterexample actually walked through, and a
-      // database it accepted would crash the first material render.
-      await writePersistedState(
-        app,
-        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
-        SCHEMA_VERSION,
-      );
-      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
-      await page.reload();
-      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
-      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
-      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
-
-      // --- COLD-START RECOVERY gets the owner back in ----------------------
-      await page.getByLabel('Restore backup file').setInputFiles({
-        name: 'recover.json',
-        mimeType: 'application/json',
-        buffer: Buffer.from(V14_TEXT, 'utf8'),
-      });
-      await page.locator('main').waitFor({ timeout: 20_000 });
-      await goTo(app, '/');
-      await reload(app);
-      db = await shape(app);
-      expect(db.archiveSources).toHaveLength(1);
-      expect(db.items.filter((i) => i.source)).toHaveLength(93);
-      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
-      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-    } finally {
-      await app.close();
+/**
+ * Every archive resource that is USEFUL PRACTICE MATERIAL for one piece, in
+ * session order. A class recording stays with its lesson, a resource the owner
+ * hid on THIS item is dropped for this item only, and a suppressed session or
+ * piece contributes nothing.
+ */
+export function resourcesForPiece(source: ArchiveSource, pieceKey: string, itemId?: ID): ScopedResource[] {
+  if (suppressed(source, 'piece', pieceKey)) return [];
+  const out: ScopedResource[] = [];
+  for (const s of sessionsForPiece(source, pieceKey)) {
+    if (suppressed(source, 'session', String(s.n))) continue;
+    for (const r of s.resources) {
+      if (!r.pieces.includes(pieceKey)) continue;
+      if (suppressed(source, 'resource', r.path, itemId)) continue;
+      out.push({ ...r, sessionN: s.n, sessionDate: s.date });
     }
-  }, 240_000);
-});
+  }
+  return out;
+}
 
-// ---------------------------------------------------------------------------
-// The rollback route: the baseline app, not a description of it.
-// ---------------------------------------------------------------------------
+/** Everything an archive session contributes to its own lesson, in role order. */
+export function resourcesForSession(source: ArchiveSource, sessionN: number): SourceResource[] {
+  const s = source.sessions.find((x) => x.n === sessionN);
+  if (!s || suppressed(source, 'session', String(sessionN))) return [];
+  return s.resources.filter((r) => !suppressed(source, 'resource', r.path));
+}
 
-const BASELINE_COMMIT = 'b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417';
-
-function checkoutBaselineApp(): { root: string; dispose: () => void } {
-  const root = join(mkdtempSync(join(tmpdir(), 'pc-setar-baseline-')), 'app');
-  execFileSync('git', ['worktree', 'add', '--detach', root, BASELINE_COMMIT], { stdio: 'pipe' });
-  // `package.json` here gained two scripts and nothing else; `package-lock.json`
-  // is a forbidden path and is byte-identical, so the baseline's dependency
-  // tree is this checkout's. Linking is exact and far cheaper than installing.
-  symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules'));
+/** Turn a graph resource into the app's ordinary NAS reference shape. */
+export function resourceReference(archiveId: string, r: SourceResource, date?: ISODate): LessonRecording {
   return {
-    root,
-    dispose: () => {
-      try {
-        execFileSync('git', ['worktree', 'remove', '--force', root], { stdio: 'pipe' });
-      } catch {
-        rmSync(root, { recursive: true, force: true });
+    id: sourceResourceId(archiveId, r.path),
+    title: r.title,
+    path: r.path,
+    kind: r.kind === 'video' ? 'video' : r.kind === 'score' ? 'pdf' : 'doc',
+    ...(date ? { date } : {}),
+    ...(r.size ? { sizeBytes: r.size } : {}),
+    createdAt: '1970-01-01T00:00:00.000Z',
+  };
+}
+
+// --- the graph's own grammar, in ONE place ---------------------------------
+
+/**
+ * THE grammar of a source graph — every nested field, one definition.
+ *
+ * `decodeSourceIndex` and `validateArchiveSources` used to state this
+ * separately, and the second stated LESS of it: it checked a resource's path
+ * and its part group and then walked straight past `members[].roles`,
+ * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
+ * `folder` and `roster`, and the rename and diagnostic rows entirely. A
+ * database carrying `members[0].roles: null` was therefore accepted and
+ * PERSISTED by every inbound door, and the first production reader to touch it
+ * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
+ * material. `planArchiveImport` had the same exposure through
+ * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
+ *
+ * Both callers run THIS function now, so the decoder and the persisted-graph
+ * validator cannot drift apart again: a reader may dereference any field this
+ * grammar admits, and nothing else can reach the database.
+ *
+ * `unavailable` stays legal on a piece, a session and a resource — a file gone
+ * from the NAS with its provenance kept is a VALID state, not a broken graph.
+ */
+function checkSourceGraph(
+  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
+  label: string,
+): string | null {
+  const text = (v: unknown) => typeof v === 'string';
+  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
+  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
+
+  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
+  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
+
+  const keys = new Set<string>();
+  for (const raw of graph.pieces) {
+    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
+    const p = raw as Partial<SourcePiece>;
+    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
+    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
+    keys.add(p.key);
+    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
+      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
+    }
+    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
+    // that is not a list of text takes the whole refresh down with a TypeError.
+    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
+    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
+      return `Piece "${p.key}" has an invalid session number.`;
+    }
+    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
+      return `Piece "${p.key}" has an unreadable flag.`;
+    }
+  }
+
+  const ns = new Set<number>();
+  const paths = new Set<string>();
+  for (const raw of graph.sessions) {
+    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
+    const sess = raw as Partial<SourceSession>;
+    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
+      return `${label} has a session with no number.`;
+    }
+    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
+    ns.add(sess.n);
+    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
+    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
+    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
+    for (const k of sess.roster as string[]) {
+      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
+    }
+    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
+      return `${label} session ${sess.n} has an unreadable flag.`;
+    }
+
+    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
+    for (const rawRes of sess.resources) {
+      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
+      const r = rawRes as Partial<SourceResource>;
+      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
+      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
+      paths.add(r.path);
+      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
+      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
+      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
+      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
+        return `Resource "${r.path}" has an unreadable part number.`;
       }
+      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
+      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
+      for (const k of r.pieces as string[]) {
+        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
+      }
+      // A demonstration's parts form ONE group; anything but a plain label
+      // here would let a part claim membership of an arbitrary structure.
+      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
+        return `Resource "${r.path}" has an invalid part group.`;
+      }
+      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
+    }
+
+    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
+    for (const rawMember of sess.members) {
+      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
+      const m = rawMember as Partial<SourceMember>;
+      if (typeof m.key !== 'string' || !keys.has(m.key)) {
+        return `${label} session ${sess.n} claims an unknown piece.`;
+      }
+      // `repeatChains` reads `roles.includes(...)` on every one of these.
+      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
+      for (const role of m.roles as string[]) {
+        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
+      }
+    }
+
+    // --- SEMANTIC RELATIONS, not merely field types ------------------------
+    //
+    // A field-type grammar says every value is READABLE; it says nothing about
+    // whether the graph agrees with itself. A resource physically sitting in
+    // class 2's folder, listed under class 1, is type-perfect and attributes
+    // someone else's file to the wrong lesson on every screen that reads it —
+    // and an arbitrary `group` on a non-demonstration invents a logical
+    // resource out of unrelated files.
+    //
+    // Scoped to what the source still DESCRIBES. `unavailable` is retained
+    // provenance about what it has STOPPED describing — a piece dropped from
+    // the registry, a file deleted from the NAS — so holding those rows to the
+    // current source's internal agreement is a category error, and would make
+    // every refresh after a removal refuse at every door.
+    if (!sess.unavailable) {
+      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
+      const rolesFor = new Map<string, Set<string>>();
+      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
+      const groups = new Map<string, SourceResource[]>();
+      let classRecordings = 0;
+      for (const r of live) {
+        const segs = r.path.split('/');
+        if (segs.length !== 2 || segs[0] !== sess.folder) {
+          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
+        }
+        if (r.role === CLASS_ROLE) {
+          classRecordings += 1;
+          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
+        }
+        for (const k of r.pieces) {
+          if (!rolesFor.get(k)?.has(r.role)) {
+            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
+          }
+        }
+        if (r.group !== null && r.group !== undefined) {
+          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
+          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
+        }
+      }
+      if (classRecordings > 0 !== sess.hasClassRecording) {
+        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
+      }
+      // Parts of ONE demonstration: the same material, told in order. Parts
+      // that are material for different pieces are not one resource, and two
+      // parts with one number have no order to be read in.
+      for (const [g, parts] of groups) {
+        const pieces = [...parts[0]!.pieces].sort().join(NUL);
+        const numbers = new Set<number | null>();
+        for (const r of parts) {
+          if ([...r.pieces].sort().join(NUL) !== pieces) {
+            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
+          }
+          const part = r.part ?? null;
+          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
+          numbers.add(part);
+        }
+      }
+    }
+  }
+
+  if (graph.renames !== undefined) {
+    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
+    const froms = new Set<string>();
+    for (const rawRename of graph.renames) {
+      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
+      const r = rawRename as Partial<SourceRename>;
+      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
+      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
+      froms.add(r.from);
+    }
+  }
+
+  if (graph.diagnostics !== undefined) {
+    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
+    for (const rawDiag of graph.diagnostics) {
+      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
+      const d = rawDiag as Partial<SourceDiagnostic>;
+      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
+    }
+  }
+
+  return null;
+}
+
+// --- inbound validation (C7) -----------------------------------------------
+
+/**
+ * The v14 graph, checked at EVERY inbound door through `validateDB`. Invalid
+ * structure is REFUSED with the record named, never coerced or dropped: a
+ * binding that points at nothing is a claim about which file is which piece,
+ * and silently discarding it loses the owner's own reconciliation decisions.
+ *
+ * A source entity marked `unavailable` is a VALID state (the file is gone from
+ * the NAS, its provenance is kept) — not a dangling reference.
+ */
+export function validateArchiveSources(db: PracticeDB): string | null {
+  const sources = db.archiveSources ?? [];
+  const ids = new Set<string>();
+  const instrumentIds = new Set(db.instruments.map((i) => i.id));
+  const byId = new Map<string, ArchiveSource>();
+
+  for (const s of sources) {
+    if (typeof s?.id !== 'string' || !s.id.trim()) return 'An archive source has no id.';
+    if (ids.has(s.id)) return `Two archive sources share the id "${s.id}".`;
+    ids.add(s.id);
+    byId.set(s.id, s);
+    if (typeof s.instrumentId !== 'string' || !instrumentIds.has(s.instrumentId)) {
+      return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
+    }
+    if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
+    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
+    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
+    // last changed, so a non-string here crashes the screen that renders it —
+    // and the fix belongs at this door, never as a guard in the component.
+    // Checked for REAL validity for the same reason `askedAt` is: a shape
+    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
+    // normalises it into March. Deliberately a local check beside
+    // `isValidSourceDate` rather than an import — this file's own pattern.
+    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
+    if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
+    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
+    // decoder always emits both, and `planArchiveImport` reads
+    // `index.renames`/`source.renames` unguarded.
+    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
+    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
+    if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
+
+    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
+    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
+    if (bad) return bad;
+
+    for (const sup of s.suppressions) {
+      if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
+        return `Archive source "${s.id}" has a suppression of an unknown kind.`;
+      }
+      if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
+      // An owner decision carries the id it was scoped to and the moment it
+      // was taken; both are read back — a resource hidden on ONE item is
+      // decided by comparing `itemId`, so a non-string silently widens it.
+      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
+        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
+      }
+      // `at` is provenance only — nothing reads it back as a date — so it is
+      // held to being real text and no further.
+      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
+    }
+  }
+
+  // Bindings: exactly one live record per source identity, resolving to a real
+  // entity of the right instrument.
+  const itemBindings = new Set<string>();
+  for (const item of db.items) {
+    const ref = item.source;
+    if (!ref) continue;
+    if (typeof ref.archiveId !== 'string' || typeof ref.pieceKey !== 'string') {
+      return `Item "${item.title}" has an unreadable archive binding.`;
+    }
+    const source = byId.get(ref.archiveId);
+    if (!source) return `Item "${item.title}" is bound to archive "${ref.archiveId}", which is not present.`;
+    if (!source.pieces.some((p) => p.key === ref.pieceKey)) {
+      return `Item "${item.title}" is bound to piece "${ref.pieceKey}", which archive "${ref.archiveId}" does not describe.`;
+    }
+    if (item.instrumentId !== source.instrumentId) {
+      return `Item "${item.title}" is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
+    }
+    const k = `${ref.archiveId}${NUL}${ref.pieceKey}`;
+    if (itemBindings.has(k)) return `Two items are bound to piece "${ref.pieceKey}".`;
+    itemBindings.add(k);
+  }
+
+  const lessonBindings = new Set<string>();
+  for (const lesson of db.lessons) {
+    const ref = lesson.source;
+    if (!ref) continue;
+    if (typeof ref.archiveId !== 'string' || typeof ref.sessionN !== 'number') {
+      return 'A lesson has an unreadable archive binding.';
+    }
+    const source = byId.get(ref.archiveId);
+    if (!source) return `A lesson is bound to archive "${ref.archiveId}", which is not present.`;
+    if (!source.sessions.some((s) => s.n === ref.sessionN)) {
+      return `A lesson is bound to session ${ref.sessionN}, which archive "${ref.archiveId}" does not describe.`;
+    }
+    if (lesson.instrumentId !== source.instrumentId) {
+      return `A lesson is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
+    }
+    const k = `${ref.archiveId}${NUL}${ref.sessionN}`;
+    if (lessonBindings.has(k)) return `Two lessons are bound to session ${ref.sessionN}.`;
+    lessonBindings.add(k);
+  }
+
+  // Manual item references: the same path rules as every other NAS reference.
+  for (const item of db.items) {
+    for (const r of item.references ?? []) {
+      if (typeof r?.path !== 'string' || !r.path.trim()) return `Item "${item.title}" has a reference with no path.`;
+      if (!/^https?:\/\//i.test(r.path) && !isSafeSourcePath(r.path)) {
+        return `Item "${item.title}" has an unsafe reference path.`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The canonical pieces an archive session is associated with, honouring an
+ * owner's explicit unlink of ONE piece from ONE class.
+ *
+ * Derived from the graph, never stored on the lesson: a session's membership
+ * is a source fact, and copying it into `lesson.itemIds` would make one fact
+ * two that can disagree.
+ */
+export function membersForSession(source: ArchiveSource, sessionN: number): SourceMember[] {
+  const s = source.sessions.find((x) => x.n === sessionN);
+  if (!s || suppressed(source, 'session', String(sessionN))) return [];
+  return s.members.filter((m) => !suppressed(source, 'link', `${sessionN}:${m.key}`));
+}
+```
+
+### src/store/archiveIndex.test.ts
+
+```
+import { describe, expect, it, vi } from 'vitest';
+// @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
+import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
+// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
+// against the real producer rather than a restatement of it in the test.
+import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
+import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
+import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+import { decodeSourceIndex, INSECURE_CONTEXT_REFUSAL } from '../domain/sourceArchive';
+import { validateDB } from '../domain/io';
+import { createItem } from '../domain/factories';
+import type { PracticeDB } from '../domain/types';
+
+// ---------------------------------------------------------------------------
+// The persist storage, CONTROLLABLE per assertion — the same stub io.test.ts
+// uses, plus a settle promise this test can reject on demand. A failed
+// IndexedDB write is the one thing `commitArchiveImport` must never mistake
+// for a success, and it cannot be provoked in a real browser on purpose.
+// ---------------------------------------------------------------------------
+const fakeStorage = vi.hoisted(() => {
+  let value: string | null = null;
+  let failNextWrite = false;
+  return {
+    get: () => value,
+    set: (v: string | null) => {
+      value = v;
+    },
+    failNext: () => {
+      failNextWrite = true;
+    },
+    takeFailure: () => {
+      const f = failNextWrite;
+      failNextWrite = false;
+      return f;
+    },
+  };
+});
+vi.mock('./idb', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./idb')>();
+  let settle: Promise<void> = Promise.resolve();
+  return {
+    ...actual,
+    // Dexie itself has no IndexedDB to talk to in this environment, and
+    // `clearAll` reaches for the blob store. Stubbed so a deliberate erasure
+    // does not raise an unhandled rejection that would mask a real one.
+    clearBlobs: async () => undefined,
+    deleteBlob: async () => undefined,
+    allBlobs: async () => [],
+    heldBlobIds: async () => new Set<string>(),
+    storageSettled: () => settle,
+    idbStorage: {
+      getItem: async () => fakeStorage.get(),
+      setItem: async (_name: string, value: string) => {
+        if (fakeStorage.takeFailure()) {
+          settle = Promise.reject(new Error('the device refused the write'));
+          // Mark it handled here so the rejection reaches only the one caller
+          // that is waiting on it, exactly as the real adapter does.
+          void settle.catch(() => undefined);
+          return;
+        }
+        fakeStorage.set(value);
+        settle = Promise.resolve();
+      },
+      removeItem: async () => fakeStorage.set(null),
+    },
+  };
+});
+// Imported AFTER the mock declaration on purpose: the store's persist
+// middleware binds its storage at module load.
+const { useStore } = await import('./useStore');
+
+// ---------------------------------------------------------------------------
+// A fake git repository, small enough to assert against exactly. It records
+// EVERY write, so "this publisher cannot touch practice data" is a checked
+// property of the calls made, not a claim about intent.
+// ---------------------------------------------------------------------------
+
+interface FakeRepo {
+  refs: Map<string, string>;
+  commits: Map<string, { treeSha: string; parents: string[] }>;
+  trees: Map<string, Record<string, string>>;
+  blobs: Map<string, string>;
+  writes: { kind: string; target: string }[];
+  n: number;
+}
+
+function newRepo(): FakeRepo {
+  const repo: FakeRepo = {
+    refs: new Map(),
+    commits: new Map(),
+    trees: new Map(),
+    blobs: new Map(),
+    writes: [],
+    n: 0,
+  };
+  // The app's own data branch, exactly as the sync engine leaves it. Nothing in
+  // this test may change any of these three.
+  const tree = { 'state.json': 'blob-state', 'manifest.json': 'blob-manifest', 'files/a.pdf': 'blob-file' };
+  repo.trees.set('tree-main', tree);
+  repo.commits.set('commit-main', { treeSha: 'tree-main', parents: [] });
+  repo.refs.set('main', 'commit-main');
+  repo.refs.set('archive/2026-09-01', 'commit-main');
+  return repo;
+}
+
+function transportFor(repo: FakeRepo, opts: { failAfterCommit?: boolean; raceOnce?: () => void } = {}) {
+  const id = (p: string) => `${p}-${(repo.n += 1)}`;
+  return {
+    async getRef(branch: string) {
+      const sha = repo.refs.get(branch);
+      return sha ? { sha } : null;
+    },
+    async getCommit(sha: string) {
+      return { treeSha: repo.commits.get(sha)!.treeSha };
+    },
+    async getFile(sha: string, path: string) {
+      const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
+      const blob = tree[path];
+      return blob ? { text: repo.blobs.get(blob)! } : null;
+    },
+    async createBlob(text: string) {
+      const sha = id('blob');
+      repo.blobs.set(sha, text);
+      repo.writes.push({ kind: 'blob', target: sha });
+      return sha;
+    },
+    async createTree({ baseTreeSha, path, blobSha }: { baseTreeSha: string | null; path: string; blobSha: string }) {
+      const sha = id('tree');
+      repo.trees.set(sha, { ...(baseTreeSha ? repo.trees.get(baseTreeSha) : {}), [path]: blobSha });
+      repo.writes.push({ kind: 'tree', target: path });
+      return sha;
+    },
+    async createCommit({ treeSha, parents }: { treeSha: string; parents: string[] }) {
+      const sha = id('commit');
+      repo.commits.set(sha, { treeSha, parents });
+      repo.writes.push({ kind: 'commit', target: treeSha });
+      return sha;
+    },
+    async updateRef(branch: string, sha: string, expectedSha: string) {
+      opts.raceOnce?.();
+      if (opts.failAfterCommit) throw new Error('network dropped');
+      // NON-FORCE: the ref only advances from the commit that was read.
+      if (repo.refs.get(branch) !== expectedSha) return 'HTTP 422';
+      repo.refs.set(branch, sha);
+      repo.writes.push({ kind: 'ref', target: branch });
+      return 'ok';
+    },
+    async createRef(branch: string, sha: string) {
+      if (opts.failAfterCommit) throw new Error('network dropped');
+      if (repo.refs.has(branch)) return 'HTTP 422';
+      repo.refs.set(branch, sha);
+      repo.writes.push({ kind: 'ref', target: branch });
+      return 'ok';
     },
   };
 }
 
-describe('rolling back past the archive schema', () => {
-  it('the baseline app refuses a v14 file and restores its own retained backup', async () => {
-    const baseline = checkoutBaselineApp();
-    const old = await openPracticeApp({ now: CLOCK, root: baseline.root });
-    try {
-      // The v13 app holds the owner's real v13 data, and exports it itself.
-      await importBackup(old, 'setar-legacy-v13.json', V13_SETAR_TEXT);
-      expect(await importOutcome(old)).toContain('Imported');
-      await reload(old);
-      const oldDb = await persistedDb(old);
-      expect(oldDb.schemaVersion).toBe(13);
-      const retainedV13 = await exportBackup(old);
-      expect(JSON.parse(retainedV13).schemaVersion).toBe(13);
+const publishedText = (repo: FakeRepo) => {
+  const sha = repo.refs.get(SOURCE_INDEX_BRANCH);
+  if (!sha) return null;
+  const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
+  return repo.blobs.get(tree[INDEX_PATH]) ?? null;
+};
 
-      // IT REFUSES A v14 FILE, and writes nothing.
-      const before = JSON.stringify(await readPersistedState(old));
-      await importBackup(old, 'setar-v14.json', V14_TEXT);
-      expect(await importOutcome(old)).toMatch(/Import failed/);
-      expect(await importOutcome(old)).toMatch(/newer version/i);
-      expect(JSON.stringify(await readPersistedState(old))).toBe(before);
+// A credential-shaped placeholder — never a real token, and never a
+// contiguous 16+ char [A-Za-z0-9_-] run (the space keeps it that way) — used
+// only to prove no credential text reaches anything the publisher's output
+// touches.
+const NEVER_LEAKED_CREDENTIAL = 'publisher credential placeholder';
+const ROOT = '/volume1/media/setar-classes';
 
-      // …and the retained v13 backup restores INTO the baseline app, which is
-      // what a rollback actually is. There is no down-migration and none is
-      // pretended: the v14 file still says 14 and still carries its graph.
-      await importBackup(old, 'retained-v13.json', retainedV13);
-      expect(await importOutcome(old)).toContain('Imported');
-      await reload(old);
-      const restored = await persistedDb(old);
-      expect(restored.schemaVersion).toBe(13);
-      expect(restored.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-        'Teacher: keep the mezrab light on the return.',
+describe('publishing and reading the source index', () => {
+  it('source index publication cannot replace practice data or lose a concurrent update', async () => {
+    const repo = newRepo();
+    const first = `${JSON.stringify(indexFixture, null, 1)}\n`;
+
+    // --- first publish: creates the branch, main untouched -----------------
+    const created = await publishIndex({ transport: transportFor(repo), indexText: first });
+    expect(created.status).toBe('created');
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(created.commit);
+    expect(publishedText(repo)).toBe(first);
+    expect(repo.refs.get('main')).toBe('commit-main');
+    expect(repo.refs.get('archive/2026-09-01')).toBe('commit-main');
+    expect(repo.trees.get('tree-main')).toEqual({
+      'state.json': 'blob-state',
+      'manifest.json': 'blob-manifest',
+      'files/a.pdf': 'blob-file',
+    });
+    // Every ref this publisher advanced, and every path it wrote.
+    expect(repo.writes.filter((w) => w.kind === 'ref').map((w) => w.target)).toEqual([SOURCE_INDEX_BRANCH]);
+    expect(repo.writes.filter((w) => w.kind === 'tree').map((w) => w.target)).toEqual([INDEX_PATH]);
+    expect(repo.writes.some((w) => /state\.json|manifest\.json|^files\//.test(w.target))).toBe(false);
+
+    // --- an identical scan makes NO commit ---------------------------------
+    const before = repo.refs.get(SOURCE_INDEX_BRANCH);
+    const writesBefore = repo.writes.length;
+    const again = await publishIndex({ transport: transportFor(repo), indexText: first });
+    expect(again.status).toBe('unchanged');
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(before);
+    expect(repo.writes).toHaveLength(writesBefore);
+
+    // --- a changed scan advances the branch, and only it --------------------
+    const changed = `${JSON.stringify({ ...indexFixture, diagnostics: [{ path: 'x', reason: 'y' }] }, null, 1)}\n`;
+    const second = await publishIndex({ transport: transportFor(repo), indexText: changed });
+    expect(second.status).toBe('published');
+    expect(publishedText(repo)).toBe(changed);
+    expect(repo.commits.get(second.commit)!.parents).toEqual([before]);
+    expect(repo.refs.get('main')).toBe('commit-main');
+
+    // --- interrupted BEFORE the ref advances: the old index still stands ----
+    const head = repo.refs.get(SOURCE_INDEX_BRANCH);
+    const interrupted = `${JSON.stringify({ ...indexFixture, archiveId: 'half-written' }, null, 1)}\n`;
+    await expect(
+      publishIndex({ transport: transportFor(repo, { failAfterCommit: true }), indexText: interrupted }),
+    ).rejects.toThrow(/network dropped/);
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(head);
+    expect(publishedText(repo)).toBe(changed);
+
+    // --- racing a second publisher: nothing is overwritten ------------------
+    // The other publisher lands its own commit between this one's read and its
+    // update. Non-force, so this update is refused; the retry re-reads and,
+    // because the other publisher wrote exactly what this one has, it settles
+    // on "unchanged" rather than clobbering.
+    const rival = `${JSON.stringify({ ...indexFixture, archiveId: 'setar-classes' }, null, 1)}\n`;
+    let raced = false;
+    const race = () => {
+      if (raced) return;
+      raced = true;
+      const blob = 'blob-rival';
+      repo.blobs.set(blob, rival);
+      repo.trees.set('tree-rival', { [INDEX_PATH]: blob });
+      repo.commits.set('commit-rival', { treeSha: 'tree-rival', parents: [repo.refs.get(SOURCE_INDEX_BRANCH)!] });
+      repo.refs.set(SOURCE_INDEX_BRANCH, 'commit-rival');
+    };
+    const afterRace = await publishIndex({ transport: transportFor(repo, { raceOnce: race }), indexText: rival });
+    expect(afterRace.status).toBe('unchanged');
+    expect(publishedText(repo)).toBe(rival);
+    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe('commit-rival');
+    // A racing publisher with DIFFERENT content gives up rather than force it.
+    let always = true;
+    const alwaysRace = () => {
+      if (!always) return;
+      repo.commits.set(`commit-rival-${(repo.n += 1)}`, { treeSha: 'tree-rival', parents: [] });
+      repo.refs.set(SOURCE_INDEX_BRANCH, `commit-rival-${repo.n}`);
+    };
+    await expect(
+      publishIndex({ transport: transportFor(repo, { raceOnce: alwaysRace }), indexText: changed }),
+    ).rejects.toThrow(/nothing was overwritten/);
+    always = false;
+
+    // --- the target is fixed in CODE, not by trusting the caller ------------
+    for (const branch of ['main', 'master', 'archive/2026-09-01', 'source-index-2']) {
+      await expect(publishIndex({ transport: transportFor(repo), indexText: first, branch })).rejects.toThrow(
+        /only writes/,
       );
-      expect(JSON.parse(V14_TEXT).schemaVersion).toBe(SCHEMA_VERSION);
-      expect(JSON.parse(V14_TEXT).data.archiveSources).toHaveLength(1);
-      expect(old.pageErrors.map((e) => e.message)).toEqual([]);
-    } finally {
-      await old.close();
-      baseline.dispose();
     }
-  }, 240_000);
+    for (const path of ['state.json', 'manifest.json', 'files/a.pdf', 'setar/other.json']) {
+      await expect(publishIndex({ transport: transportFor(repo), indexText: first, path })).rejects.toThrow(
+        /only writes "setar\/index\.json"/,
+      );
+    }
+
+    // --- the READER pins the file to the branch's own commit ----------------
+    const requests: string[] = [];
+    const publishedCommit = repo.refs.get(SOURCE_INDEX_BRANCH)!;
+    const fakeFetch = async (url: string | URL | Request, init?: RequestInit) => {
+      const href = String(url);
+      requests.push(href);
+      // The reader must never send anything but a GET.
+      expect(init?.method ?? 'GET').toBe('GET');
+      if (href.includes('/git/ref/heads/')) {
+        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+      }
+      const m = /contents\/(.+)\?ref=(.+)$/.exec(href)!;
+      const tree = repo.trees.get(repo.commits.get(m[2])!.treeSha)!;
+      const text = repo.blobs.get(tree[decodeURIComponent(m[1])])!;
+      return new Response(
+        JSON.stringify({ content: Buffer.from(text, 'utf8').toString('base64'), encoding: 'base64', size: text.length }),
+        { status: 200 },
+      );
+    };
+    const got = await fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: fakeFetch as typeof fetch });
+    expect(got.ok).toBe(true);
+    if (!got.ok) throw new Error(got.error);
+    expect(got.value.commitSha).toBe(publishedCommit);
+    expect(got.value.index.archiveId).toBe('setar-classes');
+    // The content request names the COMMIT, not the branch: a publish landing
+    // between the two calls cannot hand back half of one index and half of
+    // another.
+    expect(requests[1]).toContain(`?ref=${publishedCommit}`);
+    expect(requests[1]).not.toContain(SOURCE_INDEX_BRANCH);
+    expect(requests.every((r) => r.startsWith('https://api.github.com/'))).toBe(true);
+
+    // --- authentication and network failures change nothing -----------------
+    const refuse = async () => new Response('no', { status: 401 });
+    const denied = await fetchPublishedIndex({ repo: 'owner/data', token: 'bad', fetchImpl: refuse as typeof fetch });
+    expect(denied.ok).toBe(false);
+    if (denied.ok) throw new Error('expected refusal');
+    expect(denied.error).toMatch(/refused/i);
+    const offline = async () => {
+      throw new Error('offline');
+    };
+    const down = await fetchPublishedIndex({ repo: 'owner/data', token: 't', fetchImpl: offline as typeof fetch });
+    expect(down.ok).toBe(false);
+    if (down.ok) throw new Error('expected refusal');
+    expect(down.error).toMatch(/already imported is unaffected/);
+    // The published index and the app's data branch are exactly as they were.
+    expect(publishedText(repo)).toBe(rival);
+    expect(repo.refs.get('main')).toBe('commit-main');
+
+    // --- no credential and no archive root in anything that travels ---------
+    const everything = JSON.stringify([
+      [...repo.blobs.values()],
+      [...repo.trees.values()],
+      [...repo.commits.keys()],
+      requests,
+      denied.error,
+      down.error,
+    ]);
+    expect(everything).not.toContain(NEVER_LEAKED_CREDENTIAL);
+    expect(everything).not.toContain(ROOT);
+    expect(everything).not.toContain('/Volumes/');
+
+    // The file-import fallback goes through the SAME decoder.
+    expect((await readIndexFile(rival)).ok).toBe(true);
+    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
+    expect(badFile.ok).toBe(false);
+    if (badFile.ok) throw new Error('expected refusal');
+    expect(badFile.error).toMatch(/newer scanner/);
+
+    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
+    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
+    // against the hash already accepted to conclude that nothing has changed.
+    // So content altered under a RETAINED old hash would be reported "Already
+    // current" and its changed facts silently ignored. Both doors recompute
+    // the scanner's own digest and fail closed.
+    const original = JSON.parse(rival) as typeof indexFixture;
+    const altered = {
+      ...original,
+      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
+    };
+    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
+    expect(altered.contentHash).toBe(original.contentHash);
+    const alteredText = JSON.stringify(altered);
+    const tampered = await readIndexFile(alteredText);
+    expect(tampered.ok).toBe(false);
+    if (tampered.ok) throw new Error('expected refusal');
+    expect(tampered.error).toMatch(/does not match its own content hash/);
+
+    // The GitHub door refuses the identical bytes, through the same boundary.
+    const tamperedFetch = async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href.includes('/git/ref/heads/')) {
+        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+      }
+      return new Response(
+        JSON.stringify({
+          content: Buffer.from(alteredText, 'utf8').toString('base64'),
+          encoding: 'base64',
+          size: alteredText.length,
+        }),
+        { status: 200 },
+      );
+    };
+    const fetchedTampered = await fetchPublishedIndex({
+      repo: 'owner/data',
+      token: 'device-token',
+      fetchImpl: tamperedFetch as typeof fetch,
+    });
+    expect(fetchedTampered.ok).toBe(false);
+    if (fetchedTampered.ok) throw new Error('expected refusal');
+    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
+
+    // Re-scanned content — a NEW digest for the new facts — is accepted, so
+    // this is an integrity gate and not a freeze on the archive ever changing.
+    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
+    expect(rescanned.ok).toBe(true);
+    if (!rescanned.ok) throw new Error(rescanned.error);
+    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
+    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
+
+    // A STRUCTURALLY broken file still reports the structural error rather
+    // than a hash mismatch: the owner can act on the first, never the second.
+    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
+    expect(brokenStructure.ok).toBe(false);
+    if (brokenStructure.ok) throw new Error('expected refusal');
+    expect(brokenStructure.error).toMatch(/no sessions/);
+
+    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
+    // A digest proves the file is the one the scanner wrote; it says nothing
+    // about the file being well formed. The decoder normalises BEFORE the
+    // graph's grammar runs, so `resources: null` decoded to a session with no
+    // resources — a perfectly valid empty list by the time the grammar saw it
+    // — and six files became zero with a VALID digest on the front. Every
+    // absent-tolerant read in the decoder had the same shape.
+    const withDigest = (body: Record<string, unknown>) =>
+      JSON.stringify({ ...body, contentHash: indexDigest(body) });
+    const sessionZero = original.sessions[0]!;
+    const erasures: [string, Record<string, unknown>][] = [
+      ['must be a list', { ...sessionZero, resources: null }],
+      ['must be a list', { ...sessionZero, members: null }],
+      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
+      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
+    ];
+    for (const [message, session0] of erasures) {
+      const bad = await readIndexFile(
+        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
+      );
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    const withResource = (over: Record<string, unknown>) => ({
+      ...original,
+      sessions: [
+        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
+        ...original.sessions.slice(1),
+      ],
+    });
+    for (const [message, over] of [
+      ['must be a number', { part: '2' }],
+      ['must be a number', { size: '10mb' }],
+      ['must be text', { group: 42 }],
+    ] as [string, Record<string, unknown>][]) {
+      const bad = await readIndexFile(withDigest(withResource(over)));
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    for (const [message, over] of [
+      ['must be a list', { sessions: null }],
+      ['must be true or false', { provisional: 'yes' }],
+    ] as [string, Record<string, unknown>][]) {
+      const bad = await readIndexFile(
+        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
+      );
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain(message);
+    }
+    for (const over of [{ renames: null }, { diagnostics: null }]) {
+      const bad = await readIndexFile(withDigest({ ...original, ...over }));
+      expect(bad.ok).toBe(false);
+      if (bad.ok) throw new Error('expected refusal');
+      expect(bad.error).toContain('must be a list');
+    }
+    // ABSENT still reads as absent: the tolerance that was correct stays.
+    const withoutOptional = { ...(original as Record<string, unknown>) };
+    delete withoutOptional.renames;
+    delete withoutOptional.diagnostics;
+    const lean = await readIndexFile(withDigest(withoutOptional));
+    expect(lean.ok).toBe(true);
+  });
+
+  // --- THE DEVICE, NOT THE FILE ------------------------------------------
+  // Found by OWNER acceptance testing, not by any check here: an unmerged
+  // branch reaches a phone as a LAN build over plain http://, and WebCrypto
+  // exists only in a SECURE CONTEXT. `globalThis.crypto` is still there, but
+  // `crypto.subtle` is `undefined`, so recomputing the index digest threw
+  // `Cannot read properties of undefined (reading 'digest')` — handed to the
+  // owner as the explanation of their archive. Both doors onto the decoder are
+  // checked below: the GitHub refresh, which is the one the UI reaches, and
+  // `readIndexFile`, the same decoder behind a fallback nothing wires up yet.
+  //
+  // Every automated check missed it because every one of them runs where
+  // `crypto.subtle` exists: Node has it unconditionally, and the browser
+  // journeys are served from localhost, which browsers privilege as secure
+  // precisely so that http://localhost development works.
+  it('an insecure context refuses by naming itself, not by a property stack trace', async () => {
+    const text = JSON.stringify({ ...indexFixture, contentHash: indexDigest(indexFixture as Record<string, unknown>) });
+    // The REAL GitHub reply shape for this file: base64 `content`, `encoding`
+    // and `size`, exactly as api.github.com answers a contents request.
+    const github = async (url: string | URL | Request) =>
+      String(url).includes('/git/ref/heads/')
+        ? new Response(JSON.stringify({ object: { sha: 'c0ffee'.repeat(6) + 'aa' } }), { status: 200 })
+        : new Response(
+            JSON.stringify({
+              content: Buffer.from(text, 'utf8').toString('base64'),
+              encoding: 'base64',
+              size: text.length,
+            }),
+            { status: 200 },
+          );
+    const refresh = () =>
+      fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: github as typeof fetch });
+
+    // Both paths succeed on THIS device, so nothing below is about the file.
+    expect((await refresh()).ok).toBe(true);
+    expect((await readIndexFile(text)).ok).toBe(true);
+
+    // An insecure context, exactly as a browser presents one: `crypto` is
+    // present and `crypto.subtle` is not.
+    const secure = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: secure.getRandomValues.bind(secure) });
+    try {
+      expect(globalThis.crypto.subtle).toBeUndefined();
+      for (const result of [await refresh(), await readIndexFile(text)]) {
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error('expected refusal');
+        // The one fact the owner can act on — and never the shape of the crash.
+        expect(result.error).toBe(INSECURE_CONTEXT_REFUSAL);
+        expect(result.error).toMatch(/https:\/\//);
+        expect(result.error).not.toMatch(/digest|undefined|Cannot read/i);
+        // Refusing is not reporting a broken file: the owner must not be sent
+        // to republish an index that is perfectly good.
+        expect(result.error).not.toMatch(/content hash.*altered|not valid JSON/i);
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    // And the refusal was about the device alone: the SAME bytes pass again.
+    expect((await refresh()).ok).toBe(true);
+  });
 });
 
-describe('the journey harness itself', () => {
-  // The harness must not be able to hide the very failure a journey exists to
-  // catch. A request the browser CANCELLED (because the test navigated away
-  // mid-flight) produces a WebKit error that reads exactly like a CORS
-  // failure. Excusing it has failed two different ways so far, and each test
-  // below is named for the specific way:
-  //  - a PERMANENT set of cancelled URLs discarded every later page error
-  //    whose message merely contained that pathname, so a genuine failure at
-  //    the same path, later in the same journey, was swallowed and
-  //    `pageErrors` said nothing;
-  //  - even made CONSUMING (one cancellation, one error) and bounded by a
-  //    generous time window, an unconsumed cancellation — one that produced
-  //    no page error of its own — stayed a live "credit" for up to that whole
-  //    window, spendable by a genuine, later failure to the same URL that had
-  //    nothing to do with it. A window can never tell the two apart, because
-  //    a cancellation's error and a genuine one read identically; only ORDER
-  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
-  const url = 'https://api.github.com/repos/owner/data/contents/state.json';
-  const spurious =
-    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-  const at = 1_000_000;
-  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
-  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
+// ---------------------------------------------------------------------------
+// ac-11 — the commit boundary, against the REAL store.
+// ---------------------------------------------------------------------------
 
-  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
-    const pending = [cancelled()];
-    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
-    // CONSUMED — the identical message arriving again has no cancellation
-    // left to account for it, which is the ORIGINAL reviewer counterexample.
-    expect(pending).toEqual([]);
-    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
+const INDEX = decodeSourceIndex(indexFixture);
+const SETAR = 'inst-setar';
+const NOW = new Date('2026-09-17T09:00:00.000Z');
 
-    // WebKit spells the same diagnosis for an XHR as well as for a fetch.
-    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
-    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
+function loadOwnerData(): PracticeDB {
+  const db = validateDB(JSON.parse(V13_SETAR_TEXT));
+  useStore.setState({ db, active: null, activeRoutine: null, activePlan: null, sessionInstrumentId: SETAR });
+  return db;
+}
 
-    // Only the DIAGNOSED wording is ever excused: a real render crash naming
-    // the same URL is a page error, not a cancellation.
-    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
-      false,
+const commit = (decidedFromRev: number) =>
+  useStore.getState().commitArchiveImport({ index: INDEX, instrumentId: SETAR, decidedFromRev, now: NOW });
+
+describe('committing an archive import', () => {
+  it('archive commits survive interruption and never apply a stale preview', async () => {
+    loadOwnerData();
+
+    // --- ONE mutation, validated first, acknowledged by storage -------------
+    const { plan, rev } = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(plan.newItems).toHaveLength(94);
+    const applied = await commit(rev);
+    expect(applied).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+    // The storage adapter holds the WHOLE new state, not a partial one.
+    const persisted = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    expect(persisted.state.db.items.filter((i) => i.source)).toHaveLength(94);
+    expect(persisted.state.db.archiveSources).toHaveLength(1);
+
+    // --- an unchanged refresh writes NOTHING, and churns no revision --------
+    const quietRev = useStore.getState().rev;
+    const again = await commit(quietRev);
+    expect(again).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().rev).toBe(quietRev);
+
+    // --- a REVISION CHANGE during the fetch rebases without losing edits ----
+    loadOwnerData();
+    const stale = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    // The owner edits a notebook while the index is being read.
+    useStore.getState().updateItem('own-dashti', { notes: 'edited while the index was being read' });
+    expect(useStore.getState().rev).not.toBe(stale.rev);
+    const rebased = await commit(stale.rev);
+    expect(rebased).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'edited while the index was being read',
     );
+    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+
+    // --- a rebase that raises a NEW question refuses, and changes nothing ---
+    loadOwnerData();
+    const before = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(before.plan.questions).toEqual([]);
+    // An item appears with a canonical title while the index is being read —
+    // now there IS something to decide, and it is not this code's decision.
+    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
+    const itemsBefore = useStore.getState().db.items.length;
+    const refused = await commit(before.rev);
+    expect(refused).toMatchObject({ ok: false, status: 'stale' });
+    expect(useStore.getState().db.items).toHaveLength(itemsBefore);
+    expect(useStore.getState().db.archiveSources).toEqual([]);
+    // Answering it explicitly lets the same index through.
+    const answered = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(answered).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
+
+    // --- A RUNNING SESSION IS UNTOUCHED, and one that FINISHES is kept ------
+    loadOwnerData();
+    useStore.getState().startItemSession('own-dashti');
+    const activeBefore = useStore.getState().active;
+    expect(activeBefore).not.toBeNull();
+    const duringPractice = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const withClock = await commit(duringPractice.rev);
+    expect(withClock).toMatchObject({ ok: true, status: 'applied' });
+    // Not replaced, not nulled, not restarted: the same object, still running.
+    expect(useStore.getState().active).toBe(activeBefore);
+    expect(useStore.getState().activeRoutine).toBeNull();
+    expect(useStore.getState().activePlan).toBeNull();
+    expect(useStore.getState().sessionInstrumentId).toBe(SETAR);
+
+    loadOwnerData();
+    const beforeBlock = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    useStore.getState().startItemSession('own-dashti');
+    useStore.getState().closeSession({ durationMinutes: 12, result: 'same', answer: 'unanswered', now: NOW });
+    const blocksAfterClose = useStore.getState().db.blocks.length;
+    expect(blocksAfterClose).toBe(2);
+    const afterBlock = await commit(beforeBlock.rev);
+    expect(afterBlock).toMatchObject({ ok: true, status: 'applied' });
+    // The minute played while the index was being read is still there.
+    expect(useStore.getState().db.blocks).toHaveLength(2);
+
+    // --- A FAILED WRITE IS REPORTED, and the retry really writes -----------
+    loadOwnerData();
+    const toFail = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const persistedBefore = fakeStorage.get();
+    fakeStorage.failNext();
+    const unsaved = await commit(toFail.rev);
+    expect(unsaved).toMatchObject({ ok: false, status: 'unsaved' });
+    expect(unsaved.message).toMatch(/could not save/i);
+    // The store holds the graph; the DISK does not. A reload before the
+    // acknowledgement therefore yields the PREVIOUS complete state.
+    expect(useStore.getState().db.archiveSources).toHaveLength(1);
+    expect(fakeStorage.get()).toBe(persistedBefore);
+
+    // THE RETRY IS THE POINT: the in-memory index hash already matches, so a
+    // "nothing changed" shortcut would answer "Already current" over data that
+    // was never saved.
+    const retry = await commit(useStore.getState().rev);
+    expect(retry).toMatchObject({ ok: true, status: 'applied' });
+    const afterRetry = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    // A COMPLETE state, not a delta: the graph, the owner's items, the blocks.
+    expect(afterRetry.state.db.archiveSources).toHaveLength(1);
+    expect(afterRetry.state.db.items.filter((i) => i.source)).toHaveLength(94);
+    expect(afterRetry.state.db.blocks).toHaveLength(1);
+    expect(afterRetry.state.db.lessonAgenda).toHaveLength(1);
+
+    // --- reload AFTER the acknowledgement yields the NEW complete state -----
+    // The bytes on disk at the moment of the acknowledgement, replayed through
+    // the app's own hydration. (Every `setState` re-persists, so the captured
+    // text is put back first — otherwise this would only prove that the store
+    // can read what it has just written.)
+    const onDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(onDisk);
+    await useStore.persist.rehydrate();
+    expect(useStore.getState().db.archiveSources).toHaveLength(1);
+    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+
+    // --- a graph this device would REFUSE to import is never written -------
+    loadOwnerData();
+    const broken = { ...INDEX, sessions: INDEX.sessions.map((s) => ({ ...s, n: 1 })) };
+    const refusedGraph = await useStore.getState().commitArchiveImport({
+      index: broken,
+      instrumentId: SETAR,
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(refusedGraph.ok).toBe(false);
+    expect(refusedGraph.status).toBe('refused');
+    expect(useStore.getState().db.archiveSources).toEqual([]);
+
+    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
+    // The whole lifecycle, not the helper: a rendered choice becomes a
+    // decision, the commit persists it, a real rehydration reads it back, and
+    // the NEXT refresh — carrying no decisions at all — honours it.
+    loadOwnerData();
+    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
+    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
+    const skipped = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
+      decidedFromRev: asked.rev,
+      now: NOW,
+    });
+    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
+
+    // Reload: the bytes actually on disk, back through the app's hydration.
+    const skipDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(skipDisk);
+    await useStore.persist.rehydrate();
+    const reloadedSource = useStore.getState().db.archiveSources[0]!;
+    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    // The owner's own record is untouched and still theirs.
+    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
+
+    // The NEXT refresh asks nothing and writes nothing.
+    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(afterReload.plan.questions).toEqual([]);
+    const quiet = await commit(afterReload.rev);
+    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+
+    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
+    // The index has not moved; the owner has only just answered. Judging
+    // "Already current" by the index hash alone reported exactly that and
+    // dropped the answer before it could ever be written.
+    const boundWithComposer = useStore
+      .getState()
+      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
+    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
+    const composer = boundWithComposer.persian!.composer!;
+    const pieceKey = boundWithComposer.source!.pieceKey;
+    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
+    // An OFFER is not a change: unanswered, this refresh genuinely writes
+    // nothing, and says so. The owner's DECISION is what makes it a write.
+    expect(offered.plan.summary.unchanged).toBe(true);
+    const answered2 = useStore.getState().previewArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
+      now: NOW,
+    });
+    expect(answered2.plan.summary.unchanged).toBe(false);
+    // Left unanswered, the same refresh really is a no-op.
+    const declined = await commit(useStore.getState().rev);
+    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
+    // Answered, it is applied — and acknowledged by storage.
+    const appliedField = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
+    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
+    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
+    // Nothing else moved with it.
+    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
+      boundWithComposer.title,
+    );
+    expect(useStore.getState().db.blocks).toHaveLength(1);
+
+    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
+    // The counterexample, through the REAL store: preview an empty composer,
+    // choose the archive's value, then write your own before pressing Apply.
+    // No new QUESTION appears, so the rebase guard alone let this through and
+    // the registry value replaced the words just typed.
+    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
+    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
+    const secondKey = second.source!.pieceKey;
+    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
+    const choice = [
+      // Bound to the RECORD as well as the piece and the premise: a rebase that
+      // finds the piece on a different item must not hand it that answer.
+      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
+    ];
+    useStore.getState().updateItem(second.id, {
+      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
+    });
+    const refusedStale = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: choice,
+      decidedFromRev: seen.rev,
+      now: NOW,
+    });
+    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
+    expect(refusedStale.staleDecisions).toEqual(choice);
+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
+      'Owner wrote this during refresh',
+    );
+    // Re-answered against what is actually there now, it applies.
+    const reAnswered = await useStore.getState().commitArchiveImport({
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
+      decidedFromRev: useStore.getState().rev,
+      now: NOW,
+    });
+    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
+    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
+      second.persian!.composer,
+    );
+
+    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
+    // The other half of the same family, and the one an already-bound early
+    // `continue` hid completely: the piece is held by a DIFFERENT record by
+    // the time Apply runs. A field decision keyed by piece alone was written
+    // to that other record (its composer was empty too, so nothing about the
+    // VALUE would have caught it), and a Link decision was skipped in silence
+    // — `staleDecisions` empty, the commit reporting success for an action it
+    // never performed.
+    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
+    const movedKey = movedPiece.source!.pieceKey;
+    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
+    useStore.setState((st) => ({
+      db: {
+        ...st.db,
+        items: [
+          // The approved record loses the binding; another record takes it.
+          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
+          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
+        ],
+      },
+    }));
+    for (const decisions of [
+      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
+      [
+        {
+          kind: 'apply-field' as const,
+          pieceKey: movedKey,
+          itemId: movedPiece.id,
+          field: 'composer' as const,
+          from: movedPiece.persian?.composer ?? '',
+        },
+      ],
+    ]) {
+      const refused = await useStore.getState().commitArchiveImport({
+        index: INDEX,
+        instrumentId: SETAR,
+        decisions,
+        decidedFromRev: useStore.getState().rev,
+        now: NOW,
+      });
+      expect(refused).toMatchObject({ ok: false, status: 'stale' });
+      expect(refused.staleDecisions).toEqual(decisions);
+    }
+    // Neither record was touched by either refusal.
+    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
+    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
+
+    // --- refresh NEVER runs a whole-database import or reset ---------------
+    // `importDB`, `resetDemo` and `clearAll` each null the active session and
+    // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
+    // intact across a commit. The source, too, says so:
+    const storeSource = await (await import('node:fs/promises')).readFile('src/store/useStore.ts', 'utf8');
+    const from = storeSource.indexOf('commitArchiveImport: async');
+    expect(from).toBeGreaterThan(0);
+    const body = storeSource.slice(from, storeSource.indexOf('hideArchiveResource: (', from));
+    expect(body.length).toBeGreaterThan(200);
+    // Comments stripped first — this action's own docstring NAMES the things
+    // it must not call, and a scan that matched prose would be checking the
+    // comment rather than the code.
+    const code = body.replace(/\/\/[^\n]*/g, '');
+    expect(code).not.toMatch(/importDB|installDatabase|resetDemo|clearAll|replaceAllBlobs|addAttachment/);
+    // ONE db mutation in the whole action.
+    expect(code.match(/\bset\(/g) ?? []).toHaveLength(1);
   });
+});
 
-  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
-    const twice = [cancelled(), cancelled(10)];
-    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+// ---------------------------------------------------------------------------
+// ac-9 — an import may establish membership and provenance. Never practice.
+// ---------------------------------------------------------------------------
+
+describe('what an archive import may and may not establish', () => {
+  it('archive import cannot fabricate practice or next-class urgency', async () => {
+    loadOwnerData();
+    useStore.getState().startItemSession('own-dashti');
+    useStore.getState().notNowReview('rev-1');
+    const beforeState = useStore.getState();
+    const before = JSON.parse(JSON.stringify(beforeState.db)) as PracticeDB;
+    const activeBefore = beforeState.active;
+    const notNowBefore = JSON.parse(JSON.stringify(beforeState.notNow)) as unknown;
+
+    const applied = await commit(useStore.getState().rev);
+    expect(applied).toMatchObject({ ok: true, status: 'applied' });
+    const after = useStore.getState();
+
+    // --- EVERY existing record, byte for byte ------------------------------
+    expect(after.db.blocks).toEqual(before.blocks);
+    expect(after.db.reviews).toEqual(before.reviews);
+    expect(after.db.lessonAgenda).toEqual(before.lessonAgenda);
+    expect(after.db.materials).toEqual(before.materials);
+    expect(after.db.pathways).toEqual(before.pathways);
+    expect(after.db.pathwayStages).toEqual(before.pathwayStages);
+    expect(after.db.pathwayRoutines).toEqual(before.pathwayRoutines);
+    expect(after.db.attachments).toEqual(before.attachments);
+    for (const original of before.items) {
+      const now = after.db.items.find((i) => i.id === original.id)!;
+      expect(now).toEqual(original);
+    }
+    // ...and the ephemeral session state the owner is standing in.
+    expect(after.active).toBe(activeBefore);
+    expect(after.activeRoutine).toBeNull();
+    expect(after.activePlan).toBeNull();
+    expect(after.notNow).toEqual(notNowBefore);
+    expect(after.sessionInstrumentId).toBe(SETAR);
+
+    // --- NEW items carry no practice at all ---------------------------------
+    const fresh = after.db.items.filter((i) => i.source);
+    expect(fresh).toHaveLength(94);
+    for (const item of fresh) {
+      expect(item.timesPractised).toBe(0);
+      expect(item.totalMinutes).toBe(0);
+      expect(item.lastPractisedAt).toBeUndefined();
+      expect(item.lastResult).toBeUndefined();
+      expect(item.nextReviewDate).toBeUndefined();
+      expect(item.nextReviewSource).toBeUndefined();
+      expect(item.srReps).toBeUndefined();
+      expect(item.srEase).toBeUndefined();
+      expect(item.srIntervalDays).toBeUndefined();
+      expect(item.srLastProgressDay).toBeUndefined();
+      // RESTING by explicit import policy: 94 pieces must not flood Today.
+      expect(item.status).toBe('dormant');
+      // No pathway placement, no catalogue identity, no material invented.
+      expect(item.stageId).toBeUndefined();
+      expect(item.catalogKey).toBeUndefined();
+      expect(item.materialId).toBeUndefined();
+    }
+    // No review row and no agenda entry was created for any of them.
+    expect(after.db.reviews.filter((r) => fresh.some((i) => i.id === r.practiceItemId))).toEqual([]);
+    expect(after.db.lessonAgenda).toHaveLength(1);
+    expect(after.db.blocks.filter((b) => fresh.some((i) => i.id === b.practiceItemId))).toEqual([]);
+
+    // A resting item is still DIRECTLY startable — resting is administrative,
+    // not a lock.
+    const araq = after.db.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    useStore.getState().cancelSession();
+    useStore.getState().startItemSession(araq.id);
+    expect(useStore.getState().active?.itemId).toBe(araq.id);
+    useStore.getState().cancelSession();
+
+    // --- THE OWNER'S OWN RECORDINGS ARE EVIDENCE, NOT MATERIAL -------------
+    const source = useStore.getState().db.archiveSources[0]!;
+    // 125 personal files in the real corpus, and not one of them is a resource.
+    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+    // Their membership and role survive — that is the whole of what they leave.
+    const chainPiece = 'پیش-درامد-سه-گاه-فروتن';
+    const { repeatChains } = await import('../domain/sourceArchive');
+    // The longest repeat chain in the real archive. It is read from the
+    // PERSONAL role — a piece is a repeat because the student was asked to play
+    // it again, not because an unnamed demonstration gave it membership of a
+    // session (which would report a repeat nobody was asked for).
+    expect(repeatChains(source, chainPiece)).toEqual([[22, 23, 24, 25, 26, 27]]);
+    // The real counterexample: پیش-درامد-ماهور-هرمزی is a MEMBER of sessions
+    // 16, 17 and 18, but the student only recorded themselves playing it in 17
+    // and 18 — session 16's membership comes from a correction and a
+    // demonstration. Read from membership the chain would be three classes
+    // long; read from what was actually asked for again, it is two.
+    const hormozi = 'پیش-درامد-ماهور-هرمزی';
+    expect(source.sessions.filter((s) => s.members.some((m) => m.key === hormozi)).map((s) => s.n)).toEqual([
+      16, 17, 18,
+    ]);
+    expect(repeatChains(source, hormozi)).toEqual([[17, 18]]);
+    const chainItem = useStore.getState().db.items.find((i) => i.source?.pieceKey === chainPiece)!;
+    // Six classes of provenance, and still zero recorded practice.
+    expect(chainItem.timesPractised).toBe(0);
+    expect(chainItem.totalMinutes).toBe(0);
+    const material = (await import('../domain/itemFiles')).itemFiles(useStore.getState().db, chainItem.id);
+    expect(material.every((f) => f.source !== 'reference' || !f.path.includes('تمرین-من'))).toBe(true);
+
+    // --- HISTORY NEVER BECOMES THE NEXT CLASS ------------------------------
+    const { nextLessonFor } = await import('../domain/selectors');
+    const { preparationDatesByItem, defaultTargetLesson } = await import('../domain/lessonAgenda');
+    const db = useStore.getState().db;
+    expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+    expect(nextLessonFor(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
+    expect(defaultTargetLesson(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
+    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, NOW).values()]).toEqual([]);
+
+    // AND ON A DEVICE WHOSE CLOCK IS BEHIND THE ARCHIVE. Read from 1 June 2026,
+    // the last three imported classes are all in the FUTURE and all NEARER than
+    // the owner's own next class — the exact case a plain `date >= today` turns
+    // into a deadline. They are still history.
+    const EARLIER = new Date('2026-06-01T09:00:00.000Z');
+    const futureHistory = db.lessons.filter((l) => l.origin === 'archive' && l.date > '2026-06-01');
+    expect(futureHistory.map((l) => l.date).sort()).toEqual(['2026-06-09', '2026-07-09', '2026-08-04', '2026-09-01']);
+    expect(nextLessonFor(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
+    expect(defaultTargetLesson(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
+    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, EARLIER).values()]).toEqual([]);
   });
+});
 
-  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
-    // This is the sealed finding: the cancellation happens and nothing ever
-    // reports its own page error for it — exactly the case the harness must
-    // tolerate without turning it into a standing credit for something else.
-    const events = [cancelled()];
-    // A genuine failure to the SAME url follows moments later, and IS
-    // tracked — this is what makes it outrank the stale cancellation next.
-    events.push(genuine(50));
-    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
-    // The stale cancellation is untouched: it lost to the more recent
-    // genuine failure, it was never spent.
-    expect(events).toContainEqual(cancelled());
-  });
+// ---------------------------------------------------------------------------
+// ac-8 — an owner's deletion is a decision a refresh has to respect.
+// ---------------------------------------------------------------------------
 
-  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
-    // Genuine failure arrives FIRST, with no cancellation recorded at all.
-    const events = [genuine()];
-    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
+describe('deletions, unlinking and hiding', () => {
+  it('archive deletions and unlinking remain respected after refresh and reload', async () => {
+    loadOwnerData();
+    await commit(useStore.getState().rev);
+    const store = () => useStore.getState();
+    const itemFor = (key: string) => store().db.items.find((i) => i.source?.pieceKey === key)!;
+    const lessonFor = (n: number) => store().db.lessons.find((l) => l.source?.sessionN === n)!;
+    const suppressions = () => store().db.archiveSources[0]!.suppressions;
 
-    // A real cancellation follows and correctly excuses its OWN error.
-    events.push(cancelled(100));
-    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
+    // --- deleteItem records the decision IN THE SAME mutation --------------
+    const araqId = itemFor('عراق').id;
+    store().deleteItem(araqId);
+    expect(store().db.items.some((i) => i.id === araqId)).toBe(false);
+    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'piece', ref: 'عراق' }));
 
-    // Another genuine failure follows the (now-consumed) cancellation and is
-    // never excused by it either — there is nothing left pending to excuse
-    // it with, and it would not have qualified anyway.
-    events.push(genuine(200));
-    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
-  });
+    // --- deleteLesson likewise ---------------------------------------------
+    const lesson13 = lessonFor(13).id;
+    store().deleteLesson(lesson13);
+    expect(store().db.lessons.some((l) => l.id === lesson13)).toBe(false);
+    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'session', ref: '13' }));
 
-  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
-    // A substring test cannot tell these apart from the genuine host/path;
-    // only structural URL equality can. Each of these contains the real
-    // host or path as a substring while naming a DIFFERENT resource.
-    const hostPrefixTrap =
-      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
+    // --- REFRESHING THE SAME SOURCE MUST NOT BRING THEM BACK ---------------
+    const again = await commit(store().rev);
+    expect(again.ok).toBe(true);
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
 
-    const hostSuffixTrap =
-      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
-    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
+    // ...nor may a RELOAD, which replays the persisted bytes through hydration.
+    const onDisk = fakeStorage.get()!;
+    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
+    fakeStorage.set(onDisk);
+    await useStore.persist.rehydrate();
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    await commit(store().rev);
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
 
-    const pathSuffixTrap =
-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
-    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
+    // --- lifting a suppression lets the next refresh bring it back ----------
+    store().resetArchiveSuppression('setar-classes', 'piece', 'عراق');
+    const restored = await commit(store().rev);
+    expect(restored).toMatchObject({ ok: true, status: 'applied' });
+    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
 
-    // Another host entirely, and another path on the same host, both stay errors.
-    const elsewhere =
-      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
-    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
-    const otherPath =
-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
-    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
-  });
+    // --- HIDING A SHARED DEMO IS SCOPED TO ONE ITEM ------------------------
+    const { itemFiles } = await import('../domain/itemFiles');
+    const sharedDemo = 'session-13-03-09-2024/نمونه-1.mp4';
+    const oneMember = itemFor('کرشمه-در-عراق');
+    const otherMember = itemFor('حزین-در-عراق');
+    // Session 13 was suppressed above and is back only for the piece; re-run a
+    // refresh so its resources are present for both members.
+    store().resetArchiveSuppression('setar-classes', 'session', '13');
+    await commit(store().rev);
+    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(true);
+    store().hideArchiveResource('setar-classes', sharedDemo, oneMember.id);
+    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(false);
+    // Its seven siblings still have it.
+    expect(itemFiles(store().db, otherMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(
+      true,
+    );
 
-  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+    // --- unlinking an item from an archive class is remembered -------------
+    const lesson28 = lessonFor(28);
+    const zendan = itemFor('به-زندان-شوشتری');
+    store().unlinkItemFromLesson(lesson28.id, zendan.id);
+    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'link', ref: `28:${'به-زندان-شوشتری'}` }));
+    const { membersForSession } = await import('../domain/sourceArchive');
+    expect(membersForSession(store().db.archiveSources[0]!, 28).some((m) => m.key === 'به-زندان-شوشتری')).toBe(false);
+
+    // --- a MANUAL reference is removed without touching the archive --------
+    store().addItemReference(zendan.id, { title: 'my own copy', path: 'session-28-28-10-2025/نت-به-زندان-شوشتری.pdf' });
+    const added = store().db.items.find((i) => i.id === zendan.id)!.references![0]!;
+    const suppressionsBefore = suppressions().length;
+    store().removeItemReference(zendan.id, added.id);
+    expect(store().db.items.find((i) => i.id === zendan.id)!.references).toEqual([]);
+    // Removing an owner's own link says nothing about the archive.
+    expect(suppressions()).toHaveLength(suppressionsBefore);
+
+    // --- a catalogue removal of a bound item is still lossless -------------
+    const catalogueItem = itemFor('چهار-پاره');
+    expect(store().removeCatalogItem(catalogueItem.id)).toBe(false); // no catalogKey
+    expect(store().db.items.some((i) => i.id === catalogueItem.id)).toBe(true);
+
+    // --- MOVING A BOUND ITEM TO ANOTHER INSTRUMENT IS REFUSED --------------
+    useStore.setState((s) => ({
+      db: {
+        ...s.db,
+        instruments: [
+          ...s.db.instruments,
+          { ...s.db.instruments[0]!, id: 'inst-tar', name: 'Tar' },
+        ],
+      },
+    }));
+    const boundId = itemFor('به-زندان-شوشتری').id;
+    const refusal = store().updateItem(boundId, { instrumentId: 'inst-tar' });
+    expect(refusal).toMatch(/Detach it from the archive/);
+    expect(store().db.items.find((i) => i.id === boundId)!.instrumentId).toBe(SETAR);
+    // No invalid graph was emitted: the database still validates.
+    expect(() => validateDB(store().db)).not.toThrow();
+
+    // --- a PARTIAL binding is refused, never healed by duplication ---------
+    expect(() =>
+      validateDB({
+        ...store().db,
+        items: store().db.items.map((i) =>
+          i.id === boundId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'not-a-real-piece' } } : i,
+        ),
+      }),
+    ).toThrow(/does not describe/);
+
+    // --- clearing everything takes the source state with it ----------------
+    store().clearAll();
+    expect(store().db.archiveSources).toEqual([]);
+    expect(store().db.items).toEqual([]);
+    expect(store().active).toBeNull();
   });
 });
 ```
