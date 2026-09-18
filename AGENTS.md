@@ -1609,7 +1609,11 @@ README amplifier alone was measured to leave the failure reproducible — it sim
 `contents/manifest.json` — because the first sync begins during `connectSync` and the journey
 navigates straight through it. Waiting for an EMPTY set is not enough either: the sync starts
 from an effect and reads IndexedDB before its first fetch, so the wait is for a quiet PERIOD,
-bounded and best-effort, and a no-op for a journey that never talks to GitHub at all.
+bounded and best-effort, and a no-op for a journey that never talks to GitHub at all. A
+journey that calls `page.reload()` DIRECTLY rather than through the helper still bypasses this
+— `setarInbound` and `practice-information-inbound` each do, after connecting sync — and that
+is named here rather than left to be rediscovered; neither is a journey this failure has ever
+been seen in, and the second is outside this lane's allowed paths.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
