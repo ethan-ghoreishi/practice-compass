@@ -1615,6 +1615,16 @@ journey that calls `page.reload()` DIRECTLY rather than through the helper still
 is named here rather than left to be rediscovered; neither is a journey this failure has ever
 been seen in, and the second is outside this lane's allowed paths.
 
+**AND A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE.** Three full-suite failures
+landed on `openPracticeApp`'s cold-start wait, in three DIFFERENT tests, with no assertion
+failure; raising 60s to 120s bought exactly one more run. The cause was that Vite's default
+`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
+checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
+every server ran the dependency optimizer against one directory and raced to commit it
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`, in the same run as each
+failure). The loser cannot serve its modules and its page never paints. Each server gets a
+PRIVATE `cacheDir` now, and the ceiling is back at its original 60s.
+
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
 canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the

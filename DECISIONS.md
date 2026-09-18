@@ -37,9 +37,23 @@ the excuse had been masking. Two harness causes, both measured:
   than an empty check, because the sync starts from an effect and reads IndexedDB before its
   first fetch.
 
-Evidence: ac-18 passed 4 of 4 sequential WebKit+Chromium runs after the fix, and the full
-browser suite (five concurrent dev servers, the amplifying condition) passed repeatedly. No
-production code changed.
+A THIRD cause surfaced while measuring the first two, and it was neither of them: three
+full-suite failures landed on the cold-start wait in `openPracticeApp`, in three DIFFERENT
+tests, with no assertion failure. Raising that ceiling from 60s to 120s bought exactly one more
+run before the next — which is what identified the real cause. Vite's default `cacheDir` is
+`node_modules/.vite`, ten test files each start their own dev server on one checkout, and the
+rollback journeys' baseline worktree SYMLINKS that same `node_modules`, so every server ran the
+dependency optimizer against one directory and raced to commit it
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`, present in the same run as each
+failure). The loser cannot serve its modules, so its page never paints. Each server now gets a
+private `cacheDir`, and the ceiling is back at its original 60s. A timeout that fires is a
+question about what is blocking, not a number to raise.
+
+Evidence: ac-18 passed 4 of 4 sequential runs (both engines, both viewports) and 4 of 4 full
+concurrent suite runs after the fixes; the last three full-suite runs were clean in every test,
+with no rename error. The pull/conflict journeys in `setarInbound`,
+`practice-information-inbound` and `review-ownership` are unchanged and green. No production
+code changed.
 
 ## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
 
