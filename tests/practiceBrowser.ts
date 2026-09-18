@@ -1,4 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page, type Request } from 'playwright';
 
@@ -291,15 +294,32 @@ export async function openPracticeApp(options: {
   root?: string;
 }): Promise<PracticeApp> {
   const engine = options.engine ?? 'chromium';
+  // EVERY SERVER GETS ITS OWN DEPENDENCY CACHE. Vite's default cache directory
+  // is `node_modules/.vite`, and this suite runs ten test files at once, each
+  // starting its own dev server on the same checkout — plus the rollback
+  // journeys, whose baseline worktree SYMLINKS this very `node_modules`. They
+  // all ran the dependency optimizer against one directory and raced to commit
+  // it: `ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`.
+  // The loser then cannot serve its modules at all, so its page never paints
+  // and the journey fails on the cold-start wait below — which reads as
+  // contention and is really one shared directory. Measured: that rename error
+  // appears in the same run as every one of those failures. A private cache
+  // costs one extra optimizer pass per server and removes the race outright.
+  const cacheDir = mkdtempSync(join(tmpdir(), 'practice-vite-'));
   const server: ViteDevServer = await createServer({
     ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
+    cacheDir,
     logLevel: 'error',
     server: { port: 0, strictPort: false },
   });
+  const closeServer = async () => {
+    await server.close();
+    rmSync(cacheDir, { recursive: true, force: true });
+  };
   await server.listen();
   const origin = server.resolvedUrls?.local[0];
   if (!origin) {
-    await server.close();
+    await closeServer();
     throw new Error('The dev server started but reported no local URL.');
   }
 
@@ -307,7 +327,7 @@ export async function openPracticeApp(options: {
   try {
     browser = await ENGINES[engine].launch();
   } catch (e) {
-    await server.close();
+    await closeServer();
     throw new Error(installHint(engine), { cause: e });
   }
 
@@ -367,20 +387,17 @@ export async function openPracticeApp(options: {
     // The store hydrates from IndexedDB before anything renders. The ceiling is
     // generous because this is the COLD start: every journey runs concurrently,
     // each starting its own dev server and browser, so the first paint of the
-    // last one to launch competes with the rest compiling modules — and the
-    // rollback journey adds a whole SECOND checkout with no warm Vite cache at
-    // all. Measured: at 60s, two consecutive full-suite runs each failed HERE,
-    // in two DIFFERENT tests, with no assertion failure and no pattern beyond
-    // whichever app happened to launch last; both pass in one to four seconds
-    // when their file is run alone. A longer wait cannot hide a real failure —
-    // it only refuses to call contention one. It stays BELOW the suite's own
-    // 180s test ceiling on purpose: an app that genuinely never renders should
-    // still fail with this locator's message, naming what it waited for, rather
-    // than as a bare test timeout.
-    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 120_000 });
+    // last one to launch competes with the rest compiling modules. A longer
+    // wait cannot hide a real failure — it only refuses to call contention one.
+    //
+    // RAISING IT IS NOT THE ANSWER WHEN IT FIRES, and this lane proved that:
+    // three separate full-suite failures landed here, and raising 60s to 120s
+    // only bought one more run before the next. The cause was the shared
+    // dependency cache above, not a page that needed longer.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
   } catch (e) {
     await browser.close();
-    await server.close();
+    await closeServer();
     throw e;
   }
 
@@ -426,7 +443,7 @@ export async function openPracticeApp(options: {
     },
     async close() {
       await browser.close();
-      await server.close();
+      await closeServer();
     },
   };
 }
