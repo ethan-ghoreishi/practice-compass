@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
-  CANCELLED_EXCUSE_MS,
+  FAILURE_EVIDENCE_MS,
   connectSync,
   exportBackup,
   goTo,
@@ -14,8 +14,7 @@ import {
   importOutcome,
   installFakeGitHub,
   newFakeRemote,
-  cancellationEvidence,
-  excusedCancellation,
+  requestFailureEvidence,
   openPracticeApp,
   persistedDb,
   publishRemote,
@@ -511,40 +510,35 @@ describe('rolling back past the archive schema', () => {
 describe('the journey harness itself', () => {
   // The harness must not be able to hide the very failure a journey exists to
   // catch, and it must not manufacture one either. A request the browser
-  // CANCELLED (because the test drove on mid-flight) is the standing
+  // CANCELLED (because the test drove on mid-flight) was the standing
   // explanation for a WebKit page error that reads exactly like a CORS
-  // failure. Excusing it has now failed five different ways, and each test
-  // below is named for the specific way:
+  // failure, and excusing it failed six different ways:
   //  - a PERMANENT set of cancelled URLs discarded every later page error
-  //    whose message merely contained that pathname, so a genuine failure at
-  //    the same path, later in the same journey, was swallowed and
-  //    `pageErrors` said nothing;
-  //  - even made CONSUMING (one cancellation, one error) and bounded by a
-  //    generous time window, an unconsumed cancellation — one that produced
-  //    no page error of its own — stayed a live "credit" for up to that whole
-  //    window, spendable by a genuine, later failure to the same URL that had
-  //    nothing to do with it;
+  //    whose message merely contained that pathname;
+  //  - made CONSUMING and bounded by a time window, an unconsumed cancellation
+  //    stayed a live "credit" any genuine later failure to that URL could
+  //    spend;
   //  - the excuse read the page error's `message` ALONE, which never contains
   //    the diagnosis: Playwright splits a page error at its first colon — the
-  //    URL's own scheme colon — so the wording lives in `name` and only the
-  //    tail lives in `message`. Every string these tests used to assert on was
-  //    a hand-written reconstruction that no browser ever emits;
-  //  - and the correlation looked only BACKWARDS in time, on the stated
-  //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
-  //    Measured, WebKit delivers them the other way round. Against a real
-  //    error the log was still empty when the excuse ran;
-  //  - and, the finding this block was last reworked for, the correlation
-  //    that replaced the window — "whichever tracked failure sits NEAREST the
-  //    error wins", on host+path — threw away the QUERY, so two different
-  //    requests to one path were one resource, and rested the whole safety
-  //    claim on PROXIMITY, which the measurement below shows cannot carry it:
-  //    a genuine failure's own `requestfailed` lands 74–359µs after its page
-  //    error, which reads as 0ms or 1ms depending on which side of a
-  //    millisecond boundary the pair straddles, so an unrelated cancellation
-  //    in the error's own millisecond outranked it.
-  // The middle two were exposed by the same CI run: the journey passed on one
-  // runner and failed on two others at the identical commit, because the
-  // error had simply never been produced locally before.
+  //    URL's own scheme colon — so the wording lives in `name`;
+  //  - the correlation looked only BACKWARDS in time, while WebKit delivers
+  //    the page error FIRST;
+  //  - "whichever tracked failure sits NEAREST wins", on host+path, threw away
+  //    the QUERY and rested the safety claim on proximity, which a 74–359µs
+  //    real gap at `Date.now()` granularity cannot carry;
+  //  - and finally, full-URL identity plus a veto on genuine evidence STILL
+  //    withheld a genuine diagnosis that emitted no `requestfailed` of its own
+  //    — precisely the CI failure's own shape — because an earlier unconsumed
+  //    cancellation to that exact URL was then the only thing in the log.
+  //
+  // That last one is the sealed finding that ended this line of work. The
+  // premise was never observed in the first place: five cancellation shapes
+  // driven through a real WebKit each produce a `requestfailed` and NO page
+  // error at all, and a `pageerror` carries no request identity, so no rule
+  // built on this log can prove a specific error belongs to a cancellation.
+  // The harness therefore KEEPS every page error and only ANNOTATES it. The
+  // tests below hold that: the shape is still parsed (so the annotation is
+  // readable), and nothing suppresses.
   const url = 'https://api.github.com/repos/owner/data/contents/state.json';
 
   /**
@@ -585,207 +579,107 @@ describe('the journey harness itself', () => {
   };
 
   it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
-    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
+    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim. The annotation has
+    // to recognise this representation or a kept error says nothing useful.
     const fromCI = {
       name: 'Fetch API cannot load https',
       message: '/api.github.com/repos/owner/practice-data/contents/README.md due to access control checks.',
     };
     const readme = 'https://api.github.com/repos/owner/practice-data/contents/README.md';
-    expect(excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toBe(true);
+    expect(requestFailureEvidence([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toContain(
+      'cancelled',
+    );
 
     // The message half ALONE is not the diagnosis and never matches: this is
-    // the shape the excuse used to be handed, and why it never fired.
-    expect(
-      excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5),
-    ).toBe(false);
+    // the shape the old excuse used to be handed, and why it never fired.
+    expect(requestFailureEvidence([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5)).toBe(
+      '',
+    );
 
     // An UNSPLIT representation is understood too, so this does not depend on
     // Playwright continuing to split it.
     expect(
-      excusedCancellation([cancelled()], { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` }, at + 5),
-    ).toBe(true);
+      requestFailureEvidence(
+        [cancelled()],
+        { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` },
+        at + 5,
+      ),
+    ).toContain(url);
 
     // WebKit spells the same diagnosis for an XHR as well as for a fetch.
     expect(
-      excusedCancellation([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
-    ).toBe(true);
+      requestFailureEvidence([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
+    ).toContain(url);
 
-    // Only the DIAGNOSED wording is ever excused: a real render crash naming
-    // the same URL is a page error, not a cancellation.
+    // A message that is not the diagnosis at all gets no annotation — and is
+    // still kept, like every other page error.
     expect(
-      excusedCancellation([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
-    ).toBe(false);
+      requestFailureEvidence([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
+    ).toBe('');
   });
 
-  it('tells two requests to one path apart by their query, in both directions', () => {
-    // THE SEALED FINDING THIS BLOCK WAS REWORKED FOR. Host+path alone makes
-    // these one resource; they are two requests the app really does make, one
-    // after the other, when it reads the published index at two commits.
+  it('keeps a diagnosed page error that has no request failure of its own, whatever cancellations are logged', () => {
+    // THE SEALED COUNTEREXAMPLE, as a unit. The CI failure arrives with no
+    // `request`, no route hit and no `requestfailed`; the last excuse still
+    // dropped it whenever an earlier unconsumed cancellation to that exact URL
+    // sat in the log. Nothing may drop it now, so the only thing the harness
+    // can do with that log is PRINT it — and it must, or the kept error is the
+    // same unreadable CORS-shaped message the whole rework came from.
+    const log = [cancelled(-5)];
+    const evidence = requestFailureEvidence(log, spurious, at);
+    expect(evidence).toContain('cancelled');
+    expect(evidence).toContain(url);
+    // Nothing is consumed: evidence stays complete for every later error too.
+    expect(log).toEqual([cancelled(-5)]);
+    expect(requestFailureEvidence(log, spurious, at)).toBe(evidence);
+  });
+
+  it('tells two requests to one path apart by their query, and ignores the fragment', () => {
+    // THE IDENTITY A PREVIOUS REWORK THREW AWAY, kept because the annotation
+    // has to say whether a tracked failure is the resource the error NAMED:
+    // `…/index.json?ref=commit-a` and `?ref=commit-b` are two requests the app
+    // really does make, one after the other.
     const refA = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-a';
     const refB = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-b';
+    expect(requestFailureEvidence([cancelled(0, refA)], diagnosed(refB), at + 1)).toContain('different query');
+    expect(requestFailureEvidence([cancelled(0, refA)], diagnosed(refA), at + 1)).not.toContain('different query');
 
-    // A cancellation of ONE never excuses the diagnosis naming the OTHER —
-    // and the cancellation is left intact, not spent on something it does not
-    // account for.
-    const other = [cancelled(0, refA)];
-    expect(excusedCancellation(other, diagnosed(refB), at + 1)).toBe(false);
-    expect(other).toHaveLength(1);
-
-    // A query-less request is not the same resource as a query-bearing one,
-    // either way round.
-    const bare = 'https://api.github.com/repos/owner/data/contents/setar/index.json';
-    expect(excusedCancellation([cancelled(0, bare)], diagnosed(refA), at + 1)).toBe(false);
-    expect(excusedCancellation([cancelled(0, refA)], diagnosed(bare), at + 1)).toBe(false);
-    // Differing only in a query VALUE is enough; so is a differing key.
-    expect(
-      excusedCancellation([cancelled(0, `${bare}?ref=commit-a&page=2`)], diagnosed(refA), at + 1),
-    ).toBe(false);
-
-    // And the matching one still works, so this is identity, not blanket refusal.
-    const own = [cancelled(0, refA)];
-    expect(excusedCancellation(own, diagnosed(refA), at + 1)).toBe(true);
-    expect(own).toEqual([]);
-  });
-
-  it('ignores the fragment, which the message carries and the request never does', () => {
     // MEASURED, macOS WebKit: the page error names `…/state.json#frag` while
-    // `request.url()` for the very same request reports `…/state.json` — a
-    // fragment is never sent. Comparing `href` would therefore break the
-    // excuse for every fragment-bearing URL; comparing host/path/search does
-    // not. (The app itself never fetches a fragment; this is what keeps a
-    // later tidy-up to `href` from silently killing the excuse.)
-    const own = [cancelled(0, url)];
-    expect(excusedCancellation(own, diagnosed(`${url}#frag`), at + 1)).toBe(true);
-    expect(own).toEqual([]);
-    // And the fragment does not smuggle a query past the check either.
-    expect(excusedCancellation([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toBe(false);
+    // `request.url()` for the same request reports `…/state.json` — a fragment
+    // is never sent, so comparing `href` would call every fragment-bearing URL
+    // a different resource.
+    expect(requestFailureEvidence([cancelled(0, url)], diagnosed(`${url}#frag`), at + 1)).not.toContain('different query');
+    expect(requestFailureEvidence([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toContain('different query');
   });
 
-  it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
-    // THE MEASURED ORDER: WebKit delivers the page error 74–359µs ahead of the
-    // request's own failure. A backwards-only search saw an empty log here and
-    // excused nothing.
-    const later = [cancelled(1)];
-    expect(excusedCancellation(later, spurious, at)).toBe(true);
-    expect(later).toEqual([]);
-
-    // The other order still works: one measurement is not a proof that the
-    // reverse can never happen.
-    const earlier = [cancelled(-1)];
-    expect(excusedCancellation(earlier, spurious, at)).toBe(true);
-    expect(earlier).toEqual([]);
-  });
-
-  it('a cancellation excuses its own diagnosed error once', () => {
-    const pending = [cancelled()];
-    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
-    // CONSUMED — the identical error arriving again has no cancellation left
-    // to account for it, which is the ORIGINAL reviewer counterexample.
-    expect(pending).toEqual([]);
-    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
-  });
-
-  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
-    const twice = [cancelled(), cancelled(10)];
-    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
-    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
-  });
-
-  it('genuine evidence for a resource vetoes the excuse for it, at any distance', () => {
-    // THE SAFETY CLAIM, and it is a VETO rather than a ranking on purpose. A
-    // genuine access-control failure always emits its own `requestfailed`
-    // beside its own page error, so genuine evidence for this exact resource
-    // means the cancellation's ownership of this error is unproven — and an
-    // unproven correlation is never resolved in the excuse's favour.
-    const events = [cancelled(), genuine(50)];
-    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
-    // The stale cancellation is untouched: it was refused, never spent.
-    expect(events).toContainEqual(cancelled());
-
-    // DISTANCE CANNOT BUY THE EXCUSE BACK. This is what the previous
-    // nearest-wins rule could not hold: at `Date.now()` granularity a genuine
-    // pair straddling a millisecond boundary reads as 1ms apart, so a
-    // cancellation in the error's own millisecond outranked it by 1ms and
-    // excused a real failure. Here the cancellation is as near as a tracked
-    // event can be and the genuine failure is as far as the ceiling allows.
-    const nearCancel = [cancelled(0), genuine(CANCELLED_EXCUSE_MS)];
-    expect(excusedCancellation(nearCancel, spurious, at)).toBe(false);
-    expect(nearCancel).toHaveLength(2);
-
-    // The measured shape of a real pair, exactly: page error first, its own
-    // failure 1ms later, an unrelated cancellation in the same millisecond.
-    const measured = [cancelled(0), genuine(1)];
-    expect(excusedCancellation(measured, spurious, at)).toBe(false);
-
-    // A TIE is refused for the same reason.
-    expect(excusedCancellation([cancelled(), genuine()], spurious, at)).toBe(false);
-  });
-
-  it('a veto is scoped to the resource, so an unrelated failure never blocks a real excuse', () => {
-    // The veto must not become blanket suppression of the excuse: a genuine
-    // failure to a DIFFERENT resource — including the same path under another
-    // query — says nothing about this error.
-    const elsewhere = [
-      genuine(0, 'https://api.github.com/repos/owner/data/contents/manifest.json'),
-      genuine(0, `${url}?ref=main`),
-      genuine(0, 'https://api.example.com/repos/owner/data/contents/state.json'),
-      cancelled(1),
-    ];
-    expect(excusedCancellation(elsewhere, spurious, at)).toBe(true);
-    // Only the cancellation was consumed; the genuine rows are still tracked.
-    expect(elsewhere).toHaveLength(3);
-    expect(elsewhere.every((e) => e.errorText !== 'cancelled')).toBe(true);
-
-    // And a genuine failure to this resource OUTSIDE the ceiling is not
-    // evidence about this error at all — the ceiling bounds the veto exactly
-    // as it bounds the excuse.
-    const distant = [genuine(-CANCELLED_EXCUSE_MS - 1), cancelled(1)];
-    expect(excusedCancellation(distant, spurious, at)).toBe(true);
-  });
-
-  it('a genuine failure is never excused, before or after a cancellation to the same URL', () => {
-    // Genuine failure arrives FIRST, with no cancellation recorded at all.
-    const events = [genuine()];
-    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
-
-    // A cancellation follows — and under the VETO it still excuses nothing
-    // while that genuine failure is in the window. This assertion used to
-    // read `true`, on the nearest-wins rule: the cancellation was 10ms away
-    // and the genuine failure 110ms, so the nearer one won and a real failure
-    // to that exact resource was excused. Genuine evidence for a resource now
-    // forbids the excuse for it outright.
-    events.push(cancelled(100));
-    expect(excusedCancellation(events, spurious, at + 110)).toBe(false);
-
-    // Once the genuine failure is old enough to be out of the window, the
-    // cancellation excuses its own error normally — the veto expires with the
-    // evidence, it is not a permanent mark against the URL.
-    expect(excusedCancellation(events, spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(true);
-  });
-
-  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
+  it('never matches a host or path that merely shares characters with a tracked one', () => {
     // A substring test cannot tell these apart from the genuine host/path;
-    // only structural URL equality can. Each of these contains the real
-    // host or path as a substring while naming a DIFFERENT resource.
+    // only structural URL equality can. Each contains the real host or path as
+    // a substring while naming a DIFFERENT resource, so none of them may be
+    // reported as evidence about this error.
     for (const trap of [
       'https://evil-api.github.com/repos/owner/data/contents/state.json',
       'https://api.github.com.evil.test/repos/owner/data/contents/state.json',
       'https://api.github.com/repos/owner/data/contents/state.json.bak',
-      // Another host entirely, and another path on the same host.
       'https://api.example.com/repos/owner/data/contents/state.json',
       'https://api.github.com/repos/owner/data/contents/files/x.bin',
     ]) {
-      expect(excusedCancellation([cancelled()], diagnosed(trap), at + 5)).toBe(false);
+      expect(requestFailureEvidence([cancelled()], diagnosed(trap), at + 5)).toMatch(/no tracked request failure/);
     }
   });
 
-  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
-    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
-    // Symmetrically in the other direction, now that both are searched.
-    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS)], spurious, at)).toBe(true);
-    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
+  it('reports what the browser said in both directions of the measured ordering', () => {
+    // WebKit delivers the page error 74–359µs BEFORE the request's own
+    // failure, so evidence arriving AFTER the error is the normal case, not
+    // the exception; one measurement is not proof the reverse cannot happen,
+    // so both are searched.
+    expect(requestFailureEvidence([genuine(1)], spurious, at)).toContain('Access-Control-Allow-Origin');
+    expect(requestFailureEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
+    // Outside the reporting window there is nothing useful to print.
+    expect(requestFailureEvidence([genuine(FAILURE_EVIDENCE_MS + 1)], spurious, at)).toMatch(
+      /no tracked request failure/,
+    );
+    expect(requestFailureEvidence([genuine(FAILURE_EVIDENCE_MS)], spurious, at)).toContain('Access-Control-Allow-Origin');
   });
 
   it('measures what a REAL WebKit reports, and holds the rule to it', async () => {
@@ -850,16 +744,20 @@ describe('the journey harness itself', () => {
       // at this clock's granularity — which is exactly why proximity cannot
       // be what separates a genuine failure from a cancellation.)
       expect(seen.indexOf(real)).toBeLessThan(seen.indexOf(realFailure));
-      expect(realFailure.at - real.at).toBeLessThanOrEqual(CANCELLED_EXCUSE_MS);
+      expect(realFailure.at - real.at).toBeLessThanOrEqual(FAILURE_EVIDENCE_MS);
 
-      // THE VETO, PROVED ON REAL EVENTS: this genuine failure is not excused,
-      // not even by a cancellation to the very same resource sitting in the
-      // error's own millisecond — the case a nearest-wins rule got wrong.
+      // THE ANNOTATION, ON REAL EVENTS: a cancellation to the very same
+      // resource sitting in the error's own millisecond is REPORTED beside the
+      // genuine refusal, and takes nothing away from it. The rule that once
+      // ranked these two against each other is gone; what is left says what
+      // the browser reported about both.
       const log: TrackedRequestFailure[] = [
         { url: realFailure.url, at: realFailure.at, errorText: realFailure.errorText },
         { url: realFailure.url, at: real.at, errorText: 'cancelled' },
       ];
-      expect(excusedCancellation(log, real.error, real.at)).toBe(false);
+      const evidence = requestFailureEvidence(log, real.error, real.at);
+      expect(evidence).toContain('Access-Control-Allow-Origin');
+      expect(evidence).toContain('cancelled');
       expect(log).toHaveLength(2);
 
       // And the harness KEEPS it — saying what the browser reported instead of
@@ -882,33 +780,39 @@ describe('the journey harness itself', () => {
       if (realCancel?.kind !== 'failed') throw new Error('WebKit reported no cancellation to measure.');
       expect(realCancel.url).toBe(`${target}?slow=1`);
 
-      // IT EXCUSES ITS OWN RESOURCE AND NOTHING ELSE. No pairing of a
-      // cancellation with this page error has ever been OBSERVED — five
-      // cancellation shapes were driven through a real WebKit and each
-      // produced a `requestfailed` and no page error at all — so the
-      // diagnosis here is written against the url the browser really
-      // cancelled, rather than pretending to a pairing nothing has seen.
+      // AND THE CANCELLATION ITSELF RAISES NO PAGE ERROR — the measurement the
+      // whole excuse was built on the absence of. A genuinely cancelled
+      // request produces a `requestfailed` and nothing else, so there is
+      // nothing for a cancellation rule to be safe about: `pageErrors` still
+      // holds exactly the one genuine refusal from earlier in this journey,
+      // and no rule had to withhold anything to keep it that way.
       const cancelLog = () => [{ url: realCancel.url, at: realCancel.at, errorText: realCancel.errorText }];
-      expect(excusedCancellation(cancelLog(), diagnosed(realCancel.url), realCancel.at)).toBe(true);
-      // The same path WITHOUT that query is a different request instance, and
-      // this real cancellation says nothing about it.
-      expect(excusedCancellation(cancelLog(), diagnosed(target), realCancel.at)).toBe(false);
-
-      // AND A JUDGEMENT IS MADE ONCE: the genuine refusal already reported is
-      // not taken back by this real cancellation to the same host and path.
+      expect(seen.filter((e) => e.kind === 'error')).toHaveLength(1);
       expect(app.pageErrors).toHaveLength(1);
+      // The same path WITHOUT that query is a different request instance, and
+      // this real cancellation is reported as saying nothing about it.
+      expect(requestFailureEvidence(cancelLog(), diagnosed(realCancel.url), realCancel.at)).not.toContain(
+        'different query',
+      );
+      expect(requestFailureEvidence(cancelLog(), diagnosed(target), realCancel.at)).toContain('different query');
     } finally {
       await app.close();
       await new Promise<void>((done) => blocked.close(() => done()));
     }
   }, 120_000);
 
-  it('the wiring really excuses — a diagnosed error for a genuinely cancelled request never reaches pageErrors', async () => {
-    // THE EXCUSE HAS NOW BEEN DEAD CODE TWICE, and both times only CI could
-    // tell. This drives the harness END TO END: a request the browser really
-    // cancels, and a real `pageerror` delivered through the real listener,
-    // carrying the diagnosis for that exact url. `pageErrors` must stay empty
-    // — and must not, if the error names a neighbouring request instead.
+  it('the wiring keeps a diagnosed page error with no request failure of its own', async () => {
+    // THE SEALED COUNTEREXAMPLE, END TO END, through the real listeners and
+    // the real resolve path — the one thing that could never be proved by
+    // reasoning about the rule alone, because the excuse had been dead code
+    // twice and both times only CI could tell.
+    //
+    // A request the browser really cancels lands in the log first; then the
+    // diagnosis for that EXACT url arrives as a genuine uncaught `pageerror`
+    // with no `requestfailed` of its own — precisely the shape the CI failure
+    // has (no request, no route hit, no tracked failure). Every earlier
+    // version of this harness dropped it. It must be KEPT, and it must carry
+    // the cancellation it did NOT get to hide as evidence.
     //
     // The error TEXT is raised in the page rather than waited for, because no
     // cancellation shape driven through a real WebKit has ever produced one
@@ -932,59 +836,64 @@ describe('the journey harness itself', () => {
       await app.page.evaluate((u) => void fetch(u).catch(() => {}), inFlight);
       await reload(app);
       await expect.poll(() => cancellations.includes(inFlight), { timeout: 20_000 }).toBe(true);
+      // A REAL cancellation on its own raises no page error at all — measured,
+      // five shapes, every time. Nothing had to be suppressed for this to hold.
       expect(app.pageErrors).toEqual([]);
 
-      // The diagnosis for a DIFFERENT request to the same path is kept: one
-      // cancellation excuses one resource, never a neighbour.
+      // THE COUNTEREXAMPLE: the diagnosis for the very url that was cancelled,
+      // with no request failure of its own. It is KEPT.
+      await raiseDiagnosis(app, inFlight);
+      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
+      expect(app.pageErrors[0].message).toContain('due to access control checks');
+      // ...and it says what the harness saw, the cancellation included, rather
+      // than being a bare CORS-shaped message.
+      expect(app.pageErrors[0].message).toContain('cancelled');
+
+      // A neighbouring request to the same path is kept too, and named as the
+      // different request it is.
       const neighbour = `${inFlight.split('?')[0]}?ref=other`;
       await raiseDiagnosis(app, neighbour);
-      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
-      expect(app.pageErrors[0].message).toContain('?ref=other');
-      // ...and the evidence names what the harness actually saw, including the
-      // same-path cancellation it refused to spend.
-      expect(app.pageErrors[0].message).toContain('different query');
+      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(2);
+      expect(app.pageErrors[1].message).toContain('?ref=other');
+      expect(app.pageErrors[1].message).toContain('different query');
 
-      // The diagnosis for the request that WAS cancelled is excused, so the
-      // list does not grow — the wiring, not just the rule.
-      await raiseDiagnosis(app, inFlight);
-      await app.page.waitForTimeout(500);
-      expect(app.pageErrors).toHaveLength(1);
+      // Reading twice reports the same list, not a growing one.
+      expect(app.pageErrors).toHaveLength(2);
     } finally {
       await app.close();
       await new Promise<void>((done) => stalled.close(() => done()));
     }
   }, 120_000);
 
-  it('a page error it refuses to excuse says what the browser actually reported', () => {
+  it('a kept page error says what the browser actually reported', () => {
     // The CI failure this whole rework came from was one bare CORS-shaped
     // message with nothing to distinguish a cancellation from a real refusal.
-    // An unexcused diagnosis now carries the browser's own words for every
-    // request to that resource, and how far each sat from the error.
-    const withGenuine = cancellationEvidence([genuine(1)], spurious, at);
+    // A kept diagnosis carries the browser's own words for every request to
+    // that resource, and how far each sat from the error.
+    const withGenuine = requestFailureEvidence([genuine(1)], spurious, at);
     expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
     expect(withGenuine).toContain('Access-Control-Allow-Origin');
     expect(withGenuine).toContain('+1ms');
 
-    // DELIBERATELY BROADER THAN THE EXCUSE: a failure to the same path under a
-    // different query is exactly what the excuse must refuse to act on, and
-    // exactly what the reader of a CI-only failure needs to see. It is named
-    // as the different request it is.
-    const nearMiss = cancellationEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
+    // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: a failure to the
+    // same path under a different query is exactly what the reader of a
+    // CI-only failure needs to see. It is named as the different request it is.
+    const nearMiss = requestFailureEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
     expect(nearMiss).toContain('?ref=main');
     expect(nearMiss).toContain('different query');
     // The resource the error actually names is not labelled that way.
-    expect(cancellationEvidence([cancelled()], spurious, at)).not.toContain('different query');
+    expect(requestFailureEvidence([cancelled()], spurious, at)).not.toContain('different query');
 
     // NOTHING tracked at all is itself the evidence — it says so rather than
     // saying nothing.
-    expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
+    expect(requestFailureEvidence([], spurious, at)).toMatch(/no tracked request failure/);
     // A request that failed BEFORE the error is reported with its sign.
-    expect(cancellationEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
-    // It only ever describes: nothing is consumed and nothing is excused.
+    expect(requestFailureEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
+    // It only ever describes: nothing is consumed and nothing is withheld.
     const events = [cancelled()];
-    expect(cancellationEvidence(events, spurious, at + 5)).toContain('cancelled');
+    expect(requestFailureEvidence(events, spurious, at + 5)).toContain('cancelled');
     expect(events).toEqual([cancelled()]);
     // A page error that is not this diagnosis at all has nothing to say.
-    expect(cancellationEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
+    expect(requestFailureEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
   });
 });

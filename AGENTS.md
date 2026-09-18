@@ -1550,141 +1550,66 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
 automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
-A THIRD, of the same kind: a request the browser CANCELS because the test navigated away
-while it was in flight is reported by WebKit as
-`"Fetch API cannot load … due to access control checks"` — which reads exactly like a CORS
-problem and is not one. Instrumented, the only difference between a passing and a failing run
-of the same journey was one `requestfailed` with `errorText: 'cancelled'` for a request
-fulfilled with the right CORS headers every other time. A real person navigating mid-sync
-cancels the same request, so `openPracticeApp` (`tests/practiceBrowser.ts`) does not count it
-as a page error.
+A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
+EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and reports
+it as an uncaught page error reading `"Fetch API cannot load … due to access control
+checks"` — which reads exactly like a CORS problem and is not one. Every `goTo`/`reload` is a
+full document load, so each one re-runs the app's own on-open sync; navigating again while
+that sync is mid-chain destroys the document around it. Instrumented through a real WebKit,
+the failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all.
 
-**AND THAT EXCUSE IS BOUNDED, OR THE HARNESS HIDES THE FAILURE THE JOURNEY EXISTS TO CATCH.**
-It first shipped as a PERMANENT set of cancelled URLs, with every later page error whose
-message merely CONTAINED that pathname discarded — so a genuine failure at the same path,
-later in the same journey, was swallowed and `pageErrors` said nothing. `excusedCancellation`
-(`tests/practiceBrowser.ts`, tested) is the whole rule and it is CONSUMING: one cancellation
-excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
-naming the same URL is never excused).
+**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
+versions of an excuse were built and every one of them could withhold a genuine failure:
+a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
+a live credit any later genuine failure to that URL could spend); a rule reading the page
+error's `message` alone, which never contains the diagnosis — Playwright splits a page error
+at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
+was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
+the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
+which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
+`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
+STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
+failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
+thing in the log. That is the sealed finding that ended the attempt.
 
-**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
-host+path ALONE: a cancellation that produced no page error of its own stayed a live,
-unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
-a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
-the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
-cancellation's spurious error and a real access-control failure are worded the same on
-purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
-genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
-DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
-create, never the correlation itself.
+**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT.** Five cancellation shapes
+driven through a real WebKit — navigating away mid-flight, reloading mid-flight,
+`AbortController`, a same-tick `location.href`, a cancelled CORS preflight — each produced a
+`requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever. A `pageerror` hands
+a test an `Error` and no request identity. So there is no positive evidence available to bind a
+specific error to a specific cancellation at any window or resolution, and an unprovable
+correlation is resolved the only safe way: `openPracticeApp` KEEPS every page error.
+`excusedCancellation` is gone. What survives is `requestFailureEvidence`
+(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
+`errorText` for every tracked request to that resource and how far each sat from it — because
+one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
+what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
+its full-URL identity (host, path and query; the fragment ignored, since a fragment never
+reaches the network while the message keeps it verbatim) only decides whether a row is labelled
+as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
+suppression.
 
-A second, independent hole lived in the same function: `message.includes(url.host)` and
-`message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
-one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
-part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
-adding more boundary characters to a string test.
+**AND THE RACE IS REMOVED AT THE TWO PLACES THAT CREATE IT.** First, the fake GitHub repo now
+retains the fact that `main` EXISTS after its own bootstrap. `initialize()` writes
+`PUT contents/README.md` through the Contents API and real GitHub then resolves
+`git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so `getHead()` kept
+returning null and EVERY later sync re-entered `initialize()` and issued another README PUT —
+measured at one every one to three seconds for a whole journey, each one a chance to be caught
+by a navigation. Gating that route on the REF alone fixes it without touching what `decideSync`
+sees: `manifest.json` and `state.json` still 404 until something publishes a snapshot, so
+`readRemoteMeta` still returns null, the decision is still `first-push`, and the pull/conflict
+journeys are unchanged. Making the fake REMEMBER THE PUSH is deliberately NOT done — it was
+built and reverted once because it changes `decideSync`'s input and `setarInbound`'s pull
+journey then reads "Already in sync" instead of pulling. ac-18 asserts the bootstrap happens
+exactly once.
 
-**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
-Every string above was a hand-written reconstruction; nothing had ever been measured. The same
-commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
-measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
-two facts the harness had backwards, either of which alone made the excuse unable to fire:
-
-- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
-  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
-  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
-  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
-  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
-  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
-  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
-  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
-  apparent space was an artefact of that same split.
-- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
-  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
-  search read an empty log. Tracked failures are searched in BOTH directions now.
-
-So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
-reads it after awaited page work, which round-trips the ordered transport and so has both
-events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
-an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
-for every tracked request to that resource and how far each sat from it
-(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
-cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
-deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
-its own full url and saying whether it is the resource the error named — because a failure to
-the same path under a different query is exactly what the excuse must refuse to act on and
-exactly what the next CI-only failure needs to show.
-
-**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
-CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
-"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
-outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
-reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
-straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
-genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
-land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
-it. TWO changes replace it, and neither is a window:
-
-- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
-  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
-  two requests the app really makes one after the other, so a cancellation of one stood ready to
-  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
-  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
-  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
-  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
-- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
-  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
-  sits, and whatever sits nearer. A genuine access-control failure always emits its own
-  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
-  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
-  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
-  be. The veto is scoped: a genuine failure to another resource, or to the same path under
-  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
-  against a url.
-
-**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
-STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
-a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
-cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
-same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
-`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
-produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
-explanation for the CI failure, and cannot be settled from here. A cancellation being merely
-NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
-nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
-so url text and order are the whole of what exists.
-
-The regression tests assert the measured pair verbatim, the measured ordering, the query and the
-fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
-vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
-request back through the rule — that the shape can never drift back to a reconstruction. One
-drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
-naming it, because this excuse has been dead code twice and both times only CI could tell.
-
-**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
-Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
-in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
-`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
-is refused before WebKit's network layer ever sees it, because the document is being torn down by
-the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
-BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
-not evidence of a fix, because nothing in that change touches this cause. There
-is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
-excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
-access-control diagnosis for a faked origin would suppress a whole error class at an entire
-origin on no per-event evidence at all, which is broader than the rule the sealed finding
-rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
-without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
-re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
-three seconds for the whole journey, each one a chance to be caught by a navigation. What
-re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
-own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
-here. Making the fake remember the
-push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
-journey — which publishes a remote snapshot after the app's own push — then reads "Already in
-sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
-recorded here rather than left to be rediscovered from a red CI run.
+Second, and this is what actually closes it: `goTo` and `reload` now WAIT for the app's GitHub
+traffic to fall quiet before navigating (`settleSync`, `tests/practiceBrowser.ts`). Removing the
+README amplifier alone was measured to leave the failure reproducible — it simply moved to
+`contents/manifest.json` — because the first sync begins during `connectSync` and the journey
+navigates straight through it. Waiting for an EMPTY set is not enough either: the sync starts
+from an effect and reads IndexedDB before its first fetch, so the wait is for a quiet PERIOD,
+bounded and best-effort, and a no-op for a journey that never talks to GitHub at all.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the

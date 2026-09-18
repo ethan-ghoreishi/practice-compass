@@ -365,6 +365,15 @@ describe('the Setar archive, rendered', () => {
           // actually reported, and what the harness saw around it — is exactly
           // what it withholds. Every other journey already asserts this way.
           expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+          // THE REPO IS BOOTSTRAPPED ONCE, not once per navigation. Every
+          // `goTo` above is a full document load, so each one re-runs the
+          // app's on-open sync; while the fake answered `git/ref/heads/main`
+          // with 404 after its own bootstrap, every one of those syncs
+          // re-entered `initialize()` and issued another
+          // `PUT contents/README.md` into a document the next navigation was
+          // tearing down — the measured amplifier behind the intermittent
+          // WebKit access-control page error this journey kept reporting.
+          expect(remote.calls.filter((c) => c.startsWith('PUT contents/README.md'))).toHaveLength(1);
         } finally {
           await app.close();
         }

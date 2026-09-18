@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { createServer, type ViteDevServer } from 'vite';
-import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page, type Request } from 'playwright';
+
+const GITHUB_API = 'https://api.github.com/';
 
 // ---------------------------------------------------------------------------
 // A small harness for driving the REAL app in a real browser from an ordinary
@@ -29,76 +31,61 @@ const installHint = (engine: Engine) =>
 
 /**
  * ONE recorded outcome of a network request the harness watched, whatever the
- * browser's own words for it were. Tracking EVERY failure — not only
- * cancellations — is what lets genuine evidence for a resource VETO the excuse
- * for that resource (see `excusedCancellation`).
+ * browser's own words for it were. It is EVIDENCE and nothing else: no page
+ * error is ever withheld because of what is in this log.
  *
- * WHY THERE IS AN EXCUSE AT ALL, and exactly how far the evidence for it goes.
- * A CI run produced `Fetch API cannot load https://api.github.com/repos/owner/
- * practice-data/contents/README.md due to access control checks.` on two of
- * three runners at a commit that passed on the third — a WebKit-only,
- * CORS-shaped page error, while every other run fulfils that same request with
- * the right CORS headers. A request the browser CANCELS because the test drove
- * on while it was in flight is the standing explanation, and a real person
- * navigating mid-sync cancels the same request, so failing a journey for it
- * would be failing it for being driven quickly.
+ * WHY THERE IS NO LONGER AN EXCUSE. A CI run produced `Fetch API cannot load
+ * https://api.github.com/repos/owner/practice-data/contents/README.md due to
+ * access control checks.` on two of three runners at a commit that passed on
+ * the third — a WebKit-only, CORS-shaped page error, while every other run
+ * fulfils that same request with the right CORS headers. A request the browser
+ * CANCELS because the test drove on while it was in flight was the standing
+ * explanation, and successive versions of this harness tried to act on it: a
+ * permanent URL set, a consuming time window, a nearest-wins ranking, then
+ * full-URL identity plus a veto. Every one of them could still withhold a
+ * genuine failure, because every one rested on a pairing that has never been
+ * OBSERVED.
  *
- * That explanation is NOT measured, and this comment used to state it as fact.
- * Driving a real WebKit here, five different cancellation shapes — navigating
- * away mid-flight, reloading mid-flight, `AbortController`, a same-tick
- * `location.href`, a cancelled CORS preflight — each produced a
- * `requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever.
- * A reply that genuinely lacks CORS headers does produce exactly this page
- * error, so a raced `route.fulfill` remains a live alternative explanation
- * that cannot be settled from here.
+ * Measured, driving a real WebKit: five cancellation shapes — navigating away
+ * mid-flight, reloading mid-flight, `AbortController`, a same-tick
+ * `location.href`, a cancelled CORS preflight — each produced a `requestfailed`
+ * with `errorText: 'cancelled'` and NO page error whatsoever. And the CI
+ * failure itself arrives with no `request`, no route hit and no `requestfailed`
+ * at all. So a cancellation has never been seen to CAUSE this page error, and a
+ * `pageerror` hands a test an `Error` carrying no request identity — there is
+ * nothing to prove ownership with, at any window or resolution.
  *
- * Which is precisely why the excuse below demands the strongest association
- * the platform makes available and refuses on anything weaker: the pairing it
- * exists for has never been observed, so it may never be INFERRED from a
- * cancellation merely being nearby.
+ * An unprovable correlation is therefore resolved the only safe way: the error
+ * is KEPT. The last shape of the excuse still let an earlier, unconsumed
+ * cancellation to the same URL swallow a genuine diagnosis that emitted no
+ * `requestfailed` of its own — exactly the CI failure's own shape — which is
+ * the sealed finding that closed this line of work for good. The remaining fix
+ * is to remove the RACE (see the `git/ref/heads/main` route in
+ * `installFakeGitHub`), never to hide its symptom.
  *
- * `errorText` is kept verbatim rather than reduced to a boolean, because it is
- * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
- * diagnosed page error is not excused, the failure has to say what the browser
- * actually said about that request, or the next CI-only failure is as
- * unreadable as the one this fix came from.
+ * `errorText` is kept verbatim because it is what a kept error REPORTS
+ * (`requestFailureEvidence`): a bare CORS-shaped message with nothing to
+ * distinguish a cancellation from a real refusal is exactly what made the
+ * original CI-only failure unreadable.
  */
 export interface TrackedRequestFailure {
   url: string;
   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
   at: number;
-  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
+  /** The browser's own words — `'cancelled'`, an Access-Control refusal, anything. */
   errorText: string;
 }
 
 /**
- * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
- * It once was the whole bound: a cancelled URL's entry stayed eligible for
- * this long, matched by host+path ALONE, so an unconsumed cancellation that
- * never produced its own page error remained a live "credit" any LATER,
- * genuine access-control failure to that same URL could spend. That is a
- * sealed finding, not a hypothetical: a cancellation and a real failure are
- * indistinguishable by wording, so a window — however short — can never be
- * the thing that tells them apart.
+ * How far from a page error a tracked request failure may sit and still be
+ * worth PRINTING beside it. It bounds a REPORT, never a suppression: nothing
+ * in this file drops an error, so no safety claim rests on this number.
  *
- * NOR CAN PROXIMITY, AT ANY RESOLUTION. Replacing the window with "whichever
- * tracked failure sits NEAREST the error wins" was the previous attempt, and
- * measuring it is what killed it: a genuine access-control failure emits its
- * own `requestfailed` 74–359µs after its page error (six of six, macOS WebKit),
- * which reads as a gap of 0ms or 1ms at `Date.now()` granularity depending on
- * which side of a millisecond boundary the pair straddles. An unrelated
- * cancellation to the same resource landing in the error's own millisecond
- * therefore OUTRANKS a genuine failure 359µs away, and excuses it. Sub-
- * millisecond timestamps would only move that boundary, not remove it.
- *
- * What separates them is `excusedCancellation`'s VETO — genuine evidence for
- * the same resource forbids the excuse outright, however far away it sits —
- * and the full-URL identity `sameResource` insists on. All this ceiling does
- * is bound how far apart two events may be and still be considered one
- * outcome at all, in case Node's delivery is delayed under the contention
- * several concurrent dev servers create.
+ * It is generous because Node's delivery can lag under the contention several
+ * concurrent dev servers create — and small enough that the evidence line
+ * stays about this error rather than the whole journey.
  */
-export const CANCELLED_EXCUSE_MS = 2_000;
+export const FAILURE_EVIDENCE_MS = 2_000;
 
 /**
  * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
@@ -194,66 +181,21 @@ function sameResource(trackedUrl: string, reported: URL): boolean {
 }
 
 /**
- * The excuse correlates on IDENTITY plus a VETO, never on proximity.
- *
- * Among the tracked failures for the exact resource the error names, within
- * the defensive ceiling:
- *
- *  - if ANY of them is NOT a cancellation, nothing is excused. A genuine
- *    access-control failure always emits its own `requestfailed` beside its
- *    own page error (measured: 74–359µs after it, six times out of six), so
- *    the presence of genuine evidence for this exact resource means the
- *    cancellation's ownership of this error is unproven — and an unproven
- *    correlation is never resolved in the excuse's favour. This is a veto, not
- *    a ranking: it holds however far away the genuine failure sits, which is
- *    what the previous "whichever is nearest wins" rule could not do. At
- *    `Date.now()` granularity a genuine pair straddling a millisecond boundary
- *    reads as 1ms apart, so an unrelated cancellation in the error's own
- *    millisecond used to outrank it and excuse a real failure;
- *  - otherwise the nearest cancellation is CONSUMED, so it cannot excuse a
- *    second error too. Nearest only chooses WHICH interchangeable cancellation
- *    to spend here; it no longer decides WHETHER anything may be spent.
- *
- * A message that is not the diagnosis at all — a render crash, a thrown
- * TypeError, whatever URL it happens to name — is never excused.
- */
-export function excusedCancellation(
-  events: TrackedRequestFailure[],
-  error: { name?: string; message: string },
-  at: number,
-): boolean {
-  const reported = reportedUrl(error);
-  if (!reported) return false;
-  let best = -1;
-  let bestGap = Infinity;
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i];
-    const gap = Math.abs(at - e.at);
-    if (gap > CANCELLED_EXCUSE_MS) continue;
-    if (!sameResource(e.url, reported)) continue;
-    if (e.errorText !== 'cancelled') return false;
-    if (gap < bestGap) {
-      best = i;
-      bestGap = gap;
-    }
-  }
-  if (best < 0) return false;
-  events.splice(best, 1);
-  return true;
-}
-
-/**
- * What the harness saw around a diagnosed page error it did NOT excuse, in one
- * sentence, so the assertion that keeps it says why.
+ * What the harness saw around a diagnosed page error, in one sentence, so the
+ * assertion that KEEPS it says why.
  *
  * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
  * that reads like a CORS misconfiguration whatever actually happened — which
  * is exactly how a CI-only failure became unreadable. Naming the browser's own
  * `errorText` for every tracked request to that same resource, and how far
  * each sat from the error, turns the next one into evidence instead of a
- * guess. Non-consuming and never an excuse: it only describes.
+ * guess.
+ *
+ * It only DESCRIBES. It consumes nothing, decides nothing and cannot cause an
+ * error to be dropped; a message that is not the diagnosis at all (a render
+ * crash, a thrown TypeError) simply gets no annotation.
  */
-export function cancellationEvidence(
+export function requestFailureEvidence(
   events: TrackedRequestFailure[],
   error: { name?: string; message: string },
   at: number,
@@ -261,13 +203,13 @@ export function cancellationEvidence(
   const reported = reportedUrl(error);
   if (!reported) return '';
   const where = `${reported.host}${reported.pathname}${reported.search}`;
-  // DELIBERATELY BROADER THAN THE EXCUSE: same host and path, whatever the
-  // query. A failure to the same path under a DIFFERENT query is exactly what
-  // the excuse must refuse to act on and exactly what the reader of a CI-only
-  // failure needs to see, so each row prints its own full url and says whether
-  // it was the same resource the error named.
+  // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: same host and path,
+  // whatever the query. A failure to the same path under a DIFFERENT query is
+  // exactly what the reader of a CI-only failure needs to see, so each row
+  // prints its own full url and says whether it was the resource the error
+  // named.
   const near = events
-    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
+    .filter((e) => Math.abs(at - e.at) <= FAILURE_EVIDENCE_MS)
     .filter((e) => {
       try {
         const url = new URL(e.url);
@@ -283,7 +225,7 @@ export function cancellationEvidence(
     );
   return near.length
     ? `tracked request failures for ${where}: ${near.join('; ')}`
-    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
+    : `no tracked request failure for ${where} within ${FAILURE_EVIDENCE_MS}ms`;
 }
 
 export interface PracticeApp {
@@ -295,13 +237,34 @@ export interface PracticeApp {
   /**
    * Uncaught page errors, so a broken render cannot pass as a quiet one.
    *
-   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
-   * about a request BEFORE that request's own `requestfailed` (measured:
-   * 74–359µs ahead, six times out of six), so deciding at arrival time is
-   * deciding against a log that has not been written yet. Reading this at the end of a journey — which is when a
-   * journey asserts on it — has every event in hand.
+   * NOTHING IS EVER WITHHELD FROM THIS LIST. Each error is ANNOTATED on read
+   * rather than at arrival, because WebKit delivers a page error about a
+   * request BEFORE that request's own `requestfailed` (measured: 74–359µs
+   * ahead, six times out of six), so annotating on arrival would print against
+   * a log that has not been written yet. Reading this at the end of a journey
+   * — which is when a journey asserts on it — has every event in hand.
    */
   readonly pageErrors: Error[];
+  /**
+   * Wait until nothing is in flight to the GitHub API, so a navigation cannot
+   * tear the document down around a request the app is still making.
+   *
+   * THIS IS THE RACE ITSELF, not a symptom of it. Every `goTo`/`reload` below
+   * is a full document load, so each one re-runs the app's own on-open sync;
+   * WebKit refuses a `fetch()` issued while the document is being destroyed
+   * and reports it as an uncaught page error reading
+   * `Fetch API cannot load … due to access control checks.` — with no
+   * `request`, no route hit and no `requestfailed` to explain it. A real
+   * person navigating mid-sync produces the same thing, and the harness used
+   * to try to EXCUSE it; it cannot be excused safely (see
+   * `TrackedRequestFailure`), so it is prevented instead, at the one boundary
+   * that creates it.
+   *
+   * Bounded and best-effort: a request that never settles is abandoned rather
+   * than hanging a journey, because this is a scheduling courtesy, not an
+   * assertion.
+   */
+  settleSync(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -352,10 +315,16 @@ export async function openPracticeApp(options: {
   let page: Page;
   const pending: { error: Error; at: number }[] = [];
   const pageErrors: Error[] = [];
-  // EVERY requestfailed is tracked, cancelled or not — genuine evidence for a
-  // resource has to be visible to `excusedCancellation` for its veto to fire,
-  // not just the cancellations.
+  // EVERY requestfailed is tracked, cancelled or not: a kept page error has to
+  // be able to say what the browser actually reported about that resource.
   const requestFailures: TrackedRequestFailure[] = [];
+  // Requests the app currently has open to the GitHub API. Emptied by
+  // `settleSync` before any navigation, so nothing is in flight when the
+  // document is torn down.
+  const inFlight = new Set<Request>();
+  // Has this journey ever talked to GitHub at all? Until it has, there is no
+  // sync to wait for and `settleSync` costs nothing.
+  let syncConfigured = false;
   try {
     context = await browser.newContext({
       viewport: options.viewport ?? { width: 390, height: 844 },
@@ -369,13 +338,27 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
+    page.on('request', (r) => {
+      if (!r.url().startsWith(GITHUB_API)) return;
+      inFlight.add(r);
+      syncConfigured = true;
+    });
+    page.on('requestfinished', (r) => inFlight.delete(r));
+    // A request belonging to a document that has just been replaced will never
+    // report finished or failed, so without this it would sit in the set for
+    // ever and make every later `settleSync` burn its whole ceiling.
+    page.on('framenavigated', (f) => {
+      if (f === page.mainFrame()) inFlight.clear();
+    });
     page.on('requestfailed', (r) => {
+      inFlight.delete(r);
       requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
     });
     // Surface a page-level error instead of letting it become a silently
-    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
-    // the request failure that explains a cancelled one has not been
-    // delivered yet at this point.
+    // wrong assertion later. RECORDED here, ANNOTATED in `resolve()` below —
+    // WebKit delivers a page error about a request BEFORE that request's own
+    // `requestfailed` (measured: 74–359µs ahead, six of six), so the evidence
+    // a kept error prints has not been delivered yet at this point.
     page.on('pageerror', (e) => {
       pending.push({ error: e, at: Date.now() });
     });
@@ -394,16 +377,15 @@ export async function openPracticeApp(options: {
   }
 
   /**
-   * Drain everything that arrived since the last read: excuse each page error
-   * a cancellation accounts for, and KEEP the rest — annotated with what the
-   * harness actually saw around them, so a refusal to excuse is readable
-   * rather than another bare CORS-shaped message. Idempotent: a drained error
-   * stays resolved, so reading twice reports the same list.
+   * Drain everything that arrived since the last read. EVERY page error is
+   * kept — nothing here may drop one — annotated with what the harness
+   * actually saw around it, so a CORS-shaped message arrives as evidence
+   * rather than a guess. Idempotent: a drained error stays resolved, so
+   * reading twice reports the same list.
    */
   const resolve = (): Error[] => {
     for (const { error, at } of pending.splice(0)) {
-      if (excusedCancellation(requestFailures, error, at)) continue;
-      const evidence = cancellationEvidence(requestFailures, error, at);
+      const evidence = requestFailureEvidence(requestFailures, error, at);
       if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
       pageErrors.push(error);
     }
@@ -416,6 +398,23 @@ export async function openPracticeApp(options: {
     engine,
     get pageErrors() {
       return resolve();
+    },
+    async settleSync() {
+      if (!syncConfigured) return;
+      // EMPTY IS NOT ENOUGH: the app starts its on-open sync from an effect and
+      // reads IndexedDB before its first fetch, so a check taken the instant a
+      // page becomes interactive can see an empty set and still be followed by
+      // a request a moment later. Wait for a QUIET period instead.
+      const until = Date.now() + 10_000;
+      let quietSince = Date.now();
+      while (Date.now() < until) {
+        if (inFlight.size > 0) quietSince = Date.now();
+        else if (Date.now() - quietSince >= 300) return;
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      // A request that never settles belongs to a document that is about to go
+      // anyway, and must not hang the journey waiting on it.
+      inFlight.clear();
     },
     async close() {
       await browser.close();
@@ -475,6 +474,7 @@ export async function importOutcome(app: PracticeApp): Promise<string> {
 const FOCUSED_ROUTES = /^\/(active|close|routine)/;
 
 export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
+  await app.settleSync();
   await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
   if (FOCUSED_ROUTES.test(hashPath)) {
     await app.page.locator('main').waitFor({ timeout: 20_000 });
@@ -492,6 +492,7 @@ export async function reload(app: PracticeApp): Promise<void> {
   // about the app: it is real wall-clock time in Node, unaffected by the
   // page's faked clock.
   await app.page.waitForTimeout(400);
+  await app.settleSync();
   await app.page.reload();
   await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
 }
@@ -721,8 +722,27 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
         size: remote.sourceIndex.text.length,
       });
     }
+    // A BRANCH EXISTING AND A SNAPSHOT EXISTING ARE TWO DIFFERENT FACTS, and
+    // reading the first off the second is what made this fake behave unlike
+    // GitHub. `initialize()` bootstraps an empty repo with a Contents-API
+    // `PUT contents/README.md`, after which real GitHub resolves
+    // `git/ref/heads/main` — the branch is there; only `manifest.json` and
+    // `state.json` are still absent. This route answered 404 until a SNAPSHOT
+    // existed, so `getHead()` kept returning null and EVERY later sync
+    // re-entered `initialize()` and issued another README PUT. Each journey
+    // navigation is a full document load that re-triggers the app's on-open
+    // sync, so those extra PUTs were repeatedly issued into a document
+    // `page.goto` was tearing down — the measured amplifier behind the
+    // intermittent WebKit access-control page error in the archive journey.
+    //
+    // Gating on the REF alone fixes that without touching what `decideSync`
+    // sees: the manifest and state routes below still 404 until something
+    // publishes a snapshot, so `readRemoteMeta` still returns null, the
+    // decision is still `first-push`, and the pull/conflict journeys are
+    // unchanged. Making the fake REMEMBER the pushed snapshot would change
+    // that decision, which is why it is deliberately not done here.
     if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return json({}, 404);
+      if (!remote.refs.includes('main')) return json({}, 404);
       return json({ object: { sha: head() } });
     }
     if (method === 'GET' && rest.startsWith('contents/manifest.json')) {

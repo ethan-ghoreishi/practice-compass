@@ -2,6 +2,45 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Rejection: the cancellation excuse is removed, and the race is fixed instead (2026-09-18)
+
+A sixth sealed review found the excuse still able to hide a genuine WebKit access-control page
+error: full-URL identity plus a veto on genuine evidence STILL dropped a diagnosis that emitted
+no `requestfailed` of its own — exactly the CI failure's own shape — whenever an earlier
+unconsumed cancellation to that URL was the only thing in the log.
+
+The excuse is DELETED rather than narrowed a seventh time. Its premise was never observed: five
+cancellation shapes driven through a real WebKit each produce a `requestfailed` with
+`errorText: 'cancelled'` and NO page error at all, and a `pageerror` hands a test an `Error`
+carrying no request identity — so no rule over that log can prove a specific error belongs to a
+cancellation, at any window or resolution. An unprovable correlation is resolved by KEEPING the
+error. `requestFailureEvidence` survives as annotation only: it consumes nothing, withholds
+nothing, and exists so a kept CORS-shaped message says what the browser actually reported.
+
+The same review required the ac-18 WebKit archive journey to stop failing intermittently, which
+the excuse had been masking. Two harness causes, both measured:
+
+- **The fake GitHub repo forgot that `main` existed after its own bootstrap.** `git/ref/heads/main`
+  was gated on a SNAPSHOT existing, so `getHead()` kept returning null and every later sync
+  re-entered `initialize()` and issued another `PUT contents/README.md`. Gating that route on the
+  REF alone is faithful to GitHub (a Contents-API bootstrap creates the branch; `manifest.json`
+  and `state.json` are still absent) and changes nothing `decideSync` sees, so the pull/conflict
+  journeys are untouched. Making the fake REMEMBER THE PUSH is deliberately still not done — it
+  was built and reverted once because it changes `decideSync`'s input and `setarInbound`'s pull
+  journey then reads "Already in sync" instead of pulling.
+- **That alone was measured to leave the failure reproducible** (1 of 3 runs; it simply moved to
+  `contents/manifest.json?ref=head-1`). The real cause is that every `goTo`/`reload` is a full
+  document load that re-runs the app's on-open sync, and the journey navigates again while that
+  sync is mid-chain — WebKit refuses a `fetch()` issued into a document being destroyed and
+  reports it as this page error, with no request and no route hit. `goTo`/`reload` now wait for
+  the app's GitHub traffic to fall QUIET before navigating (`settleSync`). A quiet period rather
+  than an empty check, because the sync starts from an effect and reads IndexedDB before its
+  first fetch.
+
+Evidence: ac-18 passed 4 of 4 sequential WebKit+Chromium runs after the fix, and the full
+browser suite (five concurrent dev servers, the amplifying condition) passed repeatedly. No
+production code changed.
+
 ## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
 
 A fifth sealed review rejected the harness's cancellation excuse again. The previous round
