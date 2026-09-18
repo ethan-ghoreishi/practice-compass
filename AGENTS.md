@@ -1663,19 +1663,24 @@ drives the whole WIRING end to end, a genuinely cancelled request and a real unc
 naming it, because this excuse has been dead code twice and both times only CI could tell.
 
 **AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
-Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed (it fails on
-roughly one run in six here, more often under concurrent load) shows the CORS-shaped page error
-for `contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the
-fetch is refused before WebKit's network layer ever sees it, because the document is being torn
-down by the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. There
+Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
+in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
+`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
+is refused before WebKit's network layer ever sees it, because the document is being torn down by
+the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
+BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
+not evidence of a fix, because nothing in that change touches this cause. There
 is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
 excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
 access-control diagnosis for a faked origin would suppress a whole error class at an entire
 origin on no per-event evidence at all, which is broader than the rule the sealed finding
 rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
 without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
-re-bootstraps the repo with another `PUT contents/README.md` — about one per second for the
-whole journey, each one a chance to be caught by a navigation. Making the fake remember the
+re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
+three seconds for the whole journey, each one a chance to be caught by a navigation. What
+re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
+own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
+here. Making the fake remember the
 push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
 journey — which publishes a remote snapshot after the app's own push — then reads "Already in
 sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
