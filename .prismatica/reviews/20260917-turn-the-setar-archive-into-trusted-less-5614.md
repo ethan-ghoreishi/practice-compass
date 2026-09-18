@@ -1,28 +1,34 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 93b9b716c54582c79d0782926d0e82f9ab9e995c
+patchId: 21473d5c39f5186804b30feb8d324e44f8ee9a46
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: Browser harness cancellation correlation and real WebKit event ordering
-    summary: A genuine WebKit access-control page error can be suppressed by a
-      nearby unrelated cancelled request. The real-browser test confirms the
-      split error shape but does not establish requestfailed/pageerror ordering
-      or safe association.
-    counterexample: tests/setarInbound.browser.test.ts:724-737 obtains a genuine
-      CORS page error from real WebKit, then expects excusedCancellation to
-      return true when given a nearby synthetic cancelled event.
-      tests/practiceBrowser.ts:137-201 selects by host and pathname and
-      timestamp, ignoring query and request identity. If a cancellation without
-      its own page error precedes a genuine failure to the same path, and the
-      genuine requestfailed is later, farther away, or absent when pageErrors is
-      read, the genuine page error disappears. The ordering tests at lines
-      596-655 construct timestamps rather than asserting the order emitted by
-      WebKit.
-createdAt: 2026-09-18T20:12:20.477Z
-sealedAt: 2026-09-18T20:20:18.806Z
+    summary: The cancellation veto still permits a genuine WebKit access-control
+      page error to be excused when WebKit emits no requestfailed for that
+      error. The sealed false-negative family remains open.
+    counterexample: "tests/practiceBrowser.ts:225-242 consumes a same-URL
+      cancellation whenever no non-cancelled failure is tracked. The rework
+      records a genuine CORS-shaped README.md page error with no requestfailed.
+      Put an earlier unconsumed cancellation for that exact URL inside
+      CANCELLED_EXCUSE_MS, then deliver that genuine error without
+      requestfailed: pageErrors at lines 403-409 drops it. The real-browser test
+      supplies a genuine requestfailed and therefore does not cover this case."
+  - family: ac-18 WebKit archive journey reliability
+    summary: The required WebKit archive journey remains intermittently failing; a
+      pre-existing harness race does not satisfy ac-18.
+    counterexample: tests/setarArchive.browser.test.ts:125 names the ac-18 journey
+      and line 367 requires no page errors. The reported intermittent README.md
+      access-control error reaches that assertion.
+      tests/practiceBrowser.ts:749-752 and 770 leave the fake main ref
+      perpetually absent after bootstrap, allowing repeated README.md PUTs
+      during navigation. The current Check reports journeys skipped, so it
+      supplies no passing WebKit journey evidence.
+createdAt: 2026-09-18T21:09:24.242Z
+sealedAt: 2026-09-18T21:16:13.362Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -36,7 +42,7 @@ sealedAt: 2026-09-18T20:20:18.806Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `93b9b716c54582c79d0782926d0e82f9ab9e995c`
+- **Diff patch-id:** `21473d5c39f5186804b30feb8d324e44f8ee9a46`
 
 ## The Delta this change was framed from
 
@@ -79,1147 +85,909 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **Device archive media-base resolution** — P1: Real OWNER testing shows Setar archive resources are imported with correct archive-relative paths, but the production resolver omits the Setar archive-root segment when composing NAS URLs, so all imported Setar media links are unusable with the current device configuration.
-  _counterexample:_ The imported resource path `session-39-01-09-2026/ضبط-کلاس.mp4` is correct. The real file opens at `https://192.168.0.20:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4`, but Practice Compass resolves it as `https://192.168.0.20:5010/session-39-01-09-2026/ضبط-کلاس.mp4`. Manually inserting `/setar-classes/` makes the link work. Determine whether the defect is device configuration, archive-specific base mapping, resolver composition, legacy media-root interaction, or another cause, and fix the authoritative model without rewriting archive-relative source identity.
+- **Browser harness cancellation correlation and real WebKit event ordering** — A genuine WebKit access-control page error can be suppressed by a nearby unrelated cancelled request. The real-browser test confirms the split error shape but does not establish requestfailed/pageerror ordering or safe association.
+  _counterexample:_ tests/setarInbound.browser.test.ts:724-737 obtains a genuine CORS page error from real WebKit, then expects excusedCancellation to return true when given a nearby synthetic cancelled event. tests/practiceBrowser.ts:137-201 selects by host and pathname and timestamp, ignoring query and request identity. If a cancellation without its own page error precedes a genuine failure to the same path, and the genuine requestfailed is later, farther away, or absent when pageErrors is read, the genuine page error disappears. The ordering tests at lines 596-655 construct timestamps rather than asserting the order emitted by WebKit.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 412cfb1..e2d5537 100644
+index e2d5537..d0ae4eb 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -1574,22 +1574,56 @@ unconsumed credit for the whole ceiling, spendable by ANY later error to that UR
+@@ -1567,30 +1567,23 @@ later in the same journey, was swallowed and `pageErrors` said nothing. `excused
+ excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
+ naming the same URL is never excused).
+ 
+-**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
+-ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
++**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
+ host+path ALONE: a cancellation that produced no page error of its own stayed a live,
+ unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
  a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
  the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
  cancellation's spurious error and a real access-control failure are worded the same on
--purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
--(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
--tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
--that URL always fires its own `requestfailed` before its own page error, so the instant one
--happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
--by anything but the specific error it was actually waiting for — which is what makes leaving
--it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
--now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
--servers create, never the correlation itself.
-+purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
-+excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
-+names is ITSELF a cancellation. A genuine failure to that URL always fires its own
-+`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
-+nearer candidate and a stale, error-less cancellation is never reached by anything but the
-+specific error it was actually waiting for — which is what makes leaving it unconsumed safe
-+rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
-+candidates the same distance away, the one that is NOT a cancellation wins.
-+`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
-+under the contention five concurrent dev servers create, never the correlation itself.
+-purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
+-excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
+-names is ITSELF a cancellation. A genuine failure to that URL always fires its own
+-`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
+-nearer candidate and a stale, error-less cancellation is never reached by anything but the
+-specific error it was actually waiting for — which is what makes leaving it unconsumed safe
+-rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
+-candidates the same distance away, the one that is NOT a cancellation wins.
+-`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
+-under the contention five concurrent dev servers create, never the correlation itself.
++purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
++genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
++DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
++create, never the correlation itself.
  
  A second, independent hole lived in the same function: `message.includes(url.host)` and
  `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
  one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
--(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
--WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
--the ambiguity structurally rather than adding more boundary characters to a string test.
-+(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
-+`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
-+more boundary characters to a string test.
+-(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
+-`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
+-more boundary characters to a string test.
++(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
++part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
++adding more boundary characters to a string test.
+ 
+ **AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
+ Every string above was a hand-written reconstruction; nothing had ever been measured. The same
+@@ -1607,12 +1600,9 @@ two facts the harness had backwards, either of which alone made the excuse unabl
+   wrong reconstruction fails to match rather than matching loosely. The whitespace the old
+   regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
+   apparent space was an artefact of that same split.
+-- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
+-  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
+-  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
+-  invariant survives the correction untouched, for the same reason it held before: a genuine
+-  failure's own `requestfailed` is always adjacent to its own page error, so it always
+-  outranks a stale cancellation milliseconds away.
++- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
++  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
++  search read an empty log. Tracked failures are searched in BOTH directions now.
+ 
+ So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
+ reads it after awaited page work, which round-trips the ordered transport and so has both
+@@ -1620,10 +1610,81 @@ events in hand. A judgement is made ONCE: a cancellation arriving afterwards nev
+ an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
+ for every tracked request to that resource and how far each sat from it
+ (`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
+-cancellation from a real refusal is exactly what made this failure unreadable. The regression
+-tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
+-feeding its REAL error object back through the rule — that the shape can never drift back to a
+-reconstruction.
++cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
++deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
++its own full url and saying whether it is the resource the error named — because a failure to
++the same path under a different query is exactly what the excuse must refuse to act on and
++exactly what the next CI-only failure needs to show.
 +
-+**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
-+Every string above was a hand-written reconstruction; nothing had ever been measured. The same
-+commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
-+measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
-+two facts the harness had backwards, either of which alone made the excuse unable to fire:
++**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
++CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
++"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
++outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
++reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
++straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
++genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
++land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
++it. TWO changes replace it, and neither is a window:
 +
-+- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
-+  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
-+  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
-+  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
-+  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
-+  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
-+  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
-+  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
-+  apparent space was an artefact of that same split.
-+- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
-+  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
-+  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
-+  invariant survives the correction untouched, for the same reason it held before: a genuine
-+  failure's own `requestfailed` is always adjacent to its own page error, so it always
-+  outranks a stale cancellation milliseconds away.
++- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
++  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
++  two requests the app really makes one after the other, so a cancellation of one stood ready to
++  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
++  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
++  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
++  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
++- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
++  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
++  sits, and whatever sits nearer. A genuine access-control failure always emits its own
++  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
++  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
++  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
++  be. The veto is scoped: a genuine failure to another resource, or to the same path under
++  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
++  against a url.
 +
-+So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
-+reads it after awaited page work, which round-trips the ordered transport and so has both
-+events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
-+an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
-+for every tracked request to that resource and how far each sat from it
-+(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
-+cancellation from a real refusal is exactly what made this failure unreadable. The regression
-+tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
-+feeding its REAL error object back through the rule — that the shape can never drift back to a
-+reconstruction.
++**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
++STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
++a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
++cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
++same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
++`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
++produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
++explanation for the CI failure, and cannot be settled from here. A cancellation being merely
++NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
++nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
++so url text and order are the whole of what exists.
++
++The regression tests assert the measured pair verbatim, the measured ordering, the query and the
++fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
++vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
++request back through the rule — that the shape can never drift back to a reconstruction. One
++drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
++naming it, because this excuse has been dead code twice and both times only CI could tell.
++
++**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
++Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
++in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
++`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
++is refused before WebKit's network layer ever sees it, because the document is being torn down by
++the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
++BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
++not evidence of a fix, because nothing in that change touches this cause. There
++is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
++excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
++access-control diagnosis for a faked origin would suppress a whole error class at an entire
++origin on no per-event evidence at all, which is broader than the rule the sealed finding
++rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
++without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
++re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
++three seconds for the whole journey, each one a chance to be caught by a navigation. What
++re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
++own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
++here. Making the fake remember the
++push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
++journey — which publishes a remote snapshot after the app's own push — then reads "Already in
++sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
++recorded here rather than left to be rediscovered from a red CI run.
  
  **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
  the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
-@@ -2107,6 +2141,18 @@ sentence says WHY. That is the whole family in one place: `resolveRecording`,
- still opened as the owner saved it — their own authored link, not this device's configured
- base, and nothing here mints one.
- 
-+**THE MEDIA BASE IS THE ARCHIVE ROOT, NOT THE MEDIA ROOT ABOVE IT.** This is the one setting
-+a device carries from before the archive existed, and this lane silently changed what it
-+must contain: legacy references were written relative to the NAS media root and began
-+`setar-classes/`; every reference the app writes now is relative to the ARCHIVE root and
-+begins `session-…`. `resolveRecording` APPENDS to the base and preserves its whole path
-+prefix (`/media/`, `/archives/v2/` — ac-14's own test), so it is correct either way and a
-+base one folder too high is not a resolver defect: it is a URL that addresses nothing.
-+Settings names the archive folder, shows it in the placeholder, and no longer promises that
-+the base can be changed freely — for a device configured before this lane, correcting it
-+once is required. There is deliberately NO second archive-specific base and no resolver
-+fallback: one base per device, ending in the archive folder, is what ac-14 and ac-20 state.
-+
- **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
- ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
- (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
-@@ -2144,7 +2190,29 @@ rows — but `not-described` does NOT (see `RepairReason`): the index deliberate
- only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
- own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
- renamed is outside what it knows, never evidence that the file is gone. Those three personal
--references are retained historical links, untouched and unflagged.
-+references are retained historical links, unflagged — and RETAINED IS NOT THE SAME CLAIM AS
-+LEFT IN THE OLD NAMESPACE.
-+
-+**A REFRESH LEAVES AN ARCHIVE-OWNED LESSON IN ONE NAMESPACE, OR THE OWNER'S OWN FILES DIE
-+WHEN THE BASE IS CORRECTED.** The device media base is the archive ROOT (below), so every
-+stored path is archive-relative and the legacy `setar-classes/` folder segment is not part
-+of it. `repairReferencePath` stripped that segment only on the way to a path the index
-+DESCRIBES and then threw the stripped form away for a `not-described` one — so a refresh
-+left the described rows archive-relative and the undescribed rows legacy-prefixed, on the
-+same class. OWNER testing found the consequence: with the base still naming the media root
-+above the archive, a class recording resolved to `…:5010/session-39-…/…` and opened nothing;
-+correcting the base to `…:5010/setar-classes/` fixed every described row and would have
-+killed exactly the rows a refresh never reports — the owner's own practice takes, at
-+`…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
-+that the file exists (no `attention` row is raised, `not-described` still says nothing), and
-+it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
-+writes nothing and cannot bump the revision (asserted at the PLAN level, where the rule is
-+stated, not only on the helper). ORDER MATTERS ONCE PER DEVICE: under the old base a legacy
-+path still opens, so correcting the base BEFORE refreshing avoids a transient in which those
-+files have moved namespace and the base has not. A legacy-prefixed reference on a lesson the
-+archive does NOT own is still never rewritten — that rule stands — so such a reference stays
-+in the old namespace and is the one known gap; it is the owner's to repoint, not a
-+refresh's to guess at.
- 
- **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
- (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
-diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index 9069489..e254617 100644
---- a/docs/setar-archive.md
-+++ b/docs/setar-archive.md
-@@ -264,6 +264,77 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
- membership and role survive in the graph, the files themselves never become a
- piece's material.
- 
-+### Set the base to the archive FOLDER — one-off, per device
-+
-+Every reference the app stores is relative to the **archive root**, so a stored
-+path starts at the session folder:
-+
-+    session-39-01-09-2026/ضبط-کلاس.mp4
-+
-+The base is appended to, whole path and all, so it must name the archive folder
-+itself:
-+
-+| Device | Base | Result |
-+| --- | --- | --- |
-+| Mac (LAN) | `https://192.168.0.20:5010/setar-classes` | `…:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4` ✅ |
-+| Mac (LAN) | `https://192.168.0.20:5010` | `…:5010/session-39-01-09-2026/ضبط-کلاس.mp4` ✗ addresses nothing |
-+| iPhone (Tailscale) | `https://ds220plus.taild1d1f7.ts.net/media/setar-classes` | `…/media/setar-classes/session-39-…/…` ✅ |
-+
-+Before this archive existed the base named the NAS **media root** and every
-+stored path began `setar-classes/`. That is the one setting a device carries
-+across, and it has to be corrected once — the resolver is not at fault, and there
-+is deliberately no second archive-specific setting and no fallback. **Browse** is
-+the check: it opens the base, and if it does not list the `session-…` folders,
-+the base is one folder too high.
-+
-+A refresh rewrites every reference on a class the archive owns — including your
-+own practice takes, which the index does not describe — into that one namespace,
-+without touching the row, its title or its notes. It writes once: a second
-+refresh finds nothing to change and does not bump the revision. A reference on a
-+class the archive does *not* own is never rewritten, so a hand-made lesson still
-+holding a `setar-classes/…` path needs repointing yourself.
-+
-+**Order matters, once, on each device: correct the base FIRST, then Refresh.**
-+Under the old base a legacy `setar-classes/…` path still opens, so refreshing
-+before correcting the base moves those files into the new namespace while the
-+base is still one folder too high — the same dead link, from the other side. The
-+end state is the same either way; the transient is avoidable.
-+
-+### Who owns an imported field, and where to correct a wrong one
-+
-+**Source-owned** (replaced by the archive, but only when you say so): the piece's
-+`dastgah`, `form`, `composer` and gusheh name. A later registry improvement is
-+**offered field by field** and applied only on an explicit tap — including when
-+your value is deliberately empty. Nothing is applied silently, and nothing can
-+revert on its own.
-+
-+**Yours from the moment of import, and never written again**: the item's **type**
-+(gusheh / full piece — seeded once from the registry's `form`, then never
-+re-offered), title, status, notes, difficulty, parts, pathway placement, and
-+every practice, review and scheduling field. Edit any of them freely; a refresh,
-+a reload and a sync all preserve the edit.
-+
-+**A bound class is left alone entirely.** Its date, number, notes and links are
-+yours from the moment it is adopted; the only thing a refresh ever rewrites on it
-+is the *path text* of a reference, and only into the namespace above.
-+
-+**Identity is the `canonical_fa` key, byte for byte.** So:
-+
-+| You want to… | Do it… | Why |
-+| --- | --- | --- |
-+| Treat a piece as a full piece rather than a gusheh | **in the app** (item type) | Yours; sticks for good. One tap, no re-import. |
-+| Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
-+| Fix one of those on this device only | **in the app** | The archive will keep offering its own value; ignore the offer. |
-+| Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
-+| Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
-+| Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
-+
-+The safe workflow for exact archive renames: rename, append the `from,to` row to
-+`RENAME-LOG.csv` (never a fork or a loop — both are diagnosed and neither is
-+applied), let the scanner publish, then Refresh. Do not renumber a session folder
-+and do not edit `canonical_fa` in the same pass as a rename: one of those changes
-+where a file is, the other changes what a piece *is*.
-+
- ### Open the app over HTTPS, or Refresh cannot verify anything
- 
- Refresh recomputes the index's `contentHash` before trusting a byte of it, and
-diff --git a/src/domain/seed.ts b/src/domain/seed.ts
-index 145888e..ce484b0 100644
---- a/src/domain/seed.ts
-+++ b/src/domain/seed.ts
-@@ -254,12 +254,15 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
-     now,
-   );
-   // A class recording (video) + a score (PDF) live on the NAS, referenced
--  // (never stored) by the app.
-+  // (never stored) by the app. ARCHIVE-RELATIVE, like every reference this app
-+  // writes: the device media base is the archive root. These are the archive's
-+  // own pre-normalisation names, so a Refresh repairs them through the rename
-+  // log exactly as it repairs the owner's real legacy rows.
-   pastLesson.recordings = [
-     {
-       id: newId(),
-       title: 'ضبطِ کلاس',
--      path: 'setar-classes/session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
-+      path: 'session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
-       kind: 'video',
-       date: agoDate(now, -16),
-       sizeBytes: 686136347,
-@@ -268,7 +271,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
-     {
-       id: newId(),
-       title: 'چهارمضرابِ افشاری صبا',
--      path: 'setar-classes/session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
-+      path: 'session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
-       kind: 'pdf',
-       date: agoDate(now, -16),
-       createdAt: nowISO(now),
-diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
-index 082dcef..0a481b5 100644
---- a/src/domain/sourceReconcile.test.ts
-+++ b/src/domain/sourceReconcile.test.ts
-@@ -18,7 +18,7 @@ import {
-   withSuppression,
-   followRenames,
- } from './sourceReconcile';
--import { archiveRootUrl } from './recordings';
-+import { archiveRootUrl, resolveRecordingUrl } from './recordings';
- // The published log is the SCANNER's output, so the downstream transitions
- // below are driven by what it actually publishes for a forked log — never by
- // a hand-written approximation of it.
-@@ -385,6 +385,24 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(applied.notes).toBe('my notes');
-     expect(applied.title).toBe('My own title');
- 
-+    // --- THE ITEM'S KIND IS THE OWNER'S, SEEDED ONCE AND NEVER RE-OFFERED ---
-+    // The registry's `form` decides `itemType` at CREATION and nothing after
-+    // it: a piece the archive calls a گوشه that the owner works as a full piece
-+    // is their reading of the music, not a source fact to be corrected back.
-+    // `itemType` is not in the suggestion list at all, so no refresh can even
-+    // ask, let alone revert it.
-+    const reKinded = { ...owned, items: owned.items.map((i) => (i.id === araqItemId ? { ...i, itemType: 'full_piece' as const } : i)) };
-+    const afterReKind = applyArchiveImport(
-+      reKinded,
-+      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }),
-+    );
-+    expect(afterReKind.items.find((i) => i.id === araqItemId)!.itemType).toBe('full_piece');
-+    expect(
-+      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }).suggestions.some(
-+        (x) => (x.field as string) === 'itemType',
-+      ),
-+    ).toBe(false);
-+
-     // --- an UNCHANGED refresh writes nothing --------------------------------
-     const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
-     expect(same.summary.unchanged).toBe(true);
-@@ -744,9 +762,14 @@ describe('reconciling the archive with the owner’s own records', () => {
-     const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
-     expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
- 
--    // A path with no rename row and no file is DIAGNOSED, never guessed.
-+    // A path with no rename row and no file is DIAGNOSED, never guessed — and
-+    // the diagnosis is about the FILE, so it is reached only once the path is
-+    // already in the current namespace. A legacy-prefixed one is first said in
-+    // that namespace (same bytes, words the device base addresses); the second
-+    // pass is what reports it.
-     const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
--    expect(missing.status).toBe('attention');
-+    expect(missing).toEqual({ status: 'repaired', path: 'session-1-26-09-2023/nothing.mp4' });
-+    expect(repairReferencePath('session-1-26-09-2023/nothing.mp4', renames, known).status).toBe('attention');
-     // A foreign link, and a link carrying a query, are left exactly as they are.
-     const base = 'https://192.168.0.20:5010/setar-classes';
-     expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
-@@ -838,6 +861,22 @@ describe('reconciling the archive with the owner’s own records', () => {
-     const personalRepair = repairLessonReferences(personal, renames, known);
-     expect(personalRepair.lesson.recordings).toHaveLength(1);
-     expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
-+    // ONE NAMESPACE PER ARCHIVE-OWNED LESSON. The device base is the archive
-+    // ROOT, so the legacy folder segment comes OFF even though the index
-+    // describes nothing at this path: it names the same bytes in the words the
-+    // base addresses. Leaving it on is what made a corrected base kill exactly
-+    // the references a refresh never touches — the owner's own practice takes.
-+    expect(personalRepair.lesson.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
-+    // Saying so is NOT saying the file is there: no attention row is raised,
-+    // because the index describes only material scoped to pieces and classes.
-+    expect(personalRepair.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
-+    // …and it is IDEMPOTENT: once said in the current namespace there is
-+    // nothing left to change, so a second refresh writes nothing.
-+    expect(repairReferencePath('session-25-05-08-2025/mine.mp4', renames, known)).toEqual({
-+      status: 'attention',
-+      reason: 'The archive no longer has a file at this path.',
-+      code: 'not-described',
-+    });
-     // The archive never offers a personal recording as material for a piece.
-     const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
-     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
-@@ -886,15 +925,34 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
-     expect(validateArchiveSources(installedLegacy)).toBeNull();
- 
--    // The owner's own practice takes are RETAINED, untouched — and never
--    // reported missing. The index describes only material scoped to pieces and
--    // classes, so a path it does not name is outside what it knows, never
--    // evidence that the file is gone.
-+    // The owner's own practice takes are RETAINED and never reported missing —
-+    // the index describes only material scoped to pieces and classes, so a path
-+    // it does not name is outside what it knows, never evidence that the file is
-+    // gone. RETAINED IS NOT THE SAME CLAIM AS LEFT IN THE OLD NAMESPACE: the row,
-+    // its title and its notes are the owner's and are untouched, while the path
-+    // text is said in the one namespace the device base addresses, exactly like
-+    // every described row on the same class.
-     const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
--    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
-+    expect(storedPersonal.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
-     expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
-+    expect(storedPersonal.recordings![0]!.title).toBe('My take, August');
-     expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
--
-+    // NO ARCHIVE-OWNED LESSON IS LEFT HOLDING TWO NAMESPACES AT ONCE. This is
-+    // the invariant the fix is actually for: resolving any of these against the
-+    // device base (the archive root) must not produce `…/setar-classes/…`.
-+    // …proved against the RESOLVER and the owner's own Mac archive base, because
-+    // the namespace only matters at the moment a file is opened: the reported
-+    // failure was a URL, not a stored string.
-+    const macBase = 'https://192.168.0.20:5010/setar-classes';
-+    for (const l of installedLegacy.lessons) {
-+      if (!l.source) continue;
-+      for (const r of l.recordings ?? []) {
-+        expect(r.path.startsWith('setar-classes/')).toBe(false);
-+        expect(resolveRecordingUrl(macBase, r)).toMatch(
-+          /^https:\/\/192\.168\.0\.20:5010\/setar-classes\/session-[^/]+\/[^/]+$/,
-+        );
-+      }
-+    }
-     // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
-     // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
-     // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
-@@ -940,6 +998,10 @@ describe('reconciling the archive with the owner’s own records', () => {
-     expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
- 
-     // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
-+    // WRITE-ONCE AT THE LEVEL THE RULE IS ACTUALLY STATED. Saying an undescribed
-+    // path in the current namespace counts as a repair on lessons that used to
-+    // count none, which is exactly what could have made EVERY later refresh a
-+    // write; this is where that would show.
-     const again = plan(installedLegacy);
-     expect(again.repairedLessons).toEqual([]);
-     expect(again.summary.unchanged).toBe(true);
-diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
-index 1ad0529..e839874 100644
-Binary files a/src/domain/sourceReconcile.ts and b/src/domain/sourceReconcile.ts differ
-diff --git a/src/pages/Lessons.tsx b/src/pages/Lessons.tsx
-index 124c564..2ad4713 100644
---- a/src/pages/Lessons.tsx
-+++ b/src/pages/Lessons.tsx
-@@ -642,7 +642,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
-           />
-           <input
-             className="input"
--            placeholder="NAS path or https:// link — e.g. setar-classes/session-37/class.mp4 or …/score.pdf"
-+            placeholder="Path under the archive base, or an https:// link — e.g. session-37-09-07-2026/class.mp4"
-             value={path}
-             onChange={(e) => setPath(e.target.value)}
-           />
-diff --git a/src/pages/Settings.tsx b/src/pages/Settings.tsx
-index 88e62da..6328d1b 100644
---- a/src/pages/Settings.tsx
-+++ b/src/pages/Settings.tsx
-@@ -509,8 +509,16 @@ function SyncSection() {
- 
- /**
-  * NAS recordings: the base URL that resolves relative class-recording paths,
-- * plus a one-tap importer for the Setar class history. Full videos never enter
-- * the app — only these references do.
-+ * plus the Setar archive refresh. Full videos never enter the app — only these
-+ * references do.
-+ *
-+ * THE BASE IS THE ARCHIVE FOLDER ITSELF, not the media root above it. Every
-+ * reference the app stores is relative to the ARCHIVE root (`session-39-…/…`),
-+ * so a base of `https://nas:5010` resolves a class recording to
-+ * `https://nas:5010/session-39-…/…` — a URL that addresses no file. This label
-+ * used to name the media root, and to promise that changing the base broke
-+ * nothing; it is the one setting a device carries from before the archive
-+ * existed, and correcting it is a one-off the copy here has to ask for.
-  */
- function NasRecordingsSection() {
-   const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
-@@ -534,11 +542,12 @@ function NasRecordingsSection() {
-       <div className="card stack-sm">
-         <div className="small dim">
-           Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
--          to each recording; set the base URL that serves your recording folders and the links resolve against it.
-+          to each recording; set the address of the <strong style={{ color: 'var(--text)' }}>archive folder itself</strong>{' '}
-+          and the links resolve against it.
-         </div>
-         <Field
--          label="NAS recordings base URL"
--          hint="e.g. https://192.168.0.20:5010 — relative recording paths are joined onto this. Stored on this device only; never synced, never a password. Change it freely: references are stored relative to it, so nothing breaks. See DECISIONS.md for what is serving the folder."
-+          label="Setar archive base URL"
-+          hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes. References are stored relative to this (session-39-…/…), so a base one folder too high resolves every file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each device sets its own route to the same archive."
-         >
-           <input
-             className="input"
-@@ -548,7 +557,7 @@ function NasRecordingsSection() {
-             autoCapitalize="none"
-             autoCorrect="off"
-             spellCheck={false}
--            placeholder="https://192.168.0.20:5010"
-+            placeholder="https://192.168.0.20:5010/setar-classes"
-             value={baseUrl}
-             onChange={(e) => setBaseUrlState(e.target.value)}
-             onBlur={commitBaseUrl}
-@@ -564,8 +573,9 @@ function NasRecordingsSection() {
- 
-         <div className="row between" style={{ gap: 8 }}>
-           <div className="tiny faint">
--            Browse the NAS to find a file, then copy its URL and paste it into a lesson — a URL under this base is
--            stored as a relative path, so it keeps working whatever route a device takes to the NAS.
-+            Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy a
-+            file's URL from there and paste it into a lesson: a URL under this base is stored as a relative path, so it
-+            keeps working whatever route a device takes to the NAS.
-           </div>
-           <button
-             className="btn btn-sm"
 diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
-index e80781a..6113bd4 100644
+index 6113bd4..3f60bbe 100644
 --- a/tests/practiceBrowser.ts
 +++ b/tests/practiceBrowser.ts
-@@ -28,54 +28,53 @@ const installHint = (engine: Engine) =>
-   'and an engine quietly missed is the same thing as an engine never checked.';
- 
+@@ -30,17 +30,32 @@ const installHint = (engine: Engine) =>
  /**
-- * ONE recorded outcome of a network request the harness watched, cancelled or
-- * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
-- * genuine failure to the same URL displace a stale cancellation instead of
-- * being excused by it (see `excusedCancellation`).
-+ * ONE recorded outcome of a network request the harness watched, whatever the
-+ * browser's own words for it were. Tracking EVERY failure — not only
-+ * cancellations — is what lets a later, genuine failure to the same URL
-+ * displace a stale cancellation instead of being excused by it (see
-+ * `excusedCancellation`).
+  * ONE recorded outcome of a network request the harness watched, whatever the
+  * browser's own words for it were. Tracking EVERY failure — not only
+- * cancellations — is what lets a later, genuine failure to the same URL
+- * displace a stale cancellation instead of being excused by it (see
+- * `excusedCancellation`).
++ * cancellations — is what lets genuine evidence for a resource VETO the excuse
++ * for that resource (see `excusedCancellation`).
   *
-  * A request the BROWSER cancelled because the test navigated away while it was
-  * in flight is not an application error. WebKit reports such a fetch as
-  * "Fetch API cannot load … due to access control checks", which reads exactly
-- * like a CORS problem and is not one: instrumented, the only difference
-- * between the passing and failing runs of the same journey is a single
-- * `requestfailed` with `errorText: 'cancelled'` for a request that is
-- * otherwise fulfilled with the right CORS headers every other time. A real
-- * person navigating mid-sync cancels the same request, so treating it as a
-- * page error makes a journey fail for driving the app quickly.
-+ * like a CORS problem and is not one: the request is otherwise fulfilled with
-+ * the right CORS headers every other time. A real person navigating mid-sync
-+ * cancels the same request, so treating it as a page error makes a journey
-+ * fail for driving the app quickly.
+- * A request the BROWSER cancelled because the test navigated away while it was
+- * in flight is not an application error. WebKit reports such a fetch as
+- * "Fetch API cannot load … due to access control checks", which reads exactly
+- * like a CORS problem and is not one: the request is otherwise fulfilled with
+- * the right CORS headers every other time. A real person navigating mid-sync
+- * cancels the same request, so treating it as a page error makes a journey
+- * fail for driving the app quickly.
++ * WHY THERE IS AN EXCUSE AT ALL, and exactly how far the evidence for it goes.
++ * A CI run produced `Fetch API cannot load https://api.github.com/repos/owner/
++ * practice-data/contents/README.md due to access control checks.` on two of
++ * three runners at a commit that passed on the third — a WebKit-only,
++ * CORS-shaped page error, while every other run fulfils that same request with
++ * the right CORS headers. A request the browser CANCELS because the test drove
++ * on while it was in flight is the standing explanation, and a real person
++ * navigating mid-sync cancels the same request, so failing a journey for it
++ * would be failing it for being driven quickly.
 + *
-+ * `errorText` is kept verbatim rather than reduced to a boolean, because it is
-+ * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
-+ * diagnosed page error is not excused, the failure has to say what the browser
-+ * actually said about that request, or the next CI-only failure is as
-+ * unreadable as the one this fix came from.
-  */
- export interface TrackedRequestFailure {
-   url: string;
-   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
-   at: number;
--  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
--  cancelled: boolean;
-+  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
-+  errorText: string;
- }
- 
- /**
-- * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
-- * work. It once was the whole bound: a cancelled URL's entry stayed eligible
-- * for this long, matched by host+path ALONE, so an unconsumed cancellation
-- * that never produced its own page error remained a live "credit" any LATER,
-+ * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
-+ * It once was the whole bound: a cancelled URL's entry stayed eligible for
-+ * this long, matched by host+path ALONE, so an unconsumed cancellation that
-+ * never produced its own page error remained a live "credit" any LATER,
++ * That explanation is NOT measured, and this comment used to state it as fact.
++ * Driving a real WebKit here, five different cancellation shapes — navigating
++ * away mid-flight, reloading mid-flight, `AbortController`, a same-tick
++ * `location.href`, a cancelled CORS preflight — each produced a
++ * `requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever.
++ * A reply that genuinely lacks CORS headers does produce exactly this page
++ * error, so a raced `route.fulfill` remains a live alternative explanation
++ * that cannot be settled from here.
++ *
++ * Which is precisely why the excuse below demands the strongest association
++ * the platform makes available and refuses on anything weaker: the pairing it
++ * exists for has never been observed, so it may never be INFERRED from a
++ * cancellation merely being nearby.
+  *
+  * `errorText` is kept verbatim rather than reduced to a boolean, because it is
+  * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
+@@ -63,12 +78,25 @@ export interface TrackedRequestFailure {
+  * never produced its own page error remained a live "credit" any LATER,
   * genuine access-control failure to that same URL could spend. That is a
   * sealed finding, not a hypothetical: a cancellation and a real failure are
-  * indistinguishable by wording or by URL, so a window — however short — can
-  * never be the thing that tells them apart. Only ORDER can: see
-  * `excusedCancellation` below for the correlation that actually does the work.
-- * What is left for this ceiling to do is bound how far back a request that
-- * WAS genuinely the nearest one may still be trusted, in case Node's delivery
-- * of the two events (`requestfailed`, then `pageerror`) is delayed under the
-- * contention five concurrent dev servers create; the diagnosis says the
-- * browser emits them in the same tick, so this is headroom, not a design
-- * tolerance the correlation depends on.
-+ * What is left for this ceiling to do is bound how far apart the two events
-+ * may be and still be treated as one outcome, in case Node's delivery is
-+ * delayed under the contention several concurrent dev servers create.
+- * indistinguishable by wording or by URL, so a window — however short — can
+- * never be the thing that tells them apart. Only ORDER can: see
+- * `excusedCancellation` below for the correlation that actually does the work.
+- * What is left for this ceiling to do is bound how far apart the two events
+- * may be and still be treated as one outcome, in case Node's delivery is
+- * delayed under the contention several concurrent dev servers create.
++ * indistinguishable by wording, so a window — however short — can never be
++ * the thing that tells them apart.
++ *
++ * NOR CAN PROXIMITY, AT ANY RESOLUTION. Replacing the window with "whichever
++ * tracked failure sits NEAREST the error wins" was the previous attempt, and
++ * measuring it is what killed it: a genuine access-control failure emits its
++ * own `requestfailed` 74–359µs after its page error (six of six, macOS WebKit),
++ * which reads as a gap of 0ms or 1ms at `Date.now()` granularity depending on
++ * which side of a millisecond boundary the pair straddles. An unrelated
++ * cancellation to the same resource landing in the error's own millisecond
++ * therefore OUTRANKS a genuine failure 359µs away, and excuses it. Sub-
++ * millisecond timestamps would only move that boundary, not remove it.
++ *
++ * What separates them is `excusedCancellation`'s VETO — genuine evidence for
++ * the same resource forbids the excuse outright, however far away it sits —
++ * and the full-URL identity `sameResource` insists on. All this ceiling does
++ * is bound how far apart two events may be and still be considered one
++ * outcome at all, in case Node's delivery is delayed under the contention
++ * several concurrent dev servers create.
   */
  export const CANCELLED_EXCUSE_MS = 2_000;
  
- /**
-- * Extract the URL a diagnosed WebKit access-control message names, or `null`
-- * if the message is not that shape at all (a render crash, a thrown
-- * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
-- * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
-- * host that a real URL never has, which this strips before parsing.
-+ * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
-+ * `XMLHttpRequest`), anchored end to end.
+@@ -76,8 +104,8 @@ export const CANCELLED_EXCUSE_MS = 2_000;
+  * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
+  * `XMLHttpRequest`), anchored end to end.
   *
-  * The whole point of parsing into a real `URL` and comparing `host` and
-  * `pathname` by EQUALITY, rather than testing whether the message merely
-@@ -83,52 +82,66 @@ export const CANCELLED_EXCUSE_MS = 2_000;
+- * The whole point of parsing into a real `URL` and comparing `host` and
+- * `pathname` by EQUALITY, rather than testing whether the message merely
++ * The whole point of parsing into a real `URL` and comparing its parts by
++ * EQUALITY (`sameResource`), rather than testing whether the message merely
+  * CONTAINS a candidate's host/path as substrings, is that a substring test
   * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
   * the left) or `api.github.com.evil.test` (extended on the right), nor
-  * `/state.json` from `/state.json.bak` — every one of which contains the
-- * genuine value as a substring. Anchoring the match to the exact text
-- * between the fixed "cannot load " / " due to access control checks" phrases
-- * — the only text WebKit ever puts there — removes the ambiguity outright
-- * instead of trying to out-guess it with boundary characters.
-+ * genuine value as a substring. Anchoring the match to the exact text between
-+ * the fixed "cannot load " / " due to access control checks" phrases — the
-+ * only text WebKit ever puts there — removes the ambiguity outright instead
-+ * of trying to out-guess it with boundary characters.
+@@ -134,59 +162,60 @@ function reportedUrl(error: { name?: string; message: string }): URL | null {
+   return null;
+ }
+ 
+-/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
+-function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
+-  let best = -1;
+-  let bestGap = Infinity;
+-  for (let i = 0; i < events.length; i++) {
+-    const e = events[i];
+-    const gap = Math.abs(at - e.at);
+-    if (gap > CANCELLED_EXCUSE_MS) continue;
+-    let url: URL;
+-    try {
+-      url = new URL(e.url);
+-    } catch {
+-      continue;
+-    }
+-    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
+-    // A TIE is never resolved in the excuse's favour: with two candidates the
+-    // same distance away, the one that is NOT a cancellation wins, so a stale
+-    // cancellation landing in the same millisecond as a genuine failure cannot
+-    // excuse it.
+-    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
+-    if (best < 0 || better) {
+-      best = i;
+-      bestGap = gap;
+-    }
++/**
++ * Do a tracked request's URL and the one a page error NAMES address the same
++ * resource? Host, path AND QUERY, all three by structural equality.
 + *
-+ * There is deliberately no tolerance for whitespace between the scheme and
-+ * the host. An earlier version of this regex allowed it, describing a space
-+ * WebKit was said to insert; measured — macOS WebKit locally and Linux WebKit
-+ * in CI — no such space exists, and the apparent one was an artefact of how
-+ * the two halves below are put back together.
-  */
--function reportedUrl(message: string): URL | null {
--  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
--    message.trim(),
--  );
--  if (!m) return null;
--  try {
--    return new URL(`${m[1]}://${m[2]}`);
--  } catch {
--    return null;
--  }
--}
-+const DIAGNOSIS = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/(\S+) due to access control checks\.?$/;
++ * THE QUERY IS THE PART THIS USED TO THROW AWAY, and a sealed finding is what
++ * it cost: matching host+path alone makes
++ * `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` — two
++ * different requests the app really does make, one after the other — the same
++ * resource, so a cancellation of one stood ready to excuse a genuine failure
++ * of the other. WebKit names the FULL url in the diagnosis, query included
++ * (measured, macOS WebKit: `…/state.json?ref=main&x=1 due to access control
++ * checks.`), so this identity is available and there is no reason to discard
++ * it.
++ *
++ * THE FRAGMENT IS THE ONE PART THAT MUST BE IGNORED, and comparing `href`
++ * would get that wrong: a fragment never reaches the network, so
++ * `request.url()` drops it — while WebKit's message keeps it verbatim
++ * (measured: message `…/state.json#frag`, request url `…/state.json`). Naming
++ * `host`/`pathname`/`search` explicitly is what keeps a later tidy-up to
++ * `href` from silently killing the excuse for every fragment-bearing URL.
++ */
++function sameResource(trackedUrl: string, reported: URL): boolean {
++  let url: URL;
++  try {
++    url = new URL(trackedUrl);
++  } catch {
++    return false;
+   }
+-  return best;
++  return url.host === reported.host && url.pathname === reported.pathname && url.search === reported.search;
+ }
  
  /**
-- * The excuse correlates on ORDER, not on a window: among every tracked
-- * request to the exact host+path the message names, the one that actually
-- * produced this page error is whichever happened MOST RECENTLY before it —
-- * because the diagnosis is that WebKit emits the spurious error in the same
-- * tick as the cancellation that caused it, so nothing else to that URL can
-- * have intervened by the time it arrives. That is precisely what makes a
-- * cancellation with NO page error of its own safe to leave sitting in the
-- * log rather than needing to expire it: the moment anything else — above
-- * all a genuine failure — touches that same URL, THAT becomes the nearest
-- * candidate and the stale cancellation is never reached again. A stale
-- * cancellation can therefore only ever be reached by a page error that has
-- * nothing more recent competing for it, which is exactly the case it is
-- * supposed to excuse.
-+ * Extract the URL a diagnosed WebKit access-control page error names, or
-+ * `null` if it is not that shape at all (a render crash, a thrown TypeError —
-+ * never excused).
+- * The excuse correlates on ORDER, not on a window: among every tracked request
+- * to the exact host+path the error names, the one that actually produced it is
+- * whichever happened NEAREST IN TIME — because the browser emits the spurious
+- * error and the request's own failure in the same tick, so nothing else to
+- * that URL can have intervened.
++ * The excuse correlates on IDENTITY plus a VETO, never on proximity.
+  *
+- * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
+- * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
+- * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
+- * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
+- * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
+- * request. A backwards-only search therefore looked at an empty log and
+- * excused nothing — the second reason this excuse had never once fired against
+- * a real error. The sealed invariant it was written to protect is untouched by
+- * the correction: a genuine failure ALWAYS emits its own `requestfailed`
+- * adjacent to its own page error, so it is always the nearest candidate, and a
+- * stale cancellation sitting milliseconds away can never outrank it.
++ * Among the tracked failures for the exact resource the error names, within
++ * the defensive ceiling:
   *
 - * If the nearest candidate is not a cancellation at all — a genuine failure,
-- * or nothing within the ceiling — this returns `false` and excuses nothing:
-- * an uncertain correlation is never resolved in the excuse's favour.
-+ * THE ERROR ARRIVES IN TWO HALVES, AND NEITHER HALF ALONE IS THE DIAGNOSIS.
-+ * Playwright splits every page error into `name`/`message` at the FIRST colon,
-+ * dropping one character after it (`splitErrorMessage`). The first colon in
-+ * this diagnosis is the URL's own scheme colon, so the text WebKit emitted
-+ *
-+ *     Fetch API cannot load https://api.github.com/… due to access control checks.
-+ *
-+ * reaches a test as
+- * or nothing within the ceiling — this returns `false` and excuses nothing: an
+- * uncertain correlation is never resolved in the excuse's favour.
++ *  - if ANY of them is NOT a cancellation, nothing is excused. A genuine
++ *    access-control failure always emits its own `requestfailed` beside its
++ *    own page error (measured: 74–359µs after it, six times out of six), so
++ *    the presence of genuine evidence for this exact resource means the
++ *    cancellation's ownership of this error is unproven — and an unproven
++ *    correlation is never resolved in the excuse's favour. This is a veto, not
++ *    a ranking: it holds however far away the genuine failure sits, which is
++ *    what the previous "whichever is nearest wins" rule could not do. At
++ *    `Date.now()` granularity a genuine pair straddling a millisecond boundary
++ *    reads as 1ms apart, so an unrelated cancellation in the error's own
++ *    millisecond used to outrank it and excuse a real failure;
++ *  - otherwise the nearest cancellation is CONSUMED, so it cannot excuse a
++ *    second error too. Nearest only chooses WHICH interchangeable cancellation
++ *    to spend here; it no longer decides WHETHER anything may be spent.
   *
-- * The match is CONSUMING: the winning entry is removed, so it cannot excuse
-- * a second, later error too.
-+ *     name:    'Fetch API cannot load https'
-+ *     message: '/api.github.com/… due to access control checks.'
-+ *
-+ * — MEASURED, identically, on macOS WebKit here and on Linux WebKit in CI.
-+ * Matching `message` alone (which is what this used to do) can therefore never
-+ * succeed against a real error, on any platform: the excuse was dead code, and
-+ * the first CI run that actually produced the error is what exposed it.
-+ * Rejoining with the dropped `:/` recovers the original text. The unsplit
-+ * form is tried as well, so a representation that ever stops being split is
-+ * still understood; both go through the same anchored regex, so a wrong
-+ * reconstruction simply fails to match rather than matching something loosely.
+- * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
+- * second, later error too.
++ * A message that is not the diagnosis at all — a render crash, a thrown
++ * TypeError, whatever URL it happens to name — is never excused.
   */
--export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
--  const reported = reportedUrl(message);
--  if (!reported) return false;
--  let nearest = -1;
-+function reportedUrl(error: { name?: string; message: string }): URL | null {
-+  for (const text of [error.message, `${error.name ?? ''}:/${error.message}`]) {
-+    const m = DIAGNOSIS.exec(text.trim());
-+    if (!m) continue;
-+    try {
-+      return new URL(`${m[1]}://${m[2]}`);
-+    } catch {
-+      return null;
-+    }
-+  }
-+  return null;
-+}
-+
-+/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
-+function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
+ export function excusedCancellation(
+   events: TrackedRequestFailure[],
+@@ -195,9 +224,21 @@ export function excusedCancellation(
+ ): boolean {
+   const reported = reportedUrl(error);
+   if (!reported) return false;
+-  const nearest = nearestIndex(events, reported, at);
+-  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
+-  events.splice(nearest, 1);
 +  let best = -1;
 +  let bestGap = Infinity;
-   for (let i = 0; i < events.length; i++) {
-     const e = events[i];
--    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
++  for (let i = 0; i < events.length; i++) {
++    const e = events[i];
 +    const gap = Math.abs(at - e.at);
 +    if (gap > CANCELLED_EXCUSE_MS) continue;
-     let url: URL;
-     try {
-       url = new URL(e.url);
-@@ -136,21 +149,109 @@ export function excusedCancellation(events: TrackedRequestFailure[], message: st
-       continue;
-     }
-     if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
--    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
-+    // A TIE is never resolved in the excuse's favour: with two candidates the
-+    // same distance away, the one that is NOT a cancellation wins, so a stale
-+    // cancellation landing in the same millisecond as a genuine failure cannot
-+    // excuse it.
-+    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
-+    if (best < 0 || better) {
++    if (!sameResource(e.url, reported)) continue;
++    if (e.errorText !== 'cancelled') return false;
++    if (gap < bestGap) {
 +      best = i;
 +      bestGap = gap;
 +    }
-   }
--  if (nearest < 0 || !events[nearest].cancelled) return false;
-+  return best;
-+}
-+
-+/**
-+ * The excuse correlates on ORDER, not on a window: among every tracked request
-+ * to the exact host+path the error names, the one that actually produced it is
-+ * whichever happened NEAREST IN TIME — because the browser emits the spurious
-+ * error and the request's own failure in the same tick, so nothing else to
-+ * that URL can have intervened.
-+ *
-+ * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
-+ * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
-+ * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
-+ * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
-+ * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
-+ * request. A backwards-only search therefore looked at an empty log and
-+ * excused nothing — the second reason this excuse had never once fired against
-+ * a real error. The sealed invariant it was written to protect is untouched by
-+ * the correction: a genuine failure ALWAYS emits its own `requestfailed`
-+ * adjacent to its own page error, so it is always the nearest candidate, and a
-+ * stale cancellation sitting milliseconds away can never outrank it.
-+ *
-+ * If the nearest candidate is not a cancellation at all — a genuine failure,
-+ * or nothing within the ceiling — this returns `false` and excuses nothing: an
-+ * uncertain correlation is never resolved in the excuse's favour.
-+ *
-+ * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
-+ * second, later error too.
-+ */
-+export function excusedCancellation(
-+  events: TrackedRequestFailure[],
-+  error: { name?: string; message: string },
-+  at: number,
-+): boolean {
-+  const reported = reportedUrl(error);
-+  if (!reported) return false;
-+  const nearest = nearestIndex(events, reported, at);
-+  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
-   events.splice(nearest, 1);
++  }
++  if (best < 0) return false;
++  events.splice(best, 1);
    return true;
  }
  
-+/**
-+ * What the harness saw around a diagnosed page error it did NOT excuse, in one
-+ * sentence, so the assertion that keeps it says why.
-+ *
-+ * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
-+ * that reads like a CORS misconfiguration whatever actually happened — which
-+ * is exactly how a CI-only failure became unreadable. Naming the browser's own
-+ * `errorText` for every tracked request to that same resource, and how far
-+ * each sat from the error, turns the next one into evidence instead of a
-+ * guess. Non-consuming and never an excuse: it only describes.
-+ */
-+export function cancellationEvidence(
-+  events: TrackedRequestFailure[],
-+  error: { name?: string; message: string },
-+  at: number,
-+): string {
-+  const reported = reportedUrl(error);
-+  if (!reported) return '';
-+  const where = `${reported.host}${reported.pathname}`;
-+  const near = events
-+    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
-+    .filter((e) => {
-+      try {
-+        const url = new URL(e.url);
-+        return url.host === reported.host && url.pathname === reported.pathname;
-+      } catch {
-+        return false;
-+      }
-+    })
-+    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
-+  return near.length
-+    ? `tracked request failures for ${where}: ${near.join('; ')}`
-+    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
-+}
-+
- export interface PracticeApp {
-   page: Page;
-   /** The dev server origin this journey is isolated on. */
-   origin: string;
-   /** Which engine this journey is actually running in. */
-   engine: Engine;
--  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
--  pageErrors: Error[];
-+  /**
-+   * Uncaught page errors, so a broken render cannot pass as a quiet one.
-+   *
-+   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
-+   * about a mid-flight request BEFORE that request's own `requestfailed`, so
-+   * deciding at arrival time is deciding against a log that has not been
-+   * written yet. Reading this at the end of a journey — which is when a
-+   * journey asserts on it — has every event in hand.
-+   */
-+  readonly pageErrors: Error[];
-   close(): Promise<void>;
- }
- 
-@@ -199,7 +300,12 @@ export async function openPracticeApp(options: {
- 
-   let context: BrowserContext;
+@@ -219,7 +260,12 @@ export function cancellationEvidence(
+ ): string {
+   const reported = reportedUrl(error);
+   if (!reported) return '';
+-  const where = `${reported.host}${reported.pathname}`;
++  const where = `${reported.host}${reported.pathname}${reported.search}`;
++  // DELIBERATELY BROADER THAN THE EXCUSE: same host and path, whatever the
++  // query. A failure to the same path under a DIFFERENT query is exactly what
++  // the excuse must refuse to act on and exactly what the reader of a CI-only
++  // failure needs to see, so each row prints its own full url and says whether
++  // it was the same resource the error named.
+   const near = events
+     .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
+     .filter((e) => {
+@@ -230,7 +276,11 @@ export function cancellationEvidence(
+         return false;
+       }
+     })
+-    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
++    .map(
++      (e) =>
++        `${e.url} — ${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms` +
++        `${sameResource(e.url, reported) ? '' : ' (different query — not the resource this error names)'}`,
++    );
+   return near.length
+     ? `tracked request failures for ${where}: ${near.join('; ')}`
+     : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
+@@ -246,9 +296,9 @@ export interface PracticeApp {
+    * Uncaught page errors, so a broken render cannot pass as a quiet one.
+    *
+    * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
+-   * about a mid-flight request BEFORE that request's own `requestfailed`, so
+-   * deciding at arrival time is deciding against a log that has not been
+-   * written yet. Reading this at the end of a journey — which is when a
++   * about a request BEFORE that request's own `requestfailed` (measured:
++   * 74–359µs ahead, six times out of six), so deciding at arrival time is
++   * deciding against a log that has not been written yet. Reading this at the end of a journey — which is when a
+    * journey asserts on it — has every event in hand.
+    */
+   readonly pageErrors: Error[];
+@@ -302,9 +352,9 @@ export async function openPracticeApp(options: {
    let page: Page;
-+  const pending: { error: Error; at: number }[] = [];
+   const pending: { error: Error; at: number }[] = [];
    const pageErrors: Error[] = [];
-+  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
-+  // to be visible to `excusedCancellation` so it can outrank a stale
-+  // cancellation to the same URL, not just a cancellation itself.
-+  const requestFailures: TrackedRequestFailure[] = [];
+-  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
+-  // to be visible to `excusedCancellation` so it can outrank a stale
+-  // cancellation to the same URL, not just a cancellation itself.
++  // EVERY requestfailed is tracked, cancelled or not — genuine evidence for a
++  // resource has to be visible to `excusedCancellation` for its veto to fire,
++  // not just the cancellations.
+   const requestFailures: TrackedRequestFailure[] = [];
    try {
      context = await browser.newContext({
-       viewport: options.viewport ?? { width: 390, height: 844 },
-@@ -213,18 +319,15 @@ export async function openPracticeApp(options: {
-     page.on('dialog', (d) => {
-       void d.accept().catch(() => {});
-     });
--    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
--    // has to be visible to `excusedCancellation` so it can outrank a stale
--    // cancellation to the same URL, not just a cancellation itself.
--    const requestFailures: TrackedRequestFailure[] = [];
-     page.on('requestfailed', (r) => {
--      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
-+      requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
-     });
-     // Surface a page-level error instead of letting it become a silently
--    // wrong assertion later.
-+    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
-+    // the request failure that explains a cancelled one has not been
-+    // delivered yet at this point.
-     page.on('pageerror', (e) => {
--      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
--      pageErrors.push(e);
-+      pending.push({ error: e, at: Date.now() });
-     });
-     await page.clock.install({ time: options.now });
-     await page.goto(origin);
-@@ -240,11 +343,30 @@ export async function openPracticeApp(options: {
-     throw e;
-   }
- 
-+  /**
-+   * Drain everything that arrived since the last read: excuse each page error
-+   * a cancellation accounts for, and KEEP the rest — annotated with what the
-+   * harness actually saw around them, so a refusal to excuse is readable
-+   * rather than another bare CORS-shaped message. Idempotent: a drained error
-+   * stays resolved, so reading twice reports the same list.
-+   */
-+  const resolve = (): Error[] => {
-+    for (const { error, at } of pending.splice(0)) {
-+      if (excusedCancellation(requestFailures, error, at)) continue;
-+      const evidence = cancellationEvidence(requestFailures, error, at);
-+      if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
-+      pageErrors.push(error);
-+    }
-+    return pageErrors;
-+  };
-+
-   return {
-     page,
-     origin,
-     engine,
--    pageErrors,
-+    get pageErrors() {
-+      return resolve();
-+    },
-     async close() {
-       await browser.close();
-       await server.close();
-diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
-index 53f895b..e279f5d 100644
---- a/tests/setarArchive.browser.test.ts
-+++ b/tests/setarArchive.browser.test.ts
-@@ -359,7 +359,12 @@ describe('the Setar archive, rendered', () => {
-           expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
-           expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
-           expect(persisted.blocks).toHaveLength(1);
--          expect(app.pageErrors).toEqual([]);
-+          // MESSAGES, not Error objects: `toEqual([])` on an array of Errors
-+          // reports "expected [ …(1) ] to deeply equal []" and nothing else,
-+          // so the one thing a CI-only failure needs to say — what the browser
-+          // actually reported, and what the harness saw around it — is exactly
-+          // what it withholds. Every other journey already asserts this way.
-+          expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-         } finally {
-           await app.close();
-         }
+@@ -632,7 +682,6 @@ export function publishSourceIndex(remote: FakeRemote, text: string, commit = 's
+ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
+   let headCounter = 0;
+   const blobs = new Map<string, string>();
+-
+   await page.route('https://api.github.com/**', async (route) => {
+     const req = route.request();
+     const url = new URL(req.url());
 diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
-index 2b9b4a1..0a9961f 100644
+index 0a9961f..ed92eba 100644
 --- a/tests/setarInbound.browser.test.ts
 +++ b/tests/setarInbound.browser.test.ts
-@@ -1,4 +1,6 @@
- import { execFileSync } from 'node:child_process';
-+import { createServer } from 'node:http';
-+import type { AddressInfo } from 'node:net';
- import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
- import { tmpdir } from 'node:os';
- import { join } from 'node:path';
-@@ -12,6 +14,7 @@ import {
-   importOutcome,
-   installFakeGitHub,
-   newFakeRemote,
-+  cancellationEvidence,
-   excusedCancellation,
-   openPracticeApp,
-   persistedDb,
-@@ -507,10 +510,10 @@ describe('rolling back past the archive schema', () => {
- 
+@@ -511,9 +511,10 @@ describe('rolling back past the archive schema', () => {
  describe('the journey harness itself', () => {
    // The harness must not be able to hide the very failure a journey exists to
--  // catch. A request the browser CANCELLED (because the test navigated away
--  // mid-flight) produces a WebKit error that reads exactly like a CORS
--  // failure. Excusing it has failed two different ways so far, and each test
--  // below is named for the specific way:
-+  // catch, and it must not manufacture one either. A request the browser
-+  // CANCELLED (because the test navigated away mid-flight) produces a WebKit
-+  // error that reads exactly like a CORS failure. Excusing it has now failed
-+  // four different ways, and each test below is named for the specific way:
+   // catch, and it must not manufacture one either. A request the browser
+-  // CANCELLED (because the test navigated away mid-flight) produces a WebKit
+-  // error that reads exactly like a CORS failure. Excusing it has now failed
+-  // four different ways, and each test below is named for the specific way:
++  // CANCELLED (because the test drove on mid-flight) is the standing
++  // explanation for a WebKit page error that reads exactly like a CORS
++  // failure. Excusing it has now failed five different ways, and each test
++  // below is named for the specific way:
    //  - a PERMANENT set of cancelled URLs discarded every later page error
    //    whose message merely contained that pathname, so a genuine failure at
    //    the same path, later in the same journey, was swallowed and
-@@ -521,31 +524,97 @@ describe('the journey harness itself', () => {
+@@ -522,9 +523,7 @@ describe('the journey harness itself', () => {
+   //    generous time window, an unconsumed cancellation — one that produced
+   //    no page error of its own — stayed a live "credit" for up to that whole
    //    window, spendable by a genuine, later failure to the same URL that had
-   //    nothing to do with it. A window can never tell the two apart, because
-   //    a cancellation's error and a genuine one read identically; only ORDER
--  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
-+  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`);
-+  //  - the excuse read the page error's `message` ALONE, which never contains
-+  //    the diagnosis: Playwright splits a page error at its first colon — the
-+  //    URL's own scheme colon — so the wording lives in `name` and only the
-+  //    tail lives in `message`. Every string these tests used to assert on was
-+  //    a hand-written reconstruction that no browser ever emits;
-+  //  - and the correlation looked only BACKWARDS in time, on the stated
-+  //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
-+  //    Measured, WebKit delivers them the other way round. Against a real
-+  //    error the log was still empty when the excuse ran.
-+  // Both of the last two were exposed by the same CI run: the journey passed
-+  // on one runner and failed on two others at the identical commit, because
-+  // the error had simply never been produced locally before.
+-  //    nothing to do with it. A window can never tell the two apart, because
+-  //    a cancellation's error and a genuine one read identically; only ORDER
+-  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`);
++  //    nothing to do with it;
+   //  - the excuse read the page error's `message` ALONE, which never contains
+   //    the diagnosis: Playwright splits a page error at its first colon — the
+   //    URL's own scheme colon — so the wording lives in `name` and only the
+@@ -533,10 +532,19 @@ describe('the journey harness itself', () => {
+   //  - and the correlation looked only BACKWARDS in time, on the stated
+   //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
+   //    Measured, WebKit delivers them the other way round. Against a real
+-  //    error the log was still empty when the excuse ran.
+-  // Both of the last two were exposed by the same CI run: the journey passed
+-  // on one runner and failed on two others at the identical commit, because
+-  // the error had simply never been produced locally before.
++  //    error the log was still empty when the excuse ran;
++  //  - and, the finding this block was last reworked for, the correlation
++  //    that replaced the window — "whichever tracked failure sits NEAREST the
++  //    error wins", on host+path — threw away the QUERY, so two different
++  //    requests to one path were one resource, and rested the whole safety
++  //    claim on PROXIMITY, which the measurement below shows cannot carry it:
++  //    a genuine failure's own `requestfailed` lands 74–359µs after its page
++  //    error, which reads as 0ms or 1ms depending on which side of a
++  //    millisecond boundary the pair straddles, so an unrelated cancellation
++  //    in the error's own millisecond outranked it.
++  // The middle two were exposed by the same CI run: the journey passed on one
++  // runner and failed on two others at the identical commit, because the
++  // error had simply never been produced locally before.
    const url = 'https://api.github.com/repos/owner/data/contents/state.json';
--  const spurious =
--    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
-+
-+  /**
-+   * The diagnosis AS A TEST ACTUALLY RECEIVES IT — the two halves Playwright
-+   * splits it into. Measured against Playwright's own WebKit, and identical
-+   * to the representation the failing CI run reported.
-+   */
-+  const diagnosed = (target = url) => {
-+    const u = new URL(target);
-+    return {
-+      name: `Fetch API cannot load ${u.protocol.replace(':', '')}`,
-+      message: `/${u.host}${u.pathname} due to access control checks.`,
-+    };
-+  };
-+  const spurious = diagnosed();
+ 
+   /**
+@@ -548,18 +556,34 @@ describe('the journey harness itself', () => {
+     const u = new URL(target);
+     return {
+       name: `Fetch API cannot load ${u.protocol.replace(':', '')}`,
+-      message: `/${u.host}${u.pathname} due to access control checks.`,
++      message: `/${u.host}${u.pathname}${u.search}${u.hash} due to access control checks.`,
+     };
+   };
+   const spurious = diagnosed();
    const at = 1_000_000;
--  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
--  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
-+  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, errorText: 'cancelled' });
-+  const genuine = (offset = 0): TrackedRequestFailure => ({
-+    url,
+-  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, errorText: 'cancelled' });
+-  const genuine = (offset = 0): TrackedRequestFailure => ({
+-    url,
++  const cancelled = (offset = 0, target = url): TrackedRequestFailure => ({
++    url: target,
 +    at: at + offset,
-+    errorText: 'Origin http://localhost:5173 is not allowed by Access-Control-Allow-Origin. Status code: 200',
++    errorText: 'cancelled',
 +  });
- 
--  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
--    const pending = [cancelled()];
--    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
--    // CONSUMED — the identical message arriving again has no cancellation
--    // left to account for it, which is the ORIGINAL reviewer counterexample.
--    expect(pending).toEqual([]);
--    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
-+  it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
-+    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
-+    const fromCI = {
-+      name: 'Fetch API cannot load https',
-+      message: '/api.github.com/repos/owner/practice-data/contents/README.md due to access control checks.',
-+    };
-+    const readme = 'https://api.github.com/repos/owner/practice-data/contents/README.md';
-+    expect(excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toBe(true);
-+
-+    // The message half ALONE is not the diagnosis and never matches: this is
-+    // the shape the excuse used to be handed, and why it never fired.
-+    expect(
-+      excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5),
-+    ).toBe(false);
-+
-+    // An UNSPLIT representation is understood too, so this does not depend on
-+    // Playwright continuing to split it.
-+    expect(
-+      excusedCancellation([cancelled()], { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` }, at + 5),
-+    ).toBe(true);
- 
-     // WebKit spells the same diagnosis for an XHR as well as for a fetch.
--    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
--    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
-+    expect(
-+      excusedCancellation([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
-+    ).toBe(true);
- 
-     // Only the DIAGNOSED wording is ever excused: a real render crash naming
-     // the same URL is a page error, not a cancellation.
--    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
--      false,
--    );
-+    expect(
-+      excusedCancellation([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
-+    ).toBe(false);
-+  });
-+
-+  it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
-+    // THE MEASURED ORDER: WebKit delivers the page error about a tenth of a
-+    // millisecond ahead of the request's own failure. A backwards-only search
-+    // saw an empty log here and excused nothing.
-+    const later = [cancelled(1)];
-+    expect(excusedCancellation(later, spurious, at)).toBe(true);
-+    expect(later).toEqual([]);
-+
-+    // The other order still works: one measurement is not a proof that the
-+    // reverse can never happen.
-+    const earlier = [cancelled(-1)];
-+    expect(excusedCancellation(earlier, spurious, at)).toBe(true);
-+    expect(earlier).toEqual([]);
-+  });
-+
-+  it('a cancellation excuses its own diagnosed error once', () => {
-+    const pending = [cancelled()];
-+    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
-+    // CONSUMED — the identical error arriving again has no cancellation left
-+    // to account for it, which is the ORIGINAL reviewer counterexample.
-+    expect(pending).toEqual([]);
-+    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
++  const genuine = (offset = 0, target = url): TrackedRequestFailure => ({
++    url: target,
+     at: at + offset,
+     errorText: 'Origin http://localhost:5173 is not allowed by Access-Control-Allow-Origin. Status code: 200',
    });
  
-   it('multiple cancellations to the same URL each excuse their own error and no more', () => {
-@@ -569,6 +638,22 @@ describe('the journey harness itself', () => {
++  /**
++   * Raise the diagnosis as a REAL uncaught page error, through the app's own
++   * page. A top-level `throw` in an injected script, NOT a timer callback:
++   * every journey installs `page.clock`, so a `setTimeout` here never fires at
++   * all and the error would never be delivered.
++   */
++  const raiseDiagnosis = async (app: { page: import('playwright').Page }, target: string): Promise<void> => {
++    await app.page.addScriptTag({
++      content: `throw new Error(${JSON.stringify(`Fetch API cannot load ${target} due to access control checks.`)});`,
++    });
++  };
++
+   it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
+     // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
+     const fromCI = {
+@@ -593,10 +617,54 @@ describe('the journey harness itself', () => {
+     ).toBe(false);
+   });
+ 
++  it('tells two requests to one path apart by their query, in both directions', () => {
++    // THE SEALED FINDING THIS BLOCK WAS REWORKED FOR. Host+path alone makes
++    // these one resource; they are two requests the app really does make, one
++    // after the other, when it reads the published index at two commits.
++    const refA = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-a';
++    const refB = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-b';
++
++    // A cancellation of ONE never excuses the diagnosis naming the OTHER —
++    // and the cancellation is left intact, not spent on something it does not
++    // account for.
++    const other = [cancelled(0, refA)];
++    expect(excusedCancellation(other, diagnosed(refB), at + 1)).toBe(false);
++    expect(other).toHaveLength(1);
++
++    // A query-less request is not the same resource as a query-bearing one,
++    // either way round.
++    const bare = 'https://api.github.com/repos/owner/data/contents/setar/index.json';
++    expect(excusedCancellation([cancelled(0, bare)], diagnosed(refA), at + 1)).toBe(false);
++    expect(excusedCancellation([cancelled(0, refA)], diagnosed(bare), at + 1)).toBe(false);
++    // Differing only in a query VALUE is enough; so is a differing key.
++    expect(
++      excusedCancellation([cancelled(0, `${bare}?ref=commit-a&page=2`)], diagnosed(refA), at + 1),
++    ).toBe(false);
++
++    // And the matching one still works, so this is identity, not blanket refusal.
++    const own = [cancelled(0, refA)];
++    expect(excusedCancellation(own, diagnosed(refA), at + 1)).toBe(true);
++    expect(own).toEqual([]);
++  });
++
++  it('ignores the fragment, which the message carries and the request never does', () => {
++    // MEASURED, macOS WebKit: the page error names `…/state.json#frag` while
++    // `request.url()` for the very same request reports `…/state.json` — a
++    // fragment is never sent. Comparing `href` would therefore break the
++    // excuse for every fragment-bearing URL; comparing host/path/search does
++    // not. (The app itself never fetches a fragment; this is what keeps a
++    // later tidy-up to `href` from silently killing the excuse.)
++    const own = [cancelled(0, url)];
++    expect(excusedCancellation(own, diagnosed(`${url}#frag`), at + 1)).toBe(true);
++    expect(own).toEqual([]);
++    // And the fragment does not smuggle a query past the check either.
++    expect(excusedCancellation([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toBe(false);
++  });
++
+   it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
+-    // THE MEASURED ORDER: WebKit delivers the page error about a tenth of a
+-    // millisecond ahead of the request's own failure. A backwards-only search
+-    // saw an empty log here and excused nothing.
++    // THE MEASURED ORDER: WebKit delivers the page error 74–359µs ahead of the
++    // request's own failure. A backwards-only search saw an empty log here and
++    // excused nothing.
+     const later = [cancelled(1)];
+     expect(excusedCancellation(later, spurious, at)).toBe(true);
+     expect(later).toEqual([]);
+@@ -624,50 +692,76 @@ describe('the journey harness itself', () => {
+     expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+   });
+ 
+-  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
+-    // This is the sealed finding: the cancellation happens and nothing ever
+-    // reports its own page error for it — exactly the case the harness must
+-    // tolerate without turning it into a standing credit for something else.
+-    const events = [cancelled()];
+-    // A genuine failure to the SAME url follows moments later, and IS
+-    // tracked — this is what makes it outrank the stale cancellation next.
+-    events.push(genuine(50));
++  it('genuine evidence for a resource vetoes the excuse for it, at any distance', () => {
++    // THE SAFETY CLAIM, and it is a VETO rather than a ranking on purpose. A
++    // genuine access-control failure always emits its own `requestfailed`
++    // beside its own page error, so genuine evidence for this exact resource
++    // means the cancellation's ownership of this error is unproven — and an
++    // unproven correlation is never resolved in the excuse's favour.
++    const events = [cancelled(), genuine(50)];
+     expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
+-    // The stale cancellation is untouched: it lost to the more recent
+-    // genuine failure, it was never spent.
++    // The stale cancellation is untouched: it was refused, never spent.
      expect(events).toContainEqual(cancelled());
++
++    // DISTANCE CANNOT BUY THE EXCUSE BACK. This is what the previous
++    // nearest-wins rule could not hold: at `Date.now()` granularity a genuine
++    // pair straddling a millisecond boundary reads as 1ms apart, so a
++    // cancellation in the error's own millisecond outranked it by 1ms and
++    // excused a real failure. Here the cancellation is as near as a tracked
++    // event can be and the genuine failure is as far as the ceiling allows.
++    const nearCancel = [cancelled(0), genuine(CANCELLED_EXCUSE_MS)];
++    expect(excusedCancellation(nearCancel, spurious, at)).toBe(false);
++    expect(nearCancel).toHaveLength(2);
++
++    // The measured shape of a real pair, exactly: page error first, its own
++    // failure 1ms later, an unrelated cancellation in the same millisecond.
++    const measured = [cancelled(0), genuine(1)];
++    expect(excusedCancellation(measured, spurious, at)).toBe(false);
++
++    // A TIE is refused for the same reason.
++    expect(excusedCancellation([cancelled(), genuine()], spurious, at)).toBe(false);
    });
  
-+  it("a genuine failure reported AFTER its own page error still outranks a stale cancellation", () => {
-+    // The sealed finding above, re-proved under the order the browser
-+    // actually uses: the genuine failure's `requestfailed` lands a fraction
-+    // of a millisecond AFTER the page error it belongs to, while a stale
-+    // cancellation sits well before it. Nearest-in-either-direction is what
-+    // keeps the genuine one the winner; a backwards-only search would reach
-+    // the cancellation and excuse a real failure.
-+    const events = [cancelled(-40), genuine(1)];
-+    expect(excusedCancellation(events, spurious, at)).toBe(false);
-+    expect(events).toContainEqual(cancelled(-40));
+-  it("a genuine failure reported AFTER its own page error still outranks a stale cancellation", () => {
+-    // The sealed finding above, re-proved under the order the browser
+-    // actually uses: the genuine failure's `requestfailed` lands a fraction
+-    // of a millisecond AFTER the page error it belongs to, while a stale
+-    // cancellation sits well before it. Nearest-in-either-direction is what
+-    // keeps the genuine one the winner; a backwards-only search would reach
+-    // the cancellation and excuse a real failure.
+-    const events = [cancelled(-40), genuine(1)];
+-    expect(excusedCancellation(events, spurious, at)).toBe(false);
+-    expect(events).toContainEqual(cancelled(-40));
+-
+-    // And a TIE is never resolved in the excuse's favour either.
+-    const tied = [cancelled(), genuine()];
+-    expect(excusedCancellation(tied, spurious, at)).toBe(false);
++  it('a veto is scoped to the resource, so an unrelated failure never blocks a real excuse', () => {
++    // The veto must not become blanket suppression of the excuse: a genuine
++    // failure to a DIFFERENT resource — including the same path under another
++    // query — says nothing about this error.
++    const elsewhere = [
++      genuine(0, 'https://api.github.com/repos/owner/data/contents/manifest.json'),
++      genuine(0, `${url}?ref=main`),
++      genuine(0, 'https://api.example.com/repos/owner/data/contents/state.json'),
++      cancelled(1),
++    ];
++    expect(excusedCancellation(elsewhere, spurious, at)).toBe(true);
++    // Only the cancellation was consumed; the genuine rows are still tracked.
++    expect(elsewhere).toHaveLength(3);
++    expect(elsewhere.every((e) => e.errorText !== 'cancelled')).toBe(true);
 +
-+    // And a TIE is never resolved in the excuse's favour either.
-+    const tied = [cancelled(), genuine()];
-+    expect(excusedCancellation(tied, spurious, at)).toBe(false);
-+  });
-+
-   it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
++    // And a genuine failure to this resource OUTSIDE the ceiling is not
++    // evidence about this error at all — the ceiling bounds the veto exactly
++    // as it bounds the excuse.
++    const distant = [genuine(-CANCELLED_EXCUSE_MS - 1), cancelled(1)];
++    expect(excusedCancellation(distant, spurious, at)).toBe(true);
+   });
+ 
+-  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
++  it('a genuine failure is never excused, before or after a cancellation to the same URL', () => {
      // Genuine failure arrives FIRST, with no cancellation recorded at all.
      const events = [genuine()];
-@@ -589,29 +674,110 @@ describe('the journey harness itself', () => {
-     // A substring test cannot tell these apart from the genuine host/path;
-     // only structural URL equality can. Each of these contains the real
-     // host or path as a substring while naming a DIFFERENT resource.
--    const hostPrefixTrap =
--      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
--    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
--
--    const hostSuffixTrap =
--      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
--    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
--
--    const pathSuffixTrap =
--      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
--    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
--
--    // Another host entirely, and another path on the same host, both stay errors.
--    const elsewhere =
--      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
--    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
--    const otherPath =
--      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
--    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
-+    for (const trap of [
-+      'https://evil-api.github.com/repos/owner/data/contents/state.json',
-+      'https://api.github.com.evil.test/repos/owner/data/contents/state.json',
-+      'https://api.github.com/repos/owner/data/contents/state.json.bak',
-+      // Another host entirely, and another path on the same host.
-+      'https://api.example.com/repos/owner/data/contents/state.json',
-+      'https://api.github.com/repos/owner/data/contents/files/x.bin',
-+    ]) {
-+      expect(excusedCancellation([cancelled()], diagnosed(trap), at + 5)).toBe(false);
-+    }
+     expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
+ 
+-    // A real cancellation follows and correctly excuses its OWN error.
++    // A cancellation follows — and under the VETO it still excuses nothing
++    // while that genuine failure is in the window. This assertion used to
++    // read `true`, on the nearest-wins rule: the cancellation was 10ms away
++    // and the genuine failure 110ms, so the nearer one won and a real failure
++    // to that exact resource was excused. Genuine evidence for a resource now
++    // forbids the excuse for it outright.
+     events.push(cancelled(100));
+-    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
++    expect(excusedCancellation(events, spurious, at + 110)).toBe(false);
+ 
+-    // Another genuine failure follows the (now-consumed) cancellation and is
+-    // never excused by it either — there is nothing left pending to excuse
+-    // it with, and it would not have qualified anyway.
+-    events.push(genuine(200));
+-    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
++    // Once the genuine failure is old enough to be out of the window, the
++    // cancellation excuses its own error normally — the veto expires with the
++    // evidence, it is not a permanent mark against the URL.
++    expect(excusedCancellation(events, spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(true);
    });
  
-   it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
-     expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
-     expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
-+    // Symmetrically in the other direction, now that both are searched.
-+    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS)], spurious, at)).toBe(true);
-+    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
-+  });
-+
-+  it('parses the diagnosis a REAL WebKit produces, and still reports it when nothing excuses it', async () => {
-+    // The two defects above were both about a representation and an ORDER
-+    // nobody had ever measured — the strings these tests asserted on were
-+    // hand-written, and the CI run that finally produced the real thing is what
-+    // exposed them. This drives an actual WebKit and reads the actual error
-+    // object, so the shape can never drift back to a reconstruction.
-+    //
-+    // A reply from a REAL server with no CORS headers is what makes WebKit emit
-+    // this diagnosis; a Playwright-fulfilled response does not go through the
-+    // same check, which is why the fake GitHub repo above never produces one.
-+    const blocked = createServer((req, res) => {
-+      // `?slow` never answers in time, so a reload CANCELS it — the other
-+      // half of this test needs a real cancellation to the same resource.
-+      const reply = () => {
-+        res.writeHead(200, { 'content-type': 'application/json' });
-+        res.end('{}');
-+      };
-+      if (req.url?.includes('slow')) setTimeout(reply, 30_000).unref();
-+      else reply();
-+    });
-+    await new Promise<void>((done) => blocked.listen(0, '127.0.0.1', done));
-+    const port = (blocked.address() as AddressInfo).port;
-+    const target = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/README.md`;
-+    const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
-+    try {
-+      const raw: Error[] = [];
-+      app.page.on('pageerror', (e) => raw.push(e));
-+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), target);
-+      await expect.poll(() => raw.length, { timeout: 20_000 }).toBeGreaterThan(0);
-+
-+      const real = raw[0];
-+      // THE REPRESENTATION, as the browser and Playwright actually deliver it:
-+      // the wording is in `name`, only the tail is in `message`. This is the
-+      // identical split the failing CI run reported.
-+      expect(real.name).toBe('Fetch API cannot load http');
-+      expect(real.message).toBe(`/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md due to access control checks.`);
-+      // Given a cancellation for that request, THIS object is excusable — the
-+      // whole point, and what matching `message` alone could never do.
-+      expect(excusedCancellation([{ url: target, at: Date.now(), errorText: 'cancelled' }], real, Date.now())).toBe(
-+        true,
+   it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
+@@ -694,19 +788,20 @@ describe('the journey harness itself', () => {
+     expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
+   });
+ 
+-  it('parses the diagnosis a REAL WebKit produces, and still reports it when nothing excuses it', async () => {
+-    // The two defects above were both about a representation and an ORDER
+-    // nobody had ever measured — the strings these tests asserted on were
+-    // hand-written, and the CI run that finally produced the real thing is what
+-    // exposed them. This drives an actual WebKit and reads the actual error
+-    // object, so the shape can never drift back to a reconstruction.
++  it('measures what a REAL WebKit reports, and holds the rule to it', async () => {
++    // Every string and every ORDER in the tests above was once a hand-written
++    // reconstruction, and the CI run that finally produced the real thing is
++    // what exposed two of them. This drives an actual WebKit and reads actual
++    // event objects, so the shape, the query, the fragment and the ordering
++    // can never drift back to a reconstruction.
+     //
+     // A reply from a REAL server with no CORS headers is what makes WebKit emit
+     // this diagnosis; a Playwright-fulfilled response does not go through the
+     // same check, which is why the fake GitHub repo above never produces one.
+     const blocked = createServer((req, res) => {
+       // `?slow` never answers in time, so a reload CANCELS it — the other
+-      // half of this test needs a real cancellation to the same resource.
++      // half of this test needs a REAL cancellation, with the browser's own
++      // url, errorText and arrival time.
+       const reply = () => {
+         res.writeHead(200, { 'content-type': 'application/json' });
+         res.end('{}');
+@@ -719,25 +814,56 @@ describe('the journey harness itself', () => {
+     const target = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/README.md`;
+     const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
+     try {
+-      const raw: Error[] = [];
+-      app.page.on('pageerror', (e) => raw.push(e));
+-      await app.page.evaluate((u) => void fetch(u).catch(() => {}), target);
+-      await expect.poll(() => raw.length, { timeout: 20_000 }).toBeGreaterThan(0);
++      // BOTH streams, in arrival order, with arrival times — so the ordering
++      // this rule was corrected for is measured here rather than asserted
++      // from memory.
++      const seen: ({ kind: 'error'; error: Error; at: number } | ({ kind: 'failed'; at: number } & TrackedRequestFailure))[] = [];
++      app.page.on('pageerror', (e) => seen.push({ kind: 'error', error: e, at: Date.now() }));
++      app.page.on('requestfailed', (r) =>
++        seen.push({ kind: 'failed', at: Date.now(), url: r.url(), errorText: r.failure()?.errorText ?? '' }),
 +      );
 +
-+      // But nothing cancelled it here, so the harness KEEPS it — and says what
-+      // the browser reported instead of leaving a bare CORS-shaped message.
-+      const kept = app.pageErrors;
-+      expect(kept).toHaveLength(1);
-+      expect(kept[0].message).toContain('due to access control checks');
-+      expect(kept[0].message).toContain('Access-Control-Allow-Origin');
-+      // Reading twice reports the same list, not a growing one.
-+      expect(app.pageErrors).toHaveLength(1);
++      // A genuine access-control failure, with a QUERY and a FRAGMENT, so the
++      // message's treatment of both is measured rather than assumed.
++      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?ref=main#frag`);
++      await expect.poll(() => seen.filter((e) => e.kind === 'failed').length, { timeout: 20_000 }).toBeGreaterThan(0);
 +
-+      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
-+      // cannot be taken back by a cancellation to the same resource that
-+      // happens afterwards — here a real one, produced by reloading while a
-+      // request to that same path is still in flight.
-+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
++      const real = seen.find((e) => e.kind === 'error');
++      const realFailure = seen.find((e) => e.kind === 'failed');
++      if (real?.kind !== 'error' || realFailure?.kind !== 'failed') throw new Error('WebKit reported no pair to measure.');
+ 
+-      const real = raw[0];
+       // THE REPRESENTATION, as the browser and Playwright actually deliver it:
+       // the wording is in `name`, only the tail is in `message`. This is the
+       // identical split the failing CI run reported.
+-      expect(real.name).toBe('Fetch API cannot load http');
+-      expect(real.message).toBe(`/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md due to access control checks.`);
+-      // Given a cancellation for that request, THIS object is excusable — the
+-      // whole point, and what matching `message` alone could never do.
+-      expect(excusedCancellation([{ url: target, at: Date.now(), errorText: 'cancelled' }], real, Date.now())).toBe(
+-        true,
++      expect(real.error.name).toBe('Fetch API cannot load http');
++      // The QUERY is in the message — which is the identity the excuse used to
++      // throw away — and so is the FRAGMENT, which the request itself drops.
++      expect(real.error.message).toBe(
++        `/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md?ref=main#frag due to access control checks.`,
+       );
++      expect(realFailure.url).toBe(`${target}?ref=main`);
++      expect(realFailure.errorText).toContain('Access-Control-Allow-Origin');
++
++      // THE OBSERVED ORDERING, measured rather than stated: the page error is
++      // delivered first, and its own request failure lands beside it, well
++      // inside the defensive ceiling. (Sub-millisecond, hence a gap of 0 or 1
++      // at this clock's granularity — which is exactly why proximity cannot
++      // be what separates a genuine failure from a cancellation.)
++      expect(seen.indexOf(real)).toBeLessThan(seen.indexOf(realFailure));
++      expect(realFailure.at - real.at).toBeLessThanOrEqual(CANCELLED_EXCUSE_MS);
++
++      // THE VETO, PROVED ON REAL EVENTS: this genuine failure is not excused,
++      // not even by a cancellation to the very same resource sitting in the
++      // error's own millisecond — the case a nearest-wins rule got wrong.
++      const log: TrackedRequestFailure[] = [
++        { url: realFailure.url, at: realFailure.at, errorText: realFailure.errorText },
++        { url: realFailure.url, at: real.at, errorText: 'cancelled' },
++      ];
++      expect(excusedCancellation(log, real.error, real.at)).toBe(false);
++      expect(log).toHaveLength(2);
+ 
+-      // But nothing cancelled it here, so the harness KEEPS it — and says what
+-      // the browser reported instead of leaving a bare CORS-shaped message.
++      // And the harness KEEPS it — saying what the browser reported instead of
++      // leaving a bare CORS-shaped message.
+       const kept = app.pageErrors;
+       expect(kept).toHaveLength(1);
+       expect(kept[0].message).toContain('due to access control checks');
+@@ -745,12 +871,31 @@ describe('the journey harness itself', () => {
+       // Reading twice reports the same list, not a growing one.
+       expect(app.pageErrors).toHaveLength(1);
+ 
+-      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
+-      // cannot be taken back by a cancellation to the same resource that
+-      // happens afterwards — here a real one, produced by reloading while a
+-      // request to that same path is still in flight.
++      // A REAL CANCELLATION, from a request genuinely in flight across a
++      // reload — the browser's own url, errorText and arrival time.
+       await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
+       await reload(app);
++      await expect
++        .poll(() => seen.some((e) => e.kind === 'failed' && e.errorText === 'cancelled'), { timeout: 20_000 })
++        .toBe(true);
++      const realCancel = seen.find((e) => e.kind === 'failed' && e.errorText === 'cancelled');
++      if (realCancel?.kind !== 'failed') throw new Error('WebKit reported no cancellation to measure.');
++      expect(realCancel.url).toBe(`${target}?slow=1`);
++
++      // IT EXCUSES ITS OWN RESOURCE AND NOTHING ELSE. No pairing of a
++      // cancellation with this page error has ever been OBSERVED — five
++      // cancellation shapes were driven through a real WebKit and each
++      // produced a `requestfailed` and no page error at all — so the
++      // diagnosis here is written against the url the browser really
++      // cancelled, rather than pretending to a pairing nothing has seen.
++      const cancelLog = () => [{ url: realCancel.url, at: realCancel.at, errorText: realCancel.errorText }];
++      expect(excusedCancellation(cancelLog(), diagnosed(realCancel.url), realCancel.at)).toBe(true);
++      // The same path WITHOUT that query is a different request instance, and
++      // this real cancellation says nothing about it.
++      expect(excusedCancellation(cancelLog(), diagnosed(target), realCancel.at)).toBe(false);
++
++      // AND A JUDGEMENT IS MADE ONCE: the genuine refusal already reported is
++      // not taken back by this real cancellation to the same host and path.
+       expect(app.pageErrors).toHaveLength(1);
+     } finally {
+       await app.close();
+@@ -758,6 +903,58 @@ describe('the journey harness itself', () => {
+     }
+   }, 120_000);
+ 
++  it('the wiring really excuses — a diagnosed error for a genuinely cancelled request never reaches pageErrors', async () => {
++    // THE EXCUSE HAS NOW BEEN DEAD CODE TWICE, and both times only CI could
++    // tell. This drives the harness END TO END: a request the browser really
++    // cancels, and a real `pageerror` delivered through the real listener,
++    // carrying the diagnosis for that exact url. `pageErrors` must stay empty
++    // — and must not, if the error names a neighbouring request instead.
++    //
++    // The error TEXT is raised in the page rather than waited for, because no
++    // cancellation shape driven through a real WebKit has ever produced one
++    // (see `TrackedRequestFailure`'s comment). Everything else here is real:
++    // the cancellation, the event objects, the listeners and the resolve path.
++    const stalled = createServer((_req, res) => {
++      setTimeout(() => {
++        res.writeHead(200, { 'content-type': 'application/json' });
++        res.end('{}');
++      }, 30_000).unref();
++    });
++    await new Promise<void>((done) => stalled.listen(0, '127.0.0.1', done));
++    const port = (stalled.address() as AddressInfo).port;
++    const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
++    try {
++      const cancellations: string[] = [];
++      app.page.on('requestfailed', (r) => {
++        if (r.failure()?.errorText === 'cancelled') cancellations.push(r.url());
++      });
++      const inFlight = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/state.json?ref=main`;
++      await app.page.evaluate((u) => void fetch(u).catch(() => {}), inFlight);
 +      await reload(app);
++      await expect.poll(() => cancellations.includes(inFlight), { timeout: 20_000 }).toBe(true);
++      expect(app.pageErrors).toEqual([]);
++
++      // The diagnosis for a DIFFERENT request to the same path is kept: one
++      // cancellation excuses one resource, never a neighbour.
++      const neighbour = `${inFlight.split('?')[0]}?ref=other`;
++      await raiseDiagnosis(app, neighbour);
++      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
++      expect(app.pageErrors[0].message).toContain('?ref=other');
++      // ...and the evidence names what the harness actually saw, including the
++      // same-path cancellation it refused to spend.
++      expect(app.pageErrors[0].message).toContain('different query');
++
++      // The diagnosis for the request that WAS cancelled is excused, so the
++      // list does not grow — the wiring, not just the rule.
++      await raiseDiagnosis(app, inFlight);
++      await app.page.waitForTimeout(500);
 +      expect(app.pageErrors).toHaveLength(1);
 +    } finally {
 +      await app.close();
-+      await new Promise<void>((done) => blocked.close(() => done()));
++      await new Promise<void>((done) => stalled.close(() => done()));
 +    }
 +  }, 120_000);
 +
-+  it('a page error it refuses to excuse says what the browser actually reported', () => {
-+    // The CI failure this whole rework came from was one bare CORS-shaped
-+    // message with nothing to distinguish a cancellation from a real refusal.
-+    // An unexcused diagnosis now carries the browser's own words for every
-+    // request to that resource, and how far each sat from the error.
-+    const withGenuine = cancellationEvidence([genuine(1)], spurious, at);
-+    expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
-+    expect(withGenuine).toContain('Access-Control-Allow-Origin');
-+    expect(withGenuine).toContain('+1ms');
+   it('a page error it refuses to excuse says what the browser actually reported', () => {
+     // The CI failure this whole rework came from was one bare CORS-shaped
+     // message with nothing to distinguish a cancellation from a real refusal.
+@@ -768,6 +965,16 @@ describe('the journey harness itself', () => {
+     expect(withGenuine).toContain('Access-Control-Allow-Origin');
+     expect(withGenuine).toContain('+1ms');
+ 
++    // DELIBERATELY BROADER THAN THE EXCUSE: a failure to the same path under a
++    // different query is exactly what the excuse must refuse to act on, and
++    // exactly what the reader of a CI-only failure needs to see. It is named
++    // as the different request it is.
++    const nearMiss = cancellationEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
++    expect(nearMiss).toContain('?ref=main');
++    expect(nearMiss).toContain('different query');
++    // The resource the error actually names is not labelled that way.
++    expect(cancellationEvidence([cancelled()], spurious, at)).not.toContain('different query');
 +
-+    // NOTHING tracked at all is itself the evidence — it says so rather than
-+    // saying nothing.
-+    expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
-+    // A request that failed BEFORE the error is reported with its sign.
-+    expect(cancellationEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
-+    // It only ever describes: nothing is consumed and nothing is excused.
-+    const events = [cancelled()];
-+    expect(cancellationEvidence(events, spurious, at + 5)).toContain('cancelled');
-+    expect(events).toEqual([cancelled()]);
-+    // A page error that is not this diagnosis at all has nothing to say.
-+    expect(cancellationEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
-   });
- });
+     // NOTHING tracked at all is itself the evidence — it says so rather than
+     // saying nothing.
+     expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
 ```
 
 **Full current text of every file the rework touched:**
@@ -2796,30 +2564,23 @@ later in the same journey, was swallowed and `pageErrors` said nothing. `excused
 excuses exactly one error, and only when the message is the DIAGNOSED wording (a render crash
 naming the same URL is never excused).
 
-**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY —
-ONLY ORDER CAN.** Made consuming and bounded by a generous ceiling, the excuse still matched by
+**A WINDOW CAN NEVER TELL A CANCELLATION FROM A REAL FAILURE, BECAUSE THEY READ IDENTICALLY.** Made consuming and bounded by a generous ceiling, the excuse still matched by
 host+path ALONE: a cancellation that produced no page error of its own stayed a live,
 unconsumed credit for the whole ceiling, spendable by ANY later error to that URL — including
 a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
 the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
 cancellation's spurious error and a real access-control failure are worded the same on
-purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
-excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
-names is ITSELF a cancellation. A genuine failure to that URL always fires its own
-`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
-nearer candidate and a stale, error-less cancellation is never reached by anything but the
-specific error it was actually waiting for — which is what makes leaving it unconsumed safe
-rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
-candidates the same distance away, the one that is NOT a cancellation wins.
-`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
-under the contention five concurrent dev servers create, never the correlation itself.
+purpose. `excusedCancellation` tracks EVERY `requestfailed`, not only cancelled ones, so
+genuine evidence is visible to it. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is purely
+DEFENSIVE headroom against delivery lag under the contention five concurrent dev servers
+create, never the correlation itself.
 
 A second, independent hole lived in the same function: `message.includes(url.host)` and
 `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
 one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
-`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
-more boundary characters to a string test.
+(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared part by
+part by EQUALITY instead (`sameResource`) — removing the ambiguity structurally rather than
+adding more boundary characters to a string test.
 
 **AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
 Every string above was a hand-written reconstruction; nothing had ever been measured. The same
@@ -2836,12 +2597,9 @@ two facts the harness had backwards, either of which alone made the excuse unabl
   wrong reconstruction fails to match rather than matching loosely. The whitespace the old
   regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
   apparent space was an artefact of that same split.
-- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
-  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
-  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
-  invariant survives the correction untouched, for the same reason it held before: a genuine
-  failure's own `requestfailed` is always adjacent to its own page error, so it always
-  outranks a stale cancellation milliseconds away.
+- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` 74–359µs BEFORE the
+  `requestfailed` for the same request — six times out of six, macOS WebKit. A backwards-only
+  search read an empty log. Tracked failures are searched in BOTH directions now.
 
 So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
 reads it after awaited page work, which round-trips the ordered transport and so has both
@@ -2849,10 +2607,81 @@ events in hand. A judgement is made ONCE: a cancellation arriving afterwards nev
 an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
 for every tracked request to that resource and how far each sat from it
 (`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
-cancellation from a real refusal is exactly what made this failure unreadable. The regression
-tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
-feeding its REAL error object back through the rule — that the shape can never drift back to a
-reconstruction.
+cancellation from a real refusal is exactly what made this failure unreadable. That evidence is
+deliberately BROADER than the excuse — same host and path, whatever the query, each row printing
+its own full url and saying whether it is the resource the error named — because a failure to
+the same path under a different query is exactly what the excuse must refuse to act on and
+exactly what the next CI-only failure needs to show.
+
+**AND PROXIMITY CANNOT CARRY A SAFETY CLAIM EITHER, AT ANY RESOLUTION — THE MEASUREMENT THAT
+CORRECTED THE ORDER IS THE SAME ONE THAT KILLS THE RULE IT WAS PART OF.** Nearest-wins rested on
+"a genuine failure's own `requestfailed` is always ADJACENT to its own page error, so it always
+outranks a stale cancellation". Adjacent it is — 74–359µs — which at `Date.now()` granularity
+reads as a gap of 0ms or 1ms depending on which side of a millisecond boundary the pair
+straddles. An unrelated cancellation landing in the error's OWN millisecond therefore outranks a
+genuine failure 359µs away and excuses it, and a tie-break only covers the case where the two
+land in the same millisecond. Sub-millisecond timestamps move that boundary rather than removing
+it. TWO changes replace it, and neither is a window:
+
+- **IDENTITY IS THE FULL URL — HOST, PATH AND QUERY** (`sameResource`). Host+path alone makes
+  `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` one resource, and those are
+  two requests the app really makes one after the other, so a cancellation of one stood ready to
+  excuse a genuine failure of the other. WebKit names the FULL url in the diagnosis, query
+  included (measured), so that identity was available and simply thrown away. The FRAGMENT is
+  the one part that must be ignored, and comparing `href` would get it wrong: the message keeps
+  a fragment verbatim while `request.url()` never carries one, because a fragment is not sent.
+- **GENUINE EVIDENCE VETOES THE EXCUSE FOR THAT RESOURCE, AT ANY DISTANCE.** If any tracked
+  failure for the exact url is NOT a cancellation, nothing is excused — however far away it
+  sits, and whatever sits nearer. A genuine access-control failure always emits its own
+  `requestfailed`, so genuine evidence for this resource means the cancellation's ownership of
+  this error is unproven, and an unproven correlation is never resolved in the excuse's favour.
+  Nearest now only chooses WHICH interchangeable cancellation to consume, never WHETHER one may
+  be. The veto is scoped: a genuine failure to another resource, or to the same path under
+  another query, blocks nothing — and it expires with the ceiling, so it is not a permanent mark
+  against a url.
+
+**AND THE PAIRING THE EXCUSE EXISTS FOR HAS NEVER BEEN OBSERVED — WHICH IS WHY IT DEMANDS THE
+STRONGEST ASSOCIATION THE PLATFORM OFFERS.** This file used to state as fact that WebKit reports
+a cancelled fetch as "Fetch API cannot load … due to access control checks". Measured, five
+cancellation shapes — navigating away mid-flight, reloading mid-flight, `AbortController`, a
+same-tick `location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+`errorText: 'cancelled'` and NO page error at all, while a reply genuinely lacking CORS headers
+produces exactly that page error. A raced `route.fulfill` therefore remains a live alternative
+explanation for the CI failure, and cannot be settled from here. A cancellation being merely
+NEARBY is not evidence of anything, and the rule above is written accordingly. Playwright offers
+nothing stronger to correlate on: a `pageerror` hands a test an `Error` and no request identity,
+so url text and order are the whole of what exists.
+
+The regression tests assert the measured pair verbatim, the measured ordering, the query and the
+fragment; that a same-path-different-query cancellation excuses nothing; that genuine evidence
+vetoes at any distance; and — driving a REAL WebKit and feeding its REAL error and REAL cancelled
+request back through the rule — that the shape can never drift back to a reconstruction. One
+drives the whole WIRING end to end, a genuinely cancelled request and a real uncaught page error
+naming it, because this excuse has been dead code twice and both times only CI could tell.
+
+**AND THE FAILURE CI ACTUALLY PRODUCES IS NOT THIS ONE, WHICH IS A SEPARATE, OPEN DEFECT.**
+Instrumenting `setarArchive.browser.test.ts` through a real WebKit until it failed — reproduced
+in 2 of 6 sequential runs and 1 of 3 concurrent ones — shows the CORS-shaped page error for
+`contents/README.md` arriving with NO `request`, NO route hit and NO `requestfailed` — the fetch
+is refused before WebKit's network layer ever sees it, because the document is being torn down by
+the journey's own `page.goto` while the app's sync bootstrap PUT is being issued. IT IS NOT FIXED
+BY THE RULE ABOVE and was failing before any of it: four consecutive green runs afterwards are
+not evidence of a fix, because nothing in that change touches this cause. There
+is therefore NOTHING to correlate, and no correlation rule — the old one or this one — can
+excuse it. The remaining fix is to remove the RACE, never to widen the excuse: excusing every
+access-control diagnosis for a faked origin would suppress a whole error class at an entire
+origin on no per-event evidence at all, which is broader than the rule the sealed finding
+rejected. The amplifier is measured too: `installFakeGitHub` answers `PATCH git/refs/heads/main`
+without recording what the app pushed, so `git/ref/heads/main` 404s for ever and EVERY sync
+re-bootstraps the repo with another `PUT contents/README.md` — measured at one every one to
+three seconds for the whole journey, each one a chance to be caught by a navigation. What
+re-triggers a sync that often was NOT established (`page.clock` is installed, so what the app's
+own 30-second quiet-period timer does under it is unknown) and is deliberately not guessed at
+here. Making the fake remember the
+push was built and REVERTED: it changes what `decideSync` sees, and `setarInbound`'s pull
+journey — which publishes a remote snapshot after the app's own push — then reads "Already in
+sync" instead of pulling. That is a lane of its own, with its own journeys to re-prove; it is
+recorded here rather than left to be rediscovered from a red CI run.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -3914,4648 +3743,6 @@ the philosophy. Anything that contradicts the "do nots" above needs an explicit 
 from the user, recorded here.
 ```
 
-### docs/setar-archive.md
-
-````
-# The Setar archive: scanner, index and refresh
-
-How the normalised Setar class archive becomes historical lessons, canonical
-repertoire items and useful practice material — and exactly how the unattended
-part of it is installed, run and rolled back.
-
-Nothing here writes to the archive. Ever.
-
----
-
-## 1. The shape of it
-
-```
-NAS (read-only)                     GitHub (private data repo)        App
-┌────────────────────────┐          ┌───────────────────────┐        ┌──────────────┐
-│ setar-classes/         │  scan    │ branch: source-index  │  GET   │ Refresh      │
-│   session-N-DD-MM-YYYY │ ───────▶ │   setar/index.json    │ ─────▶ │ Setar archive│
-│   PIECES.csv           │ publish  └───────────────────────┘        └──────────────┘
-│   RENAME-LOG.csv       │                     ▲                            │
-└────────────────────────┘                     │                            ▼
-         ▲                            branch: main (app data)     one validated
-         │ media, opened directly              UNTOUCHED           store mutation
-         └──────────────────────────────────────────────────────────────┘
-```
-
-Three separations do the work:
-
-- **The app never parses a filename.** The grammar lives once, in the scanner.
-- **The index is on its OWN branch.** The app's sync writes `main`'s whole tree
-  with no `base_tree`, so a sidecar next to `state.json` would disappear on the
-  next sync. `source-index` is outside that, and outside `archive/…` recovery
-  branches too.
-- **Media never travels.** Only paths do. Each device resolves them through its
-  own base URL, so changing the transport rewrites no stored record.
-
----
-
-## 2. The scanner
-
-`scripts/scan-setar-classes.mjs` — Node stdlib only, no dependencies, read-only
-over the archive.
-
-```sh
-node scripts/scan-setar-classes.mjs --root /volume1/media/setar-classes --out /volume1/practice-compass-index/setar-index.json
-node scripts/scan-setar-classes.mjs --root <archive>            # to stdout
-```
-
-It reads `PIECES.csv` (the canonical registry) with a real quoting-aware CSV
-parser, walks the `session-N-DD-MM-YYYY` folders, applies the filename grammar
-from the archive's own `CRAWLER-BRIEF.md`, and emits a **clock-free** JSON index
-with a `contentHash` over its semantic body. The same archive always produces
-byte-identical output: no mtimes, no directory-order luck, no `generatedAt`.
-
-What it refuses outright (and produces no index for): a malformed or ambiguous
-registry, a duplicate canonical key, two folders claiming one session number, an
-unsafe path, more than 5000 files, **any input that changed during the scan** —
-the registry, the rename log or the media inventory, all three read twice and
-compared, sizes included, so a file still being copied is caught too. That is a
-CONSISTENCY check, not atomicity: a perturbation that is stable across both
-readings agrees with itself, and from here is indistinguishable from the archive
-genuinely being in that state. What it removes is the transient — which is what a
-copy in flight looks like, and what would otherwise publish an index missing a
-file that is still there.
-
-A READ FAILURE IS NOT AN OBSERVATION. `PIECES.csv` is required, so anything that
-stops it being read — missing, unreadable, a directory where a file should be —
-refuses the scan. `RENAME-LOG.csv` is optional, and "absent" means ENOENT and
-nothing else: it travels in the compared reading as `{present:false}`, never as
-empty text, because `catch { text = '' }` made a permission change or an I/O
-error agree with itself across both readings and publish an index with no
-renames at all. A present but EMPTY log is refused like an empty registry — a
-zero-byte file is what a copy in flight looks like.
-
-Each file's `mtimeMs` is part of the compared reading and is never read by the
-index builder, so a file edited IN PLACE at the same byte length fails the scan
-while altered mtimes still produce a byte-identical index.
-
-What it reports and skips: a file with no known role, an unknown piece, an
-unsupported extension, a class recording claiming a piece, an unnamed demo in a
-session whose roster and filenames disagree, a symbolic link (never followed —
-but never silently dropped either, since two readings agree about a file neither
-of them looked at), a session-named entry that is not a real directory, and
-every rename row whose destination this log does not determine. That is ONE
-rule, not two: a replacement name is published only where the log names it
-UNIQUELY and TERMINALLY. A loop names no file; a path the log gives TWO
-destinations names no file either; and a chain walking into either of those
-cannot say where it ended. Every such row is dropped with a diagnostic rather
-than published — the fork case used to publish its FIRST destination and
-diagnose the second as "not applied", which handed the app an identity this log
-cannot support. An ordinary chain beside a loop or a fork still publishes.
-Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
-archive content.
-
-The output is written **outside the archive** via a temp file + rename, and the
-scanner refuses an `--out` path inside `--root`.
-
-### Corpus baseline
-
-Verified directly against the real archive on 2026‑09‑17:
-
-| | |
-|---|---|
-| sessions | 39 |
-| files in session folders | 258 |
-| parseable | 257 |
-| known exception | 1 (`session-16-26-11-2024/video-2024-10-29-15-32-35.mp4`) |
-| canonical pieces | 94 |
-| personal recordings (`تمرین-من`) | 125 |
-| useful resources | 132 (45 class · 57 demo clips · 24 notation · 6 corrections) |
-| logical demonstrations | 37 |
-| rename-log rows | 257 |
-
-Source hashes (sha256), so a changed input is visible rather than assumed:
-
-```
-PIECES.csv        1f68366e32f0f5ddc8b8db0c1027893b724e16d496f0dca0502fa0a0cd133524
-RENAME-PLAN.csv   795faf11c1538e69905e245e9c45d0b13ebcd3469a1b18a2db097786e576b39c
-RENAME-LOG.csv    0c276d5e50fc93904ecfb76c71b1c78dca1cda2610f1569f28c9828013278373
-CRAWLER-BRIEF.md  ee76dbc17351fdcc33662b7c467652f5b90728005ef48071bdb35bcf8843a9bc
-sorted path inventory (LF-joined, trailing newline)
-                  0286b07549ad55b0f84166dc2c7b8c2d5949f96a282f03ebaa5837ebf5b22ae7
-```
-
-These are evidence of one corpus, not a limit: sessions 40+ need no code change.
-
----
-
-## 3. The publisher
-
-`scripts/publish-setar-index.mjs` writes **one file on one branch**:
-`source-index` / `setar/index.json`. Both are fixed in the code, and every other
-target is refused before a request is made.
-
-- **Unchanged content makes no commit.** The index is clock-free, so identical
-  bytes mean an identical archive.
-- The branch ref advances **non-force** from the commit that was read, with
-  `expected_head_sha`, so a racing publisher loses the update rather than
-  overwriting it; the retry re-reads before deciding anything.
-- An interruption before the ref advances leaves the previous index published —
-  a blob and a commit nothing points at are invisible.
-- Error messages are built from the HTTP status and the endpoint name only.
-  **No token, no repository URL and no archive path ever reaches a log.**
-
-### The credential
-
-A GitHub token scoped to **this one private repository**, with **Contents:
-write** and **Metadata: read**, and no workflow or admin permission.
-
-> GitHub does not issue branch-scoped tokens. The branch and path restriction is
-> a property of *this code* (and, optionally, of repository rules). It must not
-> be described as credential isolation.
-
-It lives in the NAS runtime's own protected configuration file and nowhere
-else — never in the archive, the app, a backup, sync, a commit or a log line.
-The app's own GitHub connection (Settings → Sync) is a *different* credential and
-is used here for **GETs only**.
-
----
-
-## 4. Installing the unattended job on the NAS
-
-The production host is the Synology NAS, not the Mac. The Mac can run the same
-two scripts by hand; that is the development fallback, not the deployment.
-
-1. **Runtime.** Install a supported Node runtime (Package Center → Node.js).
-   Record the actual binary path — `which node` under the task's own shell — and
-   set `PC_NODE` if it is not on `PATH`.
-2. **Directories.** Create a runtime/output directory *outside* the archive,
-   e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
-   Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
-   `scripts/run-setar-index.sh` into it.
-3. **Permissions.** Give that user **read-only** access to the archive share and
-   read/write to the runtime directory only.
-4. **Configuration.** Create `config.env` in the runtime directory, `chmod 600`:
-
-   ```sh
-   PC_ARCHIVE_ROOT=/volume1/<share>/setar-classes   # the REAL mount, not /Volumes/…
-   PC_INDEX_REPO=<owner>/practice-compass-data
-   PC_INDEX_TOKEN=<the publisher token>
-   ```
-
-   The real internal mount path is discovered during installation. **Do not
-   assume the Mac's `/Volumes/...` path exists on DSM.**
-5. **Schedule.** DSM → Control Panel → Task Scheduler → Create → Scheduled Task
-   → User-defined script. Run as the service user, every **15 minutes**, command:
-
-   ```sh
-   sh /volume1/practice-compass-index/run-setar-index.sh
-   ```
-
-   Enable "Send run details by email" only on error: the script prints counts and
-   a truncated commit id, never a secret.
-6. **Verify.** Run the task once by hand and confirm: a commit on `source-index`,
-   `main` unchanged (`git log --oneline main` has no new entry), and the app's
-   Refresh finding the new index. Then confirm an **unattended** run with the Mac
-   off.
-
-### What has been exercised, and what only the owner can
-
-`run-setar-index.sh` was run end to end on the Mac against the real archive with a
-deliberately invalid `PC_INDEX_TOKEN` (2026‑09‑17). It scanned the live corpus to the same
-content hash as every other run (`924125427f61`), wrote `setar-index.json` into the runtime
-directory, failed the publish with `GitHub refused the branch reference (HTTP 401)`, exited
-non-zero so a scheduler reports it, and left the archive byte-for-byte untouched. The
-output contains **no token, no repository name, no API URL and no archive path** — checked,
-not assumed.
-
-What that cannot prove, and what the OWNER has to confirm on the NAS itself: the real
-internal mount path, the DSM Node runtime, the service user's read-only permissions, the
-scheduled task firing unattended with the Mac off, a real publish landing on `source-index`
-with `main` unchanged, and the behaviour when the token is revoked.
-
-### Rollback
-
-Disable the scheduled task. The app keeps the source graph it last accepted and
-goes on working offline from it. To go back to an earlier index,
-`git push --force-with-lease` an earlier `source-index` commit. Neither touches
-the app's own data on `main`. Revoking the token stops publication and leaves the
-last good index exactly where it is.
-
----
-
-## 5. What the app does with it
-
-**Refresh Setar archive** (Settings, reachable from Lessons) fetches the branch
-ref, then the file **at that commit**, validates it, shows what would change, and
-applies the lot in one store mutation.
-
-- **Refresh means "the latest published index", not "rescan the NAS now."** The
-  UI says when the index was last *fetched* and last *changed*. It never says
-  "last scanned", because nothing here can know that.
-- **Exact source binding wins.** A record already bound to a source identity *is*
-  that entity, whatever its title or date has since been edited to.
-- A legacy class is auto-adopted only on **instrument + date + number + exact
-  source-path evidence**. Date alone, number alone or title alone cannot merge.
-- An exact title or literal alias match produces **Link / Create separately /
-  Skip** — never an automatic merge, and never "pick the first candidate".
-- New pieces arrive **resting**, by explicit import policy, so ninety-four items
-  do not flood Today. They stay searchable and directly startable.
-- **Nothing about practice is ever seeded**: no minutes, no result, no review
-  date, no SM‑2 state. An imported class is history even when its date is in the
-  future relative to this device's clock.
-- Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
-  same mutation, so a refresh, a reload and a sync all respect it. A hide follows
-  its file through the rename log, so a renamed resource does not reappear —
-  including when the rename moves it into a different session's folder, where
-  the old row is dropped rather than reported missing. A rename LOOP names no
-  file, so a hide stays exactly where you put it and nothing is re-keyed.
-- **A decision is about the state you saw, and about the record you saw it on.**
-  If the value you chose the archive's over has changed since — or the record you
-  chose to link or apply a field to has been deleted, bound elsewhere or moved
-  instrument — the commit refuses and re-previews rather than applying an answer
-  to a question that no longer stands, or handing it to some other record.
-- **Every file on a class has exactly one section.** The archive's own session
-  material is composed for you (an imported class keeps no copy of it, so nothing
-  else can show it); your own links and attachments stay in the sections that can
-  edit and remove them, and are never repeated above. An imported class recording
-  counts as a recording, so you are not invited to add the video already playing.
-- **Your media base is an address and a folder.** A base carrying a username,
-  password, `?query` or `#fragment` is refused, not silently cleaned up: every
-  file URL is built by appending a path to it.
-
-The owner's own `تمرین-من` recordings are evidence, not material: their
-membership and role survive in the graph, the files themselves never become a
-piece's material.
-
-### Set the base to the archive FOLDER — one-off, per device
-
-Every reference the app stores is relative to the **archive root**, so a stored
-path starts at the session folder:
-
-    session-39-01-09-2026/ضبط-کلاس.mp4
-
-The base is appended to, whole path and all, so it must name the archive folder
-itself:
-
-| Device | Base | Result |
-| --- | --- | --- |
-| Mac (LAN) | `https://192.168.0.20:5010/setar-classes` | `…:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4` ✅ |
-| Mac (LAN) | `https://192.168.0.20:5010` | `…:5010/session-39-01-09-2026/ضبط-کلاس.mp4` ✗ addresses nothing |
-| iPhone (Tailscale) | `https://ds220plus.taild1d1f7.ts.net/media/setar-classes` | `…/media/setar-classes/session-39-…/…` ✅ |
-
-Before this archive existed the base named the NAS **media root** and every
-stored path began `setar-classes/`. That is the one setting a device carries
-across, and it has to be corrected once — the resolver is not at fault, and there
-is deliberately no second archive-specific setting and no fallback. **Browse** is
-the check: it opens the base, and if it does not list the `session-…` folders,
-the base is one folder too high.
-
-A refresh rewrites every reference on a class the archive owns — including your
-own practice takes, which the index does not describe — into that one namespace,
-without touching the row, its title or its notes. It writes once: a second
-refresh finds nothing to change and does not bump the revision. A reference on a
-class the archive does *not* own is never rewritten, so a hand-made lesson still
-holding a `setar-classes/…` path needs repointing yourself.
-
-**Order matters, once, on each device: correct the base FIRST, then Refresh.**
-Under the old base a legacy `setar-classes/…` path still opens, so refreshing
-before correcting the base moves those files into the new namespace while the
-base is still one folder too high — the same dead link, from the other side. The
-end state is the same either way; the transient is avoidable.
-
-### Who owns an imported field, and where to correct a wrong one
-
-**Source-owned** (replaced by the archive, but only when you say so): the piece's
-`dastgah`, `form`, `composer` and gusheh name. A later registry improvement is
-**offered field by field** and applied only on an explicit tap — including when
-your value is deliberately empty. Nothing is applied silently, and nothing can
-revert on its own.
-
-**Yours from the moment of import, and never written again**: the item's **type**
-(gusheh / full piece — seeded once from the registry's `form`, then never
-re-offered), title, status, notes, difficulty, parts, pathway placement, and
-every practice, review and scheduling field. Edit any of them freely; a refresh,
-a reload and a sync all preserve the edit.
-
-**A bound class is left alone entirely.** Its date, number, notes and links are
-yours from the moment it is adopted; the only thing a refresh ever rewrites on it
-is the *path text* of a reference, and only into the namespace above.
-
-**Identity is the `canonical_fa` key, byte for byte.** So:
-
-| You want to… | Do it… | Why |
-| --- | --- | --- |
-| Treat a piece as a full piece rather than a gusheh | **in the app** (item type) | Yours; sticks for good. One tap, no re-import. |
-| Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
-| Fix one of those on this device only | **in the app** | The archive will keep offering its own value; ignore the offer. |
-| Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
-| Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
-| Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
-
-The safe workflow for exact archive renames: rename, append the `from,to` row to
-`RENAME-LOG.csv` (never a fork or a loop — both are diagnosed and neither is
-applied), let the scanner publish, then Refresh. Do not renumber a session folder
-and do not edit `canonical_fa` in the same pass as a rename: one of those changes
-where a file is, the other changes what a piece *is*.
-
-### Open the app over HTTPS, or Refresh cannot verify anything
-
-Refresh recomputes the index's `contentHash` before trusting a byte of it, and
-that needs `crypto.subtle`, which **browsers expose only in a secure context**.
-Open the app over plain `http://` at a LAN address and `crypto` is still there
-while `crypto.subtle` is not, so Refresh — and **Sync now**, which hashes the
-whole database through the same function — both refuse.
-
-Measured on this network, 2026‑09‑18:
-
-| Origin | `isSecureContext` | `crypto.subtle` |
-| --- | --- | --- |
-| `http://192.168.0.113:4173/` (Mac LAN preview) | `false` | absent |
-| `https://192.168.0.20:5010/` (NAS, self-signed) | `true` | present |
-| `http://localhost:4173/` | `true` | present |
-| GitHub Pages (production) | `true` | present |
-
-So: **production and the installed iPhone PWA are unaffected** — both are HTTPS.
-Only a branch build served from a LAN address over plain HTTP hits this, and the
-fix is the route, not a setting:
-
-- **On the Mac — verified.** `http://localhost:4173` is already a secure context;
-  browsers privilege localhost on purpose, which is also why no automated check
-  in this repo can ever see this failure.
-- **For a phone — candidate route, NOT yet verified end to end.** Mirror the build
-  to the NAS (`npm run deploy`) and open it over `https://192.168.0.20/practice-compass/`.
-  What is measured: that origin is HTTPS and therefore a secure context, and a
-  self-signed Synology certificate does not change that — accept the browser
-  warning once. What is NOT measured: the mirror itself. On 2026‑09‑18 that URL
-  answered **403**, and `deploy-nas.sh`'s target share (`/Volumes/web`) was not
-  mounted on the Mac, so the build behind it is stale or absent and the script had
-  no destination. Mount the share, run `npm run deploy`, and confirm the page loads
-  and reports `window.isSecureContext === true` before treating this route as good.
-  Per ac-19's own rule, record the NAS mapping you actually find rather than
-  assuming a `/Volumes` path works.
-
-Refresh says this in as many words rather than crashing, and it says it before it
-looks at the file at all — on a device that cannot hash, no index can pass, and a
-file-shaped error would send you to republish an index that is perfectly good.
-
----
-
-## 6. Notes for whoever changes this next
-
-- **`scripts/setar-index.test.mjs` is deliberately absent.** Vitest's `include`
-  is `src/**/*.test.ts` and `tests/**/*.test.ts` (and `vite.config.ts` is a
-  forbidden path in the lane that built this), so a test file under `scripts/`
-  would never run. The scanner and publisher are tested from
-  `src/domain/scanSetarClasses.test.ts` and `src/store/archiveIndex.test.ts`,
-  which import the `.mjs` modules directly.
-- **`src/domain/sourceArchive.test.ts` is deliberately absent too.** The decoder, the
-  deterministic ids, the suppression queries and `validateArchiveSources` are all exercised
-  where they are actually used — `scanSetarClasses.test.ts` (the grammar that feeds it),
-  `io.test.ts` (the validation boundary every door runs), `sourceReconcile.test.ts` and
-  `archiveIndex.test.ts` (the store). A fourth file asserting the same functions in
-  isolation would add a place to forget, not a place to look.
-- **`src/domain/setarClasses.ts` is frozen.** It is no longer a workflow; it is
-  the ledger of the 67 obsolete paths the old bundled importer wrote, and the
-  reference-repair check runs against all 67 of them.
-- `npm test` must never need the NAS, the Sandisk drive or the network. The
-  checked-in fixture `tests/fixtures/setar-archive.json` is the real corpus with
-  registry notes trimmed to their first sentence.
-````
-
-### src/domain/seed.ts
-
-```
-import type { PracticeBlock, PracticeDB, PracticeItem } from './types';
-import { SCHEMA_VERSION } from './types';
-import { SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
-import {
-  createBlock,
-  createInstrument,
-  createItem,
-  createLesson,
-  createMaterial,
-  createReview,
-} from './factories';
-import { createPreparation, createQuestion } from './lessonAgenda';
-import { isSaturated } from './scoring';
-import { addDays, newId, nowISO, toISODate } from './util';
-
-// ---------------------------------------------------------------------------
-// Demo dataset. Small but deliberately shaped so every screen has something
-// meaningful on first run: a saturated item, a strong "best next focus", a
-// quick win, a maintenance item, due reviews, and a couple of teacher
-// questions. Item stats are derived from the seed blocks so nothing lies.
-// ---------------------------------------------------------------------------
-
-function ago(now: Date, days: number): string {
-  return nowISO(addDays(now, -days));
-}
-function agoDate(now: Date, days: number): string {
-  return toISODate(addDays(now, days));
-}
-
-export function createSeedDB(now: Date = new Date()): PracticeDB {
-  // --- Instruments ---------------------------------------------------------
-  const setar = createInstrument({ name: 'Setar', family: 'Persian' }, now);
-  const tar = createInstrument({ name: 'Tar', family: 'Persian' }, now);
-  const guitar = createInstrument({ name: 'Classical Guitar', family: 'Western' }, now);
-
-  // --- Materials -----------------------------------------------------------
-  const mAfshari = createMaterial(
-    {
-      instrumentId: setar.id,
-      title: 'ردیف میرزا عبدالله',
-      sourceType: 'radif',
-      sourceName: 'ردیف میرزا عبدالله',
-    },
-    now,
-  );
-  const mMezrab = createMaterial(
-    {
-      instrumentId: tar.id,
-      title: 'تمرین‌های مضراب',
-      sourceType: 'technique',
-      sourceName: 'تمرین‌های استاد',
-    },
-    now,
-  );
-  const mLesson6 = createMaterial(
-    {
-      instrumentId: guitar.id,
-      title: 'Lesson 6',
-      sourceType: 'course',
-      sourceName: 'Online Course',
-    },
-    now,
-  );
-  const mRepertoire = createMaterial(
-    {
-      instrumentId: guitar.id,
-      title: 'Repertoire',
-      sourceType: 'piece',
-    },
-    now,
-  );
-
-  // --- Items (stats filled in from blocks below) ---------------------------
-  const iraq = createItem(
-    {
-      instrumentId: setar.id,
-      materialId: mAfshari.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
-      strand: 'radif',
-      catalogKey: 'iraq',
-      title: 'پایان‌بندیِ عبارتِ ۴ (عراق)',
-      itemType: 'phrase',
-      status: 'repairing',
-      importance: 5,
-      difficulty: 4,
-      primaryFocus: 'phrase_direction',
-      notes: 'فرود هنگام اتصال به عبارتِ پیشین روشن نیست.\nزینت ممکن است فرود را بپوشاند.',
-      persian: {
-        dastgahAvaz: 'افشاری',
-        gusheh: 'عراق',
-      },
-    },
-    now,
-  );
-  const rizeh = createItem(
-    {
-      instrumentId: tar.id,
-      materialId: mMezrab.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.tar, 'rh-basics'),
-      strand: 'mezrab',
-      title: 'وضوحِ ریز روی سیمِ باز',
-      itemType: 'technique',
-      status: 'fragile',
-      importance: 4,
-      difficulty: 4,
-      primaryFocus: 'right_hand',
-      notes: 'حمله ناهموار است — برخی مضراب‌ها می‌افتند.\nریزِ ناهموار روی سیمِ باز.',
-    },
-    now,
-  );
-  const shift = createItem(
-    {
-      instrumentId: guitar.id,
-      materialId: mLesson6.id,
-      title: 'Lesson 6 bars 4–5 shift',
-      itemType: 'bar',
-      status: 'repairing',
-      importance: 4,
-      difficulty: 3,
-      primaryFocus: 'left_hand',
-      notes:
-        'Left-hand shift causes shoulder tension.\nShift arrives late; the note drops out just after it.\nRight shoulder lifts on the shift.',
-      guitar: {
-        lessonNumber: '6',
-        barRange: '4–5',
-      },
-    },
-    now,
-  );
-  const studyC = createItem(
-    {
-      instrumentId: guitar.id,
-      materialId: mRepertoire.id,
-      title: 'Study in C — full run',
-      itemType: 'full_piece',
-      status: 'usable',
-      importance: 3,
-      difficulty: 3,
-      primaryFocus: 'tempo',
-      notes: 'Rushes through the middle section. Settled fingering; aim around 80 bpm.',
-    },
-    now,
-  );
-  const daramad = createItem(
-    {
-      instrumentId: setar.id,
-      materialId: mAfshari.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
-      strand: 'radif',
-      catalogKey: 'daramad',
-      title: 'درآمد افشاری (آغاز)',
-      itemType: 'section',
-      status: 'integrated',
-      importance: 3,
-      difficulty: 2,
-      primaryFocus: 'musical_meaning',
-      persian: { dastgahAvaz: 'افشاری', gusheh: 'درآمد' },
-    },
-    now,
-  );
-
-  const items: PracticeItem[] = [iraq, rizeh, shift, studyC, daramad];
-
-  // --- Blocks --------------------------------------------------------------
-  const b = (
-    item: PracticeItem,
-    daysAgo: number,
-    durationMinutes: number,
-    result: PracticeBlock['result'],
-    focus: PracticeBlock['focus'],
-    mode: PracticeBlock['mode'],
-    observation?: string,
-  ): PracticeBlock =>
-    createBlock(
-      {
-        practiceItemId: item.id,
-        instrumentId: item.instrumentId,
-        materialId: item.materialId,
-        startedAt: ago(now, daysAgo),
-        endedAt: ago(now, daysAgo),
-        durationMinutes,
-        mode,
-        focus,
-        result,
-        observation,
-        createdReview: true,
-      },
-      now,
-    );
-
-  const blocks: PracticeBlock[] = [
-    // Iraq — stuck on "same" (saturated, triggers strategy insight)
-    b(iraq, 5, 12, 'same', 'phrase_direction', 'repair', 'فرود هنوز مبهم است.'),
-    b(iraq, 3, 10, 'same', 'phrase_direction', 'repair'),
-    b(iraq, 1, 11, 'same', 'phrase_direction', 'repair', 'مثل قبل، فرود نامشخص.'),
-    // Rizeh — improving but fragile and overdue (a strong next focus)
-    b(rizeh, 7, 8, 'worse', 'right_hand', 'repair', 'با تندتر کردن، حمله از هم پاشید.'),
-    b(rizeh, 5, 10, 'slightly_better', 'right_hand', 'repair', 'تمپوِ آهسته‌تر به یکدستی کمک کرد.'),
-    // Shift — steady progress
-    b(shift, 6, 9, 'same', 'left_hand', 'repair'),
-    b(shift, 4, 8, 'slightly_better', 'left_hand', 'repair', 'Dropping the shoulder helped.'),
-    b(shift, 2, 10, 'slightly_better', 'left_hand', 'repair'),
-    // Study in C — solid, a good quick win / due review
-    b(studyC, 12, 20, 'stable_alone', 'tempo', 'integrate'),
-    b(studyC, 8, 20, 'stable_alone', 'tempo', 'integrate'),
-    b(studyC, 4, 20, 'stable_alone', 'tempo', 'integrate', 'Middle section still wants to rush.'),
-    // Darāmad — integrated but neglected (maintenance)
-    b(daramad, 30, 50, 'stable_in_context', 'musical_meaning', 'maintain'),
-    b(daramad, 21, 45, 'stable_in_context', 'musical_meaning', 'maintain'),
-  ];
-
-  // --- Derive item stats from blocks (keep everything consistent) ----------
-  const reviewDates: Record<string, string> = {
-    [iraq.id]: agoDate(now, 0), // due today
-    [rizeh.id]: agoDate(now, -2), // overdue by 2 days
-    [shift.id]: agoDate(now, 1), // due tomorrow
-    [studyC.id]: agoDate(now, 0), // due today
-    [daramad.id]: agoDate(now, -14), // overdue by 14 days
-  };
-
-  for (const item of items) {
-    const own = blocks
-      .filter((bl) => bl.practiceItemId === item.id)
-      .sort((x, y) => x.startedAt.localeCompare(y.startedAt));
-    if (own.length === 0) continue;
-    const last = own[own.length - 1];
-    item.timesPractised = own.length;
-    item.totalMinutes = own.reduce((s, x) => s + x.durationMinutes, 0);
-    item.lastPractisedAt = last.startedAt;
-    item.lastResult = last.result;
-    item.nextReviewDate = reviewDates[item.id];
-    item.saturationWarning = isSaturated(own, now);
-  }
-
-  // --- Reviews (pending, so Today shows due reviews) -----------------------
-  const reviews = [
-    createReview({ practiceItemId: iraq.id, dueDate: reviewDates[iraq.id], reviewType: 'repair', reason: 'سه بار نتیجهٔ یکسان — راهبرد را عوض کن.' }, now),
-    createReview({ practiceItemId: rizeh.id, dueDate: reviewDates[rizeh.id], reviewType: 'repair' }, now),
-    createReview({ practiceItemId: studyC.id, dueDate: reviewDates[studyC.id], reviewType: 'integration' }, now),
-    createReview({ practiceItemId: shift.id, dueDate: reviewDates[shift.id], reviewType: 'repair' }, now),
-    createReview({ practiceItemId: daramad.id, dueDate: reviewDates[daramad.id], reviewType: 'maintenance', reason: 'نگهداریِ معمول.' }, now),
-  ];
-
-  const pathways = seedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
-
-  // --- Lessons (a monthly Setar class: last one + the next one) -------------
-  const pastLesson = createLesson(
-    {
-      instrumentId: setar.id,
-      date: agoDate(now, -16),
-      notes:
-        'روی افشاری کار شد: مرورِ درآمد و پایان‌بندی‌های عبارتِ عراق. استاد: اول فرود را بدون زینت بیاور، بعد زینت را اضافه کن. تأکید روی فرود — اول بدون تحریر.',
-    },
-    now,
-  );
-  // A class recording (video) + a score (PDF) live on the NAS, referenced
-  // (never stored) by the app. ARCHIVE-RELATIVE, like every reference this app
-  // writes: the device media base is the archive root. These are the archive's
-  // own pre-normalisation names, so a Refresh repairs them through the rename
-  // log exactly as it repairs the owner's real legacy rows.
-  pastLesson.recordings = [
-    {
-      id: newId(),
-      title: 'ضبطِ کلاس',
-      path: 'session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
-      kind: 'video',
-      date: agoDate(now, -16),
-      sizeBytes: 686136347,
-      createdAt: nowISO(now),
-    },
-    {
-      id: newId(),
-      title: 'چهارمضرابِ افشاری صبا',
-      path: 'session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
-      kind: 'pdf',
-      date: agoDate(now, -16),
-      createdAt: nowISO(now),
-    },
-  ];
-  const nextSetarLesson = createLesson({ instrumentId: setar.id, date: agoDate(now, 14) }, now);
-  const lessons = [pastLesson, nextSetarLesson];
-
-  // The current model directly — no legacy boolean, no single mutable string.
-  // The Setar commitment names the class it is FOR; the Guitar question has no
-  // class to name yet (there are no Guitar lessons in the demo), so it is
-  // honestly unassigned rather than pointing at somebody else's lesson.
-  const lessonAgenda = [
-    createPreparation({ id: newId(), itemId: iraq.id, instrumentId: setar.id, lessonId: nextSetarLesson.id, now }),
-    createQuestion({
-      id: newId(),
-      text: 'آیا نقطهٔ فرودم درست است، یا زینت دارد فرود را می‌پوشاند؟',
-      instrumentId: setar.id,
-      itemId: iraq.id,
-      lessonId: nextSetarLesson.id,
-      now,
-    }),
-    createQuestion({
-      id: newId(),
-      text: 'Should I prioritise tone or releasing shoulder tension on this shift?',
-      instrumentId: guitar.id,
-      itemId: shift.id,
-      now,
-    }),
-  ];
-
-  return {
-    schemaVersion: SCHEMA_VERSION,
-    instruments: [setar, tar, guitar],
-    materials: [mAfshari, mMezrab, mLesson6, mRepertoire],
-    items,
-    blocks,
-    reviews,
-    ...pathways,
-    attachments: [],
-    lessons,
-    lessonAgenda,
-    archiveSources: [],
-  };
-}
-
-export function emptyDB(): PracticeDB {
-  return {
-    schemaVersion: SCHEMA_VERSION,
-    instruments: [],
-    materials: [],
-    items: [],
-    blocks: [],
-    reviews: [],
-    pathways: [],
-    pathwayStages: [],
-    pathwayRoutines: [],
-    attachments: [],
-    lessons: [],
-    lessonAgenda: [],
-    archiveSources: [],
-  };
-}
-```
-
-### src/domain/sourceReconcile.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
-import {
-  decodeSourceIndex,
-  resourcesForPiece,
-  resourcesForSession,
-  sourceItemId,
-  sourceLessonId,
-  validateArchiveSources,
-  type SourceIndex,
-} from './sourceArchive';
-import {
-  applyArchiveImport,
-  planArchiveImport,
-  repairReferencePath,
-  repairLessonReferences,
-  toArchiveRelative,
-  withSuppression,
-  followRenames,
-} from './sourceReconcile';
-import { archiveRootUrl, resolveRecordingUrl } from './recordings';
-// The published log is the SCANNER's output, so the downstream transitions
-// below are driven by what it actually publishes for a forked log — never by
-// a hand-written approximation of it.
-// @ts-expect-error — no type declarations for the .mjs operator tool.
-import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
-const { buildIndex } = scannerModule as {
-  buildIndex(input: {
-    registryText: string;
-    inventory: never[];
-    renameLog: { present: true; text: string };
-  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
-};
-const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
-import { emptyDB } from './seed';
-import { LEGACY_SEED_PATHS } from './setarClasses';
-import { createItem, createLesson } from './factories';
-import type { Lesson, PracticeDB, PracticeItem } from './types';
-
-const NOW = new Date('2026-09-17T09:00:00.000Z');
-const INDEX: SourceIndex = decodeSourceIndex(rawIndex);
-const SETAR = 'inst-setar';
-
-function baseDB(over: Partial<PracticeDB> = {}): PracticeDB {
-  return {
-    ...emptyDB(),
-    instruments: [
-      { id: SETAR, name: 'Setar', family: 'Persian', active: true, createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z' },
-    ],
-    ...over,
-  };
-}
-
-const item = (over: Partial<PracticeItem>): PracticeItem => ({
-  ...createItem({ instrumentId: SETAR, title: 'x' }, NOW),
-  ...over,
-});
-
-const lesson = (over: Partial<Lesson>): Lesson => ({
-  ...createLesson({ instrumentId: SETAR, date: '2026-01-01' }, NOW),
-  ...over,
-});
-
-const plan = (db: PracticeDB, index = INDEX, decisions = undefined as never) =>
-  planArchiveImport({ db, index, instrumentId: SETAR, decisions, now: NOW });
-
-describe('reconciling the archive with the owner’s own records', () => {
-  it('setar reconciliation binds exact identities without merging owner records', () => {
-    // --- a first import of an empty database --------------------------------
-    const first = plan(baseDB());
-    expect(first.newLessons).toHaveLength(39);
-    expect(first.newItems).toHaveLength(94);
-    expect(first.questions).toEqual([]);
-    expect(first.newLessons.every((l) => l.origin === 'archive')).toBe(true);
-    const after = applyArchiveImport(baseDB(), first);
-    expect(after.lessons).toHaveLength(39);
-    expect(after.items).toHaveLength(94);
-    expect(after.archiveSources).toHaveLength(1);
-
-    // Canonical keys survive BYTE-EXACT as the items' own titles.
-    expect(after.items.map((i) => i.title)).toContain('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان');
-    expect(after.items.map((i) => i.title)).toContain('تمرین-دشتی-1-علیزاده');
-
-    // --- repeating it adds NOTHING -----------------------------------------
-    const second = plan(after);
-    expect(second.newLessons).toEqual([]);
-    expect(second.newItems).toEqual([]);
-    expect(second.summary.unchanged).toBe(true);
-    // ...and applying it returns the very same database object, so an
-    // unchanged refresh cannot bump a revision or churn a timestamp.
-    expect(applyArchiveImport(after, second)).toBe(after);
-
-    // --- DETERMINISTIC IDENTITY across devices ------------------------------
-    // Two devices importing the same published index separately must agree on
-    // which record is which, or the next sync sees two of everything.
-    const other = applyArchiveImport(baseDB(), plan(baseDB()));
-    expect(other.items.map((i) => i.id).sort()).toEqual(after.items.map((i) => i.id).sort());
-    expect(other.lessons.map((l) => l.id).sort()).toEqual(after.lessons.map((l) => l.id).sort());
-    expect(after.items.some((i) => i.id === sourceItemId('setar-classes', 'عراق'))).toBe(true);
-    expect(after.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
-
-    // --- EXISTING BINDINGS WIN, across edited titles and dates --------------
-    const edited: PracticeDB = {
-      ...after,
-      items: after.items.map((i) =>
-        i.source?.pieceKey === 'عراق' ? { ...i, title: 'Iraq — my own name for it', notes: 'teacher said…' } : i,
-      ),
-      lessons: after.lessons.map((l) => (l.source?.sessionN === 13 ? { ...l, date: '2020-01-01', number: 999 } : l)),
-    };
-    const third = plan(edited);
-    expect(third.newItems).toEqual([]);
-    expect(third.newLessons).toEqual([]);
-    const applied = applyArchiveImport(edited, third);
-    // The owner's edits are still there: a binding identifies, it never rewrites.
-    expect(applied.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('Iraq — my own name for it');
-    expect(applied.lessons.find((l) => l.source?.sessionN === 13)!.date).toBe('2020-01-01');
-
-    // --- adopting ONE legacy lesson, on EXACT evidence ----------------------
-    const evidence = lesson({
-      id: 'legacy-13',
-      date: '2024-09-03',
-      number: 13,
-      // The owner's own old reference — legacy prefix and pre-rename name.
-      recordings: [
-        {
-          id: 'r1',
-          title: 'Class 13',
-          path: 'setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4',
-          kind: 'video',
-          createdAt: '2024-09-04T00:00:00.000Z',
-        },
-      ],
-      notes: 'What the teacher said that day.',
-    });
-    const withLegacy = plan(baseDB({ lessons: [evidence] }));
-    const adopted = withLegacy.adoptedLessons.find((l) => l.source?.sessionN === 13);
-    expect(adopted).toBeDefined();
-    expect(adopted!.id).toBe('legacy-13'); // the owner's record KEEPS its id
-    expect(adopted!.notes).toBe('What the teacher said that day.');
-    expect(withLegacy.newLessons).toHaveLength(38);
-
-    // --- weaker equivalences CANNOT auto-merge ------------------------------
-    const dateOnly = lesson({ id: 'date-only', date: '2024-09-03' });
-    const numberOnly = lesson({ id: 'number-only', date: '2019-05-05', number: 13 });
-    const dateAndNumber = lesson({ id: 'date-and-number', date: '2024-09-03', number: 13 });
-    const weak = plan(baseDB({ lessons: [dateOnly, numberOnly, dateAndNumber] }));
-    expect(weak.adoptedLessons).toEqual([]);
-    expect(weak.newLessons).toHaveLength(39);
-    // Two identical candidates do not pick the first: the owner is asked.
-    const twin = { ...evidence, id: 'legacy-13-twin' };
-    const ambiguous = plan(baseDB({ lessons: [evidence, twin] }));
-    expect(ambiguous.adoptedLessons).toEqual([]);
-    const q = ambiguous.questions.find((x) => x.sessionN === 13)!;
-    expect(q.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-twin']);
-
-    // --- the owner's real upcoming class 38 survives ------------------------
-    const upcoming = lesson({ id: 'class-38-upcoming', date: '2026-09-27', number: 38 });
-    const withUpcoming = plan(baseDB({ lessons: [upcoming] }));
-    expect(withUpcoming.adoptedLessons).toEqual([]);
-    expect(withUpcoming.newLessons).toHaveLength(39);
-    const installed = applyArchiveImport(baseDB({ lessons: [upcoming] }), withUpcoming);
-    const thirtyEights = installed.lessons.filter((l) => l.number === 38);
-    expect(thirtyEights.map((l) => l.date).sort()).toEqual(['2026-08-04', '2026-09-27']);
-    expect(installed.lessons.find((l) => l.id === 'class-38-upcoming')!.origin).toBeUndefined();
-
-    // --- a catalogue slug is NEVER a canonical Farsi key --------------------
-    const catalogued = item({ id: 'cat-iraq', title: 'Iraq', catalogKey: 'iraq' });
-    const withCatalogue = plan(baseDB({ items: [catalogued] }));
-    expect(withCatalogue.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    expect(withCatalogue.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
-    const cataloguedAfter = applyArchiveImport(baseDB({ items: [catalogued] }), withCatalogue);
-    expect(cataloguedAfter.items.find((i) => i.id === 'cat-iraq')!.source).toBeUndefined();
-
-    // --- exact title / literal alias equality ASKS, never merges ------------
-    const sameTitle = item({ id: 'mine-araq', title: 'عراق' });
-    const aliasTitle = item({ id: 'mine-alias', title: 'araq' });
-    const asked = plan(baseDB({ items: [sameTitle, aliasTitle] }));
-    const itemQ = asked.questions.find((x) => x.pieceKey === 'عراق')!;
-    expect(itemQ.candidates.map((c) => c.id).sort()).toEqual(['mine-alias', 'mine-araq']);
-    expect(asked.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    const untouched = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), asked);
-    expect(untouched.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
-
-    // Link: the owner's record keeps its id and gains the binding.
-    const linked = planArchiveImport({
-      db: baseDB({ items: [sameTitle, aliasTitle] }),
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'link-item', pieceKey: 'عراق', itemId: 'mine-araq' }],
-      now: NOW,
-    });
-    expect(linked.adoptedItems.map((i) => i.id)).toEqual(['mine-araq']);
-    expect(linked.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    const linkedDb = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), linked);
-    expect(linkedDb.items.find((i) => i.id === 'mine-araq')!.source).toEqual({
-      archiveId: 'setar-classes',
-      pieceKey: 'عراق',
-    });
-    // ...and the binding PERSISTS: a later refresh asks nothing more about it.
-    expect(plan(linkedDb).questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-
-    // Create separately: two records, both kept, only one bound.
-    const separate = planArchiveImport({
-      db: baseDB({ items: [sameTitle] }),
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'create-item', pieceKey: 'عراق' }],
-      now: NOW,
-    });
-    const separateDb = applyArchiveImport(baseDB({ items: [sameTitle] }), separate);
-    expect(separateDb.items.filter((i) => i.title === 'عراق')).toHaveLength(2);
-    expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-    expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
-
-    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
-    // It used to live only in the preview's own `decisions` argument, so "no,
-    // not this one" survived exactly as long as the screen did: a reload, or
-    // simply the next refresh, asked the identical question again with nothing
-    // in the database to show it had ever been answered.
-    const skipDb = baseDB({ items: [sameTitle] });
-    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
-    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
-    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
-    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
-    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
-    expect(validateArchiveSources(afterSkip)).toBeNull();
-    // ...and it survives the persisted shape. A LATER refresh, carrying no
-    // decisions at all, neither asks nor re-creates.
-    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
-    const afterReload = plan(reloaded);
-    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
-    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(afterReload.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
-    // Skipping the same thing twice does not grow the list either.
-    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
-    expect(skipTwice.source.suppressions).toHaveLength(1);
-    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
-
-    // The same holds for a CLASS the owner skips.
-    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
-    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
-    expect(lessonSkipped.newLessons).toHaveLength(38);
-    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
-    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
-    expect(plan(lessonReloaded).newLessons).toEqual([]);
-    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-
-    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
-    // Two indistinguishable candidates; the owner says neither of them is this
-    // session. The decision used to be dropped on the floor for lessons — the
-    // item side had it from the start — and the question came back for ever.
-    const twinDb = baseDB({ lessons: [evidence, twin] });
-    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
-    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
-    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
-    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
-    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
-    // Three records for that day now: the archive's own, and BOTH of the
-    // owner's, each keeping its id, its notes and its unbound status.
-    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
-    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
-    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
-    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
-    expect(validateArchiveSources(afterCreate)).toBeNull();
-    // ...and the binding it did create is the archive's own deterministic one.
-    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
-
-    // --- the source/instrument binding is explicit and validated -----------
-    expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
-    expect(after.archiveSources[0]!.id).toBe('setar-classes');
-    expect(after.items.every((i) => i.instrumentId === SETAR)).toBe(true);
-  });
-
-  it('archive refresh preserves owner edits and applies only the new source delta', () => {
-    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
-
-    // The owner then works on their own records.
-    const owned: PracticeDB = {
-      ...installed,
-      items: installed.items.map((i) =>
-        i.source?.pieceKey === 'عراق'
-          ? { ...i, title: 'My own title', notes: 'my notes', status: 'usable', persian: { ...i.persian, composer: '' } }
-          : i,
-      ),
-      lessons: installed.lessons.map((l) => (l.source?.sessionN === 1 ? { ...l, notes: 'class one notes' } : l)),
-    };
-
-    // --- ONE new session, plus one new score on an existing session ---------
-    const session40 = {
-      n: 40,
-      date: '2026-09-29',
-      folder: 'session-40-29-09-2026',
-      roster: ['عراق'],
-      rosterTrusted: true,
-      hasClassRecording: true,
-      resources: [
-        {
-          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
-          role: 'ضبط-کلاس',
-          kind: 'video' as const,
-          title: 'ضبط کلاس',
-          part: null,
-          pieces: [],
-          group: null,
-        },
-      ],
-      members: [{ key: 'عراق', roles: ['ضبط-کلاس'] }],
-    };
-    const addedScore = {
-      path: 'session-12-06-08-2024/نت-عراق.pdf',
-      role: 'نت',
-      kind: 'score' as const,
-      title: 'نت عراق',
-      part: null,
-      pieces: ['عراق'],
-      group: null,
-    };
-    const next: SourceIndex = {
-      ...INDEX,
-      contentHash: 'b'.repeat(64),
-      sessions: [
-        // A scan records the MEMBERSHIP a new resource creates in the same
-        // pass that lists the resource, so a fixture that adds one without the
-        // other is a graph disagreeing with itself — refused at every door.
-        ...INDEX.sessions.map((s) =>
-          s.n === 12
-            ? {
-                ...s,
-                resources: [...s.resources, addedScore],
-                members: [
-                  ...s.members.filter((m) => m.key !== 'عراق'),
-                  {
-                    key: 'عراق',
-                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
-                  },
-                ],
-              }
-            : s,
-        ),
-        session40,
-      ],
-      // A later registry improvement on a piece already seeded.
-      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, composer: 'میرزا-حسینقلی' } : p)),
-    };
-
-    const delta = planArchiveImport({ db: owned, index: next, instrumentId: SETAR, now: NOW });
-    // ONLY the delta: one lesson, no items (عراق is already bound).
-    expect(delta.newLessons.map((l) => l.source?.sessionN)).toEqual([40]);
-    expect(delta.newItems).toEqual([]);
-
-    const refreshed = applyArchiveImport(owned, delta);
-    expect(refreshed.lessons).toHaveLength(40);
-    // AUTHORED FIELDS ARE SEEDED ONCE AND THEN PRESERVED — including the
-    // deliberately EMPTY composer the owner cleared.
-    const araq = refreshed.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(araq.title).toBe('My own title');
-    expect(araq.notes).toBe('my notes');
-    expect(araq.status).toBe('usable');
-    expect(araq.persian?.composer).toBe('');
-    expect(refreshed.lessons.find((l) => l.source?.sessionN === 1)!.notes).toBe('class one notes');
-    // Source facts DID update: the new score is in the graph.
-    const source = refreshed.archiveSources.find((s) => s.id === 'setar-classes')!;
-    expect(source.sessions.find((s) => s.n === 12)!.resources.some((r) => r.path === addedScore.path)).toBe(true);
-    expect(source.indexHash).toBe('b'.repeat(64));
-
-    // The registry improvement is OFFERED, never applied behind the owner.
-    const suggestion = delta.suggestions.find((s) => s.pieceKey === 'عراق' && s.field === 'composer')!;
-    expect(suggestion).toBeDefined();
-    expect(suggestion.from).toBe('');
-    expect(suggestion.to).toBe('میرزا-حسینقلی');
-    // A field decision names the RECORD it was shown against, not just the
-    // piece: a rebase must not hand the answer to whichever item happens to
-    // hold that piece by the time Apply is pressed.
-    const araqItemId = suggestion.itemId;
-    const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
-    ]);
-    const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
-    // ...and applying a field NEVER touches the notebook or the title.
-    expect(applied.notes).toBe('my notes');
-    expect(applied.title).toBe('My own title');
-
-    // --- THE ITEM'S KIND IS THE OWNER'S, SEEDED ONCE AND NEVER RE-OFFERED ---
-    // The registry's `form` decides `itemType` at CREATION and nothing after
-    // it: a piece the archive calls a گوشه that the owner works as a full piece
-    // is their reading of the music, not a source fact to be corrected back.
-    // `itemType` is not in the suggestion list at all, so no refresh can even
-    // ask, let alone revert it.
-    const reKinded = { ...owned, items: owned.items.map((i) => (i.id === araqItemId ? { ...i, itemType: 'full_piece' as const } : i)) };
-    const afterReKind = applyArchiveImport(
-      reKinded,
-      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }),
-    );
-    expect(afterReKind.items.find((i) => i.id === araqItemId)!.itemType).toBe('full_piece');
-    expect(
-      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }).suggestions.some(
-        (x) => (x.field as string) === 'itemType',
-      ),
-    ).toBe(false);
-
-    // --- an UNCHANGED refresh writes nothing --------------------------------
-    const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
-    expect(same.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
-
-    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
-    // The suggestion stands until it is answered, and it may be answered days
-    // later against the very same published index. Judging "already current"
-    // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
-    ];
-    const lateDecision = planArchiveImport({
-      db: refreshed,
-      index: next,
-      instrumentId: SETAR,
-      decisions: lateField,
-      now: NOW,
-    });
-    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
-    expect(lateDecision.summary.unchanged).toBe(false);
-    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
-    expect(lateApplied).not.toBe(refreshed);
-    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
-    // Only that field: the notebook, the title and the status are the owner's.
-    expect(lateItem.notes).toBe('my notes');
-    expect(lateItem.title).toBe('My own title');
-    expect(lateItem.status).toBe('usable');
-    expect(lateApplied.blocks).toEqual(refreshed.blocks);
-    // Applied, the suggestion is gone: the next refresh has nothing to offer.
-    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
-    // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
-    ];
-    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
-    expect(noop.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
-
-    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
-    // Choose the archive's composer over an EMPTY field, then write one of
-    // your own before the plan is applied. The choice was an answer about the
-    // empty field; it is not an instruction to replace the new words.
-    const ownWrote = {
-      ...refreshed,
-      items: refreshed.items.map((i) =>
-        i.source?.pieceKey === 'عراق'
-          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
-          : i,
-      ),
-    };
-    const rebased = planArchiveImport({
-      db: ownWrote,
-      index: next,
-      instrumentId: SETAR,
-      decisions: lateField,
-      now: NOW,
-    });
-    expect(rebased.staleDecisions).toEqual(lateField);
-    // Not applied, and not counted as a change either: both sides of the
-    // preview/commit boundary agree that this decision no longer stands.
-    expect(rebased.summary.unchanged).toBe(true);
-    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
-    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
-      'Owner wrote this during refresh',
-    );
-    // The suggestion is re-offered against what is there NOW, so the owner can
-    // answer the question that actually stands.
-    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
-      'Owner wrote this during refresh',
-    );
-    // A decision carrying the CURRENT value still applies, on the same data.
-    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
-    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
-    expect(fresh.staleDecisions).toEqual([]);
-    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
-      ?.composer).toBe('میرزا-حسینقلی');
-
-    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
-    // Bound elsewhere, moved instrument or deleted: never silently turned into
-    // "create a new record instead".
-    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
-    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
-    const unbound: PracticeDB = {
-      ...owned,
-      items: owned.items.map((i) => {
-        const { source, ...rest } = i;
-        void source;
-        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
-      }),
-    };
-    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
-    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
-    expect(linkable.staleDecisions).toEqual([]);
-    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
-    const takenElsewhere: PracticeDB = {
-      ...unbound,
-      items: unbound.items.map((i) =>
-        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
-      ),
-    };
-    const stalelink = planArchiveImport({
-      db: takenElsewhere,
-      index: next,
-      instrumentId: SETAR,
-      decisions: linkDecision,
-      now: NOW,
-    });
-    expect(stalelink.staleDecisions).toEqual(linkDecision);
-    expect(stalelink.adoptedItems).toEqual([]);
-
-    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
-    //
-    // The loops start with "already bound? nothing to decide" / "already
-    // suppressed? nothing to decide", so a decision about a record that became
-    // bound between the preview and the commit was never looked at: no
-    // adoption, no question, and an EMPTY `staleDecisions` — the commit
-    // reported success for an action it had not performed. And a field
-    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
-    // onto whichever record held that piece by the time Apply ran.
-    const otherItemId = 'someone-elses-item';
-    const boundToAnother: PracticeDB = {
-      ...unbound,
-      items: [
-        ...unbound.items,
-        item({
-          id: otherItemId,
-          instrumentId: SETAR,
-          title: 'Another record',
-          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
-        }),
-      ],
-    };
-    // LINK: the approved record is not the one holding the piece now, so the
-    // choice is stale — never quietly satisfied by the other record.
-    const redirectedLink = planArchiveImport({
-      db: boundToAnother,
-      index: next,
-      instrumentId: SETAR,
-      decisions: linkDecision,
-      now: NOW,
-    });
-    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
-    expect(redirectedLink.adoptedItems).toEqual([]);
-    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
-      .toBeUndefined();
-    // APPLY-FIELD: the archive's composer, chosen against item A's empty
-    // field, must not be written to the item that holds the piece now — whose
-    // composer is also empty, so nothing about the VALUE would have caught it.
-    const fieldForA = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
-    ];
-    const redirectedField = planArchiveImport({
-      db: boundToAnother,
-      index: next,
-      instrumentId: SETAR,
-      decisions: fieldForA,
-      now: NOW,
-    });
-    expect(redirectedField.staleDecisions).toEqual(fieldForA);
-    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
-    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
-    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
-    // SKIP and CREATE are the same rule: an answer about a record that has
-    // since been bound is an answer to a question that no longer stands.
-    for (const decision of [
-      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
-      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
-    ]) {
-      const swept = planArchiveImport({
-        db: boundToAnother,
-        index: next,
-        instrumentId: SETAR,
-        decisions: decision,
-        now: NOW,
-      });
-      expect(swept.staleDecisions).toEqual(decision);
-      expect(swept.newItems).toEqual([]);
-    }
-    // …and LOOP PREVENTION: the action the owner approved, once it HAS
-    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
-    // re-previews, so a realised action that could never be consumed again
-    // would go stale for ever.
-    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
-    const again = planArchiveImport({
-      db: afterLink,
-      index: next,
-      instrumentId: SETAR,
-      decisions: linkDecision,
-      now: NOW,
-    });
-    expect(again.staleDecisions).toEqual([]);
-    const skipped = applyArchiveImport(
-      unbound,
-      planArchiveImport({
-        db: unbound,
-        index: next,
-        instrumentId: SETAR,
-        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
-        now: NOW,
-      }),
-    );
-    expect(
-      planArchiveImport({
-        db: skipped,
-        index: next,
-        instrumentId: SETAR,
-        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
-        now: NOW,
-      }).staleDecisions,
-    ).toEqual([]);
-
-    // --- a missing FILE keeps its provenance, flagged ----------------------
-    const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
-    const shrunk: SourceIndex = {
-      ...next,
-      contentHash: 'c'.repeat(64),
-      // A session that has lost every file has lost its class recording with
-      // them: a scan recomputes that flag, and a hand-built index that keeps
-      // it is a graph disagreeing with itself — which `checkSourceGraph` now
-      // refuses at every door, so it cannot be used to prove anything else.
-      sessions: next.sessions.map((s) =>
-        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
-      ),
-    };
-    const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
-    const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
-    // The LESSON and the ITEM are still there — a vanished file never deletes
-    // an owner record, it only changes what the source can offer.
-    expect(afterShrink.lessons).toHaveLength(40);
-    expect(afterShrink.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('My own title');
-    expect(afterShrink.blocks).toEqual(refreshed.blocks);
-    const shrunkSource = afterShrink.archiveSources.find((s) => s.id === 'setar-classes')!;
-    const goneRow = shrunkSource.sessions.find((s) => s.n === 12)!.resources.find((r) => r.path === goneFile)!;
-    expect(goneRow.unavailable).toBe(true);
-    // ...and the database this produced is one every inbound door accepts.
-    expect(validateArchiveSources(afterShrink)).toBeNull();
-
-    // --- a missing REGISTRY ROW is the case that used to lock refresh out ---
-    // Dropping a piece the owner has an item bound to would leave that binding
-    // pointing at nothing — which `validateDB` refuses at every door, so the
-    // next Refresh, and every one after it, would fail outright. Provenance is
-    // RETAINED and flagged instead.
-    const withoutPiece: SourceIndex = {
-      ...next,
-      contentHash: 'e'.repeat(64),
-      pieces: next.pieces.filter((p) => p.key !== 'عراق'),
-      sessions: next.sessions.map((s) => ({
-        ...s,
-        roster: s.roster.filter((k) => k !== 'عراق'),
-        members: s.members.filter((m) => m.key !== 'عراق'),
-        resources: s.resources.map((r) => ({ ...r, pieces: r.pieces.filter((k) => k !== 'عراق') })),
-      })),
-    };
-    const withoutPlan = planArchiveImport({ db: refreshed, index: withoutPiece, instrumentId: SETAR, now: NOW });
-    const afterWithout = applyArchiveImport(refreshed, withoutPlan);
-    expect(validateArchiveSources(afterWithout)).toBeNull();
-    const keptPiece = afterWithout.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!;
-    expect(keptPiece.unavailable).toBe(true);
-    // The owner's item, its title and its binding are all still there.
-    const keptItem = afterWithout.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    expect(keptItem.title).toBe('My own title');
-    expect(keptItem.notes).toBe('my notes');
-    // It is not re-created as a second item either.
-    expect(afterWithout.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-    // A WHOLE SESSION that disappears is retained the same way.
-    const withoutSession: SourceIndex = {
-      ...next,
-      contentHash: 'f'.repeat(64),
-      sessions: next.sessions.filter((s) => s.n !== 13),
-    };
-    const afterNoSession = applyArchiveImport(
-      refreshed,
-      planArchiveImport({ db: refreshed, index: withoutSession, instrumentId: SETAR, now: NOW }),
-    );
-    expect(validateArchiveSources(afterNoSession)).toBeNull();
-    expect(afterNoSession.archiveSources[0]!.sessions.find((s) => s.n === 13)!.unavailable).toBe(true);
-    expect(afterNoSession.lessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
-    // ...and the source coming BACK clears the flag: the source is
-    // authoritative about what it has.
-    const restoredPlan = planArchiveImport({ db: afterWithout, index: next, instrumentId: SETAR, now: NOW });
-    const afterRestore = applyArchiveImport(afterWithout, restoredPlan);
-    expect(afterRestore.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!.unavailable).toBeUndefined();
-    expect(afterRestore.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
-
-    // --- a CHANGED canonical key is a NEW identity, never a rename ----------
-    const renamedKey: SourceIndex = {
-      ...INDEX,
-      contentHash: 'd'.repeat(64),
-      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, key: 'عراق-جدید' } : p)),
-      sessions: INDEX.sessions.map((s) => ({
-        ...s,
-        roster: s.roster.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
-        members: s.members.map((m) => (m.key === 'عراق' ? { ...m, key: 'عراق-جدید' } : m)),
-        resources: s.resources.map((r) => ({
-          ...r,
-          pieces: r.pieces.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
-        })),
-      })),
-    };
-    const keyChange = planArchiveImport({ db: refreshed, index: renamedKey, instrumentId: SETAR, now: NOW });
-    // A NEW piece appears; the old binding is NOT silently carried across.
-    expect(keyChange.newItems.map((i) => i.source?.pieceKey)).toEqual(['عراق-جدید']);
-    expect(keyChange.adoptedItems).toEqual([]);
-
-    // --- an unresolved question stays a question until answered ------------
-    const stranger = item({ id: 'stranger', title: 'چهار-پاره' });
-    const strangerDb = { ...baseDB(), items: [stranger] };
-    const asked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(asked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
-    const stillAsked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(stillAsked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
-    // The SAME index with a NEW owner decision resolves it, with no re-scan.
-    const resolved = planArchiveImport({
-      db: strangerDb,
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'skip-item', pieceKey: 'چهار-پاره' }],
-      now: NOW,
-    });
-    expect(resolved.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(false);
-    expect(resolved.newItems.some((i) => i.source?.pieceKey === 'چهار-پاره')).toBe(false);
-  });
-
-  it('exact Setar rename repair preserves saved references and their metadata', () => {
-    const renames = new Map(INDEX.renames.map((r) => [r.from, r.to]));
-    const known = new Set(INDEX.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-
-    // The archive prefix the owner's legacy paths carry is not part of the
-    // archive-relative identity; the device base now ends in it.
-    expect(toArchiveRelative('setar-classes/session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
-    expect(toArchiveRelative('session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
-
-    // EVERY legacy seed path the old importer ever wrote — all 67 of them —
-    // maps through the rename log EXACTLY. No title, size or modification-time
-    // matching is involved anywhere, and none of the 67 is left to a guess.
-    expect(LEGACY_SEED_PATHS).toHaveLength(67);
-    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
-    // and 257 mappings out: no row of the REAL log is dropped for any reason —
-    // not unsafe, not empty, not a loop and not a fork — so the rule below
-    // changes nothing the operator actually publishes today.
-    expect(INDEX.renames).toHaveLength(257);
-    const repairedPaths = new Map<string, string>();
-    for (const p of LEGACY_SEED_PATHS) {
-      const outcome = repairReferencePath(p, renames, known);
-      expect(outcome.status).toBe('repaired');
-      if (outcome.status !== 'repaired') throw new Error('unreachable');
-      expect(outcome.path.startsWith('session-')).toBe(true);
-      expect(known.has(outcome.path)).toBe(true);
-      repairedPaths.set(p, outcome.path);
-    }
-    expect(repairedPaths.size).toBe(67);
-    // Session 28's "main video" is really a NAMED DEMONSTRATION; the repair
-    // says so by landing on the demo file, and nothing invents a class
-    // recording for a session that has none.
-    const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
-    expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
-
-    // A path with no rename row and no file is DIAGNOSED, never guessed — and
-    // the diagnosis is about the FILE, so it is reached only once the path is
-    // already in the current namespace. A legacy-prefixed one is first said in
-    // that namespace (same bytes, words the device base addresses); the second
-    // pass is what reports it.
-    const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
-    expect(missing).toEqual({ status: 'repaired', path: 'session-1-26-09-2023/nothing.mp4' });
-    expect(repairReferencePath('session-1-26-09-2023/nothing.mp4', renames, known).status).toBe('attention');
-    // A foreign link, and a link carrying a query, are left exactly as they are.
-    const base = 'https://192.168.0.20:5010/setar-classes';
-    expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
-    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4?download=1`, renames, known, base).status).toBe(
-      'unchanged',
-    );
-    // Without a VERIFIED base a full URL is not converted at all.
-    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4`, renames, known).status).toBe('attention');
-    // Under the verified base it converts, decoding each segment once.
-    const encoded = `${base}/${encodeURIComponent('session-13-03-09-2024')}/${encodeURIComponent('نمونه-1.mp4')}`;
-    const converted = repairReferencePath(encoded, renames, known, base);
-    expect(converted.status === 'repaired' && converted.path).toBe('session-13-03-09-2024/نمونه-1.mp4');
-    // A cycle in the log is reported rather than followed forever.
-    const cyclic = new Map([
-      ['a/b.mp4', 'a/c.mp4'],
-      ['a/c.mp4', 'a/b.mp4'],
-    ]);
-    expect(repairReferencePath('a/b.mp4', cyclic, new Set(['a/c.mp4'])).status).toBe('attention');
-
-    // --- both rows of a real collision survive, with their own metadata -----
-    // Session 1's class part 1 and the first Dashti score each have an OLD and
-    // a CURRENT row that now point at one physical file. Repairing them keeps
-    // TWO rows, because each carries something the owner wrote.
-    const collided = lesson({
-      id: 'L1',
-      date: '2023-09-26',
-      number: 1,
-      recordings: [
-        {
-          id: 'old-video',
-          title: 'Class 1 (old link)',
-          path: 'setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4',
-          kind: 'video',
-          notes: 'The half I watched first.',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-        {
-          id: 'current-video',
-          title: 'Class 1 part 1',
-          path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4',
-          kind: 'video',
-          createdAt: '2026-09-10T00:00:00.000Z',
-        },
-        {
-          id: 'old-score',
-          title: 'First Dashti score (old link)',
-          path: 'setar-classes/session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf',
-          kind: 'pdf',
-          notes: 'Teacher marked bar 12.',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-        {
-          id: 'current-score',
-          title: 'Dashti score',
-          path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf',
-          kind: 'pdf',
-          createdAt: '2026-09-10T00:00:00.000Z',
-        },
-      ],
-    });
-    const repaired = repairLessonReferences(collided, renames, known);
-    expect(repaired.repaired).toBe(2);
-    expect(repaired.attention).toEqual([]);
-    expect(repaired.lesson.recordings).toHaveLength(4);
-    const byId = new Map(repaired.lesson.recordings!.map((r) => [r.id, r]));
-    // The two old rows now resolve to the same physical files as the new ones…
-    expect(byId.get('old-video')!.path).toBe(byId.get('current-video')!.path);
-    expect(byId.get('old-score')!.path).toBe(byId.get('current-score')!.path);
-    // …and neither authored row, nor its notes or title, was deleted.
-    expect(byId.get('old-video')!.notes).toBe('The half I watched first.');
-    expect(byId.get('old-video')!.title).toBe('Class 1 (old link)');
-    expect(byId.get('old-score')!.notes).toBe('Teacher marked bar 12.');
-
-    // --- the owner's own practice recordings stay, outside useful material --
-    const personal = lesson({
-      id: 'L2',
-      date: '2025-08-05',
-      recordings: [
-        {
-          id: 'mine-1',
-          title: 'My take, August',
-          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
-          kind: 'video',
-          notes: 'Slow but even.',
-          createdAt: '2025-08-06T00:00:00.000Z',
-        },
-      ],
-    });
-    const personalRepair = repairLessonReferences(personal, renames, known);
-    expect(personalRepair.lesson.recordings).toHaveLength(1);
-    expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
-    // ONE NAMESPACE PER ARCHIVE-OWNED LESSON. The device base is the archive
-    // ROOT, so the legacy folder segment comes OFF even though the index
-    // describes nothing at this path: it names the same bytes in the words the
-    // base addresses. Leaving it on is what made a corrected base kill exactly
-    // the references a refresh never touches — the owner's own practice takes.
-    expect(personalRepair.lesson.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
-    // Saying so is NOT saying the file is there: no attention row is raised,
-    // because the index describes only material scoped to pieces and classes.
-    expect(personalRepair.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
-    // …and it is IDEMPOTENT: once said in the current namespace there is
-    // nothing left to change, so a second refresh writes nothing.
-    expect(repairReferencePath('session-25-05-08-2025/mine.mp4', renames, known)).toEqual({
-      status: 'attention',
-      reason: 'The archive no longer has a file at this path.',
-      code: 'not-described',
-    });
-    // The archive never offers a personal recording as material for a piece.
-    const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
-    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
-
-    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
-    // The helper above proves the mapping. THIS proves the production journey:
-    // the rename log arrives WITH the index, so the one moment the app can
-    // repair a stored path is the moment it accepts a new graph — and a lesson
-    // adopted with its own references still pointing at names the archive
-    // renamed is half a job, bound and broken.
-    const ownPersonal = lesson({
-      id: 'L25',
-      date: '2025-08-05',
-      number: 25,
-      recordings: [
-        {
-          id: 'mine-1',
-          title: 'My take, August',
-          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
-          kind: 'video',
-          notes: 'Slow but even.',
-          createdAt: '2025-08-06T00:00:00.000Z',
-        },
-      ],
-    });
-    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
-    const refresh = plan(legacyDb);
-    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
-    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
-    // The PLAN already shows the repaired paths, so the preview and the commit
-    // cannot disagree about what is about to be written.
-    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
-    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
-    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
-
-    const installedLegacy = applyArchiveImport(legacyDb, refresh);
-    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
-    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
-    // BOTH rows of each collision survive, with everything the owner wrote.
-    expect(storedOne.recordings).toHaveLength(4);
-    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
-    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
-    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
-    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
-    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
-    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
-    expect(validateArchiveSources(installedLegacy)).toBeNull();
-
-    // The owner's own practice takes are RETAINED and never reported missing —
-    // the index describes only material scoped to pieces and classes, so a path
-    // it does not name is outside what it knows, never evidence that the file is
-    // gone. RETAINED IS NOT THE SAME CLAIM AS LEFT IN THE OLD NAMESPACE: the row,
-    // its title and its notes are the owner's and are untouched, while the path
-    // text is said in the one namespace the device base addresses, exactly like
-    // every described row on the same class.
-    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
-    expect(storedPersonal.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
-    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
-    expect(storedPersonal.recordings![0]!.title).toBe('My take, August');
-    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
-    // NO ARCHIVE-OWNED LESSON IS LEFT HOLDING TWO NAMESPACES AT ONCE. This is
-    // the invariant the fix is actually for: resolving any of these against the
-    // device base (the archive root) must not produce `…/setar-classes/…`.
-    // …proved against the RESOLVER and the owner's own Mac archive base, because
-    // the namespace only matters at the moment a file is opened: the reported
-    // failure was a URL, not a stored string.
-    const macBase = 'https://192.168.0.20:5010/setar-classes';
-    for (const l of installedLegacy.lessons) {
-      if (!l.source) continue;
-      for (const r of l.recordings ?? []) {
-        expect(r.path.startsWith('setar-classes/')).toBe(false);
-        expect(resolveRecordingUrl(macBase, r)).toMatch(
-          /^https:\/\/192\.168\.0\.20:5010\/setar-classes\/session-[^/]+\/[^/]+$/,
-        );
-      }
-    }
-    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
-    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
-    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
-    // literal: a trailing-slash or prefix mismatch between the two would fail
-    // silently, leaving the link exactly as it was with nothing to show why.
-    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
-    const absolute = lesson({
-      id: 'L-abs',
-      date: '2023-09-26',
-      number: 1,
-      recordings: [
-        {
-          id: 'abs-1',
-          title: 'Class 1, saved as a full link',
-          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
-          kind: 'video',
-          notes: 'Typed in from the browser bar.',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-        {
-          id: 'foreign',
-          title: 'Somewhere else entirely',
-          path: 'https://elsewhere.example/x.mp4',
-          kind: 'video',
-          createdAt: '2023-09-27T00:00:00.000Z',
-        },
-      ],
-    });
-    const absDb = baseDB({ lessons: [absolute] });
-    const urlRepaired = applyArchiveImport(
-      absDb,
-      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
-    );
-    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
-    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
-    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
-    // A link to somewhere else is not this archive's to rewrite.
-    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
-    // WITHOUT a base, nothing is converted and nothing is mangled.
-    const noBase = applyArchiveImport(absDb, plan(absDb));
-    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
-    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
-    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
-
-    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
-    // WRITE-ONCE AT THE LEVEL THE RULE IS ACTUALLY STATED. Saying an undescribed
-    // path in the current namespace counts as a repair on lessons that used to
-    // count none, which is exactly what could have made EVERY later refresh a
-    // write; this is where that would show.
-    const again = plan(installedLegacy);
-    expect(again.repairedLessons).toEqual([]);
-    expect(again.summary.unchanged).toBe(true);
-    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
-
-    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
-    // The archive moves a file the owner's bound class already points at. The
-    // next refresh follows the log; the row, its title and its notes stay.
-    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
-    const moved: SourceIndex = {
-      ...INDEX,
-      contentHash: '9'.repeat(64),
-      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
-      sessions: INDEX.sessions.map((sess) =>
-        sess.n === 1
-          ? {
-              ...sess,
-              resources: sess.resources.map((r) =>
-                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
-              ),
-            }
-          : sess,
-      ),
-    };
-    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
-    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
-    const afterMove = applyArchiveImport(installedLegacy, later);
-    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
-    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
-    expect(movedRows.get('old-video')!.path).toBe(movedTo);
-    expect(movedRows.get('current-video')!.path).toBe(movedTo);
-    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
-    // The score, which did not move, is exactly as it was.
-    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
-    // Nothing about practice moved with it.
-    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
-    expect(validateArchiveSources(afterMove)).toBeNull();
-
-    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
-    // A rename whose destination the archive no longer has: the stored path is
-    // left exactly as it is, and the owner is told which file and why.
-    const dangling: SourceIndex = {
-      ...INDEX,
-      contentHash: '8'.repeat(64),
-      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
-    };
-    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
-    expect(broken.repairedLessons).toEqual([]);
-    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
-    const afterBroken = applyArchiveImport(installedLegacy, broken);
-    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
-
-    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
-    // Adoption took a single hop while repair followed the whole chain, so one
-    // rename log gave two different answers about the same file. With
-    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
-    // class was adopted AS SESSION 1 on the strength of B, and then had that
-    // very reference repaired into session 2's folder: bound to one class,
-    // pointing at another's files.
-    const hopA = 'session-1-26-09-2023/first-name.mp4';
-    const hopB = 'session-1-26-09-2023/second-name.mp4';
-    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
-    expect(known.has(hopC)).toBe(true);
-    const chained: SourceIndex = {
-      ...INDEX,
-      contentHash: '7'.repeat(64),
-      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
-    };
-    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
-    expect(followRenames(hopA, chainRenames)).toBe(hopC);
-    const legacyClass = lesson({
-      id: 'L-chain',
-      date: '2023-09-26',
-      number: 1,
-      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
-    });
-    const chainDb = baseDB({ lessons: [legacyClass] });
-    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
-    // Its ONLY reference now points into session 5, so it is NOT evidence of
-    // session 1 — and the class is not adopted on it.
-    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
-    // A CYCLE is no reading at all, so it is no evidence either.
-    const cyclicIndex: SourceIndex = {
-      ...INDEX,
-      contentHash: '6'.repeat(64),
-      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
-    };
-    expect(
-      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
-        (l) => l.id === 'L-chain',
-      ),
-    ).toBe(false);
-
-    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
-    // A resource suppression is keyed BY PATH. Left on the old name, the file
-    // came back into view under its new one while the old row sat there
-    // flagged unavailable — the owner's decision silently undone by a rename.
-    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
-    const hidden: PracticeDB = {
-      ...installedLegacy,
-      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
-        kind: 'resource',
-        ref: hiddenPath,
-        itemId: 'item-x',
-        at: NOW.toISOString(),
-      }),
-    };
-    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
-    const renamedSource = afterRename.archiveSources[0]!;
-    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
-    expect(hide.ref).toBe(movedTo);
-    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
-    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
-    // And the old row is GONE rather than retained-and-flagged: the log says
-    // exactly where the bytes went, so this file moved, it did not disappear.
-    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
-    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
-    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
-    // ACROSS sessions too — a rename can move a file into a different session,
-    // which is exactly the shape of the A -> B -> C log above. Asking only
-    // "is it still in THIS session" flagged the old row as missing while the
-    // very same bytes sat in the graph under their new name.
-    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
-    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
-    const crossSession: SourceIndex = {
-      ...INDEX,
-      contentHash: '4'.repeat(64),
-      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
-      sessions: INDEX.sessions.map((sess) =>
-        sess.n === 1
-          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
-          : sess.n === 5
-            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
-            : sess,
-      ),
-    };
-    const afterCross = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
-    );
-    const crossSource = afterCross.archiveSources[0]!;
-    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
-    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
-    // The hide went WITH it, into the other session, still scoped to one item.
-    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
-      ref: crossTo,
-      itemId: 'item-x',
-    });
-    expect(validateArchiveSources(afterCross)).toBeNull();
-
-    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
-    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
-    // usable-looking path beside a flag — and only ONE of its three callers
-    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
-    // straight past the verdict and moved the owner's hide onto B, so A came
-    // back into view and the wrong file went dark. It returns `null` now, so
-    // there is no way to drop the verdict and still have a path.
-    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
-    const cyclicLog: SourceIndex = {
-      ...INDEX,
-      contentHash: '3'.repeat(64),
-      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
-    };
-    const afterCycle = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
-    );
-    const cycledSource = afterCycle.archiveSources[0]!;
-    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
-    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
-    expect(cycledHide.itemId).toBe('item-x');
-    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
-    // …so the file the owner hid is still hidden, and its sibling is not.
-    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
-    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
-
-    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
-    // incoming index has dropped keeps its provenance flagged rather than
-    // being silently deleted on the strength of a destination nothing can read.
-    const cyclicAndRemoved: SourceIndex = {
-      ...cyclicLog,
-      contentHash: '2'.repeat(64),
-      sessions: cyclicLog.sessions.map((sess) =>
-        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
-      ),
-    };
-    const afterCyclicRemoval = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
-    );
-    expect(
-      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
-        (r) => r.path === hiddenPath,
-      )?.unavailable,
-    ).toBe(true);
-    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
-
-    // REPAIR says so out loud rather than rewriting the path to a stop on the
-    // loop — and ADOPTION, which reads the same verdict, takes it as no
-    // evidence at all (asserted above for the same shape).
-    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
-    expect(followRenames(hiddenPath, loopMap)).toBeNull();
-    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
-      status: 'attention',
-      reason: 'The rename log loops on this path.',
-      code: 'cycle',
-    });
-    const loopLesson = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
-    ).lessons.find((l) => l.id === 'L1')!;
-    expect(loopLesson.recordings).toEqual(storedOne.recordings);
-
-    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
-    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
-    // log does not determine what this file is called now. The scanner used to
-    // publish the FIRST destination and diagnose the second as "not applied",
-    // so the app was handed a mapping the log cannot support and used it as
-    // exact identity — repairing an authored reference onto it and re-keying
-    // an owner's hide onto it. What it publishes for a fork is nothing, and
-    // this drives the transitions from that real output rather than a guess
-    // at it. (A forked log reaching the app from anywhere else is REFUSED at
-    // every door by the one grammar — asserted in `io.test.ts` against the
-    // persisted door, and by `checkSourceGraph` for the decoder.)
-    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
-    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
-    const scanned = buildIndex({
-      registryText: EMPTY_REGISTRY,
-      inventory: [],
-      renameLog: {
-        present: true,
-        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
-      },
-    });
-    expect(scanned.renames).toEqual([]);
-    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
-    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
-    // The READING: the file keeps the only name this log establishes — its own.
-    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
-    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
-    // either destination.
-    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
-    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
-    const afterFork = applyArchiveImport(
-      hidden,
-      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
-    );
-    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
-    // The HIDE: exactly where the owner put it, still scoped to one item — so
-    // the file they hid is still hidden and neither destination went dark.
-    const forkedSource = afterFork.archiveSources[0]!;
-    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
-      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
-    ]);
-    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
-    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
-    expect(validateArchiveSources(afterFork)).toBeNull();
-
-    // A file that really IS gone still keeps its provenance, flagged.
-    const removed: SourceIndex = {
-      ...INDEX,
-      contentHash: '5'.repeat(64),
-      sessions: INDEX.sessions.map((sess) =>
-        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
-      ),
-    };
-    const afterRemoval = applyArchiveImport(
-      installedLegacy,
-      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
-    );
-    expect(
-      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
-        ?.unavailable,
-    ).toBe(true);
-    expect(validateArchiveSources(afterRename)).toBeNull();
-  });
-});
-
-describe('owner suppressions', () => {
-  it('a suppressed piece or session is never re-created by a later refresh', () => {
-    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
-    const stripped: PracticeDB = {
-      ...installed,
-      items: installed.items.filter((i) => i.source?.pieceKey !== 'عراق'),
-      lessons: installed.lessons.filter((l) => l.source?.sessionN !== 13),
-      archiveSources: withSuppression(
-        withSuppression(installed.archiveSources, 'setar-classes', {
-          kind: 'piece',
-          ref: 'عراق',
-          at: NOW.toISOString(),
-        }),
-        'setar-classes',
-        { kind: 'session', ref: '13', at: NOW.toISOString() },
-      ),
-    };
-    const again = plan(stripped);
-    expect(again.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(again.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-    // Idempotent: suppressing the same thing twice does not grow the list.
-    const twice = withSuppression(stripped.archiveSources, 'setar-classes', {
-      kind: 'piece',
-      ref: 'عراق',
-      at: '2027-01-01T00:00:00.000Z',
-    });
-    expect(twice[0]!.suppressions).toHaveLength(2);
-  });
-});
-```
-
-### src/domain/sourceReconcile.ts
-
-```
-import type { ID, ISODate, Lesson, LessonRecording, PracticeDB, PracticeItem } from './types';
-import { createItem, createLesson } from './factories';
-import { nowISO } from './util';
-import {
-  isSafeSourcePath,
-  sourceItemId,
-  sourceLessonId,
-  type ArchiveSource,
-  type SourceDiagnostic,
-  type SourceIndex,
-  type SourcePiece,
-  type SourceSuppression,
-} from './sourceArchive';
-
-// ---------------------------------------------------------------------------
-// Reconciling a published source index with the owner's own database.
-//
-// PURE and clock-explicit. Two steps, deliberately separate: `planArchiveImport`
-// decides and explains, `applyArchiveImport` writes. The store commits the plan
-// in ONE synchronous mutation, so a partially-applied import cannot exist.
-//
-// THE RULE THIS MODULE EXISTS FOR: the archive owns what the archive knows —
-// registry facts, session facts, roles, memberships, availability. Everything
-// else is the owner's and is seeded ONCE, then never written again. An import
-// may establish repertoire membership, historical lesson provenance and source
-// material. It may never establish recorded practice, a result, a review, or a
-// deadline.
-// ---------------------------------------------------------------------------
-
-/**
- * The archive folder the owner's LEGACY references were written against. New
- * references are stored relative to the archive ROOT (the device base now ends
- * in `/setar-classes/`), so a legacy path carries one extra leading segment
- * that must come off before it can be looked up — and must not be written back.
- */
-export const LEGACY_ARCHIVE_PREFIX = 'setar-classes/';
-
-// --- decisions and questions -----------------------------------------------
-
-export type ReconcileDecision =
-  | { kind: 'link-item'; pieceKey: string; itemId: ID }
-  | { kind: 'create-item'; pieceKey: string }
-  | { kind: 'skip-item'; pieceKey: string }
-  | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
-  | { kind: 'create-lesson'; sessionN: number }
-  | { kind: 'skip-lesson'; sessionN: number }
-  /**
-   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `itemId`, the RECORD
-   * it was shown against, and `from`, the value of theirs it was chosen
-   * against. A decision is about the state the owner actually saw: the preview
-   * and the commit are two moments, and between them a note can be saved, a
-   * sync can land, another device can write.
-   *
-   * Without the PREMISE, choosing the archive's composer over an empty field
-   * and then typing one yourself before pressing Apply replaced your own new
-   * words with the registry's. Without the IDENTITY, the same answer landed on
-   * whichever record happened to hold that piece at commit time: sync a
-   * database where the piece is bound to item B instead, also with an empty
-   * composer, and a choice made about A was written to B.
-   */
-  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: string };
-
-export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
-
-export interface ReconcileCandidate {
-  id: ID;
-  title: string;
-  why: string;
-}
-
-export interface ReconcileQuestion {
-  kind: 'item' | 'lesson';
-  /** Exactly one of these is set. */
-  pieceKey?: string;
-  sessionN?: number;
-  label: string;
-  candidates: ReconcileCandidate[];
-}
-
-/** A registry improvement the owner may apply to an already-seeded item. */
-export interface MetadataSuggestion {
-  pieceKey: string;
-  itemId: ID;
-  field: MetadataField;
-  from: string;
-  to: string;
-}
-
-/**
- * Does this decision still describe THIS suggestion? The one answer, used by
- * the plan's own summary and by `applyArchiveImport`'s write — a question with
- * two answers is how a preview and a commit come to mean different things.
- */
-export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSuggestion): boolean {
-  return (
-    d.kind === 'apply-field' &&
-    d.pieceKey === s.pieceKey &&
-    // IDENTITY and PREMISE together: which record, and what of theirs it was
-    // chosen against. Either one alone lets a rebase redirect the answer.
-    d.itemId === s.itemId &&
-    d.field === s.field &&
-    d.from === s.from
-  );
-}
-
-export interface ImportSummary {
-  addedItems: number;
-  addedLessons: number;
-  updatedLessons: number;
-  questions: number;
-  attention: number;
-  /** Nothing at all would change: the same index, already accepted. */
-  unchanged: boolean;
-}
-
-export interface ImportPlan {
-  archiveId: string;
-  instrumentId: ID;
-  indexHash: string;
-  /** The graph to persist, carrying the owner's existing suppressions. */
-  source: ArchiveSource;
-  newItems: PracticeItem[];
-  newLessons: Lesson[];
-  /** Existing lessons adopted into the archive (id preserved, binding added). */
-  adoptedLessons: Lesson[];
-  /**
-   * Already-bound lessons whose stored reference PATHS the rename log moved —
-   * the row, its title and its notes untouched, only the path text rewritten.
-   */
-  repairedLessons: Lesson[];
-  /** Existing items adopted by an explicit owner decision. */
-  adoptedItems: PracticeItem[];
-  questions: ReconcileQuestion[];
-  suggestions: MetadataSuggestion[];
-  attention: SourceDiagnostic[];
-  /**
-   * Decisions whose PREMISE moved: the owner's value is no longer the one the
-   * choice was made against, or a link target has since been deleted, bound
-   * elsewhere or moved to another instrument. They are not applied and not
-   * quietly turned into some other action — the commit refuses and the owner
-   * looks again at what is actually there now.
-   */
-  staleDecisions: ReconcileDecision[];
-  summary: ImportSummary;
-}
-
-// --- helpers ---------------------------------------------------------------
-
-/** Strip the legacy archive-folder prefix; leave anything else alone. */
-export function toArchiveRelative(path: string): string {
-  return path.startsWith(LEGACY_ARCHIVE_PREFIX) ? path.slice(LEGACY_ARCHIVE_PREFIX.length) : path;
-}
-
-function suppressionKey(s: SourceSuppression): string {
-  return `${s.kind} ${s.ref} ${s.itemId ?? ''}`;
-}
-
-/**
- * WHERE DOES THIS ARCHIVE PATH POINT NOW? One reading, for everything that
- * uses a stored path as an IDENTITY.
- *
- * `repairReferencePath` followed the whole logged chain while adoption took a
- * single hop and a suppression took none at all, so one rename log gave three
- * different answers about the same file. With A -> B -> C logged, B in session
- * 1 and C in session 2, a legacy class was adopted as session 1 on the
- * strength of B and then had that very reference repaired into session 2 —
- * bound to one class, pointing at another's files. A hidden resource,
- * meanwhile, stayed keyed to the old path and simply reappeared under the new
- * one.
- *
- * A CYCLE YIELDS NO IDENTITY AT ALL, and saying so is the whole return type.
- * A log that loops says nothing about where the file is, and picking a
- * stopping point would invent one. This used to hand back
- * `{ path, cycle: true }` — a perfectly usable-looking path beside a flag —
- * and only ONE of the three callers read the flag: `hasSourcePathEvidence`
- * refused it, while the suppression re-key and `retainMissing` walked straight
- * past it. With A->B and B->A logged, an owner's hide of A was re-keyed onto
- * B, so A reappeared and the wrong file went dark. `null` is what makes that
- * unrepresentable: there is no path to drop the verdict and still use.
- */
-export function followRenames(path: string, renames: Map<string, string>): string | null {
-  let current = path;
-  const seen = new Set<string>([current]);
-  while (renames.has(current)) {
-    const next = renames.get(current)!;
-    if (seen.has(next)) return null;
-    seen.add(next);
-    current = next;
-  }
-  return current;
-}
-
-/** The registry facts an item is SEEDED from — identity, never working detail. */
-function persianFromPiece(piece: SourcePiece) {
-  return {
-    // "گوشه" is the form that identifies a gusheh. Every other form is carried
-    // verbatim; none of them is turned into a category the registry never made.
-    ...(piece.form === 'گوشه' ? { gusheh: piece.piece || piece.key } : {}),
-    ...(piece.dastgah ? { dastgahAvaz: piece.dastgah } : {}),
-    ...(piece.form ? { form: piece.form } : {}),
-    ...(piece.composer ? { composer: piece.composer } : {}),
-  };
-}
-
-/**
- * A NEW library item for a canonical piece.
- *
- * `status: 'dormant'` ("Resting") is an explicit ADMINISTRATIVE import policy,
- * not a judgement about the music: ninety-four pieces arriving as live
- * candidates would flood every recommendation and every session plan on the
- * day of the import. A resting item is still searchable, still in My
- * repertoire, and still directly startable — the owner decides what comes back.
- *
- * Nothing about practice is seeded: no last practice, no result, no review
- * date, no SM-2 state. `createItem` already leaves every one of those empty;
- * this function adds no field it does not.
- */
-function itemForPiece(archiveId: string, instrumentId: ID, piece: SourcePiece, now: Date): PracticeItem {
-  const item = createItem(
-    {
-      instrumentId,
-      // The canonical key IS the piece's name in this archive, byte for byte.
-      title: piece.key,
-      itemType: piece.form === 'گوشه' ? 'gusheh' : 'full_piece',
-      status: 'dormant',
-      persian: persianFromPiece(piece),
-    },
-    now,
-  );
-  return { ...item, id: sourceItemId(archiveId, piece.key), source: { archiveId, pieceKey: piece.key } };
-}
-
-/** A historical lesson for one archive session. */
-function lessonForSession(
-  archiveId: string,
-  instrumentId: ID,
-  session: { n: number; date: ISODate },
-  now: Date,
-): Lesson {
-  const lesson = createLesson({ instrumentId, date: session.date, number: session.n }, now);
-  return {
-    ...lesson,
-    id: sourceLessonId(archiveId, session.n),
-    source: { archiveId, sessionN: session.n },
-    // HISTORY, whatever the clock says. See `isUpcomingLesson`.
-    origin: 'archive',
-  };
-}
-
-/**
- * Read a stored reference path as an ARCHIVE-RELATIVE one.
- *
- * A full URL sitting under THIS DEVICE's own verified base names the same file
- * as the relative path beneath it — written differently, nothing more. Adoption
- * evidence and path repair therefore have to read a stored path the SAME way,
- * or one of them adopts a class the other cannot fix: a lesson whose references
- * were saved as full links would carry perfectly good evidence that nothing
- * recognised.
- *
- * Anything it cannot read as archive-relative — a foreign origin, a link with a
- * query or fragment, a URL with no verified base to measure it against, an
- * unsafe path — comes back as the repair outcome that case deserves, so the two
- * callers cannot disagree about those either.
- */
-type RelativeRead = { ok: true; relative: string; wasUrl: boolean } | { ok: false; outcome: ReferenceRepair };
-
-function readArchiveRelative(raw: string, verifiedBase?: string): RelativeRead {
-  if (!raw) return { ok: false, outcome: { status: 'attention', reason: 'This reference has no path.', code: 'no-path' } };
-
-  let relative = raw;
-  let wasUrl = false;
-  if (/^https?:\/\//i.test(raw)) {
-    wasUrl = true;
-    if (!verifiedBase) {
-      return {
-        ok: false,
-        outcome: {
-          status: 'attention',
-          reason: 'A full link cannot be converted without a verified media base.',
-          code: 'no-base',
-        },
-      };
-    }
-    let url: URL;
-    let base: URL;
-    try {
-      url = new URL(raw);
-      base = new URL(verifiedBase);
-    } catch {
-      return { ok: false, outcome: { status: 'attention', reason: 'That link could not be read as a URL.', code: 'bad-url' } };
-    }
-    if (url.search || url.hash) return { ok: false, outcome: { status: 'unchanged' } };
-    const prefix = base.toString().replace(/\/+$/, '') + '/';
-    if (!url.toString().startsWith(prefix)) return { ok: false, outcome: { status: 'unchanged' } };
-    // Decoded per SEGMENT because `resolveRecording` re-encodes on the way out;
-    // a Farsi filename copied percent-encoded would otherwise double-escape.
-    relative = url
-      .toString()
-      .slice(prefix.length)
-      .split('/')
-      .map((seg) => {
-        try {
-          return decodeURIComponent(seg);
-        } catch {
-          return seg;
-        }
-      })
-      .join('/');
-  }
-
-  const stripped = toArchiveRelative(relative);
-  if (!isSafeSourcePath(stripped)) {
-    return { ok: false, outcome: { status: 'attention', reason: 'That path is not a safe archive path.', code: 'unsafe' } };
-  }
-  return { ok: true, relative: stripped, wasUrl };
-}
-
-/**
- * Does this lesson carry EXACT source-path evidence that it is this session?
- *
- * A reference whose stored path — once the legacy archive prefix is off, and
- * once the rename log has been followed — sits inside that session's folder is
- * proof the owner's own record already points at these very files. Date and
- * number agreeing is not: two classes can share a number across years, and the
- * owner's upcoming class 38 and archive session 38 are a real, live example of
- * exactly that collision.
- */
-function hasSourcePathEvidence(
-  lesson: Lesson,
-  folder: string,
-  renames: Map<string, string>,
-  verifiedBase?: string,
-): boolean {
-  return (lesson.recordings ?? []).some((r) => {
-    const read = readArchiveRelative(r.path.trim(), verifiedBase);
-    if (!read.ok) return false;
-    const moved = followRenames(read.relative, renames);
-    if (moved === null) return false; // no reading, therefore no evidence
-    return moved.startsWith(`${folder}/`);
-  });
-}
-
-/**
- * Keep what the source has STOPPED describing, flagged unavailable.
- *
- * A piece removed from the registry, a session folder that is gone, a file that
- * was deleted — the app has an item bound to it, a lesson bound to it and
- * material listed from it. Replacing the graph with the incoming index alone
- * would leave those bindings pointing at nothing, which `validateDB` refuses at
- * every door: the next Refresh, and every one after it, would fail outright.
- *
- * So provenance is RETAINED and labelled instead. The owner sees that the file
- * is no longer in the archive and decides what to do; nothing of theirs is
- * deleted to make the two agree. A row that comes back is simply the incoming
- * row again, with no flag — the source is authoritative about what it HAS.
- */
-function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex, renames: Map<string, string>) {
-  if (!previous) return { pieces: index.pieces, sessions: index.sessions };
-
-  const incomingKeys = new Set(index.pieces.map((p) => p.key));
-  const pieces = [
-    ...index.pieces,
-    ...previous.pieces.filter((p) => !incomingKeys.has(p.key)).map((p) => ({ ...p, unavailable: true as const })),
-  ];
-
-  const incomingSessions = new Map(index.sessions.map((s) => [s.n, s]));
-  // Every path the incoming graph describes, ACROSS sessions: a rename can
-  // move a file into a different session (the log's own A -> B -> C shape), and
-  // asking only "is it still in THIS session" would flag such a file as gone
-  // while the very same bytes sit in the graph under their new name.
-  const anywhere = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-  // A cycle is NOT a move: with no readable destination there is nothing to
-  // say the bytes are elsewhere in the graph, so the row keeps its provenance
-  // and its `unavailable` flag rather than being silently dropped.
-  const movedNotGone = (path: string) => {
-    const to = followRenames(path, renames);
-    return to !== null && anywhere.has(to);
-  };
-  const sessions = index.sessions.map((s) => {
-    const before = previous.sessions.find((x) => x.n === s.n);
-    if (!before) return s;
-    const paths = new Set(s.resources.map((r) => r.path));
-    // A RENAMED FILE MOVED; IT DID NOT GO MISSING. Its old row is dropped
-    // rather than retained-and-flagged, because the log says exactly where the
-    // bytes went and the incoming row describes them. Safe to drop: only
-    // pieces and sessions carry item/lesson bindings, so no binding can dangle
-    // on a resource row, and a manual unclassified lesson's own reference
-    // reaches material through the LESSON, never through this graph.
-    const gone = before.resources
-      .filter((r) => !paths.has(r.path) && !movedNotGone(r.path))
-      .map((r) => ({ ...r, unavailable: true as const }));
-    return gone.length > 0 ? { ...s, resources: [...s.resources, ...gone] } : s;
-  });
-  for (const before of previous.sessions) {
-    if (incomingSessions.has(before.n)) continue;
-    sessions.push({
-      ...before,
-      unavailable: true,
-      // …and a file this vanished session's folder was renamed OUT of is in the
-      // graph already, under its new session. Keeping it here too would list
-      // one file twice, once falsely as missing.
-      resources: before.resources
-        .filter((r) => !movedNotGone(r.path))
-        .map((r) => ({ ...r, unavailable: true as const })),
-    });
-  }
-  sessions.sort((a, b) => a.n - b.n);
-  return { pieces, sessions };
-}
-
-// --- planning --------------------------------------------------------------
-
-export interface PlanInput {
-  db: PracticeDB;
-  index: SourceIndex;
-  instrumentId: ID;
-  decisions?: ReconcileDecision[];
-  /**
-   * This DEVICE's confirmed media base, when it has one. Only a full URL
-   * sitting under it may be rewritten to an archive-relative path; without it
-   * a stored `https://…` link is left exactly as the owner saved it.
-   */
-  verifiedBase?: string;
-  now: Date;
-}
-
-/**
- * Decide what an import would do, without doing any of it.
- *
- * EXACT SOURCE BINDING WINS. A record already bound to a source identity IS
- * that entity, whatever its title or date has since been edited to. Only an
- * UNBOUND record is a candidate for anything, and only exact evidence adopts
- * one: everything weaker becomes a question with the candidates named.
- */
-export function planArchiveImport({ db, index, instrumentId, decisions = [], verifiedBase, now }: PlanInput): ImportPlan {
-  const archiveId = index.archiveId;
-  const existing = db.archiveSources?.find((s) => s.id === archiveId);
-  const suppressions = existing?.suppressions ?? [];
-  const isSuppressed = (kind: SourceSuppression['kind'], ref: string) =>
-    suppressions.some((s) => s.kind === kind && s.ref === ref && s.itemId === undefined);
-
-  // EVERY DECISION IS ACCOUNTED FOR: applied, already realised, or STALE.
-  //
-  // The loops below start with `if (already bound) continue` / `if (already
-  // suppressed) continue`, which meant a decision about a record that had been
-  // bound between the preview and the commit was never looked at at all — no
-  // adoption, no question, and an EMPTY `staleDecisions`, so the commit
-  // reported success for an action it had not performed. Marking what is used
-  // and sweeping the rest closes that for every kind at once, rather than
-  // adding a stale check inside each early return.
-  const consumed = new Set<ReconcileDecision>();
-  const decisionFor = <T extends ReconcileDecision['kind']>(kind: T, match: (d: ReconcileDecision) => boolean) =>
-    decisions.find((d) => d.kind === kind && match(d));
-  const acted = <T,>(d: T): T => {
-    if (d) consumed.add(d as unknown as ReconcileDecision);
-    return d;
-  };
-
-  // A SKIP IS A DECISION, AND A DECISION IS PERSISTED.
-  //
-  // It used to live only in this call's `decisions` argument, so the owner's
-  // "no, not this one" survived exactly as long as the preview screen did: the
-  // next refresh — or simply a reload — asked the identical question again,
-  // with nothing in the database to show it had ever been answered. It becomes
-  // a suppression, the same record every other deliberate removal writes, which
-  // a refresh, a reload and a sync all already respect.
-  const addedSuppressions: SourceSuppression[] = [];
-  const knownSuppressions = new Set(suppressions.map(suppressionKey));
-  const suppress = (kind: SourceSuppression['kind'], ref: string) => {
-    const entry: SourceSuppression = { kind, ref, at: nowISO(now) };
-    if (knownSuppressions.has(suppressionKey(entry))) return;
-    knownSuppressions.add(suppressionKey(entry));
-    addedSuppressions.push(entry);
-  };
-
-  const renames = new Map(index.renames.map((r) => [r.from, r.to]));
-  const staleDecisions: ReconcileDecision[] = [];
-
-  // --- lessons ------------------------------------------------------------
-  const boundLessons = new Map<number, Lesson>();
-  for (const l of db.lessons) {
-    if (l.source?.archiveId === archiveId) boundLessons.set(l.source.sessionN, l);
-  }
-
-  const newLessons: Lesson[] = [];
-  const adoptedLessons: Lesson[] = [];
-  const questions: ReconcileQuestion[] = [];
-
-  for (const session of index.sessions) {
-    if (boundLessons.has(session.n)) continue;
-    if (isSuppressed('session', String(session.n))) continue;
-
-    const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
-    if (skip) {
-      acted(skip);
-      suppress('session', String(session.n));
-      continue;
-    }
-
-    // "Create separately" ends the question: the owner has said this session is
-    // NOT any of the classes already in their database. Without this branch the
-    // decision was silently dropped and the ambiguous candidates re-asked for
-    // ever — the item side had it from the start, and the lesson side did not.
-    const createSeparately = decisionFor('create-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
-    if (createSeparately) {
-      acted(createSeparately);
-      newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
-      continue;
-    }
-
-    const linked = decisionFor('link-lesson', (d) => 'sessionN' in d && d.sessionN === session.n) as
-      | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
-      | undefined;
-    if (linked) {
-      // The SAME conditions the candidate list is built from — a link may only
-      // adopt a record that is still unbound and still this instrument's.
-      // Deleted, bound elsewhere or moved since the preview, the decision is
-      // STALE, never silently turned into "create a new class instead".
-      acted(linked);
-      const target = db.lessons.find((l) => l.id === linked.lessonId);
-      if (target && !target.source && target.instrumentId === instrumentId) {
-        adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
-        continue;
-      }
-      staleDecisions.push(linked);
-    }
-
-    // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
-    // date, same number, and a reference that actually points into this
-    // session's own folder.
-    const candidates = db.lessons.filter(
-      (l) =>
-        !l.source &&
-        l.instrumentId === instrumentId &&
-        l.date === session.date &&
-        l.number === session.n &&
-        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
-    );
-    if (candidates.length === 1) {
-      adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
-      continue;
-    }
-    if (candidates.length > 1) {
-      questions.push({
-        kind: 'lesson',
-        sessionN: session.n,
-        label: `Class ${session.n} · ${session.date}`,
-        candidates: candidates.map((l) => ({
-          id: l.id,
-          title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
-          why: 'Same date and number, and it already links to this folder.',
-        })),
-      });
-      continue;
-    }
-    newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
-  }
-
-  // --- items --------------------------------------------------------------
-  const boundItems = new Map<string, PracticeItem>();
-  for (const i of db.items) {
-    if (i.source?.archiveId === archiveId) boundItems.set(i.source.pieceKey, i);
-  }
-
-  const newItems: PracticeItem[] = [];
-  const adoptedItems: PracticeItem[] = [];
-  const suggestions: MetadataSuggestion[] = [];
-
-  for (const piece of index.pieces) {
-    const bound = boundItems.get(piece.key);
-    if (bound) {
-      // SOURCE FACTS update; the owner's own fields never do. A later registry
-      // improvement is OFFERED, field by field, and applied only on an explicit
-      // decision — including when the owner's value is deliberately EMPTY.
-      for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
-        const proposed = persianFromPiece(piece)[field] ?? '';
-        const current = bound.persian?.[field] ?? '';
-        if (proposed && proposed !== current) {
-          suggestions.push({ pieceKey: piece.key, itemId: bound.id, field, from: current, to: proposed });
-        }
-      }
-      continue;
-    }
-    if (isSuppressed('piece', piece.key)) continue;
-
-    const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
-    if (skipItem) {
-      acted(skipItem);
-      suppress('piece', piece.key);
-      continue;
-    }
-    const linked = decisionFor('link-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key) as
-      | { kind: 'link-item'; pieceKey: string; itemId: ID }
-      | undefined;
-    if (linked) {
-      acted(linked);
-      const target = db.items.find((i) => i.id === linked.itemId);
-      if (target && !target.source && target.instrumentId === instrumentId) {
-        adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
-        continue;
-      }
-      staleDecisions.push(linked); // see the lesson branch above
-    }
-    const createNow = acted(decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key));
-
-    // CANDIDATES are EXACT equality only: the canonical key itself, or one of
-    // the registry's own literal aliases. Nothing is normalised, folded or
-    // transliterated here — that is search, and search is not identity. A
-    // built-in `catalogKey` is never compared at all: "iraq" is a catalogue
-    // slug, عراق is a canonical Farsi key, and equating them would merge two
-    // different things on a coincidence of meaning.
-    const literals = new Set<string>([piece.key, ...piece.aliases]);
-    const candidates = createNow
-      ? []
-      : db.items.filter(
-          (i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()),
-        );
-
-    if (candidates.length > 0) {
-      questions.push({
-        kind: 'item',
-        pieceKey: piece.key,
-        label: piece.key,
-        candidates: candidates.map((i) => ({
-          id: i.id,
-          title: i.title,
-          why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
-        })),
-      });
-      continue;
-    }
-    newItems.push(itemForPiece(archiveId, instrumentId, piece, now));
-  }
-
-  // --- EXACT REFERENCE REPAIR, inside the refresh the owner actually runs ---
-  //
-  // The rename log is published WITH the index, so the one moment the app can
-  // repair a stored path is the moment it accepts a new graph. Adopting a
-  // legacy class and leaving its own references pointing at names the archive
-  // renamed years ago is half a job: the lesson binds, and every file on it
-  // still 404s.
-  //
-  // Scope is the lessons this archive OWNS — the ones adopted by this plan and
-  // the ones already bound. A lesson the archive has no claim on is not
-  // something a refresh may rewrite.
-  //
-  // ONE pass over both, so `adoptedLessons` in the plan is byte-identical to
-  // what `applyArchiveImport` installs: a preview that shows an old path while
-  // the commit writes a new one is the plan/apply divergence this module is
-  // built to make impossible.
-  const known = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
-  const repairAttention: SourceDiagnostic[] = [];
-  const repair = (l: Lesson): { lesson: Lesson; changed: boolean } => {
-    const outcome = repairLessonReferences(l, renames, known, verifiedBase);
-    for (const a of outcome.attention) {
-      // 'not-described' is NOT reported: the index describes only the material
-      // scoped to pieces and classes, so a path it never names and never
-      // renamed is outside what it knows — never evidence the file is gone.
-      // See `RepairReason`.
-      if (a.code === 'not-described') continue;
-      repairAttention.push({ path: a.path, reason: a.reason });
-    }
-    return { lesson: outcome.lesson, changed: outcome.repaired > 0 };
-  };
-
-  const repairedAdopted = adoptedLessons.map((l) => repair(l).lesson);
-  const repairedLessons: Lesson[] = [];
-  for (const bound of boundLessons.values()) {
-    const outcome = repair(bound);
-    if (outcome.changed) repairedLessons.push(outcome.lesson);
-  }
-
-  // --- the graph to persist ------------------------------------------------
-  // What the source still describes, PLUS what it has stopped describing,
-  // flagged. New records above were minted from `index.pieces` alone, so a
-  // retained-but-unavailable piece never comes back as a fresh item.
-  const retained = retainMissing(existing, index, renames);
-  const source: ArchiveSource = {
-    id: archiveId,
-    instrumentId,
-    indexHash: index.contentHash,
-    acceptedAt: nowISO(now),
-    pieces: retained.pieces,
-    sessions: retained.sessions,
-    renames: index.renames,
-    diagnostics: index.diagnostics,
-    // A HIDE FOLLOWS ITS FILE, exactly as a stored reference does. A resource
-    // suppression is keyed BY PATH, so a rename left the decision pointing at
-    // a name the archive no longer uses: the file came back into view under
-    // its new path while the old, hidden row sat there flagged unavailable.
-    // Rewriting the ref is not editing the owner's decision — it is the same
-    // decision about the same bytes, said in the archive's current words. The
-    // `itemId` scope is carried untouched, and re-keying cannot duplicate:
-    // `suppressionKey` de-duplicates the result.
-    suppressions: dedupeSuppressions([
-      ...suppressions.map((sup) => {
-        if (sup.kind !== 'resource') return sup;
-        // A HIDE FOLLOWS ITS FILE ONLY WHERE THE LOG SAYS WHERE THE FILE WENT.
-        // A cycle names no destination, so the decision stays exactly where the
-        // owner put it: moving it to an arbitrary stop on the loop would both
-        // un-hide what they hid and hide something they did not.
-        const to = followRenames(sup.ref, renames);
-        return to === null ? sup : { ...sup, ref: to };
-      }),
-      ...addedSuppressions,
-    ]),
-  };
-
-  // A field decision only counts as a change when there is a suggestion for it
-  // to apply — a stale one left over from an earlier preview changes nothing.
-  const appliedFields = decisions.filter((d) => suggestions.some((x) => decisionMatchesSuggestion(d, x)));
-  for (const d of appliedFields) acted(d);
-
-  // THE SWEEP. Anything the loops above did not act on is either an action
-  // that has ALREADY HAPPENED — the owner pressed Apply, it was written, and
-  // the same decision is still in hand on the next preview — or an answer to a
-  // question that no longer stands.
-  //
-  // The already-done branch is LOOP PREVENTION, not politeness:
-  // `ArchiveRefresh` drops a stale decision and re-previews, and a realised
-  // action can never be consumed by a loop that skips its record, so without
-  // it the same decision would go stale for ever.
-  const realised = (d: ReconcileDecision): boolean => {
-    switch (d.kind) {
-      case 'skip-item':
-        return isSuppressed('piece', d.pieceKey);
-      case 'skip-lesson':
-        return isSuppressed('session', String(d.sessionN));
-      case 'link-item':
-        return boundItems.get(d.pieceKey)?.id === d.itemId;
-      case 'create-item':
-        return boundItems.get(d.pieceKey)?.id === sourceItemId(archiveId, d.pieceKey);
-      case 'link-lesson':
-        return boundLessons.get(d.sessionN)?.id === d.lessonId;
-      case 'create-lesson':
-        return boundLessons.get(d.sessionN)?.id === sourceLessonId(archiveId, d.sessionN);
-      case 'apply-field': {
-        // No live suggestion can mean two opposite things. The registry value
-        // is already in the owner's field — done — or the registry no longer
-        // proposes one, which is a premise that moved.
-        const piece = index.pieces.find((x) => x.key === d.pieceKey);
-        const item = boundItems.get(d.pieceKey);
-        if (!piece || !item || item.id !== d.itemId) return false;
-        const proposed = persianFromPiece(piece)[d.field] ?? '';
-        return proposed !== '' && (item.persian?.[d.field] ?? '') === proposed;
-      }
-    }
-  };
-  for (const d of decisions) {
-    if (consumed.has(d) || staleDecisions.includes(d)) continue;
-    if (realised(d)) continue;
-    staleDecisions.push(d);
-  }
-  const changesRecords =
-    newItems.length > 0 ||
-    newLessons.length > 0 ||
-    adoptedLessons.length > 0 ||
-    adoptedItems.length > 0 ||
-    repairedLessons.length > 0 ||
-    addedSuppressions.length > 0 ||
-    appliedFields.length > 0;
-  const sameGraph = existing?.indexHash === index.contentHash;
-  const attention = [...index.diagnostics, ...repairAttention];
-
-  return {
-    archiveId,
-    instrumentId,
-    indexHash: index.contentHash,
-    source,
-    newItems,
-    newLessons,
-    adoptedLessons: repairedAdopted,
-    repairedLessons,
-    adoptedItems,
-    questions,
-    suggestions,
-    attention,
-    staleDecisions,
-    summary: {
-      addedItems: newItems.length,
-      addedLessons: newLessons.length,
-      updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length,
-      questions: questions.length,
-      attention: attention.length,
-      unchanged: sameGraph && !changesRecords && questions.length === 0,
-    },
-  };
-}
-
-// --- applying --------------------------------------------------------------
-
-/**
- * Apply a plan to a database, returning a NEW database — or the SAME OBJECT
- * when the plan changes nothing at all, so an unchanged refresh cannot bump the
- * revision counter or churn a timestamp.
- *
- * Nothing here touches a block, a review, an agenda entry, a practice counter,
- * a result or any scheduling field. It adds records and it replaces the source
- * graph; that is the whole of it.
- */
-export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: ReconcileDecision[] = []): PracticeDB {
-  const existing = db.archiveSources?.find((s) => s.id === plan.archiveId);
-  const graphChanged = !existing || existing.indexHash !== plan.indexHash;
-  // AN OWNER DECISION IS A CHANGE even when the index is not. A skip recorded
-  // against an already-current graph writes a suppression, and comparing the
-  // index hash alone returned the database untouched — which is precisely how
-  // "Skip" survived the preview and nothing else. The digest is verified at the
-  // reader, so an equal hash really does mean an equal graph; the suppression
-  // list is the part it says nothing about.
-  const knownSuppressions = new Set((existing?.suppressions ?? []).map(suppressionKey));
-  const suppressionsChanged =
-    plan.source.suppressions.length !== knownSuppressions.size ||
-    plan.source.suppressions.some((s) => !knownSuppressions.has(suppressionKey(s)));
-  // A field decision counts only when the plan actually OFFERS that field —
-  // the same rule the plan's own summary applies, so "nothing to do" means the
-  // same thing on both sides of the preview/commit boundary. A decision left
-  // over from an earlier preview must not make an unchanged refresh a write.
-  const applied = decisions.filter(
-    (d): d is Extract<ReconcileDecision, { kind: 'apply-field' }> =>
-      plan.suggestions.some((x) => decisionMatchesSuggestion(d, x)),
-  );
-  const nothingToDo =
-    !graphChanged &&
-    !suppressionsChanged &&
-    plan.newItems.length === 0 &&
-    plan.newLessons.length === 0 &&
-    plan.adoptedLessons.length === 0 &&
-    plan.repairedLessons.length === 0 &&
-    plan.adoptedItems.length === 0 &&
-    applied.length === 0;
-  if (nothingToDo) return db;
-
-  const adoptedLessonIds = new Set(plan.adoptedLessons.map((l) => l.id));
-  const repairedById = new Map(plan.repairedLessons.map((l) => [l.id, l]));
-  const fieldsByItem = new Map<ID, MetadataSuggestion[]>();
-  for (const s of plan.suggestions) {
-    if (!applied.some((d) => decisionMatchesSuggestion(d, s))) continue;
-    fieldsByItem.set(s.itemId, [...(fieldsByItem.get(s.itemId) ?? []), s]);
-  }
-
-  const items = db.items.map((item) => {
-    const adopted = plan.adoptedItems.find((i) => i.id === item.id);
-    const fields = fieldsByItem.get(item.id);
-    if (!adopted && !fields) return item;
-    const base = adopted ?? item;
-    if (!fields) return base;
-    return {
-      ...base,
-      persian: { ...base.persian, ...Object.fromEntries(fields.map((f) => [f.field, f.to])) },
-      updatedAt: plan.source.acceptedAt,
-    };
-  });
-
-  // A repaired path carries NO `updatedAt`: the archive renamed a file, which
-  // is a source fact about where the bytes are, not the owner revising their
-  // own record. The field application above DOES touch it, because that one is
-  // the owner choosing to change a value of theirs. The asymmetry is the point.
-  const lessons = db.lessons.map((l) => {
-    if (adoptedLessonIds.has(l.id)) return plan.adoptedLessons.find((x) => x.id === l.id)!;
-    return repairedById.get(l.id) ?? l;
-  });
-
-  const sources = (db.archiveSources ?? []).filter((s) => s.id !== plan.archiveId);
-
-  return {
-    ...db,
-    // Adopted records are rewritten IN PLACE above — they keep their own ids,
-    // their practice history and their position. Only genuinely new records are
-    // appended.
-    items: [...items, ...plan.newItems],
-    lessons: [...lessons, ...plan.newLessons],
-    archiveSources: [...sources, plan.source],
-  };
-}
-
-// --- suppression -----------------------------------------------------------
-
-/**
- * Record an owner decision that a refresh, a reload and a sync must all
- * respect. Narrowly scoped BY CONSTRUCTION: a resource hidden on one item
- * carries that item's id and leaves every sibling alone.
- *
- * Idempotent, so re-deleting the same thing does not grow the list.
- */
-export function withSuppression(
-  sources: ArchiveSource[],
-  archiveId: string,
-  suppression: SourceSuppression,
-): ArchiveSource[] {
-  return sources.map((s) => {
-    if (s.id !== archiveId) return s;
-    const key = suppressionKey(suppression);
-    if (s.suppressions.some((x) => suppressionKey(x) === key)) return s;
-    return { ...s, suppressions: [...s.suppressions, suppression] };
-  });
-}
-
-/** Keep the FIRST of each distinct decision; re-keying two refs onto one path
- * must not grow the list. */
-function dedupeSuppressions(list: SourceSuppression[]): SourceSuppression[] {
-  const seen = new Set<string>();
-  return list.filter((s) => {
-    const k = suppressionKey(s);
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
-
-/** Lift a suppression, so the next refresh may import that entity again. */
-export function withoutSuppression(
-  sources: ArchiveSource[],
-  archiveId: string,
-  match: (s: SourceSuppression) => boolean,
-): ArchiveSource[] {
-  return sources.map((s) => (s.id === archiveId ? { ...s, suppressions: s.suppressions.filter((x) => !match(x)) } : s));
-}
-
-// --- exact reference repair (no fuzzy matching, ever) ----------------------
-
-/**
- * Why a repair could not proceed. The CODE exists because one of these is not
- * something the app may state as a fact: the published index deliberately
- * describes only the material the archive scopes to pieces and classes — 125
- * of its 258 files (the owner's own practice takes) are absent from it by
- * construction — so a path that is neither renamed nor described is simply
- * OUTSIDE what the index knows, never evidence that the file is gone. Every
- * other code is a real finding about the log itself.
- */
-export type RepairReason = 'no-path' | 'unsafe' | 'no-base' | 'bad-url' | 'cycle' | 'renamed-gone' | 'not-described';
-
-export type ReferenceRepair =
-  | { status: 'repaired'; path: string }
-  | { status: 'unchanged' }
-  | { status: 'attention'; reason: string; code: RepairReason };
-
-/**
- * Repair ONE stored reference path against the archive's own rename log.
- *
- * EXACT mapping only. A path that the log does not name is left exactly as it
- * is with a reason — never matched by title, by size, by modification time or
- * by similarity. A full URL is converted only when it sits under the device's
- * VERIFIED base, and a URL carrying a query or fragment is not a plain file
- * path and stays untouched.
- */
-export function repairReferencePath(
-  path: string,
-  renames: Map<string, string>,
-  known: Set<string>,
-  verifiedBase?: string,
-): ReferenceRepair {
-  const raw = path.trim();
-  const read = readArchiveRelative(raw, verifiedBase);
-  if (!read.ok) return read.outcome;
-  const { relative: stripped, wasUrl } = read;
-
-  // Follow the rename chain — the SAME reading adoption and suppression use.
-  const moved = followRenames(stripped, renames);
-  if (moved === null) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
-  const current = moved;
-  if (current === stripped) {
-    // A REWRITE INTO THE CURRENT NAMESPACE IS NOT A CLAIM THAT THE FILE EXISTS.
-    // The device base is the archive ROOT, so a stored path carrying the legacy
-    // archive folder — or written as a full URL beneath that base — names the
-    // same bytes in words the base no longer addresses. This used to happen
-    // only for a path the index DESCRIBES, which left an archive class holding
-    // two namespaces at once: the owner's own practice takes (125 of the
-    // archive's 258 files are outside the index by construction) kept the old
-    // prefix and resolved to `<base>/setar-classes/setar-classes/…` the moment
-    // the base was corrected. Saying it in one namespace is the repair; whether
-    // the index describes the file is a separate question, answered below.
-    if (wasUrl || stripped !== raw) return { status: 'repaired', path: current };
-    if (known.has(current)) return { status: 'unchanged' };
-    return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
-  }
-  if (!known.has(current)) {
-    return { status: 'attention', reason: 'This file was renamed, but the archive no longer has it.', code: 'renamed-gone' };
-  }
-  return { status: 'repaired', path: current };
-}
-
-/** Repair every reference on a lesson, preserving each row and its metadata. */
-export function repairLessonReferences(
-  lesson: Lesson,
-  renames: Map<string, string>,
-  known: Set<string>,
-  verifiedBase?: string,
-): { lesson: Lesson; repaired: number; attention: { title: string; path: string; reason: string; code: RepairReason }[] } {
-  let repaired = 0;
-  const attention: { title: string; path: string; reason: string; code: RepairReason }[] = [];
-  const recordings: LessonRecording[] = (lesson.recordings ?? []).map((r) => {
-    const outcome = repairReferencePath(r.path, renames, known, verifiedBase);
-    if (outcome.status === 'repaired') {
-      repaired += 1;
-      // The ROW survives with its own title, notes, date and size: only the
-      // path text changes. Two rows that now point at one physical file stay
-      // two rows — deleting one would delete something the owner wrote.
-      return { ...r, path: outcome.path };
-    }
-    if (outcome.status === 'attention') {
-      attention.push({ title: r.title, path: r.path, reason: outcome.reason, code: outcome.code });
-    }
-    return r;
-  });
-  return { lesson: { ...lesson, recordings }, repaired, attention };
-}
-```
-
-### src/pages/Lessons.tsx
-
-```
-import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import {
-  itemsCommittedForLesson,
-  type PracticeItem,
-  cleanFileTitle,
-  daysUntil,
-  CLASS_ROLE,
-  defaultInstrumentFilter,
-  formatFileSize,
-  ITEM_STATUS_LABELS,
-  LESSON_FILE_KIND_ORDER,
-  lessonFiles,
-  lessonsForInstrument,
-  isUpcomingLesson,
-  nextLessonFor,
-  nextLessonNumber,
-  normalizeBaseUrl,
-  openQuestionsForLessonId,
-  relativizeReference,
-  resolveRecording,
-  todayISODate,
-  type Instrument,
-  type Lesson,
-  type LessonFileKind,
-} from '../domain';
-import { useStore } from '../store/useStore';
-import { getNasBaseUrl } from '../store/backup';
-import { Field } from '../components/ui';
-import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/icons';
-import { relativeDay } from '../components/format';
-import Attachments from '../components/Attachments';
-import ClassQuestions from '../components/ClassQuestions';
-import LessonNotes from '../components/LessonNotes';
-import { LessonMaterial } from '../components/ItemMaterial';
-import { LessonAgendaPanel } from '../components/LessonAgenda';
-import QuickAdd from '../components/QuickAdd';
-
-/** "Class 37 · 2026-07-09" when numbered, else just the date. */
-function lessonLabel(lesson: Lesson): string {
-  return typeof lesson.number === 'number' ? `Class ${lesson.number} · ${lesson.date}` : lesson.date;
-}
-
-/**
- * The class workflow: log each lesson's date, then — after rewatching your
- * recording — write up what was said (Farsi welcome). The nearest upcoming
- * lesson becomes the deadline that prioritises items flagged "for class".
- */
-export default function Lessons() {
-  const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
-  const instruments = db.instruments.filter((i) => i.active);
-  const wide = useIsWide();
-
-  // Open on the instrument you are actually practising — 40-plus Setar classes
-  // stacked above Tar and Guitar is not a phone screen. Seeded from the same
-  // persisted session instrument every other screen reads, never written back,
-  // and always widenable to all.
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const [instrumentId, setInstrumentId] = useState(() =>
-    defaultInstrumentFilter(sessionInstrumentId, instruments),
-  );
-  const shown = instruments.filter((i) => !instrumentId || i.id === instrumentId);
-
-  return (
-    <div className="stack-lg">
-      <header className="stack-sm">
-        <h1 className="page-title">Lessons</h1>
-        <p className="page-sub">
-          Your classes, per instrument — dates and the notes you take when rewatching the recording.
-        </p>
-        {instruments.length > 1 && (
-          <select
-            className="select"
-            aria-label="Instrument"
-            style={{ width: 'fit-content' }}
-            value={instrumentId}
-            onChange={(e) => setInstrumentId(e.target.value)}
-          >
-            <option value="">All instruments</option>
-            {instruments.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-        )}
-      </header>
-
-      {wide ? (
-        <WideLessons now={now} instruments={shown} />
-      ) : (
-        shown.map((inst) => (
-          <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
-        ))
-      )}
-    </div>
-  );
-}
-
-function useIsWide(): boolean {
-  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1000px)').matches);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1000px)');
-    const on = () => setWide(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  return wide;
-}
-
-/**
- * MacBook layout: lesson list on the left, the open lesson (long Farsi notes,
- * linked items, files) with real room on the right. Phones keep the simple
- * drill-down cards.
- */
-function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[] }) {
-  const db = useStore((s) => s.db);
-  const addLesson = useStore((s) => s.addLesson);
-  const deleteLesson = useStore((s) => s.deleteLesson);
-
-  const allLessons = useMemo(() => {
-    const ids = new Set(instruments.map((i) => i.id));
-    return db.lessons.filter((l) => ids.has(l.instrumentId)).sort((a, b) => b.date.localeCompare(a.date));
-  }, [db.lessons, instruments]);
-  const defaultSelection = useMemo(() => {
-    const upcoming = [...allLessons].reverse().find((l) => isUpcomingLesson(l, todayISODate(now)));
-    return upcoming?.id ?? allLessons[0]?.id ?? null;
-  }, [allLessons, now]);
-  const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
-  // `selectedId` is state so a click sticks across re-renders, but narrowing
-  // (or a delete) can leave it pointing at a lesson `allLessons` no longer
-  // has — falling back to the same smart default keeps the detail pane and
-  // the sidebar highlight in sync instead of silently blanking.
-  const effectiveSelectedId = allLessons.some((l) => l.id === selectedId) ? selectedId : defaultSelection;
-  const selected = allLessons.find((l) => l.id === effectiveSelectedId) ?? null;
-
-  const [addingFor, setAddingFor] = useState<string | null>(null);
-  const [date, setDate] = useState(todayISODate(now));
-  const [num, setNum] = useState('');
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
-      <div className="stack">
-        {instruments.map((inst) => {
-          const lessons = lessonsForInstrument(db.lessons, inst.id);
-          const next = nextLessonFor(db.lessons, inst.id, now);
-          const flagged = itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
-            (i: PracticeItem) => i.instrumentId === inst.id,
-          );
-          return (
-            <section key={inst.id} className="stack-sm">
-              {/* The instrument's own name leads this group (dir="auto"
-                  resolves from the first strong character), same shape as
-                  InstrumentLessons' identical row below — the badge gets its
-                  own dir="ltr" isolate so it can't inherit the name's base. */}
-              <div className="row between" dir="auto">
-                <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
-                  {inst.name}
-                </h2>
-                {next && (
-                  <span className="badge tone-progress" dir="ltr">
-                    next {relativeDay(next.date, now)}
-                  </span>
-                )}
-              </div>
-              {next && flagged.length > 0 && (
-                <div className="tiny dim">
-                  {flagged.length} item{flagged.length === 1 ? '' : 's'} to prepare · {daysUntil(next.date, now)} day
-                  {daysUntil(next.date, now) === 1 ? '' : 's'} left
-                </div>
-              )}
-              <div className="card card-flush list">
-                {lessons.map((l) => (
-                  <button
-                    key={l.id}
-                    className="list-row"
-                    style={{
-                      background: l.id === effectiveSelectedId ? 'var(--accent-soft)' : 'none',
-                      border: 'none',
-                      width: '100%',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      color: 'inherit',
-                    }}
-                    onClick={() => setSelectedId(l.id)}
-                  >
-                    <span className="grow">{lessonLabel(l)}</span>
-                    <span className="tiny faint">
-                      {l.notes ? 'notes ✓' : isUpcomingLesson(l, todayISODate(now)) ? 'upcoming' : '—'}
-                    </span>
-                  </button>
-                ))}
-                {lessons.length === 0 && <div className="list-row tiny faint">No classes logged.</div>}
-              </div>
-              {addingFor === inst.id ? (
-                <div className="row" style={{ gap: 8 }}>
-                  <input
-                    className="input"
-                    type="number"
-                    inputMode="numeric"
-                    min={1}
-                    aria-label="Class number (optional)"
-                    placeholder="No."
-                    value={num}
-                    onChange={(e) => setNum(e.target.value)}
-                    style={{ width: 72 }}
-                  />
-                  <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-                  <button
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      const id = addLesson({ instrumentId: inst.id, date, number: num.trim() ? Number(num) : undefined });
-                      setAddingFor(null);
-                      setNum('');
-                      setSelectedId(id);
-                    }}
-                  >
-                    Add
-                  </button>
-                  <button className="btn btn-sm" aria-label="Cancel" onClick={() => setAddingFor(null)}>
-                    ✕
-                  </button>
-                </div>
-              ) : (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ width: 'fit-content' }}
-                  onClick={() => {
-                    setNum(String(nextLessonNumber(db.lessons, inst.id)));
-                    setAddingFor(inst.id);
-                  }}
-                >
-                  <PlusIcon /> Add a class
-                </button>
-              )}
-            </section>
-          );
-        })}
-      </div>
-
-      <div className="card stack-sm" style={{ minHeight: 320 }}>
-        {selected ? (
-          <>
-            <div className="row between">
-              {/* The instrument name is the owner's own editable text — its
-                  own dir="auto" isolate. lessonLabel is always digits +
-                  English by construction ("Class N · date") — its own
-                  dir="ltr" isolate keeps the two from being fused into one
-                  bare, undirected string as they used to be. */}
-              <strong>
-                <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
-                <span dir="ltr"> · {lessonLabel(selected)}</span>
-              </strong>
-              <span className="tiny faint">{relativeDay(selected.date, now)}</span>
-            </div>
-            <LessonDetail lesson={selected} onDelete={() => deleteLesson(selected.id)} />
-          </>
-        ) : (
-          <div className="small dim">Pick a class on the left — or add one.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; name: string; now: Date }) {
-  const db = useStore((s) => s.db);
-  const addLesson = useStore((s) => s.addLesson);
-  const deleteLesson = useStore((s) => s.deleteLesson);
-
-  const lessons = useMemo(() => lessonsForInstrument(db.lessons, instrumentId), [db.lessons, instrumentId]);
-  const next = nextLessonFor(db.lessons, instrumentId, now);
-  const flagged = useMemo(
-    () =>
-      itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
-        (i: PracticeItem) => i.instrumentId === instrumentId,
-      ),
-    [db.items, db.lessonAgenda, db.lessons, now, instrumentId],
-  );
-
-  const [adding, setAdding] = useState(false);
-  const [date, setDate] = useState(todayISODate(now));
-  const [num, setNum] = useState('');
-
-  return (
-    <section className="stack-sm">
-      <div className="row between" dir="auto">
-        <h2 className="title-md">{name}</h2>
-        {/* Fixed English page copy / generated metadata, never user text —
-            its own dir="ltr" isolate keeps it from inheriting the
-            instrument name's RTL base. */}
-        {next ? (
-          <span className="badge tone-progress" dir="ltr">
-            next class {relativeDay(next.date, now)}
-          </span>
-        ) : (
-          <span className="tiny faint" dir="ltr">no class planned</span>
-        )}
-      </div>
-
-      {next && flagged.length > 0 && (
-        <div className="card card-quiet small dim">
-          {flagged.length} item{flagged.length === 1 ? '' : 's'} to complete before this class ·{' '}
-          {daysUntil(next.date, now)} day{daysUntil(next.date, now) === 1 ? '' : 's'} left —{' '}
-          <Link to="/repertoire" className="link">
-            see them
-          </Link>
-        </div>
-      )}
-
-      <div className="stack-sm">
-        {lessons.map((l) => (
-          <LessonCard key={l.id} lesson={l} now={now} onDelete={() => deleteLesson(l.id)} />
-        ))}
-        {lessons.length === 0 && !adding && (
-          <div className="card card-quiet small dim">No lessons logged yet.</div>
-        )}
-      </div>
-
-      {adding ? (
-        <div className="card row" style={{ gap: 8 }}>
-          <Field label="Class no.">
-            <input
-              className="input"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              placeholder="No."
-              value={num}
-              onChange={(e) => setNum(e.target.value)}
-              style={{ width: 72 }}
-            />
-          </Field>
-          <Field label="Class date">
-            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </Field>
-          <button
-            className="btn btn-primary"
-            style={{ alignSelf: 'flex-end' }}
-            onClick={() => {
-              addLesson({ instrumentId, date, number: num.trim() ? Number(num) : undefined });
-              setNum('');
-              setAdding(false);
-            }}
-          >
-            Add
-          </button>
-          <button className="btn" style={{ alignSelf: 'flex-end' }} onClick={() => setAdding(false)}>
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          className="btn btn-sm"
-          style={{ width: 'fit-content' }}
-          onClick={() => {
-            setNum(String(nextLessonNumber(db.lessons, instrumentId)));
-            setAdding(true);
-          }}
-        >
-          <PlusIcon /> Add a class
-        </button>
-      )}
-    </section>
-  );
-}
-
-function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDelete: () => void }) {
-  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
-  // "No notes yet" opens a card the owner is about to write in. An IMPORTED
-  // class has no notes by construction, and thirty-nine of them opening at once
-  // turns the phone list into a wall — history starts COMPACT, and the owner
-  // opens what they want to read.
-  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || !lesson.notes);
-
-  return (
-    <article className="card stack-sm">
-      <button
-        className="row between"
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <span className="row" style={{ gap: 8 }}>
-          <strong>{lessonLabel(lesson)}</strong>
-          <span className="tiny faint">{relativeDay(lesson.date, now)}</span>
-          {upcoming && <span className="badge tone-progress">upcoming</span>}
-        </span>
-        <span className="tiny faint">{open ? 'close' : lesson.notes ? 'notes ✓' : 'add notes'}</span>
-      </button>
-
-      {open && <LessonDetail lesson={lesson} onDelete={onDelete} />}
-    </article>
-  );
-}
-
-/** Notes, linked items, files and delete — the body of an open lesson. */
-function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
-  const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
-
-  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
-  // BY LESSON ID, never by instrument: every future class used to show the
-  // identical list, so a question meant for one class appeared on all of them.
-  const questions = useMemo(
-    // `db.blocks` supplies each question's latest recorded observation, so the
-    // list has to recompute when a block is added.
-    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id, db.blocks),
-    [db.lessonAgenda, db.items, db.blocks, lesson.id],
-  );
-  const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
-
-  return (
-    <>
-      {/* The SAME durable editor as the item's notebook. Blur-only saving
-          made a stale copy authoritative the moment anything stole focus, and
-          could not clear the text at all. */}
-      <LessonNotes lessonId={lesson.id} />
-
-      <LessonItems lesson={lesson} />
-
-      {/* This class's OWN agenda: what is committed to it, what is still to
-          ask at it, and what was already asked — history that stays here
-          rather than being carried forward to the next class by itself. */}
-      <LessonAgendaPanel lessonId={lesson.id} />
-
-      {/* The take-into-the-room list: only this class's still-open questions,
-          selected by its id. A past class keeps its unasked questions on its
-          own page (above) rather than showing an export sheet for a class
-          that has already happened. */}
-      {upcoming && (
-        <ClassQuestions
-          title="Questions for this class"
-          instrumentName={instrumentName}
-          dateLabel={lessonLabel(lesson)}
-          questions={questions}
-        />
-      )}
-
-      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
-          copy of its session's files, so only the graph can answer — and the
-          owner's OWN references and attachments are NOT repeated here: they
-          each have exactly one section on this page, the one that can also
-          edit and remove them. */}
-      <LessonMaterial lessonId={lesson.id} />
-
-      <LessonRecordings lesson={lesson} />
-
-      <Attachments
-        ownerType="lesson"
-        ownerId={lesson.id}
-        emptyHint="Attach small hand-outs for this class — PDFs of pieces, photos of notation, short audio. Full class videos are too big for the app: add them as a Class recording above (a NAS link), not here."
-      />
-
-      <button
-        className="link tiny"
-        style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
-        onClick={() => {
-          if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
-        }}
-      >
-        Delete lesson
-      </button>
-    </>
-  );
-}
-
-/** Guess a reference's kind from its path extension (used when adding). */
-function inferKind(path: string): LessonFileKind {
-  const ext = (path.split('.').pop() ?? '').toLowerCase();
-  if (['mp4', 'mov', 'm4v', 'webm', 'mkv'].includes(ext)) return 'video';
-  if (ext === 'pdf') return 'pdf';
-  if (['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(ext)) return 'audio';
-  if (['doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'heic'].includes(ext)) return 'doc';
-  return 'video';
-}
-
-function KindIcon({ kind }: { kind: LessonFileKind }) {
-  if (kind === 'video') return <PlayIcon width={16} height={16} />;
-  if (kind === 'audio') return <MusicIcon width={16} height={16} />;
-  return <ReportIcon width={16} height={16} />; // pdf / doc
-}
-
-/**
- * Lesson NAS references — the class video plus score PDFs/docs, all links,
- * never the bytes. A file is only fetched when the user taps Open; deleting a
- * reference never touches the NAS file. Video first, then scores/docs.
- */
-function LessonRecordings({ lesson }: { lesson: Lesson }) {
-  const db = useStore((s) => s.db);
-  const addLessonRecording = useStore((s) => s.addLessonRecording);
-  const removeLessonRecording = useStore((s) => s.removeLessonRecording);
-  const navigate = useNavigate();
-  const baseUrl = getNasBaseUrl();
-  const recordings = useMemo(
-    () =>
-      [...(lesson.recordings ?? [])].sort(
-        (a, b) => LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'],
-      ),
-    [lesson.recordings],
-  );
-  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
-  // historical class keeps no copy of its session's files, so `recordings` is
-  // empty and the empty-state card invited the owner to add a class recording
-  // directly beneath the one already playing above it. Read through the same
-  // composition the section above renders, so a recording the owner has HIDDEN
-  // does not count as one that is there.
-  const fromArchive = useMemo(
-    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
-    [db, lesson.id],
-  );
-
-  const browseUrl = normalizeBaseUrl(baseUrl);
-
-  const [adding, setAdding] = useState(false);
-  const [title, setTitle] = useState('');
-  const [path, setPath] = useState('');
-  const [notes, setNotes] = useState('');
-
-  function add() {
-    if (!path.trim()) return;
-    // A URL pasted from the NAS listing is stored RELATIVE to the configured
-    // base, so the reference is not pinned to this device's route to the NAS.
-    const stored = relativizeReference(baseUrl, path);
-    addLessonRecording(lesson.id, {
-      title: title.trim() || cleanFileTitle(stored) || 'Class file',
-      path: stored,
-      kind: inferKind(stored),
-      date: lesson.date,
-      notes: notes.trim() || undefined,
-    });
-    setTitle('');
-    setPath('');
-    setNotes('');
-    setAdding(false);
-  }
-
-  function open(rec: (typeof recordings)[number]) {
-    const r = resolveRecording(baseUrl, rec);
-    if (r.status !== 'ok') return; // button is disabled unless resolvable
-    window.open(r.url, '_blank', 'noopener,noreferrer');
-  }
-
-  return (
-    <div className="stack-sm">
-      <div className="row between">
-        <div className="section-label">Class recording &amp; scores</div>
-        <button className="btn btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Cancel' : <><PlusIcon /> Add link</>}
-        </button>
-      </div>
-
-      {recordings.length === 0 && !fromArchive && !adding && (
-        <div className="card card-quiet small dim">
-          Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
-        </div>
-      )}
-
-      {recordings.map((rec) => {
-        const resolution = resolveRecording(baseUrl, rec);
-        const kind = rec.kind ?? 'video';
-        const size = formatFileSize(rec.sizeBytes);
-        const meta = ['Stored on NAS', kind === 'video' ? null : kind.toUpperCase(), size, rec.durationLabel]
-          .filter(Boolean)
-          .join(' · ');
-        return (
-          <div key={rec.id} className="card row between" style={{ gap: 10 }}>
-            <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
-              <KindIcon kind={kind} />
-            </span>
-            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
-              <div className="truncate">
-                {rec.title}
-              </div>
-              {/* Generated English metadata, never user text — its own
-                  dir="ltr" isolate keeps it from inheriting a Farsi title's
-                  RTL base. */}
-              <div className="tiny faint">
-                <span dir="ltr">{meta}</span>
-              </div>
-              {rec.notes && (
-                <div className="tiny dim" dir="auto">
-                  {rec.notes}
-                </div>
-              )}
-              {/* Fixed English page copy, never user text — its own dir="ltr"
-                  isolate keeps it from inheriting a Farsi title's RTL base.
-                  Inline (span), not dir="ltr" on these blocks: a block
-                  isolate resolves its OWN text-align independently of the
-                  group, splitting it from a right-aligned Farsi title. */}
-              {resolution.status === 'no-base' && (
-                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
-                  <span dir="ltr">
-                    Set your NAS base URL in{' '}
-                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                      Settings
-                    </button>{' '}
-                    to open this.
-                  </span>
-                </div>
-              )}
-              {resolution.status === 'bad-base' && (
-                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
-                  <span dir="ltr">
-                    Your NAS base URL isn’t a valid web address — fix it in{' '}
-                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
-                      Settings
-                    </button>
-                    .
-                  </span>
-                </div>
-              )}
-            </div>
-            <button className="btn btn-sm btn-primary" disabled={resolution.status !== 'ok'} onClick={() => open(rec)}>
-              Open
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              // Named, because a class holds several of these and "Remove this
-              // link" three times over tells a screen reader nothing about
-              // which file it is about to drop.
-              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
-              title="Remove link (the NAS file is kept)"
-              onClick={() => {
-                if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
-              }}
-            >
-              <XIcon width={14} height={14} />
-            </button>
-          </div>
-        );
-      })}
-
-      {adding && (
-        <div className="card stack-sm">
-          <input
-            className="input"
-            dir="auto"
-            placeholder="Title — e.g. Class recording"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <input
-            className="input"
-            placeholder="Path under the archive base, or an https:// link — e.g. session-37-09-07-2026/class.mp4"
-            value={path}
-            onChange={(e) => setPath(e.target.value)}
-          />
-          <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
-          <div className="row between" style={{ gap: 8 }}>
-            <div className="tiny faint">
-              Stop typing paths: browse your NAS, copy the file’s URL, paste it above.
-            </div>
-            <button
-              className="btn btn-sm"
-              style={{ flex: 'none' }}
-              disabled={!browseUrl}
-              onClick={() => browseUrl && window.open(`${browseUrl}/`, '_blank', 'noopener,noreferrer')}
-            >
-              Browse NAS
-            </button>
-          </div>
-          <div className="tiny faint">
-            Video, PDF or audio — the kind is detected from the file. A relative path resolves against your NAS base
-            URL (Settings); a URL you paste from that base is stored as a relative path so it keeps working on every
-            device. The file opens only when you tap “Open”.
-          </div>
-          <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
-            Add link
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** The items worked on / created in this lesson: link, create, flag, unlink. */
-function LessonItems({ lesson }: { lesson: Lesson }) {
-  const db = useStore((s) => s.db);
-  const linkItemToLesson = useStore((s) => s.linkItemToLesson);
-  const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
-  const addLessonPreparation = useStore((s) => s.addLessonPreparation);
-  const removeAgendaEntry = useStore((s) => s.removeAgendaEntry);
-  const [linking, setLinking] = useState(false);
-
-  // "Worked on in this class" (lesson.itemIds) and "prepare this FOR this
-  // class" (a preparation entry) are separate facts, exactly as they always
-  // were — the button below toggles the second without touching the first.
-  const committedHere = new Map(
-    db.lessonAgenda
-      .filter((e) => e.kind === 'preparation' && e.lessonId === lesson.id)
-      .map((e) => [(e as { itemId: string }).itemId, e.id] as const),
-  );
-
-  const linked = (lesson.itemIds ?? [])
-    .map((id) => db.items.find((i) => i.id === id))
-    .filter((i): i is NonNullable<typeof i> => !!i);
-  const linkable = db.items.filter(
-    (i) => i.instrumentId === lesson.instrumentId && !(lesson.itemIds ?? []).includes(i.id),
-  );
-
-  return (
-    <div className="stack-sm">
-      <div className="row between">
-        <div className="section-label">Worked on in this class</div>
-        {linkable.length > 0 && (
-          <button className="btn btn-ghost btn-sm" onClick={() => setLinking((v) => !v)}>
-            Link existing…
-          </button>
-        )}
-      </div>
-
-      {linking && (
-        <select
-          className="select"
-          aria-label="Link an existing item to this lesson"
-          value=""
-          onChange={(e) => {
-            if (e.target.value) {
-              linkItemToLesson(lesson.id, e.target.value);
-              setLinking(false);
-            }
-          }}
-        >
-          <option value="">Choose an item…</option>
-          {linkable.map((i) => (
-            <option key={i.id} value={i.id}>
-              {i.title}
-            </option>
-          ))}
-        </select>
-      )}
-
-      {linked.length > 0 && (
-        <div className="card card-flush list">
-          {linked.map((item) => (
-            <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
-              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
-                <div className="truncate">
-                  {item.title}
-                </div>
-                {/* Generated English metadata, never user text — its own
-                    dir="ltr" isolate keeps it from inheriting a Farsi
-                    title's RTL base. */}
-                <div className="tiny faint">
-                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
-                </div>
-              </Link>
-              <button
-                className={`btn btn-sm${committedHere.has(item.id) ? ' btn-primary' : ''}`}
-                aria-pressed={committedHere.has(item.id)}
-                title="Commit to preparing this before this class"
-                onClick={() => {
-                  const existing = committedHere.get(item.id);
-                  if (existing) removeAgendaEntry(existing);
-                  else addLessonPreparation(item.id, lesson.id);
-                }}
-              >
-                {committedHere.has(item.id) ? 'For this class ✓' : 'Prepare for this class'}
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                title="Unlink from this lesson (the item is kept)"
-                aria-label={`Unlink ${item.title} from this lesson — the item is kept`}
-                onClick={() => unlinkItemFromLesson(lesson.id, item.id)}
-              >
-                <XIcon width={14} height={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <QuickAdd lessonId={lesson.id} />
-    </div>
-  );
-}
-```
-
-### src/pages/Settings.tsx
-
-```
-import { useEffect, useRef, useState } from 'react';
-import {
-  clampSchedulingParams,
-  ITEM_STATUS_DESCRIPTIONS,
-  ITEM_STATUS_LABELS,
-  ITEM_STATUS_ORDER,
-  normalizeBaseUrl,
-  RATING_ANCHORS,
-  RATING_EFFECT_NOTE,
-  RATING_HINTS,
-  RATING_LABELS,
-  RESULT_BUTTONS,
-  RESULT_DESCRIPTIONS,
-  RESULT_LABELS,
-  SCHEDULING_BOUNDS,
-  type SchedulingParams,
-} from '../domain';
-import { useStore, type ThemePref } from '../store/useStore';
-import {
-  buildFullBackup,
-  getDeviceName,
-  getNasBaseUrl,
-  importFullBackup,
-  lastModifiedOf,
-  readBackupMeta,
-  setDeviceName,
-  setNasBaseUrl,
-} from '../store/backup';
-import {
-  getSyncConfig,
-  refreshArchiveStatus,
-  resolveConflict,
-  restorePreSyncArchive,
-  setSyncConfig,
-  syncNow,
-  useSyncStatus,
-} from '../store/githubSync';
-import { Field } from '../components/ui';
-import ArchiveRefresh from '../components/ArchiveRefresh';
-import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
-
-const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
-
-const LAST_EXPORT_KEY = 'pc-last-export';
-
-export default function Settings() {
-  const db = useStore((s) => s.db);
-  const theme = useStore((s) => s.theme);
-  const setTheme = useStore((s) => s.setTheme);
-  const addInstrument = useStore((s) => s.addInstrument);
-  const updateInstrument = useStore((s) => s.updateInstrument);
-  const resetDemo = useStore((s) => s.resetDemo);
-  const clearAll = useStore((s) => s.clearAll);
-
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [newInstrument, setNewInstrument] = useState('');
-  const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [deviceName, setDeviceNameState] = useState(getDeviceName());
-  const [lastExport, setLastExport] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(LAST_EXPORT_KEY);
-    } catch {
-      return null;
-    }
-  });
-
-  function flash(msg: string) {
-    setMessage(msg);
-    setTimeout(() => setMessage(null), 3000);
-  }
-
-  async function exportFile() {
-    setBusy(true);
-    try {
-      const json = await buildFullBackup();
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const device = getDeviceName() ? `-${getDeviceName().toLowerCase().replace(/\s+/g, '-')}` : '';
-      a.download = `practice-compass${device}-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      const ts = new Date().toISOString();
-      try {
-        localStorage.setItem(LAST_EXPORT_KEY, ts);
-      } catch {
-        /* ignore */
-      }
-      setLastExport(ts);
-      flash('Backup exported (data + files).');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    try {
-      const text = await file.text();
-
-      // Warn when the backup looks OLDER than what's on this device.
-      const meta = readBackupMeta(text);
-      const localLatest = lastModifiedOf(db);
-      const backupLatest = meta?.lastModified ?? meta?.exportedAt ?? '';
-      let ok: boolean;
-      if (backupLatest && localLatest && backupLatest < localLatest) {
-        ok = confirm(
-          `⚠️ This backup looks OLDER than the data on this device.\n\nBackup${meta?.deviceName ? ` (from “${meta.deviceName}”)` : ''}: last change ${backupLatest.slice(0, 16).replace('T', ' ')}\nThis device: last change ${localLatest.slice(0, 16).replace('T', ' ')}\n\nImporting replaces EVERYTHING here with the older copy. Continue?`,
-        );
-      } else {
-        ok = confirm(
-          `Importing replaces all data and files on this device${meta?.deviceName ? ` with the backup from “${meta.deviceName}”` : ''}. Continue?`,
-        );
-      }
-      if (ok) {
-        const result = await importFullBackup(text);
-        flash(result.ok ? `Imported (${result.fileCount} file${result.fileCount === 1 ? '' : 's'}).` : `Import failed: ${result.error}`);
-      }
-    } finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-    }
-  }
-
-  return (
-    <div className="stack-lg">
-      <header className="stack-sm">
-        <h1 className="page-title">Settings &amp; backup</h1>
-        <p className="page-sub">Your practice lives on this device; the rest is on your terms.</p>
-      </header>
-
-      <section className="stack-sm">
-        <div className="section-label">How your data is stored</div>
-        <div className="card stack-sm small">
-          <StorageRole
-            title="On this device"
-            body="The source of truth. Everything works fully offline; nothing here needs the internet."
-          />
-          <StorageRole
-            title="GitHub sync (optional)"
-            body="Keeps the MacBook and iPhone on the same data — small, versioned snapshots through one private repo you own. Use it only for apps you actually use on more than one device; a phone-only app doesn’t need it."
-          />
-          <StorageRole
-            title="NAS backup (optional)"
-            body="Your own full export (data + files) kept independently on the NAS. Sync history is convenient, but keep a real backup too — don’t rely on the sync repo as your only copy."
-          />
-          <StorageRole
-            title="NAS recordings & scores"
-            body="Large class videos — and score PDFs/docs — stay on the NAS; the app only stores small links to them. They never enter local storage, sync, or backups. Small ad-hoc photos and snippets can still be attached to a lesson directly."
-          />
-        </div>
-      </section>
-
-      <section className="stack-sm">
-        <div className="section-label">Appearance</div>
-        <div className="options">
-          {THEME_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              className={`option${theme === o.value ? ' selected' : ''}`}
-              onClick={() => setTheme(o.value)}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="stack-sm">
-        <div className="section-label">Install as an app</div>
-        <div className="card stack-sm small dim">
-          <div>
-            <strong style={{ color: 'var(--text)' }}>iPhone / iPad (Safari):</strong> tap the Share button, then{' '}
-            <strong style={{ color: 'var(--text)' }}>“Add to Home Screen.”</strong>
-          </div>
-          <div>
-            <strong style={{ color: 'var(--text)' }}>Android (Chrome):</strong> menu (⋮) →{' '}
-            <strong style={{ color: 'var(--text)' }}>“Install app.”</strong>
-          </div>
-          <div>
-            <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
-          </div>
-          <div>
-            <strong style={{ color: 'var(--text)' }}>Mac (Safari):</strong> File →{' '}
-            <strong style={{ color: 'var(--text)' }}>“Add to Dock.”</strong>
-          </div>
-          <div className="tiny faint">
-            It opens full-screen as its own app, works offline, and keeps all data on the device. With sync (below)
-            turned on, the MacBook and iPhone apps stay on the same data.
-          </div>
-        </div>
-      </section>
-
-      <SyncSection />
-
-      <section className="stack-sm">
-        <div className="section-label">Instruments</div>
-        <div className="card stack-sm">
-          {db.instruments.map((inst) => (
-            <div key={inst.id} className="row" style={{ gap: 8 }}>
-              <input
-                className="input grow"
-                value={inst.name}
-                onChange={(e) => updateInstrument(inst.id, { name: e.target.value })}
-              />
-              <button
-                className={`btn btn-sm${inst.active ? ' btn-primary' : ''}`}
-                onClick={() => updateInstrument(inst.id, { active: !inst.active })}
-                title={inst.active ? 'Active — tap to hide from quick start' : 'Hidden — tap to activate'}
-              >
-                {inst.active ? 'Active' : 'Hidden'}
-              </button>
-            </div>
-          ))}
-          <div className="row" style={{ gap: 8 }}>
-            <input
-              className="input grow"
-              placeholder="Add an instrument…"
-              value={newInstrument}
-              onChange={(e) => setNewInstrument(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && newInstrument.trim()) {
-                  addInstrument({ name: newInstrument });
-                  setNewInstrument('');
-                }
-              }}
-            />
-            <button
-              className="btn btn-sm"
-              disabled={!newInstrument.trim()}
-              onClick={() => {
-                addInstrument({ name: newInstrument });
-                setNewInstrument('');
-              }}
-            >
-              <PlusIcon /> Add
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="stack-sm">
-        <div className="section-label">Device &amp; handoff</div>
-        <div className="card stack-sm">
-          <div className="small dim">
-            Each device keeps its own local copy (everything works offline). With{' '}
-            <strong style={{ color: 'var(--text)' }}>sync</strong> on, devices exchange whole snapshots through your
-            GitHub repo — newest copy wins, and if both changed you choose. Without sync, moving data is a manual
-            export → import.
-          </div>
-          <Field label="This device's name" hint="Stamped into backups and sync commits so you can tell devices apart (e.g. iPhone, MacBook).">
-            <input
-              className="input"
-              placeholder="e.g. MacBook"
-              value={deviceName}
-              onChange={(e) => setDeviceNameState(e.target.value)}
-              onBlur={() => setDeviceName(deviceName)}
-              style={{ maxWidth: 240 }}
-            />
-          </Field>
-          <div className="tiny faint">
-            Last export from this device: {lastExport ? lastExport.slice(0, 16).replace('T', ' ') : 'never'} · latest
-            change here: {lastModifiedOf(db) ? lastModifiedOf(db).slice(0, 16).replace('T', ' ') : '—'}
-          </div>
-        </div>
-      </section>
-
-      <NasRecordingsSection />
-
-      <SchedulingSection />
-
-      <section className="stack-sm">
-        <div className="section-label">Data &amp; backup</div>
-        <div className="card stack-sm">
-          <div className="row-wrap small dim">
-            {db.items.length} items · {db.blocks.length} blocks · {db.pathways.length} pathways ·{' '}
-            {db.attachments.length} file{db.attachments.length === 1 ? '' : 's'}
-          </div>
-          <div className="grid-2">
-            <button className="btn" onClick={exportFile} disabled={busy}>
-              <DownloadIcon /> {busy ? 'Working…' : 'Export backup'}
-            </button>
-            <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>
-              <UploadIcon /> Import backup
-            </button>
-          </div>
-          <div className="tiny faint">A backup is one file with all your data and attached files — save it to your NAS or iCloud.</div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            aria-label="Import backup file"
-            hidden
-            onChange={onImportFile}
-          />
-          <Field hint="Replaces all data with the original demo dataset.">
-            <button
-              className="btn btn-sm"
-              onClick={() => {
-                if (confirm('Reset to demo data? This replaces everything.')) {
-                  resetDemo();
-                  flash('Demo data restored.');
-                }
-              }}
-            >
-              Reset demo data
-            </button>
-          </Field>
-          <Field hint="Removes all instruments, items and history.">
-            <button
-              className="btn btn-sm btn-danger"
-              onClick={() => {
-                if (confirm('Erase ALL data? This cannot be undone.')) {
-                  clearAll();
-                  flash('All data cleared.');
-                }
-              }}
-            >
-              Clear all data
-            </button>
-          </Field>
-        </div>
-      </section>
-
-      <div className="tiny faint" style={{ textAlign: 'center' }}>
-        Practice Compass · build {__APP_VERSION__}
-      </div>
-
-      {message && <div className="toast">{message}</div>}
-    </div>
-  );
-}
-
-/**
- * Mac ↔ iPhone sync through a GitHub repo the user owns. Free, no server of
- * ours, and honest: whole snapshots compared by content hash, an explicit
- * two-button choice when both changed (the newer side is only a
- * recommendation), and both copies preserved before anything is replaced.
- * The token stays in this browser's localStorage only.
- */
-function SyncSection() {
-  const status = useSyncStatus();
-  const [cfg, setCfg] = useState(() => getSyncConfig());
-  const [repo, setRepo] = useState(cfg?.repo ?? 'ethan-ghoreishi/practice-compass-data');
-  const [token, setToken] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void refreshArchiveStatus();
-  }, []);
-
-  async function connectAndSync() {
-    const next = { repo: repo.trim().replace(/^https?:\/\/github\.com\//, ''), token: token.trim() };
-    setSyncConfig(next);
-    setCfg(next);
-    setToken('');
-    setBusy(true);
-    await syncNow();
-    setBusy(false);
-  }
-
-  async function manualSync() {
-    setBusy(true);
-    await syncNow();
-    setBusy(false);
-  }
-
-  async function resolve(keep: 'local' | 'remote') {
-    setBusy(true);
-    await resolveConflict(keep);
-    setBusy(false);
-  }
-
-  async function restoreArchive() {
-    if (!confirm('Restore the archived copy? It replaces the data currently on this device (the current data is what sync last wrote here).')) return;
-    setBusy(true);
-    const result = await restorePreSyncArchive();
-    setBusy(false);
-    if (!result.ok) alert(result.error);
-  }
-
-  const fmt = (iso?: string | null) => (iso ? iso.slice(0, 16).replace('T', ' ') : '—');
-  const remoteNewer =
-    status.conflict?.remote?.savedAt && status.lastSyncAt ? status.conflict.remote.savedAt > status.lastSyncAt : false;
-
-  return (
-    <section className="stack-sm">
-      <div className="section-label">Sync (GitHub)</div>
-      <div className="card stack-sm">
-        {!cfg ? (
-          <>
-            <div className="small dim">
-              Keep the MacBook and iPhone on the same data through a private GitHub repo you own — free, works from
-              anywhere, no server. The app stays fully offline-capable; sync happens when you're online.
-            </div>
-            <Field label="Repository" hint="owner/name of a repo dedicated to this app's data.">
-              <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="you/practice-compass-data" />
-            </Field>
-            <Field
-              label="Access token"
-              hint="GitHub → Settings → Developer settings → Fine-grained tokens → New: select ONLY that repo, permission “Contents: Read and write”. Stored in this browser only — never in backups or synced data."
-            >
-              <input
-                className="input"
-                type="password"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="github_pat_…"
-                autoComplete="off"
-              />
-            </Field>
-            <button className="btn btn-primary" disabled={!repo.trim() || !token.trim() || busy} onClick={connectAndSync}>
-              Connect &amp; sync
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="row between small">
-              <span className="dim">
-                Repo: <strong style={{ color: 'var(--text)' }}>{cfg.repo}</strong>
-              </span>
-              <span className="tiny faint">
-                {getDeviceName() || 'unnamed device'} · last sync {fmt(status.lastSyncAt)} · data {status.localHash}
-              </span>
-            </div>
-
-            <div className="small" style={{ color: status.phase === 'error' ? 'var(--tone-alert)' : undefined }}>
-              {status.phase === 'syncing' ? 'Syncing…' : status.message}
-            </div>
-
-            {status.phase === 'error' && (
-              <div className="tiny dim">
-                Nothing was replaced — an interrupted sync never leaves a half-written copy on either side. Check the
-                connection or token, then “Sync now”.
-              </div>
-            )}
-
-            {status.phase === 'conflict' && status.conflict && (
-              <div className="card card-quiet stack-sm">
-                <div className="small">
-                  Both copies have changes. Choose which one to continue from — the other is <strong>archived, not
-                  destroyed</strong> (restorable below / from the repo's archive branches).
-                </div>
-                <div className="tiny dim">
-                  This device ({status.conflict.local.deviceName || 'unnamed'}) · revision r{status.conflict.local.rev ?? '—'}
-                  <br />
-                  GitHub copy{status.conflict.remote?.deviceName ? ` (from ${status.conflict.remote.deviceName})` : ''} · saved{' '}
-                  {fmt(status.conflict.remote?.savedAt)}
-                  {remoteNewer && ' · more recent'}
-                </div>
-                <div className="grid-2">
-                  <button className="btn" disabled={busy} onClick={() => resolve('local')}>
-                    Keep this device's copy
-                  </button>
-                  <button className="btn" disabled={busy} onClick={() => resolve('remote')}>
-                    Take the GitHub copy
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="row" style={{ gap: 8 }}>
-              <button className="btn" disabled={busy || status.phase === 'syncing'} onClick={manualSync}>
-                Sync now
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  if (confirm('Turn sync off on this device? Data stays put; only the connection is removed.')) {
-                    setSyncConfig(null);
-                    setCfg(null);
-                  }
-                }}
-              >
-                Disconnect
-              </button>
-            </div>
-
-            {status.archiveAvailable && (
-              <div className="row between tiny dim" style={{ gap: 8 }}>
-                <span>
-                  Archived copy from {fmt(status.archiveMeta?.savedAt)} ({status.archiveMeta?.reason ?? 'pre-sync'}) is
-                  kept on this device.
-                </span>
-                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={restoreArchive} style={{ flex: 'none' }}>
-                  Restore it
-                </button>
-              </div>
-            )}
-
-            <div className="tiny faint">
-              Syncs when the app opens, after a quiet moment following changes, when you come back online, and on “Sync
-              now”. Attachments upload once; only new or deleted files transfer.
-            </div>
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
-/**
- * NAS recordings: the base URL that resolves relative class-recording paths,
- * plus the Setar archive refresh. Full videos never enter the app — only these
- * references do.
- *
- * THE BASE IS THE ARCHIVE FOLDER ITSELF, not the media root above it. Every
- * reference the app stores is relative to the ARCHIVE root (`session-39-…/…`),
- * so a base of `https://nas:5010` resolves a class recording to
- * `https://nas:5010/session-39-…/…` — a URL that addresses no file. This label
- * used to name the media root, and to promise that changing the base broke
- * nothing; it is the one setting a device carries from before the archive
- * existed, and correcting it is a one-off the copy here has to ask for.
- */
-function NasRecordingsSection() {
-  const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
-
-  const trimmed = baseUrl.trim();
-  const normalized = trimmed ? normalizeBaseUrl(trimmed) : null;
-  const invalid = trimmed.length > 0 && normalized === null;
-
-  function commitBaseUrl() {
-    // Normalise on blur so a scheme-less host (the reported bug) becomes a real
-    // https URL, and echo the cleaned value back into the field.
-    const clean = normalizeBaseUrl(baseUrl);
-    const next = clean ?? baseUrl.trim();
-    setBaseUrlState(next);
-    setNasBaseUrl(next);
-  }
-
-  return (
-    <section className="stack-sm">
-      <div className="section-label">NAS recordings</div>
-      <div className="card stack-sm">
-        <div className="small dim">
-          Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
-          to each recording; set the address of the <strong style={{ color: 'var(--text)' }}>archive folder itself</strong>{' '}
-          and the links resolve against it.
-        </div>
-        <Field
-          label="Setar archive base URL"
-          hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes. References are stored relative to this (session-39-…/…), so a base one folder too high resolves every file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each device sets its own route to the same archive."
-        >
-          <input
-            className="input"
-            type="url"
-            inputMode="url"
-            enterKeyHint="done"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            placeholder="https://192.168.0.20:5010/setar-classes"
-            value={baseUrl}
-            onChange={(e) => setBaseUrlState(e.target.value)}
-            onBlur={commitBaseUrl}
-          />
-        </Field>
-        {invalid ? (
-          <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
-            That doesn’t look like a valid web address.
-          </div>
-        ) : normalized ? (
-          <div className="tiny faint">Resolves to: {normalized}/…</div>
-        ) : null}
-
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">
-            Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy a
-            file's URL from there and paste it into a lesson: a URL under this base is stored as a relative path, so it
-            keeps working whatever route a device takes to the NAS.
-          </div>
-          <button
-            className="btn btn-sm"
-            style={{ flex: 'none' }}
-            disabled={!normalized}
-            onClick={() => normalized && window.open(`${normalized}/`, '_blank', 'noopener,noreferrer')}
-          >
-            Browse
-          </button>
-        </div>
-
-        {/* A single clip proved nothing: it fails for a file that was renamed
-            and passes for a base whose other thousand files are unreachable.
-            The ARCHIVE ROOT is what was configured, so it is what opens. */}
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">
-            Opening a file is a direct request from this device. The app cannot check from here whether the NAS is
-            reachable — a certificate, a blocked cross-origin request and an outage all look the same to it.
-          </div>
-        </div>
-      </div>
-
-      <ArchiveRefresh />
-    </section>
-  );
-}
-
-// --- Scheduling explainer + knobs -------------------------------------------
-
-const PARAM_ROWS: {
-  key: keyof SchedulingParams;
-  label: string;
-  hint: string;
-  /** 'percent' shows/edits the value ×100 (shares are stored as 0–1 fractions). */
-  unit?: 'percent';
-}[] = [
-  { key: 'sm2FirstIntervalDays', label: 'First review gap (days)', hint: 'How long after the first good review before it comes back.' },
-  { key: 'sm2SecondIntervalDays', label: 'Second review gap (days)', hint: 'The gap after the second good review; it keeps expanding from there.' },
-  { key: 'sm2SlipResetDays', label: 'Relearn gap after a slip (days)', hint: 'When something slips, it returns this soon to relearn.' },
-  { key: 'warmupShare', label: 'Warm-up share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for warm-up.', unit: 'percent' },
-  { key: 'deepWorkShare', label: 'Deep-work share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for the focus block.', unit: 'percent' },
-  { key: 'reviewSlotMinMinutes', label: 'Shortest review slot (min)', hint: 'A review segment in the Session Plan never gets less than this.' },
-  { key: 'reviewSlotMaxMinutes', label: 'Longest review slot (min)', hint: 'A review segment in the Session Plan never gets more than this.' },
-];
-
-function SchedulingSection() {
-  const settings = useStore((s) => s.db.settings);
-  const update = useStore((s) => s.updateSchedulingParams);
-  const p = clampSchedulingParams(settings);
-  const customised = settings !== undefined;
-
-  return (
-    <section className="stack-sm">
-      <div className="section-label" id="how-scheduling-works">How scheduling works</div>
-      <div className="card stack-sm small">
-        <div className="dim">
-          Every item gets a plain priority score, then the review date comes from spaced repetition. Nothing here is a
-          black box — these are the exact numbers.
-        </div>
-
-        <div>
-          <div style={{ fontWeight: 600 }}>What to practise (priority)</div>
-          <div className="dim">
-            <code>
-              importance×2 + difficulty + fragility + overdue + neglected + class-deadline − recent-minutes
-            </code>
-            . Work you committed to a specific class climbs as THAT class nears, and stops counting once it has
-            passed. A question for your teacher adds nothing — it is something to ask, not a reason to practise.
-            Material you have given a lot of minutes to this week is gently set aside; the effect decays over a week
-            and is capped, so nothing is ever hidden for good.
-          </div>
-        </div>
-
-        <div>
-          <div style={{ fontWeight: 600 }}>When to revisit (spaced repetition)</div>
-          <div className="dim">
-            Practising early is real practice, but it is not the review: before the date, a good session records the
-            minutes and leaves the date alone. AT the review, “stable” results widen the gap
-            (≈ {p.sm2FirstIntervalDays} → {p.sm2SecondIntervalDays} days → gap × ease), at most once a day; “same” and
-            “slightly better” hold the same gap again without counting as a slip; only “worse” brings the date
-            forward — to{' '}
-            {p.sm2SlipResetDays === 1 ? 'the next day' : `${p.sm2SlipResetDays} days`} — and never pushes it back.
-            Important or hard material is pulled a little sooner. A date you chose yourself stands until it is due.
-            You can override any item to a fixed cadence or manual.
-          </div>
-        </div>
-
-        <div id="what-the-choices-mean">
-          <div style={{ fontWeight: 600 }}>What each choice means</div>
-          <div className="dim">
-            <strong>Status</strong> says how the item currently stands and how you are working on it — not how the
-            last ten minutes went. The eight are not rungs of a ladder you must climb: neighbours overlap on purpose,
-            you can move backwards, and “{ITEM_STATUS_LABELS.new}” means new material still being established, not
-            that you have never practised it.
-            <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
-              {ITEM_STATUS_ORDER.map((st) => (
-                <li key={st}>
-                  <strong>{ITEM_STATUS_LABELS[st]}</strong> — {ITEM_STATUS_DESCRIPTIONS[st]}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div className="dim" style={{ marginTop: 6 }}>
-            <strong>Result</strong>, at the close of a block, is the most concrete thing that block actually showed.
-            The last three are evidence of stability at a named scope; the first three describe change short of such a
-            claim.
-            <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
-              {RESULT_BUTTONS.map((r) => (
-                <li key={r}>
-                  <strong>{RESULT_LABELS[r]}</strong> — {RESULT_DESCRIPTIONS[r]}
-                </li>
-              ))}
-            </ul>
-            “{RESULT_LABELS.same}” is never read as failed recall, and neither fatigue, a blank field nor a missing
-            rating becomes one. “Save without a result” records the minutes and changes no schedule.
-          </div>
-          <div className="dim" style={{ marginTop: 6 }}>
-            <strong>{RATING_LABELS.importance}</strong> ({RATING_HINTS.importance.toLowerCase()})
-            — 1 “{RATING_ANCHORS.importance[1]}”, 3 “{RATING_ANCHORS.importance[3]}”, 5 “
-            {RATING_ANCHORS.importance[5]}”. <strong>{RATING_LABELS.difficulty}</strong> (
-            {RATING_HINTS.difficulty.toLowerCase()}) — 1 “{RATING_ANCHORS.difficulty[1]}”, 3 “
-            {RATING_ANCHORS.difficulty[3]}”, 5 “{RATING_ANCHORS.difficulty[5]}”. Both default to 3.{' '}
-            {RATING_EFFECT_NOTE} They are stored as <code>importance</code> and <code>difficulty</code>, and every
-            number above uses them exactly as it always has.
-          </div>
-        </div>
-
-        <div id="review-ownership">
-          <div style={{ fontWeight: 600 }}>Who manages a review date</div>
-          <div className="dim">
-            A date you typed, snoozed or re-armed is YOURS: the app leaves it alone until it comes due. “Use automatic
-            scheduling” on an item hands that management back — it KEEPS the date exactly as it is, records no
-            practice and calculates no new date. Automatic means the app has authority over the date from then on, not
-            that the date shown was worked out by the engine or that a review happened. If the item and its pending
-            review disagree about the date, the transfer is refused and asks you which one you meant rather than
-            guessing. With no date at all, automatic simply leaves it unscheduled; “Review today” puts it on today&apos;s
-            list — administration, not evidence.
-          </div>
-        </div>
-
-        <div>
-          <div style={{ fontWeight: 600 }}>Class commitments and questions</div>
-          <div className="dim">
-            Each one names a specific class. Anything carried over from an older version of the app is listed as
-            “Unassigned” on the Lessons screen with a button to move it to the class it was actually for — the old
-            data never recorded which class it meant, so nothing was guessed for you.
-          </div>
-        </div>
-
-        <div className="stack-sm" style={{ marginTop: 4 }}>
-          {PARAM_ROWS.map((row) => {
-            const [loRaw, hiRaw] = SCHEDULING_BOUNDS[row.key];
-            const scale = row.unit === 'percent' ? 100 : 1;
-            const lo = Math.round(loRaw * scale);
-            const hi = Math.round(hiRaw * scale);
-            return (
-              <Field key={row.key} label={`${row.label} (${lo}–${hi})`} hint={row.hint}>
-                <input
-                  className="input"
-                  type="number"
-                  inputMode="numeric"
-                  enterKeyHint="done"
-                  min={lo}
-                  max={hi}
-                  step={1}
-                  value={Math.round(p[row.key] * scale)}
-                  style={{ maxWidth: 120 }}
-                  onChange={(e) => {
-                    const n = Number(e.target.value);
-                    if (Number.isFinite(n)) update({ [row.key]: n / scale });
-                  }}
-                />
-              </Field>
-            );
-          })}
-        </div>
-
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">
-            {customised ? 'Using your adjusted values.' : 'Using the recommended defaults.'}
-          </div>
-          <button
-            className="btn btn-sm"
-            style={{ flex: 'none' }}
-            disabled={!customised}
-            onClick={() => update(null)}
-          >
-            Reset to recommended
-          </button>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/** One row of the storage-model explainer. */
-function StorageRole({ title, body }: { title: string; body: string }) {
-  return (
-    <div>
-      <div style={{ fontWeight: 600 }}>{title}</div>
-      <div className="dim">{body}</div>
-    </div>
-  );
-}
-```
-
 ### tests/practiceBrowser.ts
 
 ```
@@ -8591,17 +3778,32 @@ const installHint = (engine: Engine) =>
 /**
  * ONE recorded outcome of a network request the harness watched, whatever the
  * browser's own words for it were. Tracking EVERY failure — not only
- * cancellations — is what lets a later, genuine failure to the same URL
- * displace a stale cancellation instead of being excused by it (see
- * `excusedCancellation`).
+ * cancellations — is what lets genuine evidence for a resource VETO the excuse
+ * for that resource (see `excusedCancellation`).
  *
- * A request the BROWSER cancelled because the test navigated away while it was
- * in flight is not an application error. WebKit reports such a fetch as
- * "Fetch API cannot load … due to access control checks", which reads exactly
- * like a CORS problem and is not one: the request is otherwise fulfilled with
- * the right CORS headers every other time. A real person navigating mid-sync
- * cancels the same request, so treating it as a page error makes a journey
- * fail for driving the app quickly.
+ * WHY THERE IS AN EXCUSE AT ALL, and exactly how far the evidence for it goes.
+ * A CI run produced `Fetch API cannot load https://api.github.com/repos/owner/
+ * practice-data/contents/README.md due to access control checks.` on two of
+ * three runners at a commit that passed on the third — a WebKit-only,
+ * CORS-shaped page error, while every other run fulfils that same request with
+ * the right CORS headers. A request the browser CANCELS because the test drove
+ * on while it was in flight is the standing explanation, and a real person
+ * navigating mid-sync cancels the same request, so failing a journey for it
+ * would be failing it for being driven quickly.
+ *
+ * That explanation is NOT measured, and this comment used to state it as fact.
+ * Driving a real WebKit here, five different cancellation shapes — navigating
+ * away mid-flight, reloading mid-flight, `AbortController`, a same-tick
+ * `location.href`, a cancelled CORS preflight — each produced a
+ * `requestfailed` with `errorText: 'cancelled'` and NO page error whatsoever.
+ * A reply that genuinely lacks CORS headers does produce exactly this page
+ * error, so a raced `route.fulfill` remains a live alternative explanation
+ * that cannot be settled from here.
+ *
+ * Which is precisely why the excuse below demands the strongest association
+ * the platform makes available and refuses on anything weaker: the pairing it
+ * exists for has never been observed, so it may never be INFERRED from a
+ * cancellation merely being nearby.
  *
  * `errorText` is kept verbatim rather than reduced to a boolean, because it is
  * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
@@ -8624,12 +3826,25 @@ export interface TrackedRequestFailure {
  * never produced its own page error remained a live "credit" any LATER,
  * genuine access-control failure to that same URL could spend. That is a
  * sealed finding, not a hypothetical: a cancellation and a real failure are
- * indistinguishable by wording or by URL, so a window — however short — can
- * never be the thing that tells them apart. Only ORDER can: see
- * `excusedCancellation` below for the correlation that actually does the work.
- * What is left for this ceiling to do is bound how far apart the two events
- * may be and still be treated as one outcome, in case Node's delivery is
- * delayed under the contention several concurrent dev servers create.
+ * indistinguishable by wording, so a window — however short — can never be
+ * the thing that tells them apart.
+ *
+ * NOR CAN PROXIMITY, AT ANY RESOLUTION. Replacing the window with "whichever
+ * tracked failure sits NEAREST the error wins" was the previous attempt, and
+ * measuring it is what killed it: a genuine access-control failure emits its
+ * own `requestfailed` 74–359µs after its page error (six of six, macOS WebKit),
+ * which reads as a gap of 0ms or 1ms at `Date.now()` granularity depending on
+ * which side of a millisecond boundary the pair straddles. An unrelated
+ * cancellation to the same resource landing in the error's own millisecond
+ * therefore OUTRANKS a genuine failure 359µs away, and excuses it. Sub-
+ * millisecond timestamps would only move that boundary, not remove it.
+ *
+ * What separates them is `excusedCancellation`'s VETO — genuine evidence for
+ * the same resource forbids the excuse outright, however far away it sits —
+ * and the full-URL identity `sameResource` insists on. All this ceiling does
+ * is bound how far apart two events may be and still be considered one
+ * outcome at all, in case Node's delivery is delayed under the contention
+ * several concurrent dev servers create.
  */
 export const CANCELLED_EXCUSE_MS = 2_000;
 
@@ -8637,8 +3852,8 @@ export const CANCELLED_EXCUSE_MS = 2_000;
  * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
  * `XMLHttpRequest`), anchored end to end.
  *
- * The whole point of parsing into a real `URL` and comparing `host` and
- * `pathname` by EQUALITY, rather than testing whether the message merely
+ * The whole point of parsing into a real `URL` and comparing its parts by
+ * EQUALITY (`sameResource`), rather than testing whether the message merely
  * CONTAINS a candidate's host/path as substrings, is that a substring test
  * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
  * the left) or `api.github.com.evil.test` (extended on the right), nor
@@ -8695,59 +3910,60 @@ function reportedUrl(error: { name?: string; message: string }): URL | null {
   return null;
 }
 
-/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
-function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
-  let best = -1;
-  let bestGap = Infinity;
-  for (let i = 0; i < events.length; i++) {
-    const e = events[i];
-    const gap = Math.abs(at - e.at);
-    if (gap > CANCELLED_EXCUSE_MS) continue;
-    let url: URL;
-    try {
-      url = new URL(e.url);
-    } catch {
-      continue;
-    }
-    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
-    // A TIE is never resolved in the excuse's favour: with two candidates the
-    // same distance away, the one that is NOT a cancellation wins, so a stale
-    // cancellation landing in the same millisecond as a genuine failure cannot
-    // excuse it.
-    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
-    if (best < 0 || better) {
-      best = i;
-      bestGap = gap;
-    }
+/**
+ * Do a tracked request's URL and the one a page error NAMES address the same
+ * resource? Host, path AND QUERY, all three by structural equality.
+ *
+ * THE QUERY IS THE PART THIS USED TO THROW AWAY, and a sealed finding is what
+ * it cost: matching host+path alone makes
+ * `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` — two
+ * different requests the app really does make, one after the other — the same
+ * resource, so a cancellation of one stood ready to excuse a genuine failure
+ * of the other. WebKit names the FULL url in the diagnosis, query included
+ * (measured, macOS WebKit: `…/state.json?ref=main&x=1 due to access control
+ * checks.`), so this identity is available and there is no reason to discard
+ * it.
+ *
+ * THE FRAGMENT IS THE ONE PART THAT MUST BE IGNORED, and comparing `href`
+ * would get that wrong: a fragment never reaches the network, so
+ * `request.url()` drops it — while WebKit's message keeps it verbatim
+ * (measured: message `…/state.json#frag`, request url `…/state.json`). Naming
+ * `host`/`pathname`/`search` explicitly is what keeps a later tidy-up to
+ * `href` from silently killing the excuse for every fragment-bearing URL.
+ */
+function sameResource(trackedUrl: string, reported: URL): boolean {
+  let url: URL;
+  try {
+    url = new URL(trackedUrl);
+  } catch {
+    return false;
   }
-  return best;
+  return url.host === reported.host && url.pathname === reported.pathname && url.search === reported.search;
 }
 
 /**
- * The excuse correlates on ORDER, not on a window: among every tracked request
- * to the exact host+path the error names, the one that actually produced it is
- * whichever happened NEAREST IN TIME — because the browser emits the spurious
- * error and the request's own failure in the same tick, so nothing else to
- * that URL can have intervened.
+ * The excuse correlates on IDENTITY plus a VETO, never on proximity.
  *
- * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
- * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
- * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
- * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
- * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
- * request. A backwards-only search therefore looked at an empty log and
- * excused nothing — the second reason this excuse had never once fired against
- * a real error. The sealed invariant it was written to protect is untouched by
- * the correction: a genuine failure ALWAYS emits its own `requestfailed`
- * adjacent to its own page error, so it is always the nearest candidate, and a
- * stale cancellation sitting milliseconds away can never outrank it.
+ * Among the tracked failures for the exact resource the error names, within
+ * the defensive ceiling:
  *
- * If the nearest candidate is not a cancellation at all — a genuine failure,
- * or nothing within the ceiling — this returns `false` and excuses nothing: an
- * uncertain correlation is never resolved in the excuse's favour.
+ *  - if ANY of them is NOT a cancellation, nothing is excused. A genuine
+ *    access-control failure always emits its own `requestfailed` beside its
+ *    own page error (measured: 74–359µs after it, six times out of six), so
+ *    the presence of genuine evidence for this exact resource means the
+ *    cancellation's ownership of this error is unproven — and an unproven
+ *    correlation is never resolved in the excuse's favour. This is a veto, not
+ *    a ranking: it holds however far away the genuine failure sits, which is
+ *    what the previous "whichever is nearest wins" rule could not do. At
+ *    `Date.now()` granularity a genuine pair straddling a millisecond boundary
+ *    reads as 1ms apart, so an unrelated cancellation in the error's own
+ *    millisecond used to outrank it and excuse a real failure;
+ *  - otherwise the nearest cancellation is CONSUMED, so it cannot excuse a
+ *    second error too. Nearest only chooses WHICH interchangeable cancellation
+ *    to spend here; it no longer decides WHETHER anything may be spent.
  *
- * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
- * second, later error too.
+ * A message that is not the diagnosis at all — a render crash, a thrown
+ * TypeError, whatever URL it happens to name — is never excused.
  */
 export function excusedCancellation(
   events: TrackedRequestFailure[],
@@ -8756,9 +3972,21 @@ export function excusedCancellation(
 ): boolean {
   const reported = reportedUrl(error);
   if (!reported) return false;
-  const nearest = nearestIndex(events, reported, at);
-  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
-  events.splice(nearest, 1);
+  let best = -1;
+  let bestGap = Infinity;
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    const gap = Math.abs(at - e.at);
+    if (gap > CANCELLED_EXCUSE_MS) continue;
+    if (!sameResource(e.url, reported)) continue;
+    if (e.errorText !== 'cancelled') return false;
+    if (gap < bestGap) {
+      best = i;
+      bestGap = gap;
+    }
+  }
+  if (best < 0) return false;
+  events.splice(best, 1);
   return true;
 }
 
@@ -8780,7 +4008,12 @@ export function cancellationEvidence(
 ): string {
   const reported = reportedUrl(error);
   if (!reported) return '';
-  const where = `${reported.host}${reported.pathname}`;
+  const where = `${reported.host}${reported.pathname}${reported.search}`;
+  // DELIBERATELY BROADER THAN THE EXCUSE: same host and path, whatever the
+  // query. A failure to the same path under a DIFFERENT query is exactly what
+  // the excuse must refuse to act on and exactly what the reader of a CI-only
+  // failure needs to see, so each row prints its own full url and says whether
+  // it was the same resource the error named.
   const near = events
     .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
     .filter((e) => {
@@ -8791,7 +4024,11 @@ export function cancellationEvidence(
         return false;
       }
     })
-    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
+    .map(
+      (e) =>
+        `${e.url} — ${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms` +
+        `${sameResource(e.url, reported) ? '' : ' (different query — not the resource this error names)'}`,
+    );
   return near.length
     ? `tracked request failures for ${where}: ${near.join('; ')}`
     : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
@@ -8807,9 +4044,9 @@ export interface PracticeApp {
    * Uncaught page errors, so a broken render cannot pass as a quiet one.
    *
    * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
-   * about a mid-flight request BEFORE that request's own `requestfailed`, so
-   * deciding at arrival time is deciding against a log that has not been
-   * written yet. Reading this at the end of a journey — which is when a
+   * about a request BEFORE that request's own `requestfailed` (measured:
+   * 74–359µs ahead, six times out of six), so deciding at arrival time is
+   * deciding against a log that has not been written yet. Reading this at the end of a journey — which is when a
    * journey asserts on it — has every event in hand.
    */
   readonly pageErrors: Error[];
@@ -8863,9 +4100,9 @@ export async function openPracticeApp(options: {
   let page: Page;
   const pending: { error: Error; at: number }[] = [];
   const pageErrors: Error[] = [];
-  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
-  // to be visible to `excusedCancellation` so it can outrank a stale
-  // cancellation to the same URL, not just a cancellation itself.
+  // EVERY requestfailed is tracked, cancelled or not — genuine evidence for a
+  // resource has to be visible to `excusedCancellation` for its veto to fire,
+  // not just the cancellations.
   const requestFailures: TrackedRequestFailure[] = [];
   try {
     context = await browser.newContext({
@@ -9193,7 +4430,6 @@ export function publishSourceIndex(remote: FakeRemote, text: string, commit = 's
 export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
   let headCounter = 0;
   const blobs = new Map<string, string>();
-
   await page.route('https://api.github.com/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -9317,385 +4553,6 @@ export async function connectSync(app: PracticeApp): Promise<void> {
 export async function syncMessage(page: Page): Promise<string> {
   return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
 }
-```
-
-### tests/setarArchive.browser.test.ts
-
-```
-import { describe, expect, it } from 'vitest';
-import INDEX_TEXT from './fixtures/setar-archive.json?raw';
-import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
-import {
-  connectSync,
-  goTo,
-  importBackup,
-  installFakeGitHub,
-  newFakeRemote,
-  openPracticeApp,
-  persistedUntil,
-  publishSourceIndex,
-  readPersistedState,
-  stampSourceIndex,
-  reload,
-  type Engine,
-  type PracticeApp,
-} from './practiceBrowser';
-
-// ---------------------------------------------------------------------------
-// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
-//
-// Refresh → a historical class with its real material → a canonical piece →
-// the material that is genuinely useful for it → Start → open a file, with the
-// practice clock untouched. The corpus is the checked-in index derived from the
-// real archive, the clock is frozen, and every control is reached by its
-// accessible name — no debug hook, no source regex.
-//
-// A missing engine FAILS with an install instruction; it never skips.
-// ---------------------------------------------------------------------------
-
-const NOW = new Date('2026-09-17T09:00:00.000Z');
-const PHONE = { width: 390, height: 844 };
-const DESKTOP = { width: 1280, height: 900 };
-
-interface Db {
-  items: {
-    id: string;
-    title: string;
-    status: string;
-    persian?: { composer?: string };
-    source?: { pieceKey: string };
-  }[];
-  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
-  blocks: unknown[];
-  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
-}
-
-async function db(app: PracticeApp): Promise<Db> {
-  const { state } = await readPersistedState(app);
-  return (state as { db: Db }).db;
-}
-
-/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
-async function setUp(app: PracticeApp, indexText: string) {
-  const remote = newFakeRemote();
-  await installFakeGitHub(app.page, remote);
-  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
-  await connectSync(app);
-  publishSourceIndex(remote, indexText);
-  return remote;
-}
-
-async function refresh(app: PracticeApp) {
-  await goTo(app, '/settings');
-  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
-  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
-}
-
-/**
- * An index with one more class than the corpus — the delta a refresh applies.
- *
- * Re-STAMPED with the digest the scanner itself would have written: the app
- * recomputes that digest and refuses an index whose content and hash disagree,
- * so a journey may not hand-edit a hash to fake a new scan.
- */
-async function withSession40(text: string): Promise<string> {
-  const index = JSON.parse(text) as {
-    contentHash: string;
-    sessions: unknown[];
-    pieces: { key: string; composer: string }[];
-  };
-  index.sessions = [
-    ...index.sessions,
-    {
-      n: 40,
-      date: '2026-09-29',
-      folder: 'session-40-29-09-2026',
-      roster: [index.pieces[0]!.key],
-      rosterTrusted: true,
-      hasClassRecording: true,
-      resources: [
-        {
-          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
-          role: 'ضبط-کلاس',
-          kind: 'video',
-          title: 'ضبط کلاس',
-          part: null,
-          pieces: [],
-          group: null,
-        },
-      ],
-      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
-    },
-  ];
-  return stampSourceIndex(index as unknown as Record<string, unknown>);
-}
-
-/** The composer this journey's re-scanned registry proposes for one piece. */
-const NEW_COMPOSER = 'میرزا-عبدالله';
-
-/**
- * A re-scanned index whose REGISTRY has improved: one piece the owner already
- * has now names a different composer. That is a suggestion, never a write.
- */
-async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
-  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
-  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
-  const was = target.composer;
-  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
-  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
-}
-
-describe('the Setar archive, rendered', () => {
-  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
-    for (const engine of ['chromium', 'webkit'] as Engine[]) {
-      for (const viewport of [PHONE, DESKTOP]) {
-        const app = await openPracticeApp({ now: NOW, viewport, engine });
-        try {
-          const { page } = app;
-          const remote = await setUp(app, INDEX_TEXT);
-
-          // --- REFRESH: one action, a readable summary, no crawler output ---
-          await refresh(app);
-          const summary = await page.locator('main').innerText();
-          // Four of the owner's own legacy classes carry EXACT source-path evidence,
-          // so they are adopted rather than duplicated; the other 35 are new.
-          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
-          // It says the index CHANGED or was FETCHED — never that a scan ran.
-          expect(summary).not.toMatch(/last scanned/i);
-          expect(summary).toMatch(/needing attention/);
-          // Import policy is stated BEFORE the import, not discovered after.
-          expect(summary).toMatch(/New pieces arrive resting/);
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-
-          const after = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.lessons.length === 40 && d.items.length === 96,
-          );
-          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-          expect(after.items.filter((i) => i.source)).toHaveLength(94);
-          // The owner's own upcoming class 38 and the archive's class 38 both
-          // exist, on their own dates.
-          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
-            '2026-08-04',
-            '2026-09-27',
-          ]);
-
-          // --- A HISTORICAL CLASS, with its real material -------------------
-          // Lessons is a two-pane list at 1000px and stacked cards below it, so
-          // this journey drives whichever the viewport actually renders.
-          await goTo(app, '/lessons');
-          const wide = viewport.width >= 1000;
-          /**
-           * Open one class and read what it actually renders — the whole page
-           * on the wide two-pane layout, the card itself on the phone, where
-           * rows start compact and must be opened first.
-           */
-          const openClass = async (label: string, number: number): Promise<string> => {
-            if (wide) {
-              await page.getByRole('button', { name: new RegExp(label) }).first().click();
-              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-              return page.locator('main').innerText();
-            }
-            const card = page.getByRole('article').filter({ hasText: label });
-            await card.first().waitFor({ timeout: 20_000 });
-            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
-            // all open at once just because none of them has notes yet.
-            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
-            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
-            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
-            return card.innerText();
-          };
-          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
-          // The class recording is here, with its part numbers; a named score
-          // is here; nothing claims a demonstration belongs to the class alone.
-          expect(lessonText).toContain('ضبط کلاس');
-          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
-
-          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
-          //
-          // Class 25 is an ADOPTED legacy class carrying three of the owner's
-          // OWN references — personal takes the index describes nowhere, by
-          // construction — beside the archive's session material. The composed
-          // list used to include the owner's rows as well, so each of them was
-          // rendered twice: once where it can be edited and removed, and once
-          // again above it.
-          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
-          const adopted = await openClass('Class 25 · 2025-08-05', 25);
-          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
-            expect(occurrences(adopted, authored)).toBe(1);
-          }
-          // …and they are still editable where they live: the section that owns
-          // them can still remove them, by name.
-          const owning = wide
-            ? page.locator('main')
-            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
-          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
-          // A class the archive gave a recording to is NOT invited to add one.
-          // Class 12 is a purely imported class: it keeps no copy of its
-          // session's files, so its own `recordings` array is empty and the
-          // empty-state card offered to add the very video playing above it.
-          const imported = await openClass('Class 12 · 2024-08-06', 12);
-          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
-          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
-
-          // --- A CANONICAL PIECE, and the material that is useful for it ----
-          await goTo(app, '/repertoire');
-          await page.getByRole('button', { name: 'Practice list' }).click();
-          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
-          // through the existing Farsi matcher.
-          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
-          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
-          await found.waitFor({ timeout: 20_000 });
-          await found.click();
-          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
-
-          const itemText = await page.locator('main').innerText();
-          // Its OWN notation, with provenance…
-          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
-          // …the demonstration that covers its session…
-          expect(itemText).toContain('teacher’s demonstration');
-          // …and NOT the class recording, and NOT anyone's practice takes.
-          expect(itemText).not.toContain('class recording');
-          expect(itemText).not.toContain('تمرین من');
-          // Imported pieces arrive resting.
-          expect(itemText).toMatch(/Resting/);
-
-          // --- DIRECT START, and opening material with the clock untouched --
-          await page.getByRole('button', { name: 'Start a block' }).click();
-          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
-          const clockBefore = await page.locator('main').innerText();
-          // Material on the practice screen is ONE CLOSED disclosure.
-          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
-          // CLOSED until asked for: nothing is listed before the tap.
-          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
-          await materialToggle.click();
-          const openButtons = page.getByRole('button', { name: 'Open' });
-          expect(await openButtons.count()).toBeGreaterThan(0);
-          // Every control has an accessible name and is reachable by keyboard.
-          await page.keyboard.press('Tab');
-          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
-          // Opening a file never disturbs the running block.
-          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
-            clockBefore.includes('Finish'),
-          );
-          const blocksBefore = (await db(app)).blocks.length;
-          // The harness accepts the confirm() for the whole journey.
-          await page.getByRole('button', { name: 'Discard block' }).click();
-          expect((await db(app)).blocks).toHaveLength(blocksBefore);
-
-          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
-          await goTo(app, '/repertoire');
-          await page.getByRole('button', { name: 'Practice list' }).click();
-          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
-          const wrapped = await page.evaluate(() => {
-            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
-              /[؀-ۿ]/.test(n.textContent ?? ''),
-            );
-            if (!el) return null;
-            const box = el.getBoundingClientRect();
-            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
-          });
-          expect(wrapped).not.toBeNull();
-          expect(wrapped!.rtl).toBe('rtl');
-          expect(wrapped!.overflows).toBe(false);
-
-          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
-          await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: 'Already current' }).click();
-          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
-
-          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
-          await refresh(app);
-          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const delta = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.lessons.length === 41,
-          );
-          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
-
-          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
-          // The registry improves. That is an OFFER, field by field: nothing
-          // about the owner's own piece changes until they say so, and the
-          // choice must survive the commit even when the index behind it is
-          // already the one installed.
-          const better = await withBetterComposer(INDEX_TEXT);
-          publishSourceIndex(remote, better.text, 'source-index-commit-4');
-          await refresh(app);
-          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
-          await offerRow.first().waitFor({ timeout: 20_000 });
-          const offerText = await page.locator('main').innerText();
-          // The section label is rendered uppercase by the stylesheet, and
-          // innerText returns what is actually rendered.
-          expect(offerText).toMatch(/the archive knows more about these/i);
-          expect(offerText).toContain(better.key);
-          expect(offerText).toContain(NEW_COMPOSER);
-          // Applying WITHOUT answering updates the source graph and leaves the
-          // owner's own piece exactly as it was.
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const unanswered = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
-          );
-          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
-
-          // THE SAME INDEX, a NEW answer. The graph is already current, so a
-          // refresh judged by the index hash alone called this "Already
-          // current" and threw the answer away unwritten.
-          await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
-          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
-          await page.getByRole('button', { name: 'Apply' }).click();
-          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-          const answeredDb = await persistedUntil(
-            app,
-            (s) => (s.state as { db: Db }).db,
-            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
-          );
-          // Only that field moved: the piece keeps its title and its history.
-          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
-          expect(answeredDb.blocks).toHaveLength(1);
-          // …and the offer is gone, because it has been taken.
-          await refresh(app);
-          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-
-          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
-          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
-          await goTo(app, '/settings');
-          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
-          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
-          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
-
-          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
-          await reload(app);
-          const persisted = await db(app);
-          expect(persisted.lessons).toHaveLength(41);
-          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
-          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
-          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
-          expect(persisted.blocks).toHaveLength(1);
-          // MESSAGES, not Error objects: `toEqual([])` on an array of Errors
-          // reports "expected [ …(1) ] to deeply equal []" and nothing else,
-          // so the one thing a CI-only failure needs to say — what the browser
-          // actually reported, and what the harness saw around it — is exactly
-          // what it withholds. Every other journey already asserts this way.
-          expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-        } finally {
-          await app.close();
-        }
-      }
-    }
-  });
-});
 ```
 
 ### tests/setarInbound.browser.test.ts
@@ -10214,9 +5071,10 @@ describe('rolling back past the archive schema', () => {
 describe('the journey harness itself', () => {
   // The harness must not be able to hide the very failure a journey exists to
   // catch, and it must not manufacture one either. A request the browser
-  // CANCELLED (because the test navigated away mid-flight) produces a WebKit
-  // error that reads exactly like a CORS failure. Excusing it has now failed
-  // four different ways, and each test below is named for the specific way:
+  // CANCELLED (because the test drove on mid-flight) is the standing
+  // explanation for a WebKit page error that reads exactly like a CORS
+  // failure. Excusing it has now failed five different ways, and each test
+  // below is named for the specific way:
   //  - a PERMANENT set of cancelled URLs discarded every later page error
   //    whose message merely contained that pathname, so a genuine failure at
   //    the same path, later in the same journey, was swallowed and
@@ -10225,9 +5083,7 @@ describe('the journey harness itself', () => {
   //    generous time window, an unconsumed cancellation — one that produced
   //    no page error of its own — stayed a live "credit" for up to that whole
   //    window, spendable by a genuine, later failure to the same URL that had
-  //    nothing to do with it. A window can never tell the two apart, because
-  //    a cancellation's error and a genuine one read identically; only ORDER
-  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`);
+  //    nothing to do with it;
   //  - the excuse read the page error's `message` ALONE, which never contains
   //    the diagnosis: Playwright splits a page error at its first colon — the
   //    URL's own scheme colon — so the wording lives in `name` and only the
@@ -10236,10 +5092,19 @@ describe('the journey harness itself', () => {
   //  - and the correlation looked only BACKWARDS in time, on the stated
   //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
   //    Measured, WebKit delivers them the other way round. Against a real
-  //    error the log was still empty when the excuse ran.
-  // Both of the last two were exposed by the same CI run: the journey passed
-  // on one runner and failed on two others at the identical commit, because
-  // the error had simply never been produced locally before.
+  //    error the log was still empty when the excuse ran;
+  //  - and, the finding this block was last reworked for, the correlation
+  //    that replaced the window — "whichever tracked failure sits NEAREST the
+  //    error wins", on host+path — threw away the QUERY, so two different
+  //    requests to one path were one resource, and rested the whole safety
+  //    claim on PROXIMITY, which the measurement below shows cannot carry it:
+  //    a genuine failure's own `requestfailed` lands 74–359µs after its page
+  //    error, which reads as 0ms or 1ms depending on which side of a
+  //    millisecond boundary the pair straddles, so an unrelated cancellation
+  //    in the error's own millisecond outranked it.
+  // The middle two were exposed by the same CI run: the journey passed on one
+  // runner and failed on two others at the identical commit, because the
+  // error had simply never been produced locally before.
   const url = 'https://api.github.com/repos/owner/data/contents/state.json';
 
   /**
@@ -10251,17 +5116,33 @@ describe('the journey harness itself', () => {
     const u = new URL(target);
     return {
       name: `Fetch API cannot load ${u.protocol.replace(':', '')}`,
-      message: `/${u.host}${u.pathname} due to access control checks.`,
+      message: `/${u.host}${u.pathname}${u.search}${u.hash} due to access control checks.`,
     };
   };
   const spurious = diagnosed();
   const at = 1_000_000;
-  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, errorText: 'cancelled' });
-  const genuine = (offset = 0): TrackedRequestFailure => ({
-    url,
+  const cancelled = (offset = 0, target = url): TrackedRequestFailure => ({
+    url: target,
+    at: at + offset,
+    errorText: 'cancelled',
+  });
+  const genuine = (offset = 0, target = url): TrackedRequestFailure => ({
+    url: target,
     at: at + offset,
     errorText: 'Origin http://localhost:5173 is not allowed by Access-Control-Allow-Origin. Status code: 200',
   });
+
+  /**
+   * Raise the diagnosis as a REAL uncaught page error, through the app's own
+   * page. A top-level `throw` in an injected script, NOT a timer callback:
+   * every journey installs `page.clock`, so a `setTimeout` here never fires at
+   * all and the error would never be delivered.
+   */
+  const raiseDiagnosis = async (app: { page: import('playwright').Page }, target: string): Promise<void> => {
+    await app.page.addScriptTag({
+      content: `throw new Error(${JSON.stringify(`Fetch API cannot load ${target} due to access control checks.`)});`,
+    });
+  };
 
   it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
     // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
@@ -10296,10 +5177,54 @@ describe('the journey harness itself', () => {
     ).toBe(false);
   });
 
+  it('tells two requests to one path apart by their query, in both directions', () => {
+    // THE SEALED FINDING THIS BLOCK WAS REWORKED FOR. Host+path alone makes
+    // these one resource; they are two requests the app really does make, one
+    // after the other, when it reads the published index at two commits.
+    const refA = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-a';
+    const refB = 'https://api.github.com/repos/owner/data/contents/setar/index.json?ref=commit-b';
+
+    // A cancellation of ONE never excuses the diagnosis naming the OTHER —
+    // and the cancellation is left intact, not spent on something it does not
+    // account for.
+    const other = [cancelled(0, refA)];
+    expect(excusedCancellation(other, diagnosed(refB), at + 1)).toBe(false);
+    expect(other).toHaveLength(1);
+
+    // A query-less request is not the same resource as a query-bearing one,
+    // either way round.
+    const bare = 'https://api.github.com/repos/owner/data/contents/setar/index.json';
+    expect(excusedCancellation([cancelled(0, bare)], diagnosed(refA), at + 1)).toBe(false);
+    expect(excusedCancellation([cancelled(0, refA)], diagnosed(bare), at + 1)).toBe(false);
+    // Differing only in a query VALUE is enough; so is a differing key.
+    expect(
+      excusedCancellation([cancelled(0, `${bare}?ref=commit-a&page=2`)], diagnosed(refA), at + 1),
+    ).toBe(false);
+
+    // And the matching one still works, so this is identity, not blanket refusal.
+    const own = [cancelled(0, refA)];
+    expect(excusedCancellation(own, diagnosed(refA), at + 1)).toBe(true);
+    expect(own).toEqual([]);
+  });
+
+  it('ignores the fragment, which the message carries and the request never does', () => {
+    // MEASURED, macOS WebKit: the page error names `…/state.json#frag` while
+    // `request.url()` for the very same request reports `…/state.json` — a
+    // fragment is never sent. Comparing `href` would therefore break the
+    // excuse for every fragment-bearing URL; comparing host/path/search does
+    // not. (The app itself never fetches a fragment; this is what keeps a
+    // later tidy-up to `href` from silently killing the excuse.)
+    const own = [cancelled(0, url)];
+    expect(excusedCancellation(own, diagnosed(`${url}#frag`), at + 1)).toBe(true);
+    expect(own).toEqual([]);
+    // And the fragment does not smuggle a query past the check either.
+    expect(excusedCancellation([cancelled(0, url)], diagnosed(`${url}?ref=a#frag`), at + 1)).toBe(false);
+  });
+
   it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
-    // THE MEASURED ORDER: WebKit delivers the page error about a tenth of a
-    // millisecond ahead of the request's own failure. A backwards-only search
-    // saw an empty log here and excused nothing.
+    // THE MEASURED ORDER: WebKit delivers the page error 74–359µs ahead of the
+    // request's own failure. A backwards-only search saw an empty log here and
+    // excused nothing.
     const later = [cancelled(1)];
     expect(excusedCancellation(later, spurious, at)).toBe(true);
     expect(later).toEqual([]);
@@ -10327,50 +5252,76 @@ describe('the journey harness itself', () => {
     expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
   });
 
-  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
-    // This is the sealed finding: the cancellation happens and nothing ever
-    // reports its own page error for it — exactly the case the harness must
-    // tolerate without turning it into a standing credit for something else.
-    const events = [cancelled()];
-    // A genuine failure to the SAME url follows moments later, and IS
-    // tracked — this is what makes it outrank the stale cancellation next.
-    events.push(genuine(50));
+  it('genuine evidence for a resource vetoes the excuse for it, at any distance', () => {
+    // THE SAFETY CLAIM, and it is a VETO rather than a ranking on purpose. A
+    // genuine access-control failure always emits its own `requestfailed`
+    // beside its own page error, so genuine evidence for this exact resource
+    // means the cancellation's ownership of this error is unproven — and an
+    // unproven correlation is never resolved in the excuse's favour.
+    const events = [cancelled(), genuine(50)];
     expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
-    // The stale cancellation is untouched: it lost to the more recent
-    // genuine failure, it was never spent.
+    // The stale cancellation is untouched: it was refused, never spent.
     expect(events).toContainEqual(cancelled());
+
+    // DISTANCE CANNOT BUY THE EXCUSE BACK. This is what the previous
+    // nearest-wins rule could not hold: at `Date.now()` granularity a genuine
+    // pair straddling a millisecond boundary reads as 1ms apart, so a
+    // cancellation in the error's own millisecond outranked it by 1ms and
+    // excused a real failure. Here the cancellation is as near as a tracked
+    // event can be and the genuine failure is as far as the ceiling allows.
+    const nearCancel = [cancelled(0), genuine(CANCELLED_EXCUSE_MS)];
+    expect(excusedCancellation(nearCancel, spurious, at)).toBe(false);
+    expect(nearCancel).toHaveLength(2);
+
+    // The measured shape of a real pair, exactly: page error first, its own
+    // failure 1ms later, an unrelated cancellation in the same millisecond.
+    const measured = [cancelled(0), genuine(1)];
+    expect(excusedCancellation(measured, spurious, at)).toBe(false);
+
+    // A TIE is refused for the same reason.
+    expect(excusedCancellation([cancelled(), genuine()], spurious, at)).toBe(false);
   });
 
-  it("a genuine failure reported AFTER its own page error still outranks a stale cancellation", () => {
-    // The sealed finding above, re-proved under the order the browser
-    // actually uses: the genuine failure's `requestfailed` lands a fraction
-    // of a millisecond AFTER the page error it belongs to, while a stale
-    // cancellation sits well before it. Nearest-in-either-direction is what
-    // keeps the genuine one the winner; a backwards-only search would reach
-    // the cancellation and excuse a real failure.
-    const events = [cancelled(-40), genuine(1)];
-    expect(excusedCancellation(events, spurious, at)).toBe(false);
-    expect(events).toContainEqual(cancelled(-40));
+  it('a veto is scoped to the resource, so an unrelated failure never blocks a real excuse', () => {
+    // The veto must not become blanket suppression of the excuse: a genuine
+    // failure to a DIFFERENT resource — including the same path under another
+    // query — says nothing about this error.
+    const elsewhere = [
+      genuine(0, 'https://api.github.com/repos/owner/data/contents/manifest.json'),
+      genuine(0, `${url}?ref=main`),
+      genuine(0, 'https://api.example.com/repos/owner/data/contents/state.json'),
+      cancelled(1),
+    ];
+    expect(excusedCancellation(elsewhere, spurious, at)).toBe(true);
+    // Only the cancellation was consumed; the genuine rows are still tracked.
+    expect(elsewhere).toHaveLength(3);
+    expect(elsewhere.every((e) => e.errorText !== 'cancelled')).toBe(true);
 
-    // And a TIE is never resolved in the excuse's favour either.
-    const tied = [cancelled(), genuine()];
-    expect(excusedCancellation(tied, spurious, at)).toBe(false);
+    // And a genuine failure to this resource OUTSIDE the ceiling is not
+    // evidence about this error at all — the ceiling bounds the veto exactly
+    // as it bounds the excuse.
+    const distant = [genuine(-CANCELLED_EXCUSE_MS - 1), cancelled(1)];
+    expect(excusedCancellation(distant, spurious, at)).toBe(true);
   });
 
-  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
+  it('a genuine failure is never excused, before or after a cancellation to the same URL', () => {
     // Genuine failure arrives FIRST, with no cancellation recorded at all.
     const events = [genuine()];
     expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
 
-    // A real cancellation follows and correctly excuses its OWN error.
+    // A cancellation follows — and under the VETO it still excuses nothing
+    // while that genuine failure is in the window. This assertion used to
+    // read `true`, on the nearest-wins rule: the cancellation was 10ms away
+    // and the genuine failure 110ms, so the nearer one won and a real failure
+    // to that exact resource was excused. Genuine evidence for a resource now
+    // forbids the excuse for it outright.
     events.push(cancelled(100));
-    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
+    expect(excusedCancellation(events, spurious, at + 110)).toBe(false);
 
-    // Another genuine failure follows the (now-consumed) cancellation and is
-    // never excused by it either — there is nothing left pending to excuse
-    // it with, and it would not have qualified anyway.
-    events.push(genuine(200));
-    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
+    // Once the genuine failure is old enough to be out of the window, the
+    // cancellation excuses its own error normally — the veto expires with the
+    // evidence, it is not a permanent mark against the URL.
+    expect(excusedCancellation(events, spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(true);
   });
 
   it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
@@ -10397,19 +5348,20 @@ describe('the journey harness itself', () => {
     expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
   });
 
-  it('parses the diagnosis a REAL WebKit produces, and still reports it when nothing excuses it', async () => {
-    // The two defects above were both about a representation and an ORDER
-    // nobody had ever measured — the strings these tests asserted on were
-    // hand-written, and the CI run that finally produced the real thing is what
-    // exposed them. This drives an actual WebKit and reads the actual error
-    // object, so the shape can never drift back to a reconstruction.
+  it('measures what a REAL WebKit reports, and holds the rule to it', async () => {
+    // Every string and every ORDER in the tests above was once a hand-written
+    // reconstruction, and the CI run that finally produced the real thing is
+    // what exposed two of them. This drives an actual WebKit and reads actual
+    // event objects, so the shape, the query, the fragment and the ordering
+    // can never drift back to a reconstruction.
     //
     // A reply from a REAL server with no CORS headers is what makes WebKit emit
     // this diagnosis; a Playwright-fulfilled response does not go through the
     // same check, which is why the fake GitHub repo above never produces one.
     const blocked = createServer((req, res) => {
       // `?slow` never answers in time, so a reload CANCELS it — the other
-      // half of this test needs a real cancellation to the same resource.
+      // half of this test needs a REAL cancellation, with the browser's own
+      // url, errorText and arrival time.
       const reply = () => {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end('{}');
@@ -10422,25 +5374,56 @@ describe('the journey harness itself', () => {
     const target = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/README.md`;
     const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
     try {
-      const raw: Error[] = [];
-      app.page.on('pageerror', (e) => raw.push(e));
-      await app.page.evaluate((u) => void fetch(u).catch(() => {}), target);
-      await expect.poll(() => raw.length, { timeout: 20_000 }).toBeGreaterThan(0);
+      // BOTH streams, in arrival order, with arrival times — so the ordering
+      // this rule was corrected for is measured here rather than asserted
+      // from memory.
+      const seen: ({ kind: 'error'; error: Error; at: number } | ({ kind: 'failed'; at: number } & TrackedRequestFailure))[] = [];
+      app.page.on('pageerror', (e) => seen.push({ kind: 'error', error: e, at: Date.now() }));
+      app.page.on('requestfailed', (r) =>
+        seen.push({ kind: 'failed', at: Date.now(), url: r.url(), errorText: r.failure()?.errorText ?? '' }),
+      );
 
-      const real = raw[0];
+      // A genuine access-control failure, with a QUERY and a FRAGMENT, so the
+      // message's treatment of both is measured rather than assumed.
+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?ref=main#frag`);
+      await expect.poll(() => seen.filter((e) => e.kind === 'failed').length, { timeout: 20_000 }).toBeGreaterThan(0);
+
+      const real = seen.find((e) => e.kind === 'error');
+      const realFailure = seen.find((e) => e.kind === 'failed');
+      if (real?.kind !== 'error' || realFailure?.kind !== 'failed') throw new Error('WebKit reported no pair to measure.');
+
       // THE REPRESENTATION, as the browser and Playwright actually deliver it:
       // the wording is in `name`, only the tail is in `message`. This is the
       // identical split the failing CI run reported.
-      expect(real.name).toBe('Fetch API cannot load http');
-      expect(real.message).toBe(`/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md due to access control checks.`);
-      // Given a cancellation for that request, THIS object is excusable — the
-      // whole point, and what matching `message` alone could never do.
-      expect(excusedCancellation([{ url: target, at: Date.now(), errorText: 'cancelled' }], real, Date.now())).toBe(
-        true,
+      expect(real.error.name).toBe('Fetch API cannot load http');
+      // The QUERY is in the message — which is the identity the excuse used to
+      // throw away — and so is the FRAGMENT, which the request itself drops.
+      expect(real.error.message).toBe(
+        `/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md?ref=main#frag due to access control checks.`,
       );
+      expect(realFailure.url).toBe(`${target}?ref=main`);
+      expect(realFailure.errorText).toContain('Access-Control-Allow-Origin');
 
-      // But nothing cancelled it here, so the harness KEEPS it — and says what
-      // the browser reported instead of leaving a bare CORS-shaped message.
+      // THE OBSERVED ORDERING, measured rather than stated: the page error is
+      // delivered first, and its own request failure lands beside it, well
+      // inside the defensive ceiling. (Sub-millisecond, hence a gap of 0 or 1
+      // at this clock's granularity — which is exactly why proximity cannot
+      // be what separates a genuine failure from a cancellation.)
+      expect(seen.indexOf(real)).toBeLessThan(seen.indexOf(realFailure));
+      expect(realFailure.at - real.at).toBeLessThanOrEqual(CANCELLED_EXCUSE_MS);
+
+      // THE VETO, PROVED ON REAL EVENTS: this genuine failure is not excused,
+      // not even by a cancellation to the very same resource sitting in the
+      // error's own millisecond — the case a nearest-wins rule got wrong.
+      const log: TrackedRequestFailure[] = [
+        { url: realFailure.url, at: realFailure.at, errorText: realFailure.errorText },
+        { url: realFailure.url, at: real.at, errorText: 'cancelled' },
+      ];
+      expect(excusedCancellation(log, real.error, real.at)).toBe(false);
+      expect(log).toHaveLength(2);
+
+      // And the harness KEEPS it — saying what the browser reported instead of
+      // leaving a bare CORS-shaped message.
       const kept = app.pageErrors;
       expect(kept).toHaveLength(1);
       expect(kept[0].message).toContain('due to access control checks');
@@ -10448,16 +5431,87 @@ describe('the journey harness itself', () => {
       // Reading twice reports the same list, not a growing one.
       expect(app.pageErrors).toHaveLength(1);
 
-      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
-      // cannot be taken back by a cancellation to the same resource that
-      // happens afterwards — here a real one, produced by reloading while a
-      // request to that same path is still in flight.
+      // A REAL CANCELLATION, from a request genuinely in flight across a
+      // reload — the browser's own url, errorText and arrival time.
       await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
       await reload(app);
+      await expect
+        .poll(() => seen.some((e) => e.kind === 'failed' && e.errorText === 'cancelled'), { timeout: 20_000 })
+        .toBe(true);
+      const realCancel = seen.find((e) => e.kind === 'failed' && e.errorText === 'cancelled');
+      if (realCancel?.kind !== 'failed') throw new Error('WebKit reported no cancellation to measure.');
+      expect(realCancel.url).toBe(`${target}?slow=1`);
+
+      // IT EXCUSES ITS OWN RESOURCE AND NOTHING ELSE. No pairing of a
+      // cancellation with this page error has ever been OBSERVED — five
+      // cancellation shapes were driven through a real WebKit and each
+      // produced a `requestfailed` and no page error at all — so the
+      // diagnosis here is written against the url the browser really
+      // cancelled, rather than pretending to a pairing nothing has seen.
+      const cancelLog = () => [{ url: realCancel.url, at: realCancel.at, errorText: realCancel.errorText }];
+      expect(excusedCancellation(cancelLog(), diagnosed(realCancel.url), realCancel.at)).toBe(true);
+      // The same path WITHOUT that query is a different request instance, and
+      // this real cancellation says nothing about it.
+      expect(excusedCancellation(cancelLog(), diagnosed(target), realCancel.at)).toBe(false);
+
+      // AND A JUDGEMENT IS MADE ONCE: the genuine refusal already reported is
+      // not taken back by this real cancellation to the same host and path.
       expect(app.pageErrors).toHaveLength(1);
     } finally {
       await app.close();
       await new Promise<void>((done) => blocked.close(() => done()));
+    }
+  }, 120_000);
+
+  it('the wiring really excuses — a diagnosed error for a genuinely cancelled request never reaches pageErrors', async () => {
+    // THE EXCUSE HAS NOW BEEN DEAD CODE TWICE, and both times only CI could
+    // tell. This drives the harness END TO END: a request the browser really
+    // cancels, and a real `pageerror` delivered through the real listener,
+    // carrying the diagnosis for that exact url. `pageErrors` must stay empty
+    // — and must not, if the error names a neighbouring request instead.
+    //
+    // The error TEXT is raised in the page rather than waited for, because no
+    // cancellation shape driven through a real WebKit has ever produced one
+    // (see `TrackedRequestFailure`'s comment). Everything else here is real:
+    // the cancellation, the event objects, the listeners and the resolve path.
+    const stalled = createServer((_req, res) => {
+      setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      }, 30_000).unref();
+    });
+    await new Promise<void>((done) => stalled.listen(0, '127.0.0.1', done));
+    const port = (stalled.address() as AddressInfo).port;
+    const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
+    try {
+      const cancellations: string[] = [];
+      app.page.on('requestfailed', (r) => {
+        if (r.failure()?.errorText === 'cancelled') cancellations.push(r.url());
+      });
+      const inFlight = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/state.json?ref=main`;
+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), inFlight);
+      await reload(app);
+      await expect.poll(() => cancellations.includes(inFlight), { timeout: 20_000 }).toBe(true);
+      expect(app.pageErrors).toEqual([]);
+
+      // The diagnosis for a DIFFERENT request to the same path is kept: one
+      // cancellation excuses one resource, never a neighbour.
+      const neighbour = `${inFlight.split('?')[0]}?ref=other`;
+      await raiseDiagnosis(app, neighbour);
+      await expect.poll(() => app.pageErrors.length, { timeout: 20_000 }).toBe(1);
+      expect(app.pageErrors[0].message).toContain('?ref=other');
+      // ...and the evidence names what the harness actually saw, including the
+      // same-path cancellation it refused to spend.
+      expect(app.pageErrors[0].message).toContain('different query');
+
+      // The diagnosis for the request that WAS cancelled is excused, so the
+      // list does not grow — the wiring, not just the rule.
+      await raiseDiagnosis(app, inFlight);
+      await app.page.waitForTimeout(500);
+      expect(app.pageErrors).toHaveLength(1);
+    } finally {
+      await app.close();
+      await new Promise<void>((done) => stalled.close(() => done()));
     }
   }, 120_000);
 
@@ -10470,6 +5524,16 @@ describe('the journey harness itself', () => {
     expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
     expect(withGenuine).toContain('Access-Control-Allow-Origin');
     expect(withGenuine).toContain('+1ms');
+
+    // DELIBERATELY BROADER THAN THE EXCUSE: a failure to the same path under a
+    // different query is exactly what the excuse must refuse to act on, and
+    // exactly what the reader of a CI-only failure needs to see. It is named
+    // as the different request it is.
+    const nearMiss = cancellationEvidence([cancelled(0, `${url}?ref=main`)], spurious, at);
+    expect(nearMiss).toContain('?ref=main');
+    expect(nearMiss).toContain('different query');
+    // The resource the error actually names is not labelled that way.
+    expect(cancellationEvidence([cancelled()], spurious, at)).not.toContain('different query');
 
     // NOTHING tracked at all is itself the evidence — it says so rather than
     // saying nothing.
