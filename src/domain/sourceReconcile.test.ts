@@ -953,7 +953,6 @@ describe('reconciling the archive with the owner’s own records', () => {
         );
       }
     }
-
     // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
     // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
     // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
@@ -999,6 +998,10 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
 
     // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
+    // WRITE-ONCE AT THE LEVEL THE RULE IS ACTUALLY STATED. Saying an undescribed
+    // path in the current namespace counts as a repair on lessons that used to
+    // count none, which is exactly what could have made EVERY later refresh a
+    // write; this is where that would show.
     const again = plan(installedLegacy);
     expect(again.repairedLessons).toEqual([]);
     expect(again.summary.unchanged).toBe(true);

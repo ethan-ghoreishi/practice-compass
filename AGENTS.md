@@ -2172,7 +2172,10 @@ killed exactly the rows a refresh never reports — the owner's own practice tak
 `…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
 that the file exists (no `attention` row is raised, `not-described` still says nothing), and
 it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
-writes nothing and cannot bump the revision. A legacy-prefixed reference on a lesson the
+writes nothing and cannot bump the revision (asserted at the PLAN level, where the rule is
+stated, not only on the helper). ORDER MATTERS ONCE PER DEVICE: under the old base a legacy
+path still opens, so correcting the base BEFORE refreshing avoids a transient in which those
+files have moved namespace and the base has not. A legacy-prefixed reference on a lesson the
 archive does NOT own is still never rewritten — that rule stands — so such a reference stays
 in the old namespace and is the one known gap; it is the owner's to repoint, not a
 refresh's to guess at.

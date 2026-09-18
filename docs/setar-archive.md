@@ -289,9 +289,16 @@ the base is one folder too high.
 
 A refresh rewrites every reference on a class the archive owns — including your
 own practice takes, which the index does not describe — into that one namespace,
-without touching the row, its title or its notes. A reference on a class the
-archive does *not* own is never rewritten, so a hand-made lesson still holding a
-`setar-classes/…` path needs repointing yourself.
+without touching the row, its title or its notes. It writes once: a second
+refresh finds nothing to change and does not bump the revision. A reference on a
+class the archive does *not* own is never rewritten, so a hand-made lesson still
+holding a `setar-classes/…` path needs repointing yourself.
+
+**Order matters, once, on each device: correct the base FIRST, then Refresh.**
+Under the old base a legacy `setar-classes/…` path still opens, so refreshing
+before correcting the base moves those files into the new namespace while the
+base is still one folder too high — the same dead link, from the other side. The
+end state is the same either way; the transient is avoidable.
 
 ### Who owns an imported field, and where to correct a wrong one
 
@@ -306,6 +313,10 @@ revert on its own.
 re-offered), title, status, notes, difficulty, parts, pathway placement, and
 every practice, review and scheduling field. Edit any of them freely; a refresh,
 a reload and a sync all preserve the edit.
+
+**A bound class is left alone entirely.** Its date, number, notes and links are
+yours from the moment it is adopted; the only thing a refresh ever rewrites on it
+is the *path text* of a reference, and only into the namespace above.
 
 **Identity is the `canonical_fa` key, byte for byte.** So:
 
