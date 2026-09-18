@@ -1,27 +1,12 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 18bac9c00b90646a72f07ff57aaa6a8b2297229e
-reviewer: unassigned
+patchId: 5e3dc7434a41888d6548591627494d30a9964c68
+reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: Device archive media-base resolution
-    summary: "P1: Real OWNER testing shows Setar archive resources are imported with
-      correct archive-relative paths, but the production resolver omits the
-      Setar archive-root segment when composing NAS URLs, so all imported Setar
-      media links are unusable with the current device configuration."
-    counterexample: The imported resource path `session-39-01-09-2026/ضبط-کلاس.mp4`
-      is correct. The real file opens at
-      `https://192.168.0.20:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4`,
-      but Practice Compass resolves it as
-      `https://192.168.0.20:5010/session-39-01-09-2026/ضبط-کلاس.mp4`. Manually
-      inserting `/setar-classes/` makes the link work. Determine whether the
-      defect is device configuration, archive-specific base mapping, resolver
-      composition, legacy media-root interaction, or another cause, and fix the
-      authoritative model without rewriting archive-relative source identity.
-createdAt: 2026-09-18T15:23:04.529Z
-sealedAt: 2026-09-18T15:23:19.573Z
+verdict: approve
+createdAt: 2026-09-18T18:05:16.991Z
+sealedAt: 2026-09-18T18:07:56.949Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -35,7 +20,7 @@ sealedAt: 2026-09-18T15:23:19.573Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `18bac9c00b90646a72f07ff57aaa6a8b2297229e`
+- **Diff patch-id:** `5e3dc7434a41888d6548591627494d30a9964c68`
 
 ## The Delta this change was framed from
 
@@ -78,278 +63,385 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **OWNER ac-19 live GitHub integration and archive refresh** — P1: The real NAS publisher successfully created source-index/setar/index.json with data main unchanged, but the production app now throws `Cannot read properties of undefined (reading 'digest')` in both normal GitHub Sync and Refresh Setar archive.
-  _counterexample:_ During manual OWNER ac-19 against the real private practice-compass-data repository, the NAS task successfully published branch source-index with setar/index.json. The data main branch remained unchanged at 7b47648f4772f453794491633e0ba16602198c35. In the app, pressing Sync now produces `Cannot read properties of undefined (reading 'digest')`, and pressing Refresh Setar archive produces the identical error before any index is accepted. No data was replaced. Reproduce against the real production response shapes and fix the shared failing path without modifying owner data or weakening sync/archive safety.
+- **Device archive media-base resolution** — P1: Real OWNER testing shows Setar archive resources are imported with correct archive-relative paths, but the production resolver omits the Setar archive-root segment when composing NAS URLs, so all imported Setar media links are unusable with the current device configuration.
+  _counterexample:_ The imported resource path `session-39-01-09-2026/ضبط-کلاس.mp4` is correct. The real file opens at `https://192.168.0.20:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4`, but Practice Compass resolves it as `https://192.168.0.20:5010/session-39-01-09-2026/ضبط-کلاس.mp4`. Manually inserting `/setar-classes/` makes the link work. Determine whether the defect is device configuration, archive-specific base mapping, resolver composition, legacy media-root interaction, or another cause, and fix the authoritative model without rewriting archive-relative source identity.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index a303387..412cfb1 100644
+index 412cfb1..165053f 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -518,15 +518,58 @@ reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the
- React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
- real port, and wires `visibilitychange`.
+@@ -2107,6 +2107,18 @@ sentence says WHY. That is the whole family in one place: `resolveRecording`,
+ still opened as the owner saved it — their own authored link, not this device's configured
+ base, and nothing here mints one.
  
--**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
--Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
--deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
--plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
--(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
--environment gap). Before drawing any conclusion about this feature (or any future
--secure-context-dependent work) from an unmerged branch, first confirm
--`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
--establish a genuine HTTPS route for it first.
-+**Secure-context constraint, and it is NOT only the wake lock.** This note began as a
-+wake-lock note and was read as one, which is how the same environment gap came back as a
-+production-looking failure. THREE of this app's capabilities are withheld outside a secure
-+context, and plain http:// on a LAN address is not one:
++**THE MEDIA BASE IS THE ARCHIVE ROOT, NOT THE MEDIA ROOT ABOVE IT.** This is the one setting
++a device carries from before the archive existed, and this lane silently changed what it
++must contain: legacy references were written relative to the NAS media root and began
++`setar-classes/`; every reference the app writes now is relative to the ARCHIVE root and
++begins `session-…`. `resolveRecording` APPENDS to the base and preserves its whole path
++prefix (`/media/`, `/archives/v2/` — ac-14's own test), so it is correct either way and a
++base one folder too high is not a resolver defect: it is a URL that addresses nothing.
++Settings names the archive folder, shows it in the placeholder, and no longer promises that
++the base can be changed freely — for a device configured before this lane, correcting it
++once is required. There is deliberately NO second archive-specific base and no resolver
++fallback: one base per device, ending in the archive folder, is what ac-14 and ac-20 state.
 +
-+- `navigator.wakeLock` — `undefined`, so hands-free practice cannot be exercised at all.
-+- **`crypto.subtle` — `undefined`, while `crypto` itself is still present.** This is the
-+  sharp one, because nothing about it reads as an environment gap: `sha256Hex`
-+  (`canonical.ts`) is the content-identity hash behind BOTH whole-state sync comparison
-+  and `parseSourceIndex`'s recomputation of the published index digest, so Sync now and
-+  Refresh Setar archive fail TOGETHER, in one shared function, with the property stack
-+  trace `Cannot read properties of undefined (reading 'digest')`.
-+- The **service worker**, therefore the installed PWA and its offline capability — the
-+  app's core promise — does not register at all.
+ **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
+ ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
+ (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+@@ -2144,7 +2156,29 @@ rows — but `not-described` does NOT (see `RepairReason`): the index deliberate
+ only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
+ own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
+ renamed is outside what it knows, never evidence that the file is gone. Those three personal
+-references are retained historical links, untouched and unflagged.
++references are retained historical links, unflagged — and RETAINED IS NOT THE SAME CLAIM AS
++LEFT IN THE OLD NAMESPACE.
 +
-+MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:4173/` gives
-+`isSecureContext: false`, `typeof crypto.subtle === 'undefined'`; the NAS over
-+`https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
-+self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
-+certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
-+mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
-+`http://localhost` also qualifies, because browsers privilege localhost deliberately, which
-+is exactly why no test here can see any of this.
-+
-+Production (GitHub Pages) is HTTPS and unaffected, and so is the installed iPhone PWA. This
-+repo has no branch-preview deployment — `.github/workflows/deploy.yml` publishes only on
-+push to `main` — so plain-HTTP LAN serving of an unmerged branch cannot exercise any of the
-+three. Before drawing any conclusion about a secure-context-dependent feature from an
-+unmerged branch, confirm `window.isSecureContext` on the ACTUAL test device and establish a
-+genuine HTTPS route first.
-+
-+**The answer to this is a route, never a fallback.** `parseSourceIndex` REFUSES with a named,
-+actionable sentence (`INSECURE_CONTEXT_REFUSAL`, `sourceArchive.ts`) checked BEFORE the
-+file's own size/JSON/structure/digest order, because it is a fact about the DEVICE and no
-+file can pass on a device that cannot hash — sending the owner to fix an index that is
-+perfectly good is the failure mode a file-shaped error message produces. It does NOT hash
-+some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
-+content gets reported "Already current"), and a pure-JS fallback would repair one of the
-+three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
-+holds this closed with `crypto.subtle` removed exactly as a browser removes it, at the
-+GitHub refresh — the one entry point the UI actually reaches — and at `readIndexFile`
-+beside it, which is the same decoder and currently has NO production caller (an
-+unwired fallback, noted here rather than left to be discovered as dead code).
-+
-+**SYNC IS NOT FIXED BY THIS AND CANNOT BE, IN THIS LANE.** `hashState` reaches
-+`crypto.subtle` through the same `sha256Hex`, so over plain http:// **Sync now still
-+throws the raw `Cannot read properties of undefined (reading 'digest')`** —
-+`canonical.ts` is outside this change's allowed paths and `githubSync.ts`/`syncEngine.ts`
-+are forbidden by it. That failure is confined to a non-secure origin, where the app is
-+not the installed PWA and has no offline capability either; on HTTPS it does not arise.
-+Giving Sync the same named refusal is a separate lane, and is a WORDING change at a
-+boundary, never a second hash.
++**A REFRESH LEAVES AN ARCHIVE-OWNED LESSON IN ONE NAMESPACE, OR THE OWNER'S OWN FILES DIE
++WHEN THE BASE IS CORRECTED.** The device media base is the archive ROOT (below), so every
++stored path is archive-relative and the legacy `setar-classes/` folder segment is not part
++of it. `repairReferencePath` stripped that segment only on the way to a path the index
++DESCRIBES and then threw the stripped form away for a `not-described` one — so a refresh
++left the described rows archive-relative and the undescribed rows legacy-prefixed, on the
++same class. OWNER testing found the consequence: with the base still naming the media root
++above the archive, a class recording resolved to `…:5010/session-39-…/…` and opened nothing;
++correcting the base to `…:5010/setar-classes/` fixed every described row and would have
++killed exactly the rows a refresh never reports — the owner's own practice takes, at
++`…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
++that the file exists (no `attention` row is raised, `not-described` still says nothing), and
++it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
++writes nothing and cannot bump the revision (asserted at the PLAN level, where the rule is
++stated, not only on the helper). ORDER MATTERS ONCE PER DEVICE: under the old base a legacy
++path still opens, so correcting the base BEFORE refreshing avoids a transient in which those
++files have moved namespace and the base has not. A legacy-prefixed reference on a lesson the
++archive does NOT own is still never rewritten — that rule stands — so such a reference stays
++in the old namespace and is the one known gap; it is the owner's to repoint, not a
++refresh's to guess at.
  
- ## Hard "do nots" (require explicit user instruction to change)
- 
+ **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
+ (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
 diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index 8ba9e0b..9069489 100644
+index 9069489..e254617 100644
 --- a/docs/setar-archive.md
 +++ b/docs/setar-archive.md
-@@ -264,6 +264,46 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
+@@ -264,6 +264,77 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
  membership and role survive in the graph, the files themselves never become a
  piece's material.
  
-+### Open the app over HTTPS, or Refresh cannot verify anything
++### Set the base to the archive FOLDER — one-off, per device
 +
-+Refresh recomputes the index's `contentHash` before trusting a byte of it, and
-+that needs `crypto.subtle`, which **browsers expose only in a secure context**.
-+Open the app over plain `http://` at a LAN address and `crypto` is still there
-+while `crypto.subtle` is not, so Refresh — and **Sync now**, which hashes the
-+whole database through the same function — both refuse.
++Every reference the app stores is relative to the **archive root**, so a stored
++path starts at the session folder:
 +
-+Measured on this network, 2026‑09‑18:
++    session-39-01-09-2026/ضبط-کلاس.mp4
 +
-+| Origin | `isSecureContext` | `crypto.subtle` |
++The base is appended to, whole path and all, so it must name the archive folder
++itself:
++
++| Device | Base | Result |
 +| --- | --- | --- |
-+| `http://192.168.0.113:4173/` (Mac LAN preview) | `false` | absent |
-+| `https://192.168.0.20:5010/` (NAS, self-signed) | `true` | present |
-+| `http://localhost:4173/` | `true` | present |
-+| GitHub Pages (production) | `true` | present |
++| Mac (LAN) | `https://192.168.0.20:5010/setar-classes` | `…:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4` ✅ |
++| Mac (LAN) | `https://192.168.0.20:5010` | `…:5010/session-39-01-09-2026/ضبط-کلاس.mp4` ✗ addresses nothing |
++| iPhone (Tailscale) | `https://ds220plus.taild1d1f7.ts.net/media/setar-classes` | `…/media/setar-classes/session-39-…/…` ✅ |
 +
-+So: **production and the installed iPhone PWA are unaffected** — both are HTTPS.
-+Only a branch build served from a LAN address over plain HTTP hits this, and the
-+fix is the route, not a setting:
++Before this archive existed the base named the NAS **media root** and every
++stored path began `setar-classes/`. That is the one setting a device carries
++across, and it has to be corrected once — the resolver is not at fault, and there
++is deliberately no second archive-specific setting and no fallback. **Browse** is
++the check: it opens the base, and if it does not list the `session-…` folders,
++the base is one folder too high.
 +
-+- **On the Mac — verified.** `http://localhost:4173` is already a secure context;
-+  browsers privilege localhost on purpose, which is also why no automated check
-+  in this repo can ever see this failure.
-+- **For a phone — candidate route, NOT yet verified end to end.** Mirror the build
-+  to the NAS (`npm run deploy`) and open it over `https://192.168.0.20/practice-compass/`.
-+  What is measured: that origin is HTTPS and therefore a secure context, and a
-+  self-signed Synology certificate does not change that — accept the browser
-+  warning once. What is NOT measured: the mirror itself. On 2026‑09‑18 that URL
-+  answered **403**, and `deploy-nas.sh`'s target share (`/Volumes/web`) was not
-+  mounted on the Mac, so the build behind it is stale or absent and the script had
-+  no destination. Mount the share, run `npm run deploy`, and confirm the page loads
-+  and reports `window.isSecureContext === true` before treating this route as good.
-+  Per ac-19's own rule, record the NAS mapping you actually find rather than
-+  assuming a `/Volumes` path works.
++A refresh rewrites every reference on a class the archive owns — including your
++own practice takes, which the index does not describe — into that one namespace,
++without touching the row, its title or its notes. It writes once: a second
++refresh finds nothing to change and does not bump the revision. A reference on a
++class the archive does *not* own is never rewritten, so a hand-made lesson still
++holding a `setar-classes/…` path needs repointing yourself.
 +
-+Refresh says this in as many words rather than crashing, and it says it before it
-+looks at the file at all — on a device that cannot hash, no index can pass, and a
-+file-shaped error would send you to republish an index that is perfectly good.
++**Order matters, once, on each device: correct the base FIRST, then Refresh.**
++Under the old base a legacy `setar-classes/…` path still opens, so refreshing
++before correcting the base moves those files into the new namespace while the
++base is still one folder too high — the same dead link, from the other side. The
++end state is the same either way; the transient is avoidable.
 +
- ---
++### Who owns an imported field, and where to correct a wrong one
++
++**Source-owned** (replaced by the archive, but only when you say so): the piece's
++`dastgah`, `form`, `composer` and gusheh name. A later registry improvement is
++**offered field by field** and applied only on an explicit tap — including when
++your value is deliberately empty. Nothing is applied silently, and nothing can
++revert on its own.
++
++**Yours from the moment of import, and never written again**: the item's **type**
++(gusheh / full piece — seeded once from the registry's `form`, then never
++re-offered), title, status, notes, difficulty, parts, pathway placement, and
++every practice, review and scheduling field. Edit any of them freely; a refresh,
++a reload and a sync all preserve the edit.
++
++**A bound class is left alone entirely.** Its date, number, notes and links are
++yours from the moment it is adopted; the only thing a refresh ever rewrites on it
++is the *path text* of a reference, and only into the namespace above.
++
++**Identity is the `canonical_fa` key, byte for byte.** So:
++
++| You want to… | Do it… | Why |
++| --- | --- | --- |
++| Treat a piece as a full piece rather than a gusheh | **in the app** (item type) | Yours; sticks for good. One tap, no re-import. |
++| Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
++| Fix one of those on this device only | **in the app** | The archive will keep offering its own value; ignore the offer. |
++| Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
++| Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
++| Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
++
++The safe workflow for exact archive renames: rename, append the `from,to` row to
++`RENAME-LOG.csv` (never a fork or a loop — both are diagnosed and neither is
++applied), let the scanner publish, then Refresh. Do not renumber a session folder
++and do not edit `canonical_fa` in the same pass as a rename: one of those changes
++where a file is, the other changes what a piece *is*.
++
+ ### Open the app over HTTPS, or Refresh cannot verify anything
  
- ## 6. Notes for whoever changes this next
-diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
-index b156fab..6f1241c 100644
---- a/src/domain/sourceArchive.ts
-+++ b/src/domain/sourceArchive.ts
-@@ -484,6 +484,42 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
-   };
- }
+ Refresh recomputes the index's `contentHash` before trusting a byte of it, and
+diff --git a/src/domain/seed.ts b/src/domain/seed.ts
+index 145888e..ce484b0 100644
+--- a/src/domain/seed.ts
++++ b/src/domain/seed.ts
+@@ -254,12 +254,15 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
+     now,
+   );
+   // A class recording (video) + a score (PDF) live on the NAS, referenced
+-  // (never stored) by the app.
++  // (never stored) by the app. ARCHIVE-RELATIVE, like every reference this app
++  // writes: the device media base is the archive root. These are the archive's
++  // own pre-normalisation names, so a Refresh repairs them through the rename
++  // log exactly as it repairs the owner's real legacy rows.
+   pastLesson.recordings = [
+     {
+       id: newId(),
+       title: 'ضبطِ کلاس',
+-      path: 'setar-classes/session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
++      path: 'session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
+       kind: 'video',
+       date: agoDate(now, -16),
+       sizeBytes: 686136347,
+@@ -268,7 +271,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
+     {
+       id: newId(),
+       title: 'چهارمضرابِ افشاری صبا',
+-      path: 'setar-classes/session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
++      path: 'session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
+       kind: 'pdf',
+       date: agoDate(now, -16),
+       createdAt: nowISO(now),
+diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
+index 082dcef..0a481b5 100644
+--- a/src/domain/sourceReconcile.test.ts
++++ b/src/domain/sourceReconcile.test.ts
+@@ -18,7 +18,7 @@ import {
+   withSuppression,
+   followRenames,
+ } from './sourceReconcile';
+-import { archiveRootUrl } from './recordings';
++import { archiveRootUrl, resolveRecordingUrl } from './recordings';
+ // The published log is the SCANNER's output, so the downstream transitions
+ // below are driven by what it actually publishes for a forked log — never by
+ // a hand-written approximation of it.
+@@ -385,6 +385,24 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(applied.notes).toBe('my notes');
+     expect(applied.title).toBe('My own title');
  
-+/**
-+ * The message a device that cannot hash anything gets, instead of a TypeError.
-+ *
-+ * Exported so the reader boundary and its test name ONE string rather than two
-+ * copies of a sentence that must stay identical.
-+ */
-+export const INSECURE_CONTEXT_REFUSAL =
-+  'This device opened the app over an insecure connection (plain http://), so the browser withholds the ' +
-+  'cryptography needed to verify the index against its own content hash. Open the app over https:// (or ' +
-+  'localhost) and refresh again. Nothing was changed.';
++    // --- THE ITEM'S KIND IS THE OWNER'S, SEEDED ONCE AND NEVER RE-OFFERED ---
++    // The registry's `form` decides `itemType` at CREATION and nothing after
++    // it: a piece the archive calls a گوشه that the owner works as a full piece
++    // is their reading of the music, not a source fact to be corrected back.
++    // `itemType` is not in the suggestion list at all, so no refresh can even
++    // ask, let alone revert it.
++    const reKinded = { ...owned, items: owned.items.map((i) => (i.id === araqItemId ? { ...i, itemType: 'full_piece' as const } : i)) };
++    const afterReKind = applyArchiveImport(
++      reKinded,
++      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }),
++    );
++    expect(afterReKind.items.find((i) => i.id === araqItemId)!.itemType).toBe('full_piece');
++    expect(
++      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }).suggestions.some(
++        (x) => (x.field as string) === 'itemType',
++      ),
++    ).toBe(false);
 +
-+/**
-+ * WebCrypto EXISTS ONLY IN A SECURE CONTEXT, and this app can be opened outside
-+ * one — a build served from a LAN address over plain http:// is the ordinary way
-+ * an unmerged branch reaches a phone. There `globalThis.crypto` is present but
-+ * `crypto.subtle` is `undefined`, so `sha256Hex` threw
-+ * `Cannot read properties of undefined (reading 'digest')` — a stack trace about
-+ * a property, handed to the owner in place of the one fact they can act on.
-+ *
-+ * This is a precondition of the DEVICE, not a defect in the FILE, which is why
-+ * it is checked BEFORE the size/JSON/structure order below rather than folded
-+ * into it: a device that cannot compute a digest cannot verify ANY index, so
-+ * reporting the first thing that happens to be wrong with the file would send
-+ * the owner to fix a file that is fine. It is also why this refuses rather than
-+ * degrading to an unverified read — `contentHash` is the refresh identity, and
-+ * skipping it is how altered content gets reported "Already current".
-+ *
-+ * Deliberately NOT a fallback implementation: the hash is only one of this
-+ * app's secure-context dependencies (the service worker that makes it work
-+ * offline is another), so hashing without one would leave the app still broken
-+ * while implying plain http:// were supported.
-+ */
-+function requireDigest(): void {
-+  if (!globalThis.crypto?.subtle) throw new Error(INSECURE_CONTEXT_REFUSAL);
-+}
-+
- /**
-  * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
-  * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
-@@ -514,9 +550,13 @@ async function computeIndexDigest(parsed: Record<string, unknown>): Promise<stri
-  * that build an index object in memory call it directly and have no transport.
-  *
-  * Order matters: size → parse → structure → digest, so a structurally broken
-- * file reports the error the owner can act on rather than a hash mismatch.
-+ * file reports the error the owner can act on rather than a hash mismatch. The
-+ * secure-context precondition sits ahead of all four, for the reason
-+ * `requireDigest` records: it is a fact about the DEVICE, and no file can pass
-+ * on a device that cannot hash.
-  */
- export async function parseSourceIndex(text: string): Promise<SourceIndex> {
-+  requireDigest();
-   if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
-   let parsed: unknown;
-   try {
-diff --git a/src/store/archiveIndex.test.ts b/src/store/archiveIndex.test.ts
-index e08aa95..cbbe9ac 100644
---- a/src/store/archiveIndex.test.ts
-+++ b/src/store/archiveIndex.test.ts
-@@ -7,7 +7,7 @@ import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs
- import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
- import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
- import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
--import { decodeSourceIndex } from '../domain/sourceArchive';
-+import { decodeSourceIndex, INSECURE_CONTEXT_REFUSAL } from '../domain/sourceArchive';
- import { validateDB } from '../domain/io';
- import { createItem } from '../domain/factories';
- import type { PracticeDB } from '../domain/types';
-@@ -452,6 +452,67 @@ describe('publishing and reading the source index', () => {
-     const lean = await readIndexFile(withDigest(withoutOptional));
-     expect(lean.ok).toBe(true);
-   });
-+
-+  // --- THE DEVICE, NOT THE FILE ------------------------------------------
-+  // Found by OWNER acceptance testing, not by any check here: an unmerged
-+  // branch reaches a phone as a LAN build over plain http://, and WebCrypto
-+  // exists only in a SECURE CONTEXT. `globalThis.crypto` is still there, but
-+  // `crypto.subtle` is `undefined`, so recomputing the index digest threw
-+  // `Cannot read properties of undefined (reading 'digest')` — handed to the
-+  // owner as the explanation of their archive. Both doors onto the decoder are
-+  // checked below: the GitHub refresh, which is the one the UI reaches, and
-+  // `readIndexFile`, the same decoder behind a fallback nothing wires up yet.
-+  //
-+  // Every automated check missed it because every one of them runs where
-+  // `crypto.subtle` exists: Node has it unconditionally, and the browser
-+  // journeys are served from localhost, which browsers privilege as secure
-+  // precisely so that http://localhost development works.
-+  it('an insecure context refuses by naming itself, not by a property stack trace', async () => {
-+    const text = JSON.stringify({ ...indexFixture, contentHash: indexDigest(indexFixture as Record<string, unknown>) });
-+    // The REAL GitHub reply shape for this file: base64 `content`, `encoding`
-+    // and `size`, exactly as api.github.com answers a contents request.
-+    const github = async (url: string | URL | Request) =>
-+      String(url).includes('/git/ref/heads/')
-+        ? new Response(JSON.stringify({ object: { sha: 'c0ffee'.repeat(6) + 'aa' } }), { status: 200 })
-+        : new Response(
-+            JSON.stringify({
-+              content: Buffer.from(text, 'utf8').toString('base64'),
-+              encoding: 'base64',
-+              size: text.length,
-+            }),
-+            { status: 200 },
-+          );
-+    const refresh = () =>
-+      fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: github as typeof fetch });
-+
-+    // Both paths succeed on THIS device, so nothing below is about the file.
-+    expect((await refresh()).ok).toBe(true);
-+    expect((await readIndexFile(text)).ok).toBe(true);
-+
-+    // An insecure context, exactly as a browser presents one: `crypto` is
-+    // present and `crypto.subtle` is not.
-+    const secure = globalThis.crypto;
-+    vi.stubGlobal('crypto', { getRandomValues: secure.getRandomValues.bind(secure) });
-+    try {
-+      expect(globalThis.crypto.subtle).toBeUndefined();
-+      for (const result of [await refresh(), await readIndexFile(text)]) {
-+        expect(result.ok).toBe(false);
-+        if (result.ok) throw new Error('expected refusal');
-+        // The one fact the owner can act on — and never the shape of the crash.
-+        expect(result.error).toBe(INSECURE_CONTEXT_REFUSAL);
-+        expect(result.error).toMatch(/https:\/\//);
-+        expect(result.error).not.toMatch(/digest|undefined|Cannot read/i);
-+        // Refusing is not reporting a broken file: the owner must not be sent
-+        // to republish an index that is perfectly good.
-+        expect(result.error).not.toMatch(/content hash.*altered|not valid JSON/i);
+     // --- an UNCHANGED refresh writes nothing --------------------------------
+     const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
+     expect(same.summary.unchanged).toBe(true);
+@@ -744,9 +762,14 @@ describe('reconciling the archive with the owner’s own records', () => {
+     const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
+     expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
+ 
+-    // A path with no rename row and no file is DIAGNOSED, never guessed.
++    // A path with no rename row and no file is DIAGNOSED, never guessed — and
++    // the diagnosis is about the FILE, so it is reached only once the path is
++    // already in the current namespace. A legacy-prefixed one is first said in
++    // that namespace (same bytes, words the device base addresses); the second
++    // pass is what reports it.
+     const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
+-    expect(missing.status).toBe('attention');
++    expect(missing).toEqual({ status: 'repaired', path: 'session-1-26-09-2023/nothing.mp4' });
++    expect(repairReferencePath('session-1-26-09-2023/nothing.mp4', renames, known).status).toBe('attention');
+     // A foreign link, and a link carrying a query, are left exactly as they are.
+     const base = 'https://192.168.0.20:5010/setar-classes';
+     expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
+@@ -838,6 +861,22 @@ describe('reconciling the archive with the owner’s own records', () => {
+     const personalRepair = repairLessonReferences(personal, renames, known);
+     expect(personalRepair.lesson.recordings).toHaveLength(1);
+     expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
++    // ONE NAMESPACE PER ARCHIVE-OWNED LESSON. The device base is the archive
++    // ROOT, so the legacy folder segment comes OFF even though the index
++    // describes nothing at this path: it names the same bytes in the words the
++    // base addresses. Leaving it on is what made a corrected base kill exactly
++    // the references a refresh never touches — the owner's own practice takes.
++    expect(personalRepair.lesson.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
++    // Saying so is NOT saying the file is there: no attention row is raised,
++    // because the index describes only material scoped to pieces and classes.
++    expect(personalRepair.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
++    // …and it is IDEMPOTENT: once said in the current namespace there is
++    // nothing left to change, so a second refresh writes nothing.
++    expect(repairReferencePath('session-25-05-08-2025/mine.mp4', renames, known)).toEqual({
++      status: 'attention',
++      reason: 'The archive no longer has a file at this path.',
++      code: 'not-described',
++    });
+     // The archive never offers a personal recording as material for a piece.
+     const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
+     expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+@@ -886,15 +925,34 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
+     expect(validateArchiveSources(installedLegacy)).toBeNull();
+ 
+-    // The owner's own practice takes are RETAINED, untouched — and never
+-    // reported missing. The index describes only material scoped to pieces and
+-    // classes, so a path it does not name is outside what it knows, never
+-    // evidence that the file is gone.
++    // The owner's own practice takes are RETAINED and never reported missing —
++    // the index describes only material scoped to pieces and classes, so a path
++    // it does not name is outside what it knows, never evidence that the file is
++    // gone. RETAINED IS NOT THE SAME CLAIM AS LEFT IN THE OLD NAMESPACE: the row,
++    // its title and its notes are the owner's and are untouched, while the path
++    // text is said in the one namespace the device base addresses, exactly like
++    // every described row on the same class.
+     const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
+-    expect(storedPersonal.recordings![0]!.path).toBe('setar-classes/session-25-05-08-2025/mine.mp4');
++    expect(storedPersonal.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
+     expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
++    expect(storedPersonal.recordings![0]!.title).toBe('My take, August');
+     expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+-
++    // NO ARCHIVE-OWNED LESSON IS LEFT HOLDING TWO NAMESPACES AT ONCE. This is
++    // the invariant the fix is actually for: resolving any of these against the
++    // device base (the archive root) must not produce `…/setar-classes/…`.
++    // …proved against the RESOLVER and the owner's own Mac archive base, because
++    // the namespace only matters at the moment a file is opened: the reported
++    // failure was a URL, not a stored string.
++    const macBase = 'https://192.168.0.20:5010/setar-classes';
++    for (const l of installedLegacy.lessons) {
++      if (!l.source) continue;
++      for (const r of l.recordings ?? []) {
++        expect(r.path.startsWith('setar-classes/')).toBe(false);
++        expect(resolveRecordingUrl(macBase, r)).toMatch(
++          /^https:\/\/192\.168\.0\.20:5010\/setar-classes\/session-[^/]+\/[^/]+$/,
++        );
 +      }
-+    } finally {
-+      vi.unstubAllGlobals();
 +    }
-+
-+    // And the refusal was about the device alone: the SAME bytes pass again.
-+    expect((await refresh()).ok).toBe(true);
-+  });
- });
+     // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
+     // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
+     // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
+@@ -940,6 +998,10 @@ describe('reconciling the archive with the owner’s own records', () => {
+     expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
  
- // ---------------------------------------------------------------------------
+     // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
++    // WRITE-ONCE AT THE LEVEL THE RULE IS ACTUALLY STATED. Saying an undescribed
++    // path in the current namespace counts as a repair on lessons that used to
++    // count none, which is exactly what could have made EVERY later refresh a
++    // write; this is where that would show.
+     const again = plan(installedLegacy);
+     expect(again.repairedLessons).toEqual([]);
+     expect(again.summary.unchanged).toBe(true);
+diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
+index 1ad0529..e839874 100644
+Binary files a/src/domain/sourceReconcile.ts and b/src/domain/sourceReconcile.ts differ
+diff --git a/src/pages/Lessons.tsx b/src/pages/Lessons.tsx
+index 124c564..2ad4713 100644
+--- a/src/pages/Lessons.tsx
++++ b/src/pages/Lessons.tsx
+@@ -642,7 +642,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
+           />
+           <input
+             className="input"
+-            placeholder="NAS path or https:// link — e.g. setar-classes/session-37/class.mp4 or …/score.pdf"
++            placeholder="Path under the archive base, or an https:// link — e.g. session-37-09-07-2026/class.mp4"
+             value={path}
+             onChange={(e) => setPath(e.target.value)}
+           />
+diff --git a/src/pages/Settings.tsx b/src/pages/Settings.tsx
+index 88e62da..6328d1b 100644
+--- a/src/pages/Settings.tsx
++++ b/src/pages/Settings.tsx
+@@ -509,8 +509,16 @@ function SyncSection() {
+ 
+ /**
+  * NAS recordings: the base URL that resolves relative class-recording paths,
+- * plus a one-tap importer for the Setar class history. Full videos never enter
+- * the app — only these references do.
++ * plus the Setar archive refresh. Full videos never enter the app — only these
++ * references do.
++ *
++ * THE BASE IS THE ARCHIVE FOLDER ITSELF, not the media root above it. Every
++ * reference the app stores is relative to the ARCHIVE root (`session-39-…/…`),
++ * so a base of `https://nas:5010` resolves a class recording to
++ * `https://nas:5010/session-39-…/…` — a URL that addresses no file. This label
++ * used to name the media root, and to promise that changing the base broke
++ * nothing; it is the one setting a device carries from before the archive
++ * existed, and correcting it is a one-off the copy here has to ask for.
+  */
+ function NasRecordingsSection() {
+   const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
+@@ -534,11 +542,12 @@ function NasRecordingsSection() {
+       <div className="card stack-sm">
+         <div className="small dim">
+           Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
+-          to each recording; set the base URL that serves your recording folders and the links resolve against it.
++          to each recording; set the address of the <strong style={{ color: 'var(--text)' }}>archive folder itself</strong>{' '}
++          and the links resolve against it.
+         </div>
+         <Field
+-          label="NAS recordings base URL"
+-          hint="e.g. https://192.168.0.20:5010 — relative recording paths are joined onto this. Stored on this device only; never synced, never a password. Change it freely: references are stored relative to it, so nothing breaks. See DECISIONS.md for what is serving the folder."
++          label="Setar archive base URL"
++          hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes. References are stored relative to this (session-39-…/…), so a base one folder too high resolves every file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each device sets its own route to the same archive."
+         >
+           <input
+             className="input"
+@@ -548,7 +557,7 @@ function NasRecordingsSection() {
+             autoCapitalize="none"
+             autoCorrect="off"
+             spellCheck={false}
+-            placeholder="https://192.168.0.20:5010"
++            placeholder="https://192.168.0.20:5010/setar-classes"
+             value={baseUrl}
+             onChange={(e) => setBaseUrlState(e.target.value)}
+             onBlur={commitBaseUrl}
+@@ -564,8 +573,9 @@ function NasRecordingsSection() {
+ 
+         <div className="row between" style={{ gap: 8 }}>
+           <div className="tiny faint">
+-            Browse the NAS to find a file, then copy its URL and paste it into a lesson — a URL under this base is
+-            stored as a relative path, so it keeps working whatever route a device takes to the NAS.
++            Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy a
++            file's URL from there and paste it into a lesson: a URL under this base is stored as a relative path, so it
++            keeps working whatever route a device takes to the NAS.
+           </div>
+           <button
+             className="btn btn-sm"
 ```
 
 **Full current text of every file the rework touched:**
@@ -2466,6 +2558,18 @@ sentence says WHY. That is the whole family in one place: `resolveRecording`,
 still opened as the owner saved it — their own authored link, not this device's configured
 base, and nothing here mints one.
 
+**THE MEDIA BASE IS THE ARCHIVE ROOT, NOT THE MEDIA ROOT ABOVE IT.** This is the one setting
+a device carries from before the archive existed, and this lane silently changed what it
+must contain: legacy references were written relative to the NAS media root and began
+`setar-classes/`; every reference the app writes now is relative to the ARCHIVE root and
+begins `session-…`. `resolveRecording` APPENDS to the base and preserves its whole path
+prefix (`/media/`, `/archives/v2/` — ac-14's own test), so it is correct either way and a
+base one folder too high is not a resolver defect: it is a URL that addresses nothing.
+Settings names the archive folder, shows it in the placeholder, and no longer promises that
+the base can be changed freely — for a device configured before this lane, correcting it
+once is required. There is deliberately NO second archive-specific base and no resolver
+fallback: one base per device, ending in the archive folder, is what ac-14 and ac-20 state.
+
 **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
 ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
 (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
@@ -2503,7 +2607,29 @@ rows — but `not-described` does NOT (see `RepairReason`): the index deliberate
 only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
 own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
 renamed is outside what it knows, never evidence that the file is gone. Those three personal
-references are retained historical links, untouched and unflagged.
+references are retained historical links, unflagged — and RETAINED IS NOT THE SAME CLAIM AS
+LEFT IN THE OLD NAMESPACE.
+
+**A REFRESH LEAVES AN ARCHIVE-OWNED LESSON IN ONE NAMESPACE, OR THE OWNER'S OWN FILES DIE
+WHEN THE BASE IS CORRECTED.** The device media base is the archive ROOT (below), so every
+stored path is archive-relative and the legacy `setar-classes/` folder segment is not part
+of it. `repairReferencePath` stripped that segment only on the way to a path the index
+DESCRIBES and then threw the stripped form away for a `not-described` one — so a refresh
+left the described rows archive-relative and the undescribed rows legacy-prefixed, on the
+same class. OWNER testing found the consequence: with the base still naming the media root
+above the archive, a class recording resolved to `…:5010/session-39-…/…` and opened nothing;
+correcting the base to `…:5010/setar-classes/` fixed every described row and would have
+killed exactly the rows a refresh never reports — the owner's own practice takes, at
+`…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
+that the file exists (no `attention` row is raised, `not-described` still says nothing), and
+it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
+writes nothing and cannot bump the revision (asserted at the PLAN level, where the rule is
+stated, not only on the helper). ORDER MATTERS ONCE PER DEVICE: under the old base a legacy
+path still opens, so correcting the base BEFORE refreshing avoids a transient in which those
+files have moved namespace and the base has not. A legacy-prefixed reference on a lesson the
+archive does NOT own is still never rewritten — that rule stands — so such a reference stays
+in the old namespace and is the one known gap; it is the owner's to repoint, not a
+refresh's to guess at.
 
 **LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
 (exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
@@ -3245,6 +3371,77 @@ The owner's own `تمرین-من` recordings are evidence, not material: their
 membership and role survive in the graph, the files themselves never become a
 piece's material.
 
+### Set the base to the archive FOLDER — one-off, per device
+
+Every reference the app stores is relative to the **archive root**, so a stored
+path starts at the session folder:
+
+    session-39-01-09-2026/ضبط-کلاس.mp4
+
+The base is appended to, whole path and all, so it must name the archive folder
+itself:
+
+| Device | Base | Result |
+| --- | --- | --- |
+| Mac (LAN) | `https://192.168.0.20:5010/setar-classes` | `…:5010/setar-classes/session-39-01-09-2026/ضبط-کلاس.mp4` ✅ |
+| Mac (LAN) | `https://192.168.0.20:5010` | `…:5010/session-39-01-09-2026/ضبط-کلاس.mp4` ✗ addresses nothing |
+| iPhone (Tailscale) | `https://ds220plus.taild1d1f7.ts.net/media/setar-classes` | `…/media/setar-classes/session-39-…/…` ✅ |
+
+Before this archive existed the base named the NAS **media root** and every
+stored path began `setar-classes/`. That is the one setting a device carries
+across, and it has to be corrected once — the resolver is not at fault, and there
+is deliberately no second archive-specific setting and no fallback. **Browse** is
+the check: it opens the base, and if it does not list the `session-…` folders,
+the base is one folder too high.
+
+A refresh rewrites every reference on a class the archive owns — including your
+own practice takes, which the index does not describe — into that one namespace,
+without touching the row, its title or its notes. It writes once: a second
+refresh finds nothing to change and does not bump the revision. A reference on a
+class the archive does *not* own is never rewritten, so a hand-made lesson still
+holding a `setar-classes/…` path needs repointing yourself.
+
+**Order matters, once, on each device: correct the base FIRST, then Refresh.**
+Under the old base a legacy `setar-classes/…` path still opens, so refreshing
+before correcting the base moves those files into the new namespace while the
+base is still one folder too high — the same dead link, from the other side. The
+end state is the same either way; the transient is avoidable.
+
+### Who owns an imported field, and where to correct a wrong one
+
+**Source-owned** (replaced by the archive, but only when you say so): the piece's
+`dastgah`, `form`, `composer` and gusheh name. A later registry improvement is
+**offered field by field** and applied only on an explicit tap — including when
+your value is deliberately empty. Nothing is applied silently, and nothing can
+revert on its own.
+
+**Yours from the moment of import, and never written again**: the item's **type**
+(gusheh / full piece — seeded once from the registry's `form`, then never
+re-offered), title, status, notes, difficulty, parts, pathway placement, and
+every practice, review and scheduling field. Edit any of them freely; a refresh,
+a reload and a sync all preserve the edit.
+
+**A bound class is left alone entirely.** Its date, number, notes and links are
+yours from the moment it is adopted; the only thing a refresh ever rewrites on it
+is the *path text* of a reference, and only into the namespace above.
+
+**Identity is the `canonical_fa` key, byte for byte.** So:
+
+| You want to… | Do it… | Why |
+| --- | --- | --- |
+| Treat a piece as a full piece rather than a gusheh | **in the app** (item type) | Yours; sticks for good. One tap, no re-import. |
+| Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
+| Fix one of those on this device only | **in the app** | The archive will keep offering its own value; ignore the offer. |
+| Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
+| Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
+| Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
+
+The safe workflow for exact archive renames: rename, append the `from,to` row to
+`RENAME-LOG.csv` (never a fork or a loop — both are diagnosed and neither is
+applied), let the scanner publish, then Refresh. Do not renumber a session folder
+and do not edit `canonical_fa` in the same pass as a rename: one of those changes
+where a file is, the other changes what a piece *is*.
+
 ### Open the app over HTTPS, or Refresh cannot verify anything
 
 Refresh recomputes the index's `contentHash` before trusting a byte of it, and
@@ -3309,2125 +3506,4242 @@ file-shaped error would send you to republish an index that is perfectly good.
   registry notes trimmed to their first sentence.
 ````
 
-### src/domain/sourceArchive.ts
+### src/domain/seed.ts
 
 ```
-import type { ID, ISODate, ISODateTime, LessonRecording, PracticeDB } from './types';
-import { canonicalStringify, sha256Hex } from './canonical';
+import type { PracticeBlock, PracticeDB, PracticeItem } from './types';
+import { SCHEMA_VERSION } from './types';
+import { SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
+import {
+  createBlock,
+  createInstrument,
+  createItem,
+  createLesson,
+  createMaterial,
+  createReview,
+} from './factories';
+import { createPreparation, createQuestion } from './lessonAgenda';
+import { isSaturated } from './scoring';
+import { addDays, newId, nowISO, toISODate } from './util';
 
 // ---------------------------------------------------------------------------
-// The Setar class archive as the APP sees it.
-//
-// The app never parses a filename. A read-only scanner (scripts/scan-setar-
-// classes.mjs) publishes a deterministic JSON index; everything here decodes
-// that index, keeps the accepted graph, and answers questions about it.
-//
-// Pure: no React, no clock, no network. The decoder is a TRUST BOUNDARY — it
-// refuses what it cannot vouch for rather than coercing it, because every
-// identity downstream (which lesson, which piece, which file) is taken from
-// this data verbatim.
+// Demo dataset. Small but deliberately shaped so every screen has something
+// meaningful on first run: a saturated item, a strong "best next focus", a
+// quick win, a maintenance item, due reviews, and a couple of teacher
+// questions. Item stats are derived from the seed blocks so nothing lies.
 // ---------------------------------------------------------------------------
 
-export const INDEX_FORMAT = 'setar-archive-index';
-export const INDEX_VERSION = 1;
-/** The one archive this lane knows. Tar/Guitar do not share this grammar. */
-export const SETAR_ARCHIVE_ID = 'setar-classes';
-
-/** A published index larger than this is refused rather than parsed. */
-export const MAX_INDEX_BYTES = 4 * 1024 * 1024;
-
-// --- the published index ---------------------------------------------------
-
-export interface SourcePiece {
-  /** `canonical_fa` — the BYTE-EXACT join key. Never folded or transliterated. */
-  key: string;
-  form: string;
-  piece: string;
-  dastgah: string;
-  composer: string;
-  /** Literal historical spellings, for SEARCH only — never for identity. */
-  aliases: string[];
-  sessions: number[];
-  notes: string;
-  provisional?: boolean;
-  mediumConfidence?: boolean;
-  /** The source no longer describes this piece; its provenance is kept. */
-  unavailable?: boolean;
+function ago(now: Date, days: number): string {
+  return nowISO(addDays(now, -days));
+}
+function agoDate(now: Date, days: number): string {
+  return toISODate(addDays(now, days));
 }
 
-export type SourceRole = string;
-export type SourceKind = 'video' | 'score' | 'photo';
+export function createSeedDB(now: Date = new Date()): PracticeDB {
+  // --- Instruments ---------------------------------------------------------
+  const setar = createInstrument({ name: 'Setar', family: 'Persian' }, now);
+  const tar = createInstrument({ name: 'Tar', family: 'Persian' }, now);
+  const guitar = createInstrument({ name: 'Classical Guitar', family: 'Western' }, now);
 
-export interface SourceResource {
-  /** Archive-RELATIVE path. Never an absolute URL: transport is per device. */
-  path: string;
-  role: SourceRole;
-  kind: SourceKind;
+  // --- Materials -----------------------------------------------------------
+  const mAfshari = createMaterial(
+    {
+      instrumentId: setar.id,
+      title: 'ردیف میرزا عبدالله',
+      sourceType: 'radif',
+      sourceName: 'ردیف میرزا عبدالله',
+    },
+    now,
+  );
+  const mMezrab = createMaterial(
+    {
+      instrumentId: tar.id,
+      title: 'تمرین‌های مضراب',
+      sourceType: 'technique',
+      sourceName: 'تمرین‌های استاد',
+    },
+    now,
+  );
+  const mLesson6 = createMaterial(
+    {
+      instrumentId: guitar.id,
+      title: 'Lesson 6',
+      sourceType: 'course',
+      sourceName: 'Online Course',
+    },
+    now,
+  );
+  const mRepertoire = createMaterial(
+    {
+      instrumentId: guitar.id,
+      title: 'Repertoire',
+      sourceType: 'piece',
+    },
+    now,
+  );
+
+  // --- Items (stats filled in from blocks below) ---------------------------
+  const iraq = createItem(
+    {
+      instrumentId: setar.id,
+      materialId: mAfshari.id,
+      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
+      strand: 'radif',
+      catalogKey: 'iraq',
+      title: 'پایان‌بندیِ عبارتِ ۴ (عراق)',
+      itemType: 'phrase',
+      status: 'repairing',
+      importance: 5,
+      difficulty: 4,
+      primaryFocus: 'phrase_direction',
+      notes: 'فرود هنگام اتصال به عبارتِ پیشین روشن نیست.\nزینت ممکن است فرود را بپوشاند.',
+      persian: {
+        dastgahAvaz: 'افشاری',
+        gusheh: 'عراق',
+      },
+    },
+    now,
+  );
+  const rizeh = createItem(
+    {
+      instrumentId: tar.id,
+      materialId: mMezrab.id,
+      stageId: stageIdFor(SEED_PATHWAY_IDS.tar, 'rh-basics'),
+      strand: 'mezrab',
+      title: 'وضوحِ ریز روی سیمِ باز',
+      itemType: 'technique',
+      status: 'fragile',
+      importance: 4,
+      difficulty: 4,
+      primaryFocus: 'right_hand',
+      notes: 'حمله ناهموار است — برخی مضراب‌ها می‌افتند.\nریزِ ناهموار روی سیمِ باز.',
+    },
+    now,
+  );
+  const shift = createItem(
+    {
+      instrumentId: guitar.id,
+      materialId: mLesson6.id,
+      title: 'Lesson 6 bars 4–5 shift',
+      itemType: 'bar',
+      status: 'repairing',
+      importance: 4,
+      difficulty: 3,
+      primaryFocus: 'left_hand',
+      notes:
+        'Left-hand shift causes shoulder tension.\nShift arrives late; the note drops out just after it.\nRight shoulder lifts on the shift.',
+      guitar: {
+        lessonNumber: '6',
+        barRange: '4–5',
+      },
+    },
+    now,
+  );
+  const studyC = createItem(
+    {
+      instrumentId: guitar.id,
+      materialId: mRepertoire.id,
+      title: 'Study in C — full run',
+      itemType: 'full_piece',
+      status: 'usable',
+      importance: 3,
+      difficulty: 3,
+      primaryFocus: 'tempo',
+      notes: 'Rushes through the middle section. Settled fingering; aim around 80 bpm.',
+    },
+    now,
+  );
+  const daramad = createItem(
+    {
+      instrumentId: setar.id,
+      materialId: mAfshari.id,
+      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
+      strand: 'radif',
+      catalogKey: 'daramad',
+      title: 'درآمد افشاری (آغاز)',
+      itemType: 'section',
+      status: 'integrated',
+      importance: 3,
+      difficulty: 2,
+      primaryFocus: 'musical_meaning',
+      persian: { dastgahAvaz: 'افشاری', gusheh: 'درآمد' },
+    },
+    now,
+  );
+
+  const items: PracticeItem[] = [iraq, rizeh, shift, studyC, daramad];
+
+  // --- Blocks --------------------------------------------------------------
+  const b = (
+    item: PracticeItem,
+    daysAgo: number,
+    durationMinutes: number,
+    result: PracticeBlock['result'],
+    focus: PracticeBlock['focus'],
+    mode: PracticeBlock['mode'],
+    observation?: string,
+  ): PracticeBlock =>
+    createBlock(
+      {
+        practiceItemId: item.id,
+        instrumentId: item.instrumentId,
+        materialId: item.materialId,
+        startedAt: ago(now, daysAgo),
+        endedAt: ago(now, daysAgo),
+        durationMinutes,
+        mode,
+        focus,
+        result,
+        observation,
+        createdReview: true,
+      },
+      now,
+    );
+
+  const blocks: PracticeBlock[] = [
+    // Iraq — stuck on "same" (saturated, triggers strategy insight)
+    b(iraq, 5, 12, 'same', 'phrase_direction', 'repair', 'فرود هنوز مبهم است.'),
+    b(iraq, 3, 10, 'same', 'phrase_direction', 'repair'),
+    b(iraq, 1, 11, 'same', 'phrase_direction', 'repair', 'مثل قبل، فرود نامشخص.'),
+    // Rizeh — improving but fragile and overdue (a strong next focus)
+    b(rizeh, 7, 8, 'worse', 'right_hand', 'repair', 'با تندتر کردن، حمله از هم پاشید.'),
+    b(rizeh, 5, 10, 'slightly_better', 'right_hand', 'repair', 'تمپوِ آهسته‌تر به یکدستی کمک کرد.'),
+    // Shift — steady progress
+    b(shift, 6, 9, 'same', 'left_hand', 'repair'),
+    b(shift, 4, 8, 'slightly_better', 'left_hand', 'repair', 'Dropping the shoulder helped.'),
+    b(shift, 2, 10, 'slightly_better', 'left_hand', 'repair'),
+    // Study in C — solid, a good quick win / due review
+    b(studyC, 12, 20, 'stable_alone', 'tempo', 'integrate'),
+    b(studyC, 8, 20, 'stable_alone', 'tempo', 'integrate'),
+    b(studyC, 4, 20, 'stable_alone', 'tempo', 'integrate', 'Middle section still wants to rush.'),
+    // Darāmad — integrated but neglected (maintenance)
+    b(daramad, 30, 50, 'stable_in_context', 'musical_meaning', 'maintain'),
+    b(daramad, 21, 45, 'stable_in_context', 'musical_meaning', 'maintain'),
+  ];
+
+  // --- Derive item stats from blocks (keep everything consistent) ----------
+  const reviewDates: Record<string, string> = {
+    [iraq.id]: agoDate(now, 0), // due today
+    [rizeh.id]: agoDate(now, -2), // overdue by 2 days
+    [shift.id]: agoDate(now, 1), // due tomorrow
+    [studyC.id]: agoDate(now, 0), // due today
+    [daramad.id]: agoDate(now, -14), // overdue by 14 days
+  };
+
+  for (const item of items) {
+    const own = blocks
+      .filter((bl) => bl.practiceItemId === item.id)
+      .sort((x, y) => x.startedAt.localeCompare(y.startedAt));
+    if (own.length === 0) continue;
+    const last = own[own.length - 1];
+    item.timesPractised = own.length;
+    item.totalMinutes = own.reduce((s, x) => s + x.durationMinutes, 0);
+    item.lastPractisedAt = last.startedAt;
+    item.lastResult = last.result;
+    item.nextReviewDate = reviewDates[item.id];
+    item.saturationWarning = isSaturated(own, now);
+  }
+
+  // --- Reviews (pending, so Today shows due reviews) -----------------------
+  const reviews = [
+    createReview({ practiceItemId: iraq.id, dueDate: reviewDates[iraq.id], reviewType: 'repair', reason: 'سه بار نتیجهٔ یکسان — راهبرد را عوض کن.' }, now),
+    createReview({ practiceItemId: rizeh.id, dueDate: reviewDates[rizeh.id], reviewType: 'repair' }, now),
+    createReview({ practiceItemId: studyC.id, dueDate: reviewDates[studyC.id], reviewType: 'integration' }, now),
+    createReview({ practiceItemId: shift.id, dueDate: reviewDates[shift.id], reviewType: 'repair' }, now),
+    createReview({ practiceItemId: daramad.id, dueDate: reviewDates[daramad.id], reviewType: 'maintenance', reason: 'نگهداریِ معمول.' }, now),
+  ];
+
+  const pathways = seedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
+
+  // --- Lessons (a monthly Setar class: last one + the next one) -------------
+  const pastLesson = createLesson(
+    {
+      instrumentId: setar.id,
+      date: agoDate(now, -16),
+      notes:
+        'روی افشاری کار شد: مرورِ درآمد و پایان‌بندی‌های عبارتِ عراق. استاد: اول فرود را بدون زینت بیاور، بعد زینت را اضافه کن. تأکید روی فرود — اول بدون تحریر.',
+    },
+    now,
+  );
+  // A class recording (video) + a score (PDF) live on the NAS, referenced
+  // (never stored) by the app. ARCHIVE-RELATIVE, like every reference this app
+  // writes: the device media base is the archive root. These are the archive's
+  // own pre-normalisation names, so a Refresh repairs them through the rename
+  // log exactly as it repairs the owner's real legacy rows.
+  pastLesson.recordings = [
+    {
+      id: newId(),
+      title: 'ضبطِ کلاس',
+      path: 'session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
+      kind: 'video',
+      date: agoDate(now, -16),
+      sizeBytes: 686136347,
+      createdAt: nowISO(now),
+    },
+    {
+      id: newId(),
+      title: 'چهارمضرابِ افشاری صبا',
+      path: 'session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
+      kind: 'pdf',
+      date: agoDate(now, -16),
+      createdAt: nowISO(now),
+    },
+  ];
+  const nextSetarLesson = createLesson({ instrumentId: setar.id, date: agoDate(now, 14) }, now);
+  const lessons = [pastLesson, nextSetarLesson];
+
+  // The current model directly — no legacy boolean, no single mutable string.
+  // The Setar commitment names the class it is FOR; the Guitar question has no
+  // class to name yet (there are no Guitar lessons in the demo), so it is
+  // honestly unassigned rather than pointing at somebody else's lesson.
+  const lessonAgenda = [
+    createPreparation({ id: newId(), itemId: iraq.id, instrumentId: setar.id, lessonId: nextSetarLesson.id, now }),
+    createQuestion({
+      id: newId(),
+      text: 'آیا نقطهٔ فرودم درست است، یا زینت دارد فرود را می‌پوشاند؟',
+      instrumentId: setar.id,
+      itemId: iraq.id,
+      lessonId: nextSetarLesson.id,
+      now,
+    }),
+    createQuestion({
+      id: newId(),
+      text: 'Should I prioritise tone or releasing shoulder tension on this shift?',
+      instrumentId: guitar.id,
+      itemId: shift.id,
+      now,
+    }),
+  ];
+
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    instruments: [setar, tar, guitar],
+    materials: [mAfshari, mMezrab, mLesson6, mRepertoire],
+    items,
+    blocks,
+    reviews,
+    ...pathways,
+    attachments: [],
+    lessons,
+    lessonAgenda,
+    archiveSources: [],
+  };
+}
+
+export function emptyDB(): PracticeDB {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    instruments: [],
+    materials: [],
+    items: [],
+    blocks: [],
+    reviews: [],
+    pathways: [],
+    pathwayStages: [],
+    pathwayRoutines: [],
+    attachments: [],
+    lessons: [],
+    lessonAgenda: [],
+    archiveSources: [],
+  };
+}
+```
+
+### src/domain/sourceReconcile.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import rawIndex from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
+import {
+  decodeSourceIndex,
+  resourcesForPiece,
+  resourcesForSession,
+  sourceItemId,
+  sourceLessonId,
+  validateArchiveSources,
+  type SourceIndex,
+} from './sourceArchive';
+import {
+  applyArchiveImport,
+  planArchiveImport,
+  repairReferencePath,
+  repairLessonReferences,
+  toArchiveRelative,
+  withSuppression,
+  followRenames,
+} from './sourceReconcile';
+import { archiveRootUrl, resolveRecordingUrl } from './recordings';
+// The published log is the SCANNER's output, so the downstream transitions
+// below are driven by what it actually publishes for a forked log — never by
+// a hand-written approximation of it.
+// @ts-expect-error — no type declarations for the .mjs operator tool.
+import * as scannerModule from '../../scripts/scan-setar-classes.mjs';
+const { buildIndex } = scannerModule as {
+  buildIndex(input: {
+    registryText: string;
+    inventory: never[];
+    renameLog: { present: true; text: string };
+  }): { renames: { from: string; to: string }[]; diagnostics: { path: string; reason: string }[] };
+};
+const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
+import { emptyDB } from './seed';
+import { LEGACY_SEED_PATHS } from './setarClasses';
+import { createItem, createLesson } from './factories';
+import type { Lesson, PracticeDB, PracticeItem } from './types';
+
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+const INDEX: SourceIndex = decodeSourceIndex(rawIndex);
+const SETAR = 'inst-setar';
+
+function baseDB(over: Partial<PracticeDB> = {}): PracticeDB {
+  return {
+    ...emptyDB(),
+    instruments: [
+      { id: SETAR, name: 'Setar', family: 'Persian', active: true, createdAt: '2023-01-01T00:00:00.000Z', updatedAt: '2023-01-01T00:00:00.000Z' },
+    ],
+    ...over,
+  };
+}
+
+const item = (over: Partial<PracticeItem>): PracticeItem => ({
+  ...createItem({ instrumentId: SETAR, title: 'x' }, NOW),
+  ...over,
+});
+
+const lesson = (over: Partial<Lesson>): Lesson => ({
+  ...createLesson({ instrumentId: SETAR, date: '2026-01-01' }, NOW),
+  ...over,
+});
+
+const plan = (db: PracticeDB, index = INDEX, decisions = undefined as never) =>
+  planArchiveImport({ db, index, instrumentId: SETAR, decisions, now: NOW });
+
+describe('reconciling the archive with the owner’s own records', () => {
+  it('setar reconciliation binds exact identities without merging owner records', () => {
+    // --- a first import of an empty database --------------------------------
+    const first = plan(baseDB());
+    expect(first.newLessons).toHaveLength(39);
+    expect(first.newItems).toHaveLength(94);
+    expect(first.questions).toEqual([]);
+    expect(first.newLessons.every((l) => l.origin === 'archive')).toBe(true);
+    const after = applyArchiveImport(baseDB(), first);
+    expect(after.lessons).toHaveLength(39);
+    expect(after.items).toHaveLength(94);
+    expect(after.archiveSources).toHaveLength(1);
+
+    // Canonical keys survive BYTE-EXACT as the items' own titles.
+    expect(after.items.map((i) => i.title)).toContain('رنگ-اصفهان-پریچهر-و-پریزاد-درویش-خان');
+    expect(after.items.map((i) => i.title)).toContain('تمرین-دشتی-1-علیزاده');
+
+    // --- repeating it adds NOTHING -----------------------------------------
+    const second = plan(after);
+    expect(second.newLessons).toEqual([]);
+    expect(second.newItems).toEqual([]);
+    expect(second.summary.unchanged).toBe(true);
+    // ...and applying it returns the very same database object, so an
+    // unchanged refresh cannot bump a revision or churn a timestamp.
+    expect(applyArchiveImport(after, second)).toBe(after);
+
+    // --- DETERMINISTIC IDENTITY across devices ------------------------------
+    // Two devices importing the same published index separately must agree on
+    // which record is which, or the next sync sees two of everything.
+    const other = applyArchiveImport(baseDB(), plan(baseDB()));
+    expect(other.items.map((i) => i.id).sort()).toEqual(after.items.map((i) => i.id).sort());
+    expect(other.lessons.map((l) => l.id).sort()).toEqual(after.lessons.map((l) => l.id).sort());
+    expect(after.items.some((i) => i.id === sourceItemId('setar-classes', 'عراق'))).toBe(true);
+    expect(after.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
+
+    // --- EXISTING BINDINGS WIN, across edited titles and dates --------------
+    const edited: PracticeDB = {
+      ...after,
+      items: after.items.map((i) =>
+        i.source?.pieceKey === 'عراق' ? { ...i, title: 'Iraq — my own name for it', notes: 'teacher said…' } : i,
+      ),
+      lessons: after.lessons.map((l) => (l.source?.sessionN === 13 ? { ...l, date: '2020-01-01', number: 999 } : l)),
+    };
+    const third = plan(edited);
+    expect(third.newItems).toEqual([]);
+    expect(third.newLessons).toEqual([]);
+    const applied = applyArchiveImport(edited, third);
+    // The owner's edits are still there: a binding identifies, it never rewrites.
+    expect(applied.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('Iraq — my own name for it');
+    expect(applied.lessons.find((l) => l.source?.sessionN === 13)!.date).toBe('2020-01-01');
+
+    // --- adopting ONE legacy lesson, on EXACT evidence ----------------------
+    const evidence = lesson({
+      id: 'legacy-13',
+      date: '2024-09-03',
+      number: 13,
+      // The owner's own old reference — legacy prefix and pre-rename name.
+      recordings: [
+        {
+          id: 'r1',
+          title: 'Class 13',
+          path: 'setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4',
+          kind: 'video',
+          createdAt: '2024-09-04T00:00:00.000Z',
+        },
+      ],
+      notes: 'What the teacher said that day.',
+    });
+    const withLegacy = plan(baseDB({ lessons: [evidence] }));
+    const adopted = withLegacy.adoptedLessons.find((l) => l.source?.sessionN === 13);
+    expect(adopted).toBeDefined();
+    expect(adopted!.id).toBe('legacy-13'); // the owner's record KEEPS its id
+    expect(adopted!.notes).toBe('What the teacher said that day.');
+    expect(withLegacy.newLessons).toHaveLength(38);
+
+    // --- weaker equivalences CANNOT auto-merge ------------------------------
+    const dateOnly = lesson({ id: 'date-only', date: '2024-09-03' });
+    const numberOnly = lesson({ id: 'number-only', date: '2019-05-05', number: 13 });
+    const dateAndNumber = lesson({ id: 'date-and-number', date: '2024-09-03', number: 13 });
+    const weak = plan(baseDB({ lessons: [dateOnly, numberOnly, dateAndNumber] }));
+    expect(weak.adoptedLessons).toEqual([]);
+    expect(weak.newLessons).toHaveLength(39);
+    // Two identical candidates do not pick the first: the owner is asked.
+    const twin = { ...evidence, id: 'legacy-13-twin' };
+    const ambiguous = plan(baseDB({ lessons: [evidence, twin] }));
+    expect(ambiguous.adoptedLessons).toEqual([]);
+    const q = ambiguous.questions.find((x) => x.sessionN === 13)!;
+    expect(q.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-twin']);
+
+    // --- the owner's real upcoming class 38 survives ------------------------
+    const upcoming = lesson({ id: 'class-38-upcoming', date: '2026-09-27', number: 38 });
+    const withUpcoming = plan(baseDB({ lessons: [upcoming] }));
+    expect(withUpcoming.adoptedLessons).toEqual([]);
+    expect(withUpcoming.newLessons).toHaveLength(39);
+    const installed = applyArchiveImport(baseDB({ lessons: [upcoming] }), withUpcoming);
+    const thirtyEights = installed.lessons.filter((l) => l.number === 38);
+    expect(thirtyEights.map((l) => l.date).sort()).toEqual(['2026-08-04', '2026-09-27']);
+    expect(installed.lessons.find((l) => l.id === 'class-38-upcoming')!.origin).toBeUndefined();
+
+    // --- a catalogue slug is NEVER a canonical Farsi key --------------------
+    const catalogued = item({ id: 'cat-iraq', title: 'Iraq', catalogKey: 'iraq' });
+    const withCatalogue = plan(baseDB({ items: [catalogued] }));
+    expect(withCatalogue.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(withCatalogue.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
+    const cataloguedAfter = applyArchiveImport(baseDB({ items: [catalogued] }), withCatalogue);
+    expect(cataloguedAfter.items.find((i) => i.id === 'cat-iraq')!.source).toBeUndefined();
+
+    // --- exact title / literal alias equality ASKS, never merges ------------
+    const sameTitle = item({ id: 'mine-araq', title: 'عراق' });
+    const aliasTitle = item({ id: 'mine-alias', title: 'araq' });
+    const asked = plan(baseDB({ items: [sameTitle, aliasTitle] }));
+    const itemQ = asked.questions.find((x) => x.pieceKey === 'عراق')!;
+    expect(itemQ.candidates.map((c) => c.id).sort()).toEqual(['mine-alias', 'mine-araq']);
+    expect(asked.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    const untouched = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), asked);
+    expect(untouched.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
+
+    // Link: the owner's record keeps its id and gains the binding.
+    const linked = planArchiveImport({
+      db: baseDB({ items: [sameTitle, aliasTitle] }),
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'link-item', pieceKey: 'عراق', itemId: 'mine-araq' }],
+      now: NOW,
+    });
+    expect(linked.adoptedItems.map((i) => i.id)).toEqual(['mine-araq']);
+    expect(linked.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    const linkedDb = applyArchiveImport(baseDB({ items: [sameTitle, aliasTitle] }), linked);
+    expect(linkedDb.items.find((i) => i.id === 'mine-araq')!.source).toEqual({
+      archiveId: 'setar-classes',
+      pieceKey: 'عراق',
+    });
+    // ...and the binding PERSISTS: a later refresh asks nothing more about it.
+    expect(plan(linkedDb).questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+
+    // Create separately: two records, both kept, only one bound.
+    const separate = planArchiveImport({
+      db: baseDB({ items: [sameTitle] }),
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'create-item', pieceKey: 'عراق' }],
+      now: NOW,
+    });
+    const separateDb = applyArchiveImport(baseDB({ items: [sameTitle] }), separate);
+    expect(separateDb.items.filter((i) => i.title === 'عراق')).toHaveLength(2);
+    expect(separateDb.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+    expect(separateDb.items.find((i) => i.id === 'mine-araq')!.source).toBeUndefined();
+
+    // --- SKIP IS A DECISION, AND A DECISION IS PERSISTED -------------------
+    // It used to live only in the preview's own `decisions` argument, so "no,
+    // not this one" survived exactly as long as the screen did: a reload, or
+    // simply the next refresh, asked the identical question again with nothing
+    // in the database to show it had ever been answered.
+    const skipDb = baseDB({ items: [sameTitle] });
+    const skipDecisions = [{ kind: 'skip-item' as const, pieceKey: 'عراق' }];
+    const skipped = planArchiveImport({ db: skipDb, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
+    expect(skipped.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(skipped.source.suppressions).toContainEqual({ kind: 'piece', ref: 'عراق', at: NOW.toISOString() });
+    const afterSkip = applyArchiveImport(skipDb, skipped, skipDecisions);
+    expect(afterSkip.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(afterSkip.items.find((i) => i.id === 'mine-araq')!.title).toBe('عراق');
+    expect(validateArchiveSources(afterSkip)).toBeNull();
+    // ...and it survives the persisted shape. A LATER refresh, carrying no
+    // decisions at all, neither asks nor re-creates.
+    const reloaded = JSON.parse(JSON.stringify(afterSkip)) as PracticeDB;
+    const afterReload = plan(reloaded);
+    expect(afterReload.questions.some((x) => x.pieceKey === 'عراق')).toBe(false);
+    expect(afterReload.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(afterReload.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(reloaded, afterReload)).toBe(reloaded);
+    // Skipping the same thing twice does not grow the list either.
+    const skipTwice = planArchiveImport({ db: reloaded, index: INDEX, instrumentId: SETAR, decisions: skipDecisions, now: NOW });
+    expect(skipTwice.source.suppressions).toHaveLength(1);
+    expect(applyArchiveImport(reloaded, skipTwice, skipDecisions)).toBe(reloaded);
+
+    // The same holds for a CLASS the owner skips.
+    const skipSession = [{ kind: 'skip-lesson' as const, sessionN: 13 }];
+    const lessonSkipped = planArchiveImport({ db: baseDB(), index: INDEX, instrumentId: SETAR, decisions: skipSession, now: NOW });
+    expect(lessonSkipped.newLessons).toHaveLength(38);
+    const afterLessonSkip = applyArchiveImport(baseDB(), lessonSkipped, skipSession);
+    const lessonReloaded = JSON.parse(JSON.stringify(afterLessonSkip)) as PracticeDB;
+    expect(plan(lessonReloaded).newLessons).toEqual([]);
+    expect(lessonReloaded.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+
+    // --- "CREATE SEPARATELY" RESOLVES AN AMBIGUOUS CLASS -------------------
+    // Two indistinguishable candidates; the owner says neither of them is this
+    // session. The decision used to be dropped on the floor for lessons — the
+    // item side had it from the start — and the question came back for ever.
+    const twinDb = baseDB({ lessons: [evidence, twin] });
+    const createSeparately = [{ kind: 'create-lesson' as const, sessionN: 13 }];
+    const resolvedLesson = planArchiveImport({ db: twinDb, index: INDEX, instrumentId: SETAR, decisions: createSeparately, now: NOW });
+    expect(resolvedLesson.questions.some((x) => x.sessionN === 13)).toBe(false);
+    expect(resolvedLesson.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    expect(resolvedLesson.newLessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
+    const afterCreate = applyArchiveImport(twinDb, resolvedLesson, createSeparately);
+    // Three records for that day now: the archive's own, and BOTH of the
+    // owner's, each keeping its id, its notes and its unbound status.
+    expect(afterCreate.lessons.filter((l) => l.date === '2024-09-03')).toHaveLength(3);
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.source).toBeUndefined();
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13')!.notes).toBe('What the teacher said that day.');
+    expect(afterCreate.lessons.find((l) => l.id === 'legacy-13-twin')!.source).toBeUndefined();
+    expect(validateArchiveSources(afterCreate)).toBeNull();
+    // ...and the binding it did create is the archive's own deterministic one.
+    expect(afterCreate.lessons.some((l) => l.id === sourceLessonId('setar-classes', 13))).toBe(true);
+
+    // --- the source/instrument binding is explicit and validated -----------
+    expect(after.archiveSources[0]!.instrumentId).toBe(SETAR);
+    expect(after.archiveSources[0]!.id).toBe('setar-classes');
+    expect(after.items.every((i) => i.instrumentId === SETAR)).toBe(true);
+  });
+
+  it('archive refresh preserves owner edits and applies only the new source delta', () => {
+    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
+
+    // The owner then works on their own records.
+    const owned: PracticeDB = {
+      ...installed,
+      items: installed.items.map((i) =>
+        i.source?.pieceKey === 'عراق'
+          ? { ...i, title: 'My own title', notes: 'my notes', status: 'usable', persian: { ...i.persian, composer: '' } }
+          : i,
+      ),
+      lessons: installed.lessons.map((l) => (l.source?.sessionN === 1 ? { ...l, notes: 'class one notes' } : l)),
+    };
+
+    // --- ONE new session, plus one new score on an existing session ---------
+    const session40 = {
+      n: 40,
+      date: '2026-09-29',
+      folder: 'session-40-29-09-2026',
+      roster: ['عراق'],
+      rosterTrusted: true,
+      hasClassRecording: true,
+      resources: [
+        {
+          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
+          role: 'ضبط-کلاس',
+          kind: 'video' as const,
+          title: 'ضبط کلاس',
+          part: null,
+          pieces: [],
+          group: null,
+        },
+      ],
+      members: [{ key: 'عراق', roles: ['ضبط-کلاس'] }],
+    };
+    const addedScore = {
+      path: 'session-12-06-08-2024/نت-عراق.pdf',
+      role: 'نت',
+      kind: 'score' as const,
+      title: 'نت عراق',
+      part: null,
+      pieces: ['عراق'],
+      group: null,
+    };
+    const next: SourceIndex = {
+      ...INDEX,
+      contentHash: 'b'.repeat(64),
+      sessions: [
+        // A scan records the MEMBERSHIP a new resource creates in the same
+        // pass that lists the resource, so a fixture that adds one without the
+        // other is a graph disagreeing with itself — refused at every door.
+        ...INDEX.sessions.map((s) =>
+          s.n === 12
+            ? {
+                ...s,
+                resources: [...s.resources, addedScore],
+                members: [
+                  ...s.members.filter((m) => m.key !== 'عراق'),
+                  {
+                    key: 'عراق',
+                    roles: [...new Set([...(s.members.find((m) => m.key === 'عراق')?.roles ?? []), 'نت'])],
+                  },
+                ],
+              }
+            : s,
+        ),
+        session40,
+      ],
+      // A later registry improvement on a piece already seeded.
+      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, composer: 'میرزا-حسینقلی' } : p)),
+    };
+
+    const delta = planArchiveImport({ db: owned, index: next, instrumentId: SETAR, now: NOW });
+    // ONLY the delta: one lesson, no items (عراق is already bound).
+    expect(delta.newLessons.map((l) => l.source?.sessionN)).toEqual([40]);
+    expect(delta.newItems).toEqual([]);
+
+    const refreshed = applyArchiveImport(owned, delta);
+    expect(refreshed.lessons).toHaveLength(40);
+    // AUTHORED FIELDS ARE SEEDED ONCE AND THEN PRESERVED — including the
+    // deliberately EMPTY composer the owner cleared.
+    const araq = refreshed.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(araq.title).toBe('My own title');
+    expect(araq.notes).toBe('my notes');
+    expect(araq.status).toBe('usable');
+    expect(araq.persian?.composer).toBe('');
+    expect(refreshed.lessons.find((l) => l.source?.sessionN === 1)!.notes).toBe('class one notes');
+    // Source facts DID update: the new score is in the graph.
+    const source = refreshed.archiveSources.find((s) => s.id === 'setar-classes')!;
+    expect(source.sessions.find((s) => s.n === 12)!.resources.some((r) => r.path === addedScore.path)).toBe(true);
+    expect(source.indexHash).toBe('b'.repeat(64));
+
+    // The registry improvement is OFFERED, never applied behind the owner.
+    const suggestion = delta.suggestions.find((s) => s.pieceKey === 'عراق' && s.field === 'composer')!;
+    expect(suggestion).toBeDefined();
+    expect(suggestion.from).toBe('');
+    expect(suggestion.to).toBe('میرزا-حسینقلی');
+    // A field decision names the RECORD it was shown against, not just the
+    // piece: a rebase must not hand the answer to whichever item happens to
+    // hold that piece by the time Apply is pressed.
+    const araqItemId = suggestion.itemId;
+    const selective = applyArchiveImport(owned, delta, [
+      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
+    ]);
+    const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
+    // ...and applying a field NEVER touches the notebook or the title.
+    expect(applied.notes).toBe('my notes');
+    expect(applied.title).toBe('My own title');
+
+    // --- THE ITEM'S KIND IS THE OWNER'S, SEEDED ONCE AND NEVER RE-OFFERED ---
+    // The registry's `form` decides `itemType` at CREATION and nothing after
+    // it: a piece the archive calls a گوشه that the owner works as a full piece
+    // is their reading of the music, not a source fact to be corrected back.
+    // `itemType` is not in the suggestion list at all, so no refresh can even
+    // ask, let alone revert it.
+    const reKinded = { ...owned, items: owned.items.map((i) => (i.id === araqItemId ? { ...i, itemType: 'full_piece' as const } : i)) };
+    const afterReKind = applyArchiveImport(
+      reKinded,
+      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }),
+    );
+    expect(afterReKind.items.find((i) => i.id === araqItemId)!.itemType).toBe('full_piece');
+    expect(
+      planArchiveImport({ db: reKinded, index: next, instrumentId: SETAR, now: NOW }).suggestions.some(
+        (x) => (x.field as string) === 'itemType',
+      ),
+    ).toBe(false);
+
+    // --- an UNCHANGED refresh writes nothing --------------------------------
+    const same = planArchiveImport({ db: refreshed, index: next, instrumentId: SETAR, now: NOW });
+    expect(same.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(refreshed, same)).toBe(refreshed);
+
+    // --- ...BUT A NEW OWNER DECISION AGAINST IT IS NOT "UNCHANGED" ---------
+    // The suggestion stands until it is answered, and it may be answered days
+    // later against the very same published index. Judging "already current"
+    // by the index hash alone reported exactly that and discarded the answer.
+    const lateField = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
+    ];
+    const lateDecision = planArchiveImport({
+      db: refreshed,
+      index: next,
+      instrumentId: SETAR,
+      decisions: lateField,
+      now: NOW,
+    });
+    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
+    expect(lateDecision.summary.unchanged).toBe(false);
+    const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
+    expect(lateApplied).not.toBe(refreshed);
+    const lateItem = lateApplied.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(lateItem.persian?.composer).toBe('میرزا-حسینقلی');
+    // Only that field: the notebook, the title and the status are the owner's.
+    expect(lateItem.notes).toBe('my notes');
+    expect(lateItem.title).toBe('My own title');
+    expect(lateItem.status).toBe('usable');
+    expect(lateApplied.blocks).toEqual(refreshed.blocks);
+    // Applied, the suggestion is gone: the next refresh has nothing to offer.
+    expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
+    // A decision for a field with NO suggestion changes nothing at all.
+    const emptyField = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
+    ];
+    const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
+    expect(noop.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
+
+    // --- A DECISION IS ABOUT THE VALUE THE OWNER SAW -----------------------
+    // Choose the archive's composer over an EMPTY field, then write one of
+    // your own before the plan is applied. The choice was an answer about the
+    // empty field; it is not an instruction to replace the new words.
+    const ownWrote = {
+      ...refreshed,
+      items: refreshed.items.map((i) =>
+        i.source?.pieceKey === 'عراق'
+          ? { ...i, persian: { ...i.persian, composer: 'Owner wrote this during refresh' } }
+          : i,
+      ),
+    };
+    const rebased = planArchiveImport({
+      db: ownWrote,
+      index: next,
+      instrumentId: SETAR,
+      decisions: lateField,
+      now: NOW,
+    });
+    expect(rebased.staleDecisions).toEqual(lateField);
+    // Not applied, and not counted as a change either: both sides of the
+    // preview/commit boundary agree that this decision no longer stands.
+    expect(rebased.summary.unchanged).toBe(true);
+    const notOverwritten = applyArchiveImport(ownWrote, rebased, lateField);
+    expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
+      'Owner wrote this during refresh',
+    );
+    // The suggestion is re-offered against what is there NOW, so the owner can
+    // answer the question that actually stands.
+    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
+      'Owner wrote this during refresh',
+    );
+    // A decision carrying the CURRENT value still applies, on the same data.
+    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
+    const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
+    expect(fresh.staleDecisions).toEqual([]);
+    expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
+      ?.composer).toBe('میرزا-حسینقلی');
+
+    // --- A LINK TARGET THAT MOVED IS THE SAME KIND OF STALENESS ------------
+    // Bound elsewhere, moved instrument or deleted: never silently turned into
+    // "create a new record instead".
+    const araqId = owned.items.find((i) => i.source?.pieceKey === 'عراق')!.id;
+    const otherKey = INDEX.pieces.find((x) => x.key !== 'عراق')!.key;
+    const unbound: PracticeDB = {
+      ...owned,
+      items: owned.items.map((i) => {
+        const { source, ...rest } = i;
+        void source;
+        return rest.id === araqId ? { ...rest, title: 'عراق' } : rest;
+      }),
+    };
+    const linkDecision = [{ kind: 'link-item' as const, pieceKey: 'عراق', itemId: araqId }];
+    const linkable = planArchiveImport({ db: unbound, index: next, instrumentId: SETAR, decisions: linkDecision, now: NOW });
+    expect(linkable.staleDecisions).toEqual([]);
+    expect(linkable.adoptedItems.map((i) => i.id)).toEqual([araqId]);
+    const takenElsewhere: PracticeDB = {
+      ...unbound,
+      items: unbound.items.map((i) =>
+        i.id === araqId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: otherKey } } : i,
+      ),
+    };
+    const stalelink = planArchiveImport({
+      db: takenElsewhere,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(stalelink.staleDecisions).toEqual(linkDecision);
+    expect(stalelink.adoptedItems).toEqual([]);
+
+    // --- A DECISION NAMES ITS RECORD, AND EVERY DECISION IS ACCOUNTED FOR ---
+    //
+    // The loops start with "already bound? nothing to decide" / "already
+    // suppressed? nothing to decide", so a decision about a record that became
+    // bound between the preview and the commit was never looked at: no
+    // adoption, no question, and an EMPTY `staleDecisions` — the commit
+    // reported success for an action it had not performed. And a field
+    // decision keyed by piece alone was worse than ignored: it was REDIRECTED
+    // onto whichever record held that piece by the time Apply ran.
+    const otherItemId = 'someone-elses-item';
+    const boundToAnother: PracticeDB = {
+      ...unbound,
+      items: [
+        ...unbound.items,
+        item({
+          id: otherItemId,
+          instrumentId: SETAR,
+          title: 'Another record',
+          source: { archiveId: 'setar-classes', pieceKey: 'عراق' },
+        }),
+      ],
+    };
+    // LINK: the approved record is not the one holding the piece now, so the
+    // choice is stale — never quietly satisfied by the other record.
+    const redirectedLink = planArchiveImport({
+      db: boundToAnother,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(redirectedLink.staleDecisions).toEqual(linkDecision);
+    expect(redirectedLink.adoptedItems).toEqual([]);
+    expect(applyArchiveImport(boundToAnother, redirectedLink, linkDecision).items.find((i) => i.id === araqId)!.source)
+      .toBeUndefined();
+    // APPLY-FIELD: the archive's composer, chosen against item A's empty
+    // field, must not be written to the item that holds the piece now — whose
+    // composer is also empty, so nothing about the VALUE would have caught it.
+    const fieldForA = [
+      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
+    ];
+    const redirectedField = planArchiveImport({
+      db: boundToAnother,
+      index: next,
+      instrumentId: SETAR,
+      decisions: fieldForA,
+      now: NOW,
+    });
+    expect(redirectedField.staleDecisions).toEqual(fieldForA);
+    expect(redirectedField.suggestions.every((x) => x.itemId === otherItemId)).toBe(true);
+    const notRedirected = applyArchiveImport(boundToAnother, redirectedField, fieldForA);
+    expect(notRedirected.items.find((i) => i.id === otherItemId)!.persian?.composer ?? '').toBe('');
+    // SKIP and CREATE are the same rule: an answer about a record that has
+    // since been bound is an answer to a question that no longer stands.
+    for (const decision of [
+      [{ kind: 'skip-item' as const, pieceKey: 'عراق' }],
+      [{ kind: 'create-item' as const, pieceKey: 'عراق' }],
+    ]) {
+      const swept = planArchiveImport({
+        db: boundToAnother,
+        index: next,
+        instrumentId: SETAR,
+        decisions: decision,
+        now: NOW,
+      });
+      expect(swept.staleDecisions).toEqual(decision);
+      expect(swept.newItems).toEqual([]);
+    }
+    // …and LOOP PREVENTION: the action the owner approved, once it HAS
+    // happened, is not stale. `ArchiveRefresh` drops a stale decision and
+    // re-previews, so a realised action that could never be consumed again
+    // would go stale for ever.
+    const afterLink = applyArchiveImport(unbound, linkable, linkDecision);
+    const again = planArchiveImport({
+      db: afterLink,
+      index: next,
+      instrumentId: SETAR,
+      decisions: linkDecision,
+      now: NOW,
+    });
+    expect(again.staleDecisions).toEqual([]);
+    const skipped = applyArchiveImport(
+      unbound,
+      planArchiveImport({
+        db: unbound,
+        index: next,
+        instrumentId: SETAR,
+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
+        now: NOW,
+      }),
+    );
+    expect(
+      planArchiveImport({
+        db: skipped,
+        index: next,
+        instrumentId: SETAR,
+        decisions: [{ kind: 'skip-item', pieceKey: otherKey }],
+        now: NOW,
+      }).staleDecisions,
+    ).toEqual([]);
+
+    // --- a missing FILE keeps its provenance, flagged ----------------------
+    const goneFile = next.sessions.find((s) => s.n === 12)!.resources[0]!.path;
+    const shrunk: SourceIndex = {
+      ...next,
+      contentHash: 'c'.repeat(64),
+      // A session that has lost every file has lost its class recording with
+      // them: a scan recomputes that flag, and a hand-built index that keeps
+      // it is a graph disagreeing with itself — which `checkSourceGraph` now
+      // refuses at every door, so it cannot be used to prove anything else.
+      sessions: next.sessions.map((s) =>
+        s.n === 12 ? { ...s, resources: [], members: [], hasClassRecording: false } : s,
+      ),
+    };
+    const shrunkPlan = planArchiveImport({ db: refreshed, index: shrunk, instrumentId: SETAR, now: NOW });
+    const afterShrink = applyArchiveImport(refreshed, shrunkPlan);
+    // The LESSON and the ITEM are still there — a vanished file never deletes
+    // an owner record, it only changes what the source can offer.
+    expect(afterShrink.lessons).toHaveLength(40);
+    expect(afterShrink.items.find((i) => i.source?.pieceKey === 'عراق')!.title).toBe('My own title');
+    expect(afterShrink.blocks).toEqual(refreshed.blocks);
+    const shrunkSource = afterShrink.archiveSources.find((s) => s.id === 'setar-classes')!;
+    const goneRow = shrunkSource.sessions.find((s) => s.n === 12)!.resources.find((r) => r.path === goneFile)!;
+    expect(goneRow.unavailable).toBe(true);
+    // ...and the database this produced is one every inbound door accepts.
+    expect(validateArchiveSources(afterShrink)).toBeNull();
+
+    // --- a missing REGISTRY ROW is the case that used to lock refresh out ---
+    // Dropping a piece the owner has an item bound to would leave that binding
+    // pointing at nothing — which `validateDB` refuses at every door, so the
+    // next Refresh, and every one after it, would fail outright. Provenance is
+    // RETAINED and flagged instead.
+    const withoutPiece: SourceIndex = {
+      ...next,
+      contentHash: 'e'.repeat(64),
+      pieces: next.pieces.filter((p) => p.key !== 'عراق'),
+      sessions: next.sessions.map((s) => ({
+        ...s,
+        roster: s.roster.filter((k) => k !== 'عراق'),
+        members: s.members.filter((m) => m.key !== 'عراق'),
+        resources: s.resources.map((r) => ({ ...r, pieces: r.pieces.filter((k) => k !== 'عراق') })),
+      })),
+    };
+    const withoutPlan = planArchiveImport({ db: refreshed, index: withoutPiece, instrumentId: SETAR, now: NOW });
+    const afterWithout = applyArchiveImport(refreshed, withoutPlan);
+    expect(validateArchiveSources(afterWithout)).toBeNull();
+    const keptPiece = afterWithout.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!;
+    expect(keptPiece.unavailable).toBe(true);
+    // The owner's item, its title and its binding are all still there.
+    const keptItem = afterWithout.items.find((i) => i.source?.pieceKey === 'عراق')!;
+    expect(keptItem.title).toBe('My own title');
+    expect(keptItem.notes).toBe('my notes');
+    // It is not re-created as a second item either.
+    expect(afterWithout.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+    // A WHOLE SESSION that disappears is retained the same way.
+    const withoutSession: SourceIndex = {
+      ...next,
+      contentHash: 'f'.repeat(64),
+      sessions: next.sessions.filter((s) => s.n !== 13),
+    };
+    const afterNoSession = applyArchiveImport(
+      refreshed,
+      planArchiveImport({ db: refreshed, index: withoutSession, instrumentId: SETAR, now: NOW }),
+    );
+    expect(validateArchiveSources(afterNoSession)).toBeNull();
+    expect(afterNoSession.archiveSources[0]!.sessions.find((s) => s.n === 13)!.unavailable).toBe(true);
+    expect(afterNoSession.lessons.filter((l) => l.source?.sessionN === 13)).toHaveLength(1);
+    // ...and the source coming BACK clears the flag: the source is
+    // authoritative about what it has.
+    const restoredPlan = planArchiveImport({ db: afterWithout, index: next, instrumentId: SETAR, now: NOW });
+    const afterRestore = applyArchiveImport(afterWithout, restoredPlan);
+    expect(afterRestore.archiveSources[0]!.pieces.find((p) => p.key === 'عراق')!.unavailable).toBeUndefined();
+    expect(afterRestore.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(1);
+
+    // --- a CHANGED canonical key is a NEW identity, never a rename ----------
+    const renamedKey: SourceIndex = {
+      ...INDEX,
+      contentHash: 'd'.repeat(64),
+      pieces: INDEX.pieces.map((p) => (p.key === 'عراق' ? { ...p, key: 'عراق-جدید' } : p)),
+      sessions: INDEX.sessions.map((s) => ({
+        ...s,
+        roster: s.roster.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
+        members: s.members.map((m) => (m.key === 'عراق' ? { ...m, key: 'عراق-جدید' } : m)),
+        resources: s.resources.map((r) => ({
+          ...r,
+          pieces: r.pieces.map((k) => (k === 'عراق' ? 'عراق-جدید' : k)),
+        })),
+      })),
+    };
+    const keyChange = planArchiveImport({ db: refreshed, index: renamedKey, instrumentId: SETAR, now: NOW });
+    // A NEW piece appears; the old binding is NOT silently carried across.
+    expect(keyChange.newItems.map((i) => i.source?.pieceKey)).toEqual(['عراق-جدید']);
+    expect(keyChange.adoptedItems).toEqual([]);
+
+    // --- an unresolved question stays a question until answered ------------
+    const stranger = item({ id: 'stranger', title: 'چهار-پاره' });
+    const strangerDb = { ...baseDB(), items: [stranger] };
+    const asked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(asked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
+    const stillAsked = planArchiveImport({ db: strangerDb, index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(stillAsked.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(true);
+    // The SAME index with a NEW owner decision resolves it, with no re-scan.
+    const resolved = planArchiveImport({
+      db: strangerDb,
+      index: INDEX,
+      instrumentId: SETAR,
+      decisions: [{ kind: 'skip-item', pieceKey: 'چهار-پاره' }],
+      now: NOW,
+    });
+    expect(resolved.questions.some((x) => x.pieceKey === 'چهار-پاره')).toBe(false);
+    expect(resolved.newItems.some((i) => i.source?.pieceKey === 'چهار-پاره')).toBe(false);
+  });
+
+  it('exact Setar rename repair preserves saved references and their metadata', () => {
+    const renames = new Map(INDEX.renames.map((r) => [r.from, r.to]));
+    const known = new Set(INDEX.sessions.flatMap((s) => s.resources.map((r) => r.path)));
+
+    // The archive prefix the owner's legacy paths carry is not part of the
+    // archive-relative identity; the device base now ends in it.
+    expect(toArchiveRelative('setar-classes/session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
+    expect(toArchiveRelative('session-1-26-09-2023/x.mp4')).toBe('session-1-26-09-2023/x.mp4');
+
+    // EVERY legacy seed path the old importer ever wrote — all 67 of them —
+    // maps through the rename log EXACTLY. No title, size or modification-time
+    // matching is involved anywhere, and none of the 67 is left to a guess.
+    expect(LEGACY_SEED_PATHS).toHaveLength(67);
+    // 257 rows in RENAME-LOG.csv (the corpus baseline in `docs/setar-archive.md`)
+    // and 257 mappings out: no row of the REAL log is dropped for any reason —
+    // not unsafe, not empty, not a loop and not a fork — so the rule below
+    // changes nothing the operator actually publishes today.
+    expect(INDEX.renames).toHaveLength(257);
+    const repairedPaths = new Map<string, string>();
+    for (const p of LEGACY_SEED_PATHS) {
+      const outcome = repairReferencePath(p, renames, known);
+      expect(outcome.status).toBe('repaired');
+      if (outcome.status !== 'repaired') throw new Error('unreachable');
+      expect(outcome.path.startsWith('session-')).toBe(true);
+      expect(known.has(outcome.path)).toBe(true);
+      repairedPaths.set(p, outcome.path);
+    }
+    expect(repairedPaths.size).toBe(67);
+    // Session 28's "main video" is really a NAMED DEMONSTRATION; the repair
+    // says so by landing on the demo file, and nothing invents a class
+    // recording for a session that has none.
+    const s28 = repairReferencePath('setar-classes/session-28-28-10-2025/video-2025-10-28-19-56-30.mp4', renames, known);
+    expect(s28.status === 'repaired' && s28.path).toBe('session-28-28-10-2025/نمونه-به-زندان-شوشتری.mp4');
+
+    // A path with no rename row and no file is DIAGNOSED, never guessed — and
+    // the diagnosis is about the FILE, so it is reached only once the path is
+    // already in the current namespace. A legacy-prefixed one is first said in
+    // that namespace (same bytes, words the device base addresses); the second
+    // pass is what reports it.
+    const missing = repairReferencePath('setar-classes/session-1-26-09-2023/nothing.mp4', renames, known);
+    expect(missing).toEqual({ status: 'repaired', path: 'session-1-26-09-2023/nothing.mp4' });
+    expect(repairReferencePath('session-1-26-09-2023/nothing.mp4', renames, known).status).toBe('attention');
+    // A foreign link, and a link carrying a query, are left exactly as they are.
+    const base = 'https://192.168.0.20:5010/setar-classes';
+    expect(repairReferencePath('https://elsewhere.example/x.mp4', renames, known, base).status).toBe('unchanged');
+    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4?download=1`, renames, known, base).status).toBe(
+      'unchanged',
+    );
+    // Without a VERIFIED base a full URL is not converted at all.
+    expect(repairReferencePath(`${base}/session-1-26-09-2023/x.mp4`, renames, known).status).toBe('attention');
+    // Under the verified base it converts, decoding each segment once.
+    const encoded = `${base}/${encodeURIComponent('session-13-03-09-2024')}/${encodeURIComponent('نمونه-1.mp4')}`;
+    const converted = repairReferencePath(encoded, renames, known, base);
+    expect(converted.status === 'repaired' && converted.path).toBe('session-13-03-09-2024/نمونه-1.mp4');
+    // A cycle in the log is reported rather than followed forever.
+    const cyclic = new Map([
+      ['a/b.mp4', 'a/c.mp4'],
+      ['a/c.mp4', 'a/b.mp4'],
+    ]);
+    expect(repairReferencePath('a/b.mp4', cyclic, new Set(['a/c.mp4'])).status).toBe('attention');
+
+    // --- both rows of a real collision survive, with their own metadata -----
+    // Session 1's class part 1 and the first Dashti score each have an OLD and
+    // a CURRENT row that now point at one physical file. Repairing them keeps
+    // TWO rows, because each carries something the owner wrote.
+    const collided = lesson({
+      id: 'L1',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [
+        {
+          id: 'old-video',
+          title: 'Class 1 (old link)',
+          path: 'setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4',
+          kind: 'video',
+          notes: 'The half I watched first.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'current-video',
+          title: 'Class 1 part 1',
+          path: 'session-1-26-09-2023/ضبط-کلاس-1.mp4',
+          kind: 'video',
+          createdAt: '2026-09-10T00:00:00.000Z',
+        },
+        {
+          id: 'old-score',
+          title: 'First Dashti score (old link)',
+          path: 'setar-classes/session-1-26-09-2023/chahar-mezarabe-avale-dashti.pdf',
+          kind: 'pdf',
+          notes: 'Teacher marked bar 12.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'current-score',
+          title: 'Dashti score',
+          path: 'session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf',
+          kind: 'pdf',
+          createdAt: '2026-09-10T00:00:00.000Z',
+        },
+      ],
+    });
+    const repaired = repairLessonReferences(collided, renames, known);
+    expect(repaired.repaired).toBe(2);
+    expect(repaired.attention).toEqual([]);
+    expect(repaired.lesson.recordings).toHaveLength(4);
+    const byId = new Map(repaired.lesson.recordings!.map((r) => [r.id, r]));
+    // The two old rows now resolve to the same physical files as the new ones…
+    expect(byId.get('old-video')!.path).toBe(byId.get('current-video')!.path);
+    expect(byId.get('old-score')!.path).toBe(byId.get('current-score')!.path);
+    // …and neither authored row, nor its notes or title, was deleted.
+    expect(byId.get('old-video')!.notes).toBe('The half I watched first.');
+    expect(byId.get('old-video')!.title).toBe('Class 1 (old link)');
+    expect(byId.get('old-score')!.notes).toBe('Teacher marked bar 12.');
+
+    // --- the owner's own practice recordings stay, outside useful material --
+    const personal = lesson({
+      id: 'L2',
+      date: '2025-08-05',
+      recordings: [
+        {
+          id: 'mine-1',
+          title: 'My take, August',
+          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
+          kind: 'video',
+          notes: 'Slow but even.',
+          createdAt: '2025-08-06T00:00:00.000Z',
+        },
+      ],
+    });
+    const personalRepair = repairLessonReferences(personal, renames, known);
+    expect(personalRepair.lesson.recordings).toHaveLength(1);
+    expect(personalRepair.lesson.recordings![0]!.notes).toBe('Slow but even.');
+    // ONE NAMESPACE PER ARCHIVE-OWNED LESSON. The device base is the archive
+    // ROOT, so the legacy folder segment comes OFF even though the index
+    // describes nothing at this path: it names the same bytes in the words the
+    // base addresses. Leaving it on is what made a corrected base kill exactly
+    // the references a refresh never touches — the owner's own practice takes.
+    expect(personalRepair.lesson.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
+    // Saying so is NOT saying the file is there: no attention row is raised,
+    // because the index describes only material scoped to pieces and classes.
+    expect(personalRepair.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+    // …and it is IDEMPOTENT: once said in the current namespace there is
+    // nothing left to change, so a second refresh writes nothing.
+    expect(repairReferencePath('session-25-05-08-2025/mine.mp4', renames, known)).toEqual({
+      status: 'attention',
+      reason: 'The archive no longer has a file at this path.',
+      code: 'not-described',
+    });
+    // The archive never offers a personal recording as material for a piece.
+    const source = applyArchiveImport(baseDB(), plan(baseDB())).archiveSources[0]!;
+    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
+
+    // --- THE REFRESH ITSELF REPAIRS THEM ------------------------------------
+    // The helper above proves the mapping. THIS proves the production journey:
+    // the rename log arrives WITH the index, so the one moment the app can
+    // repair a stored path is the moment it accepts a new graph — and a lesson
+    // adopted with its own references still pointing at names the archive
+    // renamed is half a job, bound and broken.
+    const ownPersonal = lesson({
+      id: 'L25',
+      date: '2025-08-05',
+      number: 25,
+      recordings: [
+        {
+          id: 'mine-1',
+          title: 'My take, August',
+          path: 'setar-classes/session-25-05-08-2025/mine.mp4',
+          kind: 'video',
+          notes: 'Slow but even.',
+          createdAt: '2025-08-06T00:00:00.000Z',
+        },
+      ],
+    });
+    const legacyDb = baseDB({ lessons: [collided, ownPersonal] });
+    const refresh = plan(legacyDb);
+    const adoptedOne = refresh.adoptedLessons.find((l) => l.id === 'L1')!;
+    expect(adoptedOne.source).toEqual({ archiveId: 'setar-classes', sessionN: 1 });
+    // The PLAN already shows the repaired paths, so the preview and the commit
+    // cannot disagree about what is about to be written.
+    const planned = new Map(adoptedOne.recordings!.map((r) => [r.id, r]));
+    expect(planned.get('old-video')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
+    expect(planned.get('old-score')!.path).toBe('session-1-26-09-2023/نت-چهارمضراب-اول-دشتی-صبا.pdf');
+
+    const installedLegacy = applyArchiveImport(legacyDb, refresh);
+    const storedOne = installedLegacy.lessons.find((l) => l.id === 'L1')!;
+    expect(storedOne.recordings).toEqual(adoptedOne.recordings);
+    // BOTH rows of each collision survive, with everything the owner wrote.
+    expect(storedOne.recordings).toHaveLength(4);
+    const stored = new Map(storedOne.recordings!.map((r) => [r.id, r]));
+    expect(stored.get('old-video')!.path).toBe(stored.get('current-video')!.path);
+    expect(stored.get('old-score')!.path).toBe(stored.get('current-score')!.path);
+    expect(stored.get('old-video')!.title).toBe('Class 1 (old link)');
+    expect(stored.get('old-video')!.notes).toBe('The half I watched first.');
+    expect(stored.get('old-score')!.notes).toBe('Teacher marked bar 12.');
+    expect(validateArchiveSources(installedLegacy)).toBeNull();
+
+    // The owner's own practice takes are RETAINED and never reported missing —
+    // the index describes only material scoped to pieces and classes, so a path
+    // it does not name is outside what it knows, never evidence that the file is
+    // gone. RETAINED IS NOT THE SAME CLAIM AS LEFT IN THE OLD NAMESPACE: the row,
+    // its title and its notes are the owner's and are untouched, while the path
+    // text is said in the one namespace the device base addresses, exactly like
+    // every described row on the same class.
+    const storedPersonal = installedLegacy.lessons.find((l) => l.id === 'L25')!;
+    expect(storedPersonal.recordings![0]!.path).toBe('session-25-05-08-2025/mine.mp4');
+    expect(storedPersonal.recordings![0]!.notes).toBe('Slow but even.');
+    expect(storedPersonal.recordings![0]!.title).toBe('My take, August');
+    expect(refresh.attention.some((a) => a.path.includes('mine.mp4'))).toBe(false);
+    // NO ARCHIVE-OWNED LESSON IS LEFT HOLDING TWO NAMESPACES AT ONCE. This is
+    // the invariant the fix is actually for: resolving any of these against the
+    // device base (the archive root) must not produce `…/setar-classes/…`.
+    // …proved against the RESOLVER and the owner's own Mac archive base, because
+    // the namespace only matters at the moment a file is opened: the reported
+    // failure was a URL, not a stored string.
+    const macBase = 'https://192.168.0.20:5010/setar-classes';
+    for (const l of installedLegacy.lessons) {
+      if (!l.source) continue;
+      for (const r of l.recordings ?? []) {
+        expect(r.path.startsWith('setar-classes/')).toBe(false);
+        expect(resolveRecordingUrl(macBase, r)).toMatch(
+          /^https:\/\/192\.168\.0\.20:5010\/setar-classes\/session-[^/]+\/[^/]+$/,
+        );
+      }
+    }
+    // --- A FULL URL CONVERTS ONLY UNDER THE DEVICE'S OWN BASE ---------------
+    // `ArchiveRefresh` threads `archiveRootUrl(getNasBaseUrl())` into the plan
+    // as `verifiedBase`, so this uses that FUNCTION's own output rather than a
+    // literal: a trailing-slash or prefix mismatch between the two would fail
+    // silently, leaving the link exactly as it was with nothing to show why.
+    const deviceBase = archiveRootUrl('https://192.168.0.20:5010/setar-classes')!;
+    const absolute = lesson({
+      id: 'L-abs',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [
+        {
+          id: 'abs-1',
+          title: 'Class 1, saved as a full link',
+          path: `${deviceBase}session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+          kind: 'video',
+          notes: 'Typed in from the browser bar.',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+        {
+          id: 'foreign',
+          title: 'Somewhere else entirely',
+          path: 'https://elsewhere.example/x.mp4',
+          kind: 'video',
+          createdAt: '2023-09-27T00:00:00.000Z',
+        },
+      ],
+    });
+    const absDb = baseDB({ lessons: [absolute] });
+    const urlRepaired = applyArchiveImport(
+      absDb,
+      planArchiveImport({ db: absDb, index: INDEX, instrumentId: SETAR, verifiedBase: deviceBase, now: NOW }),
+    );
+    const convertedRows = new Map(urlRepaired.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
+    expect(convertedRows.get('abs-1')!.path).toBe('session-1-26-09-2023/ضبط-کلاس-1.mp4');
+    expect(convertedRows.get('abs-1')!.notes).toBe('Typed in from the browser bar.');
+    // A link to somewhere else is not this archive's to rewrite.
+    expect(convertedRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
+    // WITHOUT a base, nothing is converted and nothing is mangled.
+    const noBase = applyArchiveImport(absDb, plan(absDb));
+    const noBaseRows = new Map(noBase.lessons.find((l) => l.id === 'L-abs')!.recordings!.map((r) => [r.id, r]));
+    expect(noBaseRows.get('abs-1')!.path).toBe(absolute.recordings![0]!.path);
+    expect(noBaseRows.get('foreign')!.path).toBe('https://elsewhere.example/x.mp4');
+
+    // --- IDEMPOTENT: the second refresh repairs nothing ---------------------
+    // WRITE-ONCE AT THE LEVEL THE RULE IS ACTUALLY STATED. Saying an undescribed
+    // path in the current namespace counts as a repair on lessons that used to
+    // count none, which is exactly what could have made EVERY later refresh a
+    // write; this is where that would show.
+    const again = plan(installedLegacy);
+    expect(again.repairedLessons).toEqual([]);
+    expect(again.summary.unchanged).toBe(true);
+    expect(applyArchiveImport(installedLegacy, again)).toBe(installedLegacy);
+
+    // --- AN ALREADY-BOUND LESSON IS REPAIRED BY A LATER RENAME -------------
+    // The archive moves a file the owner's bound class already points at. The
+    // next refresh follows the log; the row, its title and its notes stay.
+    const movedTo = 'session-1-26-09-2023/ضبط-کلاس-part-1.mp4';
+    const moved: SourceIndex = {
+      ...INDEX,
+      contentHash: '9'.repeat(64),
+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: movedTo }],
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1
+          ? {
+              ...sess,
+              resources: sess.resources.map((r) =>
+                r.path === 'session-1-26-09-2023/ضبط-کلاس-1.mp4' ? { ...r, path: movedTo } : r,
+              ),
+            }
+          : sess,
+      ),
+    };
+    const later = planArchiveImport({ db: installedLegacy, index: moved, instrumentId: SETAR, now: NOW });
+    expect(later.repairedLessons.map((l) => l.id)).toEqual(['L1']);
+    const afterMove = applyArchiveImport(installedLegacy, later);
+    const movedLesson = afterMove.lessons.find((l) => l.id === 'L1')!;
+    const movedRows = new Map(movedLesson.recordings!.map((r) => [r.id, r]));
+    expect(movedRows.get('old-video')!.path).toBe(movedTo);
+    expect(movedRows.get('current-video')!.path).toBe(movedTo);
+    expect(movedRows.get('old-video')!.notes).toBe('The half I watched first.');
+    // The score, which did not move, is exactly as it was.
+    expect(movedRows.get('old-score')!.path).toBe(stored.get('old-score')!.path);
+    // Nothing about practice moved with it.
+    expect(afterMove.blocks).toEqual(installedLegacy.blocks);
+    expect(validateArchiveSources(afterMove)).toBeNull();
+
+    // --- A BROKEN CHAIN IS DIAGNOSED, never guessed ------------------------
+    // A rename whose destination the archive no longer has: the stored path is
+    // left exactly as it is, and the owner is told which file and why.
+    const dangling: SourceIndex = {
+      ...INDEX,
+      contentHash: '8'.repeat(64),
+      renames: [...INDEX.renames, { from: 'session-1-26-09-2023/ضبط-کلاس-1.mp4', to: 'session-1-26-09-2023/gone.mp4' }],
+    };
+    const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
+    expect(broken.repairedLessons).toEqual([]);
+    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
+    const afterBroken = applyArchiveImport(installedLegacy, broken);
+    expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+
+    // --- ONE READING OF A CHAIN, EVERYWHERE IT IS USED AS AN IDENTITY ------
+    // Adoption took a single hop while repair followed the whole chain, so one
+    // rename log gave two different answers about the same file. With
+    // A -> B -> C logged, B in session 1 and C in session 2, a unique legacy
+    // class was adopted AS SESSION 1 on the strength of B, and then had that
+    // very reference repaired into session 2's folder: bound to one class,
+    // pointing at another's files.
+    const hopA = 'session-1-26-09-2023/first-name.mp4';
+    const hopB = 'session-1-26-09-2023/second-name.mp4';
+    const hopC = 'session-5-23-01-2024/ضبط-کلاس.mp4'; // a real file, another session
+    expect(known.has(hopC)).toBe(true);
+    const chained: SourceIndex = {
+      ...INDEX,
+      contentHash: '7'.repeat(64),
+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopC }],
+    };
+    const chainRenames = new Map(chained.renames.map((r) => [r.from, r.to]));
+    expect(followRenames(hopA, chainRenames)).toBe(hopC);
+    const legacyClass = lesson({
+      id: 'L-chain',
+      date: '2023-09-26',
+      number: 1,
+      recordings: [{ id: 'c1', title: 'Class 1', path: hopA, kind: 'video', createdAt: '2023-09-27T00:00:00.000Z' }],
+    });
+    const chainDb = baseDB({ lessons: [legacyClass] });
+    const chainPlan = planArchiveImport({ db: chainDb, index: chained, instrumentId: SETAR, now: NOW });
+    // Its ONLY reference now points into session 5, so it is NOT evidence of
+    // session 1 — and the class is not adopted on it.
+    expect(chainPlan.adoptedLessons.some((l) => l.id === 'L-chain')).toBe(false);
+    // A CYCLE is no reading at all, so it is no evidence either.
+    const cyclicIndex: SourceIndex = {
+      ...INDEX,
+      contentHash: '6'.repeat(64),
+      renames: [...INDEX.renames, { from: hopA, to: hopB }, { from: hopB, to: hopA }],
+    };
+    expect(
+      planArchiveImport({ db: chainDb, index: cyclicIndex, instrumentId: SETAR, now: NOW }).adoptedLessons.some(
+        (l) => l.id === 'L-chain',
+      ),
+    ).toBe(false);
+
+    // --- A HIDE FOLLOWS ITS FILE, AND A RENAMED FILE IS NOT "MISSING" ------
+    // A resource suppression is keyed BY PATH. Left on the old name, the file
+    // came back into view under its new one while the old row sat there
+    // flagged unavailable — the owner's decision silently undone by a rename.
+    const hiddenPath = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+    const hidden: PracticeDB = {
+      ...installedLegacy,
+      archiveSources: withSuppression(installedLegacy.archiveSources, 'setar-classes', {
+        kind: 'resource',
+        ref: hiddenPath,
+        itemId: 'item-x',
+        at: NOW.toISOString(),
+      }),
+    };
+    const afterRename = applyArchiveImport(hidden, planArchiveImport({ db: hidden, index: moved, instrumentId: SETAR, now: NOW }));
+    const renamedSource = afterRename.archiveSources[0]!;
+    const hide = renamedSource.suppressions.find((x) => x.kind === 'resource')!;
+    expect(hide.ref).toBe(movedTo);
+    expect(hide.itemId).toBe('item-x'); // the SCOPE is carried, not widened
+    expect(renamedSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
+    // And the old row is GONE rather than retained-and-flagged: the log says
+    // exactly where the bytes went, so this file moved, it did not disappear.
+    const session1 = renamedSource.sessions.find((x) => x.n === 1)!;
+    expect(session1.resources.some((r) => r.path === hiddenPath)).toBe(false);
+    expect(session1.resources.some((r) => r.path === movedTo && !r.unavailable)).toBe(true);
+    // ACROSS sessions too — a rename can move a file into a different session,
+    // which is exactly the shape of the A -> B -> C log above. Asking only
+    // "is it still in THIS session" flagged the old row as missing while the
+    // very same bytes sat in the graph under their new name.
+    const crossTo = 'session-5-23-01-2024/moved-out-of-session-1.mp4';
+    const oldRow = INDEX.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)!;
+    const crossSession: SourceIndex = {
+      ...INDEX,
+      contentHash: '4'.repeat(64),
+      renames: [...INDEX.renames, { from: hiddenPath, to: crossTo }],
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1
+          ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) }
+          : sess.n === 5
+            ? { ...sess, resources: [...sess.resources, { ...oldRow, path: crossTo }] }
+            : sess,
+      ),
+    };
+    const afterCross = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: crossSession, instrumentId: SETAR, now: NOW }),
+    );
+    const crossSource = afterCross.archiveSources[0]!;
+    expect(crossSource.sessions.find((x) => x.n === 1)!.resources.some((r) => r.path === hiddenPath)).toBe(false);
+    expect(crossSource.sessions.find((x) => x.n === 5)!.resources.some((r) => r.path === crossTo)).toBe(true);
+    // The hide went WITH it, into the other session, still scoped to one item.
+    expect(crossSource.suppressions.find((x) => x.kind === 'resource')).toMatchObject({
+      ref: crossTo,
+      itemId: 'item-x',
+    });
+    expect(validateArchiveSources(afterCross)).toBeNull();
+
+    // --- A CYCLE IS NO READING, FOR EVERY CONSUMER OF THE LOG -------------
+    // `followRenames` used to hand back `{ path, cycle: true }` — a perfectly
+    // usable-looking path beside a flag — and only ONE of its three callers
+    // read the flag. Hide A, then publish A->B and B->A: the re-key walked
+    // straight past the verdict and moved the owner's hide onto B, so A came
+    // back into view and the wrong file went dark. It returns `null` now, so
+    // there is no way to drop the verdict and still have a path.
+    const cyclicTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4'; // a real sibling file
+    const cyclicLog: SourceIndex = {
+      ...INDEX,
+      contentHash: '3'.repeat(64),
+      renames: [...INDEX.renames, { from: hiddenPath, to: cyclicTo }, { from: cyclicTo, to: hiddenPath }],
+    };
+    const afterCycle = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
+    );
+    const cycledSource = afterCycle.archiveSources[0]!;
+    const cycledHide = cycledSource.suppressions.find((x) => x.kind === 'resource')!;
+    expect(cycledHide.ref).toBe(hiddenPath); // exactly where the owner put it
+    expect(cycledHide.itemId).toBe('item-x');
+    expect(cycledSource.suppressions.filter((x) => x.kind === 'resource')).toHaveLength(1);
+    // …so the file the owner hid is still hidden, and its sibling is not.
+    expect(resourcesForPiece(cycledSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
+    expect(resourcesForSession(cycledSource, 1).some((r) => r.path === cyclicTo)).toBe(true);
+
+    // AVAILABILITY reads the same verdict: a cycle is not a move, so a row the
+    // incoming index has dropped keeps its provenance flagged rather than
+    // being silently deleted on the strength of a destination nothing can read.
+    const cyclicAndRemoved: SourceIndex = {
+      ...cyclicLog,
+      contentHash: '2'.repeat(64),
+      sessions: cyclicLog.sessions.map((sess) =>
+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
+      ),
+    };
+    const afterCyclicRemoval = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicAndRemoved, instrumentId: SETAR, now: NOW }),
+    );
+    expect(
+      afterCyclicRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find(
+        (r) => r.path === hiddenPath,
+      )?.unavailable,
+    ).toBe(true);
+    expect(validateArchiveSources(afterCyclicRemoval)).toBeNull();
+
+    // REPAIR says so out loud rather than rewriting the path to a stop on the
+    // loop — and ADOPTION, which reads the same verdict, takes it as no
+    // evidence at all (asserted above for the same shape).
+    const loopMap = new Map(cyclicLog.renames.map((r) => [r.from, r.to]));
+    expect(followRenames(hiddenPath, loopMap)).toBeNull();
+    expect(repairReferencePath(hiddenPath, loopMap, known)).toEqual({
+      status: 'attention',
+      reason: 'The rename log loops on this path.',
+      code: 'cycle',
+    });
+    const loopLesson = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: cyclicLog, instrumentId: SETAR, now: NOW }),
+    ).lessons.find((l) => l.id === 'L1')!;
+    expect(loopLesson.recordings).toEqual(storedOne.recordings);
+
+    // --- TWO DESTINATIONS IS NO READING EITHER, AND THE SAME THREE CONSUMERS
+    // READ IT THAT WAY. A loop and a fork are ONE defect said two ways: the
+    // log does not determine what this file is called now. The scanner used to
+    // publish the FIRST destination and diagnose the second as "not applied",
+    // so the app was handed a mapping the log cannot support and used it as
+    // exact identity — repairing an authored reference onto it and re-keying
+    // an owner's hide onto it. What it publishes for a fork is nothing, and
+    // this drives the transitions from that real output rather than a guess
+    // at it. (A forked log reaching the app from anywhere else is REFUSED at
+    // every door by the one grammar — asserted in `io.test.ts` against the
+    // persisted door, and by `checkSourceGraph` for the decoder.)
+    const forkTo = 'session-1-26-09-2023/ضبط-کلاس-2.mp4';
+    const forkOther = 'session-5-23-01-2024/ضبط-کلاس.mp4';
+    const scanned = buildIndex({
+      registryText: EMPTY_REGISTRY,
+      inventory: [],
+      renameLog: {
+        present: true,
+        text: `old_path,new_path\n${hiddenPath},${forkTo}\n${hiddenPath},${forkOther}\n`,
+      },
+    });
+    expect(scanned.renames).toEqual([]);
+    expect(scanned.diagnostics.find((d) => d.path === hiddenPath)!.reason).toContain('more than one destination');
+    const forkMap = new Map(scanned.renames.map((r) => [r.from, r.to]));
+    // The READING: the file keeps the only name this log establishes — its own.
+    expect(followRenames(hiddenPath, forkMap)).toBe(hiddenPath);
+    // The REFERENCE: left exactly as the owner saved it, never rewritten onto
+    // either destination.
+    expect(repairReferencePath(hiddenPath, forkMap, known)).toEqual({ status: 'unchanged' });
+    const forkIndex: SourceIndex = { ...INDEX, contentHash: '1'.repeat(64), renames: scanned.renames };
+    const afterFork = applyArchiveImport(
+      hidden,
+      planArchiveImport({ db: hidden, index: forkIndex, instrumentId: SETAR, now: NOW }),
+    );
+    expect(afterFork.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
+    // The HIDE: exactly where the owner put it, still scoped to one item — so
+    // the file they hid is still hidden and neither destination went dark.
+    const forkedSource = afterFork.archiveSources[0]!;
+    expect(forkedSource.suppressions.filter((x) => x.kind === 'resource')).toEqual([
+      { kind: 'resource', ref: hiddenPath, itemId: 'item-x', at: NOW.toISOString() },
+    ]);
+    expect(resourcesForPiece(forkedSource, 'عراق', 'item-x').some((r) => r.path === hiddenPath)).toBe(false);
+    expect(resourcesForSession(forkedSource, 1).some((r) => r.path === forkTo)).toBe(true);
+    expect(validateArchiveSources(afterFork)).toBeNull();
+
+    // A file that really IS gone still keeps its provenance, flagged.
+    const removed: SourceIndex = {
+      ...INDEX,
+      contentHash: '5'.repeat(64),
+      sessions: INDEX.sessions.map((sess) =>
+        sess.n === 1 ? { ...sess, resources: sess.resources.filter((r) => r.path !== hiddenPath) } : sess,
+      ),
+    };
+    const afterRemoval = applyArchiveImport(
+      installedLegacy,
+      planArchiveImport({ db: installedLegacy, index: removed, instrumentId: SETAR, now: NOW }),
+    );
+    expect(
+      afterRemoval.archiveSources[0]!.sessions.find((x) => x.n === 1)!.resources.find((r) => r.path === hiddenPath)
+        ?.unavailable,
+    ).toBe(true);
+    expect(validateArchiveSources(afterRename)).toBeNull();
+  });
+});
+
+describe('owner suppressions', () => {
+  it('a suppressed piece or session is never re-created by a later refresh', () => {
+    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
+    const stripped: PracticeDB = {
+      ...installed,
+      items: installed.items.filter((i) => i.source?.pieceKey !== 'عراق'),
+      lessons: installed.lessons.filter((l) => l.source?.sessionN !== 13),
+      archiveSources: withSuppression(
+        withSuppression(installed.archiveSources, 'setar-classes', {
+          kind: 'piece',
+          ref: 'عراق',
+          at: NOW.toISOString(),
+        }),
+        'setar-classes',
+        { kind: 'session', ref: '13', at: NOW.toISOString() },
+      ),
+    };
+    const again = plan(stripped);
+    expect(again.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect(again.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    // Idempotent: suppressing the same thing twice does not grow the list.
+    const twice = withSuppression(stripped.archiveSources, 'setar-classes', {
+      kind: 'piece',
+      ref: 'عراق',
+      at: '2027-01-01T00:00:00.000Z',
+    });
+    expect(twice[0]!.suppressions).toHaveLength(2);
+  });
+});
+```
+
+### src/domain/sourceReconcile.ts
+
+```
+import type { ID, ISODate, Lesson, LessonRecording, PracticeDB, PracticeItem } from './types';
+import { createItem, createLesson } from './factories';
+import { nowISO } from './util';
+import {
+  isSafeSourcePath,
+  sourceItemId,
+  sourceLessonId,
+  type ArchiveSource,
+  type SourceDiagnostic,
+  type SourceIndex,
+  type SourcePiece,
+  type SourceSuppression,
+} from './sourceArchive';
+
+// ---------------------------------------------------------------------------
+// Reconciling a published source index with the owner's own database.
+//
+// PURE and clock-explicit. Two steps, deliberately separate: `planArchiveImport`
+// decides and explains, `applyArchiveImport` writes. The store commits the plan
+// in ONE synchronous mutation, so a partially-applied import cannot exist.
+//
+// THE RULE THIS MODULE EXISTS FOR: the archive owns what the archive knows —
+// registry facts, session facts, roles, memberships, availability. Everything
+// else is the owner's and is seeded ONCE, then never written again. An import
+// may establish repertoire membership, historical lesson provenance and source
+// material. It may never establish recorded practice, a result, a review, or a
+// deadline.
+// ---------------------------------------------------------------------------
+
+/**
+ * The archive folder the owner's LEGACY references were written against. New
+ * references are stored relative to the archive ROOT (the device base now ends
+ * in `/setar-classes/`), so a legacy path carries one extra leading segment
+ * that must come off before it can be looked up — and must not be written back.
+ */
+export const LEGACY_ARCHIVE_PREFIX = 'setar-classes/';
+
+// --- decisions and questions -----------------------------------------------
+
+export type ReconcileDecision =
+  | { kind: 'link-item'; pieceKey: string; itemId: ID }
+  | { kind: 'create-item'; pieceKey: string }
+  | { kind: 'skip-item'; pieceKey: string }
+  | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
+  | { kind: 'create-lesson'; sessionN: number }
+  | { kind: 'skip-lesson'; sessionN: number }
+  /**
+   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `itemId`, the RECORD
+   * it was shown against, and `from`, the value of theirs it was chosen
+   * against. A decision is about the state the owner actually saw: the preview
+   * and the commit are two moments, and between them a note can be saved, a
+   * sync can land, another device can write.
+   *
+   * Without the PREMISE, choosing the archive's composer over an empty field
+   * and then typing one yourself before pressing Apply replaced your own new
+   * words with the registry's. Without the IDENTITY, the same answer landed on
+   * whichever record happened to hold that piece at commit time: sync a
+   * database where the piece is bound to item B instead, also with an empty
+   * composer, and a choice made about A was written to B.
+   */
+  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: string };
+
+export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
+
+export interface ReconcileCandidate {
+  id: ID;
   title: string;
-  part?: number | null;
-  size?: number;
-  /** Canonical piece keys this resource is material for. Empty = lesson-level. */
-  pieces: string[];
-  /** Parts of ONE logical demonstration share a group. */
-  group?: string | null;
-  unavailable?: boolean;
+  why: string;
 }
 
-export interface SourceMember {
-  key: string;
-  roles: SourceRole[];
+export interface ReconcileQuestion {
+  kind: 'item' | 'lesson';
+  /** Exactly one of these is set. */
+  pieceKey?: string;
+  sessionN?: number;
+  label: string;
+  candidates: ReconcileCandidate[];
 }
 
-export interface SourceSession {
-  n: number;
-  date: ISODate;
-  folder: string;
-  roster: string[];
-  rosterTrusted: boolean;
-  hasClassRecording: boolean;
-  resources: SourceResource[];
-  members: SourceMember[];
-  unavailable?: boolean;
-}
-
-export interface SourceRename {
+/** A registry improvement the owner may apply to an already-seeded item. */
+export interface MetadataSuggestion {
+  pieceKey: string;
+  itemId: ID;
+  field: MetadataField;
   from: string;
   to: string;
 }
 
-export interface SourceDiagnostic {
-  path: string;
-  reason: string;
-}
-
-export interface SourceIndex {
-  format: typeof INDEX_FORMAT;
-  version: number;
-  archiveId: string;
-  pieces: SourcePiece[];
-  sessions: SourceSession[];
-  renames: SourceRename[];
-  diagnostics: SourceDiagnostic[];
-  contentHash: string;
-}
-
-// --- what the database keeps ----------------------------------------------
-
-/** An owner decision that a refresh, a reload and a sync must all respect. */
-export interface SourceSuppression {
-  /** `piece` / `session` / `resource` (a hidden file), `link` (item-to-lesson). */
-  kind: 'piece' | 'session' | 'resource' | 'link';
-  /** Piece key, session number, resource path, or `sessionN:pieceKey`. */
-  ref: string;
-  /** A resource hidden on ONE item only — never on its siblings. */
-  itemId?: ID;
-  at: ISODateTime;
-}
-
 /**
- * The last accepted source graph, persisted so material, provenance and the
- * next refresh all work offline. One row per archive; items and lessons carry
- * only a KEY into it, so a resource is never copied per item.
+ * Does this decision still describe THIS suggestion? The one answer, used by
+ * the plan's own summary and by `applyArchiveImport`'s write — a question with
+ * two answers is how a preview and a commit come to mean different things.
  */
-export interface ArchiveSource {
-  id: ID;
-  instrumentId: ID;
-  indexHash: string;
-  acceptedAt: ISODateTime;
-  pieces: SourcePiece[];
-  sessions: SourceSession[];
-  renames: SourceRename[];
-  diagnostics: SourceDiagnostic[];
-  suppressions: SourceSuppression[];
-}
-
-/** An item's binding to a canonical piece in an archive. */
-export interface ItemSourceRef {
-  archiveId: ID;
-  pieceKey: string;
-}
-
-/** A lesson's binding to one archive session. */
-export interface LessonSourceRef {
-  archiveId: ID;
-  sessionN: number;
-}
-
-// --- path safety -----------------------------------------------------------
-
-/**
- * An archive path is a relative POSIX path of plain segments. Traversal,
- * absolute paths, backslashes, URL schemes, credentials and percent-encoded
- * separators are REFUSED, never sanitised: a rewritten path names a different
- * file, and this graph is an identity table.
- *
- * Deliberately a small copy of the scanner's own predicate rather than an
- * import — `scripts/` is a Node operator tool that must not be pulled into the
- * browser bundle, and this rule is eight lines.
- */
-export function isSafeSourcePath(p: unknown): p is string {
-  if (typeof p !== 'string' || !p) return false;
-  if (p.length > 1024) return false;
-  if (/^[a-z][a-z0-9+.-]*:/i.test(p)) return false;
-  if (p.startsWith('/') || p.includes('\\')) return false;
-  if (/%2f|%5c/i.test(p)) return false;
-  if (p.includes('@')) return false; // no user:pass@host smuggled in
-  return p.split('/').every((s) => s !== '' && s !== '.' && s !== '..');
-}
-
-// --- deterministic identity ------------------------------------------------
-
-const NUL = String.fromCharCode(0);
-
-/**
- * FNV-1a over the UTF-8 bytes, twice, for a stable 64-bit hex digest. Two
- * devices importing the same source must MINT THE SAME ID for the same logical
- * entity, or the next sync sees two records for one piece. A readable
- * `src:<archive>:piece:<farsi key>` would be equally deterministic but puts
- * Farsi into every route parameter; this keeps ids ASCII.
- */
-function stableHash(input: string): string {
-  const bytes = new TextEncoder().encode(input);
-  let a = 0x811c9dc5;
-  let b = 0x01000193;
-  for (const byte of bytes) {
-    a = Math.imul(a ^ byte, 0x01000193) >>> 0;
-    b = Math.imul(b ^ byte, 0x85ebca6b) >>> 0;
-  }
-  return a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0');
-}
-
-/** Deterministic id for the item a canonical piece becomes. */
-export function sourceItemId(archiveId: string, pieceKey: string): ID {
-  return `src-${stableHash(`${archiveId}${NUL}piece${NUL}${pieceKey}`)}`;
-}
-
-/** Deterministic id for the historical lesson an archive session becomes. */
-export function sourceLessonId(archiveId: string, sessionN: number): ID {
-  return `src-${stableHash(`${archiveId}${NUL}session${NUL}${sessionN}`)}`;
-}
-
-/** Deterministic id for a resource reference minted from the graph. */
-export function sourceResourceId(archiveId: string, path: string): ID {
-  return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
-}
-
-// --- decoding --------------------------------------------------------------
-
-/** The fixed role vocabulary, byte-exact from the archive's own contract. */
-export const SOURCE_ROLES: readonly string[] = [
-  'ضبط-کلاس', // class recording
-  'تمرین-من', // my practice
-  'تصحیح', // corrected notation
-  'تکلیف', // homework
-  'جزوه', // handout
-  'نمونه', // teacher demonstration
-  'نت', // clean notation
-];
-
-/**
- * Plain-English names for the archive's own role words, for UI copy only.
- * The Farsi word stays the identity everywhere else — this is a LABEL map,
- * exactly like `ITEM_STATUS_LABELS`, and never a second vocabulary.
- */
-export const SOURCE_ROLE_LABELS: Record<string, string> = {
-  [SOURCE_ROLES[0]!]: 'class recording',
-  [SOURCE_ROLES[1]!]: 'my practice',
-  [SOURCE_ROLES[2]!]: 'teacher’s corrections',
-  [SOURCE_ROLES[3]!]: 'homework',
-  [SOURCE_ROLES[4]!]: 'handout',
-  [SOURCE_ROLES[5]!]: 'teacher’s demonstration',
-  [SOURCE_ROLES[6]!]: 'notation',
-};
-
-export const CLASS_ROLE = SOURCE_ROLES[0];
-export const PERSONAL_ROLE = SOURCE_ROLES[1];
-export const CORRECTION_ROLE = SOURCE_ROLES[2];
-export const DEMO_ROLE = SOURCE_ROLES[5];
-export const NOTATION_ROLE = SOURCE_ROLES[6];
-
-const ROLE_SET = new Set<string>(SOURCE_ROLES);
-const KIND_SET = new Set<string>(['video', 'score', 'photo']);
-const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
-}
-
-function str(v: unknown, what: string): string {
-  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
-  return v;
-}
-
-function strList(v: unknown, what: string): string[] {
-  if (v === undefined) return [];
-  if (!Array.isArray(v) || v.some((x) => typeof x !== 'string')) throw new Error(`${what} must be a list of text.`);
-  return v as string[];
-}
-
-/**
- * ABSENT IS A DEFAULT; PRESENT-AND-WRONG IS A REFUSAL. Never a coercion.
- *
- * The decoder NORMALISES before `checkSourceGraph` runs, so the grammar only
- * ever sees what these produce — which is why `Array.isArray(x) ? x : []` was
- * not a tolerance but a silent erasure: a session whose `resources` arrived as
- * `null` decoded to a session with NO resources, passed the grammar (it is a
- * valid empty list by then) and turned six files into zero. The same held for
- * every scalar: `part: "3"` became `null`, a wrong-typed `size` vanished, and
- * `rosterTrusted: 'yes'` became a boolean the grammar was happy with.
- *
- * These three are that rule in one place, and they throw NAMING the record —
- * the same treatment `validatePracticeText` gives the owner's own words.
- */
-function list(v: unknown, what: string): unknown[] {
-  if (v === undefined) return [];
-  if (!Array.isArray(v)) throw new Error(`${what} must be a list.`);
-  return v;
-}
-
-/**
- * OPTIONAL TEXT. `str(raw.form ?? '')` read ABSENT and PRESENT-AND-NULL as the
- * same thing and quietly produced `''` for both — the very normalisation the
- * list/num/bool rule above exists to stop, left in place for every string
- * field that has a default. A resource `title: null` became an untitled row
- * the grammar was perfectly happy with. Absent is a default; null is a value,
- * and a wrong one.
- */
-function text(v: unknown, what: string): string {
-  if (v === undefined) return '';
-  if (typeof v !== 'string') throw new Error(`${what} must be text.`);
-  return v;
-}
-
-function num(v: unknown, what: string): number | null {
-  if (v === undefined || v === null) return null;
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
-  return v;
-}
-
-/** A number that is genuinely a number — no `null`, unlike an optional part. */
-function size(v: unknown, what: string): number {
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${what} must be a number.`);
-  return v;
-}
-
-function bool(v: unknown, what: string, fallback: boolean): boolean {
-  if (v === undefined) return fallback;
-  if (typeof v !== 'boolean') throw new Error(`${what} must be true or false.`);
-  return v;
-}
-
-/** A real calendar day, not merely four-two-two digits ("2026-02-30" is not). */
-export function isValidSourceDate(v: unknown): v is ISODate {
-  if (typeof v !== 'string') return false;
-  const m = DATE_RE.exec(v);
-  if (!m) return false;
-  const [, y, mo, d] = m;
-  const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
-  return t.getUTCFullYear() === Number(y) && t.getUTCMonth() === Number(mo) - 1 && t.getUTCDate() === Number(d);
-}
-
-/** A real calendar instant — the date-time sibling of {@link isValidSourceDate}. */
-export function isValidSourceDateTime(v: unknown): v is ISODateTime {
-  if (typeof v !== 'string') return false;
-  const m = /^(\d{4})-(\d{2})-(\d{2})T/.exec(v);
-  if (!m) return false;
-  if (!isValidSourceDate(v.slice(0, 10))) return false;
-  return !Number.isNaN(Date.parse(v));
-}
-
-/**
- * Validate an unknown published index into a {@link SourceIndex}, or throw with
- * a message the owner can act on.
- *
- * A NEWER version is refused rather than read leniently: a future scanner may
- * mean something different by the same field, and this graph decides which
- * file is which piece.
- */
-export function decodeSourceIndex(input: unknown): SourceIndex {
-  if (!isRecord(input)) throw new Error('The source index is not a valid object.');
-  if (input.format !== INDEX_FORMAT) throw new Error('That file is not a Setar archive index.');
-  if (typeof input.version !== 'number' || !Number.isInteger(input.version)) {
-    throw new Error('The source index has no usable version.');
-  }
-  if (input.version > INDEX_VERSION) {
-    throw new Error(
-      `This index was written by a newer scanner (version ${input.version}) than this app understands (version ${INDEX_VERSION}). Update the app.`,
-    );
-  }
-  if (input.version < INDEX_VERSION) {
-    throw new Error(`This index is from an older scanner (version ${input.version}). Re-run the scanner.`);
-  }
-  const archiveId = str(input.archiveId, 'The index archive id');
-  if (!archiveId.trim()) throw new Error('The index archive id is empty.');
-  if (typeof input.contentHash !== 'string' || !/^[0-9a-f]{64}$/.test(input.contentHash)) {
-    throw new Error('The index carries no usable content hash.');
-  }
-
-  if (!Array.isArray(input.pieces)) throw new Error('The index has no piece registry.');
-  if (!Array.isArray(input.sessions)) throw new Error('The index has no sessions.');
-
-  const pieces: SourcePiece[] = [];
-  const keys = new Set<string>();
-  for (const raw of input.pieces) {
-    if (!isRecord(raw)) throw new Error('A registry entry is not an object.');
-    const key = str(raw.key, 'A registry entry key');
-    if (!key.trim()) throw new Error('A registry entry has an empty canonical key.');
-    if (keys.has(key)) throw new Error(`Two registry entries share the canonical key "${key}".`);
-    keys.add(key);
-    const sessions = list(raw.sessions, `Registry entry "${key}" sessions`);
-    if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
-      throw new Error(`Registry entry "${key}" has an invalid session number.`);
-    }
-    pieces.push({
-      key,
-      form: text(raw.form, `Registry entry "${key}" form`),
-      piece: text(raw.piece, `Registry entry "${key}" piece`),
-      dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
-      composer: text(raw.composer, `Registry entry "${key}" composer`),
-      aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
-      sessions: sessions as number[],
-      notes: text(raw.notes, `Registry entry "${key}" notes`),
-      ...(bool(raw.provisional, `Registry entry "${key}" provisional`, false) ? { provisional: true } : {}),
-      ...(bool(raw.mediumConfidence, `Registry entry "${key}" confidence`, false) ? { mediumConfidence: true } : {}),
-    });
-  }
-
-  const sessions: SourceSession[] = [];
-  const seenN = new Set<number>();
-  const seenPaths = new Set<string>();
-  for (const raw of input.sessions) {
-    if (!isRecord(raw)) throw new Error('A session entry is not an object.');
-    const n = raw.n;
-    if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) throw new Error('A session has no usable number.');
-    if (seenN.has(n)) throw new Error(`Two entries claim session ${n}.`);
-    seenN.add(n);
-    if (!isValidSourceDate(raw.date)) throw new Error(`Session ${n} has an unreadable date.`);
-    const folder = str(raw.folder, `Session ${n} folder`);
-    if (!isSafeSourcePath(folder)) throw new Error(`Session ${n} has an unsafe folder path.`);
-    const roster = strList(raw.roster, `Session ${n} roster`);
-    for (const k of roster) {
-      if (!keys.has(k)) throw new Error(`Session ${n} lists piece "${k}", which is not in the registry.`);
-    }
-    const resources: SourceResource[] = [];
-    for (const r of list(raw.resources, `Session ${n} resources`)) {
-      if (!isRecord(r)) throw new Error(`Session ${n} has a resource that is not an object.`);
-      const path = r.path;
-      if (!isSafeSourcePath(path)) throw new Error(`Session ${n} has an unsafe resource path.`);
-      if (seenPaths.has(path)) throw new Error(`Two resources share the path "${path}".`);
-      seenPaths.add(path);
-      const role = str(r.role, 'A resource role');
-      if (!ROLE_SET.has(role)) throw new Error(`Resource "${path}" has an unknown role.`);
-      const kind = str(r.kind, 'A resource kind');
-      if (!KIND_SET.has(kind)) throw new Error(`Resource "${path}" has an unknown kind "${kind}".`);
-      const forPieces = strList(r.pieces, `Resource "${path}" pieces`);
-      for (const k of forPieces) {
-        if (!keys.has(k)) throw new Error(`Resource "${path}" names piece "${k}", which is not in the registry.`);
-      }
-      resources.push({
-        path,
-        role,
-        kind: kind as SourceKind,
-        title: text(r.title, `Resource "${path}" title`),
-        part: num(r.part, `Resource "${path}" part`),
-        // `part` and `group` are genuinely nullable in the published format —
-        // the scanner emits `null` for both — so null stays legal THERE and
-        // nowhere else. `size` it always emits as a number, and a present null
-        // is refused HERE rather than spread into the output as a value the
-        // declared type does not admit and left for the grammar to catch.
-        ...(r.size === undefined ? {} : { size: size(r.size, `Resource "${path}" size`) }),
-        pieces: forPieces,
-        group: r.group === undefined || r.group === null ? null : str(r.group, `Resource "${path}" group`),
-      });
-    }
-    const members: SourceMember[] = [];
-    for (const m of list(raw.members, `Session ${n} members`)) {
-      if (!isRecord(m)) throw new Error(`Session ${n} has a membership that is not an object.`);
-      const key = str(m.key, 'A membership key');
-      if (!keys.has(key)) throw new Error(`Session ${n} claims piece "${key}", which is not in the registry.`);
-      const roles = strList(m.roles, `Membership "${key}" roles`);
-      for (const role of roles) if (!ROLE_SET.has(role)) throw new Error(`Membership "${key}" has an unknown role.`);
-      members.push({ key, roles });
-    }
-    sessions.push({
-      n,
-      date: raw.date as ISODate,
-      folder,
-      roster,
-      rosterTrusted: bool(raw.rosterTrusted, `Session ${n} roster trust`, true),
-      hasClassRecording: bool(raw.hasClassRecording, `Session ${n} class recording`, false),
-      resources,
-      members,
-    });
-  }
-
-  const renames: SourceRename[] = [];
-  const froms = new Set<string>();
-  for (const r of list(input.renames, 'The rename log')) {
-    if (!isRecord(r)) throw new Error('A rename entry is not an object.');
-    if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) throw new Error('A rename entry carries an unsafe path.');
-    if (froms.has(r.from)) throw new Error(`The index maps "${r.from}" to more than one destination.`);
-    froms.add(r.from);
-    renames.push({ from: r.from, to: r.to });
-  }
-
-  const diagnostics: SourceDiagnostic[] = [];
-  for (const d of list(input.diagnostics, 'The diagnostic list')) {
-    if (!isRecord(d)) throw new Error('A diagnostic entry is not an object.');
-    diagnostics.push({
-      path: text(d.path, 'A diagnostic path'),
-      reason: text(d.reason, 'A diagnostic reason'),
-    });
-  }
-
-  // The decoder's own normalisation, held to the SAME grammar the persisted
-  // graph is held to. Every field below has just been built here, so this can
-  // only fail if the two ever drift — which is exactly what it exists to stop.
-  const bad = checkSourceGraph({ pieces, sessions, renames, diagnostics }, 'The source index');
-  if (bad) throw new Error(bad);
-
-  return {
-    format: INDEX_FORMAT,
-    version: INDEX_VERSION,
-    archiveId,
-    pieces,
-    sessions,
-    renames,
-    diagnostics,
-    contentHash: input.contentHash,
-  };
-}
-
-/**
- * The message a device that cannot hash anything gets, instead of a TypeError.
- *
- * Exported so the reader boundary and its test name ONE string rather than two
- * copies of a sentence that must stay identical.
- */
-export const INSECURE_CONTEXT_REFUSAL =
-  'This device opened the app over an insecure connection (plain http://), so the browser withholds the ' +
-  'cryptography needed to verify the index against its own content hash. Open the app over https:// (or ' +
-  'localhost) and refresh again. Nothing was changed.';
-
-/**
- * WebCrypto EXISTS ONLY IN A SECURE CONTEXT, and this app can be opened outside
- * one — a build served from a LAN address over plain http:// is the ordinary way
- * an unmerged branch reaches a phone. There `globalThis.crypto` is present but
- * `crypto.subtle` is `undefined`, so `sha256Hex` threw
- * `Cannot read properties of undefined (reading 'digest')` — a stack trace about
- * a property, handed to the owner in place of the one fact they can act on.
- *
- * This is a precondition of the DEVICE, not a defect in the FILE, which is why
- * it is checked BEFORE the size/JSON/structure order below rather than folded
- * into it: a device that cannot compute a digest cannot verify ANY index, so
- * reporting the first thing that happens to be wrong with the file would send
- * the owner to fix a file that is fine. It is also why this refuses rather than
- * degrading to an unverified read — `contentHash` is the refresh identity, and
- * skipping it is how altered content gets reported "Already current".
- *
- * Deliberately NOT a fallback implementation: the hash is only one of this
- * app's secure-context dependencies (the service worker that makes it work
- * offline is another), so hashing without one would leave the app still broken
- * while implying plain http:// were supported.
- */
-function requireDigest(): void {
-  if (!globalThis.crypto?.subtle) throw new Error(INSECURE_CONTEXT_REFUSAL);
-}
-
-/**
- * The scanner's own digest, recomputed here: SHA-256 over the key-sorted JSON
- * of the SEMANTIC body — everything but `contentHash` and the clock-bearing
- * `generatedAt`. Byte-for-byte the definition in `scripts/scan-setar-classes.mjs`
- * (`contentHash` / `canonicalJson`), and `canonicalStringify` produces exactly
- * that serialisation for JSON-derived data.
- */
-async function computeIndexDigest(parsed: Record<string, unknown>): Promise<string> {
-  const body = { ...parsed };
-  delete body.contentHash;
-  delete body.generatedAt;
-  return sha256Hex(canonicalStringify(body));
-}
-
-/**
- * Read published index TEXT: size, JSON, structure, and finally the DIGEST.
- *
- * `contentHash` is not a checksum the app may take on faith — it is the
- * REFRESH IDENTITY. `planArchiveImport` compares it against the hash already
- * accepted to decide that nothing has changed, so content altered in transit
- * (or in the repository) under a retained old hash would be reported "Already
- * current" and the changed facts silently ignored. Recomputing it here, at the
- * ONE boundary both the GitHub fetch and the file fallback pass through, makes
- * that fail closed instead.
- *
- * `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the
- * STRUCTURAL decoder, and the digest is a transport-integrity concern. Tests
- * that build an index object in memory call it directly and have no transport.
- *
- * Order matters: size → parse → structure → digest, so a structurally broken
- * file reports the error the owner can act on rather than a hash mismatch. The
- * secure-context precondition sits ahead of all four, for the reason
- * `requireDigest` records: it is a fact about the DEVICE, and no file can pass
- * on a device that cannot hash.
- */
-export async function parseSourceIndex(text: string): Promise<SourceIndex> {
-  requireDigest();
-  if (text.length > MAX_INDEX_BYTES) throw new Error('That index file is too large to be a Setar archive index.');
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error('That file is not valid JSON.');
-  }
-  const index = decodeSourceIndex(parsed);
-  const actual = await computeIndexDigest(parsed as Record<string, unknown>);
-  if (actual !== index.contentHash) {
-    throw new Error(
-      'This index does not match its own content hash — it was altered after the scanner wrote it. Nothing was changed.',
-    );
-  }
-  return index;
-}
-
-// --- what counts as an UPCOMING class ---------------------------------------
-
-/**
- * THE one predicate for "is this lesson still ahead of me". Every caller that
- * asks about the next class — the badges, the default question target, the
- * commitment deadline that reaches practice priority — goes through this.
- *
- * A lesson imported from a source archive is a record of a class that ALREADY
- * HAPPENED. Its date can still be in the future relative to this device's
- * clock (the archive runs to September 2026 and a device may be behind it, or
- * the owner may simply be importing early), and a plain `date >= today` then
- * turns thirty-nine pieces of history into thirty-nine deadlines: urgency on
- * items nobody committed to anything, and a question sheet defaulting to a
- * class that is over. `origin: 'archive'` is checked FIRST, before the date,
- * because no date can make history upcoming.
- */
-export function isUpcomingLesson(lesson: { date: ISODate; origin?: string }, todayISO: ISODate): boolean {
-  if (lesson.origin === 'archive') return false;
-  return lesson.date >= todayISO;
-}
-
-// --- queries over the accepted graph ---------------------------------------
-
-export function archiveFor(db: PracticeDB, archiveId: string): ArchiveSource | undefined {
-  return db.archiveSources?.find((a) => a.id === archiveId);
-}
-
-function suppressed(source: ArchiveSource, kind: SourceSuppression['kind'], ref: string, itemId?: ID): boolean {
-  return source.suppressions.some(
-    (s) => s.kind === kind && s.ref === ref && (s.itemId === undefined || s.itemId === itemId),
+export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSuggestion): boolean {
+  return (
+    d.kind === 'apply-field' &&
+    d.pieceKey === s.pieceKey &&
+    // IDENTITY and PREMISE together: which record, and what of theirs it was
+    // chosen against. Either one alone lets a rebase redirect the answer.
+    d.itemId === s.itemId &&
+    d.field === s.field &&
+    d.from === s.from
   );
 }
 
-/** Sessions a canonical piece appears in, numerically ordered. */
-export function sessionsForPiece(source: ArchiveSource, pieceKey: string): SourceSession[] {
-  return source.sessions.filter((s) => s.members.some((m) => m.key === pieceKey)).sort((a, b) => a.n - b.n);
+export interface ImportSummary {
+  addedItems: number;
+  addedLessons: number;
+  updatedLessons: number;
+  questions: number;
+  attention: number;
+  /** Nothing at all would change: the same index, already accepted. */
+  unchanged: boolean;
+}
+
+export interface ImportPlan {
+  archiveId: string;
+  instrumentId: ID;
+  indexHash: string;
+  /** The graph to persist, carrying the owner's existing suppressions. */
+  source: ArchiveSource;
+  newItems: PracticeItem[];
+  newLessons: Lesson[];
+  /** Existing lessons adopted into the archive (id preserved, binding added). */
+  adoptedLessons: Lesson[];
+  /**
+   * Already-bound lessons whose stored reference PATHS the rename log moved —
+   * the row, its title and its notes untouched, only the path text rewritten.
+   */
+  repairedLessons: Lesson[];
+  /** Existing items adopted by an explicit owner decision. */
+  adoptedItems: PracticeItem[];
+  questions: ReconcileQuestion[];
+  suggestions: MetadataSuggestion[];
+  attention: SourceDiagnostic[];
+  /**
+   * Decisions whose PREMISE moved: the owner's value is no longer the one the
+   * choice was made against, or a link target has since been deleted, bound
+   * elsewhere or moved to another instrument. They are not applied and not
+   * quietly turned into some other action — the commit refuses and the owner
+   * looks again at what is actually there now.
+   */
+  staleDecisions: ReconcileDecision[];
+  summary: ImportSummary;
+}
+
+// --- helpers ---------------------------------------------------------------
+
+/** Strip the legacy archive-folder prefix; leave anything else alone. */
+export function toArchiveRelative(path: string): string {
+  return path.startsWith(LEGACY_ARCHIVE_PREFIX) ? path.slice(LEGACY_ARCHIVE_PREFIX.length) : path;
+}
+
+function suppressionKey(s: SourceSuppression): string {
+  return `${s.kind} ${s.ref} ${s.itemId ?? ''}`;
 }
 
 /**
- * Consecutive runs of sessions a piece was practised in. Six sessions in a row
- * is six CLASSES worth of provenance — never six weeks, and never practice
- * this app recorded.
+ * WHERE DOES THIS ARCHIVE PATH POINT NOW? One reading, for everything that
+ * uses a stored path as an IDENTITY.
+ *
+ * `repairReferencePath` followed the whole logged chain while adoption took a
+ * single hop and a suppression took none at all, so one rename log gave three
+ * different answers about the same file. With A -> B -> C logged, B in session
+ * 1 and C in session 2, a legacy class was adopted as session 1 on the
+ * strength of B and then had that very reference repaired into session 2 —
+ * bound to one class, pointing at another's files. A hidden resource,
+ * meanwhile, stayed keyed to the old path and simply reappeared under the new
+ * one.
+ *
+ * A CYCLE YIELDS NO IDENTITY AT ALL, and saying so is the whole return type.
+ * A log that loops says nothing about where the file is, and picking a
+ * stopping point would invent one. This used to hand back
+ * `{ path, cycle: true }` — a perfectly usable-looking path beside a flag —
+ * and only ONE of the three callers read the flag: `hasSourcePathEvidence`
+ * refused it, while the suppression re-key and `retainMissing` walked straight
+ * past it. With A->B and B->A logged, an owner's hide of A was re-keyed onto
+ * B, so A reappeared and the wrong file went dark. `null` is what makes that
+ * unrepresentable: there is no path to drop the verdict and still use.
  */
-export function repeatChains(source: ArchiveSource, pieceKey: string): number[][] {
-  // A REPEAT is the student having been asked to play the piece again: its own
-  // practice recording, in consecutive sessions. Membership alone is the wrong
-  // input — an unnamed demonstration gives every piece in its session
-  // membership, so a chain read from membership would report a repeat nobody
-  // was asked for.
-  const ns = source.sessions
-    .filter((s) => s.members.some((m) => m.key === pieceKey && m.roles.includes(PERSONAL_ROLE)))
-    .sort((a, b) => a.n - b.n)
-    .map((s) => s.n);
-  const chains: number[][] = [];
-  for (const n of ns) {
-    const last = chains[chains.length - 1];
-    if (last && last[last.length - 1] === n - 1) last.push(n);
-    else chains.push([n]);
+export function followRenames(path: string, renames: Map<string, string>): string | null {
+  let current = path;
+  const seen = new Set<string>([current]);
+  while (renames.has(current)) {
+    const next = renames.get(current)!;
+    if (seen.has(next)) return null;
+    seen.add(next);
+    current = next;
   }
-  return chains.filter((c) => c.length > 1);
+  return current;
 }
 
-export interface ScopedResource extends SourceResource {
-  sessionN: number;
-  sessionDate: ISODate;
-}
-
-/**
- * Every archive resource that is USEFUL PRACTICE MATERIAL for one piece, in
- * session order. A class recording stays with its lesson, a resource the owner
- * hid on THIS item is dropped for this item only, and a suppressed session or
- * piece contributes nothing.
- */
-export function resourcesForPiece(source: ArchiveSource, pieceKey: string, itemId?: ID): ScopedResource[] {
-  if (suppressed(source, 'piece', pieceKey)) return [];
-  const out: ScopedResource[] = [];
-  for (const s of sessionsForPiece(source, pieceKey)) {
-    if (suppressed(source, 'session', String(s.n))) continue;
-    for (const r of s.resources) {
-      if (!r.pieces.includes(pieceKey)) continue;
-      if (suppressed(source, 'resource', r.path, itemId)) continue;
-      out.push({ ...r, sessionN: s.n, sessionDate: s.date });
-    }
-  }
-  return out;
-}
-
-/** Everything an archive session contributes to its own lesson, in role order. */
-export function resourcesForSession(source: ArchiveSource, sessionN: number): SourceResource[] {
-  const s = source.sessions.find((x) => x.n === sessionN);
-  if (!s || suppressed(source, 'session', String(sessionN))) return [];
-  return s.resources.filter((r) => !suppressed(source, 'resource', r.path));
-}
-
-/** Turn a graph resource into the app's ordinary NAS reference shape. */
-export function resourceReference(archiveId: string, r: SourceResource, date?: ISODate): LessonRecording {
+/** The registry facts an item is SEEDED from — identity, never working detail. */
+function persianFromPiece(piece: SourcePiece) {
   return {
-    id: sourceResourceId(archiveId, r.path),
-    title: r.title,
-    path: r.path,
-    kind: r.kind === 'video' ? 'video' : r.kind === 'score' ? 'pdf' : 'doc',
-    ...(date ? { date } : {}),
-    ...(r.size ? { sizeBytes: r.size } : {}),
-    createdAt: '1970-01-01T00:00:00.000Z',
+    // "گوشه" is the form that identifies a gusheh. Every other form is carried
+    // verbatim; none of them is turned into a category the registry never made.
+    ...(piece.form === 'گوشه' ? { gusheh: piece.piece || piece.key } : {}),
+    ...(piece.dastgah ? { dastgahAvaz: piece.dastgah } : {}),
+    ...(piece.form ? { form: piece.form } : {}),
+    ...(piece.composer ? { composer: piece.composer } : {}),
   };
-}
-
-// --- the graph's own grammar, in ONE place ---------------------------------
-
-/**
- * THE grammar of a source graph — every nested field, one definition.
- *
- * `decodeSourceIndex` and `validateArchiveSources` used to state this
- * separately, and the second stated LESS of it: it checked a resource's path
- * and its part group and then walked straight past `members[].roles`,
- * `piece.aliases`, a resource's `kind`, `title` and `pieces`, a session's
- * `folder` and `roster`, and the rename and diagnostic rows entirely. A
- * database carrying `members[0].roles: null` was therefore accepted and
- * PERSISTED by every inbound door, and the first production reader to touch it
- * — `repeatChains`, doing `m.roles.includes(...)` — threw while rendering
- * material. `planArchiveImport` had the same exposure through
- * `new Set([piece.key, ...piece.aliases])`, which throws on a non-iterable.
- *
- * Both callers run THIS function now, so the decoder and the persisted-graph
- * validator cannot drift apart again: a reader may dereference any field this
- * grammar admits, and nothing else can reach the database.
- *
- * `unavailable` stays legal on a piece, a session and a resource — a file gone
- * from the NAS with its provenance kept is a VALID state, not a broken graph.
- */
-function checkSourceGraph(
-  graph: { pieces: unknown; sessions: unknown; renames?: unknown; diagnostics?: unknown },
-  label: string,
-): string | null {
-  const text = (v: unknown) => typeof v === 'string';
-  const textList = (v: unknown) => Array.isArray(v) && v.every(text);
-  const flag = (v: unknown) => v === undefined || typeof v === 'boolean';
-
-  if (!Array.isArray(graph.pieces)) return `${label} has no piece registry.`;
-  if (!Array.isArray(graph.sessions)) return `${label} has no sessions.`;
-
-  const keys = new Set<string>();
-  for (const raw of graph.pieces) {
-    if (!isRecord(raw)) return `${label} has a registry entry that is not an object.`;
-    const p = raw as Partial<SourcePiece>;
-    if (typeof p.key !== 'string' || !p.key) return `${label} has a piece with no canonical key.`;
-    if (keys.has(p.key)) return `${label} has two pieces keyed "${p.key}".`;
-    keys.add(p.key);
-    for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
-      if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
-    }
-    // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
-    // that is not a list of text takes the whole refresh down with a TypeError.
-    if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
-    if (!Array.isArray(p.sessions) || p.sessions.some((n) => !Number.isInteger(n) || (n as number) < 1)) {
-      return `Piece "${p.key}" has an invalid session number.`;
-    }
-    if (!flag(p.provisional) || !flag(p.mediumConfidence) || !flag(p.unavailable)) {
-      return `Piece "${p.key}" has an unreadable flag.`;
-    }
-  }
-
-  const ns = new Set<number>();
-  const paths = new Set<string>();
-  for (const raw of graph.sessions) {
-    if (!isRecord(raw)) return `${label} has a session entry that is not an object.`;
-    const sess = raw as Partial<SourceSession>;
-    if (typeof sess.n !== 'number' || !Number.isInteger(sess.n) || sess.n < 1) {
-      return `${label} has a session with no number.`;
-    }
-    if (ns.has(sess.n)) return `${label} has two entries for session ${sess.n}.`;
-    ns.add(sess.n);
-    if (!isValidSourceDate(sess.date)) return `${label} session ${sess.n} has an unreadable date.`;
-    if (!isSafeSourcePath(sess.folder)) return `${label} session ${sess.n} has an unsafe folder path.`;
-    if (!textList(sess.roster)) return `${label} session ${sess.n} has an unreadable roster.`;
-    for (const k of sess.roster as string[]) {
-      if (!keys.has(k)) return `${label} session ${sess.n} lists piece "${k}", which it does not describe.`;
-    }
-    if (typeof sess.rosterTrusted !== 'boolean' || typeof sess.hasClassRecording !== 'boolean' || !flag(sess.unavailable)) {
-      return `${label} session ${sess.n} has an unreadable flag.`;
-    }
-
-    if (!Array.isArray(sess.resources)) return `${label} session ${sess.n} has no resource list.`;
-    for (const rawRes of sess.resources) {
-      if (!isRecord(rawRes)) return `${label} session ${sess.n} has a resource that is not an object.`;
-      const r = rawRes as Partial<SourceResource>;
-      if (!isSafeSourcePath(r.path)) return `${label} has an unsafe resource path.`;
-      if (paths.has(r.path)) return `${label} lists "${r.path}" twice.`;
-      paths.add(r.path);
-      if (typeof r.role !== 'string' || !ROLE_SET.has(r.role)) return `Resource "${r.path}" has an unknown role.`;
-      if (typeof r.kind !== 'string' || !KIND_SET.has(r.kind)) return `Resource "${r.path}" has an unknown kind.`;
-      if (!text(r.title)) return `Resource "${r.path}" has an unreadable title.`;
-      if (!(r.part === null || r.part === undefined || typeof r.part === 'number')) {
-        return `Resource "${r.path}" has an unreadable part number.`;
-      }
-      if (!(r.size === undefined || typeof r.size === 'number')) return `Resource "${r.path}" has an unreadable size.`;
-      if (!textList(r.pieces)) return `Resource "${r.path}" has an unreadable piece list.`;
-      for (const k of r.pieces as string[]) {
-        if (!keys.has(k)) return `Resource "${r.path}" names piece "${k}", which this source does not describe.`;
-      }
-      // A demonstration's parts form ONE group; anything but a plain label
-      // here would let a part claim membership of an arbitrary structure.
-      if (!(r.group === null || r.group === undefined || typeof r.group === 'string')) {
-        return `Resource "${r.path}" has an invalid part group.`;
-      }
-      if (!flag(r.unavailable)) return `Resource "${r.path}" has an unreadable flag.`;
-    }
-
-    if (!Array.isArray(sess.members)) return `${label} session ${sess.n} has no membership list.`;
-    for (const rawMember of sess.members) {
-      if (!isRecord(rawMember)) return `${label} session ${sess.n} has a membership that is not an object.`;
-      const m = rawMember as Partial<SourceMember>;
-      if (typeof m.key !== 'string' || !keys.has(m.key)) {
-        return `${label} session ${sess.n} claims an unknown piece.`;
-      }
-      // `repeatChains` reads `roles.includes(...)` on every one of these.
-      if (!textList(m.roles)) return `${label} session ${sess.n} gives piece "${m.key}" an unreadable role list.`;
-      for (const role of m.roles as string[]) {
-        if (!ROLE_SET.has(role)) return `${label} session ${sess.n} gives piece "${m.key}" an unknown role.`;
-      }
-    }
-
-    // --- SEMANTIC RELATIONS, not merely field types ------------------------
-    //
-    // A field-type grammar says every value is READABLE; it says nothing about
-    // whether the graph agrees with itself. A resource physically sitting in
-    // class 2's folder, listed under class 1, is type-perfect and attributes
-    // someone else's file to the wrong lesson on every screen that reads it —
-    // and an arbitrary `group` on a non-demonstration invents a logical
-    // resource out of unrelated files.
-    //
-    // Scoped to what the source still DESCRIBES. `unavailable` is retained
-    // provenance about what it has STOPPED describing — a piece dropped from
-    // the registry, a file deleted from the NAS — so holding those rows to the
-    // current source's internal agreement is a category error, and would make
-    // every refresh after a removal refuse at every door.
-    if (!sess.unavailable) {
-      const live = (sess.resources as SourceResource[]).filter((r) => !r.unavailable);
-      const rolesFor = new Map<string, Set<string>>();
-      for (const m of sess.members as SourceMember[]) rolesFor.set(m.key, new Set(m.roles));
-      const groups = new Map<string, SourceResource[]>();
-      let classRecordings = 0;
-      for (const r of live) {
-        const segs = r.path.split('/');
-        if (segs.length !== 2 || segs[0] !== sess.folder) {
-          return `${label} session ${sess.n} lists "${r.path}", which is not a file in its own folder.`;
-        }
-        if (r.role === CLASS_ROLE) {
-          classRecordings += 1;
-          if (r.pieces.length > 0) return `Resource "${r.path}" is a class recording and cannot name a piece.`;
-        }
-        for (const k of r.pieces) {
-          if (!rolesFor.get(k)?.has(r.role)) {
-            return `${label} session ${sess.n} gives "${r.path}" to piece "${k}" without recording that membership.`;
-          }
-        }
-        if (r.group !== null && r.group !== undefined) {
-          if (r.role !== DEMO_ROLE) return `Resource "${r.path}" carries a part group but is not a demonstration.`;
-          groups.set(r.group, [...(groups.get(r.group) ?? []), r]);
-        }
-      }
-      if (classRecordings > 0 !== sess.hasClassRecording) {
-        return `${label} session ${sess.n} disagrees with itself about having a class recording.`;
-      }
-      // Parts of ONE demonstration: the same material, told in order. Parts
-      // that are material for different pieces are not one resource, and two
-      // parts with one number have no order to be read in.
-      for (const [g, parts] of groups) {
-        const pieces = [...parts[0]!.pieces].sort().join(NUL);
-        const numbers = new Set<number | null>();
-        for (const r of parts) {
-          if ([...r.pieces].sort().join(NUL) !== pieces) {
-            return `${label} session ${sess.n} has a part group "${g}" whose parts belong to different pieces.`;
-          }
-          const part = r.part ?? null;
-          if (numbers.has(part)) return `${label} session ${sess.n} has two parts numbered alike in "${g}".`;
-          numbers.add(part);
-        }
-      }
-    }
-  }
-
-  if (graph.renames !== undefined) {
-    if (!Array.isArray(graph.renames)) return `${label} has an unreadable rename log.`;
-    const froms = new Set<string>();
-    for (const rawRename of graph.renames) {
-      if (!isRecord(rawRename)) return `${label} has a rename entry that is not an object.`;
-      const r = rawRename as Partial<SourceRename>;
-      if (!isSafeSourcePath(r.from) || !isSafeSourcePath(r.to)) return `${label} has a rename with an unsafe path.`;
-      if (froms.has(r.from)) return `${label} maps "${r.from}" to more than one destination.`;
-      froms.add(r.from);
-    }
-  }
-
-  if (graph.diagnostics !== undefined) {
-    if (!Array.isArray(graph.diagnostics)) return `${label} has an unreadable diagnostic list.`;
-    for (const rawDiag of graph.diagnostics) {
-      if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
-      const d = rawDiag as Partial<SourceDiagnostic>;
-      if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
-    }
-  }
-
-  return null;
-}
-
-// --- inbound validation (C7) -----------------------------------------------
-
-/**
- * The v14 graph, checked at EVERY inbound door through `validateDB`. Invalid
- * structure is REFUSED with the record named, never coerced or dropped: a
- * binding that points at nothing is a claim about which file is which piece,
- * and silently discarding it loses the owner's own reconciliation decisions.
- *
- * A source entity marked `unavailable` is a VALID state (the file is gone from
- * the NAS, its provenance is kept) — not a dangling reference.
- */
-export function validateArchiveSources(db: PracticeDB): string | null {
-  const sources = db.archiveSources ?? [];
-  const ids = new Set<string>();
-  const instrumentIds = new Set(db.instruments.map((i) => i.id));
-  const byId = new Map<string, ArchiveSource>();
-
-  for (const s of sources) {
-    if (typeof s?.id !== 'string' || !s.id.trim()) return 'An archive source has no id.';
-    if (ids.has(s.id)) return `Two archive sources share the id "${s.id}".`;
-    ids.add(s.id);
-    byId.set(s.id, s);
-    if (typeof s.instrumentId !== 'string' || !instrumentIds.has(s.instrumentId)) {
-      return `Archive source "${s.id}" is bound to an instrument that does not exist.`;
-    }
-    if (typeof s.indexHash !== 'string') return `Archive source "${s.id}" has no index hash.`;
-    // THE RECORD'S OWN FIELDS, not merely its nested graph. `acceptedAt` is
-    // read back by Settings (`acceptedAt.slice(0, 16)`) to say when the index
-    // last changed, so a non-string here crashes the screen that renders it —
-    // and the fix belongs at this door, never as a guard in the component.
-    // Checked for REAL validity for the same reason `askedAt` is: a shape
-    // regex matches "2026-02-30T12:00:00.000Z" and `Date.parse` silently
-    // normalises it into March. Deliberately a local check beside
-    // `isValidSourceDate` rather than an import — this file's own pattern.
-    if (!isValidSourceDateTime(s.acceptedAt)) return `Archive source "${s.id}" has an unreadable accepted time.`;
-    if (!Array.isArray(s.pieces) || !Array.isArray(s.sessions)) return `Archive source "${s.id}" is missing its graph.`;
-    // Required AT REST, where `checkSourceGraph` tolerates them absent: the
-    // decoder always emits both, and `planArchiveImport` reads
-    // `index.renames`/`source.renames` unguarded.
-    if (!Array.isArray(s.renames)) return `Archive source "${s.id}" has no rename log.`;
-    if (!Array.isArray(s.diagnostics)) return `Archive source "${s.id}" has no diagnostic list.`;
-    if (!Array.isArray(s.suppressions)) return `Archive source "${s.id}" has no suppression list.`;
-
-    // THE WHOLE NESTED GRAPH, through the one grammar the decoder also uses.
-    const bad = checkSourceGraph(s, `Archive source "${s.id}"`);
-    if (bad) return bad;
-
-    for (const sup of s.suppressions) {
-      if (!['piece', 'session', 'resource', 'link'].includes(sup?.kind)) {
-        return `Archive source "${s.id}" has a suppression of an unknown kind.`;
-      }
-      if (typeof sup.ref !== 'string' || !sup.ref) return `Archive source "${s.id}" has a suppression with no target.`;
-      // An owner decision carries the id it was scoped to and the moment it
-      // was taken; both are read back — a resource hidden on ONE item is
-      // decided by comparing `itemId`, so a non-string silently widens it.
-      if (!(sup.itemId === undefined || (typeof sup.itemId === 'string' && sup.itemId !== ''))) {
-        return `Archive source "${s.id}" has a suppression with an unreadable item.`;
-      }
-      // `at` is provenance only — nothing reads it back as a date — so it is
-      // held to being real text and no further.
-      if (typeof sup.at !== 'string' || !sup.at) return `Archive source "${s.id}" has a suppression with no timestamp.`;
-    }
-  }
-
-  // Bindings: exactly one live record per source identity, resolving to a real
-  // entity of the right instrument.
-  const itemBindings = new Set<string>();
-  for (const item of db.items) {
-    const ref = item.source;
-    if (!ref) continue;
-    if (typeof ref.archiveId !== 'string' || typeof ref.pieceKey !== 'string') {
-      return `Item "${item.title}" has an unreadable archive binding.`;
-    }
-    const source = byId.get(ref.archiveId);
-    if (!source) return `Item "${item.title}" is bound to archive "${ref.archiveId}", which is not present.`;
-    if (!source.pieces.some((p) => p.key === ref.pieceKey)) {
-      return `Item "${item.title}" is bound to piece "${ref.pieceKey}", which archive "${ref.archiveId}" does not describe.`;
-    }
-    if (item.instrumentId !== source.instrumentId) {
-      return `Item "${item.title}" is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
-    }
-    const k = `${ref.archiveId}${NUL}${ref.pieceKey}`;
-    if (itemBindings.has(k)) return `Two items are bound to piece "${ref.pieceKey}".`;
-    itemBindings.add(k);
-  }
-
-  const lessonBindings = new Set<string>();
-  for (const lesson of db.lessons) {
-    const ref = lesson.source;
-    if (!ref) continue;
-    if (typeof ref.archiveId !== 'string' || typeof ref.sessionN !== 'number') {
-      return 'A lesson has an unreadable archive binding.';
-    }
-    const source = byId.get(ref.archiveId);
-    if (!source) return `A lesson is bound to archive "${ref.archiveId}", which is not present.`;
-    if (!source.sessions.some((s) => s.n === ref.sessionN)) {
-      return `A lesson is bound to session ${ref.sessionN}, which archive "${ref.archiveId}" does not describe.`;
-    }
-    if (lesson.instrumentId !== source.instrumentId) {
-      return `A lesson is bound to archive "${ref.archiveId}" but belongs to another instrument.`;
-    }
-    const k = `${ref.archiveId}${NUL}${ref.sessionN}`;
-    if (lessonBindings.has(k)) return `Two lessons are bound to session ${ref.sessionN}.`;
-    lessonBindings.add(k);
-  }
-
-  // Manual item references: the same path rules as every other NAS reference.
-  for (const item of db.items) {
-    for (const r of item.references ?? []) {
-      if (typeof r?.path !== 'string' || !r.path.trim()) return `Item "${item.title}" has a reference with no path.`;
-      if (!/^https?:\/\//i.test(r.path) && !isSafeSourcePath(r.path)) {
-        return `Item "${item.title}" has an unsafe reference path.`;
-      }
-    }
-  }
-  return null;
 }
 
 /**
- * The canonical pieces an archive session is associated with, honouring an
- * owner's explicit unlink of ONE piece from ONE class.
+ * A NEW library item for a canonical piece.
  *
- * Derived from the graph, never stored on the lesson: a session's membership
- * is a source fact, and copying it into `lesson.itemIds` would make one fact
- * two that can disagree.
+ * `status: 'dormant'` ("Resting") is an explicit ADMINISTRATIVE import policy,
+ * not a judgement about the music: ninety-four pieces arriving as live
+ * candidates would flood every recommendation and every session plan on the
+ * day of the import. A resting item is still searchable, still in My
+ * repertoire, and still directly startable — the owner decides what comes back.
+ *
+ * Nothing about practice is seeded: no last practice, no result, no review
+ * date, no SM-2 state. `createItem` already leaves every one of those empty;
+ * this function adds no field it does not.
  */
-export function membersForSession(source: ArchiveSource, sessionN: number): SourceMember[] {
-  const s = source.sessions.find((x) => x.n === sessionN);
-  if (!s || suppressed(source, 'session', String(sessionN))) return [];
-  return s.members.filter((m) => !suppressed(source, 'link', `${sessionN}:${m.key}`));
+function itemForPiece(archiveId: string, instrumentId: ID, piece: SourcePiece, now: Date): PracticeItem {
+  const item = createItem(
+    {
+      instrumentId,
+      // The canonical key IS the piece's name in this archive, byte for byte.
+      title: piece.key,
+      itemType: piece.form === 'گوشه' ? 'gusheh' : 'full_piece',
+      status: 'dormant',
+      persian: persianFromPiece(piece),
+    },
+    now,
+  );
+  return { ...item, id: sourceItemId(archiveId, piece.key), source: { archiveId, pieceKey: piece.key } };
 }
-```
 
-### src/store/archiveIndex.test.ts
-
-```
-import { describe, expect, it, vi } from 'vitest';
-// @ts-expect-error — no types for the .mjs operator tool; the decision is pure.
-import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../../scripts/publish-setar-index.mjs';
-// @ts-expect-error — the SCANNER's own digest definition, so the app is checked
-// against the real producer rather than a restatement of it in the test.
-import { contentHash as indexDigest } from '../../scripts/scan-setar-classes.mjs';
-import { fetchPublishedIndex, readIndexFile } from './archiveIndex';
-import indexFixture from '../../tests/fixtures/setar-archive.json' with { type: 'json' };
-import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
-import { decodeSourceIndex, INSECURE_CONTEXT_REFUSAL } from '../domain/sourceArchive';
-import { validateDB } from '../domain/io';
-import { createItem } from '../domain/factories';
-import type { PracticeDB } from '../domain/types';
-
-// ---------------------------------------------------------------------------
-// The persist storage, CONTROLLABLE per assertion — the same stub io.test.ts
-// uses, plus a settle promise this test can reject on demand. A failed
-// IndexedDB write is the one thing `commitArchiveImport` must never mistake
-// for a success, and it cannot be provoked in a real browser on purpose.
-// ---------------------------------------------------------------------------
-const fakeStorage = vi.hoisted(() => {
-  let value: string | null = null;
-  let failNextWrite = false;
+/** A historical lesson for one archive session. */
+function lessonForSession(
+  archiveId: string,
+  instrumentId: ID,
+  session: { n: number; date: ISODate },
+  now: Date,
+): Lesson {
+  const lesson = createLesson({ instrumentId, date: session.date, number: session.n }, now);
   return {
-    get: () => value,
-    set: (v: string | null) => {
-      value = v;
-    },
-    failNext: () => {
-      failNextWrite = true;
-    },
-    takeFailure: () => {
-      const f = failNextWrite;
-      failNextWrite = false;
-      return f;
-    },
+    ...lesson,
+    id: sourceLessonId(archiveId, session.n),
+    source: { archiveId, sessionN: session.n },
+    // HISTORY, whatever the clock says. See `isUpcomingLesson`.
+    origin: 'archive',
   };
-});
-vi.mock('./idb', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./idb')>();
-  let settle: Promise<void> = Promise.resolve();
-  return {
-    ...actual,
-    // Dexie itself has no IndexedDB to talk to in this environment, and
-    // `clearAll` reaches for the blob store. Stubbed so a deliberate erasure
-    // does not raise an unhandled rejection that would mask a real one.
-    clearBlobs: async () => undefined,
-    deleteBlob: async () => undefined,
-    allBlobs: async () => [],
-    heldBlobIds: async () => new Set<string>(),
-    storageSettled: () => settle,
-    idbStorage: {
-      getItem: async () => fakeStorage.get(),
-      setItem: async (_name: string, value: string) => {
-        if (fakeStorage.takeFailure()) {
-          settle = Promise.reject(new Error('the device refused the write'));
-          // Mark it handled here so the rejection reaches only the one caller
-          // that is waiting on it, exactly as the real adapter does.
-          void settle.catch(() => undefined);
-          return;
+}
+
+/**
+ * Read a stored reference path as an ARCHIVE-RELATIVE one.
+ *
+ * A full URL sitting under THIS DEVICE's own verified base names the same file
+ * as the relative path beneath it — written differently, nothing more. Adoption
+ * evidence and path repair therefore have to read a stored path the SAME way,
+ * or one of them adopts a class the other cannot fix: a lesson whose references
+ * were saved as full links would carry perfectly good evidence that nothing
+ * recognised.
+ *
+ * Anything it cannot read as archive-relative — a foreign origin, a link with a
+ * query or fragment, a URL with no verified base to measure it against, an
+ * unsafe path — comes back as the repair outcome that case deserves, so the two
+ * callers cannot disagree about those either.
+ */
+type RelativeRead = { ok: true; relative: string; wasUrl: boolean } | { ok: false; outcome: ReferenceRepair };
+
+function readArchiveRelative(raw: string, verifiedBase?: string): RelativeRead {
+  if (!raw) return { ok: false, outcome: { status: 'attention', reason: 'This reference has no path.', code: 'no-path' } };
+
+  let relative = raw;
+  let wasUrl = false;
+  if (/^https?:\/\//i.test(raw)) {
+    wasUrl = true;
+    if (!verifiedBase) {
+      return {
+        ok: false,
+        outcome: {
+          status: 'attention',
+          reason: 'A full link cannot be converted without a verified media base.',
+          code: 'no-base',
+        },
+      };
+    }
+    let url: URL;
+    let base: URL;
+    try {
+      url = new URL(raw);
+      base = new URL(verifiedBase);
+    } catch {
+      return { ok: false, outcome: { status: 'attention', reason: 'That link could not be read as a URL.', code: 'bad-url' } };
+    }
+    if (url.search || url.hash) return { ok: false, outcome: { status: 'unchanged' } };
+    const prefix = base.toString().replace(/\/+$/, '') + '/';
+    if (!url.toString().startsWith(prefix)) return { ok: false, outcome: { status: 'unchanged' } };
+    // Decoded per SEGMENT because `resolveRecording` re-encodes on the way out;
+    // a Farsi filename copied percent-encoded would otherwise double-escape.
+    relative = url
+      .toString()
+      .slice(prefix.length)
+      .split('/')
+      .map((seg) => {
+        try {
+          return decodeURIComponent(seg);
+        } catch {
+          return seg;
         }
-        fakeStorage.set(value);
-        settle = Promise.resolve();
-      },
-      removeItem: async () => fakeStorage.set(null),
-    },
-  };
-});
-// Imported AFTER the mock declaration on purpose: the store's persist
-// middleware binds its storage at module load.
-const { useStore } = await import('./useStore');
+      })
+      .join('/');
+  }
 
-// ---------------------------------------------------------------------------
-// A fake git repository, small enough to assert against exactly. It records
-// EVERY write, so "this publisher cannot touch practice data" is a checked
-// property of the calls made, not a claim about intent.
-// ---------------------------------------------------------------------------
-
-interface FakeRepo {
-  refs: Map<string, string>;
-  commits: Map<string, { treeSha: string; parents: string[] }>;
-  trees: Map<string, Record<string, string>>;
-  blobs: Map<string, string>;
-  writes: { kind: string; target: string }[];
-  n: number;
+  const stripped = toArchiveRelative(relative);
+  if (!isSafeSourcePath(stripped)) {
+    return { ok: false, outcome: { status: 'attention', reason: 'That path is not a safe archive path.', code: 'unsafe' } };
+  }
+  return { ok: true, relative: stripped, wasUrl };
 }
 
-function newRepo(): FakeRepo {
-  const repo: FakeRepo = {
-    refs: new Map(),
-    commits: new Map(),
-    trees: new Map(),
-    blobs: new Map(),
-    writes: [],
-    n: 0,
-  };
-  // The app's own data branch, exactly as the sync engine leaves it. Nothing in
-  // this test may change any of these three.
-  const tree = { 'state.json': 'blob-state', 'manifest.json': 'blob-manifest', 'files/a.pdf': 'blob-file' };
-  repo.trees.set('tree-main', tree);
-  repo.commits.set('commit-main', { treeSha: 'tree-main', parents: [] });
-  repo.refs.set('main', 'commit-main');
-  repo.refs.set('archive/2026-09-01', 'commit-main');
-  return repo;
+/**
+ * Does this lesson carry EXACT source-path evidence that it is this session?
+ *
+ * A reference whose stored path — once the legacy archive prefix is off, and
+ * once the rename log has been followed — sits inside that session's folder is
+ * proof the owner's own record already points at these very files. Date and
+ * number agreeing is not: two classes can share a number across years, and the
+ * owner's upcoming class 38 and archive session 38 are a real, live example of
+ * exactly that collision.
+ */
+function hasSourcePathEvidence(
+  lesson: Lesson,
+  folder: string,
+  renames: Map<string, string>,
+  verifiedBase?: string,
+): boolean {
+  return (lesson.recordings ?? []).some((r) => {
+    const read = readArchiveRelative(r.path.trim(), verifiedBase);
+    if (!read.ok) return false;
+    const moved = followRenames(read.relative, renames);
+    if (moved === null) return false; // no reading, therefore no evidence
+    return moved.startsWith(`${folder}/`);
+  });
 }
 
-function transportFor(repo: FakeRepo, opts: { failAfterCommit?: boolean; raceOnce?: () => void } = {}) {
-  const id = (p: string) => `${p}-${(repo.n += 1)}`;
-  return {
-    async getRef(branch: string) {
-      const sha = repo.refs.get(branch);
-      return sha ? { sha } : null;
-    },
-    async getCommit(sha: string) {
-      return { treeSha: repo.commits.get(sha)!.treeSha };
-    },
-    async getFile(sha: string, path: string) {
-      const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
-      const blob = tree[path];
-      return blob ? { text: repo.blobs.get(blob)! } : null;
-    },
-    async createBlob(text: string) {
-      const sha = id('blob');
-      repo.blobs.set(sha, text);
-      repo.writes.push({ kind: 'blob', target: sha });
-      return sha;
-    },
-    async createTree({ baseTreeSha, path, blobSha }: { baseTreeSha: string | null; path: string; blobSha: string }) {
-      const sha = id('tree');
-      repo.trees.set(sha, { ...(baseTreeSha ? repo.trees.get(baseTreeSha) : {}), [path]: blobSha });
-      repo.writes.push({ kind: 'tree', target: path });
-      return sha;
-    },
-    async createCommit({ treeSha, parents }: { treeSha: string; parents: string[] }) {
-      const sha = id('commit');
-      repo.commits.set(sha, { treeSha, parents });
-      repo.writes.push({ kind: 'commit', target: treeSha });
-      return sha;
-    },
-    async updateRef(branch: string, sha: string, expectedSha: string) {
-      opts.raceOnce?.();
-      if (opts.failAfterCommit) throw new Error('network dropped');
-      // NON-FORCE: the ref only advances from the commit that was read.
-      if (repo.refs.get(branch) !== expectedSha) return 'HTTP 422';
-      repo.refs.set(branch, sha);
-      repo.writes.push({ kind: 'ref', target: branch });
-      return 'ok';
-    },
-    async createRef(branch: string, sha: string) {
-      if (opts.failAfterCommit) throw new Error('network dropped');
-      if (repo.refs.has(branch)) return 'HTTP 422';
-      repo.refs.set(branch, sha);
-      repo.writes.push({ kind: 'ref', target: branch });
-      return 'ok';
-    },
+/**
+ * Keep what the source has STOPPED describing, flagged unavailable.
+ *
+ * A piece removed from the registry, a session folder that is gone, a file that
+ * was deleted — the app has an item bound to it, a lesson bound to it and
+ * material listed from it. Replacing the graph with the incoming index alone
+ * would leave those bindings pointing at nothing, which `validateDB` refuses at
+ * every door: the next Refresh, and every one after it, would fail outright.
+ *
+ * So provenance is RETAINED and labelled instead. The owner sees that the file
+ * is no longer in the archive and decides what to do; nothing of theirs is
+ * deleted to make the two agree. A row that comes back is simply the incoming
+ * row again, with no flag — the source is authoritative about what it HAS.
+ */
+function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex, renames: Map<string, string>) {
+  if (!previous) return { pieces: index.pieces, sessions: index.sessions };
+
+  const incomingKeys = new Set(index.pieces.map((p) => p.key));
+  const pieces = [
+    ...index.pieces,
+    ...previous.pieces.filter((p) => !incomingKeys.has(p.key)).map((p) => ({ ...p, unavailable: true as const })),
+  ];
+
+  const incomingSessions = new Map(index.sessions.map((s) => [s.n, s]));
+  // Every path the incoming graph describes, ACROSS sessions: a rename can
+  // move a file into a different session (the log's own A -> B -> C shape), and
+  // asking only "is it still in THIS session" would flag such a file as gone
+  // while the very same bytes sit in the graph under their new name.
+  const anywhere = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
+  // A cycle is NOT a move: with no readable destination there is nothing to
+  // say the bytes are elsewhere in the graph, so the row keeps its provenance
+  // and its `unavailable` flag rather than being silently dropped.
+  const movedNotGone = (path: string) => {
+    const to = followRenames(path, renames);
+    return to !== null && anywhere.has(to);
   };
-}
-
-const publishedText = (repo: FakeRepo) => {
-  const sha = repo.refs.get(SOURCE_INDEX_BRANCH);
-  if (!sha) return null;
-  const tree = repo.trees.get(repo.commits.get(sha)!.treeSha)!;
-  return repo.blobs.get(tree[INDEX_PATH]) ?? null;
-};
-
-// A credential-shaped placeholder — never a real token, and never a
-// contiguous 16+ char [A-Za-z0-9_-] run (the space keeps it that way) — used
-// only to prove no credential text reaches anything the publisher's output
-// touches.
-const NEVER_LEAKED_CREDENTIAL = 'publisher credential placeholder';
-const ROOT = '/volume1/media/setar-classes';
-
-describe('publishing and reading the source index', () => {
-  it('source index publication cannot replace practice data or lose a concurrent update', async () => {
-    const repo = newRepo();
-    const first = `${JSON.stringify(indexFixture, null, 1)}\n`;
-
-    // --- first publish: creates the branch, main untouched -----------------
-    const created = await publishIndex({ transport: transportFor(repo), indexText: first });
-    expect(created.status).toBe('created');
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(created.commit);
-    expect(publishedText(repo)).toBe(first);
-    expect(repo.refs.get('main')).toBe('commit-main');
-    expect(repo.refs.get('archive/2026-09-01')).toBe('commit-main');
-    expect(repo.trees.get('tree-main')).toEqual({
-      'state.json': 'blob-state',
-      'manifest.json': 'blob-manifest',
-      'files/a.pdf': 'blob-file',
+  const sessions = index.sessions.map((s) => {
+    const before = previous.sessions.find((x) => x.n === s.n);
+    if (!before) return s;
+    const paths = new Set(s.resources.map((r) => r.path));
+    // A RENAMED FILE MOVED; IT DID NOT GO MISSING. Its old row is dropped
+    // rather than retained-and-flagged, because the log says exactly where the
+    // bytes went and the incoming row describes them. Safe to drop: only
+    // pieces and sessions carry item/lesson bindings, so no binding can dangle
+    // on a resource row, and a manual unclassified lesson's own reference
+    // reaches material through the LESSON, never through this graph.
+    const gone = before.resources
+      .filter((r) => !paths.has(r.path) && !movedNotGone(r.path))
+      .map((r) => ({ ...r, unavailable: true as const }));
+    return gone.length > 0 ? { ...s, resources: [...s.resources, ...gone] } : s;
+  });
+  for (const before of previous.sessions) {
+    if (incomingSessions.has(before.n)) continue;
+    sessions.push({
+      ...before,
+      unavailable: true,
+      // …and a file this vanished session's folder was renamed OUT of is in the
+      // graph already, under its new session. Keeping it here too would list
+      // one file twice, once falsely as missing.
+      resources: before.resources
+        .filter((r) => !movedNotGone(r.path))
+        .map((r) => ({ ...r, unavailable: true as const })),
     });
-    // Every ref this publisher advanced, and every path it wrote.
-    expect(repo.writes.filter((w) => w.kind === 'ref').map((w) => w.target)).toEqual([SOURCE_INDEX_BRANCH]);
-    expect(repo.writes.filter((w) => w.kind === 'tree').map((w) => w.target)).toEqual([INDEX_PATH]);
-    expect(repo.writes.some((w) => /state\.json|manifest\.json|^files\//.test(w.target))).toBe(false);
+  }
+  sessions.sort((a, b) => a.n - b.n);
+  return { pieces, sessions };
+}
 
-    // --- an identical scan makes NO commit ---------------------------------
-    const before = repo.refs.get(SOURCE_INDEX_BRANCH);
-    const writesBefore = repo.writes.length;
-    const again = await publishIndex({ transport: transportFor(repo), indexText: first });
-    expect(again.status).toBe('unchanged');
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(before);
-    expect(repo.writes).toHaveLength(writesBefore);
+// --- planning --------------------------------------------------------------
 
-    // --- a changed scan advances the branch, and only it --------------------
-    const changed = `${JSON.stringify({ ...indexFixture, diagnostics: [{ path: 'x', reason: 'y' }] }, null, 1)}\n`;
-    const second = await publishIndex({ transport: transportFor(repo), indexText: changed });
-    expect(second.status).toBe('published');
-    expect(publishedText(repo)).toBe(changed);
-    expect(repo.commits.get(second.commit)!.parents).toEqual([before]);
-    expect(repo.refs.get('main')).toBe('commit-main');
+export interface PlanInput {
+  db: PracticeDB;
+  index: SourceIndex;
+  instrumentId: ID;
+  decisions?: ReconcileDecision[];
+  /**
+   * This DEVICE's confirmed media base, when it has one. Only a full URL
+   * sitting under it may be rewritten to an archive-relative path; without it
+   * a stored `https://…` link is left exactly as the owner saved it.
+   */
+  verifiedBase?: string;
+  now: Date;
+}
 
-    // --- interrupted BEFORE the ref advances: the old index still stands ----
-    const head = repo.refs.get(SOURCE_INDEX_BRANCH);
-    const interrupted = `${JSON.stringify({ ...indexFixture, archiveId: 'half-written' }, null, 1)}\n`;
-    await expect(
-      publishIndex({ transport: transportFor(repo, { failAfterCommit: true }), indexText: interrupted }),
-    ).rejects.toThrow(/network dropped/);
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe(head);
-    expect(publishedText(repo)).toBe(changed);
+/**
+ * Decide what an import would do, without doing any of it.
+ *
+ * EXACT SOURCE BINDING WINS. A record already bound to a source identity IS
+ * that entity, whatever its title or date has since been edited to. Only an
+ * UNBOUND record is a candidate for anything, and only exact evidence adopts
+ * one: everything weaker becomes a question with the candidates named.
+ */
+export function planArchiveImport({ db, index, instrumentId, decisions = [], verifiedBase, now }: PlanInput): ImportPlan {
+  const archiveId = index.archiveId;
+  const existing = db.archiveSources?.find((s) => s.id === archiveId);
+  const suppressions = existing?.suppressions ?? [];
+  const isSuppressed = (kind: SourceSuppression['kind'], ref: string) =>
+    suppressions.some((s) => s.kind === kind && s.ref === ref && s.itemId === undefined);
 
-    // --- racing a second publisher: nothing is overwritten ------------------
-    // The other publisher lands its own commit between this one's read and its
-    // update. Non-force, so this update is refused; the retry re-reads and,
-    // because the other publisher wrote exactly what this one has, it settles
-    // on "unchanged" rather than clobbering.
-    const rival = `${JSON.stringify({ ...indexFixture, archiveId: 'setar-classes' }, null, 1)}\n`;
-    let raced = false;
-    const race = () => {
-      if (raced) return;
-      raced = true;
-      const blob = 'blob-rival';
-      repo.blobs.set(blob, rival);
-      repo.trees.set('tree-rival', { [INDEX_PATH]: blob });
-      repo.commits.set('commit-rival', { treeSha: 'tree-rival', parents: [repo.refs.get(SOURCE_INDEX_BRANCH)!] });
-      repo.refs.set(SOURCE_INDEX_BRANCH, 'commit-rival');
-    };
-    const afterRace = await publishIndex({ transport: transportFor(repo, { raceOnce: race }), indexText: rival });
-    expect(afterRace.status).toBe('unchanged');
-    expect(publishedText(repo)).toBe(rival);
-    expect(repo.refs.get(SOURCE_INDEX_BRANCH)).toBe('commit-rival');
-    // A racing publisher with DIFFERENT content gives up rather than force it.
-    let always = true;
-    const alwaysRace = () => {
-      if (!always) return;
-      repo.commits.set(`commit-rival-${(repo.n += 1)}`, { treeSha: 'tree-rival', parents: [] });
-      repo.refs.set(SOURCE_INDEX_BRANCH, `commit-rival-${repo.n}`);
-    };
-    await expect(
-      publishIndex({ transport: transportFor(repo, { raceOnce: alwaysRace }), indexText: changed }),
-    ).rejects.toThrow(/nothing was overwritten/);
-    always = false;
+  // EVERY DECISION IS ACCOUNTED FOR: applied, already realised, or STALE.
+  //
+  // The loops below start with `if (already bound) continue` / `if (already
+  // suppressed) continue`, which meant a decision about a record that had been
+  // bound between the preview and the commit was never looked at at all — no
+  // adoption, no question, and an EMPTY `staleDecisions`, so the commit
+  // reported success for an action it had not performed. Marking what is used
+  // and sweeping the rest closes that for every kind at once, rather than
+  // adding a stale check inside each early return.
+  const consumed = new Set<ReconcileDecision>();
+  const decisionFor = <T extends ReconcileDecision['kind']>(kind: T, match: (d: ReconcileDecision) => boolean) =>
+    decisions.find((d) => d.kind === kind && match(d));
+  const acted = <T,>(d: T): T => {
+    if (d) consumed.add(d as unknown as ReconcileDecision);
+    return d;
+  };
 
-    // --- the target is fixed in CODE, not by trusting the caller ------------
-    for (const branch of ['main', 'master', 'archive/2026-09-01', 'source-index-2']) {
-      await expect(publishIndex({ transport: transportFor(repo), indexText: first, branch })).rejects.toThrow(
-        /only writes/,
-      );
+  // A SKIP IS A DECISION, AND A DECISION IS PERSISTED.
+  //
+  // It used to live only in this call's `decisions` argument, so the owner's
+  // "no, not this one" survived exactly as long as the preview screen did: the
+  // next refresh — or simply a reload — asked the identical question again,
+  // with nothing in the database to show it had ever been answered. It becomes
+  // a suppression, the same record every other deliberate removal writes, which
+  // a refresh, a reload and a sync all already respect.
+  const addedSuppressions: SourceSuppression[] = [];
+  const knownSuppressions = new Set(suppressions.map(suppressionKey));
+  const suppress = (kind: SourceSuppression['kind'], ref: string) => {
+    const entry: SourceSuppression = { kind, ref, at: nowISO(now) };
+    if (knownSuppressions.has(suppressionKey(entry))) return;
+    knownSuppressions.add(suppressionKey(entry));
+    addedSuppressions.push(entry);
+  };
+
+  const renames = new Map(index.renames.map((r) => [r.from, r.to]));
+  const staleDecisions: ReconcileDecision[] = [];
+
+  // --- lessons ------------------------------------------------------------
+  const boundLessons = new Map<number, Lesson>();
+  for (const l of db.lessons) {
+    if (l.source?.archiveId === archiveId) boundLessons.set(l.source.sessionN, l);
+  }
+
+  const newLessons: Lesson[] = [];
+  const adoptedLessons: Lesson[] = [];
+  const questions: ReconcileQuestion[] = [];
+
+  for (const session of index.sessions) {
+    if (boundLessons.has(session.n)) continue;
+    if (isSuppressed('session', String(session.n))) continue;
+
+    const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
+    if (skip) {
+      acted(skip);
+      suppress('session', String(session.n));
+      continue;
     }
-    for (const path of ['state.json', 'manifest.json', 'files/a.pdf', 'setar/other.json']) {
-      await expect(publishIndex({ transport: transportFor(repo), indexText: first, path })).rejects.toThrow(
-        /only writes "setar\/index\.json"/,
-      );
+
+    // "Create separately" ends the question: the owner has said this session is
+    // NOT any of the classes already in their database. Without this branch the
+    // decision was silently dropped and the ambiguous candidates re-asked for
+    // ever — the item side had it from the start, and the lesson side did not.
+    const createSeparately = decisionFor('create-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
+    if (createSeparately) {
+      acted(createSeparately);
+      newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
+      continue;
     }
 
-    // --- the READER pins the file to the branch's own commit ----------------
-    const requests: string[] = [];
-    const publishedCommit = repo.refs.get(SOURCE_INDEX_BRANCH)!;
-    const fakeFetch = async (url: string | URL | Request, init?: RequestInit) => {
-      const href = String(url);
-      requests.push(href);
-      // The reader must never send anything but a GET.
-      expect(init?.method ?? 'GET').toBe('GET');
-      if (href.includes('/git/ref/heads/')) {
-        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+    const linked = decisionFor('link-lesson', (d) => 'sessionN' in d && d.sessionN === session.n) as
+      | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
+      | undefined;
+    if (linked) {
+      // The SAME conditions the candidate list is built from — a link may only
+      // adopt a record that is still unbound and still this instrument's.
+      // Deleted, bound elsewhere or moved since the preview, the decision is
+      // STALE, never silently turned into "create a new class instead".
+      acted(linked);
+      const target = db.lessons.find((l) => l.id === linked.lessonId);
+      if (target && !target.source && target.instrumentId === instrumentId) {
+        adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
+        continue;
       }
-      const m = /contents\/(.+)\?ref=(.+)$/.exec(href)!;
-      const tree = repo.trees.get(repo.commits.get(m[2])!.treeSha)!;
-      const text = repo.blobs.get(tree[decodeURIComponent(m[1])])!;
-      return new Response(
-        JSON.stringify({ content: Buffer.from(text, 'utf8').toString('base64'), encoding: 'base64', size: text.length }),
-        { status: 200 },
-      );
-    };
-    const got = await fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: fakeFetch as typeof fetch });
-    expect(got.ok).toBe(true);
-    if (!got.ok) throw new Error(got.error);
-    expect(got.value.commitSha).toBe(publishedCommit);
-    expect(got.value.index.archiveId).toBe('setar-classes');
-    // The content request names the COMMIT, not the branch: a publish landing
-    // between the two calls cannot hand back half of one index and half of
-    // another.
-    expect(requests[1]).toContain(`?ref=${publishedCommit}`);
-    expect(requests[1]).not.toContain(SOURCE_INDEX_BRANCH);
-    expect(requests.every((r) => r.startsWith('https://api.github.com/'))).toBe(true);
+      staleDecisions.push(linked);
+    }
 
-    // --- authentication and network failures change nothing -----------------
-    const refuse = async () => new Response('no', { status: 401 });
-    const denied = await fetchPublishedIndex({ repo: 'owner/data', token: 'bad', fetchImpl: refuse as typeof fetch });
-    expect(denied.ok).toBe(false);
-    if (denied.ok) throw new Error('expected refusal');
-    expect(denied.error).toMatch(/refused/i);
-    const offline = async () => {
-      throw new Error('offline');
-    };
-    const down = await fetchPublishedIndex({ repo: 'owner/data', token: 't', fetchImpl: offline as typeof fetch });
-    expect(down.ok).toBe(false);
-    if (down.ok) throw new Error('expected refusal');
-    expect(down.error).toMatch(/already imported is unaffected/);
-    // The published index and the app's data branch are exactly as they were.
-    expect(publishedText(repo)).toBe(rival);
-    expect(repo.refs.get('main')).toBe('commit-main');
+    // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
+    // date, same number, and a reference that actually points into this
+    // session's own folder.
+    const candidates = db.lessons.filter(
+      (l) =>
+        !l.source &&
+        l.instrumentId === instrumentId &&
+        l.date === session.date &&
+        l.number === session.n &&
+        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
+    );
+    if (candidates.length === 1) {
+      adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
+      continue;
+    }
+    if (candidates.length > 1) {
+      questions.push({
+        kind: 'lesson',
+        sessionN: session.n,
+        label: `Class ${session.n} · ${session.date}`,
+        candidates: candidates.map((l) => ({
+          id: l.id,
+          title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
+          why: 'Same date and number, and it already links to this folder.',
+        })),
+      });
+      continue;
+    }
+    newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
+  }
 
-    // --- no credential and no archive root in anything that travels ---------
-    const everything = JSON.stringify([
-      [...repo.blobs.values()],
-      [...repo.trees.values()],
-      [...repo.commits.keys()],
-      requests,
-      denied.error,
-      down.error,
-    ]);
-    expect(everything).not.toContain(NEVER_LEAKED_CREDENTIAL);
-    expect(everything).not.toContain(ROOT);
-    expect(everything).not.toContain('/Volumes/');
+  // --- items --------------------------------------------------------------
+  const boundItems = new Map<string, PracticeItem>();
+  for (const i of db.items) {
+    if (i.source?.archiveId === archiveId) boundItems.set(i.source.pieceKey, i);
+  }
 
-    // The file-import fallback goes through the SAME decoder.
-    expect((await readIndexFile(rival)).ok).toBe(true);
-    const badFile = await readIndexFile('{"format":"setar-archive-index","version":99}');
-    expect(badFile.ok).toBe(false);
-    if (badFile.ok) throw new Error('expected refusal');
-    expect(badFile.error).toMatch(/newer scanner/);
+  const newItems: PracticeItem[] = [];
+  const adoptedItems: PracticeItem[] = [];
+  const suggestions: MetadataSuggestion[] = [];
 
-    // --- THE DECLARED DIGEST IS RECOMPUTED, NOT TAKEN ON FAITH -------------
-    // `contentHash` is the REFRESH IDENTITY: `planArchiveImport` compares it
-    // against the hash already accepted to conclude that nothing has changed.
-    // So content altered under a RETAINED old hash would be reported "Already
-    // current" and its changed facts silently ignored. Both doors recompute
-    // the scanner's own digest and fail closed.
-    const original = JSON.parse(rival) as typeof indexFixture;
-    const altered = {
-      ...original,
-      pieces: original.pieces.map((piece, i) => (i === 0 ? { ...piece, composer: 'somebody-else' } : piece)),
-    };
-    // The hash it still carries is the one the scanner wrote for the ORIGINAL.
-    expect(altered.contentHash).toBe(original.contentHash);
-    const alteredText = JSON.stringify(altered);
-    const tampered = await readIndexFile(alteredText);
-    expect(tampered.ok).toBe(false);
-    if (tampered.ok) throw new Error('expected refusal');
-    expect(tampered.error).toMatch(/does not match its own content hash/);
-
-    // The GitHub door refuses the identical bytes, through the same boundary.
-    const tamperedFetch = async (url: string | URL | Request) => {
-      const href = String(url);
-      if (href.includes('/git/ref/heads/')) {
-        return new Response(JSON.stringify({ object: { sha: publishedCommit } }), { status: 200 });
+  for (const piece of index.pieces) {
+    const bound = boundItems.get(piece.key);
+    if (bound) {
+      // SOURCE FACTS update; the owner's own fields never do. A later registry
+      // improvement is OFFERED, field by field, and applied only on an explicit
+      // decision — including when the owner's value is deliberately EMPTY.
+      for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
+        const proposed = persianFromPiece(piece)[field] ?? '';
+        const current = bound.persian?.[field] ?? '';
+        if (proposed && proposed !== current) {
+          suggestions.push({ pieceKey: piece.key, itemId: bound.id, field, from: current, to: proposed });
+        }
       }
-      return new Response(
-        JSON.stringify({
-          content: Buffer.from(alteredText, 'utf8').toString('base64'),
-          encoding: 'base64',
-          size: alteredText.length,
-        }),
-        { status: 200 },
-      );
+      continue;
+    }
+    if (isSuppressed('piece', piece.key)) continue;
+
+    const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
+    if (skipItem) {
+      acted(skipItem);
+      suppress('piece', piece.key);
+      continue;
+    }
+    const linked = decisionFor('link-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key) as
+      | { kind: 'link-item'; pieceKey: string; itemId: ID }
+      | undefined;
+    if (linked) {
+      acted(linked);
+      const target = db.items.find((i) => i.id === linked.itemId);
+      if (target && !target.source && target.instrumentId === instrumentId) {
+        adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
+        continue;
+      }
+      staleDecisions.push(linked); // see the lesson branch above
+    }
+    const createNow = acted(decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key));
+
+    // CANDIDATES are EXACT equality only: the canonical key itself, or one of
+    // the registry's own literal aliases. Nothing is normalised, folded or
+    // transliterated here — that is search, and search is not identity. A
+    // built-in `catalogKey` is never compared at all: "iraq" is a catalogue
+    // slug, عراق is a canonical Farsi key, and equating them would merge two
+    // different things on a coincidence of meaning.
+    const literals = new Set<string>([piece.key, ...piece.aliases]);
+    const candidates = createNow
+      ? []
+      : db.items.filter(
+          (i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()),
+        );
+
+    if (candidates.length > 0) {
+      questions.push({
+        kind: 'item',
+        pieceKey: piece.key,
+        label: piece.key,
+        candidates: candidates.map((i) => ({
+          id: i.id,
+          title: i.title,
+          why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
+        })),
+      });
+      continue;
+    }
+    newItems.push(itemForPiece(archiveId, instrumentId, piece, now));
+  }
+
+  // --- EXACT REFERENCE REPAIR, inside the refresh the owner actually runs ---
+  //
+  // The rename log is published WITH the index, so the one moment the app can
+  // repair a stored path is the moment it accepts a new graph. Adopting a
+  // legacy class and leaving its own references pointing at names the archive
+  // renamed years ago is half a job: the lesson binds, and every file on it
+  // still 404s.
+  //
+  // Scope is the lessons this archive OWNS — the ones adopted by this plan and
+  // the ones already bound. A lesson the archive has no claim on is not
+  // something a refresh may rewrite.
+  //
+  // ONE pass over both, so `adoptedLessons` in the plan is byte-identical to
+  // what `applyArchiveImport` installs: a preview that shows an old path while
+  // the commit writes a new one is the plan/apply divergence this module is
+  // built to make impossible.
+  const known = new Set(index.sessions.flatMap((s) => s.resources.map((r) => r.path)));
+  const repairAttention: SourceDiagnostic[] = [];
+  const repair = (l: Lesson): { lesson: Lesson; changed: boolean } => {
+    const outcome = repairLessonReferences(l, renames, known, verifiedBase);
+    for (const a of outcome.attention) {
+      // 'not-described' is NOT reported: the index describes only the material
+      // scoped to pieces and classes, so a path it never names and never
+      // renamed is outside what it knows — never evidence the file is gone.
+      // See `RepairReason`.
+      if (a.code === 'not-described') continue;
+      repairAttention.push({ path: a.path, reason: a.reason });
+    }
+    return { lesson: outcome.lesson, changed: outcome.repaired > 0 };
+  };
+
+  const repairedAdopted = adoptedLessons.map((l) => repair(l).lesson);
+  const repairedLessons: Lesson[] = [];
+  for (const bound of boundLessons.values()) {
+    const outcome = repair(bound);
+    if (outcome.changed) repairedLessons.push(outcome.lesson);
+  }
+
+  // --- the graph to persist ------------------------------------------------
+  // What the source still describes, PLUS what it has stopped describing,
+  // flagged. New records above were minted from `index.pieces` alone, so a
+  // retained-but-unavailable piece never comes back as a fresh item.
+  const retained = retainMissing(existing, index, renames);
+  const source: ArchiveSource = {
+    id: archiveId,
+    instrumentId,
+    indexHash: index.contentHash,
+    acceptedAt: nowISO(now),
+    pieces: retained.pieces,
+    sessions: retained.sessions,
+    renames: index.renames,
+    diagnostics: index.diagnostics,
+    // A HIDE FOLLOWS ITS FILE, exactly as a stored reference does. A resource
+    // suppression is keyed BY PATH, so a rename left the decision pointing at
+    // a name the archive no longer uses: the file came back into view under
+    // its new path while the old, hidden row sat there flagged unavailable.
+    // Rewriting the ref is not editing the owner's decision — it is the same
+    // decision about the same bytes, said in the archive's current words. The
+    // `itemId` scope is carried untouched, and re-keying cannot duplicate:
+    // `suppressionKey` de-duplicates the result.
+    suppressions: dedupeSuppressions([
+      ...suppressions.map((sup) => {
+        if (sup.kind !== 'resource') return sup;
+        // A HIDE FOLLOWS ITS FILE ONLY WHERE THE LOG SAYS WHERE THE FILE WENT.
+        // A cycle names no destination, so the decision stays exactly where the
+        // owner put it: moving it to an arbitrary stop on the loop would both
+        // un-hide what they hid and hide something they did not.
+        const to = followRenames(sup.ref, renames);
+        return to === null ? sup : { ...sup, ref: to };
+      }),
+      ...addedSuppressions,
+    ]),
+  };
+
+  // A field decision only counts as a change when there is a suggestion for it
+  // to apply — a stale one left over from an earlier preview changes nothing.
+  const appliedFields = decisions.filter((d) => suggestions.some((x) => decisionMatchesSuggestion(d, x)));
+  for (const d of appliedFields) acted(d);
+
+  // THE SWEEP. Anything the loops above did not act on is either an action
+  // that has ALREADY HAPPENED — the owner pressed Apply, it was written, and
+  // the same decision is still in hand on the next preview — or an answer to a
+  // question that no longer stands.
+  //
+  // The already-done branch is LOOP PREVENTION, not politeness:
+  // `ArchiveRefresh` drops a stale decision and re-previews, and a realised
+  // action can never be consumed by a loop that skips its record, so without
+  // it the same decision would go stale for ever.
+  const realised = (d: ReconcileDecision): boolean => {
+    switch (d.kind) {
+      case 'skip-item':
+        return isSuppressed('piece', d.pieceKey);
+      case 'skip-lesson':
+        return isSuppressed('session', String(d.sessionN));
+      case 'link-item':
+        return boundItems.get(d.pieceKey)?.id === d.itemId;
+      case 'create-item':
+        return boundItems.get(d.pieceKey)?.id === sourceItemId(archiveId, d.pieceKey);
+      case 'link-lesson':
+        return boundLessons.get(d.sessionN)?.id === d.lessonId;
+      case 'create-lesson':
+        return boundLessons.get(d.sessionN)?.id === sourceLessonId(archiveId, d.sessionN);
+      case 'apply-field': {
+        // No live suggestion can mean two opposite things. The registry value
+        // is already in the owner's field — done — or the registry no longer
+        // proposes one, which is a premise that moved.
+        const piece = index.pieces.find((x) => x.key === d.pieceKey);
+        const item = boundItems.get(d.pieceKey);
+        if (!piece || !item || item.id !== d.itemId) return false;
+        const proposed = persianFromPiece(piece)[d.field] ?? '';
+        return proposed !== '' && (item.persian?.[d.field] ?? '') === proposed;
+      }
+    }
+  };
+  for (const d of decisions) {
+    if (consumed.has(d) || staleDecisions.includes(d)) continue;
+    if (realised(d)) continue;
+    staleDecisions.push(d);
+  }
+  const changesRecords =
+    newItems.length > 0 ||
+    newLessons.length > 0 ||
+    adoptedLessons.length > 0 ||
+    adoptedItems.length > 0 ||
+    repairedLessons.length > 0 ||
+    addedSuppressions.length > 0 ||
+    appliedFields.length > 0;
+  const sameGraph = existing?.indexHash === index.contentHash;
+  const attention = [...index.diagnostics, ...repairAttention];
+
+  return {
+    archiveId,
+    instrumentId,
+    indexHash: index.contentHash,
+    source,
+    newItems,
+    newLessons,
+    adoptedLessons: repairedAdopted,
+    repairedLessons,
+    adoptedItems,
+    questions,
+    suggestions,
+    attention,
+    staleDecisions,
+    summary: {
+      addedItems: newItems.length,
+      addedLessons: newLessons.length,
+      updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length,
+      questions: questions.length,
+      attention: attention.length,
+      unchanged: sameGraph && !changesRecords && questions.length === 0,
+    },
+  };
+}
+
+// --- applying --------------------------------------------------------------
+
+/**
+ * Apply a plan to a database, returning a NEW database — or the SAME OBJECT
+ * when the plan changes nothing at all, so an unchanged refresh cannot bump the
+ * revision counter or churn a timestamp.
+ *
+ * Nothing here touches a block, a review, an agenda entry, a practice counter,
+ * a result or any scheduling field. It adds records and it replaces the source
+ * graph; that is the whole of it.
+ */
+export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: ReconcileDecision[] = []): PracticeDB {
+  const existing = db.archiveSources?.find((s) => s.id === plan.archiveId);
+  const graphChanged = !existing || existing.indexHash !== plan.indexHash;
+  // AN OWNER DECISION IS A CHANGE even when the index is not. A skip recorded
+  // against an already-current graph writes a suppression, and comparing the
+  // index hash alone returned the database untouched — which is precisely how
+  // "Skip" survived the preview and nothing else. The digest is verified at the
+  // reader, so an equal hash really does mean an equal graph; the suppression
+  // list is the part it says nothing about.
+  const knownSuppressions = new Set((existing?.suppressions ?? []).map(suppressionKey));
+  const suppressionsChanged =
+    plan.source.suppressions.length !== knownSuppressions.size ||
+    plan.source.suppressions.some((s) => !knownSuppressions.has(suppressionKey(s)));
+  // A field decision counts only when the plan actually OFFERS that field —
+  // the same rule the plan's own summary applies, so "nothing to do" means the
+  // same thing on both sides of the preview/commit boundary. A decision left
+  // over from an earlier preview must not make an unchanged refresh a write.
+  const applied = decisions.filter(
+    (d): d is Extract<ReconcileDecision, { kind: 'apply-field' }> =>
+      plan.suggestions.some((x) => decisionMatchesSuggestion(d, x)),
+  );
+  const nothingToDo =
+    !graphChanged &&
+    !suppressionsChanged &&
+    plan.newItems.length === 0 &&
+    plan.newLessons.length === 0 &&
+    plan.adoptedLessons.length === 0 &&
+    plan.repairedLessons.length === 0 &&
+    plan.adoptedItems.length === 0 &&
+    applied.length === 0;
+  if (nothingToDo) return db;
+
+  const adoptedLessonIds = new Set(plan.adoptedLessons.map((l) => l.id));
+  const repairedById = new Map(plan.repairedLessons.map((l) => [l.id, l]));
+  const fieldsByItem = new Map<ID, MetadataSuggestion[]>();
+  for (const s of plan.suggestions) {
+    if (!applied.some((d) => decisionMatchesSuggestion(d, s))) continue;
+    fieldsByItem.set(s.itemId, [...(fieldsByItem.get(s.itemId) ?? []), s]);
+  }
+
+  const items = db.items.map((item) => {
+    const adopted = plan.adoptedItems.find((i) => i.id === item.id);
+    const fields = fieldsByItem.get(item.id);
+    if (!adopted && !fields) return item;
+    const base = adopted ?? item;
+    if (!fields) return base;
+    return {
+      ...base,
+      persian: { ...base.persian, ...Object.fromEntries(fields.map((f) => [f.field, f.to])) },
+      updatedAt: plan.source.acceptedAt,
     };
-    const fetchedTampered = await fetchPublishedIndex({
-      repo: 'owner/data',
-      token: 'device-token',
-      fetchImpl: tamperedFetch as typeof fetch,
-    });
-    expect(fetchedTampered.ok).toBe(false);
-    if (fetchedTampered.ok) throw new Error('expected refusal');
-    expect(fetchedTampered.error).toMatch(/does not match its own content hash/);
-
-    // Re-scanned content — a NEW digest for the new facts — is accepted, so
-    // this is an integrity gate and not a freeze on the archive ever changing.
-    const rescanned = await readIndexFile(JSON.stringify({ ...altered, contentHash: indexDigest(altered) }));
-    expect(rescanned.ok).toBe(true);
-    if (!rescanned.ok) throw new Error(rescanned.error);
-    expect(rescanned.value.index.pieces[0]!.composer).toBe('somebody-else');
-    expect(rescanned.value.index.contentHash).not.toBe(original.contentHash);
-
-    // A STRUCTURALLY broken file still reports the structural error rather
-    // than a hash mismatch: the owner can act on the first, never the second.
-    const brokenStructure = await readIndexFile(JSON.stringify({ ...original, sessions: 'not a list' }));
-    expect(brokenStructure.ok).toBe(false);
-    if (brokenStructure.ok) throw new Error('expected refusal');
-    expect(brokenStructure.error).toMatch(/no sessions/);
-
-    // --- A WRONG-TYPED FIELD IS REFUSED, NEVER COERCED TO EMPTY ------------
-    // A digest proves the file is the one the scanner wrote; it says nothing
-    // about the file being well formed. The decoder normalises BEFORE the
-    // graph's grammar runs, so `resources: null` decoded to a session with no
-    // resources — a perfectly valid empty list by the time the grammar saw it
-    // — and six files became zero with a VALID digest on the front. Every
-    // absent-tolerant read in the decoder had the same shape.
-    const withDigest = (body: Record<string, unknown>) =>
-      JSON.stringify({ ...body, contentHash: indexDigest(body) });
-    const sessionZero = original.sessions[0]!;
-    const erasures: [string, Record<string, unknown>][] = [
-      ['must be a list', { ...sessionZero, resources: null }],
-      ['must be a list', { ...sessionZero, members: null }],
-      ['must be true or false', { ...sessionZero, rosterTrusted: 'yes' }],
-      ['must be true or false', { ...sessionZero, hasClassRecording: 1 }],
-    ];
-    for (const [message, session0] of erasures) {
-      const bad = await readIndexFile(
-        withDigest({ ...original, sessions: [session0, ...original.sessions.slice(1)] }),
-      );
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain(message);
-    }
-    const withResource = (over: Record<string, unknown>) => ({
-      ...original,
-      sessions: [
-        { ...sessionZero, resources: [{ ...sessionZero.resources[0]!, ...over }, ...sessionZero.resources.slice(1)] },
-        ...original.sessions.slice(1),
-      ],
-    });
-    for (const [message, over] of [
-      ['must be a number', { part: '2' }],
-      ['must be a number', { size: '10mb' }],
-      ['must be text', { group: 42 }],
-    ] as [string, Record<string, unknown>][]) {
-      const bad = await readIndexFile(withDigest(withResource(over)));
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain(message);
-    }
-    for (const [message, over] of [
-      ['must be a list', { sessions: null }],
-      ['must be true or false', { provisional: 'yes' }],
-    ] as [string, Record<string, unknown>][]) {
-      const bad = await readIndexFile(
-        withDigest({ ...original, pieces: [{ ...original.pieces[0]!, ...over }, ...original.pieces.slice(1)] }),
-      );
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain(message);
-    }
-    for (const over of [{ renames: null }, { diagnostics: null }]) {
-      const bad = await readIndexFile(withDigest({ ...original, ...over }));
-      expect(bad.ok).toBe(false);
-      if (bad.ok) throw new Error('expected refusal');
-      expect(bad.error).toContain('must be a list');
-    }
-    // ABSENT still reads as absent: the tolerance that was correct stays.
-    const withoutOptional = { ...(original as Record<string, unknown>) };
-    delete withoutOptional.renames;
-    delete withoutOptional.diagnostics;
-    const lean = await readIndexFile(withDigest(withoutOptional));
-    expect(lean.ok).toBe(true);
   });
 
-  // --- THE DEVICE, NOT THE FILE ------------------------------------------
-  // Found by OWNER acceptance testing, not by any check here: an unmerged
-  // branch reaches a phone as a LAN build over plain http://, and WebCrypto
-  // exists only in a SECURE CONTEXT. `globalThis.crypto` is still there, but
-  // `crypto.subtle` is `undefined`, so recomputing the index digest threw
-  // `Cannot read properties of undefined (reading 'digest')` — handed to the
-  // owner as the explanation of their archive. Both doors onto the decoder are
-  // checked below: the GitHub refresh, which is the one the UI reaches, and
-  // `readIndexFile`, the same decoder behind a fallback nothing wires up yet.
-  //
-  // Every automated check missed it because every one of them runs where
-  // `crypto.subtle` exists: Node has it unconditionally, and the browser
-  // journeys are served from localhost, which browsers privilege as secure
-  // precisely so that http://localhost development works.
-  it('an insecure context refuses by naming itself, not by a property stack trace', async () => {
-    const text = JSON.stringify({ ...indexFixture, contentHash: indexDigest(indexFixture as Record<string, unknown>) });
-    // The REAL GitHub reply shape for this file: base64 `content`, `encoding`
-    // and `size`, exactly as api.github.com answers a contents request.
-    const github = async (url: string | URL | Request) =>
-      String(url).includes('/git/ref/heads/')
-        ? new Response(JSON.stringify({ object: { sha: 'c0ffee'.repeat(6) + 'aa' } }), { status: 200 })
-        : new Response(
-            JSON.stringify({
-              content: Buffer.from(text, 'utf8').toString('base64'),
-              encoding: 'base64',
-              size: text.length,
-            }),
-            { status: 200 },
+  // A repaired path carries NO `updatedAt`: the archive renamed a file, which
+  // is a source fact about where the bytes are, not the owner revising their
+  // own record. The field application above DOES touch it, because that one is
+  // the owner choosing to change a value of theirs. The asymmetry is the point.
+  const lessons = db.lessons.map((l) => {
+    if (adoptedLessonIds.has(l.id)) return plan.adoptedLessons.find((x) => x.id === l.id)!;
+    return repairedById.get(l.id) ?? l;
+  });
+
+  const sources = (db.archiveSources ?? []).filter((s) => s.id !== plan.archiveId);
+
+  return {
+    ...db,
+    // Adopted records are rewritten IN PLACE above — they keep their own ids,
+    // their practice history and their position. Only genuinely new records are
+    // appended.
+    items: [...items, ...plan.newItems],
+    lessons: [...lessons, ...plan.newLessons],
+    archiveSources: [...sources, plan.source],
+  };
+}
+
+// --- suppression -----------------------------------------------------------
+
+/**
+ * Record an owner decision that a refresh, a reload and a sync must all
+ * respect. Narrowly scoped BY CONSTRUCTION: a resource hidden on one item
+ * carries that item's id and leaves every sibling alone.
+ *
+ * Idempotent, so re-deleting the same thing does not grow the list.
+ */
+export function withSuppression(
+  sources: ArchiveSource[],
+  archiveId: string,
+  suppression: SourceSuppression,
+): ArchiveSource[] {
+  return sources.map((s) => {
+    if (s.id !== archiveId) return s;
+    const key = suppressionKey(suppression);
+    if (s.suppressions.some((x) => suppressionKey(x) === key)) return s;
+    return { ...s, suppressions: [...s.suppressions, suppression] };
+  });
+}
+
+/** Keep the FIRST of each distinct decision; re-keying two refs onto one path
+ * must not grow the list. */
+function dedupeSuppressions(list: SourceSuppression[]): SourceSuppression[] {
+  const seen = new Set<string>();
+  return list.filter((s) => {
+    const k = suppressionKey(s);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+/** Lift a suppression, so the next refresh may import that entity again. */
+export function withoutSuppression(
+  sources: ArchiveSource[],
+  archiveId: string,
+  match: (s: SourceSuppression) => boolean,
+): ArchiveSource[] {
+  return sources.map((s) => (s.id === archiveId ? { ...s, suppressions: s.suppressions.filter((x) => !match(x)) } : s));
+}
+
+// --- exact reference repair (no fuzzy matching, ever) ----------------------
+
+/**
+ * Why a repair could not proceed. The CODE exists because one of these is not
+ * something the app may state as a fact: the published index deliberately
+ * describes only the material the archive scopes to pieces and classes — 125
+ * of its 258 files (the owner's own practice takes) are absent from it by
+ * construction — so a path that is neither renamed nor described is simply
+ * OUTSIDE what the index knows, never evidence that the file is gone. Every
+ * other code is a real finding about the log itself.
+ */
+export type RepairReason = 'no-path' | 'unsafe' | 'no-base' | 'bad-url' | 'cycle' | 'renamed-gone' | 'not-described';
+
+export type ReferenceRepair =
+  | { status: 'repaired'; path: string }
+  | { status: 'unchanged' }
+  | { status: 'attention'; reason: string; code: RepairReason };
+
+/**
+ * Repair ONE stored reference path against the archive's own rename log.
+ *
+ * EXACT mapping only. A path that the log does not name is left exactly as it
+ * is with a reason — never matched by title, by size, by modification time or
+ * by similarity. A full URL is converted only when it sits under the device's
+ * VERIFIED base, and a URL carrying a query or fragment is not a plain file
+ * path and stays untouched.
+ */
+export function repairReferencePath(
+  path: string,
+  renames: Map<string, string>,
+  known: Set<string>,
+  verifiedBase?: string,
+): ReferenceRepair {
+  const raw = path.trim();
+  const read = readArchiveRelative(raw, verifiedBase);
+  if (!read.ok) return read.outcome;
+  const { relative: stripped, wasUrl } = read;
+
+  // Follow the rename chain — the SAME reading adoption and suppression use.
+  const moved = followRenames(stripped, renames);
+  if (moved === null) return { status: 'attention', reason: 'The rename log loops on this path.', code: 'cycle' };
+  const current = moved;
+  if (current === stripped) {
+    // A REWRITE INTO THE CURRENT NAMESPACE IS NOT A CLAIM THAT THE FILE EXISTS.
+    // The device base is the archive ROOT, so a stored path carrying the legacy
+    // archive folder — or written as a full URL beneath that base — names the
+    // same bytes in words the base no longer addresses. This used to happen
+    // only for a path the index DESCRIBES, which left an archive class holding
+    // two namespaces at once: the owner's own practice takes (125 of the
+    // archive's 258 files are outside the index by construction) kept the old
+    // prefix and resolved to `<base>/setar-classes/setar-classes/…` the moment
+    // the base was corrected. Saying it in one namespace is the repair; whether
+    // the index describes the file is a separate question, answered below.
+    if (wasUrl || stripped !== raw) return { status: 'repaired', path: current };
+    if (known.has(current)) return { status: 'unchanged' };
+    return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
+  }
+  if (!known.has(current)) {
+    return { status: 'attention', reason: 'This file was renamed, but the archive no longer has it.', code: 'renamed-gone' };
+  }
+  return { status: 'repaired', path: current };
+}
+
+/** Repair every reference on a lesson, preserving each row and its metadata. */
+export function repairLessonReferences(
+  lesson: Lesson,
+  renames: Map<string, string>,
+  known: Set<string>,
+  verifiedBase?: string,
+): { lesson: Lesson; repaired: number; attention: { title: string; path: string; reason: string; code: RepairReason }[] } {
+  let repaired = 0;
+  const attention: { title: string; path: string; reason: string; code: RepairReason }[] = [];
+  const recordings: LessonRecording[] = (lesson.recordings ?? []).map((r) => {
+    const outcome = repairReferencePath(r.path, renames, known, verifiedBase);
+    if (outcome.status === 'repaired') {
+      repaired += 1;
+      // The ROW survives with its own title, notes, date and size: only the
+      // path text changes. Two rows that now point at one physical file stay
+      // two rows — deleting one would delete something the owner wrote.
+      return { ...r, path: outcome.path };
+    }
+    if (outcome.status === 'attention') {
+      attention.push({ title: r.title, path: r.path, reason: outcome.reason, code: outcome.code });
+    }
+    return r;
+  });
+  return { lesson: { ...lesson, recordings }, repaired, attention };
+}
+```
+
+### src/pages/Lessons.tsx
+
+```
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  itemsCommittedForLesson,
+  type PracticeItem,
+  cleanFileTitle,
+  daysUntil,
+  CLASS_ROLE,
+  defaultInstrumentFilter,
+  formatFileSize,
+  ITEM_STATUS_LABELS,
+  LESSON_FILE_KIND_ORDER,
+  lessonFiles,
+  lessonsForInstrument,
+  isUpcomingLesson,
+  nextLessonFor,
+  nextLessonNumber,
+  normalizeBaseUrl,
+  openQuestionsForLessonId,
+  relativizeReference,
+  resolveRecording,
+  todayISODate,
+  type Instrument,
+  type Lesson,
+  type LessonFileKind,
+} from '../domain';
+import { useStore } from '../store/useStore';
+import { getNasBaseUrl } from '../store/backup';
+import { Field } from '../components/ui';
+import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/icons';
+import { relativeDay } from '../components/format';
+import Attachments from '../components/Attachments';
+import ClassQuestions from '../components/ClassQuestions';
+import LessonNotes from '../components/LessonNotes';
+import { LessonMaterial } from '../components/ItemMaterial';
+import { LessonAgendaPanel } from '../components/LessonAgenda';
+import QuickAdd from '../components/QuickAdd';
+
+/** "Class 37 · 2026-07-09" when numbered, else just the date. */
+function lessonLabel(lesson: Lesson): string {
+  return typeof lesson.number === 'number' ? `Class ${lesson.number} · ${lesson.date}` : lesson.date;
+}
+
+/**
+ * The class workflow: log each lesson's date, then — after rewatching your
+ * recording — write up what was said (Farsi welcome). The nearest upcoming
+ * lesson becomes the deadline that prioritises items flagged "for class".
+ */
+export default function Lessons() {
+  const db = useStore((s) => s.db);
+  const now = useMemo(() => new Date(), []);
+  const instruments = db.instruments.filter((i) => i.active);
+  const wide = useIsWide();
+
+  // Open on the instrument you are actually practising — 40-plus Setar classes
+  // stacked above Tar and Guitar is not a phone screen. Seeded from the same
+  // persisted session instrument every other screen reads, never written back,
+  // and always widenable to all.
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const [instrumentId, setInstrumentId] = useState(() =>
+    defaultInstrumentFilter(sessionInstrumentId, instruments),
+  );
+  const shown = instruments.filter((i) => !instrumentId || i.id === instrumentId);
+
+  return (
+    <div className="stack-lg">
+      <header className="stack-sm">
+        <h1 className="page-title">Lessons</h1>
+        <p className="page-sub">
+          Your classes, per instrument — dates and the notes you take when rewatching the recording.
+        </p>
+        {instruments.length > 1 && (
+          <select
+            className="select"
+            aria-label="Instrument"
+            style={{ width: 'fit-content' }}
+            value={instrumentId}
+            onChange={(e) => setInstrumentId(e.target.value)}
+          >
+            <option value="">All instruments</option>
+            {instruments.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </header>
+
+      {wide ? (
+        <WideLessons now={now} instruments={shown} />
+      ) : (
+        shown.map((inst) => (
+          <InstrumentLessons key={inst.id} instrumentId={inst.id} name={inst.name} now={now} />
+        ))
+      )}
+    </div>
+  );
+}
+
+function useIsWide(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width: 1000px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1000px)');
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
+/**
+ * MacBook layout: lesson list on the left, the open lesson (long Farsi notes,
+ * linked items, files) with real room on the right. Phones keep the simple
+ * drill-down cards.
+ */
+function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[] }) {
+  const db = useStore((s) => s.db);
+  const addLesson = useStore((s) => s.addLesson);
+  const deleteLesson = useStore((s) => s.deleteLesson);
+
+  const allLessons = useMemo(() => {
+    const ids = new Set(instruments.map((i) => i.id));
+    return db.lessons.filter((l) => ids.has(l.instrumentId)).sort((a, b) => b.date.localeCompare(a.date));
+  }, [db.lessons, instruments]);
+  const defaultSelection = useMemo(() => {
+    const upcoming = [...allLessons].reverse().find((l) => isUpcomingLesson(l, todayISODate(now)));
+    return upcoming?.id ?? allLessons[0]?.id ?? null;
+  }, [allLessons, now]);
+  const [selectedId, setSelectedId] = useState<string | null>(defaultSelection);
+  // `selectedId` is state so a click sticks across re-renders, but narrowing
+  // (or a delete) can leave it pointing at a lesson `allLessons` no longer
+  // has — falling back to the same smart default keeps the detail pane and
+  // the sidebar highlight in sync instead of silently blanking.
+  const effectiveSelectedId = allLessons.some((l) => l.id === selectedId) ? selectedId : defaultSelection;
+  const selected = allLessons.find((l) => l.id === effectiveSelectedId) ?? null;
+
+  const [addingFor, setAddingFor] = useState<string | null>(null);
+  const [date, setDate] = useState(todayISODate(now));
+  const [num, setNum] = useState('');
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--space-5)', alignItems: 'start' }}>
+      <div className="stack">
+        {instruments.map((inst) => {
+          const lessons = lessonsForInstrument(db.lessons, inst.id);
+          const next = nextLessonFor(db.lessons, inst.id, now);
+          const flagged = itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
+            (i: PracticeItem) => i.instrumentId === inst.id,
           );
-    const refresh = () =>
-      fetchPublishedIndex({ repo: 'owner/data', token: 'device-token', fetchImpl: github as typeof fetch });
+          return (
+            <section key={inst.id} className="stack-sm">
+              {/* The instrument's own name leads this group (dir="auto"
+                  resolves from the first strong character), same shape as
+                  InstrumentLessons' identical row below — the badge gets its
+                  own dir="ltr" isolate so it can't inherit the name's base. */}
+              <div className="row between" dir="auto">
+                <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
+                  {inst.name}
+                </h2>
+                {next && (
+                  <span className="badge tone-progress" dir="ltr">
+                    next {relativeDay(next.date, now)}
+                  </span>
+                )}
+              </div>
+              {next && flagged.length > 0 && (
+                <div className="tiny dim">
+                  {flagged.length} item{flagged.length === 1 ? '' : 's'} to prepare · {daysUntil(next.date, now)} day
+                  {daysUntil(next.date, now) === 1 ? '' : 's'} left
+                </div>
+              )}
+              <div className="card card-flush list">
+                {lessons.map((l) => (
+                  <button
+                    key={l.id}
+                    className="list-row"
+                    style={{
+                      background: l.id === effectiveSelectedId ? 'var(--accent-soft)' : 'none',
+                      border: 'none',
+                      width: '100%',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      color: 'inherit',
+                    }}
+                    onClick={() => setSelectedId(l.id)}
+                  >
+                    <span className="grow">{lessonLabel(l)}</span>
+                    <span className="tiny faint">
+                      {l.notes ? 'notes ✓' : isUpcomingLesson(l, todayISODate(now)) ? 'upcoming' : '—'}
+                    </span>
+                  </button>
+                ))}
+                {lessons.length === 0 && <div className="list-row tiny faint">No classes logged.</div>}
+              </div>
+              {addingFor === inst.id ? (
+                <div className="row" style={{ gap: 8 }}>
+                  <input
+                    className="input"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    aria-label="Class number (optional)"
+                    placeholder="No."
+                    value={num}
+                    onChange={(e) => setNum(e.target.value)}
+                    style={{ width: 72 }}
+                  />
+                  <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const id = addLesson({ instrumentId: inst.id, date, number: num.trim() ? Number(num) : undefined });
+                      setAddingFor(null);
+                      setNum('');
+                      setSelectedId(id);
+                    }}
+                  >
+                    Add
+                  </button>
+                  <button className="btn btn-sm" aria-label="Cancel" onClick={() => setAddingFor(null)}>
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ width: 'fit-content' }}
+                  onClick={() => {
+                    setNum(String(nextLessonNumber(db.lessons, inst.id)));
+                    setAddingFor(inst.id);
+                  }}
+                >
+                  <PlusIcon /> Add a class
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </div>
 
-    // Both paths succeed on THIS device, so nothing below is about the file.
-    expect((await refresh()).ok).toBe(true);
-    expect((await readIndexFile(text)).ok).toBe(true);
+      <div className="card stack-sm" style={{ minHeight: 320 }}>
+        {selected ? (
+          <>
+            <div className="row between">
+              {/* The instrument name is the owner's own editable text — its
+                  own dir="auto" isolate. lessonLabel is always digits +
+                  English by construction ("Class N · date") — its own
+                  dir="ltr" isolate keeps the two from being fused into one
+                  bare, undirected string as they used to be. */}
+              <strong>
+                <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
+                <span dir="ltr"> · {lessonLabel(selected)}</span>
+              </strong>
+              <span className="tiny faint">{relativeDay(selected.date, now)}</span>
+            </div>
+            <LessonDetail lesson={selected} onDelete={() => deleteLesson(selected.id)} />
+          </>
+        ) : (
+          <div className="small dim">Pick a class on the left — or add one.</div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-    // An insecure context, exactly as a browser presents one: `crypto` is
-    // present and `crypto.subtle` is not.
-    const secure = globalThis.crypto;
-    vi.stubGlobal('crypto', { getRandomValues: secure.getRandomValues.bind(secure) });
+function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; name: string; now: Date }) {
+  const db = useStore((s) => s.db);
+  const addLesson = useStore((s) => s.addLesson);
+  const deleteLesson = useStore((s) => s.deleteLesson);
+
+  const lessons = useMemo(() => lessonsForInstrument(db.lessons, instrumentId), [db.lessons, instrumentId]);
+  const next = nextLessonFor(db.lessons, instrumentId, now);
+  const flagged = useMemo(
+    () =>
+      itemsCommittedForLesson(db.items, db.lessonAgenda, db.lessons, now).filter(
+        (i: PracticeItem) => i.instrumentId === instrumentId,
+      ),
+    [db.items, db.lessonAgenda, db.lessons, now, instrumentId],
+  );
+
+  const [adding, setAdding] = useState(false);
+  const [date, setDate] = useState(todayISODate(now));
+  const [num, setNum] = useState('');
+
+  return (
+    <section className="stack-sm">
+      <div className="row between" dir="auto">
+        <h2 className="title-md">{name}</h2>
+        {/* Fixed English page copy / generated metadata, never user text —
+            its own dir="ltr" isolate keeps it from inheriting the
+            instrument name's RTL base. */}
+        {next ? (
+          <span className="badge tone-progress" dir="ltr">
+            next class {relativeDay(next.date, now)}
+          </span>
+        ) : (
+          <span className="tiny faint" dir="ltr">no class planned</span>
+        )}
+      </div>
+
+      {next && flagged.length > 0 && (
+        <div className="card card-quiet small dim">
+          {flagged.length} item{flagged.length === 1 ? '' : 's'} to complete before this class ·{' '}
+          {daysUntil(next.date, now)} day{daysUntil(next.date, now) === 1 ? '' : 's'} left —{' '}
+          <Link to="/repertoire" className="link">
+            see them
+          </Link>
+        </div>
+      )}
+
+      <div className="stack-sm">
+        {lessons.map((l) => (
+          <LessonCard key={l.id} lesson={l} now={now} onDelete={() => deleteLesson(l.id)} />
+        ))}
+        {lessons.length === 0 && !adding && (
+          <div className="card card-quiet small dim">No lessons logged yet.</div>
+        )}
+      </div>
+
+      {adding ? (
+        <div className="card row" style={{ gap: 8 }}>
+          <Field label="Class no.">
+            <input
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              placeholder="No."
+              value={num}
+              onChange={(e) => setNum(e.target.value)}
+              style={{ width: 72 }}
+            />
+          </Field>
+          <Field label="Class date">
+            <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+          <button
+            className="btn btn-primary"
+            style={{ alignSelf: 'flex-end' }}
+            onClick={() => {
+              addLesson({ instrumentId, date, number: num.trim() ? Number(num) : undefined });
+              setNum('');
+              setAdding(false);
+            }}
+          >
+            Add
+          </button>
+          <button className="btn" style={{ alignSelf: 'flex-end' }} onClick={() => setAdding(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn btn-sm"
+          style={{ width: 'fit-content' }}
+          onClick={() => {
+            setNum(String(nextLessonNumber(db.lessons, instrumentId)));
+            setAdding(true);
+          }}
+        >
+          <PlusIcon /> Add a class
+        </button>
+      )}
+    </section>
+  );
+}
+
+function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDelete: () => void }) {
+  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
+  // "No notes yet" opens a card the owner is about to write in. An IMPORTED
+  // class has no notes by construction, and thirty-nine of them opening at once
+  // turns the phone list into a wall — history starts COMPACT, and the owner
+  // opens what they want to read.
+  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || !lesson.notes);
+
+  return (
+    <article className="card stack-sm">
+      <button
+        className="row between"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, width: '100%' }}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="row" style={{ gap: 8 }}>
+          <strong>{lessonLabel(lesson)}</strong>
+          <span className="tiny faint">{relativeDay(lesson.date, now)}</span>
+          {upcoming && <span className="badge tone-progress">upcoming</span>}
+        </span>
+        <span className="tiny faint">{open ? 'close' : lesson.notes ? 'notes ✓' : 'add notes'}</span>
+      </button>
+
+      {open && <LessonDetail lesson={lesson} onDelete={onDelete} />}
+    </article>
+  );
+}
+
+/** Notes, linked items, files and delete — the body of an open lesson. */
+function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
+  const db = useStore((s) => s.db);
+  const now = useMemo(() => new Date(), []);
+
+  const upcoming = isUpcomingLesson(lesson, todayISODate(now));
+  // BY LESSON ID, never by instrument: every future class used to show the
+  // identical list, so a question meant for one class appeared on all of them.
+  const questions = useMemo(
+    // `db.blocks` supplies each question's latest recorded observation, so the
+    // list has to recompute when a block is added.
+    () => openQuestionsForLessonId(db.lessonAgenda, db.items, lesson.id, db.blocks),
+    [db.lessonAgenda, db.items, db.blocks, lesson.id],
+  );
+  const instrumentName = db.instruments.find((i) => i.id === lesson.instrumentId)?.name ?? 'Instrument';
+
+  return (
+    <>
+      {/* The SAME durable editor as the item's notebook. Blur-only saving
+          made a stale copy authoritative the moment anything stole focus, and
+          could not clear the text at all. */}
+      <LessonNotes lessonId={lesson.id} />
+
+      <LessonItems lesson={lesson} />
+
+      {/* This class's OWN agenda: what is committed to it, what is still to
+          ask at it, and what was already asked — history that stays here
+          rather than being carried forward to the next class by itself. */}
+      <LessonAgendaPanel lessonId={lesson.id} />
+
+      {/* The take-into-the-room list: only this class's still-open questions,
+          selected by its id. A past class keeps its unasked questions on its
+          own page (above) rather than showing an export sheet for a class
+          that has already happened. */}
+      {upcoming && (
+        <ClassQuestions
+          title="Questions for this class"
+          instrumentName={instrumentName}
+          dateLabel={lessonLabel(lesson)}
+          questions={questions}
+        />
+      )}
+
+      {/* WHAT THE ARCHIVE GIVES THIS CLASS. An archive-bound class keeps no
+          copy of its session's files, so only the graph can answer — and the
+          owner's OWN references and attachments are NOT repeated here: they
+          each have exactly one section on this page, the one that can also
+          edit and remove them. */}
+      <LessonMaterial lessonId={lesson.id} />
+
+      <LessonRecordings lesson={lesson} />
+
+      <Attachments
+        ownerType="lesson"
+        ownerId={lesson.id}
+        emptyHint="Attach small hand-outs for this class — PDFs of pieces, photos of notation, short audio. Full class videos are too big for the app: add them as a Class recording above (a NAS link), not here."
+      />
+
+      <button
+        className="link tiny"
+        style={{ background: 'none', border: 'none', width: 'fit-content', color: 'var(--tone-alert)' }}
+        onClick={() => {
+          if (confirm(`Delete the ${lesson.date} lesson? Its notes and attached files go with it; linked practice items are kept.`)) onDelete();
+        }}
+      >
+        Delete lesson
+      </button>
+    </>
+  );
+}
+
+/** Guess a reference's kind from its path extension (used when adding). */
+function inferKind(path: string): LessonFileKind {
+  const ext = (path.split('.').pop() ?? '').toLowerCase();
+  if (['mp4', 'mov', 'm4v', 'webm', 'mkv'].includes(ext)) return 'video';
+  if (ext === 'pdf') return 'pdf';
+  if (['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(ext)) return 'audio';
+  if (['doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'heic'].includes(ext)) return 'doc';
+  return 'video';
+}
+
+function KindIcon({ kind }: { kind: LessonFileKind }) {
+  if (kind === 'video') return <PlayIcon width={16} height={16} />;
+  if (kind === 'audio') return <MusicIcon width={16} height={16} />;
+  return <ReportIcon width={16} height={16} />; // pdf / doc
+}
+
+/**
+ * Lesson NAS references — the class video plus score PDFs/docs, all links,
+ * never the bytes. A file is only fetched when the user taps Open; deleting a
+ * reference never touches the NAS file. Video first, then scores/docs.
+ */
+function LessonRecordings({ lesson }: { lesson: Lesson }) {
+  const db = useStore((s) => s.db);
+  const addLessonRecording = useStore((s) => s.addLessonRecording);
+  const removeLessonRecording = useStore((s) => s.removeLessonRecording);
+  const navigate = useNavigate();
+  const baseUrl = getNasBaseUrl();
+  const recordings = useMemo(
+    () =>
+      [...(lesson.recordings ?? [])].sort(
+        (a, b) => LESSON_FILE_KIND_ORDER[a.kind ?? 'video'] - LESSON_FILE_KIND_ORDER[b.kind ?? 'video'],
+      ),
+    [lesson.recordings],
+  );
+  // "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THIS ARRAY. An imported
+  // historical class keeps no copy of its session's files, so `recordings` is
+  // empty and the empty-state card invited the owner to add a class recording
+  // directly beneath the one already playing above it. Read through the same
+  // composition the section above renders, so a recording the owner has HIDDEN
+  // does not count as one that is there.
+  const fromArchive = useMemo(
+    () => lessonFiles(db, lesson.id).some((f) => f.source === 'reference' && f.archive?.role === CLASS_ROLE),
+    [db, lesson.id],
+  );
+
+  const browseUrl = normalizeBaseUrl(baseUrl);
+
+  const [adding, setAdding] = useState(false);
+  const [title, setTitle] = useState('');
+  const [path, setPath] = useState('');
+  const [notes, setNotes] = useState('');
+
+  function add() {
+    if (!path.trim()) return;
+    // A URL pasted from the NAS listing is stored RELATIVE to the configured
+    // base, so the reference is not pinned to this device's route to the NAS.
+    const stored = relativizeReference(baseUrl, path);
+    addLessonRecording(lesson.id, {
+      title: title.trim() || cleanFileTitle(stored) || 'Class file',
+      path: stored,
+      kind: inferKind(stored),
+      date: lesson.date,
+      notes: notes.trim() || undefined,
+    });
+    setTitle('');
+    setPath('');
+    setNotes('');
+    setAdding(false);
+  }
+
+  function open(rec: (typeof recordings)[number]) {
+    const r = resolveRecording(baseUrl, rec);
+    if (r.status !== 'ok') return; // button is disabled unless resolvable
+    window.open(r.url, '_blank', 'noopener,noreferrer');
+  }
+
+  return (
+    <div className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Class recording &amp; scores</div>
+        <button className="btn btn-ghost btn-sm" onClick={() => setAdding((v) => !v)}>
+          {adding ? 'Cancel' : <><PlusIcon /> Add link</>}
+        </button>
+      </div>
+
+      {recordings.length === 0 && !fromArchive && !adding && (
+        <div className="card card-quiet small dim">
+          Full class videos and scores live on your NAS, not in the app. Add a link to open them from here.
+        </div>
+      )}
+
+      {recordings.map((rec) => {
+        const resolution = resolveRecording(baseUrl, rec);
+        const kind = rec.kind ?? 'video';
+        const size = formatFileSize(rec.sizeBytes);
+        const meta = ['Stored on NAS', kind === 'video' ? null : kind.toUpperCase(), size, rec.durationLabel]
+          .filter(Boolean)
+          .join(' · ');
+        return (
+          <div key={rec.id} className="card row between" style={{ gap: 10 }}>
+            <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
+              <KindIcon kind={kind} />
+            </span>
+            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+              <div className="truncate">
+                {rec.title}
+              </div>
+              {/* Generated English metadata, never user text — its own
+                  dir="ltr" isolate keeps it from inheriting a Farsi title's
+                  RTL base. */}
+              <div className="tiny faint">
+                <span dir="ltr">{meta}</span>
+              </div>
+              {rec.notes && (
+                <div className="tiny dim" dir="auto">
+                  {rec.notes}
+                </div>
+              )}
+              {/* Fixed English page copy, never user text — its own dir="ltr"
+                  isolate keeps it from inheriting a Farsi title's RTL base.
+                  Inline (span), not dir="ltr" on these blocks: a block
+                  isolate resolves its OWN text-align independently of the
+                  group, splitting it from a right-aligned Farsi title. */}
+              {resolution.status === 'no-base' && (
+                <div className="tiny" style={{ color: 'var(--tone-warn)' }}>
+                  <span dir="ltr">
+                    Set your NAS base URL in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>{' '}
+                    to open this.
+                  </span>
+                </div>
+              )}
+              {resolution.status === 'bad-base' && (
+                <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+                  <span dir="ltr">
+                    Your NAS base URL isn’t a valid web address — fix it in{' '}
+                    <button className="link" style={{ background: 'none', border: 'none' }} onClick={() => navigate('/settings')}>
+                      Settings
+                    </button>
+                    .
+                  </span>
+                </div>
+              )}
+            </div>
+            <button className="btn btn-sm btn-primary" disabled={resolution.status !== 'ok'} onClick={() => open(rec)}>
+              Open
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              // Named, because a class holds several of these and "Remove this
+              // link" three times over tells a screen reader nothing about
+              // which file it is about to drop.
+              aria-label={`Remove ${rec.title} (the NAS file is kept)`}
+              title="Remove link (the NAS file is kept)"
+              onClick={() => {
+                if (confirm('Remove this link? The file on your NAS is not deleted.')) removeLessonRecording(lesson.id, rec.id);
+              }}
+            >
+              <XIcon width={14} height={14} />
+            </button>
+          </div>
+        );
+      })}
+
+      {adding && (
+        <div className="card stack-sm">
+          <input
+            className="input"
+            dir="auto"
+            placeholder="Title — e.g. Class recording"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Path under the archive base, or an https:// link — e.g. session-37-09-07-2026/class.mp4"
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+          />
+          <input className="input" dir="auto" placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <div className="row between" style={{ gap: 8 }}>
+            <div className="tiny faint">
+              Stop typing paths: browse your NAS, copy the file’s URL, paste it above.
+            </div>
+            <button
+              className="btn btn-sm"
+              style={{ flex: 'none' }}
+              disabled={!browseUrl}
+              onClick={() => browseUrl && window.open(`${browseUrl}/`, '_blank', 'noopener,noreferrer')}
+            >
+              Browse NAS
+            </button>
+          </div>
+          <div className="tiny faint">
+            Video, PDF or audio — the kind is detected from the file. A relative path resolves against your NAS base
+            URL (Settings); a URL you paste from that base is stored as a relative path so it keeps working on every
+            device. The file opens only when you tap “Open”.
+          </div>
+          <button className="btn btn-primary" disabled={!path.trim()} onClick={add}>
+            Add link
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The items worked on / created in this lesson: link, create, flag, unlink. */
+function LessonItems({ lesson }: { lesson: Lesson }) {
+  const db = useStore((s) => s.db);
+  const linkItemToLesson = useStore((s) => s.linkItemToLesson);
+  const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
+  const addLessonPreparation = useStore((s) => s.addLessonPreparation);
+  const removeAgendaEntry = useStore((s) => s.removeAgendaEntry);
+  const [linking, setLinking] = useState(false);
+
+  // "Worked on in this class" (lesson.itemIds) and "prepare this FOR this
+  // class" (a preparation entry) are separate facts, exactly as they always
+  // were — the button below toggles the second without touching the first.
+  const committedHere = new Map(
+    db.lessonAgenda
+      .filter((e) => e.kind === 'preparation' && e.lessonId === lesson.id)
+      .map((e) => [(e as { itemId: string }).itemId, e.id] as const),
+  );
+
+  const linked = (lesson.itemIds ?? [])
+    .map((id) => db.items.find((i) => i.id === id))
+    .filter((i): i is NonNullable<typeof i> => !!i);
+  const linkable = db.items.filter(
+    (i) => i.instrumentId === lesson.instrumentId && !(lesson.itemIds ?? []).includes(i.id),
+  );
+
+  return (
+    <div className="stack-sm">
+      <div className="row between">
+        <div className="section-label">Worked on in this class</div>
+        {linkable.length > 0 && (
+          <button className="btn btn-ghost btn-sm" onClick={() => setLinking((v) => !v)}>
+            Link existing…
+          </button>
+        )}
+      </div>
+
+      {linking && (
+        <select
+          className="select"
+          aria-label="Link an existing item to this lesson"
+          value=""
+          onChange={(e) => {
+            if (e.target.value) {
+              linkItemToLesson(lesson.id, e.target.value);
+              setLinking(false);
+            }
+          }}
+        >
+          <option value="">Choose an item…</option>
+          {linkable.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.title}
+            </option>
+          ))}
+        </select>
+      )}
+
+      {linked.length > 0 && (
+        <div className="card card-flush list">
+          {linked.map((item) => (
+            <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
+              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                <div className="truncate">
+                  {item.title}
+                </div>
+                {/* Generated English metadata, never user text — its own
+                    dir="ltr" isolate keeps it from inheriting a Farsi
+                    title's RTL base. */}
+                <div className="tiny faint">
+                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
+                </div>
+              </Link>
+              <button
+                className={`btn btn-sm${committedHere.has(item.id) ? ' btn-primary' : ''}`}
+                aria-pressed={committedHere.has(item.id)}
+                title="Commit to preparing this before this class"
+                onClick={() => {
+                  const existing = committedHere.get(item.id);
+                  if (existing) removeAgendaEntry(existing);
+                  else addLessonPreparation(item.id, lesson.id);
+                }}
+              >
+                {committedHere.has(item.id) ? 'For this class ✓' : 'Prepare for this class'}
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                title="Unlink from this lesson (the item is kept)"
+                aria-label={`Unlink ${item.title} from this lesson — the item is kept`}
+                onClick={() => unlinkItemFromLesson(lesson.id, item.id)}
+              >
+                <XIcon width={14} height={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <QuickAdd lessonId={lesson.id} />
+    </div>
+  );
+}
+```
+
+### src/pages/Settings.tsx
+
+```
+import { useEffect, useRef, useState } from 'react';
+import {
+  clampSchedulingParams,
+  ITEM_STATUS_DESCRIPTIONS,
+  ITEM_STATUS_LABELS,
+  ITEM_STATUS_ORDER,
+  normalizeBaseUrl,
+  RATING_ANCHORS,
+  RATING_EFFECT_NOTE,
+  RATING_HINTS,
+  RATING_LABELS,
+  RESULT_BUTTONS,
+  RESULT_DESCRIPTIONS,
+  RESULT_LABELS,
+  SCHEDULING_BOUNDS,
+  type SchedulingParams,
+} from '../domain';
+import { useStore, type ThemePref } from '../store/useStore';
+import {
+  buildFullBackup,
+  getDeviceName,
+  getNasBaseUrl,
+  importFullBackup,
+  lastModifiedOf,
+  readBackupMeta,
+  setDeviceName,
+  setNasBaseUrl,
+} from '../store/backup';
+import {
+  getSyncConfig,
+  refreshArchiveStatus,
+  resolveConflict,
+  restorePreSyncArchive,
+  setSyncConfig,
+  syncNow,
+  useSyncStatus,
+} from '../store/githubSync';
+import { Field } from '../components/ui';
+import ArchiveRefresh from '../components/ArchiveRefresh';
+import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
+
+const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
+const LAST_EXPORT_KEY = 'pc-last-export';
+
+export default function Settings() {
+  const db = useStore((s) => s.db);
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
+  const addInstrument = useStore((s) => s.addInstrument);
+  const updateInstrument = useStore((s) => s.updateInstrument);
+  const resetDemo = useStore((s) => s.resetDemo);
+  const clearAll = useStore((s) => s.clearAll);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [newInstrument, setNewInstrument] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [deviceName, setDeviceNameState] = useState(getDeviceName());
+  const [lastExport, setLastExport] = useState<string | null>(() => {
     try {
-      expect(globalThis.crypto.subtle).toBeUndefined();
-      for (const result of [await refresh(), await readIndexFile(text)]) {
-        expect(result.ok).toBe(false);
-        if (result.ok) throw new Error('expected refusal');
-        // The one fact the owner can act on — and never the shape of the crash.
-        expect(result.error).toBe(INSECURE_CONTEXT_REFUSAL);
-        expect(result.error).toMatch(/https:\/\//);
-        expect(result.error).not.toMatch(/digest|undefined|Cannot read/i);
-        // Refusing is not reporting a broken file: the owner must not be sent
-        // to republish an index that is perfectly good.
-        expect(result.error).not.toMatch(/content hash.*altered|not valid JSON/i);
+      return localStorage.getItem(LAST_EXPORT_KEY);
+    } catch {
+      return null;
+    }
+  });
+
+  function flash(msg: string) {
+    setMessage(msg);
+    setTimeout(() => setMessage(null), 3000);
+  }
+
+  async function exportFile() {
+    setBusy(true);
+    try {
+      const json = await buildFullBackup();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const device = getDeviceName() ? `-${getDeviceName().toLowerCase().replace(/\s+/g, '-')}` : '';
+      a.download = `practice-compass${device}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      const ts = new Date().toISOString();
+      try {
+        localStorage.setItem(LAST_EXPORT_KEY, ts);
+      } catch {
+        /* ignore */
+      }
+      setLastExport(ts);
+      flash('Backup exported (data + files).');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      const text = await file.text();
+
+      // Warn when the backup looks OLDER than what's on this device.
+      const meta = readBackupMeta(text);
+      const localLatest = lastModifiedOf(db);
+      const backupLatest = meta?.lastModified ?? meta?.exportedAt ?? '';
+      let ok: boolean;
+      if (backupLatest && localLatest && backupLatest < localLatest) {
+        ok = confirm(
+          `⚠️ This backup looks OLDER than the data on this device.\n\nBackup${meta?.deviceName ? ` (from “${meta.deviceName}”)` : ''}: last change ${backupLatest.slice(0, 16).replace('T', ' ')}\nThis device: last change ${localLatest.slice(0, 16).replace('T', ' ')}\n\nImporting replaces EVERYTHING here with the older copy. Continue?`,
+        );
+      } else {
+        ok = confirm(
+          `Importing replaces all data and files on this device${meta?.deviceName ? ` with the backup from “${meta.deviceName}”` : ''}. Continue?`,
+        );
+      }
+      if (ok) {
+        const result = await importFullBackup(text);
+        flash(result.ok ? `Imported (${result.fileCount} file${result.fileCount === 1 ? '' : 's'}).` : `Import failed: ${result.error}`);
       }
     } finally {
-      vi.unstubAllGlobals();
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
     }
+  }
 
-    // And the refusal was about the device alone: the SAME bytes pass again.
-    expect((await refresh()).ok).toBe(true);
-  });
-});
+  return (
+    <div className="stack-lg">
+      <header className="stack-sm">
+        <h1 className="page-title">Settings &amp; backup</h1>
+        <p className="page-sub">Your practice lives on this device; the rest is on your terms.</p>
+      </header>
 
-// ---------------------------------------------------------------------------
-// ac-11 — the commit boundary, against the REAL store.
-// ---------------------------------------------------------------------------
+      <section className="stack-sm">
+        <div className="section-label">How your data is stored</div>
+        <div className="card stack-sm small">
+          <StorageRole
+            title="On this device"
+            body="The source of truth. Everything works fully offline; nothing here needs the internet."
+          />
+          <StorageRole
+            title="GitHub sync (optional)"
+            body="Keeps the MacBook and iPhone on the same data — small, versioned snapshots through one private repo you own. Use it only for apps you actually use on more than one device; a phone-only app doesn’t need it."
+          />
+          <StorageRole
+            title="NAS backup (optional)"
+            body="Your own full export (data + files) kept independently on the NAS. Sync history is convenient, but keep a real backup too — don’t rely on the sync repo as your only copy."
+          />
+          <StorageRole
+            title="NAS recordings & scores"
+            body="Large class videos — and score PDFs/docs — stay on the NAS; the app only stores small links to them. They never enter local storage, sync, or backups. Small ad-hoc photos and snippets can still be attached to a lesson directly."
+          />
+        </div>
+      </section>
 
-const INDEX = decodeSourceIndex(indexFixture);
-const SETAR = 'inst-setar';
-const NOW = new Date('2026-09-17T09:00:00.000Z');
+      <section className="stack-sm">
+        <div className="section-label">Appearance</div>
+        <div className="options">
+          {THEME_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              className={`option${theme === o.value ? ' selected' : ''}`}
+              onClick={() => setTheme(o.value)}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </section>
 
-function loadOwnerData(): PracticeDB {
-  const db = validateDB(JSON.parse(V13_SETAR_TEXT));
-  useStore.setState({ db, active: null, activeRoutine: null, activePlan: null, sessionInstrumentId: SETAR });
-  return db;
+      <section className="stack-sm">
+        <div className="section-label">Install as an app</div>
+        <div className="card stack-sm small dim">
+          <div>
+            <strong style={{ color: 'var(--text)' }}>iPhone / iPad (Safari):</strong> tap the Share button, then{' '}
+            <strong style={{ color: 'var(--text)' }}>“Add to Home Screen.”</strong>
+          </div>
+          <div>
+            <strong style={{ color: 'var(--text)' }}>Android (Chrome):</strong> menu (⋮) →{' '}
+            <strong style={{ color: 'var(--text)' }}>“Install app.”</strong>
+          </div>
+          <div>
+            <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
+          </div>
+          <div>
+            <strong style={{ color: 'var(--text)' }}>Mac (Safari):</strong> File →{' '}
+            <strong style={{ color: 'var(--text)' }}>“Add to Dock.”</strong>
+          </div>
+          <div className="tiny faint">
+            It opens full-screen as its own app, works offline, and keeps all data on the device. With sync (below)
+            turned on, the MacBook and iPhone apps stay on the same data.
+          </div>
+        </div>
+      </section>
+
+      <SyncSection />
+
+      <section className="stack-sm">
+        <div className="section-label">Instruments</div>
+        <div className="card stack-sm">
+          {db.instruments.map((inst) => (
+            <div key={inst.id} className="row" style={{ gap: 8 }}>
+              <input
+                className="input grow"
+                value={inst.name}
+                onChange={(e) => updateInstrument(inst.id, { name: e.target.value })}
+              />
+              <button
+                className={`btn btn-sm${inst.active ? ' btn-primary' : ''}`}
+                onClick={() => updateInstrument(inst.id, { active: !inst.active })}
+                title={inst.active ? 'Active — tap to hide from quick start' : 'Hidden — tap to activate'}
+              >
+                {inst.active ? 'Active' : 'Hidden'}
+              </button>
+            </div>
+          ))}
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              className="input grow"
+              placeholder="Add an instrument…"
+              value={newInstrument}
+              onChange={(e) => setNewInstrument(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newInstrument.trim()) {
+                  addInstrument({ name: newInstrument });
+                  setNewInstrument('');
+                }
+              }}
+            />
+            <button
+              className="btn btn-sm"
+              disabled={!newInstrument.trim()}
+              onClick={() => {
+                addInstrument({ name: newInstrument });
+                setNewInstrument('');
+              }}
+            >
+              <PlusIcon /> Add
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="stack-sm">
+        <div className="section-label">Device &amp; handoff</div>
+        <div className="card stack-sm">
+          <div className="small dim">
+            Each device keeps its own local copy (everything works offline). With{' '}
+            <strong style={{ color: 'var(--text)' }}>sync</strong> on, devices exchange whole snapshots through your
+            GitHub repo — newest copy wins, and if both changed you choose. Without sync, moving data is a manual
+            export → import.
+          </div>
+          <Field label="This device's name" hint="Stamped into backups and sync commits so you can tell devices apart (e.g. iPhone, MacBook).">
+            <input
+              className="input"
+              placeholder="e.g. MacBook"
+              value={deviceName}
+              onChange={(e) => setDeviceNameState(e.target.value)}
+              onBlur={() => setDeviceName(deviceName)}
+              style={{ maxWidth: 240 }}
+            />
+          </Field>
+          <div className="tiny faint">
+            Last export from this device: {lastExport ? lastExport.slice(0, 16).replace('T', ' ') : 'never'} · latest
+            change here: {lastModifiedOf(db) ? lastModifiedOf(db).slice(0, 16).replace('T', ' ') : '—'}
+          </div>
+        </div>
+      </section>
+
+      <NasRecordingsSection />
+
+      <SchedulingSection />
+
+      <section className="stack-sm">
+        <div className="section-label">Data &amp; backup</div>
+        <div className="card stack-sm">
+          <div className="row-wrap small dim">
+            {db.items.length} items · {db.blocks.length} blocks · {db.pathways.length} pathways ·{' '}
+            {db.attachments.length} file{db.attachments.length === 1 ? '' : 's'}
+          </div>
+          <div className="grid-2">
+            <button className="btn" onClick={exportFile} disabled={busy}>
+              <DownloadIcon /> {busy ? 'Working…' : 'Export backup'}
+            </button>
+            <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>
+              <UploadIcon /> Import backup
+            </button>
+          </div>
+          <div className="tiny faint">A backup is one file with all your data and attached files — save it to your NAS or iCloud.</div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            aria-label="Import backup file"
+            hidden
+            onChange={onImportFile}
+          />
+          <Field hint="Replaces all data with the original demo dataset.">
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                if (confirm('Reset to demo data? This replaces everything.')) {
+                  resetDemo();
+                  flash('Demo data restored.');
+                }
+              }}
+            >
+              Reset demo data
+            </button>
+          </Field>
+          <Field hint="Removes all instruments, items and history.">
+            <button
+              className="btn btn-sm btn-danger"
+              onClick={() => {
+                if (confirm('Erase ALL data? This cannot be undone.')) {
+                  clearAll();
+                  flash('All data cleared.');
+                }
+              }}
+            >
+              Clear all data
+            </button>
+          </Field>
+        </div>
+      </section>
+
+      <div className="tiny faint" style={{ textAlign: 'center' }}>
+        Practice Compass · build {__APP_VERSION__}
+      </div>
+
+      {message && <div className="toast">{message}</div>}
+    </div>
+  );
 }
 
-const commit = (decidedFromRev: number) =>
-  useStore.getState().commitArchiveImport({ index: INDEX, instrumentId: SETAR, decidedFromRev, now: NOW });
+/**
+ * Mac ↔ iPhone sync through a GitHub repo the user owns. Free, no server of
+ * ours, and honest: whole snapshots compared by content hash, an explicit
+ * two-button choice when both changed (the newer side is only a
+ * recommendation), and both copies preserved before anything is replaced.
+ * The token stays in this browser's localStorage only.
+ */
+function SyncSection() {
+  const status = useSyncStatus();
+  const [cfg, setCfg] = useState(() => getSyncConfig());
+  const [repo, setRepo] = useState(cfg?.repo ?? 'ethan-ghoreishi/practice-compass-data');
+  const [token, setToken] = useState('');
+  const [busy, setBusy] = useState(false);
 
-describe('committing an archive import', () => {
-  it('archive commits survive interruption and never apply a stale preview', async () => {
-    loadOwnerData();
+  useEffect(() => {
+    void refreshArchiveStatus();
+  }, []);
 
-    // --- ONE mutation, validated first, acknowledged by storage -------------
-    const { plan, rev } = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(plan.newItems).toHaveLength(94);
-    const applied = await commit(rev);
-    expect(applied).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
-    // The storage adapter holds the WHOLE new state, not a partial one.
-    const persisted = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-    expect(persisted.state.db.items.filter((i) => i.source)).toHaveLength(94);
-    expect(persisted.state.db.archiveSources).toHaveLength(1);
+  async function connectAndSync() {
+    const next = { repo: repo.trim().replace(/^https?:\/\/github\.com\//, ''), token: token.trim() };
+    setSyncConfig(next);
+    setCfg(next);
+    setToken('');
+    setBusy(true);
+    await syncNow();
+    setBusy(false);
+  }
 
-    // --- an unchanged refresh writes NOTHING, and churns no revision --------
-    const quietRev = useStore.getState().rev;
-    const again = await commit(quietRev);
-    expect(again).toMatchObject({ ok: true, status: 'unchanged' });
-    expect(useStore.getState().rev).toBe(quietRev);
+  async function manualSync() {
+    setBusy(true);
+    await syncNow();
+    setBusy(false);
+  }
 
-    // --- a REVISION CHANGE during the fetch rebases without losing edits ----
-    loadOwnerData();
-    const stale = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    // The owner edits a notebook while the index is being read.
-    useStore.getState().updateItem('own-dashti', { notes: 'edited while the index was being read' });
-    expect(useStore.getState().rev).not.toBe(stale.rev);
-    const rebased = await commit(stale.rev);
-    expect(rebased).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-      'edited while the index was being read',
-    );
-    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
+  async function resolve(keep: 'local' | 'remote') {
+    setBusy(true);
+    await resolveConflict(keep);
+    setBusy(false);
+  }
 
-    // --- a rebase that raises a NEW question refuses, and changes nothing ---
-    loadOwnerData();
-    const before = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(before.plan.questions).toEqual([]);
-    // An item appears with a canonical title while the index is being read —
-    // now there IS something to decide, and it is not this code's decision.
-    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
-    const itemsBefore = useStore.getState().db.items.length;
-    const refused = await commit(before.rev);
-    expect(refused).toMatchObject({ ok: false, status: 'stale' });
-    expect(useStore.getState().db.items).toHaveLength(itemsBefore);
-    expect(useStore.getState().db.archiveSources).toEqual([]);
-    // Answering it explicitly lets the same index through.
-    const answered = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(answered).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.filter((i) => i.source?.pieceKey === 'عراق')).toHaveLength(0);
+  async function restoreArchive() {
+    if (!confirm('Restore the archived copy? It replaces the data currently on this device (the current data is what sync last wrote here).')) return;
+    setBusy(true);
+    const result = await restorePreSyncArchive();
+    setBusy(false);
+    if (!result.ok) alert(result.error);
+  }
 
-    // --- A RUNNING SESSION IS UNTOUCHED, and one that FINISHES is kept ------
-    loadOwnerData();
-    useStore.getState().startItemSession('own-dashti');
-    const activeBefore = useStore.getState().active;
-    expect(activeBefore).not.toBeNull();
-    const duringPractice = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const withClock = await commit(duringPractice.rev);
-    expect(withClock).toMatchObject({ ok: true, status: 'applied' });
-    // Not replaced, not nulled, not restarted: the same object, still running.
-    expect(useStore.getState().active).toBe(activeBefore);
-    expect(useStore.getState().activeRoutine).toBeNull();
-    expect(useStore.getState().activePlan).toBeNull();
-    expect(useStore.getState().sessionInstrumentId).toBe(SETAR);
+  const fmt = (iso?: string | null) => (iso ? iso.slice(0, 16).replace('T', ' ') : '—');
+  const remoteNewer =
+    status.conflict?.remote?.savedAt && status.lastSyncAt ? status.conflict.remote.savedAt > status.lastSyncAt : false;
 
-    loadOwnerData();
-    const beforeBlock = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    useStore.getState().startItemSession('own-dashti');
-    useStore.getState().closeSession({ durationMinutes: 12, result: 'same', answer: 'unanswered', now: NOW });
-    const blocksAfterClose = useStore.getState().db.blocks.length;
-    expect(blocksAfterClose).toBe(2);
-    const afterBlock = await commit(beforeBlock.rev);
-    expect(afterBlock).toMatchObject({ ok: true, status: 'applied' });
-    // The minute played while the index was being read is still there.
-    expect(useStore.getState().db.blocks).toHaveLength(2);
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Sync (GitHub)</div>
+      <div className="card stack-sm">
+        {!cfg ? (
+          <>
+            <div className="small dim">
+              Keep the MacBook and iPhone on the same data through a private GitHub repo you own — free, works from
+              anywhere, no server. The app stays fully offline-capable; sync happens when you're online.
+            </div>
+            <Field label="Repository" hint="owner/name of a repo dedicated to this app's data.">
+              <input className="input" value={repo} onChange={(e) => setRepo(e.target.value)} placeholder="you/practice-compass-data" />
+            </Field>
+            <Field
+              label="Access token"
+              hint="GitHub → Settings → Developer settings → Fine-grained tokens → New: select ONLY that repo, permission “Contents: Read and write”. Stored in this browser only — never in backups or synced data."
+            >
+              <input
+                className="input"
+                type="password"
+                value={token}
+                onChange={(e) => setToken(e.target.value)}
+                placeholder="github_pat_…"
+                autoComplete="off"
+              />
+            </Field>
+            <button className="btn btn-primary" disabled={!repo.trim() || !token.trim() || busy} onClick={connectAndSync}>
+              Connect &amp; sync
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="row between small">
+              <span className="dim">
+                Repo: <strong style={{ color: 'var(--text)' }}>{cfg.repo}</strong>
+              </span>
+              <span className="tiny faint">
+                {getDeviceName() || 'unnamed device'} · last sync {fmt(status.lastSyncAt)} · data {status.localHash}
+              </span>
+            </div>
 
-    // --- A FAILED WRITE IS REPORTED, and the retry really writes -----------
-    loadOwnerData();
-    const toFail = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const persistedBefore = fakeStorage.get();
-    fakeStorage.failNext();
-    const unsaved = await commit(toFail.rev);
-    expect(unsaved).toMatchObject({ ok: false, status: 'unsaved' });
-    expect(unsaved.message).toMatch(/could not save/i);
-    // The store holds the graph; the DISK does not. A reload before the
-    // acknowledgement therefore yields the PREVIOUS complete state.
-    expect(useStore.getState().db.archiveSources).toHaveLength(1);
-    expect(fakeStorage.get()).toBe(persistedBefore);
+            <div className="small" style={{ color: status.phase === 'error' ? 'var(--tone-alert)' : undefined }}>
+              {status.phase === 'syncing' ? 'Syncing…' : status.message}
+            </div>
 
-    // THE RETRY IS THE POINT: the in-memory index hash already matches, so a
-    // "nothing changed" shortcut would answer "Already current" over data that
-    // was never saved.
-    const retry = await commit(useStore.getState().rev);
-    expect(retry).toMatchObject({ ok: true, status: 'applied' });
-    const afterRetry = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-    // A COMPLETE state, not a delta: the graph, the owner's items, the blocks.
-    expect(afterRetry.state.db.archiveSources).toHaveLength(1);
-    expect(afterRetry.state.db.items.filter((i) => i.source)).toHaveLength(94);
-    expect(afterRetry.state.db.blocks).toHaveLength(1);
-    expect(afterRetry.state.db.lessonAgenda).toHaveLength(1);
+            {status.phase === 'error' && (
+              <div className="tiny dim">
+                Nothing was replaced — an interrupted sync never leaves a half-written copy on either side. Check the
+                connection or token, then “Sync now”.
+              </div>
+            )}
 
-    // --- reload AFTER the acknowledgement yields the NEW complete state -----
-    // The bytes on disk at the moment of the acknowledgement, replayed through
-    // the app's own hydration. (Every `setState` re-persists, so the captured
-    // text is put back first — otherwise this would only prove that the store
-    // can read what it has just written.)
-    const onDisk = fakeStorage.get()!;
-    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-    fakeStorage.set(onDisk);
-    await useStore.persist.rehydrate();
-    expect(useStore.getState().db.archiveSources).toHaveLength(1);
-    expect(useStore.getState().db.items.filter((i) => i.source)).toHaveLength(94);
-    expect(useStore.getState().db.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
-      'Teacher: keep the mezrab light on the return.',
-    );
+            {status.phase === 'conflict' && status.conflict && (
+              <div className="card card-quiet stack-sm">
+                <div className="small">
+                  Both copies have changes. Choose which one to continue from — the other is <strong>archived, not
+                  destroyed</strong> (restorable below / from the repo's archive branches).
+                </div>
+                <div className="tiny dim">
+                  This device ({status.conflict.local.deviceName || 'unnamed'}) · revision r{status.conflict.local.rev ?? '—'}
+                  <br />
+                  GitHub copy{status.conflict.remote?.deviceName ? ` (from ${status.conflict.remote.deviceName})` : ''} · saved{' '}
+                  {fmt(status.conflict.remote?.savedAt)}
+                  {remoteNewer && ' · more recent'}
+                </div>
+                <div className="grid-2">
+                  <button className="btn" disabled={busy} onClick={() => resolve('local')}>
+                    Keep this device's copy
+                  </button>
+                  <button className="btn" disabled={busy} onClick={() => resolve('remote')}>
+                    Take the GitHub copy
+                  </button>
+                </div>
+              </div>
+            )}
 
-    // --- a graph this device would REFUSE to import is never written -------
-    loadOwnerData();
-    const broken = { ...INDEX, sessions: INDEX.sessions.map((s) => ({ ...s, n: 1 })) };
-    const refusedGraph = await useStore.getState().commitArchiveImport({
-      index: broken,
-      instrumentId: SETAR,
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(refusedGraph.ok).toBe(false);
-    expect(refusedGraph.status).toBe('refused');
-    expect(useStore.getState().db.archiveSources).toEqual([]);
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn" disabled={busy || status.phase === 'syncing'} onClick={manualSync}>
+                Sync now
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  if (confirm('Turn sync off on this device? Data stays put; only the connection is removed.')) {
+                    setSyncConfig(null);
+                    setCfg(null);
+                  }
+                }}
+              >
+                Disconnect
+              </button>
+            </div>
 
-    // --- AN OWNER DECISION SURVIVES COMMIT, RELOAD AND THE NEXT REFRESH ----
-    // The whole lifecycle, not the helper: a rendered choice becomes a
-    // decision, the commit persists it, a real rehydration reads it back, and
-    // the NEXT refresh — carrying no decisions at all — honours it.
-    loadOwnerData();
-    useStore.getState().addItem({ instrumentId: SETAR, title: 'عراق' });
-    const asked = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(asked.plan.questions.some((q) => q.pieceKey === 'عراق')).toBe(true);
-    const skipped = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'skip-item', pieceKey: 'عراق' }],
-      decidedFromRev: asked.rev,
-      now: NOW,
-    });
-    expect(skipped).toMatchObject({ ok: true, status: 'applied' });
+            {status.archiveAvailable && (
+              <div className="row between tiny dim" style={{ gap: 8 }}>
+                <span>
+                  Archived copy from {fmt(status.archiveMeta?.savedAt)} ({status.archiveMeta?.reason ?? 'pre-sync'}) is
+                  kept on this device.
+                </span>
+                <button className="btn btn-ghost btn-sm" disabled={busy} onClick={restoreArchive} style={{ flex: 'none' }}>
+                  Restore it
+                </button>
+              </div>
+            )}
 
-    // Reload: the bytes actually on disk, back through the app's hydration.
-    const skipDisk = fakeStorage.get()!;
-    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-    fakeStorage.set(skipDisk);
-    await useStore.persist.rehydrate();
-    const reloadedSource = useStore.getState().db.archiveSources[0]!;
-    expect(reloadedSource.suppressions.filter((x) => x.kind === 'piece' && x.ref === 'عراق')).toHaveLength(1);
-    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    // The owner's own record is untouched and still theirs.
-    expect(useStore.getState().db.items.find((i) => i.title === 'عراق')!.source).toBeUndefined();
+            <div className="tiny faint">
+              Syncs when the app opens, after a quiet moment following changes, when you come back online, and on “Sync
+              now”. Attachments upload once; only new or deleted files transfer.
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
 
-    // The NEXT refresh asks nothing and writes nothing.
-    const afterReload = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(afterReload.plan.questions).toEqual([]);
-    const quiet = await commit(afterReload.rev);
-    expect(quiet).toMatchObject({ ok: true, status: 'unchanged' });
-    expect(useStore.getState().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+/**
+ * NAS recordings: the base URL that resolves relative class-recording paths,
+ * plus the Setar archive refresh. Full videos never enter the app — only these
+ * references do.
+ *
+ * THE BASE IS THE ARCHIVE FOLDER ITSELF, not the media root above it. Every
+ * reference the app stores is relative to the ARCHIVE root (`session-39-…/…`),
+ * so a base of `https://nas:5010` resolves a class recording to
+ * `https://nas:5010/session-39-…/…` — a URL that addresses no file. This label
+ * used to name the media root, and to promise that changing the base broke
+ * nothing; it is the one setting a device carries from before the archive
+ * existed, and correcting it is a one-off the copy here has to ask for.
+ */
+function NasRecordingsSection() {
+  const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
 
-    // --- A FIELD DECISION AGAINST AN ALREADY-CURRENT INDEX IS NOT "current" -
-    // The index has not moved; the owner has only just answered. Judging
-    // "Already current" by the index hash alone reported exactly that and
-    // dropped the answer before it could ever be written.
-    const boundWithComposer = useStore
-      .getState()
-      .db.items.find((i) => i.source && (i.persian?.composer ?? '') !== '')!;
-    useStore.getState().updateItem(boundWithComposer.id, { persian: { ...boundWithComposer.persian, composer: '' } });
-    const composer = boundWithComposer.persian!.composer!;
-    const pieceKey = boundWithComposer.source!.pieceKey;
-    const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
-    // An OFFER is not a change: unanswered, this refresh genuinely writes
-    // nothing, and says so. The owner's DECISION is what makes it a write.
-    expect(offered.plan.summary.unchanged).toBe(true);
-    const answered2 = useStore.getState().previewArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
-      now: NOW,
-    });
-    expect(answered2.plan.summary.unchanged).toBe(false);
-    // Left unanswered, the same refresh really is a no-op.
-    const declined = await commit(useStore.getState().rev);
-    expect(declined).toMatchObject({ ok: true, status: 'unchanged' });
-    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe('');
-    // Answered, it is applied — and acknowledged by storage.
-    const appliedField = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(appliedField).toMatchObject({ ok: true, status: 'applied' });
-    const persistedField = JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } };
-    expect(persistedField.state.db.items.find((i) => i.id === boundWithComposer.id)!.persian?.composer).toBe(composer);
-    // Nothing else moved with it.
-    expect(useStore.getState().db.items.find((i) => i.id === boundWithComposer.id)!.title).toBe(
-      boundWithComposer.title,
-    );
-    expect(useStore.getState().db.blocks).toHaveLength(1);
+  const trimmed = baseUrl.trim();
+  const normalized = trimmed ? normalizeBaseUrl(trimmed) : null;
+  const invalid = trimmed.length > 0 && normalized === null;
 
-    // --- A DECISION WHOSE PREMISE MOVED IS REFUSED, NOT APPLIED ------------
-    // The counterexample, through the REAL store: preview an empty composer,
-    // choose the archive's value, then write your own before pressing Apply.
-    // No new QUESTION appears, so the rebase guard alone let this through and
-    // the registry value replaced the words just typed.
-    const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
-    useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
-    const secondKey = second.source!.pieceKey;
-    const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    const choice = [
-      // Bound to the RECORD as well as the piece and the premise: a rebase that
-      // finds the piece on a different item must not hand it that answer.
-      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
-    ];
-    useStore.getState().updateItem(second.id, {
-      persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
-    });
-    const refusedStale = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: choice,
-      decidedFromRev: seen.rev,
-      now: NOW,
-    });
-    expect(refusedStale).toMatchObject({ ok: false, status: 'stale' });
-    expect(refusedStale.staleDecisions).toEqual(choice);
-    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
-      'Owner wrote this during refresh',
-    );
-    // Re-answered against what is actually there now, it applies.
-    const reAnswered = await useStore.getState().commitArchiveImport({
-      index: INDEX,
-      instrumentId: SETAR,
-      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
-      decidedFromRev: useStore.getState().rev,
-      now: NOW,
-    });
-    expect(reAnswered).toMatchObject({ ok: true, status: 'applied' });
-    expect(useStore.getState().db.items.find((i) => i.id === second.id)!.persian?.composer).toBe(
-      second.persian!.composer,
-    );
+  function commitBaseUrl() {
+    // Normalise on blur so a scheme-less host (the reported bug) becomes a real
+    // https URL, and echo the cleaned value back into the field.
+    const clean = normalizeBaseUrl(baseUrl);
+    const next = clean ?? baseUrl.trim();
+    setBaseUrlState(next);
+    setNasBaseUrl(next);
+  }
 
-    // --- A DECISION IS BOUND TO ITS RECORD, THROUGH A REAL COMMIT ---------
-    // The other half of the same family, and the one an already-bound early
-    // `continue` hid completely: the piece is held by a DIFFERENT record by
-    // the time Apply runs. A field decision keyed by piece alone was written
-    // to that other record (its composer was empty too, so nothing about the
-    // VALUE would have caught it), and a Link decision was skipped in silence
-    // — `staleDecisions` empty, the commit reporting success for an action it
-    // never performed.
-    const movedPiece = useStore.getState().db.items.find((i) => i.source && i.id !== second.id)!;
-    const movedKey = movedPiece.source!.pieceKey;
-    const decoy = createItem({ instrumentId: SETAR, title: 'A different record' }, NOW);
-    useStore.setState((st) => ({
-      db: {
-        ...st.db,
-        items: [
-          // The approved record loses the binding; another record takes it.
-          ...st.db.items.map((i) => (i.id === movedPiece.id ? { ...i, source: undefined } : i)),
-          { ...decoy, source: { archiveId: 'setar-classes', pieceKey: movedKey } },
-        ],
-      },
-    }));
-    for (const decisions of [
-      [{ kind: 'link-item' as const, pieceKey: movedKey, itemId: movedPiece.id }],
-      [
-        {
-          kind: 'apply-field' as const,
-          pieceKey: movedKey,
-          itemId: movedPiece.id,
-          field: 'composer' as const,
-          from: movedPiece.persian?.composer ?? '',
-        },
-      ],
-    ]) {
-      const refused = await useStore.getState().commitArchiveImport({
-        index: INDEX,
-        instrumentId: SETAR,
-        decisions,
-        decidedFromRev: useStore.getState().rev,
-        now: NOW,
-      });
-      expect(refused).toMatchObject({ ok: false, status: 'stale' });
-      expect(refused.staleDecisions).toEqual(decisions);
-    }
-    // Neither record was touched by either refusal.
-    expect(useStore.getState().db.items.find((i) => i.id === movedPiece.id)!.source).toBeUndefined();
-    expect(useStore.getState().db.items.find((i) => i.id === decoy.id)!.persian?.composer ?? '').toBe('');
+  return (
+    <section className="stack-sm">
+      <div className="section-label">NAS recordings</div>
+      <div className="card stack-sm">
+        <div className="small dim">
+          Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
+          to each recording; set the address of the <strong style={{ color: 'var(--text)' }}>archive folder itself</strong>{' '}
+          and the links resolve against it.
+        </div>
+        <Field
+          label="Setar archive base URL"
+          hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes. References are stored relative to this (session-39-…/…), so a base one folder too high resolves every file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each device sets its own route to the same archive."
+        >
+          <input
+            className="input"
+            type="url"
+            inputMode="url"
+            enterKeyHint="done"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder="https://192.168.0.20:5010/setar-classes"
+            value={baseUrl}
+            onChange={(e) => setBaseUrlState(e.target.value)}
+            onBlur={commitBaseUrl}
+          />
+        </Field>
+        {invalid ? (
+          <div className="tiny" style={{ color: 'var(--tone-alert)' }}>
+            That doesn’t look like a valid web address.
+          </div>
+        ) : normalized ? (
+          <div className="tiny faint">Resolves to: {normalized}/…</div>
+        ) : null}
 
-    // --- refresh NEVER runs a whole-database import or reset ---------------
-    // `importDB`, `resetDemo` and `clearAll` each null the active session and
-    // reset `notNow`/`sessionInstrumentId`; every assertion above shows those
-    // intact across a commit. The source, too, says so:
-    const storeSource = await (await import('node:fs/promises')).readFile('src/store/useStore.ts', 'utf8');
-    const from = storeSource.indexOf('commitArchiveImport: async');
-    expect(from).toBeGreaterThan(0);
-    const body = storeSource.slice(from, storeSource.indexOf('hideArchiveResource: (', from));
-    expect(body.length).toBeGreaterThan(200);
-    // Comments stripped first — this action's own docstring NAMES the things
-    // it must not call, and a scan that matched prose would be checking the
-    // comment rather than the code.
-    const code = body.replace(/\/\/[^\n]*/g, '');
-    expect(code).not.toMatch(/importDB|installDatabase|resetDemo|clearAll|replaceAllBlobs|addAttachment/);
-    // ONE db mutation in the whole action.
-    expect(code.match(/\bset\(/g) ?? []).toHaveLength(1);
-  });
-});
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">
+            Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy a
+            file's URL from there and paste it into a lesson: a URL under this base is stored as a relative path, so it
+            keeps working whatever route a device takes to the NAS.
+          </div>
+          <button
+            className="btn btn-sm"
+            style={{ flex: 'none' }}
+            disabled={!normalized}
+            onClick={() => normalized && window.open(`${normalized}/`, '_blank', 'noopener,noreferrer')}
+          >
+            Browse
+          </button>
+        </div>
 
-// ---------------------------------------------------------------------------
-// ac-9 — an import may establish membership and provenance. Never practice.
-// ---------------------------------------------------------------------------
+        {/* A single clip proved nothing: it fails for a file that was renamed
+            and passes for a base whose other thousand files are unreachable.
+            The ARCHIVE ROOT is what was configured, so it is what opens. */}
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">
+            Opening a file is a direct request from this device. The app cannot check from here whether the NAS is
+            reachable — a certificate, a blocked cross-origin request and an outage all look the same to it.
+          </div>
+        </div>
+      </div>
 
-describe('what an archive import may and may not establish', () => {
-  it('archive import cannot fabricate practice or next-class urgency', async () => {
-    loadOwnerData();
-    useStore.getState().startItemSession('own-dashti');
-    useStore.getState().notNowReview('rev-1');
-    const beforeState = useStore.getState();
-    const before = JSON.parse(JSON.stringify(beforeState.db)) as PracticeDB;
-    const activeBefore = beforeState.active;
-    const notNowBefore = JSON.parse(JSON.stringify(beforeState.notNow)) as unknown;
+      <ArchiveRefresh />
+    </section>
+  );
+}
 
-    const applied = await commit(useStore.getState().rev);
-    expect(applied).toMatchObject({ ok: true, status: 'applied' });
-    const after = useStore.getState();
+// --- Scheduling explainer + knobs -------------------------------------------
 
-    // --- EVERY existing record, byte for byte ------------------------------
-    expect(after.db.blocks).toEqual(before.blocks);
-    expect(after.db.reviews).toEqual(before.reviews);
-    expect(after.db.lessonAgenda).toEqual(before.lessonAgenda);
-    expect(after.db.materials).toEqual(before.materials);
-    expect(after.db.pathways).toEqual(before.pathways);
-    expect(after.db.pathwayStages).toEqual(before.pathwayStages);
-    expect(after.db.pathwayRoutines).toEqual(before.pathwayRoutines);
-    expect(after.db.attachments).toEqual(before.attachments);
-    for (const original of before.items) {
-      const now = after.db.items.find((i) => i.id === original.id)!;
-      expect(now).toEqual(original);
-    }
-    // ...and the ephemeral session state the owner is standing in.
-    expect(after.active).toBe(activeBefore);
-    expect(after.activeRoutine).toBeNull();
-    expect(after.activePlan).toBeNull();
-    expect(after.notNow).toEqual(notNowBefore);
-    expect(after.sessionInstrumentId).toBe(SETAR);
+const PARAM_ROWS: {
+  key: keyof SchedulingParams;
+  label: string;
+  hint: string;
+  /** 'percent' shows/edits the value ×100 (shares are stored as 0–1 fractions). */
+  unit?: 'percent';
+}[] = [
+  { key: 'sm2FirstIntervalDays', label: 'First review gap (days)', hint: 'How long after the first good review before it comes back.' },
+  { key: 'sm2SecondIntervalDays', label: 'Second review gap (days)', hint: 'The gap after the second good review; it keeps expanding from there.' },
+  { key: 'sm2SlipResetDays', label: 'Relearn gap after a slip (days)', hint: 'When something slips, it returns this soon to relearn.' },
+  { key: 'warmupShare', label: 'Warm-up share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for warm-up.', unit: 'percent' },
+  { key: 'deepWorkShare', label: 'Deep-work share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for the focus block.', unit: 'percent' },
+  { key: 'reviewSlotMinMinutes', label: 'Shortest review slot (min)', hint: 'A review segment in the Session Plan never gets less than this.' },
+  { key: 'reviewSlotMaxMinutes', label: 'Longest review slot (min)', hint: 'A review segment in the Session Plan never gets more than this.' },
+];
 
-    // --- NEW items carry no practice at all ---------------------------------
-    const fresh = after.db.items.filter((i) => i.source);
-    expect(fresh).toHaveLength(94);
-    for (const item of fresh) {
-      expect(item.timesPractised).toBe(0);
-      expect(item.totalMinutes).toBe(0);
-      expect(item.lastPractisedAt).toBeUndefined();
-      expect(item.lastResult).toBeUndefined();
-      expect(item.nextReviewDate).toBeUndefined();
-      expect(item.nextReviewSource).toBeUndefined();
-      expect(item.srReps).toBeUndefined();
-      expect(item.srEase).toBeUndefined();
-      expect(item.srIntervalDays).toBeUndefined();
-      expect(item.srLastProgressDay).toBeUndefined();
-      // RESTING by explicit import policy: 94 pieces must not flood Today.
-      expect(item.status).toBe('dormant');
-      // No pathway placement, no catalogue identity, no material invented.
-      expect(item.stageId).toBeUndefined();
-      expect(item.catalogKey).toBeUndefined();
-      expect(item.materialId).toBeUndefined();
-    }
-    // No review row and no agenda entry was created for any of them.
-    expect(after.db.reviews.filter((r) => fresh.some((i) => i.id === r.practiceItemId))).toEqual([]);
-    expect(after.db.lessonAgenda).toHaveLength(1);
-    expect(after.db.blocks.filter((b) => fresh.some((i) => i.id === b.practiceItemId))).toEqual([]);
+function SchedulingSection() {
+  const settings = useStore((s) => s.db.settings);
+  const update = useStore((s) => s.updateSchedulingParams);
+  const p = clampSchedulingParams(settings);
+  const customised = settings !== undefined;
 
-    // A resting item is still DIRECTLY startable — resting is administrative,
-    // not a lock.
-    const araq = after.db.items.find((i) => i.source?.pieceKey === 'عراق')!;
-    useStore.getState().cancelSession();
-    useStore.getState().startItemSession(araq.id);
-    expect(useStore.getState().active?.itemId).toBe(araq.id);
-    useStore.getState().cancelSession();
+  return (
+    <section className="stack-sm">
+      <div className="section-label" id="how-scheduling-works">How scheduling works</div>
+      <div className="card stack-sm small">
+        <div className="dim">
+          Every item gets a plain priority score, then the review date comes from spaced repetition. Nothing here is a
+          black box — these are the exact numbers.
+        </div>
 
-    // --- THE OWNER'S OWN RECORDINGS ARE EVIDENCE, NOT MATERIAL -------------
-    const source = useStore.getState().db.archiveSources[0]!;
-    // 125 personal files in the real corpus, and not one of them is a resource.
-    expect(source.sessions.every((s) => s.resources.every((r) => r.role !== 'تمرین-من'))).toBe(true);
-    // Their membership and role survive — that is the whole of what they leave.
-    const chainPiece = 'پیش-درامد-سه-گاه-فروتن';
-    const { repeatChains } = await import('../domain/sourceArchive');
-    // The longest repeat chain in the real archive. It is read from the
-    // PERSONAL role — a piece is a repeat because the student was asked to play
-    // it again, not because an unnamed demonstration gave it membership of a
-    // session (which would report a repeat nobody was asked for).
-    expect(repeatChains(source, chainPiece)).toEqual([[22, 23, 24, 25, 26, 27]]);
-    // The real counterexample: پیش-درامد-ماهور-هرمزی is a MEMBER of sessions
-    // 16, 17 and 18, but the student only recorded themselves playing it in 17
-    // and 18 — session 16's membership comes from a correction and a
-    // demonstration. Read from membership the chain would be three classes
-    // long; read from what was actually asked for again, it is two.
-    const hormozi = 'پیش-درامد-ماهور-هرمزی';
-    expect(source.sessions.filter((s) => s.members.some((m) => m.key === hormozi)).map((s) => s.n)).toEqual([
-      16, 17, 18,
-    ]);
-    expect(repeatChains(source, hormozi)).toEqual([[17, 18]]);
-    const chainItem = useStore.getState().db.items.find((i) => i.source?.pieceKey === chainPiece)!;
-    // Six classes of provenance, and still zero recorded practice.
-    expect(chainItem.timesPractised).toBe(0);
-    expect(chainItem.totalMinutes).toBe(0);
-    const material = (await import('../domain/itemFiles')).itemFiles(useStore.getState().db, chainItem.id);
-    expect(material.every((f) => f.source !== 'reference' || !f.path.includes('تمرین-من'))).toBe(true);
+        <div>
+          <div style={{ fontWeight: 600 }}>What to practise (priority)</div>
+          <div className="dim">
+            <code>
+              importance×2 + difficulty + fragility + overdue + neglected + class-deadline − recent-minutes
+            </code>
+            . Work you committed to a specific class climbs as THAT class nears, and stops counting once it has
+            passed. A question for your teacher adds nothing — it is something to ask, not a reason to practise.
+            Material you have given a lot of minutes to this week is gently set aside; the effect decays over a week
+            and is capped, so nothing is ever hidden for good.
+          </div>
+        </div>
 
-    // --- HISTORY NEVER BECOMES THE NEXT CLASS ------------------------------
-    const { nextLessonFor } = await import('../domain/selectors');
-    const { preparationDatesByItem, defaultTargetLesson } = await import('../domain/lessonAgenda');
-    const db = useStore.getState().db;
-    expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
-    expect(nextLessonFor(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
-    expect(defaultTargetLesson(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
-    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, NOW).values()]).toEqual([]);
+        <div>
+          <div style={{ fontWeight: 600 }}>When to revisit (spaced repetition)</div>
+          <div className="dim">
+            Practising early is real practice, but it is not the review: before the date, a good session records the
+            minutes and leaves the date alone. AT the review, “stable” results widen the gap
+            (≈ {p.sm2FirstIntervalDays} → {p.sm2SecondIntervalDays} days → gap × ease), at most once a day; “same” and
+            “slightly better” hold the same gap again without counting as a slip; only “worse” brings the date
+            forward — to{' '}
+            {p.sm2SlipResetDays === 1 ? 'the next day' : `${p.sm2SlipResetDays} days`} — and never pushes it back.
+            Important or hard material is pulled a little sooner. A date you chose yourself stands until it is due.
+            You can override any item to a fixed cadence or manual.
+          </div>
+        </div>
 
-    // AND ON A DEVICE WHOSE CLOCK IS BEHIND THE ARCHIVE. Read from 1 June 2026,
-    // the last three imported classes are all in the FUTURE and all NEARER than
-    // the owner's own next class — the exact case a plain `date >= today` turns
-    // into a deadline. They are still history.
-    const EARLIER = new Date('2026-06-01T09:00:00.000Z');
-    const futureHistory = db.lessons.filter((l) => l.origin === 'archive' && l.date > '2026-06-01');
-    expect(futureHistory.map((l) => l.date).sort()).toEqual(['2026-06-09', '2026-07-09', '2026-08-04', '2026-09-01']);
-    expect(nextLessonFor(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
-    expect(defaultTargetLesson(db.lessons, SETAR, EARLIER)!.id).toBe('L-38-upcoming');
-    expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, EARLIER).values()]).toEqual([]);
-  });
-});
+        <div id="what-the-choices-mean">
+          <div style={{ fontWeight: 600 }}>What each choice means</div>
+          <div className="dim">
+            <strong>Status</strong> says how the item currently stands and how you are working on it — not how the
+            last ten minutes went. The eight are not rungs of a ladder you must climb: neighbours overlap on purpose,
+            you can move backwards, and “{ITEM_STATUS_LABELS.new}” means new material still being established, not
+            that you have never practised it.
+            <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
+              {ITEM_STATUS_ORDER.map((st) => (
+                <li key={st}>
+                  <strong>{ITEM_STATUS_LABELS[st]}</strong> — {ITEM_STATUS_DESCRIPTIONS[st]}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="dim" style={{ marginTop: 6 }}>
+            <strong>Result</strong>, at the close of a block, is the most concrete thing that block actually showed.
+            The last three are evidence of stability at a named scope; the first three describe change short of such a
+            claim.
+            <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
+              {RESULT_BUTTONS.map((r) => (
+                <li key={r}>
+                  <strong>{RESULT_LABELS[r]}</strong> — {RESULT_DESCRIPTIONS[r]}
+                </li>
+              ))}
+            </ul>
+            “{RESULT_LABELS.same}” is never read as failed recall, and neither fatigue, a blank field nor a missing
+            rating becomes one. “Save without a result” records the minutes and changes no schedule.
+          </div>
+          <div className="dim" style={{ marginTop: 6 }}>
+            <strong>{RATING_LABELS.importance}</strong> ({RATING_HINTS.importance.toLowerCase()})
+            — 1 “{RATING_ANCHORS.importance[1]}”, 3 “{RATING_ANCHORS.importance[3]}”, 5 “
+            {RATING_ANCHORS.importance[5]}”. <strong>{RATING_LABELS.difficulty}</strong> (
+            {RATING_HINTS.difficulty.toLowerCase()}) — 1 “{RATING_ANCHORS.difficulty[1]}”, 3 “
+            {RATING_ANCHORS.difficulty[3]}”, 5 “{RATING_ANCHORS.difficulty[5]}”. Both default to 3.{' '}
+            {RATING_EFFECT_NOTE} They are stored as <code>importance</code> and <code>difficulty</code>, and every
+            number above uses them exactly as it always has.
+          </div>
+        </div>
 
-// ---------------------------------------------------------------------------
-// ac-8 — an owner's deletion is a decision a refresh has to respect.
-// ---------------------------------------------------------------------------
+        <div id="review-ownership">
+          <div style={{ fontWeight: 600 }}>Who manages a review date</div>
+          <div className="dim">
+            A date you typed, snoozed or re-armed is YOURS: the app leaves it alone until it comes due. “Use automatic
+            scheduling” on an item hands that management back — it KEEPS the date exactly as it is, records no
+            practice and calculates no new date. Automatic means the app has authority over the date from then on, not
+            that the date shown was worked out by the engine or that a review happened. If the item and its pending
+            review disagree about the date, the transfer is refused and asks you which one you meant rather than
+            guessing. With no date at all, automatic simply leaves it unscheduled; “Review today” puts it on today&apos;s
+            list — administration, not evidence.
+          </div>
+        </div>
 
-describe('deletions, unlinking and hiding', () => {
-  it('archive deletions and unlinking remain respected after refresh and reload', async () => {
-    loadOwnerData();
-    await commit(useStore.getState().rev);
-    const store = () => useStore.getState();
-    const itemFor = (key: string) => store().db.items.find((i) => i.source?.pieceKey === key)!;
-    const lessonFor = (n: number) => store().db.lessons.find((l) => l.source?.sessionN === n)!;
-    const suppressions = () => store().db.archiveSources[0]!.suppressions;
+        <div>
+          <div style={{ fontWeight: 600 }}>Class commitments and questions</div>
+          <div className="dim">
+            Each one names a specific class. Anything carried over from an older version of the app is listed as
+            “Unassigned” on the Lessons screen with a button to move it to the class it was actually for — the old
+            data never recorded which class it meant, so nothing was guessed for you.
+          </div>
+        </div>
 
-    // --- deleteItem records the decision IN THE SAME mutation --------------
-    const araqId = itemFor('عراق').id;
-    store().deleteItem(araqId);
-    expect(store().db.items.some((i) => i.id === araqId)).toBe(false);
-    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'piece', ref: 'عراق' }));
+        <div className="stack-sm" style={{ marginTop: 4 }}>
+          {PARAM_ROWS.map((row) => {
+            const [loRaw, hiRaw] = SCHEDULING_BOUNDS[row.key];
+            const scale = row.unit === 'percent' ? 100 : 1;
+            const lo = Math.round(loRaw * scale);
+            const hi = Math.round(hiRaw * scale);
+            return (
+              <Field key={row.key} label={`${row.label} (${lo}–${hi})`} hint={row.hint}>
+                <input
+                  className="input"
+                  type="number"
+                  inputMode="numeric"
+                  enterKeyHint="done"
+                  min={lo}
+                  max={hi}
+                  step={1}
+                  value={Math.round(p[row.key] * scale)}
+                  style={{ maxWidth: 120 }}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (Number.isFinite(n)) update({ [row.key]: n / scale });
+                  }}
+                />
+              </Field>
+            );
+          })}
+        </div>
 
-    // --- deleteLesson likewise ---------------------------------------------
-    const lesson13 = lessonFor(13).id;
-    store().deleteLesson(lesson13);
-    expect(store().db.lessons.some((l) => l.id === lesson13)).toBe(false);
-    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'session', ref: '13' }));
+        <div className="row between" style={{ gap: 8 }}>
+          <div className="tiny faint">
+            {customised ? 'Using your adjusted values.' : 'Using the recommended defaults.'}
+          </div>
+          <button
+            className="btn btn-sm"
+            style={{ flex: 'none' }}
+            disabled={!customised}
+            onClick={() => update(null)}
+          >
+            Reset to recommended
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
 
-    // --- REFRESHING THE SAME SOURCE MUST NOT BRING THEM BACK ---------------
-    const again = await commit(store().rev);
-    expect(again.ok).toBe(true);
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-
-    // ...nor may a RELOAD, which replays the persisted bytes through hydration.
-    const onDisk = fakeStorage.get()!;
-    useStore.setState({ db: validateDB(JSON.parse(V13_SETAR_TEXT)) });
-    fakeStorage.set(onDisk);
-    await useStore.persist.rehydrate();
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-    expect(store().db.lessons.some((l) => l.source?.sessionN === 13)).toBe(false);
-    await commit(store().rev);
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
-
-    // --- lifting a suppression lets the next refresh bring it back ----------
-    store().resetArchiveSuppression('setar-classes', 'piece', 'عراق');
-    const restored = await commit(store().rev);
-    expect(restored).toMatchObject({ ok: true, status: 'applied' });
-    expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
-
-    // --- HIDING A SHARED DEMO IS SCOPED TO ONE ITEM ------------------------
-    const { itemFiles } = await import('../domain/itemFiles');
-    const sharedDemo = 'session-13-03-09-2024/نمونه-1.mp4';
-    const oneMember = itemFor('کرشمه-در-عراق');
-    const otherMember = itemFor('حزین-در-عراق');
-    // Session 13 was suppressed above and is back only for the piece; re-run a
-    // refresh so its resources are present for both members.
-    store().resetArchiveSuppression('setar-classes', 'session', '13');
-    await commit(store().rev);
-    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(true);
-    store().hideArchiveResource('setar-classes', sharedDemo, oneMember.id);
-    expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(false);
-    // Its seven siblings still have it.
-    expect(itemFiles(store().db, otherMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(
-      true,
-    );
-
-    // --- unlinking an item from an archive class is remembered -------------
-    const lesson28 = lessonFor(28);
-    const zendan = itemFor('به-زندان-شوشتری');
-    store().unlinkItemFromLesson(lesson28.id, zendan.id);
-    expect(suppressions()).toContainEqual(expect.objectContaining({ kind: 'link', ref: `28:${'به-زندان-شوشتری'}` }));
-    const { membersForSession } = await import('../domain/sourceArchive');
-    expect(membersForSession(store().db.archiveSources[0]!, 28).some((m) => m.key === 'به-زندان-شوشتری')).toBe(false);
-
-    // --- a MANUAL reference is removed without touching the archive --------
-    store().addItemReference(zendan.id, { title: 'my own copy', path: 'session-28-28-10-2025/نت-به-زندان-شوشتری.pdf' });
-    const added = store().db.items.find((i) => i.id === zendan.id)!.references![0]!;
-    const suppressionsBefore = suppressions().length;
-    store().removeItemReference(zendan.id, added.id);
-    expect(store().db.items.find((i) => i.id === zendan.id)!.references).toEqual([]);
-    // Removing an owner's own link says nothing about the archive.
-    expect(suppressions()).toHaveLength(suppressionsBefore);
-
-    // --- a catalogue removal of a bound item is still lossless -------------
-    const catalogueItem = itemFor('چهار-پاره');
-    expect(store().removeCatalogItem(catalogueItem.id)).toBe(false); // no catalogKey
-    expect(store().db.items.some((i) => i.id === catalogueItem.id)).toBe(true);
-
-    // --- MOVING A BOUND ITEM TO ANOTHER INSTRUMENT IS REFUSED --------------
-    useStore.setState((s) => ({
-      db: {
-        ...s.db,
-        instruments: [
-          ...s.db.instruments,
-          { ...s.db.instruments[0]!, id: 'inst-tar', name: 'Tar' },
-        ],
-      },
-    }));
-    const boundId = itemFor('به-زندان-شوشتری').id;
-    const refusal = store().updateItem(boundId, { instrumentId: 'inst-tar' });
-    expect(refusal).toMatch(/Detach it from the archive/);
-    expect(store().db.items.find((i) => i.id === boundId)!.instrumentId).toBe(SETAR);
-    // No invalid graph was emitted: the database still validates.
-    expect(() => validateDB(store().db)).not.toThrow();
-
-    // --- a PARTIAL binding is refused, never healed by duplication ---------
-    expect(() =>
-      validateDB({
-        ...store().db,
-        items: store().db.items.map((i) =>
-          i.id === boundId ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'not-a-real-piece' } } : i,
-        ),
-      }),
-    ).toThrow(/does not describe/);
-
-    // --- clearing everything takes the source state with it ----------------
-    store().clearAll();
-    expect(store().db.archiveSources).toEqual([]);
-    expect(store().db.items).toEqual([]);
-    expect(store().active).toBeNull();
-  });
-});
+/** One row of the storage-model explainer. */
+function StorageRole({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 600 }}>{title}</div>
+      <div className="dim">{body}</div>
+    </div>
+  );
+}
 ```
 
 ## Check against the contract
@@ -5641,10 +7955,22 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
 
-`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json`
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
 
-with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20260917-turn-the-setar-archive-into-trusted-less-5614' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
