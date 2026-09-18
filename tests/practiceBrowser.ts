@@ -365,11 +365,19 @@ export async function openPracticeApp(options: {
     await page.clock.install({ time: options.now });
     await page.goto(origin);
     // The store hydrates from IndexedDB before anything renders. The ceiling is
-    // generous because this is the COLD start: five journeys run concurrently,
+    // generous because this is the COLD start: every journey runs concurrently,
     // each starting its own dev server and browser, so the first paint of the
-    // last one to launch competes with four others compiling modules. A longer
-    // wait cannot hide a real failure — it only refuses to call contention one.
-    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
+    // last one to launch competes with the rest compiling modules — and the
+    // rollback journey adds a whole SECOND checkout with no warm Vite cache at
+    // all. Measured: at 60s, two consecutive full-suite runs each failed HERE,
+    // in two DIFFERENT tests, with no assertion failure and no pattern beyond
+    // whichever app happened to launch last; both pass in one to four seconds
+    // when their file is run alone. A longer wait cannot hide a real failure —
+    // it only refuses to call contention one. It stays BELOW the suite's own
+    // 180s test ceiling on purpose: an app that genuinely never renders should
+    // still fail with this locator's message, naming what it waited for, rather
+    // than as a bare test timeout.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 120_000 });
   } catch (e) {
     await browser.close();
     await server.close();
@@ -409,7 +417,7 @@ export async function openPracticeApp(options: {
       let quietSince = Date.now();
       while (Date.now() < until) {
         if (inFlight.size > 0) quietSince = Date.now();
-        else if (Date.now() - quietSince >= 300) return;
+        else if (Date.now() - quietSince >= 200) return;
         await new Promise((r) => setTimeout(r, 25));
       }
       // A request that never settles belongs to a document that is about to go
