@@ -1,12 +1,28 @@
 ---
 id: 20260917-turn-the-setar-archive-into-trusted-less-5614
 contractId: 20260917-turn-the-setar-archive-into-trusted-less-5614
-patchId: 5e3dc7434a41888d6548591627494d30a9964c68
-reviewer: unassigned
+patchId: 93b9b716c54582c79d0782926d0e82f9ab9e995c
+reviewer: codex
 state: sealed
-verdict: approve
-createdAt: 2026-09-18T18:37:00.067Z
-sealedAt: 2026-09-18T18:37:19.411Z
+verdict: request_changes
+findings:
+  - family: Browser harness cancellation correlation and real WebKit event ordering
+    summary: A genuine WebKit access-control page error can be suppressed by a
+      nearby unrelated cancelled request. The real-browser test confirms the
+      split error shape but does not establish requestfailed/pageerror ordering
+      or safe association.
+    counterexample: tests/setarInbound.browser.test.ts:724-737 obtains a genuine
+      CORS page error from real WebKit, then expects excusedCancellation to
+      return true when given a nearby synthetic cancelled event.
+      tests/practiceBrowser.ts:137-201 selects by host and pathname and
+      timestamp, ignoring query and request identity. If a cancellation without
+      its own page error precedes a genuine failure to the same path, and the
+      genuine requestfailed is later, farther away, or absent when pageErrors is
+      read, the genuine page error disappears. The ordering tests at lines
+      596-655 construct timestamps rather than asserting the order emitted by
+      WebKit.
+createdAt: 2026-09-18T20:12:20.477Z
+sealedAt: 2026-09-18T20:20:18.806Z
 ---
 
 # Review: Turn the Setar archive into trusted lessons and useful practice material
@@ -20,7 +36,7 @@ sealedAt: 2026-09-18T18:37:19.411Z
 - **Contract:** 20260917-turn-the-setar-archive-into-trusted-less-5614
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/29
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `5e3dc7434a41888d6548591627494d30a9964c68`
+- **Diff patch-id:** `93b9b716c54582c79d0782926d0e82f9ab9e995c`
 
 ## The Delta this change was framed from
 
@@ -70,10 +86,79 @@ rerun wholesale.
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 412cfb1..165053f 100644
+index 412cfb1..e2d5537 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -2107,6 +2107,18 @@ sentence says WHY. That is the whole family in one place: `resolveRecording`,
+@@ -1574,22 +1574,56 @@ unconsumed credit for the whole ceiling, spendable by ANY later error to that UR
+ a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
+ the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
+ cancellation's spurious error and a real access-control failure are worded the same on
+-purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
+-(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
+-tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
+-that URL always fires its own `requestfailed` before its own page error, so the instant one
+-happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
+-by anything but the specific error it was actually waiting for — which is what makes leaving
+-it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
+-now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
+-servers create, never the correlation itself.
++purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
++excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
++names is ITSELF a cancellation. A genuine failure to that URL always fires its own
++`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
++nearer candidate and a stale, error-less cancellation is never reached by anything but the
++specific error it was actually waiting for — which is what makes leaving it unconsumed safe
++rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
++candidates the same distance away, the one that is NOT a cancellation wins.
++`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
++under the contention five concurrent dev servers create, never the correlation itself.
+ 
+ A second, independent hole lived in the same function: `message.includes(url.host)` and
+ `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
+ one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
+-(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
+-WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
+-the ambiguity structurally rather than adding more boundary characters to a string test.
++(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
++`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
++more boundary characters to a string test.
++
++**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
++Every string above was a hand-written reconstruction; nothing had ever been measured. The same
++commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
++measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
++two facts the harness had backwards, either of which alone made the excuse unable to fire:
++
++- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
++  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
++  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
++  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
++  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
++  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
++  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
++  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
++  apparent space was an artefact of that same split.
++- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
++  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
++  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
++  invariant survives the correction untouched, for the same reason it held before: a genuine
++  failure's own `requestfailed` is always adjacent to its own page error, so it always
++  outranks a stale cancellation milliseconds away.
++
++So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
++reads it after awaited page work, which round-trips the ordered transport and so has both
++events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
++an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
++for every tracked request to that resource and how far each sat from it
++(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
++cancellation from a real refusal is exactly what made this failure unreadable. The regression
++tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
++feeding its REAL error object back through the rule — that the shape can never drift back to a
++reconstruction.
+ 
+ **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
+ the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
+@@ -2107,6 +2141,18 @@ sentence says WHY. That is the whole family in one place: `resolveRecording`,
  still opened as the owner saved it — their own authored link, not this device's configured
  base, and nothing here mints one.
  
@@ -92,7 +177,7 @@ index 412cfb1..165053f 100644
  **TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
  ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
  (`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
-@@ -2144,7 +2156,29 @@ rows — but `not-described` does NOT (see `RepairReason`): the index deliberate
+@@ -2144,7 +2190,29 @@ rows — but `not-described` does NOT (see `RepairReason`): the index deliberate
  only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
  own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
  renamed is outside what it knows, never evidence that the file is gone. Those three personal
@@ -442,6 +527,699 @@ index 88e62da..6328d1b 100644
            </div>
            <button
              className="btn btn-sm"
+diff --git a/tests/practiceBrowser.ts b/tests/practiceBrowser.ts
+index e80781a..6113bd4 100644
+--- a/tests/practiceBrowser.ts
++++ b/tests/practiceBrowser.ts
+@@ -28,54 +28,53 @@ const installHint = (engine: Engine) =>
+   'and an engine quietly missed is the same thing as an engine never checked.';
+ 
+ /**
+- * ONE recorded outcome of a network request the harness watched, cancelled or
+- * not. Tracking BOTH kinds — not only cancellations — is what lets a later,
+- * genuine failure to the same URL displace a stale cancellation instead of
+- * being excused by it (see `excusedCancellation`).
++ * ONE recorded outcome of a network request the harness watched, whatever the
++ * browser's own words for it were. Tracking EVERY failure — not only
++ * cancellations — is what lets a later, genuine failure to the same URL
++ * displace a stale cancellation instead of being excused by it (see
++ * `excusedCancellation`).
+  *
+  * A request the BROWSER cancelled because the test navigated away while it was
+  * in flight is not an application error. WebKit reports such a fetch as
+  * "Fetch API cannot load … due to access control checks", which reads exactly
+- * like a CORS problem and is not one: instrumented, the only difference
+- * between the passing and failing runs of the same journey is a single
+- * `requestfailed` with `errorText: 'cancelled'` for a request that is
+- * otherwise fulfilled with the right CORS headers every other time. A real
+- * person navigating mid-sync cancels the same request, so treating it as a
+- * page error makes a journey fail for driving the app quickly.
++ * like a CORS problem and is not one: the request is otherwise fulfilled with
++ * the right CORS headers every other time. A real person navigating mid-sync
++ * cancels the same request, so treating it as a page error makes a journey
++ * fail for driving the app quickly.
++ *
++ * `errorText` is kept verbatim rather than reduced to a boolean, because it is
++ * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
++ * diagnosed page error is not excused, the failure has to say what the browser
++ * actually said about that request, or the next CI-only failure is as
++ * unreadable as the one this fix came from.
+  */
+ export interface TrackedRequestFailure {
+   url: string;
+   /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+   at: number;
+-  /** True only for a request the BROWSER itself aborted — never for a real network failure. */
+-  cancelled: boolean;
++  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
++  errorText: string;
+ }
+ 
+ /**
+- * A generous but now purely DEFENSIVE ceiling — it no longer does the safety
+- * work. It once was the whole bound: a cancelled URL's entry stayed eligible
+- * for this long, matched by host+path ALONE, so an unconsumed cancellation
+- * that never produced its own page error remained a live "credit" any LATER,
++ * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
++ * It once was the whole bound: a cancelled URL's entry stayed eligible for
++ * this long, matched by host+path ALONE, so an unconsumed cancellation that
++ * never produced its own page error remained a live "credit" any LATER,
+  * genuine access-control failure to that same URL could spend. That is a
+  * sealed finding, not a hypothetical: a cancellation and a real failure are
+  * indistinguishable by wording or by URL, so a window — however short — can
+  * never be the thing that tells them apart. Only ORDER can: see
+  * `excusedCancellation` below for the correlation that actually does the work.
+- * What is left for this ceiling to do is bound how far back a request that
+- * WAS genuinely the nearest one may still be trusted, in case Node's delivery
+- * of the two events (`requestfailed`, then `pageerror`) is delayed under the
+- * contention five concurrent dev servers create; the diagnosis says the
+- * browser emits them in the same tick, so this is headroom, not a design
+- * tolerance the correlation depends on.
++ * What is left for this ceiling to do is bound how far apart the two events
++ * may be and still be treated as one outcome, in case Node's delivery is
++ * delayed under the contention several concurrent dev servers create.
+  */
+ export const CANCELLED_EXCUSE_MS = 2_000;
+ 
+ /**
+- * Extract the URL a diagnosed WebKit access-control message names, or `null`
+- * if the message is not that shape at all (a render crash, a thrown
+- * TypeError — never excused). WebKit spells the same diagnosis for a `fetch`
+- * and for an `XMLHttpRequest`, and inserts a space between the scheme and the
+- * host that a real URL never has, which this strips before parsing.
++ * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
++ * `XMLHttpRequest`), anchored end to end.
+  *
+  * The whole point of parsing into a real `URL` and comparing `host` and
+  * `pathname` by EQUALITY, rather than testing whether the message merely
+@@ -83,52 +82,66 @@ export const CANCELLED_EXCUSE_MS = 2_000;
+  * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
+  * the left) or `api.github.com.evil.test` (extended on the right), nor
+  * `/state.json` from `/state.json.bak` — every one of which contains the
+- * genuine value as a substring. Anchoring the match to the exact text
+- * between the fixed "cannot load " / " due to access control checks" phrases
+- * — the only text WebKit ever puts there — removes the ambiguity outright
+- * instead of trying to out-guess it with boundary characters.
++ * genuine value as a substring. Anchoring the match to the exact text between
++ * the fixed "cannot load " / " due to access control checks" phrases — the
++ * only text WebKit ever puts there — removes the ambiguity outright instead
++ * of trying to out-guess it with boundary characters.
++ *
++ * There is deliberately no tolerance for whitespace between the scheme and
++ * the host. An earlier version of this regex allowed it, describing a space
++ * WebKit was said to insert; measured — macOS WebKit locally and Linux WebKit
++ * in CI — no such space exists, and the apparent one was an artefact of how
++ * the two halves below are put back together.
+  */
+-function reportedUrl(message: string): URL | null {
+-  const m = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/\s*(\S+) due to access control checks\.?$/.exec(
+-    message.trim(),
+-  );
+-  if (!m) return null;
+-  try {
+-    return new URL(`${m[1]}://${m[2]}`);
+-  } catch {
+-    return null;
+-  }
+-}
++const DIAGNOSIS = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/(\S+) due to access control checks\.?$/;
+ 
+ /**
+- * The excuse correlates on ORDER, not on a window: among every tracked
+- * request to the exact host+path the message names, the one that actually
+- * produced this page error is whichever happened MOST RECENTLY before it —
+- * because the diagnosis is that WebKit emits the spurious error in the same
+- * tick as the cancellation that caused it, so nothing else to that URL can
+- * have intervened by the time it arrives. That is precisely what makes a
+- * cancellation with NO page error of its own safe to leave sitting in the
+- * log rather than needing to expire it: the moment anything else — above
+- * all a genuine failure — touches that same URL, THAT becomes the nearest
+- * candidate and the stale cancellation is never reached again. A stale
+- * cancellation can therefore only ever be reached by a page error that has
+- * nothing more recent competing for it, which is exactly the case it is
+- * supposed to excuse.
++ * Extract the URL a diagnosed WebKit access-control page error names, or
++ * `null` if it is not that shape at all (a render crash, a thrown TypeError —
++ * never excused).
+  *
+- * If the nearest candidate is not a cancellation at all — a genuine failure,
+- * or nothing within the ceiling — this returns `false` and excuses nothing:
+- * an uncertain correlation is never resolved in the excuse's favour.
++ * THE ERROR ARRIVES IN TWO HALVES, AND NEITHER HALF ALONE IS THE DIAGNOSIS.
++ * Playwright splits every page error into `name`/`message` at the FIRST colon,
++ * dropping one character after it (`splitErrorMessage`). The first colon in
++ * this diagnosis is the URL's own scheme colon, so the text WebKit emitted
++ *
++ *     Fetch API cannot load https://api.github.com/… due to access control checks.
++ *
++ * reaches a test as
+  *
+- * The match is CONSUMING: the winning entry is removed, so it cannot excuse
+- * a second, later error too.
++ *     name:    'Fetch API cannot load https'
++ *     message: '/api.github.com/… due to access control checks.'
++ *
++ * — MEASURED, identically, on macOS WebKit here and on Linux WebKit in CI.
++ * Matching `message` alone (which is what this used to do) can therefore never
++ * succeed against a real error, on any platform: the excuse was dead code, and
++ * the first CI run that actually produced the error is what exposed it.
++ * Rejoining with the dropped `:/` recovers the original text. The unsplit
++ * form is tried as well, so a representation that ever stops being split is
++ * still understood; both go through the same anchored regex, so a wrong
++ * reconstruction simply fails to match rather than matching something loosely.
+  */
+-export function excusedCancellation(events: TrackedRequestFailure[], message: string, at: number): boolean {
+-  const reported = reportedUrl(message);
+-  if (!reported) return false;
+-  let nearest = -1;
++function reportedUrl(error: { name?: string; message: string }): URL | null {
++  for (const text of [error.message, `${error.name ?? ''}:/${error.message}`]) {
++    const m = DIAGNOSIS.exec(text.trim());
++    if (!m) continue;
++    try {
++      return new URL(`${m[1]}://${m[2]}`);
++    } catch {
++      return null;
++    }
++  }
++  return null;
++}
++
++/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
++function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
++  let best = -1;
++  let bestGap = Infinity;
+   for (let i = 0; i < events.length; i++) {
+     const e = events[i];
+-    if (at - e.at > CANCELLED_EXCUSE_MS) continue;
++    const gap = Math.abs(at - e.at);
++    if (gap > CANCELLED_EXCUSE_MS) continue;
+     let url: URL;
+     try {
+       url = new URL(e.url);
+@@ -136,21 +149,109 @@ export function excusedCancellation(events: TrackedRequestFailure[], message: st
+       continue;
+     }
+     if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
+-    if (nearest < 0 || e.at > events[nearest].at) nearest = i;
++    // A TIE is never resolved in the excuse's favour: with two candidates the
++    // same distance away, the one that is NOT a cancellation wins, so a stale
++    // cancellation landing in the same millisecond as a genuine failure cannot
++    // excuse it.
++    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
++    if (best < 0 || better) {
++      best = i;
++      bestGap = gap;
++    }
+   }
+-  if (nearest < 0 || !events[nearest].cancelled) return false;
++  return best;
++}
++
++/**
++ * The excuse correlates on ORDER, not on a window: among every tracked request
++ * to the exact host+path the error names, the one that actually produced it is
++ * whichever happened NEAREST IN TIME — because the browser emits the spurious
++ * error and the request's own failure in the same tick, so nothing else to
++ * that URL can have intervened.
++ *
++ * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
++ * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
++ * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
++ * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
++ * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
++ * request. A backwards-only search therefore looked at an empty log and
++ * excused nothing — the second reason this excuse had never once fired against
++ * a real error. The sealed invariant it was written to protect is untouched by
++ * the correction: a genuine failure ALWAYS emits its own `requestfailed`
++ * adjacent to its own page error, so it is always the nearest candidate, and a
++ * stale cancellation sitting milliseconds away can never outrank it.
++ *
++ * If the nearest candidate is not a cancellation at all — a genuine failure,
++ * or nothing within the ceiling — this returns `false` and excuses nothing: an
++ * uncertain correlation is never resolved in the excuse's favour.
++ *
++ * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
++ * second, later error too.
++ */
++export function excusedCancellation(
++  events: TrackedRequestFailure[],
++  error: { name?: string; message: string },
++  at: number,
++): boolean {
++  const reported = reportedUrl(error);
++  if (!reported) return false;
++  const nearest = nearestIndex(events, reported, at);
++  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
+   events.splice(nearest, 1);
+   return true;
+ }
+ 
++/**
++ * What the harness saw around a diagnosed page error it did NOT excuse, in one
++ * sentence, so the assertion that keeps it says why.
++ *
++ * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
++ * that reads like a CORS misconfiguration whatever actually happened — which
++ * is exactly how a CI-only failure became unreadable. Naming the browser's own
++ * `errorText` for every tracked request to that same resource, and how far
++ * each sat from the error, turns the next one into evidence instead of a
++ * guess. Non-consuming and never an excuse: it only describes.
++ */
++export function cancellationEvidence(
++  events: TrackedRequestFailure[],
++  error: { name?: string; message: string },
++  at: number,
++): string {
++  const reported = reportedUrl(error);
++  if (!reported) return '';
++  const where = `${reported.host}${reported.pathname}`;
++  const near = events
++    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
++    .filter((e) => {
++      try {
++        const url = new URL(e.url);
++        return url.host === reported.host && url.pathname === reported.pathname;
++      } catch {
++        return false;
++      }
++    })
++    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
++  return near.length
++    ? `tracked request failures for ${where}: ${near.join('; ')}`
++    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
++}
++
+ export interface PracticeApp {
+   page: Page;
+   /** The dev server origin this journey is isolated on. */
+   origin: string;
+   /** Which engine this journey is actually running in. */
+   engine: Engine;
+-  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
+-  pageErrors: Error[];
++  /**
++   * Uncaught page errors, so a broken render cannot pass as a quiet one.
++   *
++   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
++   * about a mid-flight request BEFORE that request's own `requestfailed`, so
++   * deciding at arrival time is deciding against a log that has not been
++   * written yet. Reading this at the end of a journey — which is when a
++   * journey asserts on it — has every event in hand.
++   */
++  readonly pageErrors: Error[];
+   close(): Promise<void>;
+ }
+ 
+@@ -199,7 +300,12 @@ export async function openPracticeApp(options: {
+ 
+   let context: BrowserContext;
+   let page: Page;
++  const pending: { error: Error; at: number }[] = [];
+   const pageErrors: Error[] = [];
++  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
++  // to be visible to `excusedCancellation` so it can outrank a stale
++  // cancellation to the same URL, not just a cancellation itself.
++  const requestFailures: TrackedRequestFailure[] = [];
+   try {
+     context = await browser.newContext({
+       viewport: options.viewport ?? { width: 390, height: 844 },
+@@ -213,18 +319,15 @@ export async function openPracticeApp(options: {
+     page.on('dialog', (d) => {
+       void d.accept().catch(() => {});
+     });
+-    // EVERY requestfailed is tracked, cancelled or not — a genuine failure
+-    // has to be visible to `excusedCancellation` so it can outrank a stale
+-    // cancellation to the same URL, not just a cancellation itself.
+-    const requestFailures: TrackedRequestFailure[] = [];
+     page.on('requestfailed', (r) => {
+-      requestFailures.push({ url: r.url(), at: Date.now(), cancelled: r.failure()?.errorText === 'cancelled' });
++      requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
+     });
+     // Surface a page-level error instead of letting it become a silently
+-    // wrong assertion later.
++    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
++    // the request failure that explains a cancelled one has not been
++    // delivered yet at this point.
+     page.on('pageerror', (e) => {
+-      if (excusedCancellation(requestFailures, `${e.message}`, Date.now())) return;
+-      pageErrors.push(e);
++      pending.push({ error: e, at: Date.now() });
+     });
+     await page.clock.install({ time: options.now });
+     await page.goto(origin);
+@@ -240,11 +343,30 @@ export async function openPracticeApp(options: {
+     throw e;
+   }
+ 
++  /**
++   * Drain everything that arrived since the last read: excuse each page error
++   * a cancellation accounts for, and KEEP the rest — annotated with what the
++   * harness actually saw around them, so a refusal to excuse is readable
++   * rather than another bare CORS-shaped message. Idempotent: a drained error
++   * stays resolved, so reading twice reports the same list.
++   */
++  const resolve = (): Error[] => {
++    for (const { error, at } of pending.splice(0)) {
++      if (excusedCancellation(requestFailures, error, at)) continue;
++      const evidence = cancellationEvidence(requestFailures, error, at);
++      if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
++      pageErrors.push(error);
++    }
++    return pageErrors;
++  };
++
+   return {
+     page,
+     origin,
+     engine,
+-    pageErrors,
++    get pageErrors() {
++      return resolve();
++    },
+     async close() {
+       await browser.close();
+       await server.close();
+diff --git a/tests/setarArchive.browser.test.ts b/tests/setarArchive.browser.test.ts
+index 53f895b..e279f5d 100644
+--- a/tests/setarArchive.browser.test.ts
++++ b/tests/setarArchive.browser.test.ts
+@@ -359,7 +359,12 @@ describe('the Setar archive, rendered', () => {
+           expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
+           expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
+           expect(persisted.blocks).toHaveLength(1);
+-          expect(app.pageErrors).toEqual([]);
++          // MESSAGES, not Error objects: `toEqual([])` on an array of Errors
++          // reports "expected [ …(1) ] to deeply equal []" and nothing else,
++          // so the one thing a CI-only failure needs to say — what the browser
++          // actually reported, and what the harness saw around it — is exactly
++          // what it withholds. Every other journey already asserts this way.
++          expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+         } finally {
+           await app.close();
+         }
+diff --git a/tests/setarInbound.browser.test.ts b/tests/setarInbound.browser.test.ts
+index 2b9b4a1..0a9961f 100644
+--- a/tests/setarInbound.browser.test.ts
++++ b/tests/setarInbound.browser.test.ts
+@@ -1,4 +1,6 @@
+ import { execFileSync } from 'node:child_process';
++import { createServer } from 'node:http';
++import type { AddressInfo } from 'node:net';
+ import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+@@ -12,6 +14,7 @@ import {
+   importOutcome,
+   installFakeGitHub,
+   newFakeRemote,
++  cancellationEvidence,
+   excusedCancellation,
+   openPracticeApp,
+   persistedDb,
+@@ -507,10 +510,10 @@ describe('rolling back past the archive schema', () => {
+ 
+ describe('the journey harness itself', () => {
+   // The harness must not be able to hide the very failure a journey exists to
+-  // catch. A request the browser CANCELLED (because the test navigated away
+-  // mid-flight) produces a WebKit error that reads exactly like a CORS
+-  // failure. Excusing it has failed two different ways so far, and each test
+-  // below is named for the specific way:
++  // catch, and it must not manufacture one either. A request the browser
++  // CANCELLED (because the test navigated away mid-flight) produces a WebKit
++  // error that reads exactly like a CORS failure. Excusing it has now failed
++  // four different ways, and each test below is named for the specific way:
+   //  - a PERMANENT set of cancelled URLs discarded every later page error
+   //    whose message merely contained that pathname, so a genuine failure at
+   //    the same path, later in the same journey, was swallowed and
+@@ -521,31 +524,97 @@ describe('the journey harness itself', () => {
+   //    window, spendable by a genuine, later failure to the same URL that had
+   //    nothing to do with it. A window can never tell the two apart, because
+   //    a cancellation's error and a genuine one read identically; only ORDER
+-  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`).
++  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`);
++  //  - the excuse read the page error's `message` ALONE, which never contains
++  //    the diagnosis: Playwright splits a page error at its first colon — the
++  //    URL's own scheme colon — so the wording lives in `name` and only the
++  //    tail lives in `message`. Every string these tests used to assert on was
++  //    a hand-written reconstruction that no browser ever emits;
++  //  - and the correlation looked only BACKWARDS in time, on the stated
++  //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
++  //    Measured, WebKit delivers them the other way round. Against a real
++  //    error the log was still empty when the excuse ran.
++  // Both of the last two were exposed by the same CI run: the journey passed
++  // on one runner and failed on two others at the identical commit, because
++  // the error had simply never been produced locally before.
+   const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+-  const spurious =
+-    'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json due to access control checks.';
++
++  /**
++   * The diagnosis AS A TEST ACTUALLY RECEIVES IT — the two halves Playwright
++   * splits it into. Measured against Playwright's own WebKit, and identical
++   * to the representation the failing CI run reported.
++   */
++  const diagnosed = (target = url) => {
++    const u = new URL(target);
++    return {
++      name: `Fetch API cannot load ${u.protocol.replace(':', '')}`,
++      message: `/${u.host}${u.pathname} due to access control checks.`,
++    };
++  };
++  const spurious = diagnosed();
+   const at = 1_000_000;
+-  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: true });
+-  const genuine = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, cancelled: false });
++  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, errorText: 'cancelled' });
++  const genuine = (offset = 0): TrackedRequestFailure => ({
++    url,
++    at: at + offset,
++    errorText: 'Origin http://localhost:5173 is not allowed by Access-Control-Allow-Origin. Status code: 200',
++  });
+ 
+-  it('a cancellation excuses its own diagnosed error once, in both WebKit spellings', () => {
+-    const pending = [cancelled()];
+-    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
+-    // CONSUMED — the identical message arriving again has no cancellation
+-    // left to account for it, which is the ORIGINAL reviewer counterexample.
+-    expect(pending).toEqual([]);
+-    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
++  it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
++    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
++    const fromCI = {
++      name: 'Fetch API cannot load https',
++      message: '/api.github.com/repos/owner/practice-data/contents/README.md due to access control checks.',
++    };
++    const readme = 'https://api.github.com/repos/owner/practice-data/contents/README.md';
++    expect(excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toBe(true);
++
++    // The message half ALONE is not the diagnosis and never matches: this is
++    // the shape the excuse used to be handed, and why it never fired.
++    expect(
++      excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5),
++    ).toBe(false);
++
++    // An UNSPLIT representation is understood too, so this does not depend on
++    // Playwright continuing to split it.
++    expect(
++      excusedCancellation([cancelled()], { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` }, at + 5),
++    ).toBe(true);
+ 
+     // WebKit spells the same diagnosis for an XHR as well as for a fetch.
+-    const xhrSpelling = spurious.replace('Fetch API', 'XMLHttpRequest');
+-    expect(excusedCancellation([cancelled()], xhrSpelling, at + 5)).toBe(true);
++    expect(
++      excusedCancellation([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
++    ).toBe(true);
+ 
+     // Only the DIAGNOSED wording is ever excused: a real render crash naming
+     // the same URL is a page error, not a cancellation.
+-    expect(excusedCancellation([cancelled()], `TypeError: undefined is not an object — ${url}`, at + 5)).toBe(
+-      false,
+-    );
++    expect(
++      excusedCancellation([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
++    ).toBe(false);
++  });
++
++  it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
++    // THE MEASURED ORDER: WebKit delivers the page error about a tenth of a
++    // millisecond ahead of the request's own failure. A backwards-only search
++    // saw an empty log here and excused nothing.
++    const later = [cancelled(1)];
++    expect(excusedCancellation(later, spurious, at)).toBe(true);
++    expect(later).toEqual([]);
++
++    // The other order still works: one measurement is not a proof that the
++    // reverse can never happen.
++    const earlier = [cancelled(-1)];
++    expect(excusedCancellation(earlier, spurious, at)).toBe(true);
++    expect(earlier).toEqual([]);
++  });
++
++  it('a cancellation excuses its own diagnosed error once', () => {
++    const pending = [cancelled()];
++    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
++    // CONSUMED — the identical error arriving again has no cancellation left
++    // to account for it, which is the ORIGINAL reviewer counterexample.
++    expect(pending).toEqual([]);
++    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
+   });
+ 
+   it('multiple cancellations to the same URL each excuse their own error and no more', () => {
+@@ -569,6 +638,22 @@ describe('the journey harness itself', () => {
+     expect(events).toContainEqual(cancelled());
+   });
+ 
++  it("a genuine failure reported AFTER its own page error still outranks a stale cancellation", () => {
++    // The sealed finding above, re-proved under the order the browser
++    // actually uses: the genuine failure's `requestfailed` lands a fraction
++    // of a millisecond AFTER the page error it belongs to, while a stale
++    // cancellation sits well before it. Nearest-in-either-direction is what
++    // keeps the genuine one the winner; a backwards-only search would reach
++    // the cancellation and excuse a real failure.
++    const events = [cancelled(-40), genuine(1)];
++    expect(excusedCancellation(events, spurious, at)).toBe(false);
++    expect(events).toContainEqual(cancelled(-40));
++
++    // And a TIE is never resolved in the excuse's favour either.
++    const tied = [cancelled(), genuine()];
++    expect(excusedCancellation(tied, spurious, at)).toBe(false);
++  });
++
+   it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
+     // Genuine failure arrives FIRST, with no cancellation recorded at all.
+     const events = [genuine()];
+@@ -589,29 +674,110 @@ describe('the journey harness itself', () => {
+     // A substring test cannot tell these apart from the genuine host/path;
+     // only structural URL equality can. Each of these contains the real
+     // host or path as a substring while naming a DIFFERENT resource.
+-    const hostPrefixTrap =
+-      'Fetch API cannot load https:// evil-api.github.com/repos/owner/data/contents/state.json due to access control checks.';
+-    expect(excusedCancellation([cancelled()], hostPrefixTrap, at + 5)).toBe(false);
+-
+-    const hostSuffixTrap =
+-      'Fetch API cannot load https:// api.github.com.evil.test/repos/owner/data/contents/state.json due to access control checks.';
+-    expect(excusedCancellation([cancelled()], hostSuffixTrap, at + 5)).toBe(false);
+-
+-    const pathSuffixTrap =
+-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/state.json.bak due to access control checks.';
+-    expect(excusedCancellation([cancelled()], pathSuffixTrap, at + 5)).toBe(false);
+-
+-    // Another host entirely, and another path on the same host, both stay errors.
+-    const elsewhere =
+-      'Fetch API cannot load https:// api.example.com/repos/owner/data/contents/state.json due to access control checks.';
+-    expect(excusedCancellation([cancelled()], elsewhere, at + 5)).toBe(false);
+-    const otherPath =
+-      'Fetch API cannot load https:// api.github.com/repos/owner/data/contents/files/x.bin due to access control checks.';
+-    expect(excusedCancellation([cancelled()], otherPath, at + 5)).toBe(false);
++    for (const trap of [
++      'https://evil-api.github.com/repos/owner/data/contents/state.json',
++      'https://api.github.com.evil.test/repos/owner/data/contents/state.json',
++      'https://api.github.com/repos/owner/data/contents/state.json.bak',
++      // Another host entirely, and another path on the same host.
++      'https://api.example.com/repos/owner/data/contents/state.json',
++      'https://api.github.com/repos/owner/data/contents/files/x.bin',
++    ]) {
++      expect(excusedCancellation([cancelled()], diagnosed(trap), at + 5)).toBe(false);
++    }
+   });
+ 
+   it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
+     expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
+     expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
++    // Symmetrically in the other direction, now that both are searched.
++    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS)], spurious, at)).toBe(true);
++    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
++  });
++
++  it('parses the diagnosis a REAL WebKit produces, and still reports it when nothing excuses it', async () => {
++    // The two defects above were both about a representation and an ORDER
++    // nobody had ever measured — the strings these tests asserted on were
++    // hand-written, and the CI run that finally produced the real thing is what
++    // exposed them. This drives an actual WebKit and reads the actual error
++    // object, so the shape can never drift back to a reconstruction.
++    //
++    // A reply from a REAL server with no CORS headers is what makes WebKit emit
++    // this diagnosis; a Playwright-fulfilled response does not go through the
++    // same check, which is why the fake GitHub repo above never produces one.
++    const blocked = createServer((req, res) => {
++      // `?slow` never answers in time, so a reload CANCELS it — the other
++      // half of this test needs a real cancellation to the same resource.
++      const reply = () => {
++        res.writeHead(200, { 'content-type': 'application/json' });
++        res.end('{}');
++      };
++      if (req.url?.includes('slow')) setTimeout(reply, 30_000).unref();
++      else reply();
++    });
++    await new Promise<void>((done) => blocked.listen(0, '127.0.0.1', done));
++    const port = (blocked.address() as AddressInfo).port;
++    const target = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/README.md`;
++    const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
++    try {
++      const raw: Error[] = [];
++      app.page.on('pageerror', (e) => raw.push(e));
++      await app.page.evaluate((u) => void fetch(u).catch(() => {}), target);
++      await expect.poll(() => raw.length, { timeout: 20_000 }).toBeGreaterThan(0);
++
++      const real = raw[0];
++      // THE REPRESENTATION, as the browser and Playwright actually deliver it:
++      // the wording is in `name`, only the tail is in `message`. This is the
++      // identical split the failing CI run reported.
++      expect(real.name).toBe('Fetch API cannot load http');
++      expect(real.message).toBe(`/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md due to access control checks.`);
++      // Given a cancellation for that request, THIS object is excusable — the
++      // whole point, and what matching `message` alone could never do.
++      expect(excusedCancellation([{ url: target, at: Date.now(), errorText: 'cancelled' }], real, Date.now())).toBe(
++        true,
++      );
++
++      // But nothing cancelled it here, so the harness KEEPS it — and says what
++      // the browser reported instead of leaving a bare CORS-shaped message.
++      const kept = app.pageErrors;
++      expect(kept).toHaveLength(1);
++      expect(kept[0].message).toContain('due to access control checks');
++      expect(kept[0].message).toContain('Access-Control-Allow-Origin');
++      // Reading twice reports the same list, not a growing one.
++      expect(app.pageErrors).toHaveLength(1);
++
++      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
++      // cannot be taken back by a cancellation to the same resource that
++      // happens afterwards — here a real one, produced by reloading while a
++      // request to that same path is still in flight.
++      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
++      await reload(app);
++      expect(app.pageErrors).toHaveLength(1);
++    } finally {
++      await app.close();
++      await new Promise<void>((done) => blocked.close(() => done()));
++    }
++  }, 120_000);
++
++  it('a page error it refuses to excuse says what the browser actually reported', () => {
++    // The CI failure this whole rework came from was one bare CORS-shaped
++    // message with nothing to distinguish a cancellation from a real refusal.
++    // An unexcused diagnosis now carries the browser's own words for every
++    // request to that resource, and how far each sat from the error.
++    const withGenuine = cancellationEvidence([genuine(1)], spurious, at);
++    expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
++    expect(withGenuine).toContain('Access-Control-Allow-Origin');
++    expect(withGenuine).toContain('+1ms');
++
++    // NOTHING tracked at all is itself the evidence — it says so rather than
++    // saying nothing.
++    expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
++    // A request that failed BEFORE the error is reported with its sign.
++    expect(cancellationEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
++    // It only ever describes: nothing is consumed and nothing is excused.
++    const events = [cancelled()];
++    expect(cancellationEvidence(events, spurious, at + 5)).toContain('cancelled');
++    expect(events).toEqual([cancelled()]);
++    // A page error that is not this diagnosis at all has nothing to say.
++    expect(cancellationEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
+   });
+ });
 ```
 
 **Full current text of every file the rework touched:**
@@ -2025,22 +2803,56 @@ unconsumed credit for the whole ceiling, spendable by ANY later error to that UR
 a genuine one with nothing to do with it. A sealed review reproduced exactly that. Shrinking
 the window cannot fix this; it only trades an over-broad filter for a flakier one, since a
 cancellation's spurious error and a real access-control failure are worded the same on
-purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones
-(`TrackedRequestFailure.cancelled`), and excuses a page error only when the temporally NEAREST
-tracked request to the exact host+path it names is ITSELF a cancellation. A genuine failure to
-that URL always fires its own `requestfailed` before its own page error, so the instant one
-happens it becomes the nearer candidate and a stale, error-less cancellation is never reached
-by anything but the specific error it was actually waiting for — which is what makes leaving
-it unconsumed safe rather than a standing credit. `CANCELLED_EXCUSE_MS` (2s, down from 30s) is
-now purely DEFENSIVE headroom against delivery lag under the contention five concurrent dev
-servers create, never the correlation itself.
+purpose. `excusedCancellation` now tracks EVERY `requestfailed`, not only cancelled ones, and
+excuses a page error only when the temporally NEAREST tracked request to the exact host+path it
+names is ITSELF a cancellation. A genuine failure to that URL always fires its own
+`requestfailed` ADJACENT to its own page error, so the instant one happens it becomes the
+nearer candidate and a stale, error-less cancellation is never reached by anything but the
+specific error it was actually waiting for — which is what makes leaving it unconsumed safe
+rather than a standing credit. A TIE is never resolved in the excuse's favour: with two
+candidates the same distance away, the one that is NOT a cancellation wins.
+`CANCELLED_EXCUSE_MS` (2s, down from 30s) is now purely DEFENSIVE headroom against delivery lag
+under the contention five concurrent dev servers create, never the correlation itself.
 
 A second, independent hole lived in the same function: `message.includes(url.host)` and
 `message.includes(url.pathname)` are substring tests, so a host that merely CONTAINS the real
 one (`evil-api.github.com`, `api.github.com.evil.test`) or a path that does
-(`state.json.bak`) passed them. The message is parsed into a real `URL` (stripping the space
-WebKit inserts after the scheme) and compared by `host`/`pathname` EQUALITY instead — removing
-the ambiguity structurally rather than adding more boundary characters to a string test.
+(`state.json.bak`) passed them. The message is parsed into a real `URL` and compared by
+`host`/`pathname` EQUALITY instead — removing the ambiguity structurally rather than adding
+more boundary characters to a string test.
+
+**AND THE WHOLE EXCUSE WAS DEAD CODE UNTIL A CI RUN PRODUCED THE ERROR IT WAS WRITTEN FOR.**
+Every string above was a hand-written reconstruction; nothing had ever been measured. The same
+commit passed one CI run and failed two others on `expect(app.pageErrors).toEqual([])`, and
+measuring — Playwright's own WebKit locally, identical to what the failing run reported — found
+two facts the harness had backwards, either of which alone made the excuse unable to fire:
+
+- **THE DIAGNOSIS ARRIVES IN TWO HALVES.** Playwright splits every page error at its FIRST
+  colon and drops one character after it (`splitErrorMessage`). The first colon here is the
+  URL's own scheme colon, so the wording lands in `name` (`Fetch API cannot load https`) and
+  only the tail in `message` (`/api.github.com/… due to access control checks.`). Matching
+  `message` alone — which is what it did — can never succeed. The rule REJOINS the two halves
+  with the dropped `:/` and also tries the unsplit form, both through one anchored regex, so a
+  wrong reconstruction fails to match rather than matching loosely. The whitespace the old
+  regex tolerated "between the scheme and the host" is fiction: no browser emits it, and the
+  apparent space was an artefact of that same split.
+- **THE PAGE ERROR COMES FIRST.** WebKit delivers the `pageerror` about a tenth of a
+  millisecond BEFORE the `requestfailed` for the same request, reproducibly. A backwards-only
+  search read an empty log. NEAREST is measured in BOTH directions now, and the sealed
+  invariant survives the correction untouched, for the same reason it held before: a genuine
+  failure's own `requestfailed` is always adjacent to its own page error, so it always
+  outranks a stale cancellation milliseconds away.
+
+So a page error is RECORDED as it arrives and JUDGED when `pageErrors` is READ — every journey
+reads it after awaited page work, which round-trips the ordered transport and so has both
+events in hand. A judgement is made ONCE: a cancellation arriving afterwards never takes back
+an error already reported. And an UNEXCUSED diagnosis now carries the browser's own `errorText`
+for every tracked request to that resource and how far each sat from it
+(`cancellationEvidence`), because one bare CORS-shaped message with nothing to distinguish a
+cancellation from a real refusal is exactly what made this failure unreadable. The regression
+tests assert the measured pair verbatim, both event orders, and — driving a REAL WebKit and
+feeding its REAL error object back through the rule — that the shape can never drift back to a
+reconstruction.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -7744,6 +8556,1936 @@ function StorageRole({ title, body }: { title: string; body: string }) {
 }
 ```
 
+### tests/practiceBrowser.ts
+
+```
+import { readFile } from 'node:fs/promises';
+import { createServer, type ViteDevServer } from 'vite';
+import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
+
+// ---------------------------------------------------------------------------
+// A small harness for driving the REAL app in a real browser from an ordinary
+// Vitest test.
+//
+// Deliberately a LIBRARY, not a second test runner: the installed check engine
+// traces acceptance through the Vitest report, so a standalone Playwright exit
+// code would prove nothing to it. Each journey gets its own Vite dev server and
+// its own browser CONTEXT, which means its own origin-scoped IndexedDB and
+// localStorage — no fixture from one journey can reach the other, and neither
+// can touch the owner's real data, GitHub or NAS.
+//
+// A missing browser is a FAILURE with a setup message, never a skip: a check
+// that quietly passes because it did not run is worse than no check at all.
+// ---------------------------------------------------------------------------
+
+/** The two engines this app is actually used in: Chrome on the Mac, Safari on the iPhone. */
+export type Engine = 'chromium' | 'webkit';
+
+const ENGINES: Record<Engine, BrowserType> = { chromium, webkit };
+
+const installHint = (engine: Engine) =>
+  `The Playwright ${engine} browser is not installed. Run \`npx playwright install ${engine}\` ` +
+  '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
+  'and an engine quietly missed is the same thing as an engine never checked.';
+
+/**
+ * ONE recorded outcome of a network request the harness watched, whatever the
+ * browser's own words for it were. Tracking EVERY failure — not only
+ * cancellations — is what lets a later, genuine failure to the same URL
+ * displace a stale cancellation instead of being excused by it (see
+ * `excusedCancellation`).
+ *
+ * A request the BROWSER cancelled because the test navigated away while it was
+ * in flight is not an application error. WebKit reports such a fetch as
+ * "Fetch API cannot load … due to access control checks", which reads exactly
+ * like a CORS problem and is not one: the request is otherwise fulfilled with
+ * the right CORS headers every other time. A real person navigating mid-sync
+ * cancels the same request, so treating it as a page error makes a journey
+ * fail for driving the app quickly.
+ *
+ * `errorText` is kept verbatim rather than reduced to a boolean, because it is
+ * the EVIDENCE a refused excuse reports (`cancellationEvidence`): when a
+ * diagnosed page error is not excused, the failure has to say what the browser
+ * actually said about that request, or the next CI-only failure is as
+ * unreadable as the one this fix came from.
+ */
+export interface TrackedRequestFailure {
+  url: string;
+  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+  at: number;
+  /** The browser's own words. `'cancelled'` is the one — and only — excusable one. */
+  errorText: string;
+}
+
+/**
+ * A generous but purely DEFENSIVE ceiling — it does not do the safety work.
+ * It once was the whole bound: a cancelled URL's entry stayed eligible for
+ * this long, matched by host+path ALONE, so an unconsumed cancellation that
+ * never produced its own page error remained a live "credit" any LATER,
+ * genuine access-control failure to that same URL could spend. That is a
+ * sealed finding, not a hypothetical: a cancellation and a real failure are
+ * indistinguishable by wording or by URL, so a window — however short — can
+ * never be the thing that tells them apart. Only ORDER can: see
+ * `excusedCancellation` below for the correlation that actually does the work.
+ * What is left for this ceiling to do is bound how far apart the two events
+ * may be and still be treated as one outcome, in case Node's delivery is
+ * delayed under the contention several concurrent dev servers create.
+ */
+export const CANCELLED_EXCUSE_MS = 2_000;
+
+/**
+ * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
+ * `XMLHttpRequest`), anchored end to end.
+ *
+ * The whole point of parsing into a real `URL` and comparing `host` and
+ * `pathname` by EQUALITY, rather than testing whether the message merely
+ * CONTAINS a candidate's host/path as substrings, is that a substring test
+ * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
+ * the left) or `api.github.com.evil.test` (extended on the right), nor
+ * `/state.json` from `/state.json.bak` — every one of which contains the
+ * genuine value as a substring. Anchoring the match to the exact text between
+ * the fixed "cannot load " / " due to access control checks" phrases — the
+ * only text WebKit ever puts there — removes the ambiguity outright instead
+ * of trying to out-guess it with boundary characters.
+ *
+ * There is deliberately no tolerance for whitespace between the scheme and
+ * the host. An earlier version of this regex allowed it, describing a space
+ * WebKit was said to insert; measured — macOS WebKit locally and Linux WebKit
+ * in CI — no such space exists, and the apparent one was an artefact of how
+ * the two halves below are put back together.
+ */
+const DIAGNOSIS = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/(\S+) due to access control checks\.?$/;
+
+/**
+ * Extract the URL a diagnosed WebKit access-control page error names, or
+ * `null` if it is not that shape at all (a render crash, a thrown TypeError —
+ * never excused).
+ *
+ * THE ERROR ARRIVES IN TWO HALVES, AND NEITHER HALF ALONE IS THE DIAGNOSIS.
+ * Playwright splits every page error into `name`/`message` at the FIRST colon,
+ * dropping one character after it (`splitErrorMessage`). The first colon in
+ * this diagnosis is the URL's own scheme colon, so the text WebKit emitted
+ *
+ *     Fetch API cannot load https://api.github.com/… due to access control checks.
+ *
+ * reaches a test as
+ *
+ *     name:    'Fetch API cannot load https'
+ *     message: '/api.github.com/… due to access control checks.'
+ *
+ * — MEASURED, identically, on macOS WebKit here and on Linux WebKit in CI.
+ * Matching `message` alone (which is what this used to do) can therefore never
+ * succeed against a real error, on any platform: the excuse was dead code, and
+ * the first CI run that actually produced the error is what exposed it.
+ * Rejoining with the dropped `:/` recovers the original text. The unsplit
+ * form is tried as well, so a representation that ever stops being split is
+ * still understood; both go through the same anchored regex, so a wrong
+ * reconstruction simply fails to match rather than matching something loosely.
+ */
+function reportedUrl(error: { name?: string; message: string }): URL | null {
+  for (const text of [error.message, `${error.name ?? ''}:/${error.message}`]) {
+    const m = DIAGNOSIS.exec(text.trim());
+    if (!m) continue;
+    try {
+      return new URL(`${m[1]}://${m[2]}`);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/** Index of the tracked failure closest in time to `at` for the same resource, or -1. */
+function nearestIndex(events: TrackedRequestFailure[], reported: URL, at: number): number {
+  let best = -1;
+  let bestGap = Infinity;
+  for (let i = 0; i < events.length; i++) {
+    const e = events[i];
+    const gap = Math.abs(at - e.at);
+    if (gap > CANCELLED_EXCUSE_MS) continue;
+    let url: URL;
+    try {
+      url = new URL(e.url);
+    } catch {
+      continue;
+    }
+    if (url.host !== reported.host || url.pathname !== reported.pathname) continue;
+    // A TIE is never resolved in the excuse's favour: with two candidates the
+    // same distance away, the one that is NOT a cancellation wins, so a stale
+    // cancellation landing in the same millisecond as a genuine failure cannot
+    // excuse it.
+    const better = gap < bestGap || (gap === bestGap && events[best].errorText === 'cancelled' && e.errorText !== 'cancelled');
+    if (best < 0 || better) {
+      best = i;
+      bestGap = gap;
+    }
+  }
+  return best;
+}
+
+/**
+ * The excuse correlates on ORDER, not on a window: among every tracked request
+ * to the exact host+path the error names, the one that actually produced it is
+ * whichever happened NEAREST IN TIME — because the browser emits the spurious
+ * error and the request's own failure in the same tick, so nothing else to
+ * that URL can have intervened.
+ *
+ * NEAREST IS MEASURED IN BOTH DIRECTIONS, and that is a correction, not a
+ * relaxation. This used to look only BACKWARDS, on the stated diagnosis that a
+ * `requestfailed` is delivered before the `pageerror` it causes. Measured, the
+ * opposite is true and reproducibly so: WebKit delivers the `pageerror` first,
+ * about a tenth of a millisecond AHEAD of the `requestfailed` for the same
+ * request. A backwards-only search therefore looked at an empty log and
+ * excused nothing — the second reason this excuse had never once fired against
+ * a real error. The sealed invariant it was written to protect is untouched by
+ * the correction: a genuine failure ALWAYS emits its own `requestfailed`
+ * adjacent to its own page error, so it is always the nearest candidate, and a
+ * stale cancellation sitting milliseconds away can never outrank it.
+ *
+ * If the nearest candidate is not a cancellation at all — a genuine failure,
+ * or nothing within the ceiling — this returns `false` and excuses nothing: an
+ * uncertain correlation is never resolved in the excuse's favour.
+ *
+ * The match is CONSUMING: the winning entry is removed, so it cannot excuse a
+ * second, later error too.
+ */
+export function excusedCancellation(
+  events: TrackedRequestFailure[],
+  error: { name?: string; message: string },
+  at: number,
+): boolean {
+  const reported = reportedUrl(error);
+  if (!reported) return false;
+  const nearest = nearestIndex(events, reported, at);
+  if (nearest < 0 || events[nearest].errorText !== 'cancelled') return false;
+  events.splice(nearest, 1);
+  return true;
+}
+
+/**
+ * What the harness saw around a diagnosed page error it did NOT excuse, in one
+ * sentence, so the assertion that keeps it says why.
+ *
+ * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
+ * that reads like a CORS misconfiguration whatever actually happened — which
+ * is exactly how a CI-only failure became unreadable. Naming the browser's own
+ * `errorText` for every tracked request to that same resource, and how far
+ * each sat from the error, turns the next one into evidence instead of a
+ * guess. Non-consuming and never an excuse: it only describes.
+ */
+export function cancellationEvidence(
+  events: TrackedRequestFailure[],
+  error: { name?: string; message: string },
+  at: number,
+): string {
+  const reported = reportedUrl(error);
+  if (!reported) return '';
+  const where = `${reported.host}${reported.pathname}`;
+  const near = events
+    .filter((e) => Math.abs(at - e.at) <= CANCELLED_EXCUSE_MS)
+    .filter((e) => {
+      try {
+        const url = new URL(e.url);
+        return url.host === reported.host && url.pathname === reported.pathname;
+      } catch {
+        return false;
+      }
+    })
+    .map((e) => `${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms`);
+  return near.length
+    ? `tracked request failures for ${where}: ${near.join('; ')}`
+    : `no tracked request failure for ${where} within ${CANCELLED_EXCUSE_MS}ms`;
+}
+
+export interface PracticeApp {
+  page: Page;
+  /** The dev server origin this journey is isolated on. */
+  origin: string;
+  /** Which engine this journey is actually running in. */
+  engine: Engine;
+  /**
+   * Uncaught page errors, so a broken render cannot pass as a quiet one.
+   *
+   * RESOLVED ON READ, never as each one arrives: WebKit delivers a page error
+   * about a mid-flight request BEFORE that request's own `requestfailed`, so
+   * deciding at arrival time is deciding against a log that has not been
+   * written yet. Reading this at the end of a journey — which is when a
+   * journey asserts on it — has every event in hand.
+   */
+  readonly pageErrors: Error[];
+  close(): Promise<void>;
+}
+
+/**
+ * Start the app and open it in a fresh, isolated browser context.
+ *
+ * `now` fixes the browser's clock before any script runs, so every date the
+ * app derives — due reviews, lesson deadlines, the local calendar day a block
+ * belongs to — is deterministic. `page.clock` can then move it forward within
+ * a journey (across local midnight, for instance) exactly as a real device
+ * left open overnight would experience it.
+ */
+export async function openPracticeApp(options: {
+  now: Date;
+  viewport?: { width: number; height: number };
+  /** Which engine to drive. Defaults to Chromium; ac-14 drives both. */
+  engine?: Engine;
+  /**
+   * Serve a DIFFERENT checkout of this app — used to stand up a disposable
+   * copy of an older release (a git worktree at an earlier commit) so a
+   * rollback can be tested against the app that actually wrote the backup,
+   * rather than against a description of it. Defaults to this checkout.
+   */
+  root?: string;
+}): Promise<PracticeApp> {
+  const engine = options.engine ?? 'chromium';
+  const server: ViteDevServer = await createServer({
+    ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
+    logLevel: 'error',
+    server: { port: 0, strictPort: false },
+  });
+  await server.listen();
+  const origin = server.resolvedUrls?.local[0];
+  if (!origin) {
+    await server.close();
+    throw new Error('The dev server started but reported no local URL.');
+  }
+
+  let browser: Browser;
+  try {
+    browser = await ENGINES[engine].launch();
+  } catch (e) {
+    await server.close();
+    throw new Error(installHint(engine), { cause: e });
+  }
+
+  let context: BrowserContext;
+  let page: Page;
+  const pending: { error: Error; at: number }[] = [];
+  const pageErrors: Error[] = [];
+  // EVERY requestfailed is tracked, cancelled or not — a genuine failure has
+  // to be visible to `excusedCancellation` so it can outrank a stale
+  // cancellation to the same URL, not just a cancellation itself.
+  const requestFailures: TrackedRequestFailure[] = [];
+  try {
+    context = await browser.newContext({
+      viewport: options.viewport ?? { width: 390, height: 844 },
+      // The owner's phone. Deliberately the constraint the product is held to.
+      deviceScaleFactor: 2,
+    });
+    page = await context.newPage();
+    // ONE handler for the whole journey. The app's destructive actions ask
+    // first with confirm(); an unanswered dialog blocks every later command,
+    // and registering a second handler makes the first one's accept() throw.
+    page.on('dialog', (d) => {
+      void d.accept().catch(() => {});
+    });
+    page.on('requestfailed', (r) => {
+      requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
+    });
+    // Surface a page-level error instead of letting it become a silently
+    // wrong assertion later. RECORDED here, JUDGED in `resolve()` below —
+    // the request failure that explains a cancelled one has not been
+    // delivered yet at this point.
+    page.on('pageerror', (e) => {
+      pending.push({ error: e, at: Date.now() });
+    });
+    await page.clock.install({ time: options.now });
+    await page.goto(origin);
+    // The store hydrates from IndexedDB before anything renders. The ceiling is
+    // generous because this is the COLD start: five journeys run concurrently,
+    // each starting its own dev server and browser, so the first paint of the
+    // last one to launch competes with four others compiling modules. A longer
+    // wait cannot hide a real failure — it only refuses to call contention one.
+    await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
+  } catch (e) {
+    await browser.close();
+    await server.close();
+    throw e;
+  }
+
+  /**
+   * Drain everything that arrived since the last read: excuse each page error
+   * a cancellation accounts for, and KEEP the rest — annotated with what the
+   * harness actually saw around them, so a refusal to excuse is readable
+   * rather than another bare CORS-shaped message. Idempotent: a drained error
+   * stays resolved, so reading twice reports the same list.
+   */
+  const resolve = (): Error[] => {
+    for (const { error, at } of pending.splice(0)) {
+      if (excusedCancellation(requestFailures, error, at)) continue;
+      const evidence = cancellationEvidence(requestFailures, error, at);
+      if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
+      pageErrors.push(error);
+    }
+    return pageErrors;
+  };
+
+  return {
+    page,
+    origin,
+    engine,
+    get pageErrors() {
+      return resolve();
+    },
+    async close() {
+      await browser.close();
+      await server.close();
+    },
+  };
+}
+
+/**
+ * Import a backup through the REAL Settings control — the same path the owner
+ * uses, file picker and confirmation included. No debug hook, no direct store
+ * access: a journey that seeded itself through a back door would prove nothing
+ * about the door the owner actually walks through.
+ */
+export async function importBackup(app: PracticeApp, name: string, json: string): Promise<void> {
+  const { page } = app;
+  await openSettings(app);
+  await page.getByLabel('Import backup file').setInputFiles({
+    name,
+    mimeType: 'application/json',
+    buffer: Buffer.from(json, 'utf8'),
+  });
+  await page.getByText(/Imported \(|Import failed:/).waitFor({ timeout: 20_000 });
+}
+
+/**
+ * Reach Settings the way the owner does — More → Settings. The practice
+ * screens hide the tab bar (they are the one place the app asks for undivided
+ * attention), so from one of those this takes the route directly instead of
+ * waiting forever for a nav that is deliberately not there.
+ */
+export async function openSettings(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  if (await page.getByRole('navigation', { name: 'Primary' }).isVisible()) {
+    await page.getByRole('link', { name: 'More' }).click();
+    // "Settings" also names a link inside Settings' own copy once the page is
+    // open, so take the one on the More menu — the first in the document.
+    await page.getByRole('link', { name: 'Settings' }).first().click();
+  } else {
+    await goTo(app, '/settings');
+  }
+  await page.getByLabel('Import backup file').waitFor({ state: 'attached', timeout: 20_000 });
+}
+
+/** The message the Settings import flashed — "Imported (1 file)." or a refusal. */
+export async function importOutcome(app: PracticeApp): Promise<string> {
+  return (await app.page.getByText(/Imported \(|Import failed:/).first().textContent()) ?? '';
+}
+
+/**
+ * Go to a route the way the owner does, then wait for the app to settle.
+ *
+ * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
+ * the tab bar — they are the one place the app asks for undivided attention —
+ * so those routes wait on their own first control instead.
+ */
+const FOCUSED_ROUTES = /^\/(active|close|routine)/;
+
+export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
+  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
+  if (FOCUSED_ROUTES.test(hashPath)) {
+    await app.page.locator('main').waitFor({ timeout: 20_000 });
+    await app.page.waitForFunction(() => (document.querySelector('main')?.textContent ?? '').length > 0);
+    return;
+  }
+  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+}
+
+/** Reload, proving a claim survived in IndexedDB rather than in React state. */
+export async function reload(app: PracticeApp): Promise<void> {
+  // The store persists to IndexedDB asynchronously (that is the whole reason
+  // App gates render on `hydrated`), so a reload fired in the same tick as the
+  // click can outrun the write. This wait is about the storage platform, not
+  // about the app: it is real wall-clock time in Node, unaffected by the
+  // page's faked clock.
+  await app.page.waitForTimeout(400);
+  await app.page.reload();
+  await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
+}
+
+const KV_KEY = 'practice-compass';
+
+/**
+ * Read the raw bytes the app's own persist middleware would read on the next
+ * open — straight out of IndexedDB's `kv` store, not a JSON export shaped for
+ * the Settings importer. `{ state, version }` is exactly the shape Zustand's
+ * persist middleware writes and reads (`middleware.mjs`'s `setItem`/`hydrate`).
+ */
+export async function readPersistedState(app: PracticeApp): Promise<{ state: unknown; version: number }> {
+  return app.page.evaluate(
+    (key) =>
+      new Promise<{ state: unknown; version: number }>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readonly');
+          const get = tx.objectStore('kv').get(key);
+          get.onsuccess = () => {
+            db.close();
+            resolve(JSON.parse((get.result as { value: string }).value));
+          };
+          get.onerror = () => reject(get.error);
+        };
+      }),
+    KV_KEY,
+  );
+}
+
+/**
+ * Write directly into the app's own IndexedDB `kv` store — the way an
+ * ALREADY-hydrated device holds its persisted state — bypassing every
+ * import/migration door entirely. The one way to reach the "persisted
+ * version already matches the current schema" hydration path: Zustand's
+ * persist middleware only calls `migrate` when the persisted version differs
+ * from the current one, and every JSON-import door runs `validateDB`
+ * regardless of what version a FILE claims.
+ */
+export async function writePersistedState(app: PracticeApp, state: unknown, version: number): Promise<void> {
+  await app.page.evaluate(
+    ({ key, state, version }) =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const tx = db.transaction('kv', 'readwrite');
+          tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    { key: KV_KEY, state, version },
+  );
+}
+
+/**
+ * Export a full backup through the REAL Settings control and return its text.
+ * Same button the owner presses, same file the browser would save — the point
+ * of a rollback test is the artefact the app actually produces, not one a test
+ * rebuilt from the store.
+ */
+export async function exportBackup(app: PracticeApp): Promise<string> {
+  const { page } = app;
+  await openSettings(app);
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30_000 }),
+    page.getByRole('button', { name: /Export backup/ }).click(),
+  ]);
+  const path = await download.path();
+  return readFile(path, 'utf8');
+}
+
+/**
+ * Wait until the app's OWN persisted bytes satisfy a predicate — a real
+ * IndexedDB acknowledgement of a write, never a sleep. A timeout fails with
+ * the state actually found, so a slow write and a missing write look different.
+ */
+export async function persistedUntil<T>(
+  app: PracticeApp,
+  read: (state: { state: unknown; version: number }) => T,
+  predicate: (value: T) => boolean,
+  timeoutMs = 10_000,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: T | undefined;
+  for (;;) {
+    last = read(await readPersistedState(app));
+    if (predicate(last)) return last;
+    if (Date.now() > deadline) {
+      throw new Error(`Persisted state never satisfied the check. Last value: ${JSON.stringify(last)}`);
+    }
+    await app.page.waitForTimeout(50);
+  }
+}
+
+/** The database as the app has actually PERSISTED it, not as it is rendering it. */
+export async function persistedDb(app: PracticeApp): Promise<{
+  items: Record<string, unknown>[];
+  blocks: Record<string, unknown>[];
+  reviews: Record<string, unknown>[];
+  lessonAgenda: Record<string, unknown>[];
+  schemaVersion: number;
+}> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: never }).db;
+}
+
+// ---------------------------------------------------------------------------
+// A GitHub data repo that lives in this test process.
+//
+// It is installed at the REAL transport boundary — the `fetch` calls
+// `gitRemote.ts` makes to api.github.com — so everything above it runs for
+// real: `syncNow`, `resolveConflict`, `runSync`, `decideSync`, the pre-sync
+// archive, and `importFullBackup`'s own guards. Nothing in the app is stubbed
+// or bypassed, and no request ever leaves the machine.
+// ---------------------------------------------------------------------------
+
+export interface FakeRemote {
+  /** The snapshot the repo currently holds, or null for an empty repo. */
+  snapshot: { stateText: string; hash: string; rev: number; deviceName?: string; savedAt: string } | null;
+  /** Every ref this repo has, so an archive branch is observable. */
+  refs: string[];
+  /** How many times each endpoint was called, so "it really went there" is checkable. */
+  calls: string[];
+  /**
+   * The published Setar source index — the ONE file on the source-index
+   * branch that the NAS scanner writes and the app only ever GETs. Null until
+   * something publishes it.
+   */
+  sourceIndex: { text: string; commit: string } | null;
+}
+
+export function newFakeRemote(): FakeRemote {
+  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
+}
+
+/** Put a snapshot in the repo as if another device had pushed it. */
+export function publishRemote(remote: FakeRemote, stateText: string, hash: string, rev: number, deviceName = 'the other device'): void {
+  remote.snapshot = { stateText, hash, rev, deviceName, savedAt: new Date().toISOString() };
+  if (!remote.refs.includes('main')) remote.refs.push('main');
+}
+
+/**
+ * Re-stamp an index with the digest the SCANNER would have written for it.
+ *
+ * The app recomputes this digest at its reader boundary and refuses an index
+ * whose content and hash disagree, so a journey that edits a fixture index must
+ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
+ * ONE implementation, here beside `publishSourceIndex`, so no journey can
+ * quietly hand-edit a hash instead.
+ */
+export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
+  const body = { ...index };
+  delete body.contentHash;
+  delete body.generatedAt;
+  const sorted = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sorted);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[k];
+        if (v !== undefined) out[k] = sorted(v);
+      }
+      return out;
+    }
+    return value;
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({ ...index, contentHash });
+}
+
+/** Put a source index on the source-index branch, as the NAS publisher would. */
+export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
+  remote.sourceIndex = { text, commit };
+  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
+}
+
+export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
+  let headCounter = 0;
+  const blobs = new Map<string, string>();
+
+  await page.route('https://api.github.com/**', async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    // /repos/<owner>/<name>/<rest…>
+    const rest = url.pathname.split('/').slice(4).join('/');
+    const method = req.method();
+    remote.calls.push(`${method} ${rest}`);
+    // A FULFILLED response is still subject to the browser's own CORS check.
+    // Chromium lets a routed cross-origin request through; WebKit does not, and
+    // an unadorned reply surfaces as "Fetch API cannot load … due to access
+    // control checks" — a harness artefact that looks exactly like an app bug.
+    // The real api.github.com sends these headers, so sending them here is the
+    // fake behaving like the thing it stands in for.
+    const CORS = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
+    };
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
+    const json = (body: unknown, status = 200) =>
+      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
+    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
+    const head = () => `head-${headCounter}`;
+
+    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
+    // the file "on the branch" instead would be a second, later state.
+    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
+      if (!remote.sourceIndex) return json({}, 404);
+      return json({ object: { sha: remote.sourceIndex.commit } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
+      const ref = url.searchParams.get('ref');
+      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
+      return json({
+        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
+        encoding: 'base64',
+        size: remote.sourceIndex.text.length,
+      });
+    }
+    if (method === 'GET' && rest === 'git/ref/heads/main') {
+      if (!remote.snapshot) return json({}, 404);
+      return json({ object: { sha: head() } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
+      if (!remote.snapshot) return json({}, 404);
+      return raw(
+        JSON.stringify({
+          formatVersion: 2,
+          hash: remote.snapshot.hash,
+          rev: remote.snapshot.rev,
+          deviceName: remote.snapshot.deviceName,
+          savedAt: remote.snapshot.savedAt,
+          attachments: [],
+        }),
+      );
+    }
+    if (method === 'GET' && rest.startsWith('contents/state.json')) {
+      if (!remote.snapshot) return json({}, 404);
+      return raw(remote.snapshot.stateText);
+    }
+    if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
+    if (method === 'GET' && rest.startsWith('git/blobs/')) {
+      return json({ content: blobs.get(rest.slice('git/blobs/'.length)) ?? '' });
+    }
+    if (method === 'PUT' && rest.startsWith('contents/README.md')) {
+      headCounter += 1;
+      if (!remote.refs.includes('main')) remote.refs.push('main');
+      return json({ commit: { sha: head() } });
+    }
+    if (method === 'POST' && rest === 'git/blobs') {
+      const body = req.postDataJSON() as { content: string };
+      const sha = `blob-${blobs.size}`;
+      blobs.set(sha, body.content);
+      return json({ sha });
+    }
+    if (method === 'POST' && rest === 'git/trees') return json({ sha: 'tree-1' });
+    if (method === 'POST' && rest === 'git/commits') {
+      headCounter += 1;
+      return json({ sha: head() });
+    }
+    if (method === 'POST' && rest === 'git/refs') {
+      const body = req.postDataJSON() as { ref: string };
+      remote.refs.push(body.ref.replace('refs/heads/', ''));
+      return json({});
+    }
+    if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
+    return json({ message: 'not routed' }, 404);
+  });
+}
+
+/**
+ * Wrap a database in the shape `state.json` holds: a full backup with NO file
+ * payloads (attachments travel as separate git blobs).
+ */
+export function remoteStateText(db: unknown, deviceName = 'the other device'): string {
+  return JSON.stringify({
+    app: 'practice-compass',
+    schemaVersion: (db as { schemaVersion?: number }).schemaVersion ?? 13,
+    exportedAt: new Date().toISOString(),
+    deviceName,
+    data: db,
+    files: [],
+  });
+}
+
+/** Connect sync through the REAL Settings form and run the first sync. */
+export async function connectSync(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  await goTo(app, '/settings');
+  // The sync form's fields sit inside a labelled group rather than carrying
+  // their own accessible names. That is pre-existing Settings markup this lane
+  // is explicitly not reshaping, so this reaches them the way they actually
+  // are rather than pretending otherwise.
+  await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
+  await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
+  await page.getByRole('button', { name: 'Connect & sync' }).click();
+  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
+}
+
+/** The sync section's own status line, whatever it currently says. */
+export async function syncMessage(page: Page): Promise<string> {
+  return (await page.locator('main').innerText()).replace(/\s+/g, ' ');
+}
+```
+
+### tests/setarArchive.browser.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import {
+  connectSync,
+  goTo,
+  importBackup,
+  installFakeGitHub,
+  newFakeRemote,
+  openPracticeApp,
+  persistedUntil,
+  publishSourceIndex,
+  readPersistedState,
+  stampSourceIndex,
+  reload,
+  type Engine,
+  type PracticeApp,
+} from './practiceBrowser';
+
+// ---------------------------------------------------------------------------
+// ac-18 — the whole journey, rendered, in BOTH engines the owner actually uses.
+//
+// Refresh → a historical class with its real material → a canonical piece →
+// the material that is genuinely useful for it → Start → open a file, with the
+// practice clock untouched. The corpus is the checked-in index derived from the
+// real archive, the clock is frozen, and every control is reached by its
+// accessible name — no debug hook, no source regex.
+//
+// A missing engine FAILS with an install instruction; it never skips.
+// ---------------------------------------------------------------------------
+
+const NOW = new Date('2026-09-17T09:00:00.000Z');
+const PHONE = { width: 390, height: 844 };
+const DESKTOP = { width: 1280, height: 900 };
+
+interface Db {
+  items: {
+    id: string;
+    title: string;
+    status: string;
+    persian?: { composer?: string };
+    source?: { pieceKey: string };
+  }[];
+  lessons: { id: string; date: string; number?: number; origin?: string; source?: { sessionN: number } }[];
+  blocks: unknown[];
+  archiveSources: { id: string; sessions: unknown[]; pieces: unknown[] }[];
+}
+
+async function db(app: PracticeApp): Promise<Db> {
+  const { state } = await readPersistedState(app);
+  return (state as { db: Db }).db;
+}
+
+/** Seed the owner's real v13 data, connect the fake repo, publish an index. */
+async function setUp(app: PracticeApp, indexText: string) {
+  const remote = newFakeRemote();
+  await installFakeGitHub(app.page, remote);
+  await importBackup(app, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+  await connectSync(app);
+  publishSourceIndex(remote, indexText);
+  return remote;
+}
+
+async function refresh(app: PracticeApp) {
+  await goTo(app, '/settings');
+  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
+}
+
+/**
+ * An index with one more class than the corpus — the delta a refresh applies.
+ *
+ * Re-STAMPED with the digest the scanner itself would have written: the app
+ * recomputes that digest and refuses an index whose content and hash disagree,
+ * so a journey may not hand-edit a hash to fake a new scan.
+ */
+async function withSession40(text: string): Promise<string> {
+  const index = JSON.parse(text) as {
+    contentHash: string;
+    sessions: unknown[];
+    pieces: { key: string; composer: string }[];
+  };
+  index.sessions = [
+    ...index.sessions,
+    {
+      n: 40,
+      date: '2026-09-29',
+      folder: 'session-40-29-09-2026',
+      roster: [index.pieces[0]!.key],
+      rosterTrusted: true,
+      hasClassRecording: true,
+      resources: [
+        {
+          path: 'session-40-29-09-2026/ضبط-کلاس.mp4',
+          role: 'ضبط-کلاس',
+          kind: 'video',
+          title: 'ضبط کلاس',
+          part: null,
+          pieces: [],
+          group: null,
+        },
+      ],
+      members: [{ key: index.pieces[0]!.key, roles: ['ضبط-کلاس'] }],
+    },
+  ];
+  return stampSourceIndex(index as unknown as Record<string, unknown>);
+}
+
+/** The composer this journey's re-scanned registry proposes for one piece. */
+const NEW_COMPOSER = 'میرزا-عبدالله';
+
+/**
+ * A re-scanned index whose REGISTRY has improved: one piece the owner already
+ * has now names a different composer. That is a suggestion, never a write.
+ */
+async function withBetterComposer(text: string): Promise<{ text: string; key: string; was: string }> {
+  const index = JSON.parse(text) as { pieces: { key: string; composer: string }[] };
+  const target = index.pieces.find((p) => p.composer && p.composer !== NEW_COMPOSER)!;
+  const was = target.composer;
+  index.pieces = index.pieces.map((p) => (p.key === target.key ? { ...p, composer: NEW_COMPOSER } : p));
+  return { text: await stampSourceIndex(index as unknown as Record<string, unknown>), key: target.key, was };
+}
+
+describe('the Setar archive, rendered', () => {
+  it('setar archive journey works on phone and desktop in Chromium and WebKit', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const viewport of [PHONE, DESKTOP]) {
+        const app = await openPracticeApp({ now: NOW, viewport, engine });
+        try {
+          const { page } = app;
+          const remote = await setUp(app, INDEX_TEXT);
+
+          // --- REFRESH: one action, a readable summary, no crawler output ---
+          await refresh(app);
+          const summary = await page.locator('main').innerText();
+          // Four of the owner's own legacy classes carry EXACT source-path evidence,
+          // so they are adopted rather than duplicated; the other 35 are new.
+          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
+          // It says the index CHANGED or was FETCHED — never that a scan ran.
+          expect(summary).not.toMatch(/last scanned/i);
+          expect(summary).toMatch(/needing attention/);
+          // Import policy is stated BEFORE the import, not discovered after.
+          expect(summary).toMatch(/New pieces arrive resting/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+
+          const after = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 40 && d.items.length === 96,
+          );
+          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+          expect(after.items.filter((i) => i.source)).toHaveLength(94);
+          // The owner's own upcoming class 38 and the archive's class 38 both
+          // exist, on their own dates.
+          expect(after.lessons.filter((l) => l.number === 38).map((l) => l.date).sort()).toEqual([
+            '2026-08-04',
+            '2026-09-27',
+          ]);
+
+          // --- A HISTORICAL CLASS, with its real material -------------------
+          // Lessons is a two-pane list at 1000px and stacked cards below it, so
+          // this journey drives whichever the viewport actually renders.
+          await goTo(app, '/lessons');
+          const wide = viewport.width >= 1000;
+          /**
+           * Open one class and read what it actually renders — the whole page
+           * on the wide two-pane layout, the card itself on the phone, where
+           * rows start compact and must be opened first.
+           */
+          const openClass = async (label: string, number: number): Promise<string> => {
+            if (wide) {
+              await page.getByRole('button', { name: new RegExp(label) }).first().click();
+              await page.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+              return page.locator('main').innerText();
+            }
+            const card = page.getByRole('article').filter({ hasText: label });
+            await card.first().waitFor({ timeout: 20_000 });
+            // PHONE ROWS START COMPACT: thirty-nine imported classes must not
+            // all open at once just because none of them has notes yet.
+            expect(await card.getByRole('button', { name: /Class notes/ }).count()).toBe(0);
+            await card.getByRole('button', { name: new RegExp(`Class ${number}`) }).first().click();
+            await card.getByRole('button', { name: /Class notes/ }).first().waitFor({ timeout: 20_000 });
+            return card.innerText();
+          };
+          const lessonText = await openClass('Class 13 · 2024-09-03', 13);
+          // The class recording is here, with its part numbers; a named score
+          // is here; nothing claims a demonstration belongs to the class alone.
+          expect(lessonText).toContain('ضبط کلاس');
+          expect(lessonText).toContain('Class 13 · 2024-09-03 · class recording');
+
+          // --- ONE SECTION PER FILE, and no prompt beside a file that is here
+          //
+          // Class 25 is an ADOPTED legacy class carrying three of the owner's
+          // OWN references — personal takes the index describes nowhere, by
+          // construction — beside the archive's session material. The composed
+          // list used to include the owner's rows as well, so each of them was
+          // rendered twice: once where it can be edited and removed, and once
+          // again above it.
+          const occurrences = (text: string, needle: string) => text.split(needle).length - 1;
+          const adopted = await openClass('Class 25 · 2025-08-05', 25);
+          for (const authored of ['My take, 3 August', 'My take, 4 August', 'My take, 5 August']) {
+            expect(occurrences(adopted, authored)).toBe(1);
+          }
+          // …and they are still editable where they live: the section that owns
+          // them can still remove them, by name.
+          const owning = wide
+            ? page.locator('main')
+            : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
+          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
+          // A class the archive gave a recording to is NOT invited to add one.
+          // Class 12 is a purely imported class: it keeps no copy of its
+          // session's files, so its own `recordings` array is empty and the
+          // empty-state card offered to add the very video playing above it.
+          const imported = await openClass('Class 12 · 2024-08-06', 12);
+          expect(imported).toContain('Class 12 · 2024-08-06 · class recording');
+          expect(imported).not.toMatch(/Full class videos and scores live on your NAS/);
+
+          // --- A CANONICAL PIECE, and the material that is useful for it ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          // ALIAS SEARCH: an old transliterated spelling still finds the piece,
+          // through the existing Farsi matcher.
+          await page.getByPlaceholder('Search items…').first().fill('zarbi-araaq');
+          const found = page.getByRole('link', { name: /ضربی-عراق-ماهور-میرزا-حسینقلی/ }).first();
+          await found.waitFor({ timeout: 20_000 });
+          await found.click();
+          await page.getByRole('button', { name: 'Start a block' }).waitFor({ timeout: 20_000 });
+
+          const itemText = await page.locator('main').innerText();
+          // Its OWN notation, with provenance…
+          expect(itemText).toContain('Class 13 · 2024-09-03 · notation');
+          // …the demonstration that covers its session…
+          expect(itemText).toContain('teacher’s demonstration');
+          // …and NOT the class recording, and NOT anyone's practice takes.
+          expect(itemText).not.toContain('class recording');
+          expect(itemText).not.toContain('تمرین من');
+          // Imported pieces arrive resting.
+          expect(itemText).toMatch(/Resting/);
+
+          // --- DIRECT START, and opening material with the clock untouched --
+          await page.getByRole('button', { name: 'Start a block' }).click();
+          await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+          const clockBefore = await page.locator('main').innerText();
+          // Material on the practice screen is ONE CLOSED disclosure.
+          const materialToggle = page.getByRole('button', { name: /Material/ }).first();
+          // CLOSED until asked for: nothing is listed before the tap.
+          expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
+          await materialToggle.click();
+          const openButtons = page.getByRole('button', { name: 'Open' });
+          expect(await openButtons.count()).toBeGreaterThan(0);
+          // Every control has an accessible name and is reachable by keyboard.
+          await page.keyboard.press('Tab');
+          expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
+          // Opening a file never disturbs the running block.
+          expect((await page.locator('main').innerText()).includes('Finish')).toBe(
+            clockBefore.includes('Finish'),
+          );
+          const blocksBefore = (await db(app)).blocks.length;
+          // The harness accepts the confirm() for the whole journey.
+          await page.getByRole('button', { name: 'Discard block' }).click();
+          expect((await db(app)).blocks).toHaveLength(blocksBefore);
+
+          // --- MIXED DIRECTION: Farsi wraps, English labels stay isolated ----
+          await goTo(app, '/repertoire');
+          await page.getByRole('button', { name: 'Practice list' }).click();
+          await page.getByPlaceholder('Search items…').first().waitFor({ timeout: 20_000 });
+          const wrapped = await page.evaluate(() => {
+            const el = [...document.querySelectorAll('[dir="auto"]')].find((n) =>
+              /[؀-ۿ]/.test(n.textContent ?? ''),
+            );
+            if (!el) return null;
+            const box = el.getBoundingClientRect();
+            return { rtl: getComputedStyle(el).direction, overflows: el.scrollWidth > Math.ceil(box.width) + 1 };
+          });
+          expect(wrapped).not.toBeNull();
+          expect(wrapped!.rtl).toBe('rtl');
+          expect(wrapped!.overflows).toBe(false);
+
+          // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: 'Already current' }).click();
+          await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
+
+          publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
+          await refresh(app);
+          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const delta = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.lessons.length === 41,
+          );
+          expect(delta.items.filter((i) => i.source)).toHaveLength(94);
+
+          // --- A RENDERED METADATA SUGGESTION, and the choice that applies it
+          // The registry improves. That is an OFFER, field by field: nothing
+          // about the owner's own piece changes until they say so, and the
+          // choice must survive the commit even when the index behind it is
+          // already the one installed.
+          const better = await withBetterComposer(INDEX_TEXT);
+          publishSourceIndex(remote, better.text, 'source-index-commit-4');
+          await refresh(app);
+          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
+          await offerRow.first().waitFor({ timeout: 20_000 });
+          const offerText = await page.locator('main').innerText();
+          // The section label is rendered uppercase by the stylesheet, and
+          // innerText returns what is actually rendered.
+          expect(offerText).toMatch(/the archive knows more about these/i);
+          expect(offerText).toContain(better.key);
+          expect(offerText).toContain(NEW_COMPOSER);
+          // Applying WITHOUT answering updates the source graph and leaves the
+          // owner's own piece exactly as it was.
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const unanswered = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.archiveSources[0]!.pieces.some((p) => (p as { composer: string }).composer === NEW_COMPOSER),
+          );
+          expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
+
+          // THE SAME INDEX, a NEW answer. The graph is already current, so a
+          // refresh judged by the index hash alone called this "Already
+          // current" and threw the answer away unwritten.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          const answeredDb = await persistedUntil(
+            app,
+            (s) => (s.state as { db: Db }).db,
+            (d) => d.items.find((i) => i.source?.pieceKey === better.key)?.persian?.composer === NEW_COMPOSER,
+          );
+          // Only that field moved: the piece keeps its title and its history.
+          expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
+          expect(answeredDb.blocks).toHaveLength(1);
+          // …and the offer is gone, because it has been taken.
+          await refresh(app);
+          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
+          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+
+          // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
+          publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');
+          await goTo(app, '/settings');
+          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+          await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
+          expect(await page.getByRole('alert').first().innerText()).toMatch(/newer scanner/);
+
+          // --- A RELOAD PROVES IT: no duplicates, no fabricated history -----
+          await reload(app);
+          const persisted = await db(app);
+          expect(persisted.lessons).toHaveLength(41);
+          expect(persisted.items.filter((i) => i.source)).toHaveLength(94);
+          expect(new Set(persisted.items.map((i) => i.id)).size).toBe(persisted.items.length);
+          expect(new Set(persisted.lessons.map((l) => l.id)).size).toBe(persisted.lessons.length);
+          expect(persisted.blocks).toHaveLength(1);
+          // MESSAGES, not Error objects: `toEqual([])` on an array of Errors
+          // reports "expected [ …(1) ] to deeply equal []" and nothing else,
+          // so the one thing a CI-only failure needs to say — what the browser
+          // actually reported, and what the harness saw around it — is exactly
+          // what it withholds. Every other journey already asserts this way.
+          expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  });
+});
+```
+
+### tests/setarInbound.browser.test.ts
+
+```
+import { execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import {
+  CANCELLED_EXCUSE_MS,
+  connectSync,
+  exportBackup,
+  goTo,
+  importBackup,
+  importOutcome,
+  installFakeGitHub,
+  newFakeRemote,
+  cancellationEvidence,
+  excusedCancellation,
+  openPracticeApp,
+  persistedDb,
+  publishRemote,
+  readPersistedState,
+  reload,
+  remoteStateText,
+  syncMessage,
+  type TrackedRequestFailure,
+  writePersistedState,
+} from './practiceBrowser';
+import INDEX_TEXT from './fixtures/setar-archive.json?raw';
+import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
+import { SCHEMA_VERSION, type PracticeDB } from '../src/domain/types';
+import { validateDB, serializeExport } from '../src/domain/io';
+import { decodeSourceIndex } from '../src/domain/sourceArchive';
+import { applyArchiveImport, planArchiveImport } from '../src/domain/sourceReconcile';
+import { hashState } from '../src/domain/canonical';
+
+// ---------------------------------------------------------------------------
+// ac-16 — the archive graph through every door an inbound database uses.
+//
+// Settings import (full and state-only), an automatic sync pull, "Take the
+// GitHub copy", the archive restore, BOTH hydration branches and the cold-start
+// recovery control all run the same `validateDB`. A malformed source relation
+// has to be refused at every one of them with the previous database AND the
+// previous attachment bytes exactly as they were; a valid one has to survive
+// all of them with the owner's own bindings, suppressions and fields intact.
+// ---------------------------------------------------------------------------
+
+const CLOCK = new Date('2026-09-17T09:00:00');
+const SETAR = 'inst-setar';
+
+/** The owner's v13 data with a real, accepted graph in it — built by the real planner. */
+function v14Database(): PracticeDB {
+  const base = validateDB(JSON.parse(V13_SETAR_TEXT));
+  const index = decodeSourceIndex(JSON.parse(INDEX_TEXT));
+  const plan = planArchiveImport({ db: base, index, instrumentId: SETAR, now: CLOCK });
+  const db = applyArchiveImport(base, plan);
+  // An owner decision that every door must carry through untouched.
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((s) => ({
+      ...s,
+      suppressions: [{ kind: 'piece' as const, ref: 'عراق', at: '2026-09-17T09:05:00.000Z' }],
+    })),
+    items: db.items.filter((i) => i.source?.pieceKey !== 'عراق'),
+  };
+}
+
+const V14_DB = v14Database();
+const V14_TEXT = serializeExport(V14_DB, CLOCK);
+
+/**
+ * The same database with ONE nested value inside the graph made malformed.
+ *
+ * `members[].roles` is what `repeatChains` calls `.includes` on to render an
+ * item's material, so a door that accepts this persists a database whose first
+ * reader throws. It is the sharpest member of the family — the nested fields a
+ * production reader dereferences — and every door below is given the identical
+ * bytes rather than a door-specific approximation of them.
+ */
+function withMalformedRoles<T extends PracticeDB>(db: T): T {
+  return {
+    ...db,
+    archiveSources: db.archiveSources.map((src, i) =>
+      i === 0
+        ? {
+            ...src,
+            sessions: src.sessions.map((sess, j) =>
+              j === 0
+                ? { ...sess, members: sess.members.map((m, k) => (k === 0 ? { ...m, roles: null } : m)) }
+                : sess,
+            ),
+          }
+        : src,
+    ),
+  } as unknown as T;
+}
+
+const wrap = (data: unknown, files?: unknown) =>
+  JSON.stringify({
+    app: 'practice-compass',
+    schemaVersion: SCHEMA_VERSION,
+    exportedAt: CLOCK.toISOString(),
+    data,
+    ...(files === undefined ? {} : { files }),
+  });
+
+/**
+ * A path the REFRESH repaired on an adopted legacy class: the owner's v13 file
+ * stores `setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4`,
+ * and the rename log moves it here. Repair produces PERSISTED archive state, so
+ * it has to cross these doors like everything else.
+ */
+const REPAIRED_PATH = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+
+interface Shape {
+  items: { id: string; title: string; source?: { pieceKey: string }; references?: unknown[] }[];
+  lessons: { id: string; source?: { sessionN: number }; origin?: string; recordings?: { path: string }[] }[];
+  blocks: unknown[];
+  archiveSources: { id: string; suppressions: { ref: string }[]; sessions: unknown[] }[];
+  schemaVersion: number;
+}
+
+const shape = async (app: Parameters<typeof persistedDb>[0]) => (await persistedDb(app)) as unknown as Shape;
+
+describe('the archive graph at every inbound door', () => {
+  it('archive state crosses all real inbound doors without partial installation', async () => {
+    const app = await openPracticeApp({ now: CLOCK });
+    const { page } = app;
+    try {
+      // --- a real v14 database, through the real Settings importer --------
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(app)).toContain('Imported');
+      await reload(app);
+      let db = await shape(app);
+      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+      // The owner's suppression came through, and the piece it names is absent.
+      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+      // …as did their own untouched records.
+      expect(db.items.find((i) => i.id === 'own-dashti')!.title).toBe('چهارمضراب اول دشتی');
+      expect(db.blocks).toHaveLength(1);
+      // The REPAIRED reference survived the door, with the row the owner wrote.
+      const repaired = () => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      const goodBytes = JSON.stringify(await readPersistedState(app));
+
+      // --- MALFORMED SOURCE RELATIONS, refused at the import door ---------
+      const bad = V14_DB;
+      const cases: { name: string; text: string; says: RegExp }[] = [
+        {
+          name: 'two sources share an id',
+          text: wrap({ ...bad, archiveSources: [bad.archiveSources[0], bad.archiveSources[0]] }),
+          says: /share the id/,
+        },
+        {
+          name: 'a source bound to no instrument',
+          text: wrap({
+            ...bad,
+            archiveSources: [{ ...bad.archiveSources[0]!, instrumentId: 'nobody' }],
+          }),
+          says: /instrument that does not exist/,
+        },
+        {
+          name: 'a dangling item binding',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-dashti' ? { ...i, source: { archiveId: 'setar-classes', pieceKey: 'nope' } } : i,
+            ),
+          }),
+          says: /does not describe/,
+        },
+        {
+          name: 'two items bound to one piece',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-iraq' ? { ...i, source: bad.items.find((x) => x.source)!.source } : i,
+            ),
+          }),
+          says: /Two items are bound/,
+        },
+        {
+          name: 'a lesson bound to a session the source does not describe',
+          text: wrap({
+            ...bad,
+            lessons: bad.lessons.map((l) =>
+              l.id === 'L-38-upcoming' ? { ...l, source: { archiveId: 'setar-classes', sessionN: 4242 } } : l,
+            ),
+          }),
+          says: /does not describe/,
+        },
+        {
+          name: 'an unsafe resource path',
+          text: wrap({
+            ...bad,
+            archiveSources: [
+              {
+                ...bad.archiveSources[0]!,
+                sessions: bad.archiveSources[0]!.sessions.map((s, i) =>
+                  i === 0 ? { ...s, resources: [{ ...s.resources[0], path: '../../etc/passwd' }] } : s,
+                ),
+              },
+            ],
+          }),
+          says: /unsafe resource path/,
+        },
+        {
+          name: 'an unsafe direct item reference',
+          text: wrap({
+            ...bad,
+            items: bad.items.map((i) =>
+              i.id === 'own-iraq'
+                ? {
+                    ...i,
+                    references: [
+                      { id: 'r', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: CLOCK.toISOString() },
+                    ],
+                  }
+                : i,
+            ),
+          }),
+          says: /unsafe reference path/,
+        },
+        {
+          // The sealed counterexample: a nested value no door used to check.
+          name: 'a membership with an unreadable role list',
+          text: wrap(withMalformedRoles(bad)),
+          says: /unreadable role list/,
+        },
+        {
+          name: 'a newer schema',
+          text: wrap({ ...bad, schemaVersion: SCHEMA_VERSION + 1 }),
+          says: /newer version/i,
+        },
+      ];
+
+      for (const c of cases) {
+        await importBackup(app, 'bad.json', c.text);
+        expect(await importOutcome(app), c.name).toMatch(/Import failed/);
+        expect(await importOutcome(app), c.name).toMatch(c.says);
+        // NOTHING was written — not a partial graph, not a partial database.
+        expect(JSON.stringify(await readPersistedState(app)), c.name).toBe(goodBytes);
+      }
+
+      // --- a STATE-ONLY import carries the graph too ----------------------
+      const renamed = {
+        ...V14_DB,
+        items: V14_DB.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'state-only import' } : i)),
+      };
+      await importBackup(app, 'state-only.json', wrap(renamed));
+      expect(await importOutcome(app)).toContain('Imported');
+      // A v14 database is 94 pieces, 39 sessions and the whole graph, and the
+      // importer validates and migrates all of it before it writes. Polled at
+      // half a second rather than the shared helper's 50ms: a continuous stream
+      // of read transactions on the same object store delays the very write
+      // this is waiting for.
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('state-only import');
+      expect((await shape(app)).archiveSources).toHaveLength(1);
+
+      // --- A SYNC PULL installs the same validated model -------------------
+      const remote = newFakeRemote();
+      await installFakeGitHub(page, remote);
+      // The first sync PUSHES what this device holds, so the pull below is a
+      // clean one-sided change rather than a conflict.
+      await connectSync(app);
+      const local = await persistedDb(app);
+      const pulled = {
+        ...local,
+        items: local.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'from the other device' } : i)),
+      };
+      publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9999);
+      await goTo(app, '/settings');
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('from the other device');
+      db = await shape(app);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      // --- A MALFORMED remote snapshot is refused, and installs nothing ----
+      const beforePull = JSON.stringify(await readPersistedState(app));
+      const brokenRemote = { ...pulled, archiveSources: [{ ...V14_DB.archiveSources[0]!, instrumentId: 'nobody' }] };
+      publishRemote(remote, remoteStateText(brokenRemote), await hashState(brokenRemote), 10_000);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // …and the NESTED malformation is refused by this door too, not only by
+      // the import one. A pull that installed it would leave a database whose
+      // own material reader throws, with nothing to undo it.
+      const brokenNested = withMalformedRoles(pulled as unknown as PracticeDB);
+      publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      await expect
+        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe(true);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
+
+      // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------
+      await goTo(app, '/items/own-dashti');
+      await page.getByRole('button', { name: 'Edit' }).first().click();
+      await goTo(app, '/settings');
+      const keepRemote = {
+        ...pulled,
+        items: pulled.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'the GitHub copy' } : i)),
+      };
+      publishRemote(remote, remoteStateText(keepRemote), await hashState(keepRemote), 11_000);
+      await page.getByRole('button', { name: 'Sync now' }).click();
+      const takeRemote = page.getByRole('button', { name: /Take the GitHub copy|Keep the GitHub copy/ });
+      if ((await takeRemote.count()) > 0) {
+        await takeRemote.first().click();
+        await expect
+          .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+            timeout: 60_000,
+            interval: 500,
+          })
+          .toBe('the GitHub copy');
+        expect((await shape(app)).archiveSources).toHaveLength(1);
+      }
+
+      // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
+      await goTo(app, '/items/own-dashti');
+      await page.getByRole('button', { name: 'Start a block' }).click();
+      await goTo(app, '/active');
+      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
+      const duringPractice = JSON.stringify(await readPersistedState(app));
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(app)).toMatch(/Import failed/);
+      expect(await importOutcome(app)).toMatch(/unfinished|practice/i);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(duringPractice);
+      await goTo(app, '/active');
+      // The harness accepts the confirm() for the whole journey.
+      await page.getByRole('button', { name: 'Discard block' }).click();
+
+      // --- A FULL EXPORT: metadata for NAS refs, no bytes ------------------
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      await reload(app);
+      const exported = await exportBackup(app);
+      const parsed = JSON.parse(exported) as { data: Shape; files?: unknown[] };
+      expect(parsed.data.archiveSources).toHaveLength(1);
+      expect(parsed.data.items.filter((i) => i.source)).toHaveLength(93);
+      // The archive is DESCRIBED, never carried: no NAS bytes, and only real
+      // local attachments appear in `files` (there are none here).
+      expect(parsed.files ?? []).toEqual([]);
+      expect(exported).toContain('session-13-03-09-2024');
+      // A repaired path is exported as the archive-relative text it now is —
+      // no device base, no legacy folder prefix, and no bytes.
+      expect(exported).toContain(REPAIRED_PATH);
+      expect(exported).not.toContain('setar-classes/session-1-26-09-2023/video-2023-09-27');
+      expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
+
+      // --- BOTH HYDRATION BRANCHES ----------------------------------------
+      // `migrate`: a persisted database declaring the OLD version.
+      const current = await readPersistedState(app);
+      await writePersistedState(app, { ...(current.state as object), db: JSON.parse(V13_SETAR_TEXT).data }, 13);
+      await reload(app);
+      db = await shape(app);
+      expect(db.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(db.archiveSources).toEqual([]);
+
+      // `merge`: a persisted database declaring the CURRENT version, carrying
+      // an invalid relation. Zustand skips `migrate` entirely here, which is
+      // exactly why the check cannot live only there.
+      await importBackup(app, 'setar-v14.json', V14_TEXT);
+      await reload(app);
+      const valid = await readPersistedState(app);
+      const validDb = (valid.state as { db: Shape }).db;
+      await writePersistedState(
+        app,
+        {
+          ...(valid.state as object),
+          db: {
+            ...validDb,
+            archiveSources: [{ ...validDb.archiveSources[0]!, instrumentId: 'nobody' }],
+          },
+        },
+        SCHEMA_VERSION,
+      );
+      const refusedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/instrument that does not exist/);
+      // Rendering the refusal writes nothing at all.
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedBytes);
+
+      // The same hydration branch, given the NESTED malformation instead: this
+      // is the door the sealed counterexample actually walked through, and a
+      // database it accepted would crash the first material render.
+      await writePersistedState(
+        app,
+        { ...(valid.state as object), db: withMalformedRoles(validDb as unknown as PracticeDB) },
+        SCHEMA_VERSION,
+      );
+      const refusedNestedBytes = JSON.stringify(await readPersistedState(app));
+      await page.reload();
+      await page.getByText(/couldn’t be loaded safely/).waitFor({ timeout: 20_000 });
+      expect(await page.locator('body').innerText()).toMatch(/unreadable role list/);
+      expect(JSON.stringify(await readPersistedState(app))).toBe(refusedNestedBytes);
+
+      // --- COLD-START RECOVERY gets the owner back in ----------------------
+      await page.getByLabel('Restore backup file').setInputFiles({
+        name: 'recover.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(V14_TEXT, 'utf8'),
+      });
+      await page.locator('main').waitFor({ timeout: 20_000 });
+      await goTo(app, '/');
+      await reload(app);
+      db = await shape(app);
+      expect(db.archiveSources).toHaveLength(1);
+      expect(db.items.filter((i) => i.source)).toHaveLength(93);
+      expect(repaired().map((r) => r.path)).toContain(REPAIRED_PATH);
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  }, 240_000);
+});
+
+// ---------------------------------------------------------------------------
+// The rollback route: the baseline app, not a description of it.
+// ---------------------------------------------------------------------------
+
+const BASELINE_COMMIT = 'b649bd09d0ffbd8bbc5955c3c891cfe01a7fa417';
+
+function checkoutBaselineApp(): { root: string; dispose: () => void } {
+  const root = join(mkdtempSync(join(tmpdir(), 'pc-setar-baseline-')), 'app');
+  execFileSync('git', ['worktree', 'add', '--detach', root, BASELINE_COMMIT], { stdio: 'pipe' });
+  // `package.json` here gained two scripts and nothing else; `package-lock.json`
+  // is a forbidden path and is byte-identical, so the baseline's dependency
+  // tree is this checkout's. Linking is exact and far cheaper than installing.
+  symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules'));
+  return {
+    root,
+    dispose: () => {
+      try {
+        execFileSync('git', ['worktree', 'remove', '--force', root], { stdio: 'pipe' });
+      } catch {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  };
+}
+
+describe('rolling back past the archive schema', () => {
+  it('the baseline app refuses a v14 file and restores its own retained backup', async () => {
+    const baseline = checkoutBaselineApp();
+    const old = await openPracticeApp({ now: CLOCK, root: baseline.root });
+    try {
+      // The v13 app holds the owner's real v13 data, and exports it itself.
+      await importBackup(old, 'setar-legacy-v13.json', V13_SETAR_TEXT);
+      expect(await importOutcome(old)).toContain('Imported');
+      await reload(old);
+      const oldDb = await persistedDb(old);
+      expect(oldDb.schemaVersion).toBe(13);
+      const retainedV13 = await exportBackup(old);
+      expect(JSON.parse(retainedV13).schemaVersion).toBe(13);
+
+      // IT REFUSES A v14 FILE, and writes nothing.
+      const before = JSON.stringify(await readPersistedState(old));
+      await importBackup(old, 'setar-v14.json', V14_TEXT);
+      expect(await importOutcome(old)).toMatch(/Import failed/);
+      expect(await importOutcome(old)).toMatch(/newer version/i);
+      expect(JSON.stringify(await readPersistedState(old))).toBe(before);
+
+      // …and the retained v13 backup restores INTO the baseline app, which is
+      // what a rollback actually is. There is no down-migration and none is
+      // pretended: the v14 file still says 14 and still carries its graph.
+      await importBackup(old, 'retained-v13.json', retainedV13);
+      expect(await importOutcome(old)).toContain('Imported');
+      await reload(old);
+      const restored = await persistedDb(old);
+      expect(restored.schemaVersion).toBe(13);
+      expect(restored.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+        'Teacher: keep the mezrab light on the return.',
+      );
+      expect(JSON.parse(V14_TEXT).schemaVersion).toBe(SCHEMA_VERSION);
+      expect(JSON.parse(V14_TEXT).data.archiveSources).toHaveLength(1);
+      expect(old.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await old.close();
+      baseline.dispose();
+    }
+  }, 240_000);
+});
+
+describe('the journey harness itself', () => {
+  // The harness must not be able to hide the very failure a journey exists to
+  // catch, and it must not manufacture one either. A request the browser
+  // CANCELLED (because the test navigated away mid-flight) produces a WebKit
+  // error that reads exactly like a CORS failure. Excusing it has now failed
+  // four different ways, and each test below is named for the specific way:
+  //  - a PERMANENT set of cancelled URLs discarded every later page error
+  //    whose message merely contained that pathname, so a genuine failure at
+  //    the same path, later in the same journey, was swallowed and
+  //    `pageErrors` said nothing;
+  //  - even made CONSUMING (one cancellation, one error) and bounded by a
+  //    generous time window, an unconsumed cancellation — one that produced
+  //    no page error of its own — stayed a live "credit" for up to that whole
+  //    window, spendable by a genuine, later failure to the same URL that had
+  //    nothing to do with it. A window can never tell the two apart, because
+  //    a cancellation's error and a genuine one read identically; only ORDER
+  //    can (see `excusedCancellation`'s own doc comment in `practiceBrowser.ts`);
+  //  - the excuse read the page error's `message` ALONE, which never contains
+  //    the diagnosis: Playwright splits a page error at its first colon — the
+  //    URL's own scheme colon — so the wording lives in `name` and only the
+  //    tail lives in `message`. Every string these tests used to assert on was
+  //    a hand-written reconstruction that no browser ever emits;
+  //  - and the correlation looked only BACKWARDS in time, on the stated
+  //    diagnosis that a `requestfailed` precedes the `pageerror` it causes.
+  //    Measured, WebKit delivers them the other way round. Against a real
+  //    error the log was still empty when the excuse ran.
+  // Both of the last two were exposed by the same CI run: the journey passed
+  // on one runner and failed on two others at the identical commit, because
+  // the error had simply never been produced locally before.
+  const url = 'https://api.github.com/repos/owner/data/contents/state.json';
+
+  /**
+   * The diagnosis AS A TEST ACTUALLY RECEIVES IT — the two halves Playwright
+   * splits it into. Measured against Playwright's own WebKit, and identical
+   * to the representation the failing CI run reported.
+   */
+  const diagnosed = (target = url) => {
+    const u = new URL(target);
+    return {
+      name: `Fetch API cannot load ${u.protocol.replace(':', '')}`,
+      message: `/${u.host}${u.pathname} due to access control checks.`,
+    };
+  };
+  const spurious = diagnosed();
+  const at = 1_000_000;
+  const cancelled = (offset = 0): TrackedRequestFailure => ({ url, at: at + offset, errorText: 'cancelled' });
+  const genuine = (offset = 0): TrackedRequestFailure => ({
+    url,
+    at: at + offset,
+    errorText: 'Origin http://localhost:5173 is not allowed by Access-Control-Allow-Origin. Status code: 200',
+  });
+
+  it('reads the diagnosis as Playwright actually splits it, in both WebKit spellings', () => {
+    // THE EXACT PAIR THE FAILING CI RUN REPORTED, verbatim.
+    const fromCI = {
+      name: 'Fetch API cannot load https',
+      message: '/api.github.com/repos/owner/practice-data/contents/README.md due to access control checks.',
+    };
+    const readme = 'https://api.github.com/repos/owner/practice-data/contents/README.md';
+    expect(excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], fromCI, at + 5)).toBe(true);
+
+    // The message half ALONE is not the diagnosis and never matches: this is
+    // the shape the excuse used to be handed, and why it never fired.
+    expect(
+      excusedCancellation([{ url: readme, at, errorText: 'cancelled' }], { message: fromCI.message }, at + 5),
+    ).toBe(false);
+
+    // An UNSPLIT representation is understood too, so this does not depend on
+    // Playwright continuing to split it.
+    expect(
+      excusedCancellation([cancelled()], { name: 'Error', message: `Fetch API cannot load ${url} due to access control checks.` }, at + 5),
+    ).toBe(true);
+
+    // WebKit spells the same diagnosis for an XHR as well as for a fetch.
+    expect(
+      excusedCancellation([cancelled()], { ...spurious, name: spurious.name.replace('Fetch API', 'XMLHttpRequest') }, at + 5),
+    ).toBe(true);
+
+    // Only the DIAGNOSED wording is ever excused: a real render crash naming
+    // the same URL is a page error, not a cancellation.
+    expect(
+      excusedCancellation([cancelled()], { name: 'TypeError', message: `undefined is not an object — ${url}` }, at + 5),
+    ).toBe(false);
+  });
+
+  it('excuses a cancellation whose page error arrives BEFORE the requestfailed that explains it', () => {
+    // THE MEASURED ORDER: WebKit delivers the page error about a tenth of a
+    // millisecond ahead of the request's own failure. A backwards-only search
+    // saw an empty log here and excused nothing.
+    const later = [cancelled(1)];
+    expect(excusedCancellation(later, spurious, at)).toBe(true);
+    expect(later).toEqual([]);
+
+    // The other order still works: one measurement is not a proof that the
+    // reverse can never happen.
+    const earlier = [cancelled(-1)];
+    expect(excusedCancellation(earlier, spurious, at)).toBe(true);
+    expect(earlier).toEqual([]);
+  });
+
+  it('a cancellation excuses its own diagnosed error once', () => {
+    const pending = [cancelled()];
+    expect(excusedCancellation(pending, spurious, at + 5)).toBe(true);
+    // CONSUMED — the identical error arriving again has no cancellation left
+    // to account for it, which is the ORIGINAL reviewer counterexample.
+    expect(pending).toEqual([]);
+    expect(excusedCancellation(pending, spurious, at + 15)).toBe(false);
+  });
+
+  it('multiple cancellations to the same URL each excuse their own error and no more', () => {
+    const twice = [cancelled(), cancelled(10)];
+    expect(excusedCancellation(twice, spurious, at + 20)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 30)).toBe(true);
+    expect(excusedCancellation(twice, spurious, at + 40)).toBe(false);
+  });
+
+  it('a cancellation that produced no page error of its own never excuses a later, genuine failure to the same URL', () => {
+    // This is the sealed finding: the cancellation happens and nothing ever
+    // reports its own page error for it — exactly the case the harness must
+    // tolerate without turning it into a standing credit for something else.
+    const events = [cancelled()];
+    // A genuine failure to the SAME url follows moments later, and IS
+    // tracked — this is what makes it outrank the stale cancellation next.
+    events.push(genuine(50));
+    expect(excusedCancellation(events, spurious, at + 60)).toBe(false);
+    // The stale cancellation is untouched: it lost to the more recent
+    // genuine failure, it was never spent.
+    expect(events).toContainEqual(cancelled());
+  });
+
+  it("a genuine failure reported AFTER its own page error still outranks a stale cancellation", () => {
+    // The sealed finding above, re-proved under the order the browser
+    // actually uses: the genuine failure's `requestfailed` lands a fraction
+    // of a millisecond AFTER the page error it belongs to, while a stale
+    // cancellation sits well before it. Nearest-in-either-direction is what
+    // keeps the genuine one the winner; a backwards-only search would reach
+    // the cancellation and excuse a real failure.
+    const events = [cancelled(-40), genuine(1)];
+    expect(excusedCancellation(events, spurious, at)).toBe(false);
+    expect(events).toContainEqual(cancelled(-40));
+
+    // And a TIE is never resolved in the excuse's favour either.
+    const tied = [cancelled(), genuine()];
+    expect(excusedCancellation(tied, spurious, at)).toBe(false);
+  });
+
+  it('a genuine failure is never excused, whether it precedes or follows a cancellation to the same URL', () => {
+    // Genuine failure arrives FIRST, with no cancellation recorded at all.
+    const events = [genuine()];
+    expect(excusedCancellation(events, spurious, at + 5)).toBe(false);
+
+    // A real cancellation follows and correctly excuses its OWN error.
+    events.push(cancelled(100));
+    expect(excusedCancellation(events, spurious, at + 110)).toBe(true);
+
+    // Another genuine failure follows the (now-consumed) cancellation and is
+    // never excused by it either — there is nothing left pending to excuse
+    // it with, and it would not have qualified anyway.
+    events.push(genuine(200));
+    expect(excusedCancellation(events, spurious, at + 210)).toBe(false);
+  });
+
+  it('the excuse never matches a host or path that merely shares characters with the cancelled one', () => {
+    // A substring test cannot tell these apart from the genuine host/path;
+    // only structural URL equality can. Each of these contains the real
+    // host or path as a substring while naming a DIFFERENT resource.
+    for (const trap of [
+      'https://evil-api.github.com/repos/owner/data/contents/state.json',
+      'https://api.github.com.evil.test/repos/owner/data/contents/state.json',
+      'https://api.github.com/repos/owner/data/contents/state.json.bak',
+      // Another host entirely, and another path on the same host.
+      'https://api.example.com/repos/owner/data/contents/state.json',
+      'https://api.github.com/repos/owner/data/contents/files/x.bin',
+    ]) {
+      expect(excusedCancellation([cancelled()], diagnosed(trap), at + 5)).toBe(false);
+    }
+  });
+
+  it('an unconsumed cancellation still expires past its now-defensive ceiling', () => {
+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS)).toBe(true);
+    expect(excusedCancellation([cancelled()], spurious, at + CANCELLED_EXCUSE_MS + 1)).toBe(false);
+    // Symmetrically in the other direction, now that both are searched.
+    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS)], spurious, at)).toBe(true);
+    expect(excusedCancellation([cancelled(CANCELLED_EXCUSE_MS + 1)], spurious, at)).toBe(false);
+  });
+
+  it('parses the diagnosis a REAL WebKit produces, and still reports it when nothing excuses it', async () => {
+    // The two defects above were both about a representation and an ORDER
+    // nobody had ever measured — the strings these tests asserted on were
+    // hand-written, and the CI run that finally produced the real thing is what
+    // exposed them. This drives an actual WebKit and reads the actual error
+    // object, so the shape can never drift back to a reconstruction.
+    //
+    // A reply from a REAL server with no CORS headers is what makes WebKit emit
+    // this diagnosis; a Playwright-fulfilled response does not go through the
+    // same check, which is why the fake GitHub repo above never produces one.
+    const blocked = createServer((req, res) => {
+      // `?slow` never answers in time, so a reload CANCELS it — the other
+      // half of this test needs a real cancellation to the same resource.
+      const reply = () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end('{}');
+      };
+      if (req.url?.includes('slow')) setTimeout(reply, 30_000).unref();
+      else reply();
+    });
+    await new Promise<void>((done) => blocked.listen(0, '127.0.0.1', done));
+    const port = (blocked.address() as AddressInfo).port;
+    const target = `http://127.0.0.1:${port}/repos/owner/practice-data/contents/README.md`;
+    const app = await openPracticeApp({ now: new Date('2026-09-17T09:00:00.000Z'), engine: 'webkit' });
+    try {
+      const raw: Error[] = [];
+      app.page.on('pageerror', (e) => raw.push(e));
+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), target);
+      await expect.poll(() => raw.length, { timeout: 20_000 }).toBeGreaterThan(0);
+
+      const real = raw[0];
+      // THE REPRESENTATION, as the browser and Playwright actually deliver it:
+      // the wording is in `name`, only the tail is in `message`. This is the
+      // identical split the failing CI run reported.
+      expect(real.name).toBe('Fetch API cannot load http');
+      expect(real.message).toBe(`/127.0.0.1:${port}/repos/owner/practice-data/contents/README.md due to access control checks.`);
+      // Given a cancellation for that request, THIS object is excusable — the
+      // whole point, and what matching `message` alone could never do.
+      expect(excusedCancellation([{ url: target, at: Date.now(), errorText: 'cancelled' }], real, Date.now())).toBe(
+        true,
+      );
+
+      // But nothing cancelled it here, so the harness KEEPS it — and says what
+      // the browser reported instead of leaving a bare CORS-shaped message.
+      const kept = app.pageErrors;
+      expect(kept).toHaveLength(1);
+      expect(kept[0].message).toContain('due to access control checks');
+      expect(kept[0].message).toContain('Access-Control-Allow-Origin');
+      // Reading twice reports the same list, not a growing one.
+      expect(app.pageErrors).toHaveLength(1);
+
+      // AND A JUDGEMENT IS MADE ONCE. A genuine refusal already reported
+      // cannot be taken back by a cancellation to the same resource that
+      // happens afterwards — here a real one, produced by reloading while a
+      // request to that same path is still in flight.
+      await app.page.evaluate((u) => void fetch(u).catch(() => {}), `${target}?slow=1`);
+      await reload(app);
+      expect(app.pageErrors).toHaveLength(1);
+    } finally {
+      await app.close();
+      await new Promise<void>((done) => blocked.close(() => done()));
+    }
+  }, 120_000);
+
+  it('a page error it refuses to excuse says what the browser actually reported', () => {
+    // The CI failure this whole rework came from was one bare CORS-shaped
+    // message with nothing to distinguish a cancellation from a real refusal.
+    // An unexcused diagnosis now carries the browser's own words for every
+    // request to that resource, and how far each sat from the error.
+    const withGenuine = cancellationEvidence([genuine(1)], spurious, at);
+    expect(withGenuine).toContain('api.github.com/repos/owner/data/contents/state.json');
+    expect(withGenuine).toContain('Access-Control-Allow-Origin');
+    expect(withGenuine).toContain('+1ms');
+
+    // NOTHING tracked at all is itself the evidence — it says so rather than
+    // saying nothing.
+    expect(cancellationEvidence([], spurious, at)).toMatch(/no tracked request failure/);
+    // A request that failed BEFORE the error is reported with its sign.
+    expect(cancellationEvidence([genuine(-7)], spurious, at)).toContain('-7ms');
+    // It only ever describes: nothing is consumed and nothing is excused.
+    const events = [cancelled()];
+    expect(cancellationEvidence(events, spurious, at + 5)).toContain('cancelled');
+    expect(events).toEqual([cancelled()]);
+    // A page error that is not this diagnosis at all has nothing to say.
+    expect(cancellationEvidence([cancelled()], { name: 'TypeError', message: 'boom' }, at)).toBe('');
+  });
+});
+```
+
 ## Check against the contract
 
 - [ ] **ac-1** — Use real PIECES.csv rows including quoted commas, doubled quotes, aliases, provisional and MEDIUM caveats. Preserve canonical_fa byte identity, embedded digits and -و-. Reject duplicate/empty canonical keys, malformed quoting, missing headers, invalid session numbers and unknown manifest versions. aliases_seen is literal search data, never a wildcard or reconciliation heuristic; real forms هفت-ضربی and چهارپاره are supported without inventing categorical facts. _(proof: setar registry keeps exact Farsi keys and rejects ambiguous CSV input)_
@@ -7955,10 +10697,22 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
 
-`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json`
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
 
-with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20260917-turn-the-setar-archive-into-trusted-less-5614' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260917-turn-the-setar-archive-into-trusted-less-5614/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
