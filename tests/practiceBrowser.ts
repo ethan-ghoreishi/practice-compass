@@ -3,9 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
-import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page, type Request } from 'playwright';
-
-const GITHUB_API = 'https://api.github.com/';
+import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 
 // ---------------------------------------------------------------------------
 // A small harness for driving the REAL app in a real browser from an ordinary
@@ -63,8 +61,9 @@ const installHint = (engine: Engine) =>
  * cancellation to the same URL swallow a genuine diagnosis that emitted no
  * `requestfailed` of its own — exactly the CI failure's own shape — which is
  * the sealed finding that closed this line of work for good. The remaining fix
- * is to remove the RACE (see the `git/ref/heads/main` route in
- * `installFakeGitHub`), never to hide its symptom.
+ * is to remove the RACE — see the shared `cacheDir` in `openPracticeApp` and
+ * the `git/ref/heads/main` route in `installFakeGitHub` — never to hide its
+ * symptom.
  *
  * `errorText` is kept verbatim because it is what a kept error REPORTS
  * (`requestFailureEvidence`): a bare CORS-shaped message with nothing to
@@ -248,26 +247,6 @@ export interface PracticeApp {
    * — which is when a journey asserts on it — has every event in hand.
    */
   readonly pageErrors: Error[];
-  /**
-   * Wait until nothing is in flight to the GitHub API, so a navigation cannot
-   * tear the document down around a request the app is still making.
-   *
-   * THIS IS THE RACE ITSELF, not a symptom of it. Every `goTo`/`reload` below
-   * is a full document load, so each one re-runs the app's own on-open sync;
-   * WebKit refuses a `fetch()` issued while the document is being destroyed
-   * and reports it as an uncaught page error reading
-   * `Fetch API cannot load … due to access control checks.` — with no
-   * `request`, no route hit and no `requestfailed` to explain it. A real
-   * person navigating mid-sync produces the same thing, and the harness used
-   * to try to EXCUSE it; it cannot be excused safely (see
-   * `TrackedRequestFailure`), so it is prevented instead, at the one boundary
-   * that creates it.
-   *
-   * Bounded and best-effort: a request that never settles is abandoned rather
-   * than hanging a journey, because this is a scheduling courtesy, not an
-   * assertion.
-   */
-  settleSync(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -338,13 +317,6 @@ export async function openPracticeApp(options: {
   // EVERY requestfailed is tracked, cancelled or not: a kept page error has to
   // be able to say what the browser actually reported about that resource.
   const requestFailures: TrackedRequestFailure[] = [];
-  // Requests the app currently has open to the GitHub API. Emptied by
-  // `settleSync` before any navigation, so nothing is in flight when the
-  // document is torn down.
-  const inFlight = new Set<Request>();
-  // Has this journey ever talked to GitHub at all? Until it has, there is no
-  // sync to wait for and `settleSync` costs nothing.
-  let syncConfigured = false;
   try {
     context = await browser.newContext({
       viewport: options.viewport ?? { width: 390, height: 844 },
@@ -358,20 +330,7 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
-    page.on('request', (r) => {
-      if (!r.url().startsWith(GITHUB_API)) return;
-      inFlight.add(r);
-      syncConfigured = true;
-    });
-    page.on('requestfinished', (r) => inFlight.delete(r));
-    // A request belonging to a document that has just been replaced will never
-    // report finished or failed, so without this it would sit in the set for
-    // ever and make every later `settleSync` burn its whole ceiling.
-    page.on('framenavigated', (f) => {
-      if (f === page.mainFrame()) inFlight.clear();
-    });
     page.on('requestfailed', (r) => {
-      inFlight.delete(r);
       requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
     });
     // Surface a page-level error instead of letting it become a silently
@@ -423,23 +382,6 @@ export async function openPracticeApp(options: {
     engine,
     get pageErrors() {
       return resolve();
-    },
-    async settleSync() {
-      if (!syncConfigured) return;
-      // EMPTY IS NOT ENOUGH: the app starts its on-open sync from an effect and
-      // reads IndexedDB before its first fetch, so a check taken the instant a
-      // page becomes interactive can see an empty set and still be followed by
-      // a request a moment later. Wait for a QUIET period instead.
-      const until = Date.now() + 10_000;
-      let quietSince = Date.now();
-      while (Date.now() < until) {
-        if (inFlight.size > 0) quietSince = Date.now();
-        else if (Date.now() - quietSince >= 200) return;
-        await new Promise((r) => setTimeout(r, 25));
-      }
-      // A request that never settles belongs to a document that is about to go
-      // anyway, and must not hang the journey waiting on it.
-      inFlight.clear();
     },
     async close() {
       await browser.close();
@@ -499,7 +441,6 @@ export async function importOutcome(app: PracticeApp): Promise<string> {
 const FOCUSED_ROUTES = /^\/(active|close|routine)/;
 
 export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
-  await app.settleSync();
   await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
   if (FOCUSED_ROUTES.test(hashPath)) {
     await app.page.locator('main').waitFor({ timeout: 20_000 });
@@ -517,7 +458,6 @@ export async function reload(app: PracticeApp): Promise<void> {
   // about the app: it is real wall-clock time in Node, unaffected by the
   // page's faked clock.
   await app.page.waitForTimeout(400);
-  await app.settleSync();
   await app.page.reload();
   await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
 }

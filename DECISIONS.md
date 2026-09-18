@@ -29,31 +29,30 @@ the excuse had been masking. Two harness causes, both measured:
   was built and reverted once because it changes `decideSync`'s input and `setarInbound`'s pull
   journey then reads "Already in sync" instead of pulling.
 - **That alone was measured to leave the failure reproducible** (1 of 3 runs; it simply moved to
-  `contents/manifest.json?ref=head-1`). The real cause is that every `goTo`/`reload` is a full
-  document load that re-runs the app's on-open sync, and the journey navigates again while that
-  sync is mid-chain — WebKit refuses a `fetch()` issued into a document being destroyed and
-  reports it as this page error, with no request and no route hit. `goTo`/`reload` now wait for
-  the app's GitHub traffic to fall QUIET before navigating (`settleSync`). A quiet period rather
-  than an empty check, because the sync starts from an effect and reads IndexedDB before its
-  first fetch.
+  `contents/manifest.json?ref=head-1`), so it is a correctness fix for the fake and not the cure.
+  **The cure was a shared Vite dependency cache.** `cacheDir` defaults to `node_modules/.vite`,
+  ten test files each start their own dev server on one checkout, and the rollback journeys'
+  baseline worktree SYMLINKS that same `node_modules`; they all ran the optimizer against one
+  directory and raced to commit it (`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`).
+  A loser cannot serve its modules — its page never paints, which failed the cold-start wait —
+  and a committing winner forces a page reload, which tears a document down around an in-flight
+  sync and produces exactly this access-control diagnosis. One cause, both shapes. Each server
+  gets a private `cacheDir` now.
 
-A THIRD cause surfaced while measuring the first two, and it was neither of them: three
-full-suite failures landed on the cold-start wait in `openPracticeApp`, in three DIFFERENT
-tests, with no assertion failure. Raising that ceiling from 60s to 120s bought exactly one more
-run before the next — which is what identified the real cause. Vite's default `cacheDir` is
-`node_modules/.vite`, ten test files each start their own dev server on one checkout, and the
-rollback journeys' baseline worktree SYMLINKS that same `node_modules`, so every server ran the
-dependency optimizer against one directory and raced to commit it
-(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`, present in the same run as each
-failure). The loser cannot serve its modules, so its page never paints. Each server now gets a
-private `cacheDir`, and the ceiling is back at its original 60s. A timeout that fires is a
-question about what is blocking, not a number to raise.
+A `settleSync` helper that made `goTo`/`reload` wait for GitHub traffic to fall quiet was built
+for the second symptom, then DELETED: with the cache fixed it could not be shown to do anything
+(six consecutive clean full-suite runs without it) and it was dead in the two journeys that call
+`page.reload()` directly. Its `PracticeApp` member, listeners and docstrings went with it.
+Separately, the cold-start ceiling was raised 60s → 120s and REVERTED: it bought exactly one more
+run before the next failure, which is what forced the search for the real cause.
 
-Evidence: ac-18 passed 4 of 4 sequential runs (both engines, both viewports) and 4 of 4 full
-concurrent suite runs after the fixes; the last three full-suite runs were clean in every test,
-with no rename error. The pull/conflict journeys in `setarInbound`,
-`practice-information-inbound` and `review-ownership` are unchanged and green. No production
-code changed.
+A timeout that fires is a question about what is blocking, not a number to raise.
+
+Evidence: ac-18 passed 4 of 4 sequential runs (both engines, both viewports) and every full
+concurrent suite run after the cache fix — nine of them, the last six with `settleSync` already
+removed — clean in every test, with no rename error and no access-control diagnosis. The
+pull/conflict journeys in `setarInbound`, `practice-information-inbound` and `review-ownership`
+are unchanged and green. No production code changed.
 
 ## Rejection: a window can never tell a cancellation from a real failure (2026-09-17)
 

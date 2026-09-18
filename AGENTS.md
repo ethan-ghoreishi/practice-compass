@@ -1589,41 +1589,43 @@ reaches the network while the message keeps it verbatim) only decides whether a 
 as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
 suppression.
 
-**AND THE RACE IS REMOVED AT THE TWO PLACES THAT CREATE IT.** First, the fake GitHub repo now
-retains the fact that `main` EXISTS after its own bootstrap. `initialize()` writes
-`PUT contents/README.md` through the Contents API and real GitHub then resolves
-`git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so `getHead()` kept
-returning null and EVERY later sync re-entered `initialize()` and issued another README PUT —
-measured at one every one to three seconds for a whole journey, each one a chance to be caught
-by a navigation. Gating that route on the REF alone fixes it without touching what `decideSync`
-sees: `manifest.json` and `state.json` still 404 until something publishes a snapshot, so
-`readRemoteMeta` still returns null, the decision is still `first-push`, and the pull/conflict
-journeys are unchanged. Making the fake REMEMBER THE PUSH is deliberately NOT done — it was
-built and reverted once because it changes `decideSync`'s input and `setarInbound`'s pull
-journey then reads "Already in sync" instead of pulling. ac-18 asserts the bootstrap happens
-exactly once.
-
-Second, and this is what actually closes it: `goTo` and `reload` now WAIT for the app's GitHub
-traffic to fall quiet before navigating (`settleSync`, `tests/practiceBrowser.ts`). Removing the
-README amplifier alone was measured to leave the failure reproducible — it simply moved to
-`contents/manifest.json` — because the first sync begins during `connectSync` and the journey
-navigates straight through it. Waiting for an EMPTY set is not enough either: the sync starts
-from an effect and reads IndexedDB before its first fetch, so the wait is for a quiet PERIOD,
-bounded and best-effort, and a no-op for a journey that never talks to GitHub at all. A
-journey that calls `page.reload()` DIRECTLY rather than through the helper still bypasses this
-— `setarInbound` and `practice-information-inbound` each do, after connecting sync — and that
-is named here rather than left to be rediscovered; neither is a journey this failure has ever
-been seen in, and the second is outside this lane's allowed paths.
-
-**AND A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE.** Three full-suite failures
-landed on `openPracticeApp`'s cold-start wait, in three DIFFERENT tests, with no assertion
-failure; raising 60s to 120s bought exactly one more run. The cause was that Vite's default
+**AND THE RACE IS REMOVED AT ITS ROOT, WHICH IS NOT WHERE IT LOOKED.** Vite's default
 `cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
 checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
 every server ran the dependency optimizer against one directory and raced to commit it
-(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`, in the same run as each
-failure). The loser cannot serve its modules and its page never paints. Each server gets a
-PRIVATE `cacheDir` now, and the ceiling is back at its original 60s.
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
+modules, and a committing winner forces the page to reload: BOTH shapes of the failure come
+from there. The pages that never painted failed on the cold-start wait, and a page reloaded out
+from under an in-flight sync is exactly a `fetch()` issued into a document being destroyed —
+the access-control diagnosis. Each server gets a PRIVATE `cacheDir` now.
+
+**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
+full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
+bought exactly one more run before the next. The ceiling is back at its original 60s.
+
+The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
+`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
+resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
+`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
+another README PUT — measured at one every one to three seconds for a whole journey. Gating
+that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
+and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
+returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
+Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
+because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
+in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
+correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
+the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
+in place, the failure simply moved from `README.md` to `contents/manifest.json`.
+
+**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
+`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
+navigating. It addressed the mechanism, but once the shared `cacheDir` was fixed it could not be
+shown to do anything: six consecutive full-suite runs WITHOUT it were clean in every test, and
+it was dead in the two journeys that call `page.reload()` directly anyway. Keeping harness code
+whose effect cannot be measured, and a normative claim that it is what fixed this, is how the
+next reader inherits a false cause. If this diagnosis ever returns with a private `cacheDir` in
+place, the mechanism above is where to start — but bring a reproduction, not this helper back.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
