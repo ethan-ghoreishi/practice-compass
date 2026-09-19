@@ -1,4 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
 
@@ -27,14 +30,225 @@ const installHint = (engine: Engine) =>
   '(CI does this before `npm test`). This check never skips: an unverified journey is not a passing one, ' +
   'and an engine quietly missed is the same thing as an engine never checked.';
 
+/**
+ * ONE recorded outcome of a network request the harness watched, whatever the
+ * browser's own words for it were. It is EVIDENCE and nothing else: no page
+ * error is ever withheld because of what is in this log.
+ *
+ * WHY THERE IS NO LONGER AN EXCUSE. A CI run produced `Fetch API cannot load
+ * https://api.github.com/repos/owner/practice-data/contents/README.md due to
+ * access control checks.` on two of three runners at a commit that passed on
+ * the third — a WebKit-only, CORS-shaped page error, while every other run
+ * fulfils that same request with the right CORS headers. A request the browser
+ * CANCELS because the test drove on while it was in flight was the standing
+ * explanation, and successive versions of this harness tried to act on it: a
+ * permanent URL set, a consuming time window, a nearest-wins ranking, then
+ * full-URL identity plus a veto. Every one of them could still withhold a
+ * genuine failure, because every one rested on a pairing that has never been
+ * OBSERVED.
+ *
+ * WHAT A CANCELLATION LOOKS LIKE IS NOT PORTABLE, which is the deeper reason
+ * no excuse could ever be built on it. On macOS WebKit a request torn down by
+ * navigation produces a `requestfailed` with `errorText: 'cancelled'` and no
+ * page error; a torn-down CORS PREFLIGHT produces no event at all. On GitHub's
+ * Linux WebKit the same teardown arrives as this access-control page error
+ * with NO `requestfailed` — and a plain in-flight fetch cancelled by a reload
+ * does not reliably produce a `cancelled` event there either. A `pageerror`
+ * hands a test an `Error` carrying no request identity. So there is nothing to
+ * prove ownership with on either platform, and nothing about one platform's
+ * event shape may be asserted as a WebKit invariant.
+ *
+ * An unprovable correlation is therefore resolved the only safe way: the error
+ * is KEPT. The last shape of the excuse still let an earlier, unconsumed
+ * cancellation to the same URL swallow a genuine diagnosis that emitted no
+ * `requestfailed` of its own — exactly the CI failure's own shape — which is
+ * the sealed finding that closed this line of work for good. The remaining fix
+ * is to make sure NO REQUEST IS IN FLIGHT when a journey navigates — see
+ * `connectSync` (wait for the first sync to finish) and `goTo`'s docstring (never
+ * `goto` the route you are already on) — never to hide the symptom.
+ *
+ * `errorText` is kept verbatim because it is what a kept error REPORTS
+ * (`requestFailureEvidence`): a bare CORS-shaped message with nothing to
+ * distinguish a cancellation from a real refusal is exactly what made the
+ * original CI-only failure unreadable.
+ */
+export interface TrackedRequestFailure {
+  url: string;
+  /** Node's clock. `page.clock` is installed and frozen; this is not page time. */
+  at: number;
+  /** The browser's own words — `'cancelled'`, an Access-Control refusal, anything. */
+  errorText: string;
+}
+
+/**
+ * How far from a page error a tracked request failure may sit and still be
+ * worth PRINTING beside it. It bounds a REPORT, never a suppression: nothing
+ * in this file drops an error, so no safety claim rests on this number.
+ *
+ * It is generous because Node's delivery can lag under the contention several
+ * concurrent dev servers create — and small enough that the evidence line
+ * stays about this error rather than the whole journey.
+ */
+export const FAILURE_EVIDENCE_MS = 2_000;
+
+/**
+ * WebKit's one diagnosis, in the two spellings it uses (a `fetch` and an
+ * `XMLHttpRequest`), anchored end to end.
+ *
+ * The whole point of parsing into a real `URL` and comparing its parts by
+ * EQUALITY (`sameResource`), rather than testing whether the message merely
+ * CONTAINS a candidate's host/path as substrings, is that a substring test
+ * cannot tell `api.github.com` from `evil-api.github.com` (host extended on
+ * the left) or `api.github.com.evil.test` (extended on the right), nor
+ * `/state.json` from `/state.json.bak` — every one of which contains the
+ * genuine value as a substring. Anchoring the match to the exact text between
+ * the fixed "cannot load " / " due to access control checks" phrases — the
+ * only text WebKit ever puts there — removes the ambiguity outright instead
+ * of trying to out-guess it with boundary characters.
+ *
+ * There is deliberately no tolerance for whitespace between the scheme and
+ * the host. An earlier version of this regex allowed it, describing a space
+ * WebKit was said to insert; measured — macOS WebKit locally and Linux WebKit
+ * in CI — no such space exists, and the apparent one was an artefact of how
+ * the two halves below are put back together.
+ */
+const DIAGNOSIS = /^(?:Fetch API|XMLHttpRequest) cannot load (https?):\/\/(\S+) due to access control checks\.?$/;
+
+/**
+ * Extract the URL a diagnosed WebKit access-control page error names, or
+ * `null` if it is not that shape at all (a render crash, a thrown TypeError —
+ * never excused).
+ *
+ * THE ERROR ARRIVES IN TWO HALVES, AND NEITHER HALF ALONE IS THE DIAGNOSIS.
+ * Playwright splits every page error into `name`/`message` at the FIRST colon,
+ * dropping one character after it (`splitErrorMessage`). The first colon in
+ * this diagnosis is the URL's own scheme colon, so the text WebKit emitted
+ *
+ *     Fetch API cannot load https://api.github.com/… due to access control checks.
+ *
+ * reaches a test as
+ *
+ *     name:    'Fetch API cannot load https'
+ *     message: '/api.github.com/… due to access control checks.'
+ *
+ * — MEASURED, identically, on macOS WebKit here and on Linux WebKit in CI.
+ * Matching `message` alone (which is what this used to do) can therefore never
+ * succeed against a real error, on any platform: the excuse was dead code, and
+ * the first CI run that actually produced the error is what exposed it.
+ * Rejoining with the dropped `:/` recovers the original text. The unsplit
+ * form is tried as well, so a representation that ever stops being split is
+ * still understood; both go through the same anchored regex, so a wrong
+ * reconstruction simply fails to match rather than matching something loosely.
+ */
+function reportedUrl(error: { name?: string; message: string }): URL | null {
+  for (const text of [error.message, `${error.name ?? ''}:/${error.message}`]) {
+    const m = DIAGNOSIS.exec(text.trim());
+    if (!m) continue;
+    try {
+      return new URL(`${m[1]}://${m[2]}`);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
+ * Do a tracked request's URL and the one a page error NAMES address the same
+ * resource? Host, path AND QUERY, all three by structural equality.
+ *
+ * THE QUERY IS THE PART THIS USED TO THROW AWAY, and a sealed finding is what
+ * it cost: matching host+path alone makes
+ * `contents/setar/index.json?ref=<commit A>` and `?ref=<commit B>` — two
+ * different requests the app really does make, one after the other — the same
+ * resource, so a cancellation of one stood ready to excuse a genuine failure
+ * of the other. WebKit names the FULL url in the diagnosis, query included
+ * (measured, macOS WebKit: `…/state.json?ref=main&x=1 due to access control
+ * checks.`), so this identity is available and there is no reason to discard
+ * it.
+ *
+ * THE FRAGMENT IS THE ONE PART THAT MUST BE IGNORED, and comparing `href`
+ * would get that wrong: a fragment never reaches the network, so
+ * `request.url()` drops it — while WebKit's message keeps it verbatim
+ * (measured: message `…/state.json#frag`, request url `…/state.json`). Naming
+ * `host`/`pathname`/`search` explicitly is what keeps a later tidy-up to
+ * `href` from silently killing the excuse for every fragment-bearing URL.
+ */
+function sameResource(trackedUrl: string, reported: URL): boolean {
+  let url: URL;
+  try {
+    url = new URL(trackedUrl);
+  } catch {
+    return false;
+  }
+  return url.host === reported.host && url.pathname === reported.pathname && url.search === reported.search;
+}
+
+/**
+ * What the harness saw around a diagnosed page error, in one sentence, so the
+ * assertion that KEEPS it says why.
+ *
+ * `expect(app.pageErrors).toEqual([])` on its own reports a WebKit message
+ * that reads like a CORS misconfiguration whatever actually happened — which
+ * is exactly how a CI-only failure became unreadable. Naming the browser's own
+ * `errorText` for every tracked request to that same resource, and how far
+ * each sat from the error, turns the next one into evidence instead of a
+ * guess.
+ *
+ * It only DESCRIBES. It consumes nothing, decides nothing and cannot cause an
+ * error to be dropped; a message that is not the diagnosis at all (a render
+ * crash, a thrown TypeError) simply gets no annotation.
+ */
+export function requestFailureEvidence(
+  events: TrackedRequestFailure[],
+  error: { name?: string; message: string },
+  at: number,
+): string {
+  const reported = reportedUrl(error);
+  if (!reported) return '';
+  const where = `${reported.host}${reported.pathname}${reported.search}`;
+  // DELIBERATELY BROADER THAN THE ERROR'S OWN IDENTITY: same host and path,
+  // whatever the query. A failure to the same path under a DIFFERENT query is
+  // exactly what the reader of a CI-only failure needs to see, so each row
+  // prints its own full url and says whether it was the resource the error
+  // named.
+  const near = events
+    .filter((e) => Math.abs(at - e.at) <= FAILURE_EVIDENCE_MS)
+    .filter((e) => {
+      try {
+        const url = new URL(e.url);
+        return url.host === reported.host && url.pathname === reported.pathname;
+      } catch {
+        return false;
+      }
+    })
+    .map(
+      (e) =>
+        `${e.url} — ${e.errorText || '(no errorText)'} at ${e.at >= at ? '+' : ''}${e.at - at}ms` +
+        `${sameResource(e.url, reported) ? '' : ' (different query — not the resource this error names)'}`,
+    );
+  return near.length
+    ? `tracked request failures for ${where}: ${near.join('; ')}`
+    : `no tracked request failure for ${where} within ${FAILURE_EVIDENCE_MS}ms`;
+}
+
 export interface PracticeApp {
   page: Page;
   /** The dev server origin this journey is isolated on. */
   origin: string;
   /** Which engine this journey is actually running in. */
   engine: Engine;
-  /** Uncaught page errors, so a broken render cannot pass as a quiet one. */
-  pageErrors: Error[];
+  /**
+   * Uncaught page errors, so a broken render cannot pass as a quiet one.
+   *
+   * NOTHING IS EVER WITHHELD FROM THIS LIST. Each error is ANNOTATED on read
+   * rather than at arrival, because WebKit delivers a page error about a
+   * request BEFORE that request's own `requestfailed` (measured: 74–359µs
+   * ahead, six times out of six), so annotating on arrival would print against
+   * a log that has not been written yet. Reading this at the end of a journey
+   * — which is when a journey asserts on it — has every event in hand.
+   */
+  readonly pageErrors: Error[];
   close(): Promise<void>;
 }
 
@@ -61,15 +275,32 @@ export async function openPracticeApp(options: {
   root?: string;
 }): Promise<PracticeApp> {
   const engine = options.engine ?? 'chromium';
+  // EVERY SERVER GETS ITS OWN DEPENDENCY CACHE. Vite's default cache directory
+  // is `node_modules/.vite`, and this suite runs ten test files at once, each
+  // starting its own dev server on the same checkout — plus the rollback
+  // journeys, whose baseline worktree SYMLINKS this very `node_modules`. They
+  // all ran the dependency optimizer against one directory and raced to commit
+  // it: `ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`.
+  // The loser then cannot serve its modules at all, so its page never paints
+  // and the journey fails on the cold-start wait below — which reads as
+  // contention and is really one shared directory. Measured: that rename error
+  // appears in the same run as every one of those failures. A private cache
+  // costs one extra optimizer pass per server and removes the race outright.
+  const cacheDir = mkdtempSync(join(tmpdir(), 'practice-vite-'));
   const server: ViteDevServer = await createServer({
     ...(options.root ? { root: options.root, configFile: `${options.root}/vite.config.ts` } : { configFile: 'vite.config.ts' }),
+    cacheDir,
     logLevel: 'error',
     server: { port: 0, strictPort: false },
   });
+  const closeServer = async () => {
+    await server.close();
+    rmSync(cacheDir, { recursive: true, force: true });
+  };
   await server.listen();
   const origin = server.resolvedUrls?.local[0];
   if (!origin) {
-    await server.close();
+    await closeServer();
     throw new Error('The dev server started but reported no local URL.');
   }
 
@@ -77,13 +308,17 @@ export async function openPracticeApp(options: {
   try {
     browser = await ENGINES[engine].launch();
   } catch (e) {
-    await server.close();
+    await closeServer();
     throw new Error(installHint(engine), { cause: e });
   }
 
   let context: BrowserContext;
   let page: Page;
+  const pending: { error: Error; at: number }[] = [];
   const pageErrors: Error[] = [];
+  // EVERY requestfailed is tracked, cancelled or not: a kept page error has to
+  // be able to say what the browser actually reported about that resource.
+  const requestFailures: TrackedRequestFailure[] = [];
   try {
     context = await browser.newContext({
       viewport: options.viewport ?? { width: 390, height: 844 },
@@ -97,31 +332,62 @@ export async function openPracticeApp(options: {
     page.on('dialog', (d) => {
       void d.accept().catch(() => {});
     });
+    page.on('requestfailed', (r) => {
+      requestFailures.push({ url: r.url(), at: Date.now(), errorText: r.failure()?.errorText ?? '' });
+    });
     // Surface a page-level error instead of letting it become a silently
-    // wrong assertion later.
-    page.on('pageerror', (e) => pageErrors.push(e));
+    // wrong assertion later. RECORDED here, ANNOTATED in `resolve()` below —
+    // WebKit delivers a page error about a request BEFORE that request's own
+    // `requestfailed` (measured: 74–359µs ahead, six of six), so the evidence
+    // a kept error prints has not been delivered yet at this point.
+    page.on('pageerror', (e) => {
+      pending.push({ error: e, at: Date.now() });
+    });
     await page.clock.install({ time: options.now });
     await page.goto(origin);
     // The store hydrates from IndexedDB before anything renders. The ceiling is
-    // generous because this is the COLD start: five journeys run concurrently,
+    // generous because this is the COLD start: every journey runs concurrently,
     // each starting its own dev server and browser, so the first paint of the
-    // last one to launch competes with four others compiling modules. A longer
+    // last one to launch competes with the rest compiling modules. A longer
     // wait cannot hide a real failure — it only refuses to call contention one.
+    //
+    // RAISING IT IS NOT THE ANSWER WHEN IT FIRES, and this lane proved that:
+    // three separate full-suite failures landed here, and raising 60s to 120s
+    // only bought one more run before the next. The cause was the shared
+    // dependency cache above, not a page that needed longer.
     await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout: 60_000 });
   } catch (e) {
     await browser.close();
-    await server.close();
+    await closeServer();
     throw e;
   }
+
+  /**
+   * Drain everything that arrived since the last read. EVERY page error is
+   * kept — nothing here may drop one — annotated with what the harness
+   * actually saw around it, so a CORS-shaped message arrives as evidence
+   * rather than a guess. Idempotent: a drained error stays resolved, so
+   * reading twice reports the same list.
+   */
+  const resolve = (): Error[] => {
+    for (const { error, at } of pending.splice(0)) {
+      const evidence = requestFailureEvidence(requestFailures, error, at);
+      if (evidence) error.message = `${error.message} [harness: ${evidence}]`;
+      pageErrors.push(error);
+    }
+    return pageErrors;
+  };
 
   return {
     page,
     origin,
     engine,
-    pageErrors,
+    get pageErrors() {
+      return resolve();
+    },
     async close() {
       await browser.close();
-      await server.close();
+      await closeServer();
     },
   };
 }
@@ -173,6 +439,21 @@ export async function importOutcome(app: PracticeApp): Promise<string> {
  * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
  * the tab bar — they are the one place the app asks for undivided attention —
  * so those routes wait on their own first control instead.
+ *
+ * WHAT `page.goto` ACTUALLY DOES HERE IS ENGINE-DEPENDENT, AND MEASURED. The
+ * app is hash-routed, so `goto` to a DIFFERENT `#/route` is a same-document
+ * navigation in Chromium and WebKit alike (a `window` marker survives it).
+ * `goto` to the URL the page is ALREADY on is not: Chromium keeps it
+ * same-document (it fires `popstate`, so the router re-renders and Playwright
+ * waits on a real navigation), while WebKit performs a FULL DOCUMENT LOAD —
+ * tearing down whatever the app has in flight, which GitHub's Linux WebKit
+ * then reports as an access-control page error. So a journey must never call
+ * this for the route it is already on: an owner already on a screen does not
+ * reload it to "go" there — use the in-app control (`openSettings`) instead,
+ * and call `reload` when a fresh document is the point. The same-URL case is
+ * deliberately NOT turned into a no-op here: Chromium's `popstate` navigation
+ * is slack that other journeys' route waits currently rely on, and removing
+ * it made one of them race its own in-app navigation under a full-suite run.
  */
 const FOCUSED_ROUTES = /^\/(active|close|routine)/;
 
@@ -326,10 +607,16 @@ export interface FakeRemote {
   refs: string[];
   /** How many times each endpoint was called, so "it really went there" is checkable. */
   calls: string[];
+  /**
+   * The published Setar source index — the ONE file on the source-index
+   * branch that the NAS scanner writes and the app only ever GETs. Null until
+   * something publishes it.
+   */
+  sourceIndex: { text: string; commit: string } | null;
 }
 
 export function newFakeRemote(): FakeRemote {
-  return { snapshot: null, refs: [], calls: [] };
+  return { snapshot: null, refs: [], calls: [], sourceIndex: null };
 }
 
 /** Put a snapshot in the repo as if another device had pushed it. */
@@ -338,10 +625,46 @@ export function publishRemote(remote: FakeRemote, stateText: string, hash: strin
   if (!remote.refs.includes('main')) remote.refs.push('main');
 }
 
+/**
+ * Re-stamp an index with the digest the SCANNER would have written for it.
+ *
+ * The app recomputes this digest at its reader boundary and refuses an index
+ * whose content and hash disagree, so a journey that edits a fixture index must
+ * publish a genuinely re-scanned one — exactly what the NAS publisher does.
+ * ONE implementation, here beside `publishSourceIndex`, so no journey can
+ * quietly hand-edit a hash instead.
+ */
+export async function stampSourceIndex(index: Record<string, unknown>): Promise<string> {
+  const body = { ...index };
+  delete body.contentHash;
+  delete body.generatedAt;
+  const sorted = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(sorted);
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(value as Record<string, unknown>).sort()) {
+        const v = (value as Record<string, unknown>)[k];
+        if (v !== undefined) out[k] = sorted(v);
+      }
+      return out;
+    }
+    return value;
+  };
+  const bytes = new TextEncoder().encode(JSON.stringify(sorted(body)));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const contentHash = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return JSON.stringify({ ...index, contentHash });
+}
+
+/** Put a source index on the source-index branch, as the NAS publisher would. */
+export function publishSourceIndex(remote: FakeRemote, text: string, commit = 'source-index-commit-1'): void {
+  remote.sourceIndex = { text, commit };
+  if (!remote.refs.includes('source-index')) remote.refs.push('source-index');
+}
+
 export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise<void> {
   let headCounter = 0;
   const blobs = new Map<string, string>();
-
   await page.route('https://api.github.com/**', async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -349,17 +672,62 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
     const rest = url.pathname.split('/').slice(4).join('/');
     const method = req.method();
     remote.calls.push(`${method} ${rest}`);
+    // A FULFILLED response is still subject to the browser's own CORS check.
+    // Chromium lets a routed cross-origin request through; WebKit does not, and
+    // an unadorned reply surfaces as "Fetch API cannot load … due to access
+    // control checks" — a harness artefact that looks exactly like an app bug.
+    // The real api.github.com sends these headers, so sending them here is the
+    // fake behaving like the thing it stands in for.
+    const CORS = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET,POST,PATCH,PUT,DELETE,OPTIONS',
+      'Access-Control-Allow-Headers': 'Authorization,Content-Type,Accept,X-GitHub-Api-Version',
+    };
+    if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
     const json = (body: unknown, status = 200) =>
-      route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
-    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', body });
+      route.fulfill({ status, contentType: 'application/json', headers: CORS, body: JSON.stringify(body) });
+    const raw = (body: string) => route.fulfill({ status: 200, contentType: 'text/plain', headers: CORS, body });
     const head = () => `head-${headCounter}`;
 
+    // The source index: a branch ref, then the file AT THAT COMMIT. Reading
+    // the file "on the branch" instead would be a second, later state.
+    if (method === 'GET' && rest === 'git/ref/heads/source-index') {
+      if (!remote.sourceIndex) return json({}, 404);
+      return json({ object: { sha: remote.sourceIndex.commit } });
+    }
+    if (method === 'GET' && rest.startsWith('contents/setar/index.json')) {
+      const ref = url.searchParams.get('ref');
+      if (!remote.sourceIndex || ref !== remote.sourceIndex.commit) return json({}, 404);
+      return json({
+        content: Buffer.from(remote.sourceIndex.text, 'utf8').toString('base64'),
+        encoding: 'base64',
+        size: remote.sourceIndex.text.length,
+      });
+    }
+    // A BRANCH EXISTING AND A SNAPSHOT EXISTING ARE TWO DIFFERENT FACTS, and
+    // reading the first off the second is what made this fake behave unlike
+    // GitHub. `initialize()` bootstraps an empty repo with a Contents-API
+    // `PUT contents/README.md`, after which real GitHub resolves
+    // `git/ref/heads/main` — the branch is there; only `manifest.json` and
+    // `state.json` are still absent. This route answered 404 until a SNAPSHOT
+    // existed, so `getHead()` kept returning null and EVERY later sync
+    // re-entered `initialize()` and issued another README PUT — one per
+    // document load, and one per quiet-period or manual sync besides. That
+    // stream of needless writes is gone; it was never the cause of the archive
+    // journey's WebKit page error (see `connectSync`).
+    //
+    // Gating on the REF alone fixes that without touching what `decideSync`
+    // sees: the manifest and state routes below still 404 until something
+    // publishes a snapshot, so `readRemoteMeta` still returns null, the
+    // decision is still `first-push`, and the pull/conflict journeys are
+    // unchanged. Making the fake REMEMBER the pushed snapshot would change
+    // that decision, which is why it is deliberately not done here.
     if (method === 'GET' && rest === 'git/ref/heads/main') {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.refs.includes('main')) return json({}, 404);
       return json({ object: { sha: head() } });
     }
     if (method === 'GET' && rest.startsWith('contents/manifest.json')) {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.snapshot) return json({}, 404);
       return raw(
         JSON.stringify({
           formatVersion: 2,
@@ -372,7 +740,7 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
       );
     }
     if (method === 'GET' && rest.startsWith('contents/state.json')) {
-      if (!remote.snapshot) return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+      if (!remote.snapshot) return json({}, 404);
       return raw(remote.snapshot.stateText);
     }
     if (method === 'GET' && rest.startsWith('contents/files')) return json([]);
@@ -401,7 +769,7 @@ export async function installFakeGitHub(page: Page, remote: FakeRemote): Promise
       return json({});
     }
     if (method === 'PATCH' && rest === 'git/refs/heads/main') return json({});
-    return route.fulfill({ status: 404, contentType: 'application/json', body: '{"message":"not routed"}' });
+    return json({ message: 'not routed' }, 404);
   });
 }
 
@@ -431,7 +799,17 @@ export async function connectSync(app: PracticeApp): Promise<void> {
   await page.getByRole('group', { name: 'Repository' }).locator('input').fill('owner/practice-data');
   await page.getByRole('group', { name: 'Access token' }).locator('input').fill('github_pat_fake');
   await page.getByRole('button', { name: 'Connect & sync' }).click();
-  await page.getByRole('button', { name: 'Sync now' }).waitFor({ timeout: 20_000 });
+  // WAIT FOR THE FIRST SYNC TO FINISH, NOT FOR THE BUTTON TO APPEAR. Settings'
+  // `connectAndSync` stores the config — which renders "Sync now" at once —
+  // and only THEN awaits `syncNow()`, holding the button DISABLED (`busy`)
+  // until that sync resolves. Returning on the button's mere presence handed
+  // the journey on while the repo bootstrap (`PUT contents/README.md`, behind
+  // a CORS preflight) was still in flight; the next navigation then tore the
+  // document down around it — the one place ac-18's WebKit failure ever named
+  // README.md. A cold document with no request in flight is the only state a
+  // journey may drive on from, so this waits for the ENABLED button: the
+  // sync's own completion, read through the real control.
+  await page.getByRole('button', { name: 'Sync now', disabled: false }).waitFor({ timeout: 20_000 });
 }
 
 /** The sync section's own status line, whatever it currently says. */

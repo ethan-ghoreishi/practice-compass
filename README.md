@@ -294,6 +294,26 @@ question, and it collects into a per-instrument list on the upcoming lesson and 
 Teacher Report — with Copy, Download and print-friendly export (Farsi-aware). Practising
 never erases a question; you remove it by editing the item.
 
+## The Setar archive
+
+The Setar class archive on the NAS (39 class folders, a 94-piece canonical registry) becomes
+historical lessons, repertoire items and correctly scoped practice material through
+**Settings → Refresh Setar archive**.
+
+A read-only Node scanner runs unattended on the NAS and publishes a deterministic JSON index
+to its own branch of the private data repo; the app fetches that index with the GitHub
+connection it already has, shows what would change, asks only the questions that genuinely
+need an answer, and applies the lot in one go. Media never travels — only paths do, stored
+relative to the archive root so each device resolves them through its own base URL.
+
+An import can establish membership, provenance and material. It can never establish
+practice: no minutes, no results, no review dates, no SM-2 state, and an imported class
+stays history even when its date is ahead of this device's clock. New pieces arrive
+**resting** so they do not flood today's suggestions.
+
+Setup, the corpus baseline, the recorded source hashes and the rollback route:
+[`docs/setar-archive.md`](docs/setar-archive.md).
+
 ## Review scheduling
 
 Reviews use a **spaced-repetition engine** (SM-2 — the algorithm behind Anki), adapted to

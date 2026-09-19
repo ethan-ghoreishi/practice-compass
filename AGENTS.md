@@ -518,15 +518,58 @@ reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the 
 React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
 real port, and wires `visibilitychange`.
 
-**Secure-context constraint.** The Screen Wake Lock API requires a secure context.
-Production (GitHub Pages) is HTTPS and unaffected. This repo has no branch-preview
-deployment — `.github/workflows/deploy.yml` publishes only on push to `main` — so
-plain-HTTP LAN serving of an unmerged branch cannot exercise this feature at all
-(`navigator.wakeLock` is simply `undefined`, which looks like a bug but is an
-environment gap). Before drawing any conclusion about this feature (or any future
-secure-context-dependent work) from an unmerged branch, first confirm
-`window.isSecureContext` and `'wakeLock' in navigator` on the actual test device, and
-establish a genuine HTTPS route for it first.
+**Secure-context constraint, and it is NOT only the wake lock.** This note began as a
+wake-lock note and was read as one, which is how the same environment gap came back as a
+production-looking failure. THREE of this app's capabilities are withheld outside a secure
+context, and plain http:// on a LAN address is not one:
+
+- `navigator.wakeLock` — `undefined`, so hands-free practice cannot be exercised at all.
+- **`crypto.subtle` — `undefined`, while `crypto` itself is still present.** This is the
+  sharp one, because nothing about it reads as an environment gap: `sha256Hex`
+  (`canonical.ts`) is the content-identity hash behind BOTH whole-state sync comparison
+  and `parseSourceIndex`'s recomputation of the published index digest, so Sync now and
+  Refresh Setar archive fail TOGETHER, in one shared function, with the property stack
+  trace `Cannot read properties of undefined (reading 'digest')`.
+- The **service worker**, therefore the installed PWA and its offline capability — the
+  app's core promise — does not register at all.
+
+MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:4173/` gives
+`isSecureContext: false`, `typeof crypto.subtle === 'undefined'`; the NAS over
+`https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
+self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
+certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
+mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
+`http://localhost` also qualifies, because browsers privilege localhost deliberately, which
+is exactly why no test here can see any of this.
+
+Production (GitHub Pages) is HTTPS and unaffected, and so is the installed iPhone PWA. This
+repo has no branch-preview deployment — `.github/workflows/deploy.yml` publishes only on
+push to `main` — so plain-HTTP LAN serving of an unmerged branch cannot exercise any of the
+three. Before drawing any conclusion about a secure-context-dependent feature from an
+unmerged branch, confirm `window.isSecureContext` on the ACTUAL test device and establish a
+genuine HTTPS route first.
+
+**The answer to this is a route, never a fallback.** `parseSourceIndex` REFUSES with a named,
+actionable sentence (`INSECURE_CONTEXT_REFUSAL`, `sourceArchive.ts`) checked BEFORE the
+file's own size/JSON/structure/digest order, because it is a fact about the DEVICE and no
+file can pass on a device that cannot hash — sending the owner to fix an index that is
+perfectly good is the failure mode a file-shaped error message produces. It does NOT hash
+some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
+content gets reported "Already current"), and a pure-JS fallback would repair one of the
+three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
+holds this closed with `crypto.subtle` removed exactly as a browser removes it, at the
+GitHub refresh — the one entry point the UI actually reaches — and at `readIndexFile`
+beside it, which is the same decoder and currently has NO production caller (an
+unwired fallback, noted here rather than left to be discovered as dead code).
+
+**SYNC IS NOT FIXED BY THIS AND CANNOT BE, IN THIS LANE.** `hashState` reaches
+`crypto.subtle` through the same `sha256Hex`, so over plain http:// **Sync now still
+throws the raw `Cannot read properties of undefined (reading 'digest')`** —
+`canonical.ts` is outside this change's allowed paths and `githubSync.ts`/`syncEngine.ts`
+are forbidden by it. That failure is confined to a non-secure origin, where the app is
+not the installed PWA and has no offline capability either; on HTTPS it does not arise.
+Giving Sync the same named refusal is a separate lane, and is a WORDING change at a
+boundary, never a second hash.
 
 ## Hard "do nots" (require explicit user instruction to change)
 
@@ -1507,6 +1550,110 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
 automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
+A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
+EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and — on
+GitHub's LINUX WebKit — reports it as an uncaught page error reading `"Fetch API cannot load …
+due to access control checks"`, which reads exactly like a CORS problem and is not one. The
+failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all. It cannot
+be reproduced on the Mac: macOS WebKit reports the same teardown as `requestfailed: cancelled`
+with no page error, and a torn-down CORS PREFLIGHT as nothing whatsoever (measured, both). What
+tears a document down is NOT every navigation: the app is hash-routed, and `page.goto` to a
+different `#/route` is a same-document navigation in BOTH engines (a `window` marker survives).
+Only a `goto` to the URL the page is ALREADY on differs — Chromium keeps it same-document
+(firing `popstate`, so the router re-renders), WebKit performs a full document load. A journey
+therefore never calls `goTo` for the route it is already on: ac-18 reaches Settings through
+`openSettings` (More → Settings, the owner's own tap) and only `reload` loads a document. Making
+`goTo` a no-op for that case was tried and REVERTED: Chromium's `popstate` navigation is slack
+another journey's route wait relies on after an in-app navigation, and removing it made that
+journey race under a full-suite run. The trap is documented on `goTo` itself.
+
+**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
+versions of an excuse were built and every one of them could withhold a genuine failure:
+a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
+a live credit any later genuine failure to that URL could spend); a rule reading the page
+error's `message` alone, which never contains the diagnosis — Playwright splits a page error
+at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
+was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
+the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
+which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
+`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
+STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
+failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
+thing in the log. That is the sealed finding that ended the attempt.
+
+**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT — AND WHAT A CANCELLATION
+LOOKS LIKE IS NOT EVEN PORTABLE.** Five cancellation shapes driven through macOS WebKit —
+navigating away mid-flight, reloading mid-flight, `AbortController`, a same-tick
+`location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+`errorText: 'cancelled'` and NO page error. GitHub's Linux WebKit reports the same teardown as
+the access-control page error with no `requestfailed`, and does not reliably emit `cancelled`
+for a fetch reloaded across at all: two harness tests that asserted the macOS shape as a WebKit
+invariant failed on every Linux run and were removed (the genuine-refusal measurement and the
+end-to-end "kept and annotated" wiring check stay; neither needs a cancellation). A `pageerror`
+hands a test an `Error` and no request identity. So there is no positive evidence available to
+bind a specific error to a specific cancellation at any window or resolution, on either port,
+and an unprovable correlation is resolved the only safe way: `openPracticeApp` KEEPS every page
+error.
+`excusedCancellation` is gone. What survives is `requestFailureEvidence`
+(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
+`errorText` for every tracked request to that resource and how far each sat from it — because
+one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
+what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
+its full-URL identity (host, path and query; the fragment ignored, since a fragment never
+reaches the network while the message keeps it verbatim) only decides whether a row is labelled
+as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
+suppression.
+
+**THERE WERE TWO RACES, AND FIXING THE FIRST WAS MISREAD AS FIXING BOTH.** Vite's default
+`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
+checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
+every server ran the dependency optimizer against one directory and raced to commit it
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
+modules, so its page never paints and the cold-start wait fires. Each server gets a PRIVATE
+`cacheDir` now, and that race is gone. It was recorded as the cause of the access-control
+diagnosis too, and GitHub disproved that: with the private cache in place ac-18 still failed on
+Linux WebKit naming `README.md`. THE SECOND RACE IS A SYNC LEFT IN FLIGHT BY THE HARNESS.
+Settings' `connectAndSync` stores the config — which renders "Sync now" at once — and only then
+awaits `syncNow()`, holding the button DISABLED until that sync resolves. `connectSync` waited
+for the button to APPEAR, so every journey drove on while the repo bootstrap
+(`PUT contents/README.md`, behind a CORS preflight) was still running; ac-18's very next step is
+`goTo('/settings')` from `#/settings`, which in WebKit alone was a full document load (above).
+README is the only request the journey ever had in flight at a document load, which is why the
+failure never named anything else. `connectSync` now waits for the ENABLED button — the sync's
+own completion, read through the real control — and ac-18 no longer `goTo`s a route it is on.
+A journey may only drive on from a document with nothing in flight; that is the rule, and it is
+enforced by ordering, never by hiding what a torn-down request reports.
+
+**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
+full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
+bought exactly one more run before the next. The ceiling is back at its original 60s.
+
+The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
+`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
+resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
+`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
+another README PUT — measured at one every one to three seconds for a whole journey. Gating
+that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
+and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
+returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
+Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
+because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
+in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
+correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
+the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
+in place, the failure simply moved from `README.md` to `contents/manifest.json`.
+
+**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
+`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
+navigating. It could not be shown to do anything on the Mac — where, as above, the failure is
+unreproducible by construction — and it was dead in the two journeys that call `page.reload()`
+directly anyway. It is still not the answer: waiting for traffic to go quiet before EVERY
+navigation treats the symptom everywhere, where the cause was one helper returning mid-sync and
+one engine-specific hidden reload, each fixed at its own line. Keeping harness code whose effect
+cannot be measured, and a normative claim that it is what fixed this, is how the next reader
+inherits a false cause — which is exactly what the private-cache claim above became for one
+round. Six clean local runs are not evidence about a Linux-only report shape; the CI log is.
+
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
 canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
@@ -1635,6 +1782,484 @@ same-origin request. A missing or unreachable NAS degrades to a disabled or abse
 action — never an error state, and never anything that blocks practising. Everything
 still works fully offline; the base URL stays per-device in localStorage, out of
 exports, backups and synced data.
+
+## The Setar archive is a SOURCE: it describes, it never testifies
+
+A read-only Node scanner on the NAS (`scripts/scan-setar-classes.mjs`, stdlib only) turns
+the normalised Setar class archive into a deterministic, CLOCK-FREE JSON index;
+`scripts/publish-setar-index.mjs` commits it to ONE file on ONE branch of the existing
+private data repo (`source-index` / `setar/index.json`); the app GETs it with the GitHub
+connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
+runbook, the corpus baseline and the recorded source hashes.
+
+**AND ONE SCAN IS ONE CONSISTENT VIEW OF EVERY INPUT, OR NONE.** The registry was the only
+input re-read after the walk, which made the guarantee exactly as narrow as the file it
+named — and the MEDIA is what a non-atomic NAS copy actually perturbs. Move a resource out
+before its folder is enumerated and put it back while later folders are walked: PIECES.csv
+never changes, the scan publishes an index that omits the file, and the next Refresh marks
+still-present material `unavailable`. The rename log had the identical exposure, read once
+and compared against nothing. `readSource` is now every input in ONE place, the whole of it
+is read TWICE and the two readings compared (sizes included, so a file still being copied is
+caught too), and any difference refuses before anything is written. It is a CONSISTENCY
+check, not atomicity: a perturbation stable across both readings agrees with itself and is
+indistinguishable from the archive genuinely being in that state. What it removes is the
+transient, which is what a copy in flight looks like.
+
+**AND A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA — WHICH IS WHAT MADE THE TWO-READ
+CHECK LOOK CLEAN OVER A FALSE VIEW.** `catch { renameLogText = '' }` turned every failure to
+read RENAME-LOG.csv — a permission change, an I/O error, a mount that went away mid-copy —
+into an archive that has no rename log. Both readings then AGREED, the consistency check
+passed, and the scan published an index with no renames at all: a file that moved during
+that window is flagged `unavailable` and its saved references can never be repaired. Absence
+is an OBSERVATION (`{present:false}`, ENOENT only) and travels in the compared reading as
+one; anything else fails the scan. A required input is required outright, so a missing or
+unreadable PIECES.csv refuses rather than yielding an empty registry, and a present-but-EMPTY
+log — what a zero-byte copy in flight looks like — is refused by `readTable` exactly as the
+registry would be.
+
+**AND THE WALK SAYS WHAT IT COULD NOT TAKE IN.** Two readings agree about a file neither of
+them looked at, so the consistency check is blind by construction to anything the walk drops
+in silence. A symbolic link is still never FOLLOWED — a link out of the archive is a path
+this scanner has no authority over — and a session-named entry that is not a directory is
+still never opened; both are now `diagnostics` rows in the published index instead of
+vanishing, because an index quietly narrower than the archive is the same "partial view sold
+as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
+folders stay silent: they are not archive content, and saying so 258 times is noise. It is a
+DIAGNOSTIC and not a refusal for the same reason a rename cycle is: a symlink is a stable
+property of the archive, not a transient, so refusing would leave the archive permanently
+unindexable until the owner went and deleted it — where the two-read check refuses only what
+disagrees with itself between two readings a moment apart.
+Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
+a file edited IN PLACE at the same byte length changes no size and no CSV, and would
+otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
+determinism rule is untouched: altered mtimes still produce a byte-identical index.
+
+**THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
+trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
+token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
+consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes and
+validates that index; a version newer than this build understands is REFUSED rather than
+read leniently.
+
+**AND THE DECLARED DIGEST IS RECOMPUTED, NEVER TAKEN ON FAITH.** `contentHash` is not a
+checksum the app may skip past: it is the REFRESH IDENTITY. `planArchiveImport` compares it
+with the hash already accepted to conclude nothing has changed, so content altered under a
+RETAINED old hash was reported "Already current" and its changed facts silently ignored —
+a sealed review reproduced it by editing one composer. `parseSourceIndex` (now async)
+recomputes the SCANNER's own digest — SHA-256 over `canonicalStringify` of the body minus
+`contentHash` and `generatedAt`, byte-for-byte `scan-setar-classes.mjs`'s `contentHash` /
+`canonicalJson` — and refuses a mismatch. It is the ONE boundary the GitHub fetch and the
+file fallback both pass through, so neither door can be given the check separately and miss
+it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
+decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
+broken file reports the error the owner can act on rather than a hash mismatch.
+
+**AND A VALID DIGEST SAYS THE FILE IS THE ONE THE SCANNER WROTE — NEVER THAT IT IS WELL
+FORMED.** The decoder NORMALISES before the graph's grammar runs, so the grammar only ever
+sees the decoder's own output: `resources: null` decoded to a session with no resources —
+a perfectly valid EMPTY LIST by the time the grammar saw it — and six files became zero
+behind a correct hash. Every absent-tolerant read had that shape, the scalars included
+(`part: "3"` became `null`, a wrong-typed `size` vanished, `rosterTrusted: 'yes'` became a
+boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`) are the
+one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
+the same treatment `validatePracticeText` gives the owner's own words, and never a
+coercion.
+
+**AND THAT RULE HAD TO REACH THE STRINGS TOO.** It closed the lists and the scalars and left
+every string field with a default exactly as it was: `str(raw.form ?? '')` still read ABSENT
+and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `form`,
+`composer` or `notes`, and a diagnostic's own `path` all decoded to `''` — an untitled row
+the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
+a default, anything else that is not text is refused naming the record. `part` and `group`
+stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
+present null is refused BY THE DECODER rather than spread into its own output as a value the
+declared type does not admit and left for the grammar to catch downstream.
+
+**ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
+SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
+COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
+`lastPractisedAt`, no result, no review row, no SM-2 state, no pathway placement and no
+catalogue identity. The owner's own `تمرین-من` recordings are the sharpest case: their
+membership and role survive in the graph as provenance (the six-session
+`پیش-درامد-سه-گاه-فروتن` chain is six CLASSES, never six weeks and never practice), and the
+files themselves are never a resource anywhere.
+
+**A CLASS RECORDING BELONGS TO ITS LESSON; A NAMED SCORE BELONGS TO ITS PIECE; AN UNNAMED
+DEMONSTRATION BELONGS TO EVERY CANONICAL MEMBER OF ITS SESSION.** That last one is the
+archive's own rule (`CRAWLER-BRIEF.md` §4): the teacher records the week's pieces in one
+take, so there is no single piece to attribute it to and the information simply does not
+exist in the filename. The ROSTER is the registry's answer to "what was assigned at class
+N", never a set inferred from the files present — and when the two disagree, the unnamed
+demo is NOT expanded across a guessed set; the disagreement is reported instead.
+
+**IDENTITY IS BYTE-EXACT AND TRANSPORT-INDEPENDENT.** `canonical_fa` is the join key,
+unfolded and untransliterated; `aliases_seen` is literal SEARCH data (`itemMatchesSearch`
+takes them, `persianSearchMatch` unchanged) and is NEVER consulted to decide which piece a
+record is. App ids are deterministic hashes of the source identity (`sourceItemId`,
+`sourceLessonId`), so two devices importing the same index separately agree on which record
+is which. Asset paths are stored RELATIVE TO THE ARCHIVE ROOT, so changing the transport
+rewrites no stored record; each device configures its own base once.
+
+**EXACT BINDINGS WIN; WEAK EQUIVALENCES ASK.** A record already bound to a source identity
+IS that entity, whatever its title or date has since been edited to. A legacy class is
+auto-adopted only on instrument + date + number + EXACT source-path evidence — the owner's
+real upcoming class 38 (2026‑09‑27) and archive session 38 (2026‑08‑04) are the live
+counterexample to merging on a number. An exact title or literal-alias match produces
+Link / Create separately / Skip, never an automatic merge and never "pick the first
+candidate"; a built-in `catalogKey` (`iraq`) is never equated with a canonical key (عراق).
+
+**NEW IMPORTED PIECES ARRIVE RESTING** (`status: 'dormant'`), as an administrative import
+policy stated BEFORE the import: ninety-four live candidates would flood Today and every
+session plan. They stay searchable, stay in My repertoire and start directly.
+
+**AN IMPORTED CLASS IS HISTORY EVEN WHEN ITS DATE IS IN THE FUTURE.** The archive runs to
+September 2026, so a device whose clock is behind it holds future-dated records of classes
+that already happened. `isUpcomingLesson` (`sourceArchive.ts`) checks `origin === 'archive'`
+BEFORE the date, and it is the ONE predicate `nextLessonFor`, `nextLessonDates`,
+`defaultTargetLesson`, `preparationDatesByItem` and every Lessons badge / default selection /
+question sheet go through. A plain `date >= today` anywhere here turns thirty-nine pieces of
+history into thirty-nine deadlines.
+
+**THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
+`commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
+saved or a block finished while the index was being fetched is never lost — refuses with
+`stale` when the rebase raises a NEW question OR when a DECISION'S OWN PREMISE HAS MOVED,
+runs the whole proposed database through
+`validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
+write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
+matches, because "Already current" over data that was never saved is the lie this guards.
+It never calls `importDB`/`installDatabase`/`resetDemo`/`clearAll` and never touches a blob:
+a refresh ADDS to the database, it does not replace it, so the running clock, the routine,
+the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
+the SAME database object, so it cannot bump the revision or churn a timestamp.
+
+**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND A SKIP IS PERSISTED.** A sealed
+review found three halves of this missing. SKIP lived only in the preview's own `decisions`
+argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
+the next refresh, asked the identical question again with nothing in the database to show it
+had ever been answered; `planArchiveImport` writes a `piece`/`session` suppression for it
+now, the same record every other deliberate removal writes, which a refresh, a reload and a
+sync all already respect (idempotent, so answering twice does not grow the list). CREATE
+SEPARATELY was honoured for an item and silently dropped for a LESSON, so two
+indistinguishable legacy classes re-asked for ever. And a decision taken against an
+ALREADY-CURRENT index — a skip, or one registry field applied — was reported "Already
+current" and thrown away unwritten, because `commitArchiveImport` judged it by
+`summary.unchanged`, which answers about the INDEX alone. The store asks
+`applyArchiveImport` itself now (it returns the SAME OBJECT when a plan changes nothing),
+so there is one source of truth for that question and it is the function that does the
+writing. `applyArchiveImport` counts a field decision only when the plan actually OFFERS
+that field, so both sides of the preview/commit boundary mean the same thing by "nothing to
+do". An OFFER is not a change: an unanswered suggestion writes nothing and says so.
+Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
+current value and the archive's proposal each resolving their own direction — and a decision
+is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
+dastgāh choice made a moment earlier. What is DURABLE here is the suppression a skip writes
+and the value an applied field writes — never the in-flight selection itself: an unpressed
+suggestion is component state, and it is re-derived from the graph on the next refresh
+precisely because nothing about it was stored.
+
+**AND A DECISION IS ABOUT THE STATE THE OWNER SAW, NOT MERELY ABOUT ITS TARGET.** A new
+QUESTION is not the only way a rebase invalidates an answer, and refusing only on that let
+the opposite case through silently: choose the archive's composer over an EMPTY field, then
+type one of your own before pressing Apply, and the rebase found nothing to ask about and
+wrote the registry value over the words just written. An `apply-field` decision therefore
+carries `from` — the value of the owner's it was chosen against — and
+`decisionMatchesSuggestion` is the ONE test both the plan's summary and
+`applyArchiveImport`'s write use, so a preview and a commit cannot mean different things by
+"this still applies". A LINK decision has a premise too: `link-item`/`link-lesson` may only
+adopt a record that is still UNBOUND and still this instrument's — the same conditions the
+candidate list was built from — because a target bound elsewhere, moved or deleted since
+would otherwise be silently rebound, or fall through and CREATE a record instead of linking
+one, which is not the action the owner chose. Both kinds land in `plan.staleDecisions`, one
+channel rather than two, and the commit refuses on either whether or not `rev` moved. The
+screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
+question, or the suggestion's real current value, is shown as it is now.
+
+**AND A DECISION NAMES ITS RECORD, NOT ONLY ITS PIECE — AND EVERY DECISION IS ACCOUNTED
+FOR.** The premise rule above closed the case where the owner's VALUE moved and left the two
+cases where the RECORD did. Both loops open with "already bound? nothing to decide" /
+"already suppressed? nothing to decide", so a decision about a record that became bound
+between the preview and the commit was never looked at at all: no adoption, no question, and
+an EMPTY `staleDecisions`, so the commit reported success for an action it had not performed.
+An `apply-field` decision was worse than ignored — keyed by piece and value alone, it was
+REDIRECTED onto whichever record held that piece by commit time, and a sync installing a
+database where the same piece is bound to item B, also with an empty composer, took a choice
+made about A.
+
+So `apply-field` carries `itemId` (identity) as well as `from` (premise), and
+`decisionMatchesSuggestion` compares all four; and `planArchiveImport` marks every decision
+it ACTS on and sweeps the rest. An unmarked decision is either an action that has ALREADY
+HAPPENED — the same answer still in hand on the next preview — or an answer to a question
+that no longer stands, which is stale. That already-done branch is LOOP PREVENTION rather
+than politeness: `ArchiveRefresh` drops a stale decision and re-previews, and a realised
+action can never be consumed by a loop that skips its own record, so without it the same
+decision would go stale for ever. The sweep is why this holds for Link, Create, Skip and
+apply-field together instead of a stale check bolted inside each early return, and the
+premise rule above is now one of its outcomes rather than a second mechanism beside it.
+
+**AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
+decide what file a stored reference names, and they used to decide it differently:
+`hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
+`repairReferencePath` also understood a full URL under this device's verified base. So a
+class whose references were saved as full links carried perfectly good evidence that
+nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
+is that one reading, and both go through it.
+
+**AND THAT WAS ONLY HALF OF IT: THE RENAME CHAIN HAD THREE READINGS.** Repair followed the
+whole logged chain, adoption took a SINGLE HOP, and a suppression took none at all — so one
+log gave three different answers about one file. With A→B→C logged, B in session 1 and C in
+session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B and then had
+that very reference repaired into session 2: bound to one class, pointing at another's
+files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
+that loops says nothing about where the file is), and three things use it: evidence, repair,
+and the owner's own hides.
+
+**AND "REPORTED" HAD TO BE UNIGNORABLE.** `followRenames` handed back
+`{ path, cycle: true }` — a perfectly usable-looking path beside a flag — and only ONE of its
+three callers read the flag: adoption refused it, while the suppression re-key and
+`retainMissing` walked straight past it. Hide A, publish A->B and B->A, and the re-key moved
+the owner's hide onto B: A came back into view and the wrong file went dark. It returns
+`string | null` now, so there is no way to drop the verdict and still have a path. A hide
+stays exactly where the owner put it, a row the incoming index no longer lists keeps its
+provenance flagged rather than being deleted on the strength of a destination nothing can
+read, and repair says "the rename log loops on this path" instead of rewriting to an
+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place, and it is
+ONE rule rather than a mechanism per shape: A REPLACEMENT NAME IS PUBLISHED ONLY WHERE THE
+LOG DETERMINES IT UNIQUELY AND TERMINALLY. A loop names no file; a path given TWO
+destinations names no file either; and a chain walking into either cannot say where it
+ended. All of them are dropped with a diagnostic (ac-12's own rule: cycles and multiple
+destinations DIAGNOSE, never guess), so a published index carries neither, and the app still
+refuses to read one from any other source — `checkSourceGraph` rejects a second row for one
+`from` at the decoder AND at the persisted door. The fork case had exactly the defect the
+loop rule exists to prevent, said the other way round: the scanner published the FIRST
+destination and diagnosed the second as "not applied", so the app was handed a mapping the
+log cannot support and used it as EXACT IDENTITY — repairing an authored reference onto it
+and re-keying an owner's hide onto it. The diagnostic names every destination it saw, once
+and in sorted order, because `diagnostics` is inside `contentHash` and a shuffled log must
+still produce the same index. An ordinary chain beside a loop or a fork still publishes: one
+bad topology does not cost the archive its good provenance.
+
+A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+a hidden file simply reappeared under the new one while the old row sat there flagged
+unavailable. Re-keying it is not editing an owner decision — it is the same decision about
+the same bytes said in the archive's current words, the `itemId` scope carried untouched and
+`suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
+from the retained graph instead of flagged `unavailable`: the log says exactly where the
+bytes went, so that file moved, it did not disappear. The comparison is against every path
+the incoming graph describes, ACROSS sessions — a rename can move a file into a DIFFERENT
+session (the log's own A→B→C shape does exactly that), and asking only "is it still in this
+session" flagged such a file as gone while the same bytes sat in the graph under their new
+name. Safe to drop, where a piece or a
+session would not be: only those carry item/lesson bindings, so no binding can dangle on a
+resource row, and a manual unclassified lesson's own reference reaches material through the
+LESSON, never through this graph. A file that really is gone still keeps its provenance,
+flagged, exactly as before.
+
+**A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
+`deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
+alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
+than resurrecting what the owner removed. Hiding a resource carries the ITEM id, so a
+demonstration shared by eight pieces stays available to the other seven. Lifting a
+suppression (`resetArchiveSuppression`) permits reimport. Moving an archive-bound item to
+another instrument is REFUSED with an actionable message rather than emitting a graph
+`validateDB` would reject at every door.
+
+**ONE COMPOSITION FOR MATERIAL, SCOPED BY THE GRAPH.** `itemFiles` (`itemFiles.ts`) now
+composes, in order: what the archive scopes to this piece (corrections first, clean scores
+retained, demonstration parts as one ordered group, each row carrying its session and role
+as provenance), then the owner's own DIRECT item references, then the references of LINKED
+lessons that are NOT archive-bound. An archive-bound lesson contributes nothing through the
+link route — its files reached the list already, correctly scoped — which is what stops a
+class recording and someone's practice takes from landing on a piece. A manual, unclassified
+lesson still contributes everything it has, because nothing knows the scope and inventing
+one would be a guess.
+
+**A LESSON IS THE OPPOSITE CASE: EVERY FILE ON IT HAS EXACTLY ONE SECTION THAT RENDERS IT.**
+An ITEM's material is composed from OTHER records — linked lessons, the graph — that the
+item's own page has no section for, which is precisely why `itemFiles` must stay the whole
+composition. A LESSON owns its own references and its own attachments, and its page already
+renders each in the section that can edit and remove them. `lessonFiles` composed those as
+well, so an authored NAS reference the index describes nowhere — the owner's own practice
+takes on an adopted class — and every local attachment were rendered TWICE: once above,
+where nothing can be done with them, and once again where they live. `lessonFiles` is now
+the ARCHIVE's contribution alone (an archive-bound class keeps no copy of its session's
+files, so nothing else can show them); "Class recording & scores" keeps the owner's
+references, `Attachments` keeps the attachments, and each Remove button is NAMED after its
+own file rather than saying "Remove this link" three times over.
+
+**AND "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THAT ARRAY.** An imported historical
+class keeps no copy of its session's files, so `lesson.recordings` is empty and the
+empty-state card invited the owner to add a class recording directly beneath the one already
+playing above it. That state is read through the same composition the section above renders
+— not the session's `hasClassRecording` flag — so a class recording the owner has HIDDEN does
+not count as one that is there.
+
+**SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
+`migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
+and idempotent for the reason `migrateToV12` and `retirePracticeText` already are.
+`archiveSources` is in `validateDB`'s ARRAY_KEYS *and* in its reconstructed return value — a
+new collection left out of that object literal is silently dropped on the way in.
+`validateArchiveSources` refuses duplicate source ids, duplicate piece keys, duplicate
+session numbers, wrong types, unsafe paths, invalid part groups, dangling or duplicated
+item/lesson bindings, an instrument mismatch and an unsafe direct reference, naming the
+record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
+its provenance is kept — not a dangling reference.
+
+**THE NESTED GRAPH HAS ONE GRAMMAR — AND THE DECODER RUNS IT OVER ITS OWN OUTPUT, WHICH IS
+NOT THE SAME CLAIM AS RUNNING IT OVER WHAT ARRIVED.** (A later sealed review found exactly
+that gap; the `list`/`num`/`bool` rule above is what closes it, and the grammar below is
+what the decoder's OUTPUT and every persisted graph are both held to.) `decodeSourceIndex` and
+`validateArchiveSources` used to state the shape separately, and the second stated LESS of
+it: it checked a resource's path and its part group and walked straight past
+`members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
+`folder` and `roster`, and the rename and diagnostic rows entirely. A sealed review set
+`members[0].roles` to `null` in an imported file: every door ACCEPTED and PERSISTED it, and
+the first production reader to touch it — `repeatChains`, doing `m.roles.includes(...)` —
+threw while rendering material. `planArchiveImport` had the identical exposure through
+`new Set([piece.key, ...piece.aliases])`. `checkSourceGraph` (`sourceArchive.ts`) is that
+grammar in ONE place; the decoder runs it over its own normalised output and
+`validateArchiveSources` runs it over every persisted source, so a reader may dereference
+any field the grammar admits and nothing else can reach the database. The fix is the
+GRAMMAR, never a defensive guard in a component: a reader written against a validated graph
+is the point of validating it. `unavailable` stays legal on a piece, a session and a
+resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
+silently widens a hide scoped to ONE item.
+
+**AND A GRAMMAR OF FIELD TYPES SAYS EVERY VALUE IS READABLE, NEVER THAT THE GRAPH AGREES
+WITH ITSELF.** A resource physically sitting in class 2's folder, listed under class 1, is
+type-perfect at every door and attributes someone else's file to the wrong class on every
+screen that reads it. So `checkSourceGraph` also checks the RELATIONS, and the same four at
+both doors: a resource's path is `<that session's folder>/<name>` and nothing else; a
+resource attributed to a piece has that piece's membership recorded for that ROLE, so no
+file can surface as a piece's material with nothing in the graph saying it belongs to it; a
+`group` belongs only to a demonstration, and the parts sharing one are material for the same
+pieces with distinct part numbers, so an arbitrary group cannot invent one logical resource
+out of unrelated files; and `hasClassRecording` agrees with whether a class-role resource is
+actually there, which itself may never name a piece.
+
+These run over what the source still DESCRIBES. `unavailable` is retained provenance about
+what it has STOPPED describing — a piece dropped from the registry, a file deleted from the
+NAS — so holding those rows to the current source's internal agreement is a category error,
+and would make every refresh after a removal refuse at every door. The group's LABEL format
+is deliberately not asserted: that is the scanner's grammar, and this file's own rule is
+that the grammar lives once.
+
+**AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
+the one persisted field with no check at all, while Settings renders it
+(`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
+`acceptedAt: null` was accepted, persisted, and then threw while the screen drew. It is
+held to a REAL calendar instant (`isValidSourceDateTime`, a local sibling of
+`isValidSourceDate` rather than a shared import, for the reason `askedAt` and `dueDate`
+already keep their checks one per file): a shape regex matches
+`"2026-02-30T12:00:00.000Z"` and `Date.parse` silently normalises it into March. `renames`
+and `diagnostics` are required AT REST where the grammar tolerates them absent, because the
+decoder always emits both and the planner reads them unguarded. A suppression's `at` is
+provenance only — nothing reads it back as a date — so it is held to being real text and no
+further. The fix is this DOOR, never a guard in `ArchiveRefresh.tsx`.
+
+**A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE.** Everything appends a path AFTER the
+base, so a credential, a query or a fragment in it is not untidiness:
+`https://user:pass@nas.example/media?token=secret` made "Open archive root"
+`…?token=secret/` and a file `…?token=secret/session-1/x.mp4` — a password on screen in
+every device URL, addressing no file at all. `normalizeBaseUrl` REFUSES all four
+(`username`, `password`, `search`, `hash`) rather than stripping them, because a rewritten
+base names a different server and only the owner can say what they meant; the media
+sentence says WHY. That is the whole family in one place: `resolveRecording`,
+`relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the reconciler's
+`verifiedBase` (through `archiveRootUrl`) all pass through it. A stored ABSOLUTE url is
+still opened as the owner saved it — their own authored link, not this device's configured
+base, and nothing here mints one.
+
+**THE MEDIA BASE IS THE ARCHIVE ROOT, NOT THE MEDIA ROOT ABOVE IT.** This is the one setting
+a device carries from before the archive existed, and this lane silently changed what it
+must contain: legacy references were written relative to the NAS media root and began
+`setar-classes/`; every reference the app writes now is relative to the ARCHIVE root and
+begins `session-…`. `resolveRecording` APPENDS to the base and preserves its whole path
+prefix (`/media/`, `/archives/v2/` — ac-14's own test), so it is correct either way and a
+base one folder too high is not a resolver defect: it is a URL that addresses nothing.
+Settings names the archive folder, shows it in the placeholder, and no longer promises that
+the base can be changed freely — for a device configured before this lane, correcting it
+once is required. There is deliberately NO second archive-specific base and no resolver
+fallback: one base per device, ending in the archive folder, is what ac-14 and ac-20 state.
+
+**TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
+ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
+(`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+the same stored path with each one's own path prefix preserved. `relativizeReference` will
+not store a pasted URL whose decoded form steps OUT of the base — it keeps the pasted text
+exactly as given instead. The arbitrary-clip "Test link" is gone: a single clip proves
+nothing (it fails for a renamed file and passes for a base whose other thousand files are
+unreachable), so Settings opens the ARCHIVE ROOT and `describeArchiveAccess` states the
+index and the media as two separate facts. Reading the index proves GitHub answered and
+says nothing about the NAS; a certificate rejection, a blocked cross-origin request and an
+outage are indistinguishable from a web page, so none of them is ever called absence.
+
+**THE 67 LEGACY PATHS ARE REPAIRED EXACTLY, OR DIAGNOSED.** `src/domain/setarClasses.ts` is
+FROZEN — no longer a workflow, now the ledger of what the old bundled importer wrote — and
+`repairReferencePath` maps all 67 through the archive's own 257-row rename log. No fuzzy
+matching by title, size or modification time; a cycle, a missing target or an ambiguous
+mapping is reported. A full URL converts only under a VERIFIED base, and one carrying a
+query or fragment is left alone. Where an old and a current row now point at one physical
+file, BOTH rows survive with their own titles and notes: deleting one deletes something the
+owner wrote.
+
+**AND THE REFRESH ITSELF DOES IT — a helper with no production caller repairs nothing.**
+The rename log is published WITH the index, so the one moment the app can repair a stored
+path is the moment it accepts a new graph; a sealed review found a uniquely adoptable
+legacy class being adopted and left pointing at names the archive renamed years ago — bound
+and broken. `planArchiveImport` now runs `repairLessonReferences` in ONE pass over the
+lessons this archive OWNS: the ones this plan adopts and the ones already bound. A lesson
+the archive has no claim on is not something a refresh may rewrite. The pass produces the
+objects the plan SHOWS (`adoptedLessons`) and the ones it installs (`repairedLessons`), so a
+preview cannot display an old path while the commit writes a new one. `verifiedBase` is
+threaded from the device's own configured media base, so a stored full URL under it converts
+and everything else stays exactly as the owner saved it.
+A cycle, a rename whose destination is gone and an unsafe path become plan `attention`
+rows — but `not-described` does NOT (see `RepairReason`): the index deliberately describes
+only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
+own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
+renamed is outside what it knows, never evidence that the file is gone. Those three personal
+references are retained historical links, unflagged — and RETAINED IS NOT THE SAME CLAIM AS
+LEFT IN THE OLD NAMESPACE.
+
+**A REFRESH LEAVES AN ARCHIVE-OWNED LESSON IN ONE NAMESPACE, OR THE OWNER'S OWN FILES DIE
+WHEN THE BASE IS CORRECTED.** The device media base is the archive ROOT (below), so every
+stored path is archive-relative and the legacy `setar-classes/` folder segment is not part
+of it. `repairReferencePath` stripped that segment only on the way to a path the index
+DESCRIBES and then threw the stripped form away for a `not-described` one — so a refresh
+left the described rows archive-relative and the undescribed rows legacy-prefixed, on the
+same class. OWNER testing found the consequence: with the base still naming the media root
+above the archive, a class recording resolved to `…:5010/session-39-…/…` and opened nothing;
+correcting the base to `…:5010/setar-classes/` fixed every described row and would have
+killed exactly the rows a refresh never reports — the owner's own practice takes, at
+`…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
+that the file exists (no `attention` row is raised, `not-described` still says nothing), and
+it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
+writes nothing and cannot bump the revision (asserted at the PLAN level, where the rule is
+stated, not only on the helper). ORDER MATTERS ONCE PER DEVICE: under the old base a legacy
+path still opens, so correcting the base BEFORE refreshing avoids a transient in which those
+files have moved namespace and the base has not. A legacy-prefixed reference on a lesson the
+archive does NOT own is still never rewritten — that rule stands — so such a reference stays
+in the old namespace and is the one known gap; it is the owner's to repoint, not a
+refresh's to guess at.
+
+**LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
+(exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
+with the record it was typed for, "Saved." only after IndexedDB acknowledges, retry and copy
+on failure, and an in-flight write that never owns the textarea — and `LessonNotes.tsx` is a
+thin wrapper over it. The defect it fixes was NOT in an editor: `updateLesson` read
+`patch.notes ?? l.notes`, which cannot tell an OMITTED patch field from a deliberately empty
+one, so clearing a class's notes wrote the previous notes straight back. The store decides
+on the PRESENCE of the key now, the same distinction `resolveReviewDate` already makes for a
+date.
+
+**SECRETS.** The NAS publisher's credential is a SEPARATE, repository-scoped token
+(Contents write + metadata read, no workflow or admin scope) living only in the NAS
+runtime's protected configuration. GitHub does not issue branch-scoped tokens: the
+branch/path restriction is a property of `publish-setar-index.mjs`, and must never be
+described as credential isolation. The app's own browser token and each device's media base
+stay device-local exactly as before. No credential and no archive root enters a source
+archive, a committed file, a manifest, app data, a log, sync or a backup.
 
 ## Review scheduling stays explainable
 

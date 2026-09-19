@@ -5,6 +5,7 @@ import { migrateToCurrent, OLDEST_SCHEMA_VERSION } from './migrations';
 import { validateLessonAgenda } from './lessonAgenda';
 import { validateSchedulingFields } from './scheduling';
 import { validatePracticeText } from './practiceInformation';
+import { validateArchiveSources } from './sourceArchive';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -37,6 +38,7 @@ const ARRAY_KEYS = [
   'attachments',
   'lessons',
   'lessonAgenda',
+  'archiveSources',
 ] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -96,6 +98,11 @@ export function validateDB(input: unknown): PracticeDB {
     attachments: migrated.attachments ?? [],
     lessons: migrated.lessons ?? [],
     lessonAgenda: migrated.lessonAgenda ?? [],
+    // v14. RECONSTRUCTED here, not merely accepted on input: this object
+    // literal is the whole database every door installs, so a new collection
+    // left out of it is silently dropped on the way in — bindings, owner
+    // suppressions and all.
+    archiveSources: migrated.archiveSources ?? [],
     // Optional scheduling knobs — a top-level object, not an array. Carry it
     // through so a user's adjusted params survive export/import round-trips.
     ...(isRecord(migrated.settings) ? { settings: migrated.settings as unknown as PracticeDB['settings'] } : {}),
@@ -145,6 +152,11 @@ export function validateDB(input: unknown): PracticeDB {
   // retired field can never be mistaken for a malformed canonical one.
   const textProblem = validatePracticeText(db);
   if (textProblem) throw new Error(textProblem);
+  // The v14 source graph and the bindings into it: duplicate source keys,
+  // wrong types, dangling or instrument-mismatched refs and unsafe paths are
+  // refused BEFORE anything is installed.
+  const sourceProblem = validateArchiveSources(db);
+  if (sourceProblem) throw new Error(sourceProblem);
 
   return db;
 }

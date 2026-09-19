@@ -7,6 +7,7 @@ import {
   groupBlocksByItem,
   groupByDastgah,
   isDue,
+  archiveSearchAliases,
   itemMatchesSearch,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
@@ -541,6 +542,10 @@ function AllItemsView() {
     [db.items, db.blocks, now],
   );
 
+  // Literal historical spellings, so an old name still finds the piece. Search
+  // only — never identity.
+  const aliases = useMemo(() => archiveSearchAliases(db), [db]);
+
   const toggleQuick = (k: Quick) =>
     setQuick((s) => {
       const next = new Set(s);
@@ -552,7 +557,7 @@ function AllItemsView() {
   const visible = scored
     .map((s) => s.item)
     .filter((item) => {
-      if (!itemMatchesSearch(item, search)) return false;
+      if (!itemMatchesSearch(item, search, aliases.get(item.id))) return false;
       if (instrumentId && item.instrumentId !== instrumentId) return false;
       if (status && item.status !== status) return false;
       if (type && item.itemType !== type) return false;

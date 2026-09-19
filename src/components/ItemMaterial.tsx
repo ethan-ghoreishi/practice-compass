@@ -1,5 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { formatFileSize, itemFiles, resolveRecording, type ItemFile } from '../domain';
+import {
+  SOURCE_ROLE_LABELS,
+  archiveFor,
+  formatFileSize,
+  itemFiles,
+  lessonFiles,
+  repeatChains,
+  resolveRecording,
+  type ItemFile,
+} from '../domain';
 import { useStore } from '../store/useStore';
 import { getNasBaseUrl } from '../store/backup';
 import { attachmentObjectURL } from '../store/attachments';
@@ -19,15 +28,77 @@ import { MusicIcon, PlayIcon, ReportIcon } from './icons';
  */
 export default function ItemMaterial({ itemId }: { itemId: string }) {
   const db = useStore((s) => s.db);
+  const hide = useStore((s) => s.hideArchiveResource);
   const files = useMemo(() => itemFiles(db, itemId), [db, itemId]);
+  const archiveId = db.items.find((i) => i.id === itemId)?.source?.archiveId;
 
   if (files.length === 0) return null;
 
   return (
     <div className="stack-sm">
+      <RepeatChains itemId={itemId} />
+      {files.map((f) => (
+        <FileRow
+          key={`${f.source}-${f.id}`}
+          file={f}
+          // Hiding is scoped to THIS item: a demonstration shared by eight
+          // pieces stays available to the other seven.
+          onHide={
+            archiveId && f.source === 'reference' && f.archive
+              ? () => hide(archiveId, f.path, itemId)
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A lesson's own material, composed the same way — an archive-bound class
+ * carries no copy of its session's files, so reading `lesson.recordings` alone
+ * would show nothing at all.
+ */
+export function LessonMaterial({ lessonId }: { lessonId: string }) {
+  const db = useStore((s) => s.db);
+  const files = useMemo(() => lessonFiles(db, lessonId), [db, lessonId]);
+  if (files.length === 0) return null;
+  return (
+    <div className="stack-sm">
       {files.map((f) => (
         <FileRow key={`${f.source}-${f.id}`} file={f} />
       ))}
+    </div>
+  );
+}
+
+/**
+ * "Practised in classes 22-27" — the archive's own repeat evidence, derived from
+ * the graph and never cached beside it.
+ *
+ * Deliberately worded as CLASSES. The same run described as "six weeks" would
+ * be a claim about time nobody recorded, and this whole feature exists on the
+ * understanding that an archive describes and never testifies: it is a count of
+ * classes the piece came back in, not practice this app has any record of.
+ */
+function RepeatChains({ itemId }: { itemId: string }) {
+  const db = useStore((s) => s.db);
+  const item = db.items.find((i) => i.id === itemId);
+  const source = item?.source ? archiveFor(db, item.source.archiveId) : undefined;
+  const chains = useMemo(
+    () => (source && item?.source ? repeatChains(source, item.source.pieceKey) : []),
+    [source, item?.source],
+  );
+  if (chains.length === 0) return null;
+  return (
+    <div className="tiny faint" style={{ textAlign: 'start' }}>
+      <span dir="ltr">
+        Came back in{' '}
+        {chains
+          .map((run) => (run.length > 2 ? `classes ${run[0]}–${run[run.length - 1]}` : `classes ${run.join(' and ')}`))
+          .join(', ')}
+        .
+      </span>
     </div>
   );
 }
@@ -39,14 +110,21 @@ function KindIcon({ file }: { file: ItemFile }) {
   return <ReportIcon width={18} height={18} />;
 }
 
-function FileRow({ file }: { file: ItemFile }) {
-  return file.source === 'reference' ? <ReferenceRow file={file} /> : <AttachmentRow file={file} />;
+function FileRow({ file, onHide }: { file: ItemFile; onHide?: () => void }) {
+  return file.source === 'reference' ? <ReferenceRow file={file} onHide={onHide} /> : <AttachmentRow file={file} />;
 }
 
 /** A NAS reference: resolved through the configured base, opened on tap only. */
-function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' }> }) {
+function ReferenceRow({ file, onHide }: { file: Extract<ItemFile, { source: 'reference' }>; onHide?: () => void }) {
   const resolution = resolveRecording(getNasBaseUrl(), file);
   const size = formatFileSize(file.sizeBytes);
+  // PROVENANCE, stated plainly: which class this came out of, and what it is.
+  // Generated English metadata, so it carries its own inline LTR isolate.
+  const provenance = file.archive
+    ? `Class ${file.archive.sessionN} · ${file.archive.date} · ${SOURCE_ROLE_LABELS[file.archive.role] ?? 'material'}${
+        file.archive.part ? ` · part ${file.archive.part}` : ''
+      }`
+    : null;
 
   return (
     <div className="card row" style={{ gap: 12 }}>
@@ -70,16 +148,24 @@ function ReferenceRow({ file }: { file: Extract<ItemFile, { source: 'reference' 
             {size ? ` · ${size}` : ''}
             {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
             {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
+            {resolution.status === 'unsafe' && ' · this link points outside the archive and will not be opened'}
+            {provenance ? ` · ${provenance}` : ''}
+            {file.unavailable && ' · no longer in the archive'}
           </span>
         </div>
       </div>
       <button
         className="btn btn-sm"
-        disabled={resolution.status !== 'ok'}
+        disabled={resolution.status !== 'ok' || file.unavailable === true}
         onClick={() => resolution.status === 'ok' && window.open(resolution.url, '_blank', 'noopener,noreferrer')}
       >
         Open
       </button>
+      {onHide && (
+        <button className="btn btn-sm" aria-label={`Hide ${file.title} from this piece`} onClick={onHide}>
+          Hide
+        </button>
+      )}
     </div>
   );
 }

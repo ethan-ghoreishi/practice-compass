@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  archiveRootUrl,
+  describeArchiveAccess,
   formatFileSize,
   needsBaseUrl,
   normalizeBaseUrl,
@@ -194,5 +196,129 @@ describe('the Browse target', () => {
     expect(normalizeBaseUrl(undefined)).toBeNull();
     expect(normalizeBaseUrl('http://[not a url')).toBeNull();
     expect(normalizeBaseUrl('ftp://nas/media')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-14 — the archive's identity is the path; transport is per device.
+// ---------------------------------------------------------------------------
+
+describe('archive transport', () => {
+  it('source transport changes preserve archive identity and encode Farsi once', () => {
+    // ONE stored reference. Its path is archive-relative and is the identity.
+    const ref = { path: 'session-13-03-09-2024/نمونه-1.mp4' };
+    const mac = 'https://192.168.0.20:5010/setar-classes/';
+    const iphone = 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes/';
+    const future = 'https://nas.example.org/archives/v2/setar-classes';
+
+    const macUrl = resolveRecording(mac, ref);
+    const phoneUrl = resolveRecording(iphone, ref);
+    const futureUrl = resolveRecording(future, ref);
+    expect(macUrl.status).toBe('ok');
+    expect(phoneUrl.status).toBe('ok');
+    expect(futureUrl.status).toBe('ok');
+    if (macUrl.status !== 'ok' || phoneUrl.status !== 'ok' || futureUrl.status !== 'ok') throw new Error('unreachable');
+
+    // Each device's own BASE PATH PREFIX survives — `/media/`, `/archives/v2/`.
+    expect(macUrl.url).toBe(
+      'https://192.168.0.20:5010/setar-classes/session-13-03-09-2024/%D9%86%D9%85%D9%88%D9%86%D9%87-1.mp4',
+    );
+    expect(phoneUrl.url).toContain('/media/setar-classes/session-13-03-09-2024/');
+    expect(futureUrl.url).toContain('/archives/v2/setar-classes/session-13-03-09-2024/');
+
+    // FARSI IS ENCODED ONCE. Decoding each segment gives back the raw path, and
+    // no '%25' (a re-encoded '%') appears anywhere.
+    for (const resolved of [macUrl, phoneUrl, futureUrl]) {
+      expect(resolved.url).not.toContain('%25');
+      const tail = resolved.url.split('/').slice(-2).map(decodeURIComponent).join('/');
+      expect(tail).toBe(ref.path);
+    }
+
+    // THE STORED DATA NEVER MOVED. Three bases, one reference object — a base
+    // change rewrites no record, so no export and no content hash changes.
+    const before = JSON.stringify(ref);
+    resolveRecording(mac, ref);
+    resolveRecording(iphone, ref);
+    expect(JSON.stringify(ref)).toBe(before);
+    // ...and a pasted URL under either base is stored back as the same path.
+    expect(relativizeReference(mac, macUrl.url)).toBe(ref.path);
+    expect(relativizeReference(iphone, phoneUrl.url)).toBe(ref.path);
+    // A double-encoded separator decodes into a path that steps OUT of the
+    // base. That is not stored as a relative reference at all: the pasted text
+    // is kept exactly as given, and resolving it refuses rather than opening
+    // something outside the archive.
+    const smuggled = `${mac}session-13-03-09-2024%2F..%2Fx.mp4`;
+    expect(relativizeReference(mac, smuggled)).toBe(smuggled);
+    expect(resolveRecording(mac, { path: 'session-13-03-09-2024/../x.mp4' }).status).toBe('unsafe');
+
+    // --- refusals ------------------------------------------------------------
+    for (const path of ['../PIECES.csv', 'a/../../etc/passwd', 'a%2F..%2Fb.mp4', 'a\\b.mp4', 'user:pass@host/x.mp4']) {
+      expect(resolveRecording(mac, { path }).status).toBe('unsafe');
+      expect(resolveRecordingUrl(mac, { path })).toBeNull();
+    }
+    expect(resolveRecording('ftp://nas/setar', ref).status).toBe('bad-base');
+    expect(resolveRecording('not a url at all', ref).status).toBe('bad-base');
+    expect(resolveRecording(undefined, ref).status).toBe('no-base');
+    expect(resolveRecording(mac, { path: '   ' }).status).toBe('empty');
+
+    // --- the capability check never probes a media FILENAME ------------------
+    expect(archiveRootUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes/');
+    expect(archiveRootUrl(iphone)).toBe('https://ds220plus.taild1d1f7.ts.net/media/setar-classes/');
+    expect(archiveRootUrl('')).toBeNull();
+    expect(archiveRootUrl('ftp://nas')).toBeNull();
+    // A renamed or missing single clip cannot make the root check fail, because
+    // no clip is part of it.
+    expect(archiveRootUrl(mac)).not.toContain('.mp4');
+    expect(archiveRootUrl(mac)).not.toContain('نمونه');
+
+    // --- index readability and media reachability are TWO statements ---------
+    const fetched = describeArchiveAccess({ indexFetchedAt: '2026-09-17 09:00', indexChangedAt: '2026-09-16 04:15', baseUrl: mac });
+    expect(fetched.index).toContain('last fetched');
+    expect(fetched.index).toContain('last changed');
+    // Reading the index says NOTHING about the NAS, and the media sentence
+    // never claims a file is absent — a certificate, a CORS refusal and an
+    // outage are indistinguishable from here, so none of them is called
+    // absence.
+    expect(fetched.media).not.toContain('fetched');
+    expect(fetched.media).toMatch(/cannot verify/);
+    for (const word of ['missing', 'not found', 'absent', 'gone']) expect(fetched.media.toLowerCase()).not.toContain(word);
+    const noIndex = describeArchiveAccess({ baseUrl: mac });
+    expect(noIndex.index).toMatch(/No index has been fetched/);
+    expect(describeArchiveAccess({ indexFetchedAt: 'x' }).media).toMatch(/No media base is set/);
+    expect(describeArchiveAccess({ indexFetchedAt: 'x', baseUrl: 'ftp://nas' }).media).toMatch(/not a usable/);
+
+    // --- A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE -------------------
+    // Everything appends a path AFTER the base, so a credential, a query or a
+    // fragment in it is not merely untidy: the password ends up on screen in
+    // every device URL, and `…/media?token=secret` + `/session-1/x.mp4`
+    // addresses no file at all. Refused at the ONE boundary they all share —
+    // never stripped, because a rewritten base names a different server.
+    const leaky = 'https://user:pass@nas.example/media?token=secret';
+    for (const bad of [
+      leaky,
+      'https://user:pass@nas.example/media',
+      'https://nas.example/media?token=secret',
+      'https://nas.example/media#frag',
+      'user:pass@nas.example/media',
+    ]) {
+      expect(normalizeBaseUrl(bad)).toBeNull();
+      expect(archiveRootUrl(bad)).toBeNull();
+      expect(resolveRecording(bad, ref).status).toBe('bad-base');
+      expect(resolveRecordingUrl(bad, ref)).toBeNull();
+      // Nothing is relativised against a base that was never usable…
+      expect(relativizeReference(bad, `${leaky}/session-1/x.mp4`)).toBe(`${leaky}/session-1/x.mp4`);
+      // …and the owner is told WHY, not merely that it failed.
+      const said = describeArchiveAccess({ baseUrl: bad }).media;
+      expect(said).toMatch(/not a usable/);
+      expect(said).toMatch(/password/);
+    }
+    // No secret ever reaches a resolved URL through the base.
+    expect(JSON.stringify([archiveRootUrl(leaky), resolveRecording(leaky, ref)])).not.toContain('secret');
+    // The reconciler reads its `verifiedBase` from `archiveRootUrl`, so the
+    // same refusal covers path repair: with no verified base, a full URL is
+    // left exactly as the owner saved it.
+    expect(archiveRootUrl(leaky) ?? undefined).toBeUndefined();
+    // An ordinary base with a port, a path and a trailing slash still works.
+    expect(normalizeBaseUrl(mac)).toBe('https://192.168.0.20:5010/setar-classes');
   });
 });

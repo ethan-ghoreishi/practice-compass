@@ -9,6 +9,7 @@ import type {
   PracticeDB,
 } from './types';
 import { nowISO, todayISODate } from './util';
+import { isUpcomingLesson } from './sourceArchive';
 
 // ---------------------------------------------------------------------------
 // The lesson agenda — one typed collection for "prepare this for that class"
@@ -89,7 +90,7 @@ export function questionsForItem(agenda: LessonAgendaEntry[], itemId: ID): Lesso
 export function defaultTargetLesson(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
   const today = todayISODate(now);
   return lessons
-    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
+    .filter((l) => l.instrumentId === instrumentId && isUpcomingLesson(l, today))
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id))[0];
 }
 
@@ -118,7 +119,9 @@ export function preparationDatesByItem(
     const lesson = byId.get(e.lessonId);
     // A target on another instrument is not a valid commitment for this item.
     if (!lesson || lesson.instrumentId !== e.instrumentId) continue;
-    if (lesson.date < today) continue;
+    // Same predicate as every other next-class selector: an imported archive
+    // class carries no deadline, whatever its date says.
+    if (!isUpcomingLesson(lesson, today)) continue;
     const cur = out.get(e.itemId);
     if (!cur || lesson.date < cur) out.set(e.itemId, lesson.date);
   }

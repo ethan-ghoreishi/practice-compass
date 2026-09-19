@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   defaultInstrumentFilter,
+  nextLessonDates,
+  nextLessonFor,
   instrumentBalance,
   itemMatchesSearch,
   nextLessonNumber,
@@ -10,6 +13,9 @@ import {
   startOfWeekISODate,
   totalMinutesInWindow,
 } from './selectors';
+import { defaultTargetLesson, itemsPreparedForLesson, preparationDatesByItem } from './lessonAgenda';
+import { isUpcomingLesson } from './sourceArchive';
+import { todayISODate } from './util';
 import { createBlock, createInstrument } from './factories';
 import type { Instrument, Lesson, Pathway, PracticeBlock } from './types';
 
@@ -285,5 +291,71 @@ describe('pathwaysForInstrumentFilter', () => {
     expect(pathwaysForInstrumentFilter(all, 'setar')).toEqual([setarPathway]);
     expect(pathwaysForInstrumentFilter(all, 'tar')).toEqual([tarPathway]);
     expect(pathwaysForInstrumentFilter(all, '')).toEqual(all);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-10 — one shared "is this class still ahead of me" predicate.
+// ---------------------------------------------------------------------------
+
+describe('historical archive lessons and the next class', () => {
+  it('historical source lessons never become upcoming through sibling selectors', () => {
+    const now = new Date('2026-09-17T09:00:00.000Z');
+    const today = todayISODate(now);
+    const setar = 'inst-setar';
+
+    // An imported class on every side of today, and an ORDINARY class on the
+    // same dates. The archive's own sessions run to September 2026, so a
+    // future-dated historical record is the normal case, not a contrivance.
+    const past = lesson({ id: 'arch-past', instrumentId: setar, date: '2024-09-03', number: 13 });
+    const same = lesson({ id: 'arch-today', instrumentId: setar, date: today, number: 38 });
+    const future = lesson({ id: 'arch-future', instrumentId: setar, date: '2026-12-01', number: 39 });
+    const archived = [past, same, future].map((l): Lesson => ({ ...l, origin: 'archive' }));
+    const real = lesson({ id: 'real-upcoming', instrumentId: setar, date: '2026-09-27', number: 38 });
+
+    // THE PREDICATE itself: origin is checked before the date, so no date can
+    // make a record of a class that already happened into the next one.
+    expect(isUpcomingLesson(real, today)).toBe(true);
+    expect(isUpcomingLesson({ date: today, origin: undefined }, today)).toBe(true);
+    expect(isUpcomingLesson({ date: '2024-01-01' }, today)).toBe(false);
+    for (const l of archived) expect(isUpcomingLesson(l, today)).toBe(false);
+
+    const lessons = [...archived, real];
+
+    // 1 + 2. The two next-class selectors in selectors.ts.
+    expect(nextLessonFor(lessons, setar, now)?.id).toBe('real-upcoming');
+    expect(nextLessonDates(lessons, now).get(setar)).toBe('2026-09-27');
+    // With ONLY history, there is honestly no next class at all.
+    expect(nextLessonFor(archived, setar, now)).toBeUndefined();
+    expect(nextLessonDates(archived, now).has(setar)).toBe(false);
+
+    // 3. The default target for a new question or commitment.
+    expect(defaultTargetLesson(lessons, setar, now)?.id).toBe('real-upcoming');
+    expect(defaultTargetLesson(archived, setar, now)).toBeUndefined();
+
+    // 4. The ONLY channel by which lesson intent reaches practice priority.
+    const prep = (lessonId: string) => ({
+      id: `p-${lessonId}`,
+      kind: 'preparation' as const,
+      itemId: 'item-1',
+      instrumentId: setar,
+      lessonId,
+      createdAt: '2026-09-01T00:00:00.000Z',
+      updatedAt: '2026-09-01T00:00:00.000Z',
+    });
+    // An imported class carries NO deadline, even dated in the future...
+    expect(preparationDatesByItem([prep('arch-future')], lessons, now).get('item-1')).toBeUndefined();
+    expect(preparationDatesByItem([prep('arch-today')], lessons, now).get('item-1')).toBeUndefined();
+    expect(itemsPreparedForLesson([prep('arch-future')], lessons, now).size).toBe(0);
+    // ...while the owner's own manually authored commitment is untouched.
+    expect(preparationDatesByItem([prep('real-upcoming')], lessons, now).get('item-1')).toBe('2026-09-27');
+    expect(itemsPreparedForLesson([prep('real-upcoming')], lessons, now).has('item-1')).toBe(true);
+
+    // The Lessons screen asks the same question in four more places — the wide
+    // list's badge and default selection, the phone card's badge, and the
+    // question sheet. None of them may compare a date on its own.
+    const lessonsPage = readFileSync(new URL('../pages/Lessons.tsx', import.meta.url), 'utf8');
+    expect(lessonsPage).not.toMatch(/\.date\s*>=\s*todayISODate/);
+    expect(lessonsPage.match(/isUpcomingLesson\(/g) ?? []).toHaveLength(4);
   });
 });

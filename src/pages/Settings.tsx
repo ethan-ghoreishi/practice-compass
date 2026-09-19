@@ -12,9 +12,7 @@ import {
   RESULT_BUTTONS,
   RESULT_DESCRIPTIONS,
   RESULT_LABELS,
-  resolveRecording,
   SCHEDULING_BOUNDS,
-  SETAR_CLASS_SESSIONS,
   type SchedulingParams,
 } from '../domain';
 import { useStore, type ThemePref } from '../store/useStore';
@@ -38,6 +36,7 @@ import {
   useSyncStatus,
 } from '../store/githubSync';
 import { Field } from '../components/ui';
+import ArchiveRefresh from '../components/ArchiveRefresh';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
@@ -274,7 +273,7 @@ export default function Settings() {
         </div>
       </section>
 
-      <NasRecordingsSection onFlash={flash} />
+      <NasRecordingsSection />
 
       <SchedulingSection />
 
@@ -510,15 +509,20 @@ function SyncSection() {
 
 /**
  * NAS recordings: the base URL that resolves relative class-recording paths,
- * plus a one-tap importer for the Setar class history. Full videos never enter
- * the app — only these references do.
+ * plus the Setar archive refresh. Full videos never enter the app — only these
+ * references do.
+ *
+ * THE BASE IS THE ARCHIVE FOLDER ITSELF, not the media root above it. Every
+ * reference the app stores is relative to the ARCHIVE root (`session-39-…/…`),
+ * so a base of `https://nas:5010` resolves a class recording to
+ * `https://nas:5010/session-39-…/…` — a URL that addresses no file. This label
+ * used to name the media root, and to promise that changing the base broke
+ * nothing; it is the one setting a device carries from before the archive
+ * existed, and correcting it is a one-off the copy here has to ask for.
  */
-function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
-  const db = useStore((s) => s.db);
-  const importSetarClasses = useStore((s) => s.importSetarClasses);
+function NasRecordingsSection() {
   const [baseUrl, setBaseUrlState] = useState(getNasBaseUrl());
 
-  const setar = db.instruments.find((i) => i.family === 'Persian' && /setar|سه‌تار|سه تار/i.test(i.name));
   const trimmed = baseUrl.trim();
   const normalized = trimmed ? normalizeBaseUrl(trimmed) : null;
   const invalid = trimmed.length > 0 && normalized === null;
@@ -532,40 +536,18 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
     setNasBaseUrl(next);
   }
 
-  function runImport() {
-    if (!setar) {
-      onFlash('Add a Setar instrument first.');
-      return;
-    }
-    const count = importSetarClasses(setar.id);
-    onFlash(count > 0 ? `Imported ${count} Setar class${count === 1 ? '' : 'es'}.` : 'All Setar classes are already imported.');
-  }
-
-  function testLink() {
-    const first = SETAR_CLASS_SESSIONS[0];
-    const r = resolveRecording(normalizeBaseUrl(baseUrl) ?? baseUrl, { path: first.video });
-    if (r.status === 'ok') {
-      window.open(r.url, '_blank', 'noopener,noreferrer');
-    } else if (r.status === 'bad-base') {
-      onFlash('That base URL isn’t valid — check it and try again.');
-    } else {
-      onFlash('Enter a base URL first.');
-    }
-  }
-
-  const testUrl = resolveRecording(normalized ?? undefined, { path: SETAR_CLASS_SESSIONS[0].video });
-
   return (
     <section className="stack-sm">
       <div className="section-label">NAS recordings</div>
       <div className="card stack-sm">
         <div className="small dim">
           Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
-          to each recording; set the base URL that serves your recording folders and the links resolve against it.
+          to each recording; set the address of the <strong style={{ color: 'var(--text)' }}>archive folder itself</strong>{' '}
+          and the links resolve against it.
         </div>
         <Field
-          label="NAS recordings base URL"
-          hint="e.g. https://192.168.0.20:5010 — relative recording paths are joined onto this. Stored on this device only; never synced, never a password. Change it freely: references are stored relative to it, so nothing breaks. See DECISIONS.md for what is serving the folder."
+          label="Setar archive base URL"
+          hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes. References are stored relative to this (session-39-…/…), so a base one folder too high resolves every file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each device sets its own route to the same archive."
         >
           <input
             className="input"
@@ -575,7 +557,7 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            placeholder="https://192.168.0.20:5010"
+            placeholder="https://192.168.0.20:5010/setar-classes"
             value={baseUrl}
             onChange={(e) => setBaseUrlState(e.target.value)}
             onBlur={commitBaseUrl}
@@ -591,8 +573,9 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
 
         <div className="row between" style={{ gap: 8 }}>
           <div className="tiny faint">
-            Browse the NAS to find a file, then copy its URL and paste it into a lesson — a URL under this base is
-            stored as a relative path, so it keeps working whatever route a device takes to the NAS.
+            Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy a
+            file's URL from there and paste it into a lesson: a URL under this base is stored as a relative path, so it
+            keeps working whatever route a device takes to the NAS.
           </div>
           <button
             className="btn btn-sm"
@@ -604,20 +587,18 @@ function NasRecordingsSection({ onFlash }: { onFlash: (msg: string) => void }) {
           </button>
         </div>
 
+        {/* A single clip proved nothing: it fails for a file that was renamed
+            and passes for a base whose other thousand files are unreachable.
+            The ARCHIVE ROOT is what was configured, so it is what opens. */}
         <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">Open session 1’s recording to check the base URL works.</div>
-          <button className="btn btn-sm" style={{ flex: 'none' }} disabled={!normalized || testUrl.status !== 'ok'} onClick={testLink}>
-            Test link
-          </button>
-        </div>
-
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">Import your logged Setar classes as lessons (recording links, no video).</div>
-          <button className="btn btn-sm" style={{ flex: 'none' }} onClick={runImport}>
-            Import Setar classes
-          </button>
+          <div className="tiny faint">
+            Opening a file is a direct request from this device. The app cannot check from here whether the NAS is
+            reachable — a certificate, a blocked cross-origin request and an outage all look the same to it.
+          </div>
         </div>
       </div>
+
+      <ArchiveRefresh />
     </section>
   );
 }

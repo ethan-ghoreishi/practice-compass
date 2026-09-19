@@ -1,7 +1,16 @@
-// AUTO-GENERATED from the user's setar-classes NAS folder (37 monthly classes,
-// 2023-09 → 2026-07). These are REFERENCES only — paths are relative to the NAS
-// recordings base URL (Settings); no video bytes live here. Regenerate by
-// re-scanning the folder if the sessions change.
+// THE LEGACY SEED LEDGER — frozen, and no longer a workflow.
+//
+// This table is what the app's old one-tap "Import Setar classes" actually
+// wrote into the owner's database: 37 sessions and 67 file paths, every one of
+// them naming a file under `setar-classes/` by its PRE-NORMALISATION name.
+// Those files have all since been renamed, so every path here is obsolete —
+// which is exactly why the table stays: it is the authoritative list of what
+// the owner's own lesson records point at, and `repairReferencePath` is
+// checked against all 67 of them.
+//
+// The import itself is gone, replaced by Refresh Setar archive (which reads a
+// published index rather than a bundled array, so a new class needs no rebuild
+// and no deployment). Nothing regenerates this file any more.
 import type { ISODate } from './types';
 
 export interface SetarClassSession {
@@ -60,67 +69,18 @@ export const SETAR_CLASS_SESSIONS: SetarClassSession[] = [
 ];
 // [scan:end]
 
-import type { Lesson, LessonRecording } from './types';
-import { createLesson } from './factories';
-import { newId, nowISO } from './util';
-
-/** Turn "chahaar-mezrabe-afshaari-sabaa.pdf" → "chahaar mezrabe afshaari sabaa". */
+/** Turn "chahaar-mezrabe-afshaari-sabaa.pdf" -> "chahaar mezrabe afshaari sabaa". */
 export function cleanFileTitle(relPath: string): string {
   const base = relPath.split('/').pop() ?? relPath;
   return base.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
 }
 
-/** All NAS references a session contributes: the class video, then its scores/docs. */
-function sessionReferences(s: SetarClassSession, ts: string): LessonRecording[] {
-  const refs: LessonRecording[] = [];
-  if (s.video) {
-    refs.push({
-      id: newId(),
-      title: `Session ${s.n} — class recording`,
-      path: s.video,
-      kind: 'video',
-      date: s.date,
-      sizeBytes: s.sizeBytes,
-      createdAt: ts,
-    });
-  }
-  for (const pdf of s.pdfs) {
-    refs.push({ id: newId(), title: cleanFileTitle(pdf), path: pdf, kind: 'pdf', date: s.date, createdAt: ts });
-  }
-  for (const doc of s.docs ?? []) {
-    refs.push({ id: newId(), title: cleanFileTitle(doc), path: doc, kind: 'doc', date: s.date, createdAt: ts });
-  }
-  return refs;
-}
-
 /**
- * Build lesson records for the Setar classes, additively: only sessions whose
- * date isn't already present are returned, so importing twice is safe. Each
- * lesson carries NAS references — the class video plus its score PDFs and docs
- * — never the bytes. Pure; the store adds the result.
+ * Every path the legacy importer ever wrote, in session order. The repair path
+ * is checked against this whole list, not a sample of it.
  */
-export function buildSetarClassLessons(
-  instrumentId: string,
-  existingDates: ReadonlySet<string>,
-  now: Date,
-): Lesson[] {
-  const ts = nowISO(now);
-  return SETAR_CLASS_SESSIONS.filter((s) => !existingDates.has(s.date)).map((s) => {
-    const lesson = createLesson({ instrumentId, date: s.date, number: s.n }, now);
-    lesson.recordings = sessionReferences(s, ts);
-    return lesson;
-  });
-}
-
-/**
- * References a session should contribute that a lesson doesn't already have
- * (deduped by path) — used to backfill score PDFs onto lessons imported before
- * PDFs were referenced. Returns [] when the lesson already has them all.
- */
-export function missingSessionReferences(
-  session: SetarClassSession,
-  existingPaths: ReadonlySet<string>,
-  now: Date,
-): LessonRecording[] {
-  return sessionReferences(session, nowISO(now)).filter((r) => !existingPaths.has(r.path));
-}
+export const LEGACY_SEED_PATHS: string[] = SETAR_CLASS_SESSIONS.flatMap((s) => [
+  ...(s.video ? [s.video] : []),
+  ...s.pdfs,
+  ...(s.docs ?? []),
+]);

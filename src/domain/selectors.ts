@@ -6,10 +6,12 @@ import type {
   LessonAgendaEntry,
   Pathway,
   PracticeBlock,
+  PracticeDB,
   PracticeItem,
   Review,
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
+import { isUpcomingLesson } from './sourceArchive';
 import { persianSearchMatch } from './farsi';
 import { isOpenQuestion, itemsPreparedForLesson } from './lessonAgenda';
 import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
@@ -25,8 +27,30 @@ import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISOD
  * an iOS Arabic keyboard emits. Delegates to the existing, tested matcher: this
  * is the WIRING that was missing, not a second matcher.
  */
-export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string): boolean {
-  return persianSearchMatch(item.title, query);
+export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string, aliases?: string[]): boolean {
+  if (persianSearchMatch(item.title, query)) return true;
+  // A piece the archive knows carries the literal spellings it used to be
+  // filed under, so typing an old name still finds it. SEARCH ONLY — an alias
+  // is never consulted to decide WHICH piece a record is; that is identity,
+  // and identity is byte-exact (see `planArchiveImport`).
+  return (aliases ?? []).some((a) => persianSearchMatch(a, query));
+}
+
+/**
+ * Every literal alias each bound item can be searched by, keyed by item id.
+ * Derived from the accepted graph, never stored on the item.
+ */
+export function archiveSearchAliases(db: PracticeDB): Map<ID, string[]> {
+  const out = new Map<ID, string[]>();
+  for (const item of db.items) {
+    const ref = item.source;
+    if (!ref) continue;
+    const piece = db.archiveSources
+      ?.find((a) => a.id === ref.archiveId)
+      ?.pieces.find((p) => p.key === ref.pieceKey);
+    if (piece && piece.aliases.length > 0) out.set(item.id, piece.aliases);
+  }
+  return out;
 }
 
 /**
@@ -61,11 +85,16 @@ export function pathwaysForInstrumentFilter(pathways: Pathway[], filterInstrumen
   return filterInstrumentId ? pathways.filter((p) => p.instrumentId === filterInstrumentId) : pathways;
 }
 
-/** The nearest upcoming (today or later) lesson for an instrument, if any. */
+/**
+ * The nearest upcoming (today or later) lesson for an instrument, if any.
+ * "Upcoming" is `isUpcomingLesson` (sourceArchive.ts) — the SAME predicate the
+ * other three next-class selectors use, so an imported historical class can
+ * never become the next one through whichever of them a screen happens to ask.
+ */
 export function nextLessonFor(lessons: Lesson[], instrumentId: ID, now: Date): Lesson | undefined {
   const today = todayISODate(now);
   return lessons
-    .filter((l) => l.instrumentId === instrumentId && l.date >= today)
+    .filter((l) => l.instrumentId === instrumentId && isUpcomingLesson(l, today))
     .sort((a, b) => a.date.localeCompare(b.date))[0];
 }
 
@@ -74,7 +103,7 @@ export function nextLessonDates(lessons: Lesson[], now: Date): Map<ID, ISODate> 
   const map = new Map<ID, ISODate>();
   const today = todayISODate(now);
   for (const l of lessons) {
-    if (l.date < today) continue;
+    if (!isUpcomingLesson(l, today)) continue;
     const cur = map.get(l.instrumentId);
     if (!cur || l.date < cur) map.set(l.instrumentId, l.date);
   }

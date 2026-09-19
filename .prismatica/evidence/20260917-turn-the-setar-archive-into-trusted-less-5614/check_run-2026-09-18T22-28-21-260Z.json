@@ -1,0 +1,126 @@
+{
+  "contractId": "20260917-turn-the-setar-archive-into-trusted-less-5614",
+  "event": "check_run",
+  "at": "2026-09-18T22:28:21.260Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "not configured at init — reported, never silently skipped"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "50 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "18 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "FUTURE.md",
+    "README.md",
+    "docs/product-spec.md",
+    "docs/setar-archive.md",
+    "package.json",
+    "scripts/publish-setar-index.mjs",
+    "scripts/run-setar-index.sh",
+    "scripts/scan-setar-classes.mjs",
+    "src/components/ArchiveRefresh.tsx",
+    "src/components/ItemMaterial.tsx",
+    "src/components/ItemNotes.tsx",
+    "src/components/LessonNotes.tsx",
+    "src/components/ReferenceEditor.tsx",
+    "src/components/direction.test.ts",
+    "src/domain/index.ts",
+    "src/domain/io.test.ts",
+    "src/domain/io.ts",
+    "src/domain/itemFiles.test.ts",
+    "src/domain/itemFiles.ts",
+    "src/domain/lessonAgenda.ts",
+    "src/domain/migrations.test.ts",
+    "src/domain/migrations.ts",
+    "src/domain/recordings.test.ts",
+    "src/domain/recordings.ts",
+    "src/domain/scanSetarClasses.test.ts",
+    "src/domain/seed.ts",
+    "src/domain/selectors.test.ts",
+    "src/domain/selectors.ts",
+    "src/domain/setarClasses.test.ts",
+    "src/domain/setarClasses.ts",
+    "src/domain/sourceArchive.ts",
+    "src/domain/sourceReconcile.test.ts",
+    "src/domain/sourceReconcile.ts",
+    "src/domain/types.ts",
+    "src/pages/ItemDetail.tsx",
+    "src/pages/Lessons.tsx",
+    "src/pages/Repertoire.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/StartBlock.tsx",
+    "src/store/archiveIndex.test.ts",
+    "src/store/archiveIndex.ts",
+    "src/store/useStore.ts",
+    "tests/fixtures/setar-archive.json",
+    "tests/fixtures/setar-legacy-v13.json",
+    "tests/lessonNotes.browser.test.ts",
+    "tests/practiceBrowser.ts",
+    "tests/setarArchive.browser.test.ts",
+    "tests/setarInbound.browser.test.ts"
+  ],
+  "prismaticaVersion": "0.7.2"
+}

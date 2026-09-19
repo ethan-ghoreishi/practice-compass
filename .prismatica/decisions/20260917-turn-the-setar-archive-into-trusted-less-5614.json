@@ -1,0 +1,11 @@
+{
+  "id": "20260917-turn-the-setar-archive-into-trusted-less-5614",
+  "contractId": "20260917-turn-the-setar-archive-into-trusted-less-5614",
+  "patchId": "bc566c461fd850e39c3f7b62329b3f0a0ff23793",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-09-19T00:47:21.497Z",
+  "algorithm": "ed25519",
+  "signature": "gQfBB6uM7GCjOXnAFBnVo2KuMt1hbgqARWuu3jCBSYo6O2IGe2i7snWo7Ytbd8KN+SoKOAZv6rTaLT4k7wvpAw==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

@@ -1,9 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
 import V11_TEXT from '../../tests/fixtures/practice-decisions-v11.json?raw';
 import V12_TEXT from '../../tests/fixtures/practice-decisions-v12.json?raw';
+import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
+import SETAR_INDEX_TEXT from '../../tests/fixtures/setar-archive.json?raw';
 import { serializeExport, validateDB, parseImport } from './io';
 import { migrateToCurrent } from './migrations';
 import { createSeedDB } from './seed';
+import {
+  decodeSourceIndex,
+  membersForSession,
+  repeatChains,
+  resourceReference,
+  resourcesForPiece,
+  resourcesForSession,
+} from './sourceArchive';
+import { applyArchiveImport, planArchiveImport } from './sourceReconcile';
 import { createBlock, createItem, createLesson } from './factories';
 import { blocksInWindow, nextLessonDates, nextLessonFor } from './selectors';
 import { createPreparation, createQuestion, detachItem, detachLesson } from './lessonAgenda';
@@ -779,5 +790,427 @@ describe('the documented rollback route', () => {
     // An old v11 build can only restore an explicitly chosen PRE-upgrade
     // backup — which still exists, unchanged, and still says 11.
     expect((JSON.parse(V11_TEXT) as { schemaVersion: number }).schemaVersion).toBe(11);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-15 — the v14 source graph across the migration and validation boundary.
+// ---------------------------------------------------------------------------
+
+describe('the v14 source graph at the schema boundary', () => {
+  const NOW = new Date('2026-09-17T09:00:00.000Z');
+  const legacy = () => JSON.parse(V13_SETAR_TEXT) as { data: PracticeDB };
+
+  /**
+   * A source graph as it arrives — every value still `unknown`, because that is
+   * exactly what these mutations put into it. One shape for BOTH doors: the
+   * published index and a persisted `archiveSources` row carry the same graph,
+   * so one mutation can be handed to each and neither can be given a check the
+   * other misses.
+   */
+  type RawRow = Record<string, unknown>;
+  type RawSession = RawRow & { folder: string; resources: RawRow[]; members: RawRow[] };
+  type Graph = { pieces: RawRow[]; sessions: RawSession[]; diagnostics: RawRow[] };
+
+  /** First `[session, resource]` carrying a role, in the corpus fixture. */
+  function firstWithRole(g: Graph, role: string): [RawSession, RawRow] {
+    for (const sess of g.sessions) {
+      const res = sess.resources.find((r) => r.role === role);
+      if (res) return [sess, res];
+    }
+    throw new Error(`The corpus fixture has no "${role}" resource to mutate.`);
+  }
+
+  /** A demonstration group with at least TWO parts, and its session. */
+  function groupedDemo(g: Graph): [string, RawRow, RawSession] {
+    for (const sess of g.sessions) {
+      for (const r of sess.resources) {
+        if (!r.group) continue;
+        if (sess.resources.filter((x) => x.group === r.group).length > 1) return [r.group as string, r, sess];
+      }
+    }
+    throw new Error('The corpus fixture has no multi-part demonstration to mutate.');
+  }
+
+  /** A database with a real accepted graph in it, built by the real planner. */
+  function withGraph(): PracticeDB {
+    const base = validateDB(legacy());
+    const index = decodeSourceIndex(JSON.parse(SETAR_INDEX_TEXT));
+    const plan = planArchiveImport({ db: base, index, instrumentId: 'inst-setar', now: NOW });
+    return applyArchiveImport(base, plan);
+  }
+
+  it('archive schema migration and validation preserve the whole source graph', () => {
+    // --- v13 -> v14 is ADDITIVE ---------------------------------------------
+    const source = legacy().data;
+    const migrated = validateDB(legacy());
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(migrated.archiveSources).toEqual([]);
+    // Every legacy field comes through unchanged apart from the schema number
+    // and the new, empty collection.
+    const strip = (db: PracticeDB) => JSON.stringify({ ...db, schemaVersion: 0, archiveSources: [] });
+    expect(strip(migrated)).toBe(strip({ ...source, archiveSources: [] } as PracticeDB));
+    expect(migrated.blocks).toEqual(source.blocks);
+    expect(migrated.reviews).toEqual(source.reviews);
+    expect(migrated.lessonAgenda).toEqual(source.lessonAgenda);
+    expect(migrated.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+
+    // The WHOLE chain from the oldest supported version, and a repeat of it.
+    const fromOldest = migrateToCurrent(source, 2);
+    expect(Array.isArray(fromOldest.archiveSources)).toBe(true);
+    expect(migrateToCurrent(fromOldest, SCHEMA_VERSION)).toEqual(fromOldest);
+    // A database DECLARING the current schema but carrying no collection at
+    // all is still given one — gating on the version would hydrate an app with
+    // no source state and no way to say so.
+    const stray = { ...source, schemaVersion: SCHEMA_VERSION } as unknown as Record<string, unknown>;
+    delete stray.archiveSources;
+    expect(validateDB(stray).archiveSources).toEqual([]);
+    // ...and a stray LEGACY field on a current-declared database does not slip
+    // past validation just because the version says it should not be there.
+    expect(() =>
+      validateDB({
+        ...source,
+        schemaVersion: SCHEMA_VERSION,
+        lessonAgenda: [{ id: 'bad', kind: 'question', instrumentId: 'inst-setar', text: '' }],
+      }),
+    ).toThrow();
+
+    // --- the collection is RECONSTRUCTED, not merely accepted ---------------
+    const graphed = withGraph();
+    expect(graphed.archiveSources).toHaveLength(1);
+    const roundTripped = validateDB(JSON.parse(serializeExport(graphed, NOW)));
+    expect(roundTripped.archiveSources).toEqual(graphed.archiveSources);
+    expect(roundTripped.items.filter((i) => i.source).length).toBe(94);
+    expect(roundTripped.lessons.filter((l) => l.source).length).toBeGreaterThan(0);
+    // Revalidating its own output changes nothing, and an export round trip is
+    // byte-identical.
+    expect(serializeExport(validateDB(roundTripped), NOW)).toBe(serializeExport(graphed, NOW));
+
+    // --- every new persisted field is CHECKED --------------------------------
+    const mutate = (fn: (db: PracticeDB) => void): unknown => {
+      const copy = JSON.parse(JSON.stringify(graphed)) as PracticeDB;
+      fn(copy);
+      return copy;
+    };
+    const refuses = (fn: (db: PracticeDB) => void, pattern: RegExp) =>
+      expect(() => validateDB(mutate(fn))).toThrow(pattern);
+
+    refuses((d) => {
+      d.archiveSources.push({ ...d.archiveSources[0]! });
+    }, /Two archive sources share the id/);
+    refuses((d) => {
+      d.archiveSources[0]!.pieces.push({ ...d.archiveSources[0]!.pieces[0]! });
+    }, /two pieces keyed/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions.push({ ...d.archiveSources[0]!.sessions[0]! });
+    }, /two entries for session/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { indexHash: unknown }).indexHash = 42;
+    }, /no index hash/);
+    refuses((d) => {
+      d.archiveSources[0]!.instrumentId = 'no-such-instrument';
+    }, /instrument that does not exist/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.path = '../../etc/passwd';
+    }, /unsafe resource path/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.pieces = ['not-a-registry-key'];
+    }, /which this source does not describe/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { group: unknown }).group = { n: 1 };
+    }, /invalid part group/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.date = '2026-02-30';
+    }, /unreadable date/);
+    refuses((d) => {
+      d.archiveSources[0]!.suppressions = [{ kind: 'nonsense', ref: 'x', at: '2026-01-01T00:00:00.000Z' }] as never;
+    }, /suppression of an unknown kind/);
+
+    // --- EVERY NESTED FIELD A PRODUCTION READER DEREFERENCES ----------------
+    // The validator used to check a resource's path and its part group and
+    // walk straight past the rest of the graph, so a malformed nested value
+    // was accepted, persisted, and then thrown on by the first reader to
+    // touch it. These are that whole family, not one counterexample: the
+    // roles list `repeatChains` calls `.includes` on, the alias list
+    // `planArchiveImport` spreads, the kind/title `resourceReference` reads,
+    // and the session fields `sessionsForPiece` and the material composition
+    // walk.
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { roles: unknown }).roles = null;
+    }, /unreadable role list/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.members[0]!.roles = ['not-a-real-role'];
+    }, /unknown role/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.members[0] as unknown as { key: unknown }).key = null;
+    }, /claims an unknown piece/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = null;
+    }, /unreadable alias list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { aliases: unknown }).aliases = [1, 2];
+    }, /unreadable alias list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { composer: unknown }).composer = { name: 'x' };
+    }, /unreadable composer/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { sessions: unknown }).sessions = ['13'];
+    }, /invalid session number/);
+    refuses((d) => {
+      (d.archiveSources[0]!.pieces[0] as unknown as { provisional: unknown }).provisional = 'yes';
+    }, /unreadable flag/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { kind: unknown }).kind = 'executable';
+    }, /unknown kind/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { role: unknown }).role = null;
+    }, /unknown role/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { title: unknown }).title = 42;
+    }, /unreadable title/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { pieces: unknown }).pieces = null;
+    }, /unreadable piece list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { part: unknown }).part = '2';
+    }, /unreadable part number/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0]!.resources[0] as unknown as { size: unknown }).size = '10mb';
+    }, /unreadable size/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { resources: unknown }).resources = null;
+    }, /no resource list/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { members: unknown }).members = null;
+    }, /no membership list/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.folder = '../elsewhere';
+    }, /unsafe folder path/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { roster: unknown }).roster = null;
+    }, /unreadable roster/);
+    refuses((d) => {
+      d.archiveSources[0]!.sessions[0]!.roster = ['not-in-the-registry'];
+    }, /which it does not describe/);
+    refuses((d) => {
+      (d.archiveSources[0]!.sessions[0] as unknown as { rosterTrusted: unknown }).rosterTrusted = 'maybe';
+    }, /unreadable flag/);
+    refuses((d) => {
+      d.archiveSources[0]!.renames = [{ from: '../secret', to: 'x' }];
+    }, /rename with an unsafe path/);
+    refuses((d) => {
+      d.archiveSources[0]!.renames = [
+        { from: 'a/b.mp4', to: 'a/c.mp4' },
+        { from: 'a/b.mp4', to: 'a/d.mp4' },
+      ];
+    }, /more than one destination/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { diagnostics: unknown }).diagnostics = [{ path: 'x' }];
+    }, /unreadable diagnostic entry/);
+    refuses((d) => {
+      (d.archiveSources[0]!.suppressions as unknown[]) = [
+        { kind: 'resource', ref: 'x', itemId: 42, at: '2026-01-01T00:00:00.000Z' },
+      ];
+    }, /suppression with an unreadable item/);
+    refuses((d) => {
+      (d.archiveSources[0]!.suppressions as unknown[]) = [{ kind: 'resource', ref: 'x' }];
+    }, /suppression with no timestamp/);
+
+    // --- ABSENT IS A DEFAULT; PRESENT-AND-NULL IS A REFUSAL ----------------
+    // The list/num/bool rule closed this for lists and scalars and left every
+    // STRING with a default behind: `str(raw.form ?? '')` read absent and
+    // present-and-null as the same thing, so a `title: null` in an index whose
+    // digest was recomputed decoded to an untitled row the grammar was
+    // perfectly happy with. Absent is a default; null is a value, and a wrong
+    // one. Proved at BOTH doors from ONE mutation, so the published decoder
+    // and the persisted-graph validator cannot be given it separately.
+    const refusesBothDoors = (fn: (g: Graph) => void, pattern: RegExp) => {
+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
+      fn(index);
+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
+      refuses((d) => fn(d.archiveSources[0] as unknown as Graph), pattern);
+    };
+    const onIndexOnly = (fn: (g: Graph) => void, pattern: RegExp) => {
+      const index = JSON.parse(SETAR_INDEX_TEXT) as Graph;
+      fn(index);
+      expect(() => decodeSourceIndex(index)).toThrow(pattern);
+    };
+    onIndexOnly((g) => {
+      g.sessions[0]!.resources[0]!.title = null;
+    }, /title must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.form = null;
+    }, /form must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.notes = null;
+    }, /notes must be text/);
+    onIndexOnly((g) => {
+      g.pieces[0]!.composer = null;
+    }, /composer must be text/);
+    // `size` is genuinely optional, so ABSENT is a default here too — but a
+    // present null is still a value, and the DECODER refuses it rather than
+    // spreading a type-violating value into its own output for the grammar to
+    // catch downstream. (The persisted door has its own `size` check above.)
+    onIndexOnly((g) => {
+      g.sessions[0]!.resources[0]!.size = null;
+    }, /size must be a number/);
+    onIndexOnly((g) => {
+      g.diagnostics.push({ path: null, reason: 'x' });
+    }, /diagnostic path must be text/);
+
+    // --- SEMANTIC RELATIONS, NOT MERELY FIELD TYPES ------------------------
+    // A field-type grammar says every value is READABLE and nothing about
+    // whether the graph agrees with itself. A resource physically sitting in
+    // class 2's folder, listed under class 1, is type-perfect and attributes
+    // someone else's file to the wrong class on every screen that reads it;
+    // an arbitrary `group` on a non-demonstration invents one logical resource
+    // out of unrelated files. Both doors, one mutation, every time.
+    refusesBothDoors((g) => {
+      g.sessions[1]!.resources[0]!.path = `${g.sessions[0]!.folder}/smuggled.mp4`;
+    }, /not a file in its own folder/);
+    refusesBothDoors((g) => {
+      g.sessions[0]!.resources[0]!.path = `${g.sessions[0]!.folder}/deeper/x.mp4`;
+    }, /not a file in its own folder/);
+    refusesBothDoors((g) => {
+      // Attributed to a real registry piece that this session never records a
+      // membership for: the file would surface as that piece's material with
+      // nothing in the graph saying it belongs to it.
+      const [s0, res] = firstWithRole(g, 'نت');
+      const stranger = g.pieces.find((p) => !s0.members.some((m) => m.key === p.key))!;
+      res.pieces = [stranger.key];
+    }, /without recording that membership/);
+    refusesBothDoors((g) => {
+      const [, res] = firstWithRole(g, 'نت');
+      res.group = 'نمونه:invented';
+    }, /carries a part group but is not a demonstration/);
+    refusesBothDoors((g) => {
+      const [, res] = firstWithRole(g, 'ضبط-کلاس');
+      res.pieces = [g.pieces[0]!.key];
+    }, /class recording and cannot name a piece/);
+    refusesBothDoors((g) => {
+      const [sess] = firstWithRole(g, 'ضبط-کلاس');
+      sess.hasClassRecording = false;
+    }, /disagrees with itself about having a class recording/);
+    refusesBothDoors((g) => {
+      const sess = g.sessions.find((x) => !x.resources.some((r) => r.role === 'ضبط-کلاس'))!;
+      sess.hasClassRecording = true;
+    }, /disagrees with itself about having a class recording/);
+    // A demonstration's PARTS are one resource told in order. Parts that are
+    // material for different pieces are not one resource, and two parts
+    // numbered alike have no order to be read in.
+    refusesBothDoors((g) => {
+      const [, first, sess] = groupedDemo(g);
+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
+      sibling.pieces = [];
+    }, /parts belong to different pieces/);
+    refusesBothDoors((g) => {
+      const [, first, sess] = groupedDemo(g);
+      const sibling = sess.resources.find((r) => r.group === first.group && r !== first)!;
+      sibling.part = first.part;
+    }, /two parts numbered alike/);
+
+    // --- AND THE RECORD'S OWN FIELDS, not only its nested graph -------------
+    // `acceptedAt` is what Settings renders (`acceptedAt.slice(0, 16)`) to say
+    // when the index last changed. It was the one persisted field with no
+    // check at all: a v14 import carrying `acceptedAt: null` was accepted and
+    // then threw while the screen rendered. The fix is this door, never a
+    // guard in the component.
+    for (const bad of [null, 42, '', 'yesterday', '2026-02-30T12:00:00.000Z', '2026-09-17']) {
+      refuses((d) => {
+        (d.archiveSources[0] as unknown as { acceptedAt: unknown }).acceptedAt = bad;
+      }, /unreadable accepted time/);
+    }
+    refuses((d) => {
+      delete (d.archiveSources[0] as unknown as { renames?: unknown }).renames;
+    }, /no rename log/);
+    refuses((d) => {
+      (d.archiveSources[0] as unknown as { diagnostics?: unknown }).diagnostics = null;
+    }, /no diagnostic list/);
+
+    // The POSITIVE half: a graph this door ACCEPTS is one every production
+    // reader can walk without throwing. The counterexample above reached
+    // `repeatChains` and crashed the material list; this asserts the whole
+    // reader surface over the whole accepted graph, not one call.
+    const accepted = validateDB(graphed);
+    const live = accepted.archiveSources[0]!;
+    for (const piece of live.pieces) {
+      expect(Array.isArray(repeatChains(live, piece.key))).toBe(true);
+      expect(Array.isArray(resourcesForPiece(live, piece.key))).toBe(true);
+      for (const r of resourcesForPiece(live, piece.key)) {
+        expect(typeof resourceReference(live.id, r).title).toBe('string');
+      }
+      expect([...new Set([piece.key, ...piece.aliases])].length).toBeGreaterThan(0);
+    }
+    for (const sess of live.sessions) {
+      expect(Array.isArray(membersForSession(live, sess.n))).toBe(true);
+      expect(Array.isArray(resourcesForSession(live, sess.n))).toBe(true);
+    }
+
+    // Bindings: dangling, duplicated, or on the wrong instrument.
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'setar-classes', pieceKey: 'not-in-the-registry' };
+    }, /which archive "setar-classes" does not describe/);
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.source = { archiveId: 'no-such-archive', pieceKey: 'عراق' };
+    }, /which is not present/);
+    refuses((d) => {
+      const bound = d.items.find((i) => i.source)!;
+      // 'own-iraq' carries no binding of its own, so this is a genuine second
+      // claim on one canonical piece.
+      d.items.find((i) => i.id === 'own-iraq')!.source = { ...bound.source! };
+    }, /Two items are bound to piece/);
+    refuses((d) => {
+      d.instruments.push({ ...d.instruments[0]!, id: 'inst-tar', name: 'Tar' });
+      d.items.find((i) => i.source)!.instrumentId = 'inst-tar';
+    }, /belongs to another instrument/);
+    refuses((d) => {
+      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { archiveId: 'setar-classes', sessionN: 4242 };
+    }, /which archive "setar-classes" does not describe/);
+    refuses((d) => {
+      const bound = d.lessons.find((l) => l.source)!;
+      // The owner's own upcoming class 38 — deliberately an UNBOUND record, so
+      // this really is a second claim on one session rather than a no-op.
+      d.lessons.find((l) => l.id === 'L-38-upcoming')!.source = { ...bound.source! };
+    }, /Two lessons are bound to session/);
+    // Manual direct item references obey the same path rules.
+    refuses((d) => {
+      d.items.find((i) => i.id === 'own-iraq')!.references = [
+        { id: 'x', title: 'x', path: '../secret.mp4', kind: 'video', createdAt: '2026-01-01T00:00:00.000Z' },
+      ];
+    }, /unsafe reference path/);
+
+    // --- a MISSING FILE is a valid state, not a broken graph ----------------
+    const unavailable = mutate((d) => {
+      d.archiveSources[0]!.sessions[0]!.resources[0]!.unavailable = true;
+      d.archiveSources[0]!.pieces[0]!.unavailable = true;
+    }) as PracticeDB;
+    expect(() => validateDB(unavailable)).not.toThrow();
+    expect(validateDB(unavailable).archiveSources[0]!.pieces[0]!.unavailable).toBe(true);
+
+    // --- a newer schema, and an unknown index format, are refused -----------
+    expect(() => validateDB({ ...graphed, schemaVersion: SCHEMA_VERSION + 1 })).toThrow(/newer version/);
+    expect(() => decodeSourceIndex({ format: 'something-else', version: 1 })).toThrow(/not a Setar archive index/);
+    expect(() => decodeSourceIndex({ ...JSON.parse(SETAR_INDEX_TEXT), version: 99 })).toThrow(/newer scanner/);
+
+    // --- nothing above disturbed practice text or the attachment rules ------
+    expect(roundTripped.items.find((i) => i.id === 'own-dashti')!.notes).toBe(
+      'Teacher: keep the mezrab light on the return.',
+    );
+    expect(roundTripped.blocks[0]!.observation).toBe('The return is still heavy.');
+    expect(roundTripped.attachments).toEqual(graphed.attachments);
+    const attachment = {
+      id: 'att-1',
+      ownerType: 'lesson' as const,
+      ownerId: graphed.lessons[0]!.id,
+      name: 'handout.pdf',
+      mime: 'application/pdf',
+      size: 2048,
+      kind: 'pdf' as const,
+      createdAt: '2026-09-10T19:00:00.000Z',
+    };
+    expect(validateDB({ ...graphed, attachments: [attachment] }).attachments).toEqual([attachment]);
+    expect(() => validateDB({ ...graphed, attachments: [attachment, attachment] })).toThrow(/share the id/);
   });
 });

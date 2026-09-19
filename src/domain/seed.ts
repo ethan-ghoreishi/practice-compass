@@ -254,12 +254,15 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     now,
   );
   // A class recording (video) + a score (PDF) live on the NAS, referenced
-  // (never stored) by the app.
+  // (never stored) by the app. ARCHIVE-RELATIVE, like every reference this app
+  // writes: the device media base is the archive root. These are the archive's
+  // own pre-normalisation names, so a Refresh repairs them through the rename
+  // log exactly as it repairs the owner's real legacy rows.
   pastLesson.recordings = [
     {
       id: newId(),
       title: 'ضبطِ کلاس',
-      path: 'setar-classes/session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
+      path: 'session-37-09-07-2026/2026-07-09_Setar_Class_FIXED_v3.mp4',
       kind: 'video',
       date: agoDate(now, -16),
       sizeBytes: 686136347,
@@ -268,7 +271,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       id: newId(),
       title: 'چهارمضرابِ افشاری صبا',
-      path: 'setar-classes/session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
+      path: 'session-37-09-07-2026/chahaar-mezrabe-afshaari-sabaa.pdf',
       kind: 'pdf',
       date: agoDate(now, -16),
       createdAt: nowISO(now),
@@ -311,6 +314,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     attachments: [],
     lessons,
     lessonAgenda,
+    archiveSources: [],
   };
 }
 
@@ -328,5 +332,6 @@ export function emptyDB(): PracticeDB {
     attachments: [],
     lessons: [],
     lessonAgenda: [],
+    archiveSources: [],
   };
 }

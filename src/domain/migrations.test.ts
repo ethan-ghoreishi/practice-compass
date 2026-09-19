@@ -251,6 +251,9 @@ describe('v11 → v12 · legacy lesson intent', () => {
         ...db,
         schemaVersion: 0,
         lessonAgenda: [],
+        // v14 adds an EMPTY source graph. ac-15 owns that step; here it is
+        // normalised away so this assertion stays about the v12 conversion.
+        archiveSources: [],
         items: db.items.map((i) => {
           const copy = { ...i } as Record<string, unknown>;
           delete copy.assignedForLesson;

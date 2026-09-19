@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import { clearBlobs, deleteBlob, idbStorage, storageWasEmpty } from './idb';
+import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
 import { withRevision } from './revision';
 import {
   acknowledgeThrough,
@@ -61,11 +61,16 @@ import {
   emptyDB,
   newId,
   nowISO,
+  withSuppression,
+  withoutSuppression,
+  planArchiveImport,
+  applyArchiveImport,
+  type ImportPlan,
+  type ImportSummary,
+  type ReconcileDecision,
+  type SourceIndex,
   SCHEMA_VERSION,
   seedPathways,
-  buildSetarClassLessons,
-  missingSessionReferences,
-  SETAR_CLASS_SESSIONS,
   validateDB,
   SchemaTooNewError,
   type BlockMode,
@@ -107,6 +112,25 @@ import type { CreateItemInput } from '../domain/factories';
 // ---------------------------------------------------------------------------
 
 export type ThemePref = 'system' | 'light' | 'dark';
+
+export interface ArchiveCommitResult {
+  ok: boolean;
+  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved'. */
+  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
+  message: string;
+  summary?: ImportSummary;
+  /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
+  staleDecisions?: ReconcileDecision[];
+}
+
+/**
+ * Module scope, for the same reason `githubSync`'s own `running` is: it
+ * describes THIS DEVICE'S in-flight durability, not app data. A failed
+ * IndexedDB write leaves the new graph in memory but not on disk, so the next
+ * attempt must WRITE AGAIN even though nothing in the plan changed — otherwise
+ * the retry says "Already current" over data that was never saved.
+ */
+let archivePersistFailed = false;
 
 export interface ActiveSession {
   itemId: ID;
@@ -308,8 +332,6 @@ interface StoreState {
     },
   ) => ID;
   removeLessonRecording: (lessonId: ID, recordingId: ID) => void;
-  /** Additively import the Setar class history (NAS references). Returns count added. */
-  importSetarClasses: (instrumentId: ID) => number;
   unlinkItemFromLesson: (lessonId: ID, itemId: ID) => void;
 
   // Materials
@@ -340,6 +362,37 @@ interface StoreState {
   /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
   removeCatalogItem: (id: ID) => boolean;
   placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
+
+  // --- The archive source graph -------------------------------------------
+  /**
+   * Preview what a published index would do to THIS database, against the
+   * revision it was decided at. Pure decision, no write.
+   */
+  previewArchiveImport: (input: {
+    index: SourceIndex;
+    instrumentId: ID;
+    decisions?: ReconcileDecision[];
+    /** This device's own media base, for converting a stored full URL. */
+    verifiedBase?: string;
+    now?: Date;
+  }) => { plan: ImportPlan; rev: number };
+  /** Apply a previewed plan in ONE mutation, and wait for IndexedDB to say so. */
+  commitArchiveImport: (input: {
+    index: SourceIndex;
+    instrumentId: ID;
+    decisions?: ReconcileDecision[];
+    verifiedBase?: string;
+    decidedFromRev: number;
+    now?: Date;
+  }) => Promise<ArchiveCommitResult>;
+  /** Hide ONE archive resource — on one item, or everywhere. */
+  hideArchiveResource: (archiveId: ID, path: string, itemId?: ID) => void;
+  /** Lift a suppression, so the next refresh may bring that entity back. */
+  resetArchiveSuppression: (archiveId: ID, kind: 'piece' | 'session' | 'resource' | 'link', ref: string) => void;
+  /** Attach a direct NAS reference to an item — no artificial lesson needed. */
+  addItemReference: (itemId: ID, ref: { title: string; path: string; kind?: LessonFileKind; notes?: string }) => void;
+  /** Remove a direct item reference. Never touches the file it points at. */
+  removeItemReference: (itemId: ID, refId: ID) => void;
 
   // Lesson agenda — commitments and questions, each naming its own class
   /** Commit an item to a specific class (or capture it unassigned). Returns the entry id. */
@@ -563,11 +616,24 @@ export const useStore = create<StoreState>()(
 
       updateLesson: (id, patch) => {
         const now = new Date();
+        // AN OMITTED FIELD AND A DELIBERATELY EMPTY ONE ARE DIFFERENT THINGS.
+        // `patch.notes ?? l.notes` could not tell them apart, so clearing a
+        // lesson's notes was IMPOSSIBLE: the editor sends `undefined` for empty
+        // text and the store handed the previous notes straight back, which
+        // looked to the owner like the app silently refusing to delete what
+        // they had just deleted. The PRESENCE of the key is the intent — the
+        // same distinction `resolveReviewDate` already makes for a date.
+        const clearsNotes = 'notes' in patch && !patch.notes;
         set((s) => ({
           db: {
             ...s.db,
             lessons: s.db.lessons.map((l) =>
-              l.id === id ? touch({ ...l, ...patch, notes: patch.notes ?? l.notes }, now) : l,
+              l.id === id
+                ? touch(
+                    { ...l, ...patch, notes: clearsNotes ? undefined : ('notes' in patch ? patch.notes : l.notes) },
+                    now,
+                  )
+                : l,
             ),
           },
         }));
@@ -575,6 +641,7 @@ export const useStore = create<StoreState>()(
 
       deleteLesson: (id) => {
         const detachNow = new Date();
+        const lessonSource = get().db.lessons.find((l) => l.id === id)?.source;
         // The lesson owns its attachments; linked items are never touched.
         // ownerId alone is not a lesson id — an item can share it — so only
         // an attachment whose ownerType is ALSO 'lesson' is this lesson's own.
@@ -589,6 +656,18 @@ export const useStore = create<StoreState>()(
             // which class they were for. Nothing is deleted and nothing is
             // silently reassigned to another class.
             lessonAgenda: detachAgendaLesson(s.db.lessonAgenda, id, detachNow),
+            // A DELETION IS A DECISION, and the next refresh must respect it:
+            // without this the very same class comes straight back, because the
+            // source still describes it. Recorded in the SAME mutation as the
+            // delete, so there is no window in which one happened and not the
+            // other.
+            archiveSources: lessonSource
+              ? withSuppression(s.db.archiveSources, lessonSource.archiveId, {
+                  kind: 'session',
+                  ref: String(lessonSource.sessionN),
+                  at: nowISO(detachNow),
+                })
+              : s.db.archiveSources,
           },
         }));
       },
@@ -646,58 +725,15 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      // Additively import the user's Setar class history as lessons with NAS
-      // references (class video + score PDFs/docs). New dates become new
-      // lessons; dates that already have a lesson get any MISSING references
-      // backfilled (path-deduped) — so a re-run after PDFs were added fills
-      // them in without ever duplicating. Idempotent. Returns lessons added.
-      importSetarClasses: (instrumentId) => {
-        const now = new Date();
-        const ownLessons = get().db.lessons.filter((l) => l.instrumentId === instrumentId);
-        const existingDates = new Set(ownLessons.map((l) => l.date));
-        const added = buildSetarClassLessons(instrumentId, existingDates, now);
-
-        // Backfill references AND missing lesson numbers onto lessons that
-        // already exist for a session date. A number is only ever filled in
-        // when absent — a user-edited number is never overwritten.
-        const byDate = new Map(ownLessons.map((l) => [l.date, l]));
-        const backfill = new Map<string, LessonRecording[]>();
-        const numberBackfill = new Map<string, number>();
-        for (const session of SETAR_CLASS_SESSIONS) {
-          const lesson = byDate.get(session.date);
-          if (!lesson) continue;
-          const havePaths = new Set((lesson.recordings ?? []).map((r) => r.path));
-          const missing = missingSessionReferences(session, havePaths, now);
-          if (missing.length > 0) backfill.set(lesson.id, missing);
-          if (lesson.number === undefined) numberBackfill.set(lesson.id, session.n);
-        }
-
-        if (added.length === 0 && backfill.size === 0 && numberBackfill.size === 0) return 0;
-        set((s) => ({
-          db: {
-            ...s.db,
-            lessons: [
-              ...s.db.lessons.map((l) =>
-                backfill.has(l.id) || numberBackfill.has(l.id)
-                  ? touch(
-                      {
-                        ...l,
-                        recordings: backfill.has(l.id) ? [...(l.recordings ?? []), ...backfill.get(l.id)!] : l.recordings,
-                        number: numberBackfill.get(l.id) ?? l.number,
-                      },
-                      now,
-                    )
-                  : l,
-              ),
-              ...added,
-            ],
-          },
-        }));
-        return added.length;
-      },
-
       unlinkItemFromLesson: (lessonId, itemId) => {
         const now = new Date();
+        const { db } = get();
+        // An archive association is DERIVED from the session's membership, not
+        // stored on the lesson — so removing it means recording the owner's
+        // decision, in the same mutation, or the graph simply asserts it again.
+        const lessonSource = db.lessons.find((l) => l.id === lessonId)?.source;
+        const itemSource = db.items.find((i) => i.id === itemId)?.source;
+        const both = lessonSource && itemSource && lessonSource.archiveId === itemSource.archiveId ? lessonSource : null;
         set((s) => ({
           db: {
             ...s.db,
@@ -706,6 +742,13 @@ export const useStore = create<StoreState>()(
                 ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== itemId) }, now)
                 : l,
             ),
+            archiveSources: both
+              ? withSuppression(s.db.archiveSources, both.archiveId, {
+                  kind: 'link',
+                  ref: `${both.sessionN}:${itemSource!.pieceKey}`,
+                  at: nowISO(now),
+                })
+              : s.db.archiveSources,
           },
         }));
       },
@@ -762,6 +805,15 @@ export const useStore = create<StoreState>()(
           rest.instrumentId !== undefined && current && rest.instrumentId !== current.instrumentId
             ? rest.instrumentId
             : undefined;
+        // AN ARCHIVE BINDING NAMES ONE INSTRUMENT'S SOURCE. Moving the item
+        // elsewhere would leave a binding that resolves to the wrong
+        // instrument — a graph `validateDB` refuses at every inbound door, so
+        // writing it here would produce a database this device could not
+        // re-import. Refuse BEFORE the mutation and say what to do instead;
+        // detaching from the archive is a separate, explicit act.
+        if (newInstrumentId && current?.source) {
+          return 'This piece is linked to the Setar archive. Detach it from the archive before moving it to another instrument.';
+        }
         // A SAVED mode change from manual/fixed-cadence to automatic is the
         // same administrative transfer the item screen's own button performs —
         // the form must not be a second, quieter route that leaves the date's
@@ -849,6 +901,7 @@ export const useStore = create<StoreState>()(
         const owned = itemOwnedAttachments(get().db.attachments, id);
         for (const a of owned) void deleteBlob(a.id);
         const now = new Date();
+        const itemSource = get().db.items.find((i) => i.id === id)?.source;
         set((s) => ({
           db: {
             ...s.db,
@@ -870,6 +923,15 @@ export const useStore = create<StoreState>()(
             // survive, detached, because a question and its answer are the
             // owner's record of a class, not a property of the item.
             lessonAgenda: detachAgendaItem(s.db.lessonAgenda, id, now),
+            // The same rule as a deleted class: a refresh, a reload and a sync
+            // must not resurrect a piece the owner deliberately removed.
+            archiveSources: itemSource
+              ? withSuppression(s.db.archiveSources, itemSource.archiveId, {
+                  kind: 'piece',
+                  ref: itemSource.pieceKey,
+                  at: nowISO(now),
+                })
+              : s.db.archiveSources,
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
@@ -893,6 +955,173 @@ export const useStore = create<StoreState>()(
           db: {
             ...s.db,
             items: s.db.items.map((i) => (i.id === itemId ? touch({ ...i, stageId }, now) : i)),
+          },
+        }));
+      },
+
+      previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
+        // ONE statement, so the plan and the revision it was decided against
+        // cannot drift apart across an await that does not exist yet.
+        const { db, rev } = get();
+        return {
+          plan: planArchiveImport({ db, index, instrumentId, decisions, verifiedBase, now: now ?? new Date() }),
+          rev,
+        };
+      },
+
+      commitArchiveImport: async ({ index, instrumentId, decisions = [], verifiedBase, decidedFromRev, now }) => {
+        const at = now ?? new Date();
+        // REBASE, never overwrite. A block finished, a note saved or an item
+        // deleted while the index was being fetched has bumped `rev`; the plan
+        // is recomputed against the database as it is NOW, so none of that work
+        // is lost. A rebase that turns up a NEW question is not something to
+        // decide on the owner's behalf — it goes back for another look.
+        const before = get();
+        const rebased = before.rev !== decidedFromRev;
+        const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
+        if (rebased && plan.questions.length > 0) {
+          return {
+            ok: false,
+            status: 'stale',
+            message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
+          };
+        }
+        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
+        // QUESTION is not the only way a rebase invalidates an answer: the
+        // owner choosing the archive's composer over an empty field, then
+        // typing one of their own before pressing Apply, raised no question at
+        // all and overwrote the words they had just written. The plan reports
+        // both kinds of premise now — a moved value and a link target that has
+        // been deleted, bound elsewhere or moved instrument — and this refuses
+        // on either, whether or not `rev` moved.
+        if (plan.staleDecisions.length > 0) {
+          return {
+            ok: false,
+            status: 'stale',
+            message: 'Something you had already decided about has changed since. Look again before applying.',
+            staleDecisions: plan.staleDecisions,
+          };
+        }
+
+        // "ALREADY CURRENT" IS WHATEVER `applyArchiveImport` ITSELF SAYS.
+        // It returns the SAME OBJECT when a plan changes nothing, so asking it
+        // is one source of truth for the question. The summary's own
+        // `unchanged` was a second, and it answered about the INDEX alone: an
+        // owner decision taken against an already-current index — skipping a
+        // candidate, applying one registry field, a path the rename log moved —
+        // was reported "Already current" and thrown away unwritten.
+        const proposed = applyArchiveImport(before.db, plan, decisions);
+        if (proposed === before.db && !archivePersistFailed) {
+          return { ok: true, status: 'unchanged', message: 'Already current.', summary: plan.summary };
+        }
+
+        // VALIDATE THE WHOLE PROPOSED DATABASE BEFORE INSTALLING ANY OF IT —
+        // the same function every inbound door runs. A graph this device would
+        // refuse to import is a graph it must not write.
+        try {
+          validateDB(proposed);
+        } catch (e) {
+          return {
+            ok: false,
+            status: 'refused',
+            message: e instanceof Error ? e.message : 'That index could not be applied.',
+          };
+        }
+
+        // ONE synchronous mutation. No per-file commit, no blob copying, and
+        // never `importDB`/`installDatabase`: this ADDS to the database, it
+        // does not replace it, so the running clock, the routine, the plan and
+        // every unrelated field stay exactly as they are.
+        set({ db: proposed });
+        try {
+          await storageSettled();
+        } catch {
+          // The store already holds the new graph, so a retry that asked
+          // "has anything changed?" would answer "no" and save nothing. The
+          // flag is what makes the retry a real write rather than a false
+          // "Already current".
+          archivePersistFailed = true;
+          return {
+            ok: false,
+            status: 'unsaved',
+            message: 'The archive was read, but this device could not save it. Try again.',
+            summary: plan.summary,
+          };
+        }
+        archivePersistFailed = false;
+        return { ok: true, status: 'applied', message: 'Archive updated.', summary: plan.summary };
+      },
+
+      hideArchiveResource: (archiveId, path, itemId) => {
+        const at = nowISO(new Date());
+        set((s) => ({
+          db: {
+            ...s.db,
+            // `itemId` present hides it on THAT item only — a demonstration
+            // shared by eight pieces stays available to the other seven.
+            archiveSources: withSuppression(s.db.archiveSources, archiveId, {
+              kind: 'resource',
+              ref: path,
+              ...(itemId ? { itemId } : {}),
+              at,
+            }),
+          },
+        }));
+      },
+
+      resetArchiveSuppression: (archiveId, kind, ref) => {
+        set((s) => ({
+          db: {
+            ...s.db,
+            archiveSources: withoutSuppression(
+              s.db.archiveSources,
+              archiveId,
+              (x) => x.kind === kind && x.ref === ref,
+            ),
+          },
+        }));
+      },
+
+      addItemReference: (itemId, ref) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) =>
+              i.id === itemId
+                ? touch(
+                    {
+                      ...i,
+                      references: [
+                        ...(i.references ?? []),
+                        {
+                          id: newId(),
+                          title: ref.title.trim() || ref.path,
+                          path: ref.path.trim(),
+                          kind: ref.kind ?? 'video',
+                          notes: ref.notes?.trim() || undefined,
+                          createdAt: nowISO(now),
+                        },
+                      ],
+                    },
+                    now,
+                  )
+                : i,
+            ),
+          },
+        }));
+      },
+
+      removeItemReference: (itemId, refId) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            items: s.db.items.map((i) =>
+              i.id === itemId
+                ? touch({ ...i, references: (i.references ?? []).filter((r) => r.id !== refId) }, now)
+                : i,
+            ),
           },
         }));
       },
