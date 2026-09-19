@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-16T22:17:11.741Z
-        commit: 6cf0c5de687a5b8fc6d9926bfc2a27263e7995d5
+        at: 2026-09-19T10:45:36.967Z
+        commit: e540995e530ad34a02ae0b03e90cc302c4d3630d
     - actor: The musician
       action: Taps + on a suggestion.
       shows: The row becomes a real item, honestly marked 'Not practised yet', with a
@@ -32,8 +32,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-16T22:17:11.741Z
-        commit: 6cf0c5de687a5b8fc6d9926bfc2a27263e7995d5
+        at: 2026-09-19T10:45:36.967Z
+        commit: e540995e530ad34a02ae0b03e90cc302c4d3630d
     - actor: The musician
       action: Undoes it, or removes it later from the row's − button, if it was added
         by mistake.
@@ -44,8 +44,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-16T22:17:11.741Z
-        commit: 6cf0c5de687a5b8fc6d9926bfc2a27263e7995d5
+        at: 2026-09-19T10:45:36.967Z
+        commit: e540995e530ad34a02ae0b03e90cc302c4d3630d
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -53,8 +53,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-16T22:17:11.741Z
-        commit: 6cf0c5de687a5b8fc6d9926bfc2a27263e7995d5
+        at: 2026-09-19T10:45:36.967Z
+        commit: e540995e530ad34a02ae0b03e90cc302c4d3630d
     - actor: The musician
       action: Optionally pins the stage as the current one, or edits its code, title
         and intro.
@@ -64,8 +64,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-16T22:17:11.741Z
-        commit: 6cf0c5de687a5b8fc6d9926bfc2a27263e7995d5
+        at: 2026-09-19T10:45:36.967Z
+        commit: e540995e530ad34a02ae0b03e90cc302c4d3630d
   endsWith: The next piece of the route is now a real practice item with real
     practice behind it, and the stage's progress reflects it honestly.
   variations:
