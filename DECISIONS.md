@@ -2,6 +2,28 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## A raw NUL byte in a source file made the merge gate unpassable (2026-09-19)
+
+`suppressionKey` (`sourceReconcile.ts`) joined its parts with a LITERAL NUL byte typed into the
+source rather than the escape `\u0000`. Git calls any file carrying a NUL in its first 8000 bytes
+BINARY, so the diff shipped `Binary files /dev/null and b/src/domain/sourceReconcile.ts differ` in
+place of that file's 43KB of text — and `git patch-id --stable` hashes such an entry differently
+across git versions. Measured here: the two gits produce BYTE-IDENTICAL diffs (one sha1), then
+disagree on the patch-id — `d058de3c` under git 2.28.0 (the one first on the owner's PATH,
+`/usr/local/bin/git`), `529ef9cf` under 2.54.0 — and agree the instant that one file is excluded.
+The GitHub runner uses 2.55.0.
+
+Prismatica binds the sealed review and the signed owner decision to that patch-id, so every gate
+run on GitHub read BOTH as stale ("re-review", "re-accept") while the identical published CLI
+passed locally on the same commit. Re-accepting could not have fixed it: the owner's git was
+recording a number the runner would never compute. Nothing about the app was wrong, and nothing
+about `npx --yes prismatica@0.7.2` versus the `prismatica` on PATH was the cause.
+
+The escape is byte-identical at runtime — `suppressionKey` is module-private and only feeds a
+`Set`, so no stored key and no behaviour changes. The lesson is the general one: never type a
+control byte into source, and `git patch-id --stable` is stable across ORDERINGS, not across git
+VERSIONS, once a diff carries a binary entry.
+
 ## Correction: the private Vite cache was one race, not the cure; the remaining one was a sync left in flight (2026-09-19)
 
 GitHub disproved the previous entry's "one cause, both shapes" claim: with a private `cacheDir`
