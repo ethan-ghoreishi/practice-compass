@@ -3,7 +3,7 @@ id: 20260920-update-prismatica-ci-gate-to-0-8-0-a40f
 title: Update Prismatica CI gate to 0.8.0
 issue: update/0.8.0
 tier: light
-stage: prove
+stage: ship
 baseline:
   commit: a9ec37878832beb6ee37870c31b4afbeb7581480
   branch: main
