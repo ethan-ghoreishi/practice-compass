@@ -2303,6 +2303,25 @@ and are ABSENT with a diagnostic where it cannot — a wrong tempo on a real
 section is worse than none, and the mechanism is validated against 1A's
 hand-authored ground truth.
 
+**AND A PRESERVED KEY GOES TO THE SECTION IT ACTUALLY NAMES.** Where a level
+ships two folders of one family, the base key is taken by the one with real
+content, never merely the lower ordinal: 2E's `08_Sight_Reading` is an empty stub
+beside the real `09_Sight_Reading`, and first-by-ordinal left an already-added
+item attached to a titleless folder while the level's own routine named the
+other — a key that survives but points at the wrong thing is the same failure as
+a key that disappears, wearing a passing test. A duplicate key is two sections
+claiming ONE item (`stageUnits` maps a key to a single item, `addFromCatalog`
+takes the first entry under it): the scanner refuses to emit one and
+`pathways.test.ts` holds the generated data to it.
+
+**MATERIAL IS DERIVED; GUIDANCE IS COPIED ONCE.** The "regenerating reaches every
+item that already exists" claim above is bounded to FILES. A section's guidance,
+BPM line and checklist are written into the item's Working notes at creation by
+`itemFromCatalogEntry`, exactly like every other catalogue entry — and must stay
+that way, because the notebook is the owner's to edit and a regeneration that
+overwrote it would destroy their words. Re-running the scanner updates an
+existing item's material and not its notes.
+
 **KEYS ARE ADDED, NEVER RENAMED — AND THAT IS A TEST, NOT AN INTENTION.** Every
 catalogue key the old generic `cgsOutline()` placeholders produced (`chords`,
 `arpeggios`, `scales`, `exercises`, `rhythm-study`, `sight-reading`, `piece`,

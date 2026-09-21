@@ -243,6 +243,26 @@ describe('the CGS course import and what existing data may reference', () => {
     expect(catalogForStage(stageId).map((e) => e.key)).toEqual(CGS_KEYS_BEFORE_THE_COURSE_IMPORT['1A']);
   });
 
+  it('gives each preserved key to the section it actually names, and never to two at once', () => {
+    // A duplicate key is two sections claiming ONE item: `stageUnits` maps a key
+    // to a single item and `addFromCatalog` takes the first entry under it. The
+    // scanner refuses to emit one, and this holds the generated data to it.
+    for (const code of Object.keys(CGS_KEYS_BEFORE_THE_COURSE_IMPORT)) {
+      const keys = catalogForStage(stageIdFor(SEED_PATHWAY_IDS.guitar, code)).map((e) => e.key);
+      expect(new Set(keys).size, `${code} has a duplicate catalog key`).toBe(keys.length);
+    }
+
+    // And where a level ships two folders of one family, the preserved key goes
+    // to the section with real content — 2E's `08_Sight_Reading` is an empty
+    // stub beside the real `09_Sight_Reading`, and first-by-ordinal would have
+    // left an already-added item attached to the titleless one while the
+    // level's own routine named the other.
+    const twoE = catalogForStage(stageIdFor(SEED_PATHWAY_IDS.guitar, '2E'));
+    expect(twoE.find((e) => e.key === 'sight-reading')?.title).toBe(
+      '2E Sight-Reading: All Strings (3 PDFs)',
+    );
+  });
+
   it('adds real sections rather than renaming one — every level gained entries', () => {
     for (const code of Object.keys(CGS_KEYS_BEFORE_THE_COURSE_IMPORT)) {
       if (code === '1A') continue;

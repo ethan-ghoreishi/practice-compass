@@ -601,6 +601,24 @@ describe('the single active clock guard, enforced at every entry point', () => {
   // boundary and announce a segment the user just chose to end themselves.
   // This proves the real wiring, not just the pure acknowledgeThrough call
   // in isolation (practiceSignal.test.ts).
+  it('refuses to restart a run already in progress, even its own routine, rather than zeroing its elapsed time', () => {
+    // Choosing a duration is reachable from Today, a stage and a pathway, all
+    // of which a mid-run owner can navigate to — a run deliberately survives
+    // navigation. Starting there must never reset the clock: the elapsed time
+    // is practice that genuinely happened.
+    useStore.setState({
+      active: null,
+      activeRoutine: runningRoutine({ routineId: 'r1', accumulatedSeconds: 240, running: false, runningSince: undefined }),
+    });
+
+    // The same routine, at a different length.
+    useStore.getState().startRoutineRun('r1', false, [{ label: 'A', minutes: 3 }]);
+
+    const after = useStore.getState().activeRoutine;
+    expect(after?.accumulatedSeconds).toBe(240);
+    expect(after?.authoredSegments).not.toEqual([{ label: 'A', minutes: 3 }]);
+  });
+
   it('skipRoutineRun acknowledges the boundary it just clamped, so the marker never lags behind', () => {
     const segments: RoutineSegment[] = [
       { label: 'A', minutes: 1 },

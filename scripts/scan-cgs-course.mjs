@@ -49,10 +49,11 @@ const DEFAULT_OUT = 'src/domain/courseData.ts';
  *
  * KEYS ARE ADDED, NEVER RENAMED. Every one of these is a key `cgsOutline()`
  * currently produces, so an item the owner has already added from the generic
- * suggestion stays attached to the real section that replaces it. The FIRST
- * folder matching a base takes the base key; a second one of the same family
- * (2E's two Scales sections, 3A's two Arpeggios sections) gets its own new key,
- * so nothing is ever displaced.
+ * suggestion stays attached to the real section that replaces it. Where a level
+ * has two folders of one family (2E's two Scales sections, 3A's two Arpeggios
+ * sections), ONE keeps the base key and the other gets its own new key, so
+ * nothing is ever displaced — see `baseOwner` for which, and why it is not
+ * simply the first.
  */
 const BASE_KEYS = [
   ['chords', 'chords', 'chords'],
@@ -430,18 +431,50 @@ function scan(root, mediaPath, diagnostics) {
     // Section folders, in the course's own order. A folder with no notes.md is
     // still a real section — it is reported, and its files still reach the app.
     const folders = listDirs(levelAbs);
+    const hasNotes = (folder) => fs.existsSync(path.join(levelAbs, folder, 'notes.md'));
+    const baseOf = (folder) => {
+      const bare = folder.replace(/^\d+_/, '').toLowerCase();
+      return BASE_KEYS.find(([b]) => bare === b || bare.startsWith(`${b}_`));
+    };
+
+    // WHICH folder of a family KEEPS THE EXISTING CATALOGUE KEY. The key an
+    // already-added item carries must land on the section that item is
+    // actually about, so ordinal order alone is not the rule: 2E ships an
+    // empty `08_Sight_Reading` stub beside the real `09_Sight_Reading`, and
+    // first-wins gave `sight-reading` to the stub — the owner's item would
+    // have stayed attached to a titleless folder while the level's routine
+    // named the other one. Substance decides: a folder WITH a `notes.md`
+    // takes the base key, and ordinal order breaks the tie.
+    const baseOwner = new Map();
+    for (const folder of folders) {
+      const base = baseOf(folder);
+      if (!base) continue;
+      const current = baseOwner.get(base[0]);
+      if (current === undefined || (!hasNotes(current) && hasNotes(folder))) baseOwner.set(base[0], folder);
+    }
+    // Every base key an owner is going to claim, RESERVED up front — kept apart
+    // from the keys actually assigned so far, so a non-owner reached earlier in
+    // folder order cannot take one by slug before its owner gets there.
+    const reserved = new Set([...baseOwner.keys()].map((b) => BASE_KEYS.find(([x]) => x === b)[1]));
     const usedKeys = new Set();
-    const foldersByBase = new Map();
+    const foldersByBase = baseOwner;
     const units = [];
 
     for (const folder of folders) {
       const bare = folder.replace(/^\d+_/, '');
-      const bareSlug = bare.toLowerCase();
-      const base = BASE_KEYS.find(([b]) => bareSlug === b || bareSlug.startsWith(`${b}_`));
-      if (base && !foldersByBase.has(base[0])) foldersByBase.set(base[0], folder);
+      const base = baseOf(folder);
 
-      let key = base && !usedKeys.has(base[1]) ? base[1] : slug(bare);
-      if (usedKeys.has(key)) key = `${key}-${folder.slice(0, 2)}`;
+      // Only the family's OWNER takes the base key; everyone else takes its own
+      // slug, and a slug that lands on a key already spoken for is suffixed with
+      // its folder's ordinal. The collision check must cover a non-owner whose
+      // slug happens to EQUAL the base key (`08_Sight_Reading` → `sight-reading`,
+      // which 09 owns) — skipping it there is how one level ended up with two
+      // units under one key, and a duplicate key means two sections claiming one
+      // item.
+      const isOwner = !!base && baseOwner.get(base[0]) === folder;
+      let key = isOwner ? base[1] : slug(bare);
+      if (!isOwner && (reserved.has(key) || usedKeys.has(key))) key = `${key}-${folder.slice(0, 2)}`;
+      if (usedKeys.has(key)) throw new Error(`${code}: two sections claim the catalogue key "${key}"`);
       usedKeys.add(key);
 
       const sectionAbs = path.join(levelAbs, folder);

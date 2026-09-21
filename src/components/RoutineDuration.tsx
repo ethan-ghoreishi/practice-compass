@@ -94,6 +94,11 @@ export default function RoutineDuration({
         disabled={minutes === null || fitted.length === 0}
         onClick={() => {
           if (minutes === null || fitted.length === 0) return;
+          // `startRoutineRun` REFUSES while any clock is already running, so a
+          // duration chosen here can never reset a run in progress to zero.
+          // Navigating regardless is deliberate and is what every other Start
+          // on this page already does: the owner lands on whichever clock is
+          // actually running and resolves it there.
           startRoutineRun(routine.id, shortOnTime, fitted);
           navigate(`/routine/${routine.id}${shortOnTime ? '?short=1' : ''}`);
         }}

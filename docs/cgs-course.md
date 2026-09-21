@@ -60,11 +60,20 @@ consumes the generated data.
 onto the key the stage already used before this course existed
 (`03_Chords` → `chords`, `07_Rhythm_Study` → `rhythm-study`, `09_Piece` →
 `piece`, …), so an item the owner had already added from the old generic
-suggestion stays attached to the real section that replaced it. The FIRST folder
-of a family takes the base key; a second one (2E's two Scales sections, 3A's two
-Arpeggios sections) gets its own new key, so nothing is ever displaced.
-`src/domain/pathways.test.ts` records every pre-import key and fails if one
-disappears.
+suggestion stays attached to the real section that replaced it. Where a level
+ships two folders of one family (2E's two Scales sections, 3A's two Arpeggios
+sections), ONE takes the base key and the other gets its own new key, so nothing
+is ever displaced. `src/domain/pathways.test.ts` records every pre-import key and
+fails if one disappears.
+
+WHICH one is not simply the lower ordinal: the key goes to the folder with real
+content. 2E's `08_Sight_Reading` is an empty stub beside the real
+`09_Sight_Reading`, and first-by-ordinal left an already-added item attached to a
+titleless folder while the level's own routine named the other — a key that
+survives but points at the wrong thing is the same failure as a key that
+disappears, wearing a passing test. Ordinal order only breaks the tie. A
+duplicate key is two sections claiming one item; the scanner refuses to emit one
+and the same test holds the generated data to it.
 
 **Files.** `notes.md` lists videos IN ORDER, and names its sheet music and
 images; that leads. Anything on disk it does not mention still follows, because
@@ -159,6 +168,14 @@ machinery.
   reaches every item that already exists, and the owner never types a link.
   **No bytes enter the app**: a course file is opened where it lives, exactly
   like a class recording.
+  * **That claim is bounded to MATERIAL.** A section's guidance, its BPM line
+    and its checklist are written into the item's own Working notes ONCE, at
+    creation, by `itemFromCatalogEntry` — the same as every other catalogue
+    entry in the app, and deliberately so: the notebook is the owner's to edit,
+    and regenerating the course must never overwrite what they have written
+    there. Re-running the scanner therefore updates the FILES of an existing
+    item and not its notes. A new item created from the regenerated entry gets
+    the new text.
 * **Files resolve under the shared media root**, derived from the archive base
   the owner already set. See `docs/setar-archive.md` for why that is not a
   second base and not a resolver fallback.
@@ -209,3 +226,11 @@ reappears in a list — never in the pathway — and only if they choose it.
   hand-authored and its keys do not map onto the course's section folders. That
   is the price of keeping 1A byte-for-byte as the contract requires, and it is
   the one known gap.
+* **An existing database keeps its old stage TITLES.** Stages are ordinary
+  editable data the owner may have renamed, so nothing here rewrites one: a
+  device seeded before this change still reads "1B · Arpeggios begin" rather
+  than the course's own focus line, while its catalogue, material and routines
+  are the new ones. §5's action only adds stages that are ABSENT. That is
+  deliberate — silently retitling a stage the owner may have edited is exactly
+  what "adds nothing on its own" rules out — and renaming one by hand takes a
+  tap on Edit. A fresh install gets the course's titles.

@@ -1840,7 +1840,18 @@ export const useStore = create<StoreState>()(
         // Same guard as startSession, in the other direction: an ordinary
         // block already running must be resolved before a routine can start.
         if (active) return;
-        if (activeRoutine && activeRoutine.routineId !== routineId) return;
+        // AND A RUN ALREADY IN PROGRESS IS NEVER RESTARTED FROM ZERO — not even
+        // its OWN routine's. This used to refuse only a DIFFERENT routine,
+        // which was enough while `RoutineRunner`'s begin effect (guarded by
+        // `!activeRoutine`) was the only caller. It is not the only caller any
+        // more: a duration can be chosen from Today, a stage or a pathway, all
+        // of which a mid-run owner can navigate to, because a run deliberately
+        // survives navigation. Starting there would reset `accumulatedSeconds`
+        // to 0 and silently discard practice that genuinely elapsed. The caller
+        // still navigates, so the owner lands on the clock that is actually
+        // running and resolves it — the same deterministic way out every other
+        // page gives them.
+        if (activeRoutine) return;
         set({
           activeRoutine: {
             routineId,
