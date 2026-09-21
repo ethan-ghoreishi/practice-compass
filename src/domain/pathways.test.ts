@@ -225,8 +225,8 @@ const CGS_KEYS_BEFORE_THE_COURSE_IMPORT: Record<string, string[]> = {
   '3F': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'other-study'],
 };
 
-describe('CGS stage ids and catalog keys stay stable across the course import', () => {
-  it('keeps every stage id and every catalog key an already-added item may reference', () => {
+describe('the CGS course import and what existing data may reference', () => {
+  it('CGS stage ids and catalog keys stay stable across the course import', () => {
     for (const [code, keys] of Object.entries(CGS_KEYS_BEFORE_THE_COURSE_IMPORT)) {
       const stageId = stageIdFor(SEED_PATHWAY_IDS.guitar, code);
       // The stage id itself is what an item's `stageId` holds.

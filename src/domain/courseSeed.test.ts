@@ -50,46 +50,49 @@ function added(stageId: string, catalogKey: string, over: Partial<PracticeItem> 
 
 // --- ac-1 -------------------------------------------------------------------
 
-describe("a level's study and packet works are repertoire works and its drill sections are not", () => {
+describe('what a course entry becomes in My repertoire', () => {
   const entries = catalogForStage(STAGE_1B);
   const g = group('1b');
 
-  it("makes the level's own study a repertoire work, named as the course names it", () => {
-    const piece = entries.find((e) => e.key === 'piece');
-    expect(piece?.title).toBe('1B Piece — Study #1');
+  it("a level's study and packet works are repertoire works and its drill sections are not", () => {
+    // The level's OWN study IS the Piece section, named as the course names it.
+    expect(entries.find((e) => e.key === 'piece')?.title).toBe('1B Piece — Study #1');
     expect(isWork(added(STAGE_1B, 'piece'))).toBe(true);
-  });
 
-  it('makes every named packet work a repertoire work, with its composer', () => {
+    // Every named packet work, with its composer.
     expect(g.works.length).toBeGreaterThan(0);
-    const sor = g.works.find((w) => w.key === 'work-fernando-sor-opus-35-no-1');
-    expect(sor?.title).toBe('Fernando Sor — Opus 35, no.1');
+    expect(g.works.find((w) => w.key === 'work-fernando-sor-opus-35-no-1')?.title).toBe(
+      'Fernando Sor — Opus 35, no.1',
+    );
     for (const w of g.works) {
       expect(entries.some((e) => e.key === w.key && e.strand === 'piece')).toBe(true);
       expect(isWork(added(STAGE_1B, w.key))).toBe(true);
     }
-  });
 
-  it('keeps every drill, exercise, rhythm, sight-reading and reading section out of repertoire', () => {
+    // And nothing else from the same level.
     const practice = ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'other-study', 'contrast-cards'];
     const items = practice.map((k) => added(STAGE_1B, k));
     for (const item of items) expect(isWork(item), `${item.catalogKey} reached My repertoire`).toBe(false);
     expect(repertoireWorks(items)).toEqual([]);
   });
+
+  it('emits no separate study entry beside the Piece section, which would repertoire it twice', () => {
+    expect(g.works.some((w) => w.title === 'Study #1')).toBe(false);
+    expect(entries.filter((e) => /Study #1/.test(e.title))).toHaveLength(1);
+  });
 });
 
 // --- ac-2 -------------------------------------------------------------------
 
-describe('reuses a carried-forward work when it is added from a later level instead of duplicating it', () => {
+describe('a work carried forward across levels', () => {
   // Ferrer Ejercicio runs 2C-2F: ONE work, suggested in each level it appears.
   const CARRIED = 'work-ferrer-ejercicio';
 
-  it('names the same work by the same key in every level it appears in', () => {
-    const levels = CGS_COURSE.groups.filter((g) => g.works.some((w) => w.key === CARRIED));
-    expect(levels.length).toBeGreaterThan(1);
-  });
+  it('reuses a carried-forward work when it is added from a later level instead of duplicating it', () => {
+    // The course names it by the same key in every level it appears in...
+    expect(CGS_COURSE.groups.filter((g) => g.works.some((w) => w.key === CARRIED)).length).toBeGreaterThan(1);
 
-  it('returns the item created from the earlier level rather than creating a second work', () => {
+    // ...so adding it from 2E returns the item created from 2C.
     const first = added(STAGE_2C, CARRIED);
     const db = { items: [first], materials: [] as Material[] };
     const entry = catalogForStage(STAGE_2E).find((e) => e.key === CARRIED);
@@ -128,22 +131,23 @@ function dbWith(items: PracticeItem[]): PracticeDB {
   } as unknown as PracticeDB;
 }
 
-describe("composes a catalogue item's course files without storing any reference on the item", () => {
+describe("a course item's material", () => {
   const item = added(STAGE_1B, 'piece');
 
-  it("lists the section's own videos and scores for an item that stores none of them", () => {
+  it("composes a catalogue item's course files without storing any reference on the item", () => {
+    // The item stores nothing...
     expect(item.references ?? []).toEqual([]);
     const files = itemFiles(dbWith([item]), item.id);
     expect(files.length).toBeGreaterThan(0);
     expect(files.some((f) => f.source === 'reference' && f.kind === 'video')).toBe(true);
     expect(files.some((f) => f.source === 'reference' && f.kind === 'pdf')).toBe(true);
-    // Nothing was written back onto the item.
+    // ...and nothing was written back onto it.
     expect(item.references ?? []).toEqual([]);
-  });
-
-  it('reads them from the catalogue every time, so regenerated course data reaches an item that already exists', () => {
-    const before = itemFiles(dbWith([item]), item.id).map((f) => (f as ItemFileReference).path);
-    expect(before).toEqual(courseFilesFor(STAGE_1B, 'piece').map((f) => f.path));
+    // It is read out of the catalogue EVERY time, which is what makes
+    // regenerated course data reach an item that already exists.
+    expect(files.map((f) => (f as ItemFileReference).path)).toEqual(
+      courseFilesFor(STAGE_1B, 'piece').map((f) => f.path),
+    );
   });
 
   it('gives an item from no course nothing at all', () => {
@@ -158,30 +162,26 @@ describe("composes a catalogue item's course files without storing any reference
 const MAC_ARCHIVE_BASE = 'https://192.168.0.20:5010/setar-classes';
 const PHONE_ARCHIVE_BASE = 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes';
 
-describe('resolves a course file under the shared media root and leaves archive resolution unchanged', () => {
+describe('which base a composed reference resolves against', () => {
   const courseFile = courseFilesFor(STAGE_1B, 'scales')[0];
   const archiveRef = { path: 'session-39-1405-06-13/01-correction.mp4' };
 
-  it("joins the course's own media path under the root derived from the real configured base", () => {
-    const root = mediaRoot({ archiveBase: MAC_ARCHIVE_BASE });
+  it('resolves a course file under the shared media root and leaves archive resolution unchanged', () => {
+    // The Mac, over the LAN.
     expect(courseFile.path.startsWith('classical-guitar/classical-guitar-shed/Level_1B/')).toBe(true);
-    expect(resolveRecording(root ?? undefined, courseFile)).toEqual({
+    expect(resolveRecording(mediaRoot({ archiveBase: MAC_ARCHIVE_BASE }) ?? undefined, courseFile)).toEqual({
       status: 'ok',
       url: `https://192.168.0.20:5010/${courseFile.path}`,
     });
-  });
-
-  it("resolves an archive reference against the UNCHANGED archive base, not the root", () => {
     expect(resolveRecording(MAC_ARCHIVE_BASE, archiveRef)).toEqual({
       status: 'ok',
       url: `${MAC_ARCHIVE_BASE}/session-39-1405-06-13/01-correction.mp4`,
     });
-  });
 
-  it("keeps the phone's own path prefix on both", () => {
-    const root = mediaRoot({ archiveBase: PHONE_ARCHIVE_BASE });
-    expect(root).toBe('https://ds220plus.taild1d1f7.ts.net/media');
-    expect(resolveRecording(root ?? undefined, courseFile)).toEqual({
+    // The phone, over Tailscale — each keeps its own path prefix.
+    const phoneRoot = mediaRoot({ archiveBase: PHONE_ARCHIVE_BASE });
+    expect(phoneRoot).toBe('https://ds220plus.taild1d1f7.ts.net/media');
+    expect(resolveRecording(phoneRoot ?? undefined, courseFile)).toEqual({
       status: 'ok',
       url: `https://ds220plus.taild1d1f7.ts.net/media/${courseFile.path}`,
     });
@@ -189,9 +189,11 @@ describe('resolves a course file under the shared media root and leaves archive 
       status: 'ok',
       url: `${PHONE_ARCHIVE_BASE}/session-39-1405-06-13/01-correction.mp4`,
     });
-  });
 
-  it('picks each reference its own base, so neither is ever tried against the other', () => {
+    // AND EACH COMPOSED REFERENCE PICKS ITS OWN BASE. The two resolutions
+    // above prove the arithmetic; this is what makes a real item use it —
+    // without it a course file would be pushed through the archive base and
+    // 404, and a class recording through the root, landing a folder too high.
     const item = added(STAGE_1B, 'scales');
     const composed = itemFiles(dbWith([item]), item.id).filter(
       (f): f is ItemFileReference => f.source === 'reference',
@@ -201,33 +203,39 @@ describe('resolves a course file under the shared media root and leaves archive 
     for (const f of composed) {
       expect(f.root).toBe('media');
       expect(baseForItemFile(f, bases)).toBe('https://192.168.0.20:5010');
+      expect(resolveRecording(baseForItemFile(f, bases), f)).toEqual({
+        status: 'ok',
+        url: `https://192.168.0.20:5010/${f.path}`,
+      });
     }
     expect(baseForItemFile({ root: 'archive' } as ItemFileReference, bases)).toBe(MAC_ARCHIVE_BASE);
   });
 });
 
-describe('reports no-base for a course file when no media root is derivable or set', () => {
+describe('a course file with no media root behind it', () => {
   const courseFile = courseFilesFor(STAGE_1B, 'scales')[0];
 
-  it('is honestly unavailable rather than a dead link', () => {
+  it('reports no-base for a course file when no media root is derivable or set', () => {
+    // The LEGACY archive base, one folder too high: it IS the media root, so
+    // nothing is derivable from it and nothing is guessed.
     const root = mediaRoot({ archiveBase: 'https://192.168.0.20:5010/' });
     expect(root).toBeNull();
     const resolution = resolveRecording(root ?? undefined, courseFile);
     expect(resolution).toEqual({ status: 'no-base' });
-    // The material row offers no open action for anything but `ok`.
+    // Honestly unavailable, never a dead link: the material row's Open is
+    // enabled only for `ok`.
     expect(resolution.status === 'ok').toBe(false);
-  });
-
-  it('says so for a device with nothing configured at all', () => {
+    // And the same for a device with nothing configured at all.
     expect(resolveRecording(mediaRoot({}) ?? undefined, courseFile)).toEqual({ status: 'no-base' });
   });
 });
 
 // --- ac-7, ac-8, ac-9, ac-10 ------------------------------------------------
 
-describe("builds a position routine from added current-level items plus the previous level's essentials", () => {
-  it("is the previous level's essential segments followed by only the sections actually added", () => {
-    const items = [added(STAGE_1C, 'arpeggios'), added(STAGE_1C, 'scales')];
+describe('"Build one for where I am"', () => {
+  it("builds a position routine from added current-level items plus the previous level's essentials", () => {
+    const arp = added(STAGE_1C, 'arpeggios');
+    const items = [arp, added(STAGE_1C, 'scales')];
     const segments = buildPositionRoutine(CGS_COURSE, '1c', items);
     expect(segments.map((s) => s.label)).toEqual([
       // 1B's essentials — the maintenance the syllabus itself carries forward.
@@ -239,13 +247,10 @@ describe("builds a position routine from added current-level items plus the prev
       '1C Scales',
     ]);
     expect(segments.slice(0, 3).every((s) => s.essential)).toBe(true);
-  });
-
-  it('binds each segment to the item the owner actually created from it', () => {
-    const arp = added(STAGE_1C, 'arpeggios');
-    const segments = buildPositionRoutine(CGS_COURSE, '1c', [arp]);
+    // Each current-level segment is bound to the item it was matched to;
+    // nothing was added in 1B, so its maintenance segments are unbound
+    // countdowns rather than fabricated bindings.
     expect(segments.find((s) => s.label === '1C Arpeggios')?.itemId).toBe(arp.id);
-    // Nothing was added in 1B, so its maintenance segments are unbound countdowns.
     expect(segments.find((s) => s.label === '1B Scales')?.itemId).toBeUndefined();
   });
 
@@ -255,8 +260,8 @@ describe("builds a position routine from added current-level items plus the prev
   });
 });
 
-describe('omits a current-level segment whose catalogue item has not been added', () => {
-  it("leaves it out of the position routine while the level's full routine still has it", () => {
+describe('a section the owner has not reached yet', () => {
+  it('omits a current-level segment whose catalogue item has not been added', () => {
     const items = [added(STAGE_1C, 'arpeggios')];
     const position = buildPositionRoutine(CGS_COURSE, '1c', items);
     const full = buildLevelRoutine(CGS_COURSE, '1c', items);
@@ -268,25 +273,23 @@ describe('omits a current-level segment whose catalogue item has not been added'
   });
 });
 
-describe('joins a segment to its item by stage and catalogue key together, never by key alone', () => {
-  it("never matches an identically-keyed entry in another level", () => {
+describe('the segment-to-item join', () => {
+  it('joins a segment to its item by stage and catalogue key together, never by key alone', () => {
     // `chords` exists in every level. An item added in 1B must not enable 1C's.
     const chords1B = added(STAGE_1B, 'chords');
     const segments = buildPositionRoutine(CGS_COURSE, '1c', [chords1B]);
     expect(segments.map((s) => s.label)).not.toContain('1C Chords');
     expect(segments.find((s) => s.label === '1B Arpeggios')?.itemId).toBeUndefined();
-  });
 
-  it('binds the right level when both levels have an item under the same key', () => {
-    const chords1B = added(STAGE_1B, 'chords');
+    // And with an item under the same key in BOTH levels, each binds its own.
     const chords1C = added(STAGE_1C, 'chords');
     const full = buildLevelRoutine(CGS_COURSE, '1c', [chords1B, chords1C]);
     expect(full.find((s) => s.label === '1C Chords')?.itemId).toBe(chords1C.id);
   });
 });
 
-describe('ignores an added repertoire work when building the position routine and includes an added practice section', () => {
-  it('is decided by each segment\'s OWN declared key, not by how many items the stage holds', () => {
+describe('what adding an item does and does not enable', () => {
+  it('ignores an added repertoire work when building the position routine and includes an added practice section', () => {
     const work = added(STAGE_1C, group('1c').works[0].key);
     expect(isWork(work)).toBe(true);
     expect(buildPositionRoutine(CGS_COURSE, '1c', [work]).map((s) => s.label)).toEqual([
@@ -329,26 +332,25 @@ function stage(id: string, over: Partial<PathwayStage> = {}): PathwayStage {
   };
 }
 
-describe('offers only the course levels absent from an existing pathway and never a renamed one already present', () => {
+describe('"Add new levels from this course"', () => {
   const present = ['1a', '1b', '1c'].map((k) => stage(courseStageId(CGS_COURSE, k)));
 
-  it('offers exactly the levels the pathway does not have', () => {
+  it('offers only the course levels absent from an existing pathway and never a renamed one already present', () => {
     const offered = offeredCourseLevels(CGS_COURSE, present).map((o) => o.groupKey);
     expect(offered).not.toContain('1a');
     expect(offered).not.toContain('1c');
     expect(offered).toContain('1d');
     expect(offered.length).toBe(CGS_COURSE.groups.length - 3);
-  });
 
-  it('never offers a level the owner renamed — presence is the stage id, never the title', () => {
+    // Presence is the stage ID, never the title, so a renamed level is present.
     const renamed = [stage(courseStageId(CGS_COURSE, '2a'), { code: 'My warm-ups', title: 'Whatever I like' })];
     expect(offeredCourseLevels(CGS_COURSE, renamed).map((o) => o.groupKey)).not.toContain('2a');
-  });
 
-  it('adds only what was explicitly selected, leaving every other level alone', () => {
+    // And only what was explicitly selected is added.
     const next = planCourseLevels(CGS_COURSE, present, ['1d'], NOW);
-    const addedIds = next.filter((s) => !present.includes(s)).map((s) => s.id);
-    expect(addedIds).toEqual([courseStageId(CGS_COURSE, '1d')]);
+    expect(next.filter((s) => !present.includes(s)).map((s) => s.id)).toEqual([
+      courseStageId(CGS_COURSE, '1d'),
+    ]);
     expect(next).toHaveLength(present.length + 1);
   });
 
@@ -374,16 +376,15 @@ describe('offers only the course levels absent from an existing pathway and neve
 
 // --- ac-14 ------------------------------------------------------------------
 
-describe('returns an existing study source when one matches and mints one only when none does', () => {
-  it('mints one on first use, and groups the item under it', () => {
-    const plan = planCatalogAddition({ items: [], materials: [] }, STAGE_1B, 'scales', catalogForStage(STAGE_1B).find((e) => e.key === 'scales'), 'g', NOW);
-    expect(plan.materials).toHaveLength(1);
-    expect(plan.materials[0].title).toBe('Classical Guitar Shed');
-    expect(plan.items[0].materialId).toBe(plan.materials[0].id);
-  });
-
-  it('returns the existing one for a second course item, never a duplicate', () => {
+describe("the course's own study source", () => {
+  it('returns an existing study source when one matches and mints one only when none does', () => {
+    // Minted on first use, and the item is grouped under it.
     const first = planCatalogAddition({ items: [], materials: [] }, STAGE_1B, 'scales', catalogForStage(STAGE_1B).find((e) => e.key === 'scales'), 'g', NOW);
+    expect(first.materials).toHaveLength(1);
+    expect(first.materials[0].title).toBe('Classical Guitar Shed');
+    expect(first.items[0].materialId).toBe(first.materials[0].id);
+
+    // A second course item returns the SAME collection — never a duplicate.
     const second = planCatalogAddition(
       { items: first.items, materials: first.materials },
       STAGE_1C,

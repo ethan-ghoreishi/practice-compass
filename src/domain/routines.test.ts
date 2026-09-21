@@ -635,13 +635,14 @@ const SYLLABUS: RoutineSegment[] = [
   { label: 'Other study', minutes: 7, itemId: 'oth' },
 ];
 
-describe('fits a routine to a target total exactly and leaves it unchanged at its authored total', () => {
-  it('returns the SAME segments at the authored total — doing nothing behaves exactly as before', () => {
+describe('running a routine for the time you actually have', () => {
+  it('fits a routine to a target total exactly and leaves it unchanged at its authored total', () => {
+    // The authored total returns the SAME array — doing nothing behaves
+    // exactly as it always did.
     expect(routineTotalMinutes(SYLLABUS)).toBe(65);
     expect(fitRoutineToMinutes(SYLLABUS, 65)).toBe(SYLLABUS);
-  });
 
-  it('sums to exactly the target, shorter and longer', () => {
+    // Every other target sums to EXACTLY that target, shorter and longer.
     for (const target of [8, 12, 20, 31, 40, 45, 60, 90, 120]) {
       const fitted = fitRoutineToMinutes(SYLLABUS, target);
       expect(routineTotalMinutes(fitted), `target ${target}`).toBe(target);
@@ -668,26 +669,38 @@ describe('fits a routine to a target total exactly and leaves it unchanged at it
   });
 });
 
-describe("drops a non-essential segment before an essential one and preserves every surviving segment's identity", () => {
-  it('drops non-essential first, latest first, once the one-minute floor cannot seat them all', () => {
-    // Seven segments cannot fit in five minutes at one minute each.
+describe('a target too short to seat every segment', () => {
+  it("drops a non-essential segment before an essential one and preserves every surviving segment's identity", () => {
+    // Eight segments cannot fit in five minutes at the one-minute floor, so
+    // three are dropped: non-essential first, latest first.
     const fitted = fitRoutineToMinutes(SYLLABUS, 5);
     expect(fitted.map((s) => s.label)).toEqual(['Arpeggios', 'Scales', 'Piece', 'Chords', 'Rhythm']);
     expect(routineTotalMinutes(fitted)).toBe(5);
-  });
 
-  it('keeps every essential segment until nothing else is left to drop', () => {
-    const fitted = fitRoutineToMinutes(SYLLABUS, 3);
-    expect(fitted.map((s) => s.label)).toEqual(['Arpeggios', 'Scales', 'Piece']);
-    expect(fitted.every((s) => s.essential)).toBe(true);
-  });
+    // Every essential one survives until nothing else is left to drop.
+    const three = fitRoutineToMinutes(SYLLABUS, 3);
+    expect(three.map((s) => s.label)).toEqual(['Arpeggios', 'Scales', 'Piece']);
+    expect(three.every((s) => s.essential)).toBe(true);
 
-  it('drops an essential one only when the target is shorter than the essentials themselves', () => {
-    const fitted = fitRoutineToMinutes(SYLLABUS, 2);
-    expect(fitted.map((s) => s.label)).toEqual(['Arpeggios', 'Scales']);
-  });
+    // AND IT IS NON-ESSENTIAL-FIRST, NOT SIMPLY LAST-FIRST. With the essential
+    // segments all leading, as the syllabus writes them, those two rules agree
+    // and neither is proved — so this case INTERLEAVES them: dropping from the
+    // end alone would take the essential Piece before the non-essential Rhythm
+    // sitting in front of it.
+    const interleaved: RoutineSegment[] = [
+      { label: 'Warm-up', minutes: 4 },
+      { label: 'Arpeggios', minutes: 8, essential: true },
+      { label: 'Rhythm', minutes: 4 },
+      { label: 'Piece', minutes: 8, essential: true },
+    ];
+    expect(fitRoutineToMinutes(interleaved, 3).map((s) => s.label)).toEqual([
+      'Warm-up',
+      'Arpeggios',
+      'Piece',
+    ]);
+    expect(fitRoutineToMinutes(interleaved, 2).map((s) => s.label)).toEqual(['Arpeggios', 'Piece']);
 
-  it("never alters a surviving segment's label, note, essential flag or bound item", () => {
+    // And nothing that survives is altered beyond its minutes.
     for (const target of [5, 12, 40, 100]) {
       for (const s of fitRoutineToMinutes(SYLLABUS, target)) {
         const original = SYLLABUS.find((o) => o.label === s.label);
@@ -697,6 +710,10 @@ describe("drops a non-essential segment before an essential one and preserves ev
         expect(s.itemId).toBe(original!.itemId);
       }
     }
+  });
+
+  it('drops an essential one only when the target is shorter than the essentials themselves', () => {
+    expect(fitRoutineToMinutes(SYLLABUS, 2).map((s) => s.label)).toEqual(['Arpeggios', 'Scales']);
   });
 
   it('is empty for an empty routine or a target that can seat nothing', () => {
