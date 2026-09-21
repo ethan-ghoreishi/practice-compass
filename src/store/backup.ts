@@ -1,4 +1,4 @@
-import { decideReplacement, nowISO, parseImport, SCHEMA_VERSION } from '../domain';
+import { decideReplacement, mediaRoot, nowISO, parseImport, SCHEMA_VERSION } from '../domain';
 import { allBlobs, heldBlobIds, replaceAllBlobs, type AttachmentBlob } from './idb';
 import { useHydrationStatus, useStore } from './useStore';
 
@@ -83,6 +83,39 @@ export function setNasBaseUrl(url: string): void {
   } catch {
     /* ignore */
   }
+}
+
+const MEDIA_ROOT_KEY = 'pc-media-root';
+
+/**
+ * An EXPLICIT media root for this device, for the case where the shared root
+ * cannot be derived from the archive base (a tree laid out differently). Blank
+ * is the normal state: `mediaRoot()` derives one from the archive base, which
+ * keeps its own stored value and meaning untouched.
+ *
+ * Per-device in localStorage exactly like the archive base — environment
+ * config, never synced, never written into a backup, never a place for a
+ * password.
+ */
+export function getMediaRootOverride(): string {
+  try {
+    return localStorage.getItem(MEDIA_ROOT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function setMediaRootOverride(url: string): void {
+  try {
+    localStorage.setItem(MEDIA_ROOT_KEY, url.trim());
+  } catch {
+    /* ignore */
+  }
+}
+
+/** The shared media root this device resolves course files against. */
+export function getMediaRoot(): string | null {
+  return mediaRoot({ archiveBase: getNasBaseUrl(), override: getMediaRootOverride() });
 }
 
 /** Most recent updatedAt/createdAt across everything — the data's "age". */

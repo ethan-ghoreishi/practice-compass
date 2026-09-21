@@ -613,7 +613,10 @@ own pace, on a route they trust. Protect that:
   a parallel to-do list next to items.
 - **The catalog is reference data in code, not persisted.** `pathwaySeed.ts` defines
   per-stage `CatalogEntry` suggestions (gushes, lesson areas) with `about` guidance for
-  conscious practice; `addFromCatalog` turns one into a real item with one tap. The new
+  conscious practice — for the Classical Guitar Shed levels those entries are GENERATED
+  from the course's own tree (`courseSeed.ts` / `courseData.ts`; see "A COURSE is
+  reference data in code" below), which changes where they come from and nothing about
+  what they are; `addFromCatalog` turns one into a real item with one tap. The new
   item is honestly **"Not practised yet"** (status `new`, zero stats) with an immediate
   Undo — adding is organisation, not progress. Label suggestions as reference aids, never
   canonical. Improving the catalog needs no migration; keep entry keys stable per stage.
@@ -2260,6 +2263,169 @@ branch/path restriction is a property of `publish-setar-index.mjs`, and must nev
 described as credential isolation. The app's own browser token and each device's media base
 stay device-local exactly as before. No credential and no archive root enters a source
 archive, a committed file, a manifest, app data, a log, sync or a backup.
+
+## A COURSE is reference data in code — it is not an archive
+
+The owner's Classical Guitar Shed "Woodshed" course is a DOWNLOADED, FIXED tree
+whose own `notes.md` and `LEVEL_GUIDE.md` already state everything about it.
+`scripts/scan-cgs-course.mjs` (stdlib only, dry-run by default, never imported by
+or reachable from any runtime path) reads it into `src/domain/courseData.ts`, and
+`src/domain/courseSeed.ts` is the hand-written reader beside it. `docs/cgs-course.md`
+is the operator runbook, the corpus baseline and the recorded deviations.
+
+**IT MUST NOT REUSE THE SETAR ARCHIVE MACHINERY, AND THE REASON IS NOT TIDINESS.**
+That source GROWS, gets RENAMED and carries piece identity to reconcile against
+existing repertoire — which is why it needs a published index, a content digest,
+a reconciler and a persisted graph validated at six doors. A course has none of
+that to reconcile. So it sits on the rung `pathwaySeed.ts` already stands on:
+reference data in code, with NO persisted graph, NO new inbound door, NO schema
+change and NO migration. `SCHEMA_VERSION` stays 14 and `PracticeDB` gains
+nothing. `sourceArchive.ts`, `sourceReconcile.ts`, the published index format,
+the scanner, the publisher and the refresh/adoption flow are all untouched.
+
+**THE GRAMMAR LIVES IN THE SCANNER AND NOWHERE ELSE.** The app never parses a
+folder name, a `notes.md` heading or a syllabus table — it consumes the generated
+data. `courseData.ts` is the scanner's OUTPUT and is never edited by hand; a
+course change is answered by re-running the scanner and committing new data.
+
+**THE SOURCE OF A LEVEL'S ROUTINE IS `LEVEL_GUIDE.md`, NOT THE SYLLABUS PDF, AND
+THAT IS A MEASURED CORRECTION TO THE APPROVED PLAN.** The plan said "transcribed
+from the syllabus with its `***` segments essential". There is no `***` anywhere
+in the corpus — `grep -r` returns nothing — and the 1A syllabus PDF, whose text
+extracts cleanly, carries no minute-by-minute routine at all. Every level's
+`LEVEL_GUIDE.md` DOES carry a uniform Core (⭐, every session) / Rotation A /
+Rotation B / Reference split with time budgets, so Core → `essential: true`,
+Rotation → not essential, Reference → not in the routine at all. Level 3 is not
+the exception the plan expected either: 3A, 3D, 3E and 3F all carry full tables,
+so every level is derived uniformly rather than one being given prose about not
+having a routine. Target BPMs come from the syllabus table where it can be read
+and are ABSENT with a diagnostic where it cannot — a wrong tempo on a real
+section is worse than none, and the mechanism is validated against 1A's
+hand-authored ground truth.
+
+**KEYS ARE ADDED, NEVER RENAMED — AND THAT IS A TEST, NOT AN INTENTION.** Every
+catalogue key the old generic `cgsOutline()` placeholders produced (`chords`,
+`arpeggios`, `scales`, `exercises`, `rhythm-study`, `sight-reading`, `piece`,
+`other-study`, `phrasing`, `fretboard-mastery`, `practice-skills`) is taken by the
+real section that replaces it, so an item the owner had already added stays
+attached to its suggestion instead of becoming a silently detached non-catalogue
+unit. A second section of the same family (2E's two Scales sections, 3A's two
+Arpeggios sections) gets its OWN new key rather than displacing the base one.
+`src/domain/pathways.test.ts` records every pre-import stage id and key and fails
+if one disappears. **Level 1A keeps its fourteen hand-authored steps and both of
+its routines byte for byte**, which has one honest cost: its keys do not map onto
+the course's section folders, so 1A items get no composed course material. That
+is the one known gap and it is recorded in `docs/cgs-course.md`.
+
+**A COURSE ENTRY BECOMES REPERTOIRE ONLY WHERE THE COURSE NAMES A WORK, AND
+`repertoire.ts` IS UNCHANGED.** The fix is upstream, in what the catalogue
+DECLARES. `STRAND_TO_ITEM_TYPE` maps `strand: 'piece'` to `full_piece`, which is
+why the old generic "Piece" placeholder created a repertoire work literally called
+"Piece": the bug was the TITLE, never the strand. The level's own study IS the
+Piece section — it keeps its `piece` key and its `piece` strand and gains the real
+name the course gives it ("1B Piece — Study #1") — and the named packet works from
+that section's own Sheet Music lists are their own entries with their composers in
+the title. Every drill, exercise, rhythm, sight-reading and reading section stays
+what it was and never reaches My repertoire. A separate "study" entry beside the
+Piece section is NOT emitted: it would put one study in repertoire twice.
+
+**A WORK CARRIED FORWARD ACROSS LEVELS IS ONE WORK, AND THAT LOOKUP IS THE ONLY
+CROSS-STAGE ONE.** A packet work's key is derived from the WORK (`work-<slug>`),
+so Ferrer Ejercicio carries one key in all four levels it appears in and adding it
+from 2E reuses the item created from 2C. `CatalogEntry.key` is otherwise unique
+PER STAGE, not globally — `chords` exists in every level — so the ordinary reuse
+stays a `(stageId, catalogKey)` match and a `chords` item in 1B can never be
+reused by 2B's. Two lookups, two scopes, two tested rules; neither may leak into
+the other.
+
+**COURSE MATERIAL IS COMPOSED FROM THE CATALOGUE, NEVER STORED ON THE ITEM.** An
+item created from a course entry holds only its stage and its catalogue key;
+`itemFiles` reads that section's videos, scores, images and contrast-card folder
+out of the course data EVERY TIME. That is what makes re-running the scanner after
+a course change reach every item that already exists, and it is why the owner
+never types a link. No bytes enter the app, sync or a backup: a course file is
+OPENED where it lives, exactly like a class recording, and the contrast-card decks
+(1663 images) are ONE folder reference — never a viewer, a flashcard player or a
+deck-by-deck list.
+
+**ONE MEDIA ROOT PER DEVICE, DERIVED — NOT A SECOND BASE AND NOT A RESOLVER
+FALLBACK.** The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
+`tar-classes/` side by side, so the configured archive base is exactly
+`<media root>/setar-classes`. `deriveMediaRoot` (`mediaRoots.ts`) takes the folder
+ABOVE it, and `mediaRoot` lets an explicit per-device override win. `getNasBaseUrl()`
+keeps its stored value and its meaning: every Setar and lesson code path reads the
+same string it always did and every existing reference resolves byte-identically.
+Nothing resolves against two bases in turn — each composed reference carries
+`root: 'archive' | 'media'` and `baseForItemFile` picks exactly ONE, so a course
+file is never retried against the archive base and a class recording never against
+the root. NOTHING IS GUESSED: the derivation applies only when the base's last
+segment names a folder a shipped source declares (`knownSourceFolders()`), and
+anything else — the LEGACY base one folder too high included — yields no root at
+all, so a course file reports `no-base` and offers no open action rather than
+pointing at a dead link. That state is not new: Setar references are already
+broken in it, and correcting the base once fixes both.
+
+**A ROUTINE'S AUTHORED MINUTES ARE PROPORTIONS, AND DURATION IS A SECOND
+INDEPENDENT KNOB.** `fitRoutineToMinutes` (`routines.ts`, tested) scales
+proportionally to the authored minutes — preserving the syllabus's own proportions,
+which is the whole point of a curriculum routine — returns the input array
+UNCHANGED at the authored total so doing nothing behaves exactly as before, and
+when the target cannot seat every segment at a one-minute floor it DROPS using the
+routine's own priority: non-essential first, latest first, so `essential` keeps
+meaning what it means. A surviving segment keeps its label, note, essential flag
+and bound item; only the MINUTES ever move. It COMPOSES with `segmentsForRun`
+rather than replacing it — essentials-only is a CONTENT decision, duration is a
+TIME decision — and `segmentsForRun` keeps its exact meaning and signature. The
+Session Plan's `allocateMinutes` is deliberately NOT reused: it allocates by bucket
+priority with a pinned warm-up share and a 2-25 minute clamp, which would distort a
+one-minute syllabus segment and entangle two systems the app keeps as peers. Only
+`validateBudgetMinutes` and its 5-120 bound are shared, so the control rejects
+exactly what "Plan this session" rejects. `RoutineDuration.tsx` is ONE component on
+all three routine surfaces (Today, a stage, a pathway) so they cannot drift, and it
+starts the run ITSELF before navigating — `startRoutineRun` already takes its
+segments from the caller and the runner freezes whatever it is given, so fitting
+needs no runner change at all. `RoutineRunner.tsx` is untouched.
+
+**A STAGE OFFERS TWO ROUTINES AND BOTH ARE ORDINARY EDITABLE DATA.** "Use this
+level's routine" is the syllabus's own; "Build one for where I am"
+(`buildPositionRoutine`) is the PREVIOUS level's essential segments — the
+maintenance the syllabus itself carries forward — followed by only the segments of
+the current level whose catalogue item the owner has ACTUALLY ADDED. Neither is a
+live view. The catalogue-to-item flow is the position marker and no new stored
+concept is introduced. A SEGMENT IS MATCHED BY ITS OWN DECLARED CATALOGUE KEY, on
+`(stageId, catalogKey)` TOGETHER: a position routine spans two stages by
+construction, so a key-only lookup would silently bind the wrong level's item.
+Three consequences are deliberate — adding one of the level's optional repertoire
+works enables no segment (the syllabus routines contain no piece segment at that
+level anyway), an item the owner created by hand with no catalogue key is not one
+of the course's sections, and a segment the marker leaves out is one edit away from
+being added back.
+
+**BUYING LEVELS 4A-5F LATER IS A DATA CHANGE, AND THE ACTION THAT ADDS THEM ADDS
+NOTHING ON ITS OWN.** Re-run the scanner, ship the regenerated data, and use the
+course-scoped "Add new levels from this course" on the pathway.
+`reseedDefaultPathways` AND ITS REPERTOIRE BUTTON ARE NOT CHANGED: they keep adding
+stages only for pathways that do not yet exist. Making that shipped button additive
+would change what it does to every existing pathway and would SILENTLY RESURRECT a
+stage the owner deliberately deleted, because a deleted stage's deterministic id is
+absent in precisely the same way a never-seeded one is. The new action cannot do
+that: `offeredCourseLevels` OFFERS the levels absent from the pathway — keyed by the
+stage's deterministic id, never by its title, so a level the owner RENAMED is never
+offered again — and `planCourseLevels` adds only the ones explicitly selected. A
+deleted stage therefore reappears in a LIST, never in the pathway.
+
+**THE TWO STORE-APPLIED DECISIONS ARE PURE FUNCTIONS APPLIED AS ONE `set()`.** The
+Node test environment cannot import `useStore.ts` (it pulls in Dexie via `./idb`),
+so `planCatalogAddition` and `planCourseLevels` prove the DECISION in
+`courseSeed.test.ts` and their SHAPE protects the WIRING — the same
+shape-protects-the-wiring pattern `installDatabase` already uses.
+`planCatalogAddition` returns the items AND the materials together, so
+`addFromCatalog` can never apply half of a change: it never calls the `addMaterial`
+action (that would be a second `set()`), and `resolveCourseSource` returns the SAME
+materials array when nothing was minted, so a second course item can never create a
+duplicate "Classical Guitar Shed" study source. `addFromCatalog` keeps its contract
+otherwise: a catalogue item still arrives `status: 'new'` with zero statistics and
+stays losslessly removable.
 
 ## Review scheduling stays explainable
 

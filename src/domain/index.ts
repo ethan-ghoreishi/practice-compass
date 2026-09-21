@@ -8,6 +8,8 @@ export * from './scheduling';
 export * from './blocks';
 export * from './pathways';
 export * from './pathwaySeed';
+export * from './courseSeed';
+export * from './mediaRoots';
 export * from './routines';
 export * from './practiceSignal';
 export * from './practiceSession';

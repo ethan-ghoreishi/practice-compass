@@ -9,10 +9,12 @@ import {
   STRAND_LABELS,
   type PathwayRoutine,
   type StageUnit,
+  courseStage,
   itemsPreparedForLesson,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
+import RoutineDuration from '../components/RoutineDuration';
 import { Field } from '../components/ui';
 import { ArrowLeftIcon, CheckIcon, MinusIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
 
@@ -23,6 +25,7 @@ export default function StageDetail() {
   const deleteStage = useStore((s) => s.deleteStage);
   const updatePathway = useStore((s) => s.updatePathway);
   const addFromCatalog = useStore((s) => s.addFromCatalog);
+  const addCourseRoutine = useStore((s) => s.addCourseRoutine);
   const removeCatalogItem = useStore((s) => s.removeCatalogItem);
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
@@ -45,6 +48,9 @@ export default function StageDetail() {
   const [editTitle, setEditTitle] = useState('');
   const [editIntro, setEditIntro] = useState('');
   const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
+  // A stage this course owns can write two routines from the course's own
+  // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
+  const course = stageId ? courseStage(stageId) : undefined;
 
   if (!stage) {
     return (
@@ -190,6 +196,37 @@ export default function StageDetail() {
             onEdit={() => navigate(`/routine/${r.id}/edit`)}
           />
         ))}
+        {course && course.group.routine.length > 0 && (
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const id = addCourseRoutine(stage.id, 'level');
+                if (id) navigate(`/routine/${id}/edit`);
+              }}
+            >
+              Use this level’s routine
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const id = addCourseRoutine(stage.id, 'position');
+                if (id) navigate(`/routine/${id}/edit`);
+              }}
+            >
+              Build one for where I am
+            </button>
+          </div>
+        )}
+        {course && (
+          <div className="tiny faint" style={{ textAlign: 'start' }}>
+            {/* Fixed English page copy, never user text — inline LTR isolate. */}
+            <span dir="ltr">
+              Both write an ordinary routine you can reorder and retime. “Where I am” is the previous
+              level’s essentials plus only the sections you have already added.
+            </span>
+          </div>
+        )}
       </section>
 
       <section className="stack-sm">
@@ -397,6 +434,7 @@ function RoutineCard({
           Short on time — essentials only
         </button>
       )}
+      <RoutineDuration routine={routine} />
     </article>
   );
 }

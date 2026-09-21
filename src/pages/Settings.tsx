@@ -4,6 +4,8 @@ import {
   ITEM_STATUS_DESCRIPTIONS,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
+  describeMediaRoot,
+  mediaRoot,
   normalizeBaseUrl,
   RATING_ANCHORS,
   RATING_EFFECT_NOTE,
@@ -19,11 +21,13 @@ import { useStore, type ThemePref } from '../store/useStore';
 import {
   buildFullBackup,
   getDeviceName,
+  getMediaRootOverride,
   getNasBaseUrl,
   importFullBackup,
   lastModifiedOf,
   readBackupMeta,
   setDeviceName,
+  setMediaRootOverride,
   setNasBaseUrl,
 } from '../store/backup';
 import {
@@ -598,8 +602,85 @@ function NasRecordingsSection() {
         </div>
       </div>
 
+      <MediaRootSection archiveBase={normalized ?? ''} />
+
       <ArchiveRefresh />
     </section>
+  );
+}
+
+/**
+ * THE SHARED MEDIA ROOT — DERIVED, SHOWN, AND OVERRIDABLE.
+ *
+ * The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
+ * `tar-classes/` side by side, so the archive base above is exactly
+ * `<media root>/setar-classes`. The root is therefore the folder ABOVE it and
+ * needs no asking for — this panel SHOWS what was derived rather than
+ * requesting it again, with Browse to confirm and an override for a device
+ * whose tree genuinely is not laid out this way.
+ *
+ * This is not a second base for the archive and not a resolver fallback:
+ * nothing resolves against two bases in turn, the archive base keeps its exact
+ * value and meaning, and a course file that cannot resolve says so rather than
+ * being retried somewhere else.
+ */
+function MediaRootSection({ archiveBase }: { archiveBase: string }) {
+  const [override, setOverride] = useState(getMediaRootOverride());
+  const trimmed = override.trim();
+  const root = mediaRoot({ archiveBase, override: trimmed });
+  const explanation = describeMediaRoot({ archiveBase, override: trimmed });
+
+  function commit() {
+    const clean = normalizeBaseUrl(override);
+    const next = trimmed ? (clean ?? trimmed) : '';
+    setOverride(next);
+    setMediaRootOverride(next);
+  }
+
+  return (
+    <div className="card stack-sm">
+      <div className="small dim">
+        Course material — videos, scores and contrast cards — sits in other folders beside the Setar archive under
+        one shared media root. The root is worked out from the archive base above, so there is nothing to set here
+        unless your tree is laid out differently.
+      </div>
+      <div className="tiny faint" style={{ textAlign: 'start' }}>
+        {/* Generated English page copy, never user text — inline LTR isolate. */}
+        <span dir="ltr">{explanation}</span>
+      </div>
+      <div className="row between" style={{ gap: 8 }}>
+        <div className="tiny faint">
+          Browse opens the media root itself — if it does not list your course folders beside the archive folder, set
+          one explicitly below.
+        </div>
+        <button
+          className="btn btn-sm"
+          style={{ flex: 'none' }}
+          disabled={!root}
+          onClick={() => root && window.open(`${root}/`, '_blank', 'noopener,noreferrer')}
+        >
+          Browse
+        </button>
+      </div>
+      <Field
+        label="Media root (optional)"
+        hint="Leave blank to use the one derived from your archive base. Stored on this device only; never synced, never a password."
+      >
+        <input
+          className="input"
+          type="url"
+          inputMode="url"
+          enterKeyHint="done"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder="https://192.168.0.20:5010"
+          value={override}
+          onChange={(e) => setOverride(e.target.value)}
+          onBlur={commit}
+        />
+      </Field>
+    </div>
   );
 }
 

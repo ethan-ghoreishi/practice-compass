@@ -670,6 +670,12 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
     snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
   },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
+  // "Add new levels from this course": the course's own level code and focus
+  // line, generated reference data the owner never edits.
+  {
+    file: 'pages/PathwayDetail.tsx',
+    snippet: '<span dir="ltr">\n            {o.code} — {o.title}',
+  },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },

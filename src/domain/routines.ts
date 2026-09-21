@@ -27,6 +27,73 @@ export function segmentsForRun(segments: RoutineSegment[], shortOnTime: boolean)
   return shortOnTime ? segments.filter((s) => s.essential) : segments;
 }
 
+/** A routine's authored length: the total its segments were written to fill. */
+export function routineTotalMinutes(segments: RoutineSegment[]): number {
+  return segments.reduce((n, s) => n + Math.max(0, s.minutes), 0);
+}
+
+/**
+ * A ROUTINE'S AUTHORED MINUTES ARE PROPORTIONS, NOT A FIXED LENGTH.
+ *
+ * A curriculum routine says "twice as long on the piece as on chords"; running
+ * it in the time you actually have should keep that and change nothing else. So
+ * fitting is proportional scaling, and a segment keeps its label, its note, its
+ * essential flag and its bound item — only the MINUTES ever move.
+ *
+ * Two knobs, not one: this is a TIME decision and `segmentsForRun`'s
+ * "short on time — essentials only" is a CONTENT decision. They compose (fit
+ * what essentials-only left) and neither replaces the other.
+ *
+ * Returns the input array UNCHANGED at the authored total, so doing nothing
+ * behaves exactly as it always did.
+ *
+ * Scaling alone cannot reach a short total — a one-minute floor on every
+ * segment overshoots — so DROPPING is part of the fit, and it follows the
+ * routine's OWN priority: non-essential first, latest first, so the syllabus's
+ * own `⭐`/essential marking keeps meaning what it means. The Session Plan's
+ * bucket-priority allocator is deliberately NOT reused: it pins a warm-up share
+ * and clamps every segment to 2-25 minutes, which would distort a one-minute
+ * syllabus segment and entangle two systems the app keeps as peers.
+ */
+export function fitRoutineToMinutes(segments: RoutineSegment[], targetMinutes: number): RoutineSegment[] {
+  const target = Math.floor(targetMinutes);
+  if (segments.length === 0 || !Number.isFinite(target) || target <= 0) return [];
+  if (target === routineTotalMinutes(segments)) return segments;
+
+  // Every surviving segment needs at least its one-minute floor.
+  const kept = [...segments];
+  while (kept.length > target) {
+    let drop = kept.length - 1;
+    for (let k = kept.length - 1; k >= 0; k--) {
+      if (!kept[k].essential) {
+        drop = k;
+        break;
+      }
+    }
+    kept.splice(drop, 1);
+  }
+
+  // Water-filling: one minute each, then the remainder split in proportion to
+  // the authored minutes, largest fractional part first (earlier segment wins a
+  // tie). The result sums to EXACTLY the target by construction.
+  const remainder = target - kept.length;
+  const weightTotal = routineTotalMinutes(kept);
+  const shares = kept.map((s) =>
+    weightTotal > 0 ? (remainder * Math.max(0, s.minutes)) / weightTotal : remainder / kept.length,
+  );
+  const whole = shares.map((v) => Math.floor(v));
+  let spare = remainder - whole.reduce((a, b) => a + b, 0);
+  const order = shares
+    .map((v, k) => ({ k, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac || a.k - b.k);
+  for (const { k } of order) {
+    if (spare <= 0) break;
+    whole[k] += 1;
+    spare -= 1;
+  }
+  return kept.map((s, idx) => ({ ...s, minutes: 1 + whole[idx] }));
+}
+
 /** Routines the session instrument may practise right now. */
 export function routinesForInstrument(routines: PathwayRoutine[], instrumentId: ID): PathwayRoutine[] {
   return routines.filter((r) => r.instrumentId === instrumentId);

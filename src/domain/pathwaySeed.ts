@@ -10,14 +10,17 @@ import type {
   StepKind,
   StepStrand,
 } from './types';
+import { CGS_COURSE } from './courseData';
+import { courseStageSeeds } from './courseSeed';
 import { nowISO } from './util';
 
 // ---------------------------------------------------------------------------
 // Seeded default pathways. All of this becomes ordinary editable data in the
 // store — the user can rename, reorder, add to, or delete any of it.
 //
-//  • Guitar  → Classical Guitar Shed "Woodshed" (1A in full from the syllabus;
-//              1B–3F mapped from the real course structure).
+//  • Guitar  → Classical Guitar Shed "Woodshed" (1A hand-authored from the
+//              syllabus; every other level read straight out of the course's
+//              own tree — see `courseSeed.ts`).
 //  • Setar   → a flexible radif/repertoire map (dastgāh → āvāz → gusheh), since
 //              setar lessons are teacher-driven and change with need.
 //  • Tar     → the Honarestān two-book method (as taught on Khonyagar.com).
@@ -104,31 +107,37 @@ const DEFAULT_KIND: Record<StepStrand, StepKind> = {
 // Classical Guitar Shed
 // ===========================================================================
 
-const CGS_OUTLINE_NOTE = (code: string, area: string) =>
-  `Work through the Classical Guitar Shed ${code} “${area}” lesson(s). Keep your attention on the current step; go slow.`;
+// LEVELS 1B ONWARDS COME FROM THE COURSE'S OWN PUBLISHED STRUCTURE.
+//
+// They used to be eight generic placeholders per level from a `cgsOutline()`
+// helper — "Chords", "Arpeggios", "Piece" — each with one boilerplate sentence.
+// They are now the level's real sections, read out of the course tree by
+// `scripts/scan-cgs-course.mjs` into `courseData.ts`. Every catalogue key those
+// placeholders produced is PRESERVED by the real section that replaces it
+// (`chords`, `arpeggios`, `scales`, `exercises`, `rhythm-study`,
+// `sight-reading`, `piece`, `other-study`, `phrasing`, `fretboard-mastery`,
+// `practice-skills`), so an item the owner already added stays attached to its
+// suggestion. Keys are ADDED, never renamed.
+//
+// Level 1A keeps its fourteen hand-authored steps exactly as they are.
+const CGS_HAND_AUTHORED_LEVELS = ['1a'];
 
-function cgsOutline(code: string, strands: StepStrand[]): StepSeed[] {
-  const label: Partial<Record<StepStrand, string>> = {
-    chords: 'Chords',
-    arpeggios: 'Arpeggios',
-    scales: 'Scales',
-    exercise: 'Exercises',
-    rhythm: 'Rhythm study',
-    sight_reading: 'Sight-reading',
-    piece: 'Piece',
-    phrasing: 'Phrasing',
-    fretboard: 'Fretboard mastery',
-    practice_skills: 'Practice skills',
-    other: 'Other study',
-  };
-  return strands.map((s) => ({
-    title: label[s] ?? s,
-    strand: s,
-    notes: CGS_OUTLINE_NOTE(code, label[s] ?? s),
-  }));
-}
-
-const CGS_COMMON: StepStrand[] = ['chords', 'arpeggios', 'scales', 'exercise', 'rhythm', 'sight_reading', 'piece', 'other'];
+const cgsCourseStages: StageSeed[] = courseStageSeeds(CGS_COURSE, CGS_HAND_AUTHORED_LEVELS).map((s) => ({
+  code: s.code,
+  slug: s.slug,
+  title: s.title,
+  group: s.group,
+  intro: s.intro,
+  steps: s.steps.map((st) => ({
+    key: st.key,
+    title: st.title,
+    strand: st.strand,
+    kind: st.kind,
+    notes: st.notes,
+    about: st.about,
+    bpm: st.bpm,
+  })),
+}));
 
 const CGS: PathSeed = {
   id: 'cgs',
@@ -161,23 +170,7 @@ const CGS: PathSeed = {
         { title: 'Checkpoint — ready for 1B', strand: 'practice_skills', kind: 'checkpoint', notes: 'When the 1A areas feel comfortable and “The Forest Glade” plays through slowly and steadily, you’re ready for 1B. Move on when it feels right, not by a deadline.' },
       ],
     },
-    { code: '1B', group: 'Level 1 · Foundations', title: 'Arpeggios begin', steps: cgsOutline('1B', CGS_COMMON) },
-    { code: '1C', group: 'Level 1 · Foundations', title: 'Chord changes & progressions', steps: cgsOutline('1C', CGS_COMMON) },
-    { code: '1D', group: 'Level 1 · Foundations', title: 'Building the toolkit', steps: cgsOutline('1D', CGS_COMMON) },
-    { code: '1E', group: 'Level 1 · Foundations', title: 'Steadier hands', steps: cgsOutline('1E', CGS_COMMON) },
-    { code: '1F', group: 'Level 1 · Foundations', title: 'Consolidating Level 1', steps: cgsOutline('1F', CGS_COMMON) },
-    { code: '2A', group: 'Level 2 · Coordination', title: 'Independence & flow', steps: cgsOutline('2A', CGS_COMMON) },
-    { code: '2B', group: 'Level 2 · Coordination', title: 'Fuller textures', steps: cgsOutline('2B', CGS_COMMON) },
-    { code: '2C', group: 'Level 2 · Coordination', title: 'Longer phrases', steps: cgsOutline('2C', CGS_COMMON) },
-    { code: '2D', group: 'Level 2 · Coordination', title: 'Control & evenness', steps: cgsOutline('2D', CGS_COMMON) },
-    { code: '2E', group: 'Level 2 · Coordination', title: 'Articulation & scales', steps: cgsOutline('2E', CGS_COMMON) },
-    { code: '2F', group: 'Level 2 · Coordination', title: 'Consolidating Level 2', steps: cgsOutline('2F', CGS_COMMON) },
-    { code: '3A', group: 'Level 3 · Musicianship', title: 'Phrasing enters', steps: cgsOutline('3A', ['chords', 'arpeggios', 'scales', 'exercise', 'rhythm', 'sight_reading', 'phrasing', 'piece', 'other']) },
-    { code: '3B', group: 'Level 3 · Musicianship', title: 'Fretboard mastery I', steps: cgsOutline('3B', ['chords', 'arpeggios', 'scales', 'fretboard', 'exercise', 'rhythm', 'sight_reading', 'phrasing', 'piece', 'other']) },
-    { code: '3C', group: 'Level 3 · Musicianship', title: 'Fretboard mastery II', steps: cgsOutline('3C', ['chords', 'arpeggios', 'scales', 'fretboard', 'exercise', 'rhythm', 'sight_reading', 'phrasing', 'piece', 'other']) },
-    { code: '3D', group: 'Level 3 · Musicianship', title: 'Refining practice skills', steps: cgsOutline('3D', ['chords', 'arpeggios', 'scales', 'exercise', 'rhythm', 'sight_reading', 'phrasing', 'piece', 'practice_skills']) },
-    { code: '3E', group: 'Level 3 · Musicianship', title: 'Expressive control', steps: cgsOutline('3E', ['chords', 'arpeggios', 'scales', 'exercise', 'rhythm', 'sight_reading', 'phrasing', 'piece', 'practice_skills']) },
-    { code: '3F', group: 'Level 3 · Musicianship', title: 'Consolidating Level 3', steps: cgsOutline('3F', ['chords', 'arpeggios', 'scales', 'exercise', 'rhythm', 'sight_reading', 'phrasing', 'piece', 'other']) },
+    ...cgsCourseStages,
   ],
   routines: [
     {
