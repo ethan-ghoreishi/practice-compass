@@ -2358,22 +2358,67 @@ step is the same failure as a guessed BPM on a real section.
 DECLARES. `STRAND_TO_ITEM_TYPE` maps `strand: 'piece'` to `full_piece`, which is
 why the old generic "Piece" placeholder created a repertoire work literally called
 "Piece": the bug was the TITLE, never the strand. The level's own study IS the
-Piece section — it keeps its `piece` key and its `piece` strand and gains the real
-name the course gives it ("1B Piece — Study #1") — and the named packet works from
-that section's own Sheet Music lists are their own entries with their composers in
-the title. Every drill, exercise, rhythm, sight-reading and reading section stays
-what it was and never reaches My repertoire. A separate "study" entry beside the
-Piece section is NOT emitted: it would put one study in repertoire twice.
+Piece section — it keeps its `piece` key and gains the real name the course gives
+it ("1B Piece — Study #1") — and the named packet works from that section's own
+Sheet Music lists are their own entries with their composers in the title. Every
+drill, exercise, rhythm, sight-reading and reading section stays what it was and
+never reaches My repertoire. A separate "study" entry beside the Piece section is
+NOT emitted: it would put one study in repertoire twice.
 
-AND "NAMES A WORK" IS THE WHOLE RULE, INCLUDING WHERE THE COURSE DOES NOT. 3C's
-Piece section is a comma list ("Excerpts + Fur Elise, Minuet in G, Red is the
-Rose") and 3F's is "Repertoire + Video Review": the scanner already DIAGNOSED
-that it could not name a study there and then kept the `piece` strand anyway, so
-both still became `full_piece` items titled after the section — a repertoire work
-called "3F Piece: Repertoire + Video Review", which is the same defect as the old
-"Piece" placeholder said the other way round. Those two sections are emitted as
-practice material (`strand: 'other'`) and their REAL works reach My repertoire as
-that section's own packet works, which is where the course does name them. The
+**AND ONE WORK REACHES MY REPERTOIRE ONCE, UNDER THE NAME THE COURSE GIVES IT.**
+That was the hole the first pass left, and it is the same "one study in repertoire
+twice" the paragraph above already refuses, arriving through the OTHER channel: the
+Piece SECTION and the PACKET WORKS were two independent ways into `full_piece`, so
+where the course names one piece both ways the owner got two items for it. A sealed
+review reproduced both shapes — 3B's section ("Malagueña by Lecuona") beside
+`work-lecuona-malaguena`, which is literally the same score PDF; and 2E's study
+("Carulli Valse Op.50 No.7") beside 3F's `work-carulli-valse-op-50-no-7-1`, a level
+apart with no shared file at all. So the Piece section keeps `strand: 'piece'` ONLY
+where it is the course's only naming of a work at that level — where the level
+names PACKET WORKS, the packet is where the course names its pieces and the section
+beside them is practice material. 3D ("Lesson for Two Lutes") and 3E ("Chester")
+name none, so their own section IS the level's work and carries the whole section's
+material rather than one PDF lifted out of it.
+
+MATCHING THE TWO BY NAME WAS THE OBVIOUS FIX AND IT IS THE ONE THIS REFUSES. The
+cross-level case has no file to compare, so it could only ever be decided by
+joining "Malagueña by Lecuona" to "Lecuona Malaguena" and "Fernando Sor Etude #1
+Op.44" to "Sor Etude No.1 op 44 Practice Packet" — token-set fuzz whose false
+positive MERGES TWO GENUINELY DIFFERENT WORKS into one repertoire item, which is
+silent destruction of the owner's own record. This file already refuses that shape
+by name for the Setar archive's own path repair ("No fuzzy matching by title, size
+or modification time"). The channel is closed STRUCTURALLY instead and nothing is guessed. The
+measured cost is stated rather than hidden, and it is a VISIBLE change to the
+approved plan's own walkthrough: at Level 1B "Add Study #1 and it appears in My
+repertoire" now means adding the PACKET entry the course names it by ("Allen
+Mathews — Small Etude #1"), not the Piece section, which is an ordinary practice
+item with all of its material. Where the course ships packet works but not the
+study's own score at all (2C's "Study #8", 2E's Valse), that study reaches My
+repertoire only at the level whose packet does name it. `NOT_A_PACKET_WORK`'s `^click
+here` is LOAD-BEARING under this rule, not tidiness: 3D and 3E name their score as
+an instruction, and an instruction admitted as a "work" would both mint a
+repertoire item called "Click here…" and demote the section that is the real work.
+
+This is A MEASURED CORRECTION TO ac-1's WORDING, recorded rather than slipped past.
+"A level's own study AND its named packet works become repertoire works" is true of
+different levels, never of one work twice; the check keeps its contract name and
+asserts what actually holds. ac-1's substance — pieces reach repertoire, drills do
+not — is unchanged.
+
+AND "NAMES A WORK" IS THE WHOLE RULE, INCLUDING WHERE THE COURSE DOES NOT — AND
+WHERE IT NAMES MORE THAN ONE. 3C's Piece section is a comma list ("Excerpts + Fur
+Elise, Minuet in G, Red is the Rose") and 3F's is "Repertoire + Video Review": the
+scanner already DIAGNOSED that it could not name a study there and then kept the
+`piece` strand anyway, so both still became `full_piece` items titled after the
+section — a repertoire work called "3F Piece: Repertoire + Video Review", which is
+the same defect as the old "Piece" placeholder said the other way round. 3A is the
+third shape and the same failure: "Tarrega Study in C + Canon in D" is TWO distinct
+works, `studiesFrom` splits them correctly, and the section then rejoined them into
+one `full_piece` item because nothing had been skipped — while the stage already
+offered each of them as its own packet work. Two works cannot be one repertoire
+item. All three sections are emitted as practice material (`strand: 'other'`) and
+their REAL works reach My repertoire as that section's own packet works, which is
+where the course does name them. The
 KEY stays `piece` — keys are added, never renamed — and it is the SCANNER that
 decides this, because the grammar lives there and the app consumes the data. It
 is FORWARD-ONLY, as every catalogue change is: an item already created from that

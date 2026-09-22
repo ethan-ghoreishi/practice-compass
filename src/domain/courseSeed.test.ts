@@ -32,6 +32,9 @@ const STAGE_1C = courseStageId(CGS_COURSE, '1c');
 const STAGE_2C = courseStageId(CGS_COURSE, '2c');
 const STAGE_2E = courseStageId(CGS_COURSE, '2e');
 const STAGE_1A = courseStageId(CGS_COURSE, '1a');
+const STAGE_3A = courseStageId(CGS_COURSE, '3a');
+const STAGE_3B = courseStageId(CGS_COURSE, '3b');
+const STAGE_3F = courseStageId(CGS_COURSE, '3f');
 
 function group(key: string) {
   const g = CGS_COURSE.groups.find((x) => x.key === key);
@@ -51,6 +54,20 @@ function added(stageId: string, catalogKey: string, over: Partial<PracticeItem> 
   };
 }
 
+type Pair = readonly [string, string];
+
+/** Taking a list of suggestions in order, through the real addition path. */
+function addAll(pairs: readonly Pair[]): PracticeItem[] {
+  let db = { items: [] as PracticeItem[], materials: [] as Material[] };
+  for (const [stageId, key] of pairs) {
+    const entry = catalogForStage(stageId).find((e) => e.key === key);
+    if (!entry) throw new Error(`no catalog entry ${stageId}/${key}`);
+    const plan = planCatalogAddition(db, stageId, key, entry, 'g', NOW);
+    db = { items: plan.items, materials: plan.materials };
+  }
+  return db.items;
+}
+
 // --- ac-1 -------------------------------------------------------------------
 
 describe('what a course entry becomes in My repertoire', () => {
@@ -58,9 +75,21 @@ describe('what a course entry becomes in My repertoire', () => {
   const g = group('1b');
 
   it("a level's study and packet works are repertoire works and its drill sections are not", () => {
-    // The level's OWN study IS the Piece section, named as the course names it.
+    // THE LEVEL'S OWN STUDY, where the course names no packet work for it: 3E
+    // studies "Chester" and offers nothing beside it, so the Piece SECTION is
+    // the work, keeping the whole section's material rather than one loose PDF
+    // lifted out of it.
+    const stage3E = courseStageId(CGS_COURSE, '3e');
+    expect(group('3e').works).toEqual([]);
+    expect(catalogForStage(stage3E).find((e) => e.key === 'piece')?.title).toBe('3E Piece — Chester');
+    expect(isWork(added(stage3E, 'piece'))).toBe(true);
+    expect(courseFilesFor(stage3E, 'piece')).toEqual(group('3e').units.find((u) => u.key === 'piece')!.files);
+    expect(courseFilesFor(stage3E, 'piece').some((f) => /Chester/.test(f.path))).toBe(true);
+
+    // The section still keeps its real name where the course DOES name packet
+    // works — it is simply practice material there, so one work is never two
+    // repertoire items (see the duplicate test below).
     expect(entries.find((e) => e.key === 'piece')?.title).toBe('1B Piece — Study #1');
-    expect(isWork(added(STAGE_1B, 'piece'))).toBe(true);
 
     // Every named packet work, with its composer.
     expect(g.works.length).toBeGreaterThan(0);
@@ -93,14 +122,16 @@ describe('what a course entry becomes in My repertoire', () => {
       expect(section, `${key} lost its piece entry`).toBeDefined();
       expect(section!.strand).not.toBe('piece');
       expect(isWork(added(stageId, 'piece')), `${key}'s piece section reached My repertoire`).toBe(false);
-      expect(CGS_COURSE.diagnostics.some((d) => d.startsWith(`${key.toUpperCase()}: the Piece section names no single work`))).toBe(true);
+      expect(
+        CGS_COURSE.diagnostics.some((d) =>
+          d.startsWith(`${key.toUpperCase()}: the Piece section is practice material, not a repertoire work — it names no single work`),
+        ),
+      ).toBe(true);
       // Its named packet works still do.
       const works = group(key).works;
       expect(works.length).toBeGreaterThan(0);
       for (const w of works) expect(isWork(added(stageId, w.key)), `${w.key}`).toBe(true);
     }
-    // Every level whose study the course DOES name keeps it a work.
-    expect(catalogForStage(courseStageId(CGS_COURSE, '2e')).find((e) => e.key === 'piece')?.strand).toBe('piece');
 
     // AND A DOWNLOAD IN A SHEET-MUSIC LIST IS NOT AUTOMATICALLY A WORK EITHER —
     // the same rule one level down. 3F's list carries "Here's the video review
@@ -119,6 +150,95 @@ describe('what a course entry becomes in My repertoire', () => {
   it('emits no separate study entry beside the Piece section, which would repertoire it twice', () => {
     expect(g.works.some((w) => w.title === 'Study #1')).toBe(false);
     expect(entries.filter((e) => /Study #1/.test(e.title))).toHaveLength(1);
+  });
+
+  it("a level's study section and a packet entry for the same work never both reach My repertoire", () => {
+    // ONE WORK, ONE REPERTOIRE ITEM. The Piece SECTION and the packet works
+    // were two independent channels into My repertoire, and where the course
+    // names one piece both ways the owner got two items for it. Both of the
+    // sealed counterexamples, in BOTH addition orders:
+    //
+    //  (a) WITHIN a level. 3B's section studies Malagueña and its packet names
+    //      the same score — one PDF, two full_piece items.
+    const lecuona: Pair[] = [[STAGE_3B, 'piece'], [STAGE_3B, 'work-lecuona-malaguena']];
+    expect(group('3b').works.map((w) => w.file)).toEqual([
+      courseFilesFor(STAGE_3B, 'piece').find((f) => f.kind === 'pdf')?.path,
+    ]);
+    for (const order of [lecuona, [...lecuona].reverse()]) {
+      const works = repertoireWorks(addAll(order));
+      expect(works.map((w) => w.work.title)).toEqual(['Lecuona Malaguena']);
+    }
+
+    //  (b) ACROSS levels, where there is no shared file to compare and the two
+    //      names ("Carulli Valse Op.50 No.7" / "Carulli Valse Op 50 No 7 1")
+    //      only a fuzzy match would join — which is why the channel is closed
+    //      structurally rather than guessed at.
+    const carulli: Pair[] = [[STAGE_2E, 'piece'], [STAGE_3F, 'work-carulli-valse-op-50-no-7-1']];
+    for (const order of [carulli, [...carulli].reverse()]) {
+      const works = repertoireWorks(addAll(order));
+      expect(works.map((w) => w.work.title)).toEqual(['Carulli Valse Op 50 No 7 1']);
+    }
+
+    // THE RULE ITSELF, over the whole course rather than the two levels the
+    // review named: a Piece section is a repertoire work only where the course
+    // names no packet work at that level.
+    for (const grp of CGS_COURSE.groups) {
+      if (grp.key === '1a') continue; // hand-authored; its steps are frozen (ac-15)
+      const stageId = courseStageId(CGS_COURSE, grp.key);
+      const section = catalogForStage(stageId).find((e) => e.key === 'piece');
+      expect(section, `${grp.key} lost its piece entry`).toBeDefined();
+      expect(section!.strand === 'piece', `${grp.key}: section strand vs ${grp.works.length} packet work(s)`).toBe(
+        grp.works.length === 0,
+      );
+    }
+
+    // AND THE ONE SURVIVING SECTION-AS-WORK IS NOT A DUPLICATE EITHER: 3D and
+    // 3E name no packet work anywhere in the course for the score their own
+    // section holds, so nothing else can offer it.
+    for (const key of ['3d', '3e']) {
+      const folder = group(key).units.find((u) => u.key === 'piece')!.mediaPath;
+      const elsewhere = CGS_COURSE.groups.flatMap((x) => x.works).filter((w) => w.file?.startsWith(`${folder}/`));
+      expect(elsewhere, `${key}'s study is also offered as a packet work`).toEqual([]);
+    }
+
+    // The packet's own arm of the same rule, which holds today and is what a
+    // level bought later could quietly break: one score is one key, so a
+    // re-titled reappearance can never become a second work.
+    const byScore = new Map<string, Set<string>>();
+    for (const w of CGS_COURSE.groups.flatMap((x) => x.works)) {
+      const score = w.file?.split('/').pop();
+      if (!score) continue;
+      byScore.set(score, (byScore.get(score) ?? new Set()).add(w.key));
+    }
+    for (const [score, keys] of byScore) expect([...keys], score).toHaveLength(1);
+
+    // The stage row agrees with the tap — the section and the work are two
+    // rows, and only the work's is a repertoire work.
+    const items = addAll(lecuona);
+    const rows = stageUnits(stage(STAGE_3B), items);
+    expect(rows.filter((u) => u.item && isWork(u.item)).map((u) => u.key)).toEqual(['work-lecuona-malaguena']);
+    expect(rows.find((u) => u.key === 'piece')?.item).toBeDefined();
+  });
+
+  it('treats a Piece section naming two works as practice material, never one work', () => {
+    // 3A: "Tarrega Study in C + Canon in D". Two distinct works cannot be one
+    // repertoire item, and the stage already offers each of them separately —
+    // so the section keeps its key, its title and its material, and the two
+    // works are what reach My repertoire.
+    const section = catalogForStage(STAGE_3A).find((e) => e.key === 'piece');
+    expect(section?.title).toBe('3A Piece — Tarrega Study in C + Canon in D');
+    expect(section?.strand).not.toBe('piece');
+    expect(isWork(added(STAGE_3A, 'piece'))).toBe(false);
+    expect(courseFilesFor(STAGE_3A, 'piece').length).toBeGreaterThan(0);
+    expect(
+      CGS_COURSE.diagnostics.some((d) =>
+        d.startsWith('3A: the Piece section is practice material, not a repertoire work — it names 2 works'),
+      ),
+    ).toBe(true);
+
+    const works = group('3a').works;
+    expect(works).toHaveLength(2);
+    expect(repertoireWorks(addAll(works.map((w) => [STAGE_3A, w.key] as const)))).toHaveLength(2);
   });
 });
 

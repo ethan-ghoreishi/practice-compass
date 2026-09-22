@@ -355,8 +355,19 @@ function readSyllabusBpm(buf, foldersByBase) {
 /** Not a specific work: a list, or a page about repertoire in general. */
 const NOT_A_WORK = /repertoire|video review|excerpt|,/i;
 
-/** A download in a Sheet Music list that is an aid, not a piece. */
-const NOT_A_PACKET_WORK = /syllabus|materials|course notes|checklist/i;
+/**
+ * A download in a Sheet Music list that is an aid, not a piece.
+ *
+ * `^click here` is LOAD-BEARING, not tidiness. 3D and 3E name their study's own
+ * score as an instruction ("Click here to print the sheet music and materials.",
+ * "Click here for the materials for Chester.") rather than as a work — and those
+ * are exactly the two levels whose Piece SECTION is the repertoire work, because
+ * the course names no packet work for them. Both happened to contain the word
+ * "materials"; resting on that coincidence would let a differently-worded
+ * instruction become a repertoire work titled "Click here…" AND, worse, demote
+ * the section that is the real work.
+ */
+const NOT_A_PACKET_WORK = /^click here|syllabus|materials|course notes|checklist/i;
 
 /**
  * The level's OWN study, named by the course itself — "2C Piece: Study #8"
@@ -555,28 +566,50 @@ function scan(root, mediaPath, diagnostics) {
       const notesPath = path.join(levelAbs, pieceEntry.folder, 'notes.md');
       if (fs.existsSync(notesPath)) {
         const notes = readNotes(fs.readFileSync(notesPath, 'utf8'));
-        // THE LEVEL'S OWN STUDY IS THE PIECE SECTION ITSELF, not a second entry
-        // beside it: the section keeps its `piece` key and `piece` strand (so
-        // it is a repertoire work, which the generic "Piece" placeholder always
-        // claimed to be and never was) and simply gains the real name the
-        // course gives it. Emitting a separate study entry would put the same
-        // study in My repertoire twice.
         const { studies, skipped } = studiesFrom(notes);
-        if (skipped) {
-          // A COURSE ENTRY BECOMES REPERTOIRE ONLY WHERE THE COURSE NAMES A
-          // WORK. `strand: 'piece'` is exactly what makes an entry a full_piece
-          // and therefore a repertoire work, so a Piece section the course does
-          // not state a single work for may not keep it: it is practice on
-          // material named elsewhere, and its real works reach My repertoire as
-          // the packet works below. The KEY stays `piece` — keys are added,
-          // never renamed — and the section keeps its own title.
-          pieceEntry.unit.strand = 'other';
-          diagnostics.push(
-            `${code}: the Piece section names no single work ("${skipped}") — its own title is kept and it is practice material, not a repertoire work`,
-          );
-        }
         for (const w of packetWorks(notes, pieceEntry.unit.mediaPath)) works.push(w);
         if (studies.length) pieceEntry.unit.title = `${code} Piece — ${studies.join(' + ')}`;
+
+        // ONE WORK REACHES MY REPERTOIRE ONCE, UNDER THE NAME THE COURSE GIVES
+        // IT. `strand: 'piece'` is exactly what makes an entry a `full_piece`
+        // and therefore a repertoire work, so the Piece SECTION may keep it
+        // only where it is the course's ONLY naming of a work at this level.
+        // Three ways it is not, and each was a real duplicate or a wrong claim:
+        //
+        //  • the section names NO single work (3C's comma list, 3F's
+        //    "Repertoire + Video Review"): practice on material named
+        //    elsewhere;
+        //  • it names MORE THAN ONE (3A's "Tarrega Study in C + Canon in D"):
+        //    two works cannot be one repertoire item, and the stage already
+        //    offers both individually;
+        //  • the level NAMES PACKET WORKS: then the packet is where the course
+        //    names its pieces, and the section beside them is a second entry
+        //    for a work already there — 3B's section and
+        //    `work-lecuona-malaguena` are one score, and 2E's study reappears
+        //    as 3F's `work-carulli-valse-op-50-no-7-1`. Deciding that by NAME
+        //    would need "Malagueña by Lecuona" to match "Lecuona Malaguena" and
+        //    "Fernando Sor Etude #1 Op.44" to match "Sor Etude No.1 op 44
+        //    Practice Packet"; a fuzzy match that merges two genuinely
+        //    different works silently destroys the owner's record, so the
+        //    channel is closed structurally instead and nothing is guessed.
+        //
+        // What survives: 3D and 3E name no packet work at all, so their own
+        // study IS the level's work, with the whole section's material. The KEY
+        // always stays `piece` — keys are added, never renamed — and so does
+        // the section's title and every file it reaches.
+        const notRepertoire = skipped
+          ? `it names no single work ("${skipped}")`
+          : studies.length > 1
+            ? `it names ${studies.length} works ("${studies.join(' + ')}"), which the packet offers separately`
+            : works.length > 0
+              ? `this level names its pieces in its practice packet`
+              : null;
+        if (notRepertoire) {
+          pieceEntry.unit.strand = 'other';
+          diagnostics.push(
+            `${code}: the Piece section is practice material, not a repertoire work — ${notRepertoire}`,
+          );
+        }
       }
     } else {
       diagnostics.push(`${code}: no Piece section — no study or packet works`);

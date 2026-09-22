@@ -204,8 +204,11 @@ export function courseStageSeeds(course: CourseData, skipCodes: string[] = []): 
           notes: unitNotes(u),
           bpm: u.bpm,
         })),
-        // The packet works. `strand: 'piece'` is what makes them — and ONLY
-        // them and the level's own study section — repertoire works.
+        // The packet works. `strand: 'piece'` is what makes an entry a
+        // repertoire work, and each of a level's pieces earns it EXACTLY ONCE:
+        // here where the course names the work, else on the Piece section
+        // itself where it names none (the scanner decides — see AGENTS.md,
+        // "ONE WORK REACHES MY REPERTOIRE ONCE").
         ...g.works.map((w) => ({
           key: w.key,
           title: w.title,
