@@ -1,25 +1,12 @@
 ---
 id: 20260921-bring-the-classical-guitar-shed-course-i-9b18
 contractId: 20260921-bring-the-classical-guitar-shed-course-i-9b18
-patchId: dda31d9b18e4c9e0a031f19eb24ffabb2280d760
-reviewer: codex
+patchId: 305c8fb48d7968607b290d26b669e77ee6e44155
+reviewer: claude
 state: sealed
-verdict: request_changes
-findings:
-  - family: carried-work identity and complete catalogue material
-    summary: Course material deduplicates files by basename without proving that the
-      files have identical content, so a distinct catalogue file can be silently
-      hidden.
-    counterexample: Give two entries for one work different score files with the
-      same basename and displayed title, such as two revisions of
-      Ferrer-Ejercicio.pdf. courseFilesFor keeps the first path and drops the
-      second at src/domain/courseSeed.ts:343-350. The family test at
-      src/domain/courseSeed.test.ts:379-398 accepts this because it compares
-      only basename and title, neither of which establishes content identity.
-      Preserve both paths unless copy identity is authoritative and
-      content-backed.
-createdAt: 2026-09-22T14:50:38.359Z
-sealedAt: 2026-09-22T15:22:52.197Z
+verdict: approve
+createdAt: 2026-09-22T15:53:57.380Z
+sealedAt: 2026-09-22T17:59:52.434Z
 ---
 
 # Review: Bring the Classical Guitar Shed course into the Guitar pathway with its material, works and position-aware routines
@@ -33,7 +20,7 @@ sealedAt: 2026-09-22T15:22:52.197Z
 - **Contract:** 20260921-bring-the-classical-guitar-shed-course-i-9b18
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/32
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `dda31d9b18e4c9e0a031f19eb24ffabb2280d760`
+- **Diff patch-id:** `305c8fb48d7968607b290d26b669e77ee6e44155`
 
 ## The Delta this change was framed from
 
@@ -83,253 +70,185 @@ rerun wholesale.
 
 **Findings from the previous review:**
 
-- **carried-work identity and complete catalogue material** — Aliased catalogue entries resolve to one item, but that item exposes material only from whichever entry created it first. The other entry's course files are unreachable from the reused item.
-  _counterexample:_ Add cgs-2e/piece first, then encounter cgs-3f/work-carulli-valse-op-50-no-7-1. planCatalogAddition reuses the 2E item without changing its stageId/catalogKey, while itemFiles calls courseFilesFor only with those original fields. The 3F score, which the committed data shows exists only on the packet entry, never appears under the item's Material section. Reverse the order and the item exposes the 3F score but not 2E's section material. Sweep both aliases and both addition orders, including composed material as well as stage display, routines and reversible actions.
+- **carried-work identity and complete catalogue material** — Course material deduplicates files by basename without proving that the files have identical content, so a distinct catalogue file can be silently hidden.
+  _counterexample:_ Give two entries for one work different score files with the same basename and displayed title, such as two revisions of Ferrer-Ejercicio.pdf. courseFilesFor keeps the first path and drops the second at src/domain/courseSeed.ts:343-350. The family test at src/domain/courseSeed.test.ts:379-398 accepts this because it compares only basename and title, neither of which establishes content identity. Preserve both paths unless copy identity is authoritative and content-backed.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 0e903e6487eabf0ed8855603da01cb4b8c58af0a..146ea8c20373e16037957f63eca7ebee579b4e63 100644
+index 146ea8c20373e16037957f63eca7ebee579b4e63..dd62ac3c0c650eb2a6178d6ae0fda94cc746b9fe 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -2488,6 +2488,38 @@ OPENED where it lives, exactly like a class recording, and the contrast-card dec
- (1663 images) are ONE folder reference — never a viewer, a flashcard player or a
- deck-by-deck list.
- 
-+**AND A WORK'S MATERIAL IS THE WORK'S, NOT THE ENTRY'S — WHICH IS THE SAME
-+IDENTITY, READ ONE SURFACE FURTHER ON.** `carriedCourseWorkItem` already makes
-+one musical work ONE item however many entries name it, and `courseFilesFor`
-+then composed from the item's own `stageId`/`catalogKey` alone — so the material
-+depended on WHICH entry the owner happened to add FIRST. Take 2E's Carulli Valse
-+section and 3F's packet score was unreachable from the item; take 3F's packet
-+entry first and 2E's own section material was. Half a work either way round, on
-+the one item the identity rule exists to produce. `courseFilesFor` resolves
-+`courseWorkKey` FIRST and, where there is one, composes the files of EVERY entry
-+in that course naming that work — course order, units then works within a group
-+— so both addition orders compose the same LIST, not merely the same set. An
-+ORDINARY per-stage key carries no identity at all, so `chords` still composes
-+only its own section and nothing widens with it. Deduplication is by the file's
-+own NAME rather than its path, because the course ships a copy of one packet in
-+each level's folder that names it (Ferrer Ejercicio runs 2C-2F) and four rows of
-+one identical score is noise, not material — the same reading of a score's
-+identity the scanner's packet dedup already uses, and held to collapsing COPIES
-+ONLY: two candidates sharing a name must share a title, asserted per identity
-+(measured across the whole course: fifteen collapses, every one between
-+identically-titled copies of one packet), so a regenerated course that introduced
-+a genuine basename collision fails rather than silently losing a score. The item's own provenance is
-+NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
-+created them as, which is what keeps an Undo and the row's "−" bounded to the
-+stage that actually created the item, and nothing new is persisted. Its TITLE
-+and its Working notes still come from the entry that created it, deliberately:
-+a renamed item keeps its name on every row, and regeneration reaches an item's
-+material and never the notebook. `courseSeed.test.ts` sweeps EVERY identity the
-+course names from more than one entry — enumerated from the generated data, not
-+a written list, so a regenerated course is swept too — in both addition orders,
-+for identity, composed material, stage presentation, routine binding and the
-+`created: false` that keeps Undo away from an item this tap did not make.
-+
- **ONE MEDIA ROOT PER DEVICE, DERIVED — NOT A SECOND BASE AND NOT A RESOLVER
- FALLBACK.** The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
- `tar-classes/` side by side, so the configured archive base is exactly
+@@ -2500,15 +2500,30 @@ the one item the identity rule exists to produce. `courseFilesFor` resolves
+ in that course naming that work — course order, units then works within a group
+ — so both addition orders compose the same LIST, not merely the same set. An
+ ORDINARY per-stage key carries no identity at all, so `chords` still composes
+-only its own section and nothing widens with it. Deduplication is by the file's
+-own NAME rather than its path, because the course ships a copy of one packet in
+-each level's folder that names it (Ferrer Ejercicio runs 2C-2F) and four rows of
+-one identical score is noise, not material — the same reading of a score's
+-identity the scanner's packet dedup already uses, and held to collapsing COPIES
+-ONLY: two candidates sharing a name must share a title, asserted per identity
+-(measured across the whole course: fifteen collapses, every one between
+-identically-titled copies of one packet), so a regenerated course that introduced
+-a genuine basename collision fails rather than silently losing a score. The item's own provenance is
++only its own section and nothing widens with it. DEDUPLICATION IS BY THE FILE'S
++OWN PATH, AND BY NOTHING WEAKER. It was by BASENAME, to keep the copy of one
++packet the course ships in each level's folder that names it (Ferrer Ejercicio
++runs 2C-2F) from appearing four times — and a sealed review found what that
++bought: a basename is not a file's identity, so two genuinely different scores
++sharing one (two revisions of `Ferrer-Ejercicio.pdf`, a regenerated course that
++renamed a folder rather than its files) had the SECOND SILENTLY DROPPED from the
++one list a work's material is composed into, with nothing on the item saying a
++score was missing. Nothing in this data can establish content identity — a
++`CourseFile` is a path, a kind and a title, with no size and no digest — and
++inventing one would mean a scanner field, a regenerated `courseData.ts` and a
++new claim to keep true, machinery bought for a cosmetic. COMPLETENESS BEATS
++TIDINESS: a repeated packet costs the owner one extra row they can SEE, a hidden
++one costs them material they cannot. A path IS authoritative, it is the same
++reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on the full
++relative path — the claim that it read a basename was simply untrue), and
++`itemFiles` keys its own rows by path too, so each copy is a distinct row with
++its own stable id rather than a collision. The fifteen identical packet copies
++the old key collapsed now appear once per level that ships one.
++`courseSeed.test.ts` proves this against the LIVE data in the counterexample's
++own hardest shape — distinct paths sharing a basename AND a title, so no weaker
++key could tell them apart — and asserts that set is NON-EMPTY first, or a
++regenerated course with no such collision would pass while asserting nothing.
++The item's own provenance is
+ NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
+ created them as, which is what keeps an Undo and the row's "−" bounded to the
+ stage that actually created the item, and nothing new is persisted. Its TITLE
 diff --git a/docs/cgs-course.md b/docs/cgs-course.md
-index c8786eb3be9503af8c93cb8f7874add0ae3aef28..24a268bacdbb8de916e823b1067d8f3fa840c0cf 100644
+index 24a268bacdbb8de916e823b1067d8f3fa840c0cf..092a7d219246a094bc169652771d60f735fe141a 100644
 --- a/docs/cgs-course.md
 +++ b/docs/cgs-course.md
-@@ -107,8 +107,9 @@ reaches an item's MATERIAL and never its stored fields.
- The section and the packet are two entries the course can name one piece by, so
- each entry that is a work carries a `workKey` — its repertoire IDENTITY, separate
- from its catalogue key. `courseWorkKey` (`courseSeed.ts`) is the one resolution
--every surface reads — the tap, the stage row and the routine binding — so they can
--never disagree, and the owner takes a work at the level they actually meet it.
-+every surface reads — the tap, the stage row, the routine binding and the item's
-+composed MATERIAL — so they can never disagree, and the owner takes a work at the
-+level they actually meet it.
- 
- | entry | identity |
- |---|---|
-@@ -231,6 +232,27 @@ machinery.
-   reaches every item that already exists, and the owner never types a link.
-   **No bytes enter the app**: a course file is opened where it lives, exactly
-   like a class recording.
-+  * **A work's material is the WORK's, not the entry's.** Composed from the
-+    item's own stage and catalogue key alone, the files depended on which entry
-+    the owner added FIRST: take 2E's Carulli Valse section and 3F's packet score
-+    was unreachable from the item; take 3F's packet entry first and 2E's own
-+    section material was — half a work either way, on the one item the identity
-+    rule exists to produce. `courseFilesFor` resolves `courseWorkKey` first and,
-+    where there is one, composes the files of EVERY entry in that course naming
-+    that work, in course order (units then works within a group), so both
-+    addition orders compose the same LIST and not merely the same set. An
-+    ordinary per-stage key carries no identity, so `chords` still composes only
-+    its own section. Files are deduplicated by their own NAME rather than their
-+    path, because the course ships a copy of one packet in each level's folder
-+    that names it (Ferrer Ejercicio runs 2C–2F) — the same reading of a score's
-+    identity `packetWorks` already uses, held to collapsing COPIES ONLY: two
-+    candidates sharing a name must share a title (measured: fifteen collapses
-+    across the course, every one between identically-titled copies). The item's provenance is NOT rewritten
-+    to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
-+    which is what keeps Undo and the row's "−" bounded to the stage that created
-+    the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every
-+    identity the course names from more than one entry — enumerated from the
-+    generated data rather than a written list — in both addition orders.
-   * **That claim is bounded to MATERIAL.** A section's guidance, its BPM line
-     and its checklist are written into the item's own Working notes ONCE, at
-     creation, by `itemFromCatalogEntry` — the same as every other catalogue
+@@ -242,12 +242,16 @@ machinery.
+     that work, in course order (units then works within a group), so both
+     addition orders compose the same LIST and not merely the same set. An
+     ordinary per-stage key carries no identity, so `chords` still composes only
+-    its own section. Files are deduplicated by their own NAME rather than their
+-    path, because the course ships a copy of one packet in each level's folder
+-    that names it (Ferrer Ejercicio runs 2C–2F) — the same reading of a score's
+-    identity `packetWorks` already uses, held to collapsing COPIES ONLY: two
+-    candidates sharing a name must share a title (measured: fifteen collapses
+-    across the course, every one between identically-titled copies). The item's provenance is NOT rewritten
++    its own section. Files are deduplicated by their own PATH and by nothing
++    weaker. It was their BASENAME, to keep the copy of one packet the course
++    ships in each level's folder that names it (Ferrer Ejercicio runs 2C–2F)
++    from appearing four times; a sealed review found that a basename is not a
++    file's identity, so two genuinely different scores sharing one had the
++    second silently dropped with nothing on the item saying so. Nothing in this
++    data establishes content identity — a `CourseFile` is a path, a kind and a
++    title — so completeness wins over tidiness: a repeated packet is one visible
++    extra row, a hidden one is material the owner cannot see. A path is
++    authoritative and is what `packetWorks` itself dedups on. The item's provenance is NOT rewritten
+     to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
+     which is what keeps Undo and the row's "−" bounded to the stage that created
+     the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every
 diff --git a/src/domain/courseSeed.test.ts b/src/domain/courseSeed.test.ts
-index da2729431b8424c3a7e8784d1b430ffa5e3a0196..aa451b2370ac5ce906af34535befead2277f2aa4 100644
+index aa451b2370ac5ce906af34535befead2277f2aa4..c825d2c57105e4898a642910af09237896222c5a 100644
 --- a/src/domain/courseSeed.test.ts
 +++ b/src/domain/courseSeed.test.ts
-@@ -58,6 +58,37 @@ function added(stageId: string, catalogKey: string, over: Partial<PracticeItem>
- 
- type Pair = readonly [string, string];
- 
-+/** The files ONE catalogue entry declares in the generated data, read directly. */
-+function declaredEntries([stageId, key]: Pair): Array<{ path: string; title: string }> {
-+  const g = group(stageId.replace('cgs-', ''));
-+  const unit = g.units.find((u) => u.key === key);
-+  if (unit) return unit.files;
-+  const work = g.works.find((w) => w.key === key);
-+  return work?.file ? [{ path: work.file, title: work.title }] : [];
-+}
-+
-+function declaredFiles(entry: Pair): string[] {
-+  return declaredEntries(entry).map((f) => f.path);
-+}
-+
-+/**
-+ * Every repertoire identity this course names from MORE THAN ONE catalogue
-+ * entry, read out of the generated data rather than written down here — the
-+ * two declared aliases and every packet work the course carries across levels.
-+ */
-+function multiEntryIdentities(): Array<{ identity: string; entries: Pair[] }> {
-+  const byIdentity = new Map<string, Pair[]>();
-+  const push = (id: string, entry: Pair) => byIdentity.set(id, [...(byIdentity.get(id) ?? []), entry]);
-+  for (const g of CGS_COURSE.groups) {
-+    const stageId = courseStageId(CGS_COURSE, g.key);
-+    for (const u of g.units) if (u.workKey) push(u.workKey, [stageId, u.key]);
-+    for (const w of g.works) push(w.workKey ?? w.key, [stageId, w.key]);
-+  }
-+  return [...byIdentity]
-+    .filter(([, entries]) => entries.length > 1)
-+    .map(([identity, entries]) => ({ identity, entries }));
-+}
-+
- /** Taking a list of suggestions in order, through the real addition path. */
- function addAll(pairs: readonly Pair[]): PracticeItem[] {
-   let db = { items: [] as PracticeItem[], materials: [] as Material[] };
-@@ -214,11 +245,36 @@ describe('what a course entry becomes in My repertoire', () => {
-       expect(
-         buildPositionRoutine(CGS_COURSE, levelKey, [fromPacket]).some((seg) => seg.itemId === fromPacket.id),
-       ).toBe(true);
-+
-+      // AND ITS MATERIAL IS THE WORK'S, NEVER THE ENTRY'S. Composing from the
-+      // item's own stage and catalogue key alone made the files depend on
-+      // WHICH entry created it — 2E's section material or 3F's score, never
-+      // both — so the one item the identity rule produces was half a work
-+      // whichever way round it was added. Both entries compose the IDENTICAL
-+      // list, not merely the same set: the scan is course-ordered.
-+      const studyFiles = courseFilesFor(study[0], study[1]);
-+      expect(courseFilesFor(packet[0], packet[1]), `${study[1]} vs ${packet[1]}`).toEqual(studyFiles);
-+      // It is a UNION, not one side quietly winning: the packet's own score is
-+      // in it, and so is the section's own material.
-+      const packetScore = group(packet[0].replace('cgs-', '')).works.find((w) => w.key === packet[1])!.file;
-+      expect(studyFiles.map((f) => f.path), packet[1]).toContain(packetScore);
-+      for (const f of group(study[0].replace('cgs-', '')).units.find((u) => u.key === 'piece')!.files) {
-+        expect(studyFiles, f.path).toContainEqual(f);
-+      }
-+      // And the ONE item composes exactly that, whichever entry created it.
-+      for (const items of [studyFirst, packetFirst]) {
-+        const paths = itemFiles(dbWith(items), items[0].id).map((f) => (f as ItemFileReference).path);
-+        expect(paths, `created from ${items[0].catalogKey}`).toEqual(studyFiles.map((f) => f.path));
-+      }
-     }
- 
-     // AN ORDINARY PER-STAGE KEY CARRIES NO IDENTITY, so nothing above leaks
-     // into it: `chords` exists at every level and is never joined across them.
-     expect(carriedCourseWorkItem(STAGE_1C, 'chords', [added(STAGE_1B, 'chords')])).toBeUndefined();
-+    // — including for its MATERIAL, which is the half the widening above could
-+    // have leaked into: 1C's chords section composes 1C's files and no other
-+    // level's, because an ordinary per-stage key names no work at all.
-+    expect(courseFilesFor(STAGE_1C, 'chords')).toEqual(group('1c').units.find((u) => u.key === 'chords')!.files);
- 
+@@ -279,6 +279,14 @@ describe('what a course entry becomes in My repertoire', () => {
      // The packet's own arm of the same rule, which holds today and is what a
      // level bought later could quietly break: one score is one key, so a
-@@ -293,6 +349,80 @@ describe('a work carried forward across levels', () => {
-     expect(stageUnits(stage(STAGE_2E), [stranger]).find((u) => u.key === CARRIED)?.item).toBeUndefined();
+     // re-titled reappearance can never become a second work.
++    //
++    // THIS ONE KEEPS ITS BASENAME READING ON PURPOSE, and is not the defect
++    // `courseFilesFor` was just fixed for. That one DROPPED a file silently;
++    // this one FAILS LOUDLY — a course that ever shipped two different scores
++    // under one basename breaks this assertion rather than hiding anything,
++    // which is exactly the visibility the sealed finding asked for. Weakening
++    // it to compare paths would let a re-titled reappearance mint a second
++    // work, which is the identity design the contract fences off.
+     const byScore = new Map<string, Set<string>>();
+     for (const w of CGS_COURSE.groups.flatMap((x) => x.works)) {
+       const score = w.file?.split('/').pop();
+@@ -373,29 +381,12 @@ describe('a work carried forward across levels', () => {
+       // files are in the one list all of them compose. Without this a
+       // regression that let the LAST matching entry win would still have every
+       // entry agreeing with every other and pass unnoticed. Compared by the
+-      // file's NAME, which is the identity the dedup itself uses — the course
+-      // ships one packet once per level that names it.
+-      const names = new Set(paths.map((f) => f.split('/').pop()));
+-      // AND THE DEDUP ONLY EVER COLLAPSES COPIES OF ONE FILE. Deduplicating by
+-      // NAME is what keeps four identical Ferrer packets off one item, and the
+-      // risk it carries is hiding a genuinely different file that happens to
+-      // share a basename — so two candidates sharing one name must share a
+-      // title too. Measured across the whole course: fifteen collapses, every
+-      // one between identically-titled copies. A regenerated course that broke
+-      // that fails here rather than silently losing a score.
+-      const titlesByName = new Map<string, Set<string>>();
+-      for (const e of entries) {
+-        for (const f of declaredEntries(e)) {
+-          const n = f.path.split('/').pop()!;
+-          titlesByName.set(n, (titlesByName.get(n) ?? new Set()).add(f.title));
+-        }
+-      }
+-      for (const [n, titles] of titlesByName) expect([...titles], `${identity}: ${n}`).toHaveLength(1);
+-
++      // whole PATH — every declared file survives composition, never merely one
++      // per basename.
+       for (const e of entries) {
+         const own = declaredFiles(e);
+         expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
+-        for (const f of own) expect([...names], `${identity}: ${e[0]}/${e[1]}`).toContain(f.split('/').pop());
++        for (const f of own) expect(paths, `${identity}: ${e[0]}/${e[1]}`).toContain(f);
+       }
+ 
+       const first = entries[0];
+@@ -423,6 +414,55 @@ describe('a work carried forward across levels', () => {
+     }
    });
  
-+  it('holds for EVERY identity this course names twice, in both addition orders', () => {
-+    // THE SWEEP, NOT THE COUNTEREXAMPLE. The two declared aliases are the pair
-+    // a reviewer happened to name; the course names nine more identities from
-+    // more than one entry, and every one of them has the same two orders and
-+    // the same four consumers. Enumerating them from the DATA rather than by
-+    // hand is what makes a regenerated course — a fourth Ferrer level, a new
-+    // alias — swept too, instead of silently falling outside a written list.
-+    const sets = multiEntryIdentities();
-+    expect(sets.map((x) => x.identity)).toEqual(
-+      expect.arrayContaining(['work-carulli-valse-op-50-no-7', 'work-fernando-sor-etude-1-op-44']),
-+    );
-+    expect(sets.length).toBeGreaterThan(2);
-+
-+    for (const { identity, entries } of sets) {
-+      // Every entry naming this work composes the SAME material — the work's,
-+      // never the entry's. This is the half that was order-dependent.
-+      const paths = courseFilesFor(...entries[0]).map((f) => f.path);
-+      for (const e of entries) {
-+        expect(courseFilesFor(...e).map((f) => f.path), `${identity} at ${e[0]}/${e[1]}`).toEqual(paths);
-+      }
-+      // And it is a UNION, not merely agreement: every entry's OWN declared
-+      // files are in the one list all of them compose. Without this a
-+      // regression that let the LAST matching entry win would still have every
-+      // entry agreeing with every other and pass unnoticed. Compared by the
-+      // file's NAME, which is the identity the dedup itself uses — the course
-+      // ships one packet once per level that names it.
-+      const names = new Set(paths.map((f) => f.split('/').pop()));
-+      // AND THE DEDUP ONLY EVER COLLAPSES COPIES OF ONE FILE. Deduplicating by
-+      // NAME is what keeps four identical Ferrer packets off one item, and the
-+      // risk it carries is hiding a genuinely different file that happens to
-+      // share a basename — so two candidates sharing one name must share a
-+      // title too. Measured across the whole course: fifteen collapses, every
-+      // one between identically-titled copies. A regenerated course that broke
-+      // that fails here rather than silently losing a score.
-+      const titlesByName = new Map<string, Set<string>>();
-+      for (const e of entries) {
-+        for (const f of declaredEntries(e)) {
-+          const n = f.path.split('/').pop()!;
-+          titlesByName.set(n, (titlesByName.get(n) ?? new Set()).add(f.title));
++  it('keeps every distinct path, even when two share a basename AND a title', () => {
++    // THE DEDUP KEY IS THE PATH, AND NOTHING WEAKER. It used to be the
++    // BASENAME, to keep the copy of one packet the course ships in each level
++    // folder that names it from appearing four times — but a basename is not a
++    // file's identity. Two genuinely different scores sharing one (two
++    // revisions of Ferrer-Ejercicio.pdf) had the second silently dropped, and
++    // nothing on the item said a score was missing. Nothing in this data
++    // establishes content identity — a CourseFile is a path, a kind and a
++    // title — so completeness wins: a repeated packet is one visible extra row,
++    // a hidden one is material the owner cannot see.
++    //
++    // Driven from the LIVE data rather than a fixture, and from the hardest
++    // shape there is: paths the old key could not tell apart even with the
++    // title added, which is exactly the counterexample's own shape.
++    const collisions = multiEntryIdentities()
++      .map(({ identity, entries }) => {
++        const byNameAndTitle = new Map<string, Set<string>>();
++        for (const e of entries) {
++          for (const f of declaredEntries(e)) {
++            const k = `${f.path.split('/').pop()}\u0000${f.title}`;
++            byNameAndTitle.set(k, (byNameAndTitle.get(k) ?? new Set()).add(f.path));
++          }
 +        }
-+      }
-+      for (const [n, titles] of titlesByName) expect([...titles], `${identity}: ${n}`).toHaveLength(1);
++        return { identity, entries, shared: [...byNameAndTitle.values()].filter((ps) => ps.size > 1) };
++      })
++      .filter((x) => x.shared.length > 0);
 +
-+      for (const e of entries) {
-+        const own = declaredFiles(e);
-+        expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
-+        for (const f of own) expect([...names], `${identity}: ${e[0]}/${e[1]}`).toContain(f.split('/').pop());
-+      }
++    // NON-VACUITY FIRST. A regenerated course that stopped shipping duplicate
++    // basenames would otherwise pass this while asserting nothing at all.
++    expect(collisions.length, 'no basename collision left to prove anything with').toBeGreaterThan(0);
++    expect(collisions.map((x) => x.identity)).toContain('work-ferrer-ejercicio');
 +
-+      const first = entries[0];
-+      const last = entries[entries.length - 1];
-+      for (const order of [[first, last], [last, first]] as const) {
-+        const why = `${identity}: ${order[0][1]} then ${order[1][1]}`;
-+        const items = addAll(order);
-+        expect(items, why).toHaveLength(1);
-+        expect(repertoireWorks(items), why).toHaveLength(1);
-+        // ONE item, and the WHOLE work's material on it either way round.
-+        expect(itemFiles(dbWith(items), items[0].id).map((f) => (f as ItemFileReference).path), why).toEqual(paths);
-+        // Every level that names it shows that item as added, and no tap there
-+        // claims to have created it — so no Undo can reach it.
-+        for (const [stageId, key] of entries) {
-+          expect(stageUnits(stage(stageId), items).find((u) => u.key === key)?.item?.id, `${why} @ ${stageId}`).toBe(
-+            items[0].id,
-+          );
-+          const entry = catalogForStage(stageId).find((e) => e.key === key);
-+          expect(
-+            planCatalogAddition({ items, materials: [] }, stageId, key, entry, 'g', NOW).created,
-+            `${why} @ ${stageId}`,
-+          ).toBe(false);
-+        }
++    for (const { identity, entries, shared } of collisions) {
++      const composed = courseFilesFor(...entries[0]).map((f) => f.path);
++      // Every distinct path survives, and the ROW COUNT says so: a set
++      // comparison alone would pass a list that had quietly collapsed them.
++      for (const ps of shared) {
++        for (const path of ps) expect(composed, `${identity}: ${path}`).toContain(path);
++        expect(composed.filter((c) => ps.has(c)).length, identity).toBe(ps.size);
 +      }
++      // And all the way out to the real item's Material, where each copy is its
++      // own row with its own stable id rather than a collision.
++      const items = addAll([entries[0]]);
++      const files = itemFiles(dbWith(items), items[0].id) as ItemFileReference[];
++      for (const ps of shared) for (const path of ps) expect(files.map((f) => f.path), identity).toContain(path);
++      expect(new Set(files.map((f) => f.id)).size, identity).toBe(files.length);
 +    }
 +  });
 +
@@ -337,91 +256,49 @@ index da2729431b8424c3a7e8784d1b430ffa5e3a0196..aa451b2370ac5ce906af34535befead2
      const chords1B = added(STAGE_1B, 'chords');
      const entry = catalogForStage(STAGE_1C).find((e) => e.key === 'chords');
 diff --git a/src/domain/courseSeed.ts b/src/domain/courseSeed.ts
-index 2293428a8d3c7c7450121304c8f5cb1d64553684..4f134ffabc33c9b7c7f80afc0af27c824b252293 100644
+index 4f134ffabc33c9b7c7f80afc0af27c824b252293..ee9206da56d9314b83ce5058aebdb566ca16abe2 100644
 --- a/src/domain/courseSeed.ts
 +++ b/src/domain/courseSeed.ts
-@@ -285,6 +285,25 @@ function legacyKeysFor(stageId: string, unitKey: string): string[] {
- 
- // --- composed material -------------------------------------------------------
- 
-+/** A packet work's own score, as one composed file. */
-+function workFile(work: CourseWork): CourseFile[] {
-+  return work.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
-+}
-+
-+/** The files ONE catalogue entry of this course declares, and nothing else. */
-+function entryFiles(
-+  found: { course: CourseData; group: CourseGroup },
-+  stageId: string,
-+  catalogKey: string,
-+): CourseFile[] {
-+  const unit = found.group.units.find(
-+    (u) => u.key === catalogKey || legacyKeysFor(stageId, u.key).includes(catalogKey),
-+  );
-+  if (unit) return unit.files;
-+  const work = found.group.works.find((w) => w.key === catalogKey);
-+  return work ? workFile(work) : [];
-+}
-+
- /**
-  * The course files that belong to one catalogue entry — its section's videos,
-  * scores, images and contrast-card folder, or a packet work's own score.
-@@ -293,16 +312,49 @@ function legacyKeysFor(stageId: string, unitKey: string): string[] {
-  * catalogue key it was created from; the files come from the course data every
-  * time they are read, so regenerating that data reaches every item that already
-  * exists and the owner never types a link.
-+ *
-+ * AND A WORK'S MATERIAL IS EVERY ENTRY THAT NAMES THAT WORK, NOT ONLY THE ONE
-+ * THE ITEM HAPPENED TO BE CREATED FROM. `carriedCourseWorkItem` already makes
-+ * one musical work ONE item however many entries name it — so composing from
-+ * the item's own `stageId`/`catalogKey` alone made the material depend on
-+ * WHICH entry was added first: take 2E's Carulli Valse section and 3F's packet
-+ * score was unreachable from it; take the 3F packet entry first and 2E's own
-+ * section material was. Identity governs here for the same reason it governs
-+ * the tap, the row and the routine binding: the item is the work, so its
-+ * material is the work's. The scan is deterministic — course order, units then
-+ * works within a group — so both addition orders compose the SAME list, not
-+ * merely the same set.
-+ *
-+ * Deduplication is by the file's OWN NAME, not by its path: the course ships a
-+ * copy of one packet in each level's folder that names it (Ferrer Ejercicio
-+ * runs 2C-2F), and four rows of one identical score is noise, not material.
-+ * That is the same reading of a score's identity the scanner's own packet
-+ * dedup and `courseSeed.test.ts`'s "one score is one key" already use.
-+ *
-+ * An ORDINARY per-stage key carries no identity at all — `chords` exists in
-+ * every level — so it composes only its own section, exactly as before.
-  */
- export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[] {
-   const found = courseStage(stageId);
-   if (!found) return [];
--  const unit = found.group.units.find(
--    (u) => u.key === catalogKey || legacyKeysFor(stageId, u.key).includes(catalogKey),
--  );
--  if (unit) return unit.files;
--  const work = found.group.works.find((w) => w.key === catalogKey);
--  return work?.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
-+  const identity = courseWorkKey(found, stageId, catalogKey);
-+  if (!identity) return entryFiles(found, stageId, catalogKey);
-+
-+  const out: CourseFile[] = [];
-+  const seen = new Set<string>();
-+  const take = (files: CourseFile[]) => {
-+    for (const f of files) {
-+      const name = f.path.split('/').pop() ?? f.path;
-+      if (seen.has(name)) continue;
-+      seen.add(name);
-+      out.push(f);
-+    }
-+  };
-+  for (const group of found.course.groups) {
-+    for (const u of group.units) if (u.workKey === identity) take(u.files);
-+    for (const w of group.works) if ((w.workKey ?? w.key) === identity) take(workFile(w));
-+  }
-+  return out;
- }
- 
- // --- routines ----------------------------------------------------------------
+@@ -325,11 +325,22 @@ function entryFiles(
+  * works within a group — so both addition orders compose the SAME list, not
+  * merely the same set.
+  *
+- * Deduplication is by the file's OWN NAME, not by its path: the course ships a
+- * copy of one packet in each level's folder that names it (Ferrer Ejercicio
+- * runs 2C-2F), and four rows of one identical score is noise, not material.
+- * That is the same reading of a score's identity the scanner's own packet
+- * dedup and `courseSeed.test.ts`'s "one score is one key" already use.
++ * Deduplication is by the file's OWN PATH, and by nothing weaker. It used to
++ * be by BASENAME, to keep the copy of one packet the course ships in each
++ * level's folder that names it (Ferrer Ejercicio runs 2C-2F) from appearing
++ * four times — but a basename is not a file's identity. Two genuinely
++ * different scores that happen to share one (two revisions of
++ * `Ferrer-Ejercicio.pdf`, a regenerated course that renamed a folder rather
++ * than its files) then had the second SILENTLY DROPPED from the one list the
++ * work's material is composed into, and nothing about the item said a score
++ * was missing. Nothing in this data establishes content identity — a
++ * `CourseFile` is a path, a kind and a title, with no size and no digest — so
++ * there is nothing here to collapse a copy on, and COMPLETENESS BEATS TIDINESS:
++ * a repeated packet costs the owner one extra row they can see, where a hidden
++ * one costs them material they cannot. A path IS authoritative, and it is the
++ * same reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on
++ * the full relative path). `itemFiles` keys its own rows by path too, so each
++ * copy is a distinct, stable row rather than a collision.
+  *
+  * An ORDINARY per-stage key carries no identity at all — `chords` exists in
+  * every level — so it composes only its own section, exactly as before.
+@@ -344,9 +355,8 @@ export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[
+   const seen = new Set<string>();
+   const take = (files: CourseFile[]) => {
+     for (const f of files) {
+-      const name = f.path.split('/').pop() ?? f.path;
+-      if (seen.has(name)) continue;
+-      seen.add(name);
++      if (seen.has(f.path)) continue;
++      seen.add(f.path);
+       out.push(f);
+     }
+   };
 ```
 
 **Full current text of every file the rework touched:**
@@ -2931,15 +2808,30 @@ the one item the identity rule exists to produce. `courseFilesFor` resolves
 in that course naming that work — course order, units then works within a group
 — so both addition orders compose the same LIST, not merely the same set. An
 ORDINARY per-stage key carries no identity at all, so `chords` still composes
-only its own section and nothing widens with it. Deduplication is by the file's
-own NAME rather than its path, because the course ships a copy of one packet in
-each level's folder that names it (Ferrer Ejercicio runs 2C-2F) and four rows of
-one identical score is noise, not material — the same reading of a score's
-identity the scanner's packet dedup already uses, and held to collapsing COPIES
-ONLY: two candidates sharing a name must share a title, asserted per identity
-(measured across the whole course: fifteen collapses, every one between
-identically-titled copies of one packet), so a regenerated course that introduced
-a genuine basename collision fails rather than silently losing a score. The item's own provenance is
+only its own section and nothing widens with it. DEDUPLICATION IS BY THE FILE'S
+OWN PATH, AND BY NOTHING WEAKER. It was by BASENAME, to keep the copy of one
+packet the course ships in each level's folder that names it (Ferrer Ejercicio
+runs 2C-2F) from appearing four times — and a sealed review found what that
+bought: a basename is not a file's identity, so two genuinely different scores
+sharing one (two revisions of `Ferrer-Ejercicio.pdf`, a regenerated course that
+renamed a folder rather than its files) had the SECOND SILENTLY DROPPED from the
+one list a work's material is composed into, with nothing on the item saying a
+score was missing. Nothing in this data can establish content identity — a
+`CourseFile` is a path, a kind and a title, with no size and no digest — and
+inventing one would mean a scanner field, a regenerated `courseData.ts` and a
+new claim to keep true, machinery bought for a cosmetic. COMPLETENESS BEATS
+TIDINESS: a repeated packet costs the owner one extra row they can SEE, a hidden
+one costs them material they cannot. A path IS authoritative, it is the same
+reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on the full
+relative path — the claim that it read a basename was simply untrue), and
+`itemFiles` keys its own rows by path too, so each copy is a distinct row with
+its own stable id rather than a collision. The fifteen identical packet copies
+the old key collapsed now appear once per level that ships one.
+`courseSeed.test.ts` proves this against the LIVE data in the counterexample's
+own hardest shape — distinct paths sharing a basename AND a title, so no weaker
+key could tell them apart — and asserts that set is NON-EMPTY first, or a
+regenerated course with no such collision would pass while asserting nothing.
+The item's own provenance is
 NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
 created them as, which is what keeps an Undo and the row's "−" bounded to the
 stage that actually created the item, and nothing new is persisted. Its TITLE
@@ -3765,12 +3657,16 @@ machinery.
     that work, in course order (units then works within a group), so both
     addition orders compose the same LIST and not merely the same set. An
     ordinary per-stage key carries no identity, so `chords` still composes only
-    its own section. Files are deduplicated by their own NAME rather than their
-    path, because the course ships a copy of one packet in each level's folder
-    that names it (Ferrer Ejercicio runs 2C–2F) — the same reading of a score's
-    identity `packetWorks` already uses, held to collapsing COPIES ONLY: two
-    candidates sharing a name must share a title (measured: fifteen collapses
-    across the course, every one between identically-titled copies). The item's provenance is NOT rewritten
+    its own section. Files are deduplicated by their own PATH and by nothing
+    weaker. It was their BASENAME, to keep the copy of one packet the course
+    ships in each level's folder that names it (Ferrer Ejercicio runs 2C–2F)
+    from appearing four times; a sealed review found that a basename is not a
+    file's identity, so two genuinely different scores sharing one had the
+    second silently dropped with nothing on the item saying so. Nothing in this
+    data establishes content identity — a `CourseFile` is a path, a kind and a
+    title — so completeness wins over tidiness: a repeated packet is one visible
+    extra row, a hidden one is material the owner cannot see. A path is
+    authoritative and is what `packetWorks` itself dedups on. The item's provenance is NOT rewritten
     to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
     which is what keeps Undo and the row's "−" bounded to the stage that created
     the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every
@@ -4151,6 +4047,14 @@ describe('what a course entry becomes in My repertoire', () => {
     // The packet's own arm of the same rule, which holds today and is what a
     // level bought later could quietly break: one score is one key, so a
     // re-titled reappearance can never become a second work.
+    //
+    // THIS ONE KEEPS ITS BASENAME READING ON PURPOSE, and is not the defect
+    // `courseFilesFor` was just fixed for. That one DROPPED a file silently;
+    // this one FAILS LOUDLY — a course that ever shipped two different scores
+    // under one basename breaks this assertion rather than hiding anything,
+    // which is exactly the visibility the sealed finding asked for. Weakening
+    // it to compare paths would let a re-titled reappearance mint a second
+    // work, which is the identity design the contract fences off.
     const byScore = new Map<string, Set<string>>();
     for (const w of CGS_COURSE.groups.flatMap((x) => x.works)) {
       const score = w.file?.split('/').pop();
@@ -4245,29 +4149,12 @@ describe('a work carried forward across levels', () => {
       // files are in the one list all of them compose. Without this a
       // regression that let the LAST matching entry win would still have every
       // entry agreeing with every other and pass unnoticed. Compared by the
-      // file's NAME, which is the identity the dedup itself uses — the course
-      // ships one packet once per level that names it.
-      const names = new Set(paths.map((f) => f.split('/').pop()));
-      // AND THE DEDUP ONLY EVER COLLAPSES COPIES OF ONE FILE. Deduplicating by
-      // NAME is what keeps four identical Ferrer packets off one item, and the
-      // risk it carries is hiding a genuinely different file that happens to
-      // share a basename — so two candidates sharing one name must share a
-      // title too. Measured across the whole course: fifteen collapses, every
-      // one between identically-titled copies. A regenerated course that broke
-      // that fails here rather than silently losing a score.
-      const titlesByName = new Map<string, Set<string>>();
-      for (const e of entries) {
-        for (const f of declaredEntries(e)) {
-          const n = f.path.split('/').pop()!;
-          titlesByName.set(n, (titlesByName.get(n) ?? new Set()).add(f.title));
-        }
-      }
-      for (const [n, titles] of titlesByName) expect([...titles], `${identity}: ${n}`).toHaveLength(1);
-
+      // whole PATH — every declared file survives composition, never merely one
+      // per basename.
       for (const e of entries) {
         const own = declaredFiles(e);
         expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
-        for (const f of own) expect([...names], `${identity}: ${e[0]}/${e[1]}`).toContain(f.split('/').pop());
+        for (const f of own) expect(paths, `${identity}: ${e[0]}/${e[1]}`).toContain(f);
       }
 
       const first = entries[0];
@@ -4292,6 +4179,55 @@ describe('a work carried forward across levels', () => {
           ).toBe(false);
         }
       }
+    }
+  });
+
+  it('keeps every distinct path, even when two share a basename AND a title', () => {
+    // THE DEDUP KEY IS THE PATH, AND NOTHING WEAKER. It used to be the
+    // BASENAME, to keep the copy of one packet the course ships in each level
+    // folder that names it from appearing four times — but a basename is not a
+    // file's identity. Two genuinely different scores sharing one (two
+    // revisions of Ferrer-Ejercicio.pdf) had the second silently dropped, and
+    // nothing on the item said a score was missing. Nothing in this data
+    // establishes content identity — a CourseFile is a path, a kind and a
+    // title — so completeness wins: a repeated packet is one visible extra row,
+    // a hidden one is material the owner cannot see.
+    //
+    // Driven from the LIVE data rather than a fixture, and from the hardest
+    // shape there is: paths the old key could not tell apart even with the
+    // title added, which is exactly the counterexample's own shape.
+    const collisions = multiEntryIdentities()
+      .map(({ identity, entries }) => {
+        const byNameAndTitle = new Map<string, Set<string>>();
+        for (const e of entries) {
+          for (const f of declaredEntries(e)) {
+            const k = `${f.path.split('/').pop()}\u0000${f.title}`;
+            byNameAndTitle.set(k, (byNameAndTitle.get(k) ?? new Set()).add(f.path));
+          }
+        }
+        return { identity, entries, shared: [...byNameAndTitle.values()].filter((ps) => ps.size > 1) };
+      })
+      .filter((x) => x.shared.length > 0);
+
+    // NON-VACUITY FIRST. A regenerated course that stopped shipping duplicate
+    // basenames would otherwise pass this while asserting nothing at all.
+    expect(collisions.length, 'no basename collision left to prove anything with').toBeGreaterThan(0);
+    expect(collisions.map((x) => x.identity)).toContain('work-ferrer-ejercicio');
+
+    for (const { identity, entries, shared } of collisions) {
+      const composed = courseFilesFor(...entries[0]).map((f) => f.path);
+      // Every distinct path survives, and the ROW COUNT says so: a set
+      // comparison alone would pass a list that had quietly collapsed them.
+      for (const ps of shared) {
+        for (const path of ps) expect(composed, `${identity}: ${path}`).toContain(path);
+        expect(composed.filter((c) => ps.has(c)).length, identity).toBe(ps.size);
+      }
+      // And all the way out to the real item's Material, where each copy is its
+      // own row with its own stable id rather than a collision.
+      const items = addAll([entries[0]]);
+      const files = itemFiles(dbWith(items), items[0].id) as ItemFileReference[];
+      for (const ps of shared) for (const path of ps) expect(files.map((f) => f.path), identity).toContain(path);
+      expect(new Set(files.map((f) => f.id)).size, identity).toBe(files.length);
     }
   });
 
@@ -5021,11 +4957,22 @@ function entryFiles(
  * works within a group — so both addition orders compose the SAME list, not
  * merely the same set.
  *
- * Deduplication is by the file's OWN NAME, not by its path: the course ships a
- * copy of one packet in each level's folder that names it (Ferrer Ejercicio
- * runs 2C-2F), and four rows of one identical score is noise, not material.
- * That is the same reading of a score's identity the scanner's own packet
- * dedup and `courseSeed.test.ts`'s "one score is one key" already use.
+ * Deduplication is by the file's OWN PATH, and by nothing weaker. It used to
+ * be by BASENAME, to keep the copy of one packet the course ships in each
+ * level's folder that names it (Ferrer Ejercicio runs 2C-2F) from appearing
+ * four times — but a basename is not a file's identity. Two genuinely
+ * different scores that happen to share one (two revisions of
+ * `Ferrer-Ejercicio.pdf`, a regenerated course that renamed a folder rather
+ * than its files) then had the second SILENTLY DROPPED from the one list the
+ * work's material is composed into, and nothing about the item said a score
+ * was missing. Nothing in this data establishes content identity — a
+ * `CourseFile` is a path, a kind and a title, with no size and no digest — so
+ * there is nothing here to collapse a copy on, and COMPLETENESS BEATS TIDINESS:
+ * a repeated packet costs the owner one extra row they can see, where a hidden
+ * one costs them material they cannot. A path IS authoritative, and it is the
+ * same reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on
+ * the full relative path). `itemFiles` keys its own rows by path too, so each
+ * copy is a distinct, stable row rather than a collision.
  *
  * An ORDINARY per-stage key carries no identity at all — `chords` exists in
  * every level — so it composes only its own section, exactly as before.
@@ -5040,9 +4987,8 @@ export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[
   const seen = new Set<string>();
   const take = (files: CourseFile[]) => {
     for (const f of files) {
-      const name = f.path.split('/').pop() ?? f.path;
-      if (seen.has(name)) continue;
-      seen.add(name);
+      if (seen.has(f.path)) continue;
+      seen.add(f.path);
       out.push(f);
     }
   };
@@ -5627,22 +5573,10 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
+If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
 
-**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260921-bring-the-classical-guitar-shed-course-i-9b18/findings.json`
 
-```bash
-cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260921-bring-the-classical-guitar-shed-course-i-9b18/findings.json'
-```
-
-**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
-
-**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
-
-```bash
-prismatica seal '20260921-bring-the-classical-guitar-shed-course-i-9b18' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260921-bring-the-classical-guitar-shed-course-i-9b18/findings.json'
-```
-
-You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260921-bring-the-classical-guitar-shed-course-i-9b18/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
+with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
