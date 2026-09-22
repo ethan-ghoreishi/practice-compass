@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:37.765Z
-        commit: a7ec8d7c823784ee9a3b4441461829402958fe08
+        at: 2026-09-22T19:01:54.827Z
+        commit: c8ef36fb75b3159a9ee32ea409d8eed09d16999a
     - actor: The musician
       action: Swaps, removes or regenerates segments until the shape looks right.
       shows: The remaining minutes are redistributed immediately so the total still
@@ -31,8 +31,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:37.765Z
-        commit: a7ec8d7c823784ee9a3b4441461829402958fe08
+        at: 2026-09-22T19:01:54.827Z
+        commit: c8ef36fb75b3159a9ee32ea409d8eed09d16999a
     - actor: The musician
       action: Taps 'Start plan'.
       shows: "The runner: the whole list with the current segment highlighted."
@@ -41,8 +41,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:37.765Z
-        commit: a7ec8d7c823784ee9a3b4441461829402958fe08
+        at: 2026-09-22T19:01:54.827Z
+        commit: c8ef36fb75b3159a9ee32ea409d8eed09d16999a
     - actor: The musician
       action: Taps 'Start' on the current segment.
       shows: The ordinary active-block screen, with the segment's minutes as the
@@ -54,8 +54,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:37.765Z
-        commit: a7ec8d7c823784ee9a3b4441461829402958fe08
+        at: 2026-09-22T19:01:54.827Z
+        commit: c8ef36fb75b3159a9ee32ea409d8eed09d16999a
     - actor: The musician
       action: Finishes and saves the block as usual.
       shows: Back on the plan, that segment reads 'done' and the pointer moves to the
@@ -65,8 +65,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:37.765Z
-        commit: a7ec8d7c823784ee9a3b4441461829402958fe08
+        at: 2026-09-22T19:01:54.827Z
+        commit: c8ef36fb75b3159a9ee32ea409d8eed09d16999a
     - actor: The musician
       action: Skips anything they do not want, or ends the plan at any time.
       shows: "'Session complete' once the last segment is passed."
@@ -75,8 +75,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:37.765Z
-        commit: a7ec8d7c823784ee9a3b4441461829402958fe08
+        at: 2026-09-22T19:01:54.827Z
+        commit: c8ef36fb75b3159a9ee32ea409d8eed09d16999a
   endsWith: The available time was spent on real, logged practice in a sensible
     order — and the plan itself leaves no trace in the data.
   variations:
