@@ -5,7 +5,7 @@ title: Bring the Classical Guitar Shed course into the Guitar pathway with its
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/32
 intent: 20260921-bring-the-classical-guitar-shed-course-i-9b18
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: 4b5a88181047f85420a450b5393e5b1997630d43
   branch: main
