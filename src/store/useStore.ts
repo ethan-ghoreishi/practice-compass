@@ -44,7 +44,13 @@ import {
   duplicateRoutineData,
   focusForItem,
   groupBlocksByItem,
-  itemFromCatalogEntry,
+  buildLevelRoutine,
+  buildPositionRoutine,
+  courseForPathway,
+  courseRoutine,
+  courseStage,
+  planCatalogAddition,
+  planCourseLevels,
   itemOwnedAttachments,
   retargetRoutineInstrument,
   runElapsedSeconds,
@@ -411,8 +417,26 @@ interface StoreState {
   setQuestionAnswer: (id: ID, answer: string) => void;
   /** Remove an entry. Never deletes the item or its practice. */
   removeAgendaEntry: (id: ID) => void;
-  /** Create a practice item from a stage's reference catalog entry; returns its id. */
-  addFromCatalog: (stageId: ID, entryKey: string) => ID;
+  /**
+   * Create a practice item from a stage's reference catalog entry.
+   *
+   * Take one catalogue suggestion into the owner's items. Reports whether it
+   * actually CREATED one: a work the course carries across levels resolves to
+   * the item added at an earlier level, and an Undo may never reach that.
+   */
+  addFromCatalog: (stageId: ID, entryKey: string) => { id: ID; created: boolean };
+  /**
+   * Write one of a course stage's own routines — the level's, or one built for
+   * where the owner actually is — as an ordinary editable routine. Returns its
+   * id, or null when the stage belongs to no course.
+   */
+  addCourseRoutine: (stageId: ID, kind: 'level' | 'position') => ID | null;
+  /**
+   * Add the SELECTED course levels a pathway does not have. Adds nothing on its
+   * own — see `offeredCourseLevels`. Deliberately separate from
+   * `reseedDefaultPathways`, which is unchanged.
+   */
+  addCourseLevels: (pathwayId: ID, groupKeys: string[]) => void;
   /** Begin a session on an existing item (with smart defaults). */
   startItemSession: (itemId: ID) => void;
 
@@ -1214,10 +1238,6 @@ export const useStore = create<StoreState>()(
 
       addFromCatalog: (stageId, entryKey) => {
         const { db } = get();
-        // Reuse an existing item already created from this catalog entry.
-        const existing = db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey);
-        if (existing) return existing.id;
-
         const entry = catalogForStage(stageId).find((e) => e.key === entryKey);
         const stage = db.pathwayStages.find((s) => s.id === stageId);
         const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
@@ -1226,12 +1246,43 @@ export const useStore = create<StoreState>()(
           db.instruments.find((i) => i.active)?.id ||
           db.instruments[0]?.id ||
           '';
+        // The whole decision — existing-item reuse, a course work carried
+        // forward from an earlier level, and the course's own study source
+        // found-or-created — is ONE pure value, applied in ONE set(). The Node
+        // test environment cannot import this file (Dexie, through ./idb), so
+        // the decision is proved in courseSeed.test.ts and this SHAPE is what
+        // protects the wiring.
+        const plan = planCatalogAddition(db, stageId, entryKey, entry, instrumentId, new Date());
+        set((s) => ({ db: { ...s.db, items: plan.items, materials: plan.materials } }));
+        return { id: plan.itemId, created: plan.created };
+      },
+
+      addCourseRoutine: (stageId, kind) => {
+        const { db } = get();
+        const found = courseStage(stageId);
+        if (!found) return null;
         const now = new Date();
-        const item = entry
-          ? itemFromCatalogEntry(entry, instrumentId, now)
-          : createItem({ instrumentId, title: 'New item', stageId }, now);
-        set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
-        return item.id;
+        const segments =
+          kind === 'level'
+            ? buildLevelRoutine(found.course, found.group.key, db.items)
+            : buildPositionRoutine(found.course, found.group.key, db.items);
+        const pathway = db.pathways.find((p) => p.id === found.course.pathwayId);
+        const order = db.pathwayRoutines.filter((r) => r.stageId === stageId).length;
+        const routine = courseRoutine(found.course, found.group, segments, pathway?.instrumentId, order, kind, now);
+        set((s) => ({ db: { ...s.db, pathwayRoutines: [...s.db.pathwayRoutines, routine] } }));
+        return routine.id;
+      },
+
+      addCourseLevels: (pathwayId, groupKeys) => {
+        const course = courseForPathway(pathwayId);
+        if (!course) return;
+        const now = new Date();
+        // One pure decision, one set(). It adds only what was selected and only
+        // what is genuinely absent, so a stage the owner deleted is offered
+        // again but never recreated on its own.
+        set((s) => ({
+          db: { ...s.db, pathwayStages: planCourseLevels(course, s.db.pathwayStages, groupKeys, now) },
+        }));
       },
 
       startItemSession: (itemId) => {
@@ -1795,7 +1846,18 @@ export const useStore = create<StoreState>()(
         // Same guard as startSession, in the other direction: an ordinary
         // block already running must be resolved before a routine can start.
         if (active) return;
-        if (activeRoutine && activeRoutine.routineId !== routineId) return;
+        // AND A RUN ALREADY IN PROGRESS IS NEVER RESTARTED FROM ZERO — not even
+        // its OWN routine's. This used to refuse only a DIFFERENT routine,
+        // which was enough while `RoutineRunner`'s begin effect (guarded by
+        // `!activeRoutine`) was the only caller. It is not the only caller any
+        // more: a duration can be chosen from Today, a stage or a pathway, all
+        // of which a mid-run owner can navigate to, because a run deliberately
+        // survives navigation. Starting there would reset `accumulatedSeconds`
+        // to 0 and silently discard practice that genuinely elapsed. The caller
+        // still navigates, so the owner lands on the clock that is actually
+        // running and resolves it — the same deterministic way out every other
+        // page gives them.
+        if (activeRoutine) return;
         set({
           activeRoutine: {
             routineId,

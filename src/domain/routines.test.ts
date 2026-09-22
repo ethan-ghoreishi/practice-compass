@@ -5,9 +5,12 @@ import {
   detachIncompatibleRoutinesForPathway,
   detachRoutinesFromPathway,
   detachRoutinesFromStage,
+  describeFitDrop,
   duplicateRoutineData,
+  fitRoutineToMinutes,
   locateClock,
   retargetRoutineInstrument,
+  routineTotalMinutes,
   routinesForInstrument,
   runElapsedSeconds,
   segmentBoundaries,
@@ -599,6 +602,24 @@ describe('the single active clock guard, enforced at every entry point', () => {
   // boundary and announce a segment the user just chose to end themselves.
   // This proves the real wiring, not just the pure acknowledgeThrough call
   // in isolation (practiceSignal.test.ts).
+  it('refuses to restart a run already in progress, even its own routine, rather than zeroing its elapsed time', () => {
+    // Choosing a duration is reachable from Today, a stage and a pathway, all
+    // of which a mid-run owner can navigate to — a run deliberately survives
+    // navigation. Starting there must never reset the clock: the elapsed time
+    // is practice that genuinely happened.
+    useStore.setState({
+      active: null,
+      activeRoutine: runningRoutine({ routineId: 'r1', accumulatedSeconds: 240, running: false, runningSince: undefined }),
+    });
+
+    // The same routine, at a different length.
+    useStore.getState().startRoutineRun('r1', false, [{ label: 'A', minutes: 3 }]);
+
+    const after = useStore.getState().activeRoutine;
+    expect(after?.accumulatedSeconds).toBe(240);
+    expect(after?.authoredSegments).not.toEqual([{ label: 'A', minutes: 3 }]);
+  });
+
   it('skipRoutineRun acknowledges the boundary it just clamped, so the marker never lags behind', () => {
     const segments: RoutineSegment[] = [
       { label: 'A', minutes: 1 },
@@ -609,5 +630,145 @@ describe('the single active clock guard, enforced at every entry point', () => {
 
     const after = useStore.getState().activeRoutine;
     expect(after?.signalledThrough).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-11 / ac-12 — a routine's authored minutes are PROPORTIONS.
+//
+// The syllabus routine says "twice as long on the piece as on chords". Running
+// it in the time actually available has to keep that and change nothing else:
+// a segment's label, note, essential flag and bound item are never touched, and
+// only the minutes move.
+// ---------------------------------------------------------------------------
+
+/** 1B's own routine shape: three core segments at 10, five rotation at 7 = 65. */
+const SYLLABUS: RoutineSegment[] = [
+  { label: 'Arpeggios', minutes: 10, essential: true, itemId: 'arp', note: 'PIMA' },
+  { label: 'Scales', minutes: 10, essential: true, itemId: 'sca' },
+  { label: 'Piece', minutes: 10, essential: true, itemId: 'pce' },
+  { label: 'Chords', minutes: 7, itemId: 'chd' },
+  { label: 'Rhythm', minutes: 7 },
+  { label: 'Exercises', minutes: 7, itemId: 'exe' },
+  { label: 'Sight-reading', minutes: 7 },
+  { label: 'Other study', minutes: 7, itemId: 'oth' },
+];
+
+describe('running a routine for the time you actually have', () => {
+  it('fits a routine to a target total exactly and leaves it unchanged at its authored total', () => {
+    // The authored total returns the SAME array — doing nothing behaves
+    // exactly as it always did.
+    expect(routineTotalMinutes(SYLLABUS)).toBe(65);
+    expect(fitRoutineToMinutes(SYLLABUS, 65)).toBe(SYLLABUS);
+
+    // Every other target sums to EXACTLY that target, shorter and longer.
+    for (const target of [8, 12, 20, 31, 40, 45, 60, 90, 120]) {
+      const fitted = fitRoutineToMinutes(SYLLABUS, target);
+      expect(routineTotalMinutes(fitted), `target ${target}`).toBe(target);
+      expect(fitted.every((s) => s.minutes >= 1)).toBe(true);
+    }
+
+    // AND THE PROPORTIONS ARE READ BEFORE THE FLOOR, NOT AFTER A MINUTE PER
+    // SEGMENT HAS ALREADY BEEN SPENT. 1:9 fitted to 20 is exactly 2:18, which
+    // satisfies the floor on its own; reserving one minute each and splitting
+    // only the remaining 18 distorted it to 3:17 for no reason.
+    const lopsided: RoutineSegment[] = [
+      { label: 'a', minutes: 1 },
+      { label: 'b', minutes: 9 },
+    ];
+    expect(fitRoutineToMinutes(lopsided, 20).map((s) => s.minutes)).toEqual([2, 18]);
+    // The floor is still a floor: where the proportion alone rounds a segment
+    // to nothing, it is lifted to one minute out of the longest that can spare
+    // it, and the total does not move.
+    expect(fitRoutineToMinutes(lopsided, 3).map((s) => s.minutes)).toEqual([1, 2]);
+    expect(fitRoutineToMinutes(lopsided, 11).map((s) => s.minutes)).toEqual([1, 10]);
+  });
+
+  it("keeps the syllabus's own proportions — the core segments stay the longest", () => {
+    const fitted = fitRoutineToMinutes(SYLLABUS, 40);
+    expect(fitted).toHaveLength(SYLLABUS.length);
+    const core = fitted.slice(0, 3).map((s) => s.minutes);
+    const rotation = fitted.slice(3).map((s) => s.minutes);
+    expect(Math.min(...core)).toBeGreaterThan(Math.max(...rotation));
+  });
+
+  it('is a separate knob from "short on time" — the two compose', () => {
+    const essentialsOnly = segmentsForRun(SYLLABUS, true);
+    expect(essentialsOnly).toHaveLength(3);
+    const fitted = fitRoutineToMinutes(essentialsOnly, 12);
+    expect(routineTotalMinutes(fitted)).toBe(12);
+    expect(fitted.map((s) => s.label)).toEqual(['Arpeggios', 'Scales', 'Piece']);
+    // `segmentsForRun` itself is untouched by any of this.
+    expect(segmentsForRun(SYLLABUS, false)).toBe(SYLLABUS);
+  });
+});
+
+describe('a target too short to seat every segment', () => {
+  it("drops a non-essential segment before an essential one and preserves every surviving segment's identity", () => {
+    // Eight segments cannot fit in five minutes at the one-minute floor, so
+    // three are dropped: non-essential first, latest first.
+    const fitted = fitRoutineToMinutes(SYLLABUS, 5);
+    expect(fitted.map((s) => s.label)).toEqual(['Arpeggios', 'Scales', 'Piece', 'Chords', 'Rhythm']);
+    expect(routineTotalMinutes(fitted)).toBe(5);
+
+    // Every essential one survives until nothing else is left to drop.
+    const three = fitRoutineToMinutes(SYLLABUS, 3);
+    expect(three.map((s) => s.label)).toEqual(['Arpeggios', 'Scales', 'Piece']);
+    expect(three.every((s) => s.essential)).toBe(true);
+
+    // AND IT IS NON-ESSENTIAL-FIRST, NOT SIMPLY LAST-FIRST. With the essential
+    // segments all leading, as the syllabus writes them, those two rules agree
+    // and neither is proved — so this case INTERLEAVES them: dropping from the
+    // end alone would take the essential Piece before the non-essential Rhythm
+    // sitting in front of it.
+    const interleaved: RoutineSegment[] = [
+      { label: 'Warm-up', minutes: 4 },
+      { label: 'Arpeggios', minutes: 8, essential: true },
+      { label: 'Rhythm', minutes: 4 },
+      { label: 'Piece', minutes: 8, essential: true },
+    ];
+    expect(fitRoutineToMinutes(interleaved, 3).map((s) => s.label)).toEqual([
+      'Warm-up',
+      'Arpeggios',
+      'Piece',
+    ]);
+    expect(fitRoutineToMinutes(interleaved, 2).map((s) => s.label)).toEqual(['Arpeggios', 'Piece']);
+
+    // AND WHAT WAS DROPPED IS SAID HONESTLY. Cutting far enough reaches the
+    // essential segments too, and the control used to report every drop as
+    // "non-essential" — a plain untruth about the one distinction ⭐ makes.
+    expect(describeFitDrop(SYLLABUS, fitRoutineToMinutes(SYLLABUS, 65))).toBeNull();
+    expect(describeFitDrop(SYLLABUS, fitted)).toBe('3 non-essential segment(s) dropped');
+    expect(describeFitDrop(SYLLABUS, three)).toBe('5 non-essential segment(s) dropped');
+    expect(describeFitDrop(SYLLABUS, fitRoutineToMinutes(SYLLABUS, 2))).toBe(
+      '6 segment(s) dropped, 1 of them essential',
+    );
+    // It follows the CONTENT decision too: essentials-only fitted to a total
+    // shorter than the essentials themselves is still an essential drop.
+    const essentials = segmentsForRun(SYLLABUS, true);
+    expect(describeFitDrop(essentials, fitRoutineToMinutes(essentials, 2))).toBe(
+      '1 segment(s) dropped, 1 of them essential',
+    );
+
+    // And nothing that survives is altered beyond its minutes.
+    for (const target of [5, 12, 40, 100]) {
+      for (const s of fitRoutineToMinutes(SYLLABUS, target)) {
+        const original = SYLLABUS.find((o) => o.label === s.label);
+        expect(original, `${s.label} was invented`).toBeDefined();
+        expect(s.note).toBe(original!.note);
+        expect(s.essential).toBe(original!.essential);
+        expect(s.itemId).toBe(original!.itemId);
+      }
+    }
+  });
+
+  it('drops an essential one only when the target is shorter than the essentials themselves', () => {
+    expect(fitRoutineToMinutes(SYLLABUS, 2).map((s) => s.label)).toEqual(['Arpeggios', 'Scales']);
+  });
+
+  it('is empty for an empty routine or a target that can seat nothing', () => {
+    expect(fitRoutineToMinutes([], 30)).toEqual([]);
+    expect(fitRoutineToMinutes(SYLLABUS, 0)).toEqual([]);
+    expect(fitRoutineToMinutes(SYLLABUS, Number.NaN)).toEqual([]);
   });
 });

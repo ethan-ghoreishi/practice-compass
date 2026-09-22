@@ -300,6 +300,44 @@ before correcting the base moves those files into the new namespace while the
 base is still one folder too high — the same dead link, from the other side. The
 end state is the same either way; the transient is avoidable.
 
+### The SHARED MEDIA ROOT is derived from this base — it is not a second one
+
+The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
+`tar-classes/` beside each other, so the base above is exactly
+`<media root>/setar-classes`. A COURSE (`docs/cgs-course.md`) stores its files
+relative to that shared root, and the root is therefore **derived** — the folder
+above the archive base — and shown in Settings with its own **Browse**, rather
+than asked for again.
+
+This does not contradict the paragraph above, and must not be read as the
+fallback it rules out:
+
+* **The archive base keeps its exact value and its exact meaning.** Nothing
+  rewrites it, every Setar and lesson code path reads the same string it always
+  did, and every stored reference resolves byte-identically.
+* **Nothing resolves against two bases in turn.** Each composed reference
+  carries which root it belongs to (`ItemFileReference.root`), and
+  `baseForItemFile` picks exactly one. A course file is never retried against
+  the archive base, and a class recording is never retried against the root.
+* **Nothing is guessed.** The derivation applies only when the base's last
+  segment names a folder a shipped source declares
+  (`knownSourceFolders()` — `setar-classes`, `classical-guitar`). Anything else
+  yields **no root at all**, and a course file then says so and offers no open
+  action rather than pointing at a dead link. A device still carrying the legacy
+  base — the media root itself, one folder too high — is in exactly that state,
+  and correcting the base once fixes the archive and the course together.
+* **And "anything else" includes a base that cannot even be read.** A lone `%`
+  is a legal URL path and an illegal escape, so decoding the last segment to
+  compare it can THROW — and the derivation runs while Settings and every
+  material row are drawing, with the archive base read in the same expression,
+  so an unreadable base took the screen down with it and archive rows with that.
+  A segment that will not decode is left exactly as it is, matches no known
+  source, and yields no root: the same honest "no root" every other
+  unrecognisable base gets.
+
+The optional **Media root** field in Settings exists for a device whose tree
+genuinely is not laid out this way. Leave it blank and the derivation applies.
+
 ### Who owns an imported field, and where to correct a wrong one
 
 **Source-owned** (replaced by the archive, but only when you say so): the piece's

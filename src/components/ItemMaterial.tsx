@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   SOURCE_ROLE_LABELS,
   archiveFor,
+  baseForItemFile,
   formatFileSize,
   itemFiles,
   lessonFiles,
@@ -10,7 +11,7 @@ import {
   type ItemFile,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { getNasBaseUrl } from '../store/backup';
+import { getMediaRoot, getNasBaseUrl } from '../store/backup';
 import { attachmentObjectURL } from '../store/attachments';
 import { MusicIcon, PlayIcon, ReportIcon } from './icons';
 
@@ -116,7 +117,14 @@ function FileRow({ file, onHide }: { file: ItemFile; onHide?: () => void }) {
 
 /** A NAS reference: resolved through the configured base, opened on tap only. */
 function ReferenceRow({ file, onHide }: { file: Extract<ItemFile, { source: 'reference' }>; onHide?: () => void }) {
-  const resolution = resolveRecording(getNasBaseUrl(), file);
+  // A class reference resolves against the archive base; a course file against
+  // the shared media root one folder above it. `baseForItemFile` is the one
+  // place that choice is made, so this row can never push one through the
+  // other's base.
+  const resolution = resolveRecording(
+    baseForItemFile(file, { archiveBase: getNasBaseUrl(), mediaRoot: getMediaRoot() }),
+    file,
+  );
   const size = formatFileSize(file.sizeBytes);
   // PROVENANCE, stated plainly: which class this came out of, and what it is.
   // Generated English metadata, so it carries its own inline LTR isolate.
@@ -146,8 +154,14 @@ function ReferenceRow({ file, onHide }: { file: Extract<ItemFile, { source: 'ref
           <span dir="ltr">
             On your NAS · {file.kind}
             {size ? ` · ${size}` : ''}
-            {resolution.status === 'no-base' && ' · set a NAS base URL in Settings to open it'}
-            {resolution.status === 'bad-base' && ' · your NAS base URL isn’t valid — check Settings'}
+            {resolution.status === 'no-base' &&
+              (file.root === 'media'
+                ? ' · set a media root in Settings to open it'
+                : ' · set a NAS base URL in Settings to open it')}
+            {resolution.status === 'bad-base' &&
+              (file.root === 'media'
+                ? ' · your media root isn’t valid — check Settings'
+                : ' · your NAS base URL isn’t valid — check Settings')}
             {resolution.status === 'unsafe' && ' · this link points outside the archive and will not be opened'}
             {provenance ? ` · ${provenance}` : ''}
             {file.unavailable && ' · no longer in the archive'}

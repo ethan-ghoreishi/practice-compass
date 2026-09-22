@@ -9,10 +9,12 @@ import {
   STRAND_LABELS,
   type PathwayRoutine,
   type StageUnit,
+  courseStage,
   itemsPreparedForLesson,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
+import RoutineDuration from '../components/RoutineDuration';
 import { Field } from '../components/ui';
 import { ArrowLeftIcon, CheckIcon, MinusIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
 
@@ -23,6 +25,7 @@ export default function StageDetail() {
   const deleteStage = useStore((s) => s.deleteStage);
   const updatePathway = useStore((s) => s.updatePathway);
   const addFromCatalog = useStore((s) => s.addFromCatalog);
+  const addCourseRoutine = useStore((s) => s.addCourseRoutine);
   const removeCatalogItem = useStore((s) => s.removeCatalogItem);
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
@@ -45,6 +48,9 @@ export default function StageDetail() {
   const [editTitle, setEditTitle] = useState('');
   const [editIntro, setEditIntro] = useState('');
   const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
+  // A stage this course owns can write two routines from the course's own
+  // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
+  const course = stageId ? courseStage(stageId) : undefined;
 
   if (!stage) {
     return (
@@ -79,10 +85,15 @@ export default function StageDetail() {
   }
 
   function addSuggestion(unit: StageUnit) {
-    const id = addFromCatalog(stage!.id, unit.key);
+    const { id, created } = addFromCatalog(stage!.id, unit.key);
     // Adding is organisation, not commitment — the undo card lingers calmly
     // until dismissed or you leave, rather than vanishing on a timer.
-    setUndo({ id, title: unit.title });
+    //
+    // AN UNDO MAY ONLY EVER REACH AN ITEM THIS TAP CREATED. A work the course
+    // carries across levels resolves to the one added at an earlier level, and
+    // offering to delete that — an item the owner made weeks ago somewhere
+    // else — is not an undo of anything that just happened.
+    setUndo(created ? { id, title: unit.title } : null);
   }
 
   function practise(unit: StageUnit) {
@@ -93,7 +104,7 @@ export default function StageDetail() {
       navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
       return;
     }
-    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key);
+    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key).id;
     startItemSession(itemId);
     navigate('/active');
   }
@@ -190,6 +201,37 @@ export default function StageDetail() {
             onEdit={() => navigate(`/routine/${r.id}/edit`)}
           />
         ))}
+        {course && course.group.routine.length > 0 && (
+          <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const id = addCourseRoutine(stage.id, 'level');
+                if (id) navigate(`/routine/${id}/edit`);
+              }}
+            >
+              Use this level’s routine
+            </button>
+            <button
+              className="btn btn-sm"
+              onClick={() => {
+                const id = addCourseRoutine(stage.id, 'position');
+                if (id) navigate(`/routine/${id}/edit`);
+              }}
+            >
+              Build one for where I am
+            </button>
+          </div>
+        )}
+        {course && (
+          <div className="tiny faint" style={{ textAlign: 'start' }}>
+            {/* Fixed English page copy, never user text — inline LTR isolate. */}
+            <span dir="ltr">
+              Both write an ordinary routine you can reorder and retime. “Where I am” is the previous
+              level’s essentials plus only the sections you have already added.
+            </span>
+          </div>
+        )}
       </section>
 
       <section className="stack-sm">
@@ -231,7 +273,11 @@ export default function StageDetail() {
               key={u.key}
               unit={u}
               returnTo={here}
-              removable={!!u.item && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
+              // Removing reverts a suggestion this stage's owner took. An item
+              // that lives in ANOTHER stage — a carried-forward course work
+              // added at an earlier level — is not this row's to delete, the
+              // same rule the undo banner above follows.
+              removable={!!u.item && u.item.stageId === stage.id && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
               committedItemIds={committedItemIds}
               onPractise={() => practise(u)}
               onAdd={() => addSuggestion(u)}
@@ -397,6 +443,7 @@ function RoutineCard({
           Short on time — essentials only
         </button>
       )}
+      <RoutineDuration routine={routine} />
     </article>
   );
 }

@@ -31,6 +31,7 @@ import { ChevronRightIcon, MusicIcon, PathIcon, PlayIcon, PlusIcon, SparkIcon } 
 import { relativeDay } from '../components/format';
 import InstallHint from '../components/InstallHint';
 import QuickAdd from '../components/QuickAdd';
+import RoutineDuration from '../components/RoutineDuration';
 
 // ---------------------------------------------------------------------------
 // Today is a session workspace: "I am practising X now." Everything on screen
@@ -460,6 +461,7 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
           Short on time — essentials only
         </button>
       )}
+      <RoutineDuration routine={routine} />
     </article>
   );
 }

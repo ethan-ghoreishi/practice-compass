@@ -1,3 +1,311 @@
+---
+id: 20260921-bring-the-classical-guitar-shed-course-i-9b18
+contractId: 20260921-bring-the-classical-guitar-shed-course-i-9b18
+patchId: 305c8fb48d7968607b290d26b669e77ee6e44155
+reviewer: claude
+state: sealed
+verdict: approve
+createdAt: 2026-09-22T15:53:57.380Z
+sealedAt: 2026-09-22T17:59:52.434Z
+---
+
+# Review: Bring the Classical Guitar Shed course into the Guitar pathway with its material, works and position-aware routines
+
+> A fresh-eyes review, bound to one exact diff. If the code changes after this,
+> the seal breaks and the review must be redone — the maths checks, not the chat.
+> A Fresh Reviewer is a NEW session that did not build this diff.
+> The same provider is fine — what must not be reused is the session that wrote
+> the code, because it already believes the diff is right.
+
+- **Contract:** 20260921-bring-the-classical-guitar-shed-course-i-9b18
+- **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/32
+- **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
+- **Diff patch-id:** `305c8fb48d7968607b290d26b669e77ee6e44155`
+
+## The Delta this change was framed from
+
+# Each level offers what the course actually teaches there: its real sections with their guidance and syllabus BPMs, keeping the existing keys wherever a real section maps onto one. The level's own study and the named packet works with their composers are their own entries and become the only things that reach My repertoire, grouped under a “Classical Guitar Shed” study source created on first use; a work carried forward across levels is introduced once and reused, never duplicated. Every item created from the course carries its section's videos, scores, images and contrast-card folder automatically, composed live from the catalogue and never stored on the item, resolving under the one shared media root derived from the archive base the owner already set — shown on screen, overridable, and honestly unavailable rather than a dead link when there is none. A stage offers “Use this level's routine”, transcribed from the syllabus with its `***` segments essential, and “Build one for where I am” — the previous level's essentials plus only the sections actually added — both written as ordinary editable routines. Any routine can be run at a chosen total: its authored length is the default, changing it scales the segments proportionally, and too short a time drops non-essential segments before essential ones. Buying Levels 4A-5F later is a data change: the stage list comes from the generated course data, and a course-scoped “Add new levels from this course” action adds only the missing ones, without redefining the existing “restore default pathways” button or touching stages the owner edited.
+
+_approved · about "work-a-pathway-stage"_
+
+## Today
+
+The Classical Guitar Shed pathway has a stage for every level the owner owns but almost no content. Levels 1B-3F each offer the same eight generic suggestions from `cgsOutline()` with one boilerplate sentence apiece, no course material, no named works and no routine. Adding the generic “Piece” suggestion creates a work literally called “Piece” in My repertoire, because `strand: 'piece'` maps to `itemType: 'full_piece'`. No course file reaches a practice item even though the whole tree is already served by the NAS: `itemFiles` composes only the Setar archive graph, hand-entered references and linked lessons, so a Guitar item's Material section is empty. The one NAS setting names the Setar archive folder and nothing knows that the folder above it is the shared `video-courses` root that also holds `classical-guitar`. Sixteen levels have no routine and there is no way to get one for a level you are part-way through — the owner is at 1B `05_Scales` and assembles that by hand every day. A routine runs only at its authored length. And a level bought later could never reach an existing database: `reseedDefaultPathways` adds stages only for pathways that do not yet exist, `addStage` mints a random id no catalogue could be keyed to, and there is no action that means “add the levels I have just bought”.
+
+## Instead
+
+Each level offers what the course actually teaches there: its real sections with their guidance and syllabus BPMs, keeping the existing keys wherever a real section maps onto one. The level's own study and the named packet works with their composers are their own entries and become the only things that reach My repertoire, grouped under a “Classical Guitar Shed” study source created on first use; a work carried forward across levels is introduced once and reused, never duplicated. Every item created from the course carries its section's videos, scores, images and contrast-card folder automatically, composed live from the catalogue and never stored on the item, resolving under the one shared media root derived from the archive base the owner already set — shown on screen, overridable, and honestly unavailable rather than a dead link when there is none. A stage offers “Use this level's routine”, transcribed from the syllabus with its `***` segments essential, and “Build one for where I am” — the previous level's essentials plus only the sections actually added — both written as ordinary editable routines. Any routine can be run at a chosen total: its authored length is the default, changing it scales the segments proportionally, and too short a time drops non-essential segments before essential ones. Buying Levels 4A-5F later is a data change: the stage list comes from the generated course data, and a course-scoped “Add new levels from this course” action adds only the missing ones, without redefining the existing “restore default pathways” button or touching stages the owner edited.
+
+## Keep
+
+- Seeing where you are in a stage stays derived from item status exactly as it is now — `stageUnits` and `itemStageState` are unchanged, and a suggestion you have not taken stays a suggestion.
+- Taking a suggestion into your own items stays one tap, arrives honestly as “Not practised yet” with zero statistics, and stays losslessly removable until you practise it.
+- Running a routine is unchanged: the same runner, the same frozen segment list, the same boundary signals, the same at-most-one-block-per-bound-item recording. Only segment minutes are ever scaled.
+- “Short on time — essentials only” keeps its exact meaning and stays independent of duration.
+- Level 1A keeps its fourteen hand-authored steps and both of its existing routines, byte for byte.
+- Every Setar and Tar pathway, stage, catalogue entry and routine is untouched, and so is the whole Setar archive: its index, scanner, publisher, refresh and adoption flow.
+- The configured archive base keeps its value and meaning, so no device needs reconfiguring and every existing lesson reference resolves identically.
+- The Session Plan is untouched and remains a separate peer; only its 5-120 minute bound is shared.
+- Today keeps its doorway order, its card heights and its above-the-fold recommendation.
+- No file bytes enter the app, sync or a backup, and no item, routine, stage or study source is ever created without an explicit owner action.
+
+## New assumptions
+
+- The guitar tree is already served by the NAS — verified directly, including a real 1B lesson video returning 206 video/mp4 — so no mirroring is needed and no new device setting is required.
+- Course material is derived from the catalogue rather than copied onto items, so re-running the scanner after a course change reaches items that already exist.
+
+## Show me
+
+Open Pathways → Classical Guitar Shed → Level 1B. Instead of eight generic rows it lists the level's real sections — Chords (C, G7), Split Chunks P-IM and P-MA, I/M Alternation at 60 bpm, Finger-Walking, Rhythm Practice #1, Sight-Reading, Study #1 — plus the level's named works (Sor Op.35 No.1, Carulli Op.241 No.1, Ode to Joy and the rest of the packet). Add “Split Chunks” and open it: its four lesson videos and the level syllabus PDF are already under Material, no link ever typed, and tapping one opens it from the NAS — Settings shows the media root it derived from your archive base, with Browse to confirm. Add Study #1 and it appears in My repertoire under “Classical Guitar Shed”; add Finger-Walking and it does not. Back on the stage, press “Build one for where I am”: because only the sections up to 05_Scales have been added, the routine is 1A's essentials followed by just those 1B segments — Piece, Rhythm and Sight-Reading are simply absent, not skipped. It is an ordinary routine: reorder it, retime it, or set today's duration to 12 minutes and watch the segments scale in proportion, the non-essential ones dropping first while the asterisked ones stay. “Short on time” still does what it always did.
+
+
+
+## Re-review after a rejection — scoped to the rework
+
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, plus the
+findings that review recorded, plus the full current text of every file the
+rework touched — the same Check already bound to this head is not to be
+rerun wholesale.
+
+**Findings from the previous review:**
+
+- **carried-work identity and complete catalogue material** — Course material deduplicates files by basename without proving that the files have identical content, so a distinct catalogue file can be silently hidden.
+  _counterexample:_ Give two entries for one work different score files with the same basename and displayed title, such as two revisions of Ferrer-Ejercicio.pdf. courseFilesFor keeps the first path and drops the second at src/domain/courseSeed.ts:343-350. The family test at src/domain/courseSeed.test.ts:379-398 accepts this because it compares only basename and title, neither of which establishes content identity. Preserve both paths unless copy identity is authoritative and content-backed.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index 146ea8c20373e16037957f63eca7ebee579b4e63..dd62ac3c0c650eb2a6178d6ae0fda94cc746b9fe 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2500,15 +2500,30 @@ the one item the identity rule exists to produce. `courseFilesFor` resolves
+ in that course naming that work — course order, units then works within a group
+ — so both addition orders compose the same LIST, not merely the same set. An
+ ORDINARY per-stage key carries no identity at all, so `chords` still composes
+-only its own section and nothing widens with it. Deduplication is by the file's
+-own NAME rather than its path, because the course ships a copy of one packet in
+-each level's folder that names it (Ferrer Ejercicio runs 2C-2F) and four rows of
+-one identical score is noise, not material — the same reading of a score's
+-identity the scanner's packet dedup already uses, and held to collapsing COPIES
+-ONLY: two candidates sharing a name must share a title, asserted per identity
+-(measured across the whole course: fifteen collapses, every one between
+-identically-titled copies of one packet), so a regenerated course that introduced
+-a genuine basename collision fails rather than silently losing a score. The item's own provenance is
++only its own section and nothing widens with it. DEDUPLICATION IS BY THE FILE'S
++OWN PATH, AND BY NOTHING WEAKER. It was by BASENAME, to keep the copy of one
++packet the course ships in each level's folder that names it (Ferrer Ejercicio
++runs 2C-2F) from appearing four times — and a sealed review found what that
++bought: a basename is not a file's identity, so two genuinely different scores
++sharing one (two revisions of `Ferrer-Ejercicio.pdf`, a regenerated course that
++renamed a folder rather than its files) had the SECOND SILENTLY DROPPED from the
++one list a work's material is composed into, with nothing on the item saying a
++score was missing. Nothing in this data can establish content identity — a
++`CourseFile` is a path, a kind and a title, with no size and no digest — and
++inventing one would mean a scanner field, a regenerated `courseData.ts` and a
++new claim to keep true, machinery bought for a cosmetic. COMPLETENESS BEATS
++TIDINESS: a repeated packet costs the owner one extra row they can SEE, a hidden
++one costs them material they cannot. A path IS authoritative, it is the same
++reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on the full
++relative path — the claim that it read a basename was simply untrue), and
++`itemFiles` keys its own rows by path too, so each copy is a distinct row with
++its own stable id rather than a collision. The fifteen identical packet copies
++the old key collapsed now appear once per level that ships one.
++`courseSeed.test.ts` proves this against the LIVE data in the counterexample's
++own hardest shape — distinct paths sharing a basename AND a title, so no weaker
++key could tell them apart — and asserts that set is NON-EMPTY first, or a
++regenerated course with no such collision would pass while asserting nothing.
++The item's own provenance is
+ NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
+ created them as, which is what keeps an Undo and the row's "−" bounded to the
+ stage that actually created the item, and nothing new is persisted. Its TITLE
+diff --git a/docs/cgs-course.md b/docs/cgs-course.md
+index 24a268bacdbb8de916e823b1067d8f3fa840c0cf..092a7d219246a094bc169652771d60f735fe141a 100644
+--- a/docs/cgs-course.md
++++ b/docs/cgs-course.md
+@@ -242,12 +242,16 @@ machinery.
+     that work, in course order (units then works within a group), so both
+     addition orders compose the same LIST and not merely the same set. An
+     ordinary per-stage key carries no identity, so `chords` still composes only
+-    its own section. Files are deduplicated by their own NAME rather than their
+-    path, because the course ships a copy of one packet in each level's folder
+-    that names it (Ferrer Ejercicio runs 2C–2F) — the same reading of a score's
+-    identity `packetWorks` already uses, held to collapsing COPIES ONLY: two
+-    candidates sharing a name must share a title (measured: fifteen collapses
+-    across the course, every one between identically-titled copies). The item's provenance is NOT rewritten
++    its own section. Files are deduplicated by their own PATH and by nothing
++    weaker. It was their BASENAME, to keep the copy of one packet the course
++    ships in each level's folder that names it (Ferrer Ejercicio runs 2C–2F)
++    from appearing four times; a sealed review found that a basename is not a
++    file's identity, so two genuinely different scores sharing one had the
++    second silently dropped with nothing on the item saying so. Nothing in this
++    data establishes content identity — a `CourseFile` is a path, a kind and a
++    title — so completeness wins over tidiness: a repeated packet is one visible
++    extra row, a hidden one is material the owner cannot see. A path is
++    authoritative and is what `packetWorks` itself dedups on. The item's provenance is NOT rewritten
+     to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
+     which is what keeps Undo and the row's "−" bounded to the stage that created
+     the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every
+diff --git a/src/domain/courseSeed.test.ts b/src/domain/courseSeed.test.ts
+index aa451b2370ac5ce906af34535befead2277f2aa4..c825d2c57105e4898a642910af09237896222c5a 100644
+--- a/src/domain/courseSeed.test.ts
++++ b/src/domain/courseSeed.test.ts
+@@ -279,6 +279,14 @@ describe('what a course entry becomes in My repertoire', () => {
+     // The packet's own arm of the same rule, which holds today and is what a
+     // level bought later could quietly break: one score is one key, so a
+     // re-titled reappearance can never become a second work.
++    //
++    // THIS ONE KEEPS ITS BASENAME READING ON PURPOSE, and is not the defect
++    // `courseFilesFor` was just fixed for. That one DROPPED a file silently;
++    // this one FAILS LOUDLY — a course that ever shipped two different scores
++    // under one basename breaks this assertion rather than hiding anything,
++    // which is exactly the visibility the sealed finding asked for. Weakening
++    // it to compare paths would let a re-titled reappearance mint a second
++    // work, which is the identity design the contract fences off.
+     const byScore = new Map<string, Set<string>>();
+     for (const w of CGS_COURSE.groups.flatMap((x) => x.works)) {
+       const score = w.file?.split('/').pop();
+@@ -373,29 +381,12 @@ describe('a work carried forward across levels', () => {
+       // files are in the one list all of them compose. Without this a
+       // regression that let the LAST matching entry win would still have every
+       // entry agreeing with every other and pass unnoticed. Compared by the
+-      // file's NAME, which is the identity the dedup itself uses — the course
+-      // ships one packet once per level that names it.
+-      const names = new Set(paths.map((f) => f.split('/').pop()));
+-      // AND THE DEDUP ONLY EVER COLLAPSES COPIES OF ONE FILE. Deduplicating by
+-      // NAME is what keeps four identical Ferrer packets off one item, and the
+-      // risk it carries is hiding a genuinely different file that happens to
+-      // share a basename — so two candidates sharing one name must share a
+-      // title too. Measured across the whole course: fifteen collapses, every
+-      // one between identically-titled copies. A regenerated course that broke
+-      // that fails here rather than silently losing a score.
+-      const titlesByName = new Map<string, Set<string>>();
+-      for (const e of entries) {
+-        for (const f of declaredEntries(e)) {
+-          const n = f.path.split('/').pop()!;
+-          titlesByName.set(n, (titlesByName.get(n) ?? new Set()).add(f.title));
+-        }
+-      }
+-      for (const [n, titles] of titlesByName) expect([...titles], `${identity}: ${n}`).toHaveLength(1);
+-
++      // whole PATH — every declared file survives composition, never merely one
++      // per basename.
+       for (const e of entries) {
+         const own = declaredFiles(e);
+         expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
+-        for (const f of own) expect([...names], `${identity}: ${e[0]}/${e[1]}`).toContain(f.split('/').pop());
++        for (const f of own) expect(paths, `${identity}: ${e[0]}/${e[1]}`).toContain(f);
+       }
+ 
+       const first = entries[0];
+@@ -423,6 +414,55 @@ describe('a work carried forward across levels', () => {
+     }
+   });
+ 
++  it('keeps every distinct path, even when two share a basename AND a title', () => {
++    // THE DEDUP KEY IS THE PATH, AND NOTHING WEAKER. It used to be the
++    // BASENAME, to keep the copy of one packet the course ships in each level
++    // folder that names it from appearing four times — but a basename is not a
++    // file's identity. Two genuinely different scores sharing one (two
++    // revisions of Ferrer-Ejercicio.pdf) had the second silently dropped, and
++    // nothing on the item said a score was missing. Nothing in this data
++    // establishes content identity — a CourseFile is a path, a kind and a
++    // title — so completeness wins: a repeated packet is one visible extra row,
++    // a hidden one is material the owner cannot see.
++    //
++    // Driven from the LIVE data rather than a fixture, and from the hardest
++    // shape there is: paths the old key could not tell apart even with the
++    // title added, which is exactly the counterexample's own shape.
++    const collisions = multiEntryIdentities()
++      .map(({ identity, entries }) => {
++        const byNameAndTitle = new Map<string, Set<string>>();
++        for (const e of entries) {
++          for (const f of declaredEntries(e)) {
++            const k = `${f.path.split('/').pop()}\u0000${f.title}`;
++            byNameAndTitle.set(k, (byNameAndTitle.get(k) ?? new Set()).add(f.path));
++          }
++        }
++        return { identity, entries, shared: [...byNameAndTitle.values()].filter((ps) => ps.size > 1) };
++      })
++      .filter((x) => x.shared.length > 0);
++
++    // NON-VACUITY FIRST. A regenerated course that stopped shipping duplicate
++    // basenames would otherwise pass this while asserting nothing at all.
++    expect(collisions.length, 'no basename collision left to prove anything with').toBeGreaterThan(0);
++    expect(collisions.map((x) => x.identity)).toContain('work-ferrer-ejercicio');
++
++    for (const { identity, entries, shared } of collisions) {
++      const composed = courseFilesFor(...entries[0]).map((f) => f.path);
++      // Every distinct path survives, and the ROW COUNT says so: a set
++      // comparison alone would pass a list that had quietly collapsed them.
++      for (const ps of shared) {
++        for (const path of ps) expect(composed, `${identity}: ${path}`).toContain(path);
++        expect(composed.filter((c) => ps.has(c)).length, identity).toBe(ps.size);
++      }
++      // And all the way out to the real item's Material, where each copy is its
++      // own row with its own stable id rather than a collision.
++      const items = addAll([entries[0]]);
++      const files = itemFiles(dbWith(items), items[0].id) as ItemFileReference[];
++      for (const ps of shared) for (const path of ps) expect(files.map((f) => f.path), identity).toContain(path);
++      expect(new Set(files.map((f) => f.id)).size, identity).toBe(files.length);
++    }
++  });
++
+   it('still creates it the first time, and never reuses across an ordinary per-stage key', () => {
+     const chords1B = added(STAGE_1B, 'chords');
+     const entry = catalogForStage(STAGE_1C).find((e) => e.key === 'chords');
+diff --git a/src/domain/courseSeed.ts b/src/domain/courseSeed.ts
+index 4f134ffabc33c9b7c7f80afc0af27c824b252293..ee9206da56d9314b83ce5058aebdb566ca16abe2 100644
+--- a/src/domain/courseSeed.ts
++++ b/src/domain/courseSeed.ts
+@@ -325,11 +325,22 @@ function entryFiles(
+  * works within a group — so both addition orders compose the SAME list, not
+  * merely the same set.
+  *
+- * Deduplication is by the file's OWN NAME, not by its path: the course ships a
+- * copy of one packet in each level's folder that names it (Ferrer Ejercicio
+- * runs 2C-2F), and four rows of one identical score is noise, not material.
+- * That is the same reading of a score's identity the scanner's own packet
+- * dedup and `courseSeed.test.ts`'s "one score is one key" already use.
++ * Deduplication is by the file's OWN PATH, and by nothing weaker. It used to
++ * be by BASENAME, to keep the copy of one packet the course ships in each
++ * level's folder that names it (Ferrer Ejercicio runs 2C-2F) from appearing
++ * four times — but a basename is not a file's identity. Two genuinely
++ * different scores that happen to share one (two revisions of
++ * `Ferrer-Ejercicio.pdf`, a regenerated course that renamed a folder rather
++ * than its files) then had the second SILENTLY DROPPED from the one list the
++ * work's material is composed into, and nothing about the item said a score
++ * was missing. Nothing in this data establishes content identity — a
++ * `CourseFile` is a path, a kind and a title, with no size and no digest — so
++ * there is nothing here to collapse a copy on, and COMPLETENESS BEATS TIDINESS:
++ * a repeated packet costs the owner one extra row they can see, where a hidden
++ * one costs them material they cannot. A path IS authoritative, and it is the
++ * same reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on
++ * the full relative path). `itemFiles` keys its own rows by path too, so each
++ * copy is a distinct, stable row rather than a collision.
+  *
+  * An ORDINARY per-stage key carries no identity at all — `chords` exists in
+  * every level — so it composes only its own section, exactly as before.
+@@ -344,9 +355,8 @@ export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[
+   const seen = new Set<string>();
+   const take = (files: CourseFile[]) => {
+     for (const f of files) {
+-      const name = f.path.split('/').pop() ?? f.path;
+-      if (seen.has(name)) continue;
+-      seen.add(name);
++      if (seen.has(f.path)) continue;
++      seen.add(f.path);
+       out.push(f);
+     }
+   };
+```
+
+**Full current text of every file the rework touched:**
+
+### AGENTS.md
+
+```
 # AGENTS.md — development rules for Practice Compass
 
 This file is the contract for anyone (human or AI) extending this app. Read it before
@@ -3100,3 +3408,2175 @@ Audio recording attachment, PWA offline install, CSV export, calendar reminders,
 simple audio note per block, teacher‑sharing PDF. These extend the tool without breaking
 the philosophy. Anything that contradicts the "do nots" above needs an explicit decision
 from the user, recorded here.
+```
+
+### docs/cgs-course.md
+
+```
+# The Classical Guitar Shed course: scanner, data and what the app does with it
+
+The owner practises Classical Guitar daily from an offline copy of the
+Classical Guitar Shed "Woodshed" course. This file is the operator runbook for
+bringing that course into the app, the record of what the scanner reads and
+what it deliberately does not, and the corpus baseline.
+
+It is the sibling of `docs/setar-archive.md` and is deliberately **not** the
+same machinery. That source GROWS, gets RENAMED, and carries piece identity to
+reconcile against existing repertoire — which is why it needs a published index,
+a content digest and a reconciler. A downloaded course has none of that: it is a
+fixed tree whose own `notes.md` and `LEVEL_GUIDE.md` already state everything.
+So the course sits on the rung `pathwaySeed.ts` already stands on — reference
+data in code — with **no persisted graph, no new validation door, no schema
+change and no migration**.
+
+---
+
+## 1. The shape of it
+
+    /Volumes/Sandisk/video-courses/            ← the shared MEDIA ROOT
+      setar-classes/                           ← the Setar archive (unchanged)
+      classical-guitar/
+        classical-guitar-shed/                 ← this course
+          PRACTICE_GUIDE.md
+          Level_1A/ … Level_3F/
+            LEVEL_GUIDE.md                     ← core / rotation / reference + times
+            1B-Syllabus-Materials-….pdf        ← target-BPM table
+            00_Contrast_Cards/                 ← sub-folders, 1663 images
+            03_Chords/
+              notes.md                         ← title, guidance, files, checklist
+              01_e939830c-ddf.mp4  …
+      tar-classes/
+
+Currently 18 levels (1A–3F), 212 sections, 688 addressable files, 59 named
+packet works. The course itself continues to roughly 5F; see §5.
+
+## 2. The scanner
+
+    node scripts/scan-cgs-course.mjs                 # DRY RUN — reports only
+    node scripts/scan-cgs-course.mjs --write         # writes src/domain/courseData.ts
+
+Node stdlib only, no dependencies, **dry-run by default**. It is a BUILD-TIME
+tool: nothing in `src/` imports it and nothing in it is reachable from any
+runtime path. `--root` points it at another copy of the tree, `--media-path` at
+the course's own folder beneath the media root, `--out` elsewhere.
+
+It **discovers** the levels present — nothing is bound to eighteen of them, to
+`Level_*` naming or to a section-per-folder layout — and it **reports** anything
+it could not read rather than silently emitting less. Every diagnostic it
+produces is committed into `courseData.ts`'s own `diagnostics` array, so the
+record travels with the data.
+
+### The grammar lives here and nowhere else
+
+The app never parses a folder name, a `notes.md` heading or a syllabus table. It
+consumes the generated data.
+
+**Catalogue keys are ADDED, never renamed.** A section folder's base name maps
+onto the key the stage already used before this course existed
+(`03_Chords` → `chords`, `07_Rhythm_Study` → `rhythm-study`, `09_Piece` →
+`piece`, …), so an item the owner had already added from the old generic
+suggestion stays attached to the real section that replaced it. Where a level
+ships two folders of one family (2E's two Scales sections, 3A's two Arpeggios
+sections), ONE takes the base key and the other gets its own new key, so nothing
+is ever displaced. `src/domain/pathways.test.ts` records every pre-import key and
+fails if one disappears.
+
+WHICH one is not simply the lower ordinal: the key goes to the folder with real
+content. 2E's `08_Sight_Reading` is an empty stub beside the real
+`09_Sight_Reading`, and first-by-ordinal left an already-added item attached to a
+titleless folder while the level's own routine named the other — a key that
+survives but points at the wrong thing is the same failure as a key that
+disappears, wearing a passing test. Ordinal order only breaks the tie. A
+duplicate key is two sections claiming one item; the scanner refuses to emit one
+and the same test holds the generated data to it.
+
+**Files.** `notes.md` lists videos IN ORDER, and names its sheet music and
+images; that leads. Anything on disk it does not mention still follows, because
+a file the app cannot see is a file the owner has to leave the app for. Video
+filenames are opaque (`01_80ee0462-cc7.mp4`) but their ORDINAL is stable, so a
+video is addressed by (section, ordinal) and never by meaning read out of its
+name. A section holding sub-folders (the contrast-card decks) is ONE folder
+reference to the section itself — never a deck-by-deck list, and never a viewer.
+
+**Works.** A level's own STUDY is its Piece section itself: the section keeps
+its `piece` key and its `piece` strand and gains the real name the course gives
+it ("1B Piece — Study #1", from the H1 after a colon, else the first line of the
+section's own text). The **packet works** come from the section's own Sheet
+Music lists, deduplicated by file, with the composer joined into the title
+("Fernando Sor — Opus 35, no.1").
+
+**Where the course names NO single work — or more than one — the section is not
+a work.** 3C ("Excerpts + Fur Elise, Minuet in G, Red is the Rose") and 3F
+("Repertoire + Video Review") name none; 3A ("Tarrega Study in C + Canon in D")
+names two, and two works cannot be one repertoire item while the packet already
+offers each of them separately. All three emit `strand: 'other'` — practice on
+material named elsewhere, with their real works reaching My repertoire as that
+section's own packet works. The KEY stays `piece` in every case — keys are added,
+never renamed — and the section keeps its own title and every file it reaches.
+The change is FORWARD-ONLY, as every catalogue change is: an item already created
+from that entry keeps the `itemType` stored on it, because regenerating the course
+reaches an item's MATERIAL and never its stored fields.
+
+### One musical work is one repertoire item
+
+The section and the packet are two entries the course can name one piece by, so
+each entry that is a work carries a `workKey` — its repertoire IDENTITY, separate
+from its catalogue key. `courseWorkKey` (`courseSeed.ts`) is the one resolution
+every surface reads — the tap, the stage row, the routine binding and the item's
+composed MATERIAL — so they can never disagree, and the owner takes a work at the
+level they actually meet it.
+
+| entry | identity |
+|---|---|
+| a packet work | its own key, derived from the WORK — which is what already joins Ferrer Ejercicio across 2C–2F under one title |
+| a Piece section naming ONE study | that study's key (`unit.workKey`), while its catalogue key stays `piece` |
+| a packet entry that IS an earlier level's study | that study's key, declared in `WORK_ALIASES` |
+| anything else (`chords`, `scales`, …) | none — so an ordinary per-stage key is never joined across levels |
+
+`WORK_ALIASES` is three lines, and the course itself states each pair: 3B's "Full
+course: Malagueña by Ernesto Lecuona" beside its single sheet entry (dropped
+outright rather than aliased — the section is already that work at that very
+level); 2E's "Full course: Carulli's Valse, Opus 50, Number 7", whose score exists
+ONLY in 3F's folder and which 3F re-lists under "Recommended pieces"; and 2F's
+"Full course: Fernando Sor, Etude #1, Opus 44", re-listed by 3F the same way.
+
+**Why it is declared and not matched.** The cross-level pairs share no file at all,
+so a match would have to join "Malagueña by Lecuona" to "Lecuona Malaguena" and
+"Fernando Sor Etude #1 Op.44" to "Sor Etude No.1 op 44 Practice Packet" — token
+fuzz whose false positive merges two genuinely different works into one repertoire
+item and destroys the owner's record. `AGENTS.md` refuses exactly this shape for
+the Setar archive's own path repair. The curation is verified AT SCAN TIME and a
+stale entry — naming a packet work the course no longer has, or pointing at a key
+that is no level's study — HARD-FAILS the scan; what `courseSeed.test.ts` holds is
+the OUTCOME, that each of the three pairs resolves to one repertoire item in either
+addition order.
+
+**Why the table is three lines and not sixty.** Studies #1–#9 (1B–2D) each carry
+their OWN score image inside their section ("Study #4 page 1"), and those sections'
+sheet lists are the course's alternatives — 2B labels its list "Other appropriate
+pieces" in so many words. "Allen Mathews — Small Etude #1" is not Study #1, and
+aliasing them would be the false merge this rule exists to prevent. Only the six
+"Full course: X" sections (2E, 2F, 3A, 3B, 3D, 3E) have no study sheet of their own,
+and only three of those are named again elsewhere.
+
+The same rule applies one level down, in the Sheet Music list itself: a download
+there is not automatically a work. 3F's list carries "Here's the video review
+checklist" beside four real pieces, and it became a repertoire work called
+exactly that. Aids — a syllabus, a materials list, course notes, a checklist —
+are skipped (`NOT_A_PACKET_WORK`), and they stay fully reachable as that
+section's own FILES. That filter's `^click here` is LOAD-BEARING rather than
+tidiness: 3D and 3E name their study's own score as an instruction ("Click here
+for the materials for Chester."), and admitting one as a work would mint a
+repertoire item called "Click here…" beside the section that is the real work.
+
+**Routines** come from `LEVEL_GUIDE.md`: Core (⭐, every session) → `essential:
+true`, Rotation A/B → not essential, Reference sections → not in the routine at
+all. Minutes are the midpoint of the guide's own range ("8–12 min" → 10).
+
+**Target BPMs** come from the syllabus PDF's page-1 practice table, read with
+`zlib` alone. A number is attributed to the NEAREST left-column header row at or
+above it whose text matches a real section of that level — and to nothing at all
+otherwise.
+
+### Deliberate deviations from the approved plan, and why
+
+Three things the plan expected are not in the corpus. They are recorded here
+rather than worked around silently.
+
+1. **There is no `***`-marked routine in the syllabus PDFs.** The plan said the
+   level routine is "transcribed from the syllabus with its `***` segments
+   essential"; `grep -r '\*\*\*'` across every markdown file in the course
+   returns nothing, and the 1A syllabus PDF (whose text extracts cleanly)
+   contains no minute-by-minute routine at all. `LEVEL_GUIDE.md` is the real,
+   uniform, machine-readable source and every level has one. Core⭐ → essential
+   is the honest reading of "essential", and it is what "Short on time —
+   essentials only" now filters on.
+2. **Level 3 therefore gets routines too.** The plan expected Level 3 syllabi to
+   carry a repertoire page and no routine, and said those stages should say so.
+   That followed from believing the PDF was the source. Measured: 3A, 3D, 3E and
+   3F all carry full Core/Rotation tables in their `LEVEL_GUIDE.md`. They are
+   derived uniformly with every other level.
+3. **BPM coverage is partial and honestly reported.** 25 values across 11 levels
+   are attributed. Eight levels (1E, 1F, 2A, 2C, 2E, 2F, 3A, 3E) use a shifted
+   font subset with no text positioning at all — the "+29 character-shift" case
+   the plan anticipated — so their table cannot be read, and they get no BPMs
+   and a diagnostic each. Nothing is guessed: a wrong tempo attached to a real
+   section is worse than an absent one, and the syllabus PDF is itself linked as
+   material on every level's Syllabus section. The mechanism is validated
+   against ground truth — 1A's three positioned values (rhythm 80, sight-reading
+   70, piece 60) reproduce the hand-authored seed exactly.
+
+Three further diagnostics are genuine facts about the course, not scanner
+failures: 3C's and 3F's Piece sections name no single work and 3A's names two, so
+all three are practice material rather than repertoire works (see **Works**); and
+`Level_2E/08_Sight_Reading/` has no `notes.md`, so its title and guidance are
+unavailable while its three PDFs still reach the app.
+
+## 3. The generated data
+
+`src/domain/courseData.ts` is the scanner's OUTPUT and is **never edited by
+hand**. `src/domain/courseSeed.ts` is the hand-written reader beside it. A
+course change is answered by re-running the scanner and committing new data.
+
+It is ~222 KB of committed literal that ships in the offline PWA bundle, and
+would roughly double if the course reaches 5F. Per-strand practice checklists
+are deduplicated to one per strand (`CGS_CHECKLISTS`); per-section guidance,
+titles, file lists and routines are kept in full.
+
+The shape is ordered **groups of units**, not "levels", and how many there are
+is data — which is also the shape a flat, index-driven source (Khonyagar's 106
+sections) needs, so a second course is a second reader plus data and never new
+machinery.
+
+## 4. What the app does with it
+
+* **The stages and their catalogue** come from `courseStageSeeds()` through
+  `pathwaySeed.ts`. Level 1A keeps its fourteen hand-authored steps byte for
+  byte; every other level is the course's own sections plus its named packet
+  works.
+* **Repertoire** follows from the strand alone, and `repertoire.ts` is
+  unchanged: the level's own study and the packet works carry `strand: 'piece'`
+  → `itemType: 'full_piece'` → `isWork`. Every drill, exercise, rhythm,
+  sight-reading and reading section does not — and neither does a Piece section
+  the course names no single work, or more than one, for. One musical work is
+  one repertoire ITEM however many entries name it (`workKey`). The scanner, not
+  the app, decides all of this (see **Works** in §2).
+* **Material is COMPOSED, never stored.** An item holds only the stage and the
+  catalogue key it was created from; `itemFiles` reads its files out of the
+  course data every time. So re-running the scanner after a course change
+  reaches every item that already exists, and the owner never types a link.
+  **No bytes enter the app**: a course file is opened where it lives, exactly
+  like a class recording.
+  * **A work's material is the WORK's, not the entry's.** Composed from the
+    item's own stage and catalogue key alone, the files depended on which entry
+    the owner added FIRST: take 2E's Carulli Valse section and 3F's packet score
+    was unreachable from the item; take 3F's packet entry first and 2E's own
+    section material was — half a work either way, on the one item the identity
+    rule exists to produce. `courseFilesFor` resolves `courseWorkKey` first and,
+    where there is one, composes the files of EVERY entry in that course naming
+    that work, in course order (units then works within a group), so both
+    addition orders compose the same LIST and not merely the same set. An
+    ordinary per-stage key carries no identity, so `chords` still composes only
+    its own section. Files are deduplicated by their own PATH and by nothing
+    weaker. It was their BASENAME, to keep the copy of one packet the course
+    ships in each level's folder that names it (Ferrer Ejercicio runs 2C–2F)
+    from appearing four times; a sealed review found that a basename is not a
+    file's identity, so two genuinely different scores sharing one had the
+    second silently dropped with nothing on the item saying so. Nothing in this
+    data establishes content identity — a `CourseFile` is a path, a kind and a
+    title — so completeness wins over tidiness: a repeated packet is one visible
+    extra row, a hidden one is material the owner cannot see. A path is
+    authoritative and is what `packetWorks` itself dedups on. The item's provenance is NOT rewritten
+    to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
+    which is what keeps Undo and the row's "−" bounded to the stage that created
+    the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every
+    identity the course names from more than one entry — enumerated from the
+    generated data rather than a written list — in both addition orders.
+  * **That claim is bounded to MATERIAL.** A section's guidance, its BPM line
+    and its checklist are written into the item's own Working notes ONCE, at
+    creation, by `itemFromCatalogEntry` — the same as every other catalogue
+    entry in the app, and deliberately so: the notebook is the owner's to edit,
+    and regenerating the course must never overwrite what they have written
+    there. Re-running the scanner therefore updates the FILES of an existing
+    item and not its notes. A new item created from the regenerated entry gets
+    the new text.
+* **Files resolve under the shared media root**, derived from the archive base
+  the owner already set. See `docs/setar-archive.md` for why that is not a
+  second base and not a resolver fallback.
+* **A study source is found or created on first use**, so every course item
+  groups under one "Classical Guitar Shed" source in My repertoire and a second
+  item can never mint a duplicate.
+* **A stage offers two routines.** "Use this level's routine" is the syllabus's
+  own; "Build one for where I am" is the previous level's essential segments
+  plus only the current level's sections the owner has actually added, joined on
+  `(stageId, catalogKey)` together. Both write an **ordinary editable routine** —
+  neither is a live view — and a segment the position marker leaves out is one
+  edit away from being added back.
+* **Any routine runs at a chosen total.** `fitRoutineToMinutes` scales
+  proportionally and drops non-essential segments before essential ones. The
+  authored length is the default, so doing nothing behaves exactly as before,
+  and duration stays independent of "Short on time". The one-minute floor is a
+  REPAIR applied after the proportional split, never a minute reserved before
+  it: reserving one each and sharing out only the remainder distorted every
+  share for no reason (1:9 fitted to 20 came out 3:17 where 2:18 is both exact
+  and legal). `RoutineDuration` carries BOTH knobs — the total and its own
+  essentials-only tick — so "twenty minutes, essentials only" is one choice
+  rather than two controls that could never be used together, and what it drops
+  it names honestly: cutting far enough reaches the essential segments too, and
+  `describeFitDrop` (pure, tested) says so instead of calling every drop
+  non-essential.
+
+## 5. Buying Levels 4A–5F later
+
+It is a data change, not a code change:
+
+1. Download the new levels into the same tree.
+2. `node scripts/scan-cgs-course.mjs` — read the diagnostics.
+3. `node scripts/scan-cgs-course.mjs --write`, commit, ship.
+4. Open the pathway → **Add new levels from this course** → tick the ones you
+   want.
+
+No migration and no schema change. That last action is deliberately **separate**
+from the existing "restore default pathways" button, which is unchanged: it adds
+nothing on its own, it OFFERS the levels the course has and the pathway does
+not, keyed by the stage's deterministic id rather than its title. So a level the
+owner renamed is never offered again, and a stage they deliberately **deleted**
+reappears in a list — never in the pathway — and only if they choose it.
+
+## 6. What is NOT here
+
+* No published index, no content digest, no reconciler, no scanner running
+  inside the app, and no second source-archive grammar.
+* No contrast-card viewer, flashcard player or media player of any kind.
+* No Khonyagar/Tar course data and no ArtistWorks import. The group/unit shape
+  and the shared media root were chosen so either becomes a second reader plus
+  data; Khonyagar's four teacher folders are real dated classes belonging to the
+  lessons flow, and `behrooz-hemati` carries a Setar book, so its instrument
+  needs confirming before anything is imported.
+* No content for levels the owner does not own — no placeholder stage,
+  catalogue entry or routine exists for 4A–5F.
+* **One Level 1A step gets no composed course material**, and it is named rather
+  than guessed at. 1A's fourteen steps are hand-authored and their keys are
+  slugs of their own titles (`warm-up-stretches`), matching no course unit key
+  (`warm-up`) — so the level the owner STARTS from was the one level with no
+  material and, worse, the one level whose essentials 1B's "where I am" routine
+  carries forward and could therefore never bind. `COURSE_LEGACY_KEYS`
+  (`courseSeed.ts`, the hand-written reader — not the generated data) records
+  which course section each of those keys names, and BOTH the material
+  composition and the segment→item join read it. The keys themselves are
+  untouched, exactly as the scanner's own rule ADDS keys and never renames one;
+  every entry is asserted against the live catalogue in `courseSeed.test.ts`, so
+  a stale alias fails rather than quietly aliasing nothing. Many-to-one is
+  deliberate and is what the course itself says (Chunks and Thumb-chunks are
+  both the one Right Hand Technique section); where a routine segment must pick
+  ONE item it takes the first key in the list that has one. Thirteen of the
+  fourteen resolve. "Technique primer — What is Technique" does not, because no
+  course section clearly corresponds to it, and a guessed section's videos on a
+  real step is the same failure as a guessed BPM on a real section.
+* **An existing database keeps its old stage TITLES.** Stages are ordinary
+  editable data the owner may have renamed, so nothing here rewrites one: a
+  device seeded before this change still reads "1B · Arpeggios begin" rather
+  than the course's own focus line, while its catalogue, material and routines
+  are the new ones. §5's action only adds stages that are ABSENT. That is
+  deliberate — silently retitling a stage the owner may have edited is exactly
+  what "adds nothing on its own" rules out — and renaming one by hand takes a
+  tap on Edit. A fresh install gets the course's titles.
+```
+
+### src/domain/courseSeed.test.ts
+
+```
+import { describe, expect, it } from 'vitest';
+import { CGS_COURSE } from './courseData';
+import {
+  COURSE_LEGACY_KEYS,
+  buildLevelRoutine,
+  buildPositionRoutine,
+  carriedCourseWorkItem,
+  courseFilesFor,
+  courseStageId,
+  offeredCourseLevels,
+  planCatalogAddition,
+  planCourseLevels,
+  resolveCourseSource,
+} from './courseSeed';
+import { createItem, createMaterial } from './factories';
+import { catalogForStage } from './pathwaySeed';
+import { isWork, repertoireWorks } from './repertoire';
+import { stageUnits } from './pathways';
+import { baseForItemFile, itemFiles, type ItemFileReference } from './itemFiles';
+import { mediaRoot } from './mediaRoots';
+import { resolveRecording } from './recordings';
+import type { Material, PathwayStage, PracticeDB, PracticeItem } from './types';
+
+// ---------------------------------------------------------------------------
+// The course, read as reference data. Every check below runs against the REAL
+// generated `courseData.ts` — the owner's own eighteen levels — not a fixture,
+// because what these rules have to hold for is the actual course.
+// ---------------------------------------------------------------------------
+
+const NOW = new Date('2026-09-21T09:00:00.000Z');
+const STAGE_1B = courseStageId(CGS_COURSE, '1b');
+const STAGE_1C = courseStageId(CGS_COURSE, '1c');
+const STAGE_2C = courseStageId(CGS_COURSE, '2c');
+const STAGE_2E = courseStageId(CGS_COURSE, '2e');
+const STAGE_1A = courseStageId(CGS_COURSE, '1a');
+const STAGE_3A = courseStageId(CGS_COURSE, '3a');
+const STAGE_3B = courseStageId(CGS_COURSE, '3b');
+const STAGE_2F = courseStageId(CGS_COURSE, '2f');
+const STAGE_3F = courseStageId(CGS_COURSE, '3f');
+
+function group(key: string) {
+  const g = CGS_COURSE.groups.find((x) => x.key === key);
+  if (!g) throw new Error(`no course group ${key}`);
+  return g;
+}
+
+/** An item as `addFromCatalog` would have created it from that stage's entry. */
+function added(stageId: string, catalogKey: string, over: Partial<PracticeItem> = {}): PracticeItem {
+  const entry = catalogForStage(stageId).find((e) => e.key === catalogKey);
+  if (!entry) throw new Error(`no catalog entry ${stageId}/${catalogKey}`);
+  return {
+    ...createItem({ instrumentId: 'g', title: entry.title, stageId, catalogKey }, NOW),
+    itemType: entry.strand === 'piece' ? 'full_piece' : 'technique',
+    strand: entry.strand,
+    ...over,
+  };
+}
+
+type Pair = readonly [string, string];
+
+/** The files ONE catalogue entry declares in the generated data, read directly. */
+function declaredEntries([stageId, key]: Pair): Array<{ path: string; title: string }> {
+  const g = group(stageId.replace('cgs-', ''));
+  const unit = g.units.find((u) => u.key === key);
+  if (unit) return unit.files;
+  const work = g.works.find((w) => w.key === key);
+  return work?.file ? [{ path: work.file, title: work.title }] : [];
+}
+
+function declaredFiles(entry: Pair): string[] {
+  return declaredEntries(entry).map((f) => f.path);
+}
+
+/**
+ * Every repertoire identity this course names from MORE THAN ONE catalogue
+ * entry, read out of the generated data rather than written down here — the
+ * two declared aliases and every packet work the course carries across levels.
+ */
+function multiEntryIdentities(): Array<{ identity: string; entries: Pair[] }> {
+  const byIdentity = new Map<string, Pair[]>();
+  const push = (id: string, entry: Pair) => byIdentity.set(id, [...(byIdentity.get(id) ?? []), entry]);
+  for (const g of CGS_COURSE.groups) {
+    const stageId = courseStageId(CGS_COURSE, g.key);
+    for (const u of g.units) if (u.workKey) push(u.workKey, [stageId, u.key]);
+    for (const w of g.works) push(w.workKey ?? w.key, [stageId, w.key]);
+  }
+  return [...byIdentity]
+    .filter(([, entries]) => entries.length > 1)
+    .map(([identity, entries]) => ({ identity, entries }));
+}
+
+/** Taking a list of suggestions in order, through the real addition path. */
+function addAll(pairs: readonly Pair[]): PracticeItem[] {
+  let db = { items: [] as PracticeItem[], materials: [] as Material[] };
+  for (const [stageId, key] of pairs) {
+    const entry = catalogForStage(stageId).find((e) => e.key === key);
+    if (!entry) throw new Error(`no catalog entry ${stageId}/${key}`);
+    const plan = planCatalogAddition(db, stageId, key, entry, 'g', NOW);
+    db = { items: plan.items, materials: plan.materials };
+  }
+  return db.items;
+}
+
+// --- ac-1 -------------------------------------------------------------------
+
+describe('what a course entry becomes in My repertoire', () => {
+  const entries = catalogForStage(STAGE_1B);
+  const g = group('1b');
+
+  it("a level's study and packet works are repertoire works and its drill sections are not", () => {
+    // The level's OWN study IS the Piece section, named as the course names it
+    // — a repertoire work at the level the owner actually meets it, with the
+    // whole section's material rather than one loose PDF lifted out of it.
+    expect(entries.find((e) => e.key === 'piece')?.title).toBe('1B Piece — Study #1');
+    expect(isWork(added(STAGE_1B, 'piece'))).toBe(true);
+    expect(courseFilesFor(STAGE_1B, 'piece')).toEqual(g.units.find((u) => u.key === 'piece')!.files);
+
+    // EVERY level whose Piece section names one study, including the two whose
+    // study is a "Full course" with no study sheet of its own.
+    for (const key of ['1c', '1d', '1e', '1f', '2a', '2b', '2c', '2d', '2e', '2f', '3b', '3d', '3e']) {
+      const stageId = courseStageId(CGS_COURSE, key);
+      expect(isWork(added(stageId, 'piece')), `${key}'s study did not reach My repertoire`).toBe(true);
+    }
+
+    // Every named packet work, with its composer.
+    expect(g.works.length).toBeGreaterThan(0);
+    expect(g.works.find((w) => w.key === 'work-fernando-sor-opus-35-no-1')?.title).toBe(
+      'Fernando Sor — Opus 35, no.1',
+    );
+    for (const w of g.works) {
+      expect(entries.some((e) => e.key === w.key && e.strand === 'piece')).toBe(true);
+      expect(isWork(added(STAGE_1B, w.key))).toBe(true);
+    }
+
+    // And nothing else from the same level.
+    const practice = ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'other-study', 'contrast-cards'];
+    const items = practice.map((k) => added(STAGE_1B, k));
+    for (const item of items) expect(isWork(item), `${item.catalogKey} reached My repertoire`).toBe(false);
+    expect(repertoireWorks(items)).toEqual([]);
+
+    // A PIECE SECTION THE COURSE NAMES NO SINGLE WORK FOR IS NOT A WORK
+    // EITHER. 3C ("Excerpts + Fur Elise, Minuet in G, Red is the Rose") and 3F
+    // ("Repertoire + Video Review") are practice on material named elsewhere;
+    // the scanner already DIAGNOSED that it could not name a study there and
+    // then kept the `piece` strand anyway, so both became full_piece items
+    // titled after the section. Their real works reach My repertoire as the
+    // packet works, which is the whole rule: repertoire only where the course
+    // NAMES a work.
+    for (const key of ['3c', '3f']) {
+      const stageId = courseStageId(CGS_COURSE, key);
+      const section = catalogForStage(stageId).find((e) => e.key === 'piece');
+      // The KEY is untouched — keys are added, never renamed (ac-15).
+      expect(section, `${key} lost its piece entry`).toBeDefined();
+      expect(section!.strand).not.toBe('piece');
+      expect(isWork(added(stageId, 'piece')), `${key}'s piece section reached My repertoire`).toBe(false);
+      expect(
+        CGS_COURSE.diagnostics.some((d) =>
+          d.startsWith(`${key.toUpperCase()}: the Piece section is practice material, not a repertoire work — it names no single work`),
+        ),
+      ).toBe(true);
+      // Its named packet works still do.
+      const works = group(key).works;
+      expect(works.length).toBeGreaterThan(0);
+      for (const w of works) expect(isWork(added(stageId, w.key)), `${w.key}`).toBe(true);
+    }
+
+    // AND A DOWNLOAD IN A SHEET-MUSIC LIST IS NOT AUTOMATICALLY A WORK EITHER —
+    // the same rule one level down. 3F's list carries "Here's the video review
+    // checklist" beside four real pieces, and it became a repertoire work
+    // called exactly that. It is an AID, so it is not a work; it is still
+    // reachable, because it is one of that section's own files.
+    const aid = /syllabus|materials|course notes|checklist/i;
+    for (const g of CGS_COURSE.groups) {
+      for (const w of g.works) expect(aid.test(w.title), `${g.key}: "${w.title}" reached My repertoire`).toBe(false);
+    }
+    expect(
+      courseFilesFor(courseStageId(CGS_COURSE, '3f'), 'piece').some((f) => /Video-Review-Checklist/.test(f.path)),
+    ).toBe(true);
+  });
+
+  it('emits no separate study entry beside the Piece section, which would repertoire it twice', () => {
+    expect(g.works.some((w) => w.title === 'Study #1')).toBe(false);
+    expect(entries.filter((e) => /Study #1/.test(e.title))).toHaveLength(1);
+  });
+
+  it("a level's study and a packet entry for the same work are ONE repertoire item", () => {
+    // ONE MUSICAL WORK, ONE REPERTOIRE ITEM — and the owner takes it at the
+    // level they meet it. The Piece SECTION and the packet works are two
+    // entries the course can name one piece by, so each carries that work's
+    // IDENTITY and the second tap hands back the first item. Both sealed
+    // counterexamples, in BOTH addition orders:
+    //
+    //  (a) WITHIN a level: 3B's section studies Malagueña and its packet named
+    //      the same score. The scanner drops the packet entry outright there —
+    //      the section IS that work and the PDF is already one of its files —
+    //      so the level offers it exactly once.
+    expect(group('3b').works).toEqual([]);
+    const malaguena = catalogForStage(STAGE_3B).filter((e) => e.strand === 'piece');
+    expect(malaguena.map((e) => e.key)).toEqual(['piece']);
+    expect(malaguena[0].title).toBe('3B Piece — Malagueña by Lecuona');
+    expect(repertoireWorks(addAll([[STAGE_3B, 'piece']])).map((w) => w.work.title)).toEqual([
+      '3B Piece — Malagueña by Lecuona',
+    ]);
+    expect(courseFilesFor(STAGE_3B, 'piece').some((f) => /Lecuona-Malaguena/.test(f.path))).toBe(true);
+
+    //  (b) ACROSS levels, where there is no shared file at all — 2E's own
+    //      folder holds no copy of the Valse — and the two titles only a fuzzy
+    //      match would join. The identity is DECLARED in the scanner from the
+    //      course's own words, so both entries resolve to one item whichever
+    //      is added first, INCLUDING when the later level is added first.
+    const pairs: Array<[Pair, Pair, string]> = [
+      [[STAGE_2E, 'piece'], [STAGE_3F, 'work-carulli-valse-op-50-no-7-1'], '2E Piece — Carulli Valse Op.50 No.7'],
+      [[STAGE_2F, 'piece'], [STAGE_3F, 'work-sor-etude-no-1-op-44-practice-packet'], '2F Piece — Fernando Sor Etude #1 Op.44'],
+    ];
+    for (const [study, packet, studyTitle] of pairs) {
+      const studyFirst = addAll([study, packet]);
+      expect(studyFirst, `${study[0]} then ${packet[1]}`).toHaveLength(1);
+      expect(repertoireWorks(studyFirst).map((w) => w.work.title)).toEqual([studyTitle]);
+
+      const packetFirst = addAll([packet, study]);
+      expect(packetFirst, `${packet[1]} then ${study[0]}`).toHaveLength(1);
+      expect(repertoireWorks(packetFirst)).toHaveLength(1);
+
+      // The row at the OTHER level shows the existing item rather than an
+      // untaken suggestion, so its “+” can never report “Added” for something
+      // it did not create and Undo can never reach it.
+      const item = studyFirst[0];
+      expect(stageUnits(stage(packet[0]), [item]).find((u) => u.key === packet[1])?.item?.id).toBe(item.id);
+      expect(stageUnits(stage(study[0]), [item]).find((u) => u.key === 'piece')?.item?.id).toBe(item.id);
+      const entry = catalogForStage(packet[0]).find((e) => e.key === packet[1]);
+      expect(planCatalogAddition({ items: [item], materials: [] }, packet[0], packet[1], entry, 'g', NOW).created).toBe(
+        false,
+      );
+
+      // AND THE ROUTINE BINDS TO IT. Taken from the later level, the work is
+      // still the study level's own Piece section, so that level's routine
+      // segment binds and its position routine counts the section as added —
+      // the row and the binding are one resolution, not two.
+      const fromPacket = addAll([packet])[0];
+      const levelKey = study[0].replace('cgs-', '');
+      const pieceSeg = buildLevelRoutine(CGS_COURSE, levelKey, [fromPacket]).find((seg) =>
+        /Piece/.test(seg.label),
+      );
+      expect(pieceSeg?.itemId, `${levelKey} routine did not bind its Piece segment`).toBe(fromPacket.id);
+      expect(
+        buildPositionRoutine(CGS_COURSE, levelKey, [fromPacket]).some((seg) => seg.itemId === fromPacket.id),
+      ).toBe(true);
+
+      // AND ITS MATERIAL IS THE WORK'S, NEVER THE ENTRY'S. Composing from the
+      // item's own stage and catalogue key alone made the files depend on
+      // WHICH entry created it — 2E's section material or 3F's score, never
+      // both — so the one item the identity rule produces was half a work
+      // whichever way round it was added. Both entries compose the IDENTICAL
+      // list, not merely the same set: the scan is course-ordered.
+      const studyFiles = courseFilesFor(study[0], study[1]);
+      expect(courseFilesFor(packet[0], packet[1]), `${study[1]} vs ${packet[1]}`).toEqual(studyFiles);
+      // It is a UNION, not one side quietly winning: the packet's own score is
+      // in it, and so is the section's own material.
+      const packetScore = group(packet[0].replace('cgs-', '')).works.find((w) => w.key === packet[1])!.file;
+      expect(studyFiles.map((f) => f.path), packet[1]).toContain(packetScore);
+      for (const f of group(study[0].replace('cgs-', '')).units.find((u) => u.key === 'piece')!.files) {
+        expect(studyFiles, f.path).toContainEqual(f);
+      }
+      // And the ONE item composes exactly that, whichever entry created it.
+      for (const items of [studyFirst, packetFirst]) {
+        const paths = itemFiles(dbWith(items), items[0].id).map((f) => (f as ItemFileReference).path);
+        expect(paths, `created from ${items[0].catalogKey}`).toEqual(studyFiles.map((f) => f.path));
+      }
+    }
+
+    // AN ORDINARY PER-STAGE KEY CARRIES NO IDENTITY, so nothing above leaks
+    // into it: `chords` exists at every level and is never joined across them.
+    expect(carriedCourseWorkItem(STAGE_1C, 'chords', [added(STAGE_1B, 'chords')])).toBeUndefined();
+    // — including for its MATERIAL, which is the half the widening above could
+    // have leaked into: 1C's chords section composes 1C's files and no other
+    // level's, because an ordinary per-stage key names no work at all.
+    expect(courseFilesFor(STAGE_1C, 'chords')).toEqual(group('1c').units.find((u) => u.key === 'chords')!.files);
+
+    // The packet's own arm of the same rule, which holds today and is what a
+    // level bought later could quietly break: one score is one key, so a
+    // re-titled reappearance can never become a second work.
+    //
+    // THIS ONE KEEPS ITS BASENAME READING ON PURPOSE, and is not the defect
+    // `courseFilesFor` was just fixed for. That one DROPPED a file silently;
+    // this one FAILS LOUDLY — a course that ever shipped two different scores
+    // under one basename breaks this assertion rather than hiding anything,
+    // which is exactly the visibility the sealed finding asked for. Weakening
+    // it to compare paths would let a re-titled reappearance mint a second
+    // work, which is the identity design the contract fences off.
+    const byScore = new Map<string, Set<string>>();
+    for (const w of CGS_COURSE.groups.flatMap((x) => x.works)) {
+      const score = w.file?.split('/').pop();
+      if (!score) continue;
+      byScore.set(score, (byScore.get(score) ?? new Set()).add(w.workKey ?? w.key));
+    }
+    for (const [score, keys] of byScore) expect([...keys], score).toHaveLength(1);
+  });
+
+  it('treats a Piece section naming two works as practice material, never one work', () => {
+    // 3A: "Tarrega Study in C + Canon in D". Two distinct works cannot be one
+    // repertoire item, and the stage already offers each of them separately —
+    // so the section keeps its key, its title and its material, and the two
+    // works are what reach My repertoire.
+    const section = catalogForStage(STAGE_3A).find((e) => e.key === 'piece');
+    expect(section?.title).toBe('3A Piece — Tarrega Study in C + Canon in D');
+    expect(section?.strand).not.toBe('piece');
+    expect(isWork(added(STAGE_3A, 'piece'))).toBe(false);
+    expect(courseFilesFor(STAGE_3A, 'piece').length).toBeGreaterThan(0);
+    expect(
+      CGS_COURSE.diagnostics.some((d) =>
+        d.startsWith('3A: the Piece section is practice material, not a repertoire work — it names 2 works'),
+      ),
+    ).toBe(true);
+
+    const works = group('3a').works;
+    expect(works).toHaveLength(2);
+    expect(repertoireWorks(addAll(works.map((w) => [STAGE_3A, w.key] as const)))).toHaveLength(2);
+  });
+});
+
+// --- ac-2 -------------------------------------------------------------------
+
+describe('a work carried forward across levels', () => {
+  // Ferrer Ejercicio runs 2C-2F: ONE work, suggested in each level it appears.
+  const CARRIED = 'work-ferrer-ejercicio';
+
+  it('reuses a carried-forward work when it is added from a later level instead of duplicating it', () => {
+    // The course names it by the same key in every level it appears in...
+    expect(CGS_COURSE.groups.filter((g) => g.works.some((w) => w.key === CARRIED)).length).toBeGreaterThan(1);
+
+    // ...so adding it from 2E returns the item created from 2C.
+    const first = added(STAGE_2C, CARRIED);
+    const db = { items: [first], materials: [] as Material[] };
+    const entry = catalogForStage(STAGE_2E).find((e) => e.key === CARRIED);
+    const plan = planCatalogAddition(db, STAGE_2E, CARRIED, entry, 'g', NOW);
+    expect(plan.itemId).toBe(first.id);
+    expect(plan.items).toHaveLength(1);
+    expect(repertoireWorks(plan.items)).toHaveLength(1);
+
+    // AND THE LATER LEVEL SAYS SO. Reuse that only the store could see left 2E
+    // showing an untaken suggestion: its “+” handed back the 2C item while
+    // reporting “Added”, and the Undo beside that message then offered to
+    // delete an item created at another level weeks earlier. One resolution,
+    // one answer on every surface — so the row shows the existing item...
+    const unit = stageUnits(stage(STAGE_2E), [first]).find((u) => u.key === CARRIED);
+    expect(unit?.item?.id).toBe(first.id);
+    // ...and the plan reports that it created NOTHING, which is what stops an
+    // Undo ever reaching it.
+    expect(plan.created).toBe(false);
+
+    // The reuse is bounded to the course. An identically-keyed item in a stage
+    // no course owns is never adopted.
+    const stranger = { ...added(STAGE_2C, CARRIED), id: 'stranger', stageId: 'setar-radif-mezrab' };
+    const fresh = planCatalogAddition({ items: [stranger], materials: [] }, STAGE_2E, CARRIED, entry, 'g', NOW);
+    expect(fresh.created).toBe(true);
+    expect(fresh.itemId).not.toBe('stranger');
+    expect(stageUnits(stage(STAGE_2E), [stranger]).find((u) => u.key === CARRIED)?.item).toBeUndefined();
+  });
+
+  it('holds for EVERY identity this course names twice, in both addition orders', () => {
+    // THE SWEEP, NOT THE COUNTEREXAMPLE. The two declared aliases are the pair
+    // a reviewer happened to name; the course names nine more identities from
+    // more than one entry, and every one of them has the same two orders and
+    // the same four consumers. Enumerating them from the DATA rather than by
+    // hand is what makes a regenerated course — a fourth Ferrer level, a new
+    // alias — swept too, instead of silently falling outside a written list.
+    const sets = multiEntryIdentities();
+    expect(sets.map((x) => x.identity)).toEqual(
+      expect.arrayContaining(['work-carulli-valse-op-50-no-7', 'work-fernando-sor-etude-1-op-44']),
+    );
+    expect(sets.length).toBeGreaterThan(2);
+
+    for (const { identity, entries } of sets) {
+      // Every entry naming this work composes the SAME material — the work's,
+      // never the entry's. This is the half that was order-dependent.
+      const paths = courseFilesFor(...entries[0]).map((f) => f.path);
+      for (const e of entries) {
+        expect(courseFilesFor(...e).map((f) => f.path), `${identity} at ${e[0]}/${e[1]}`).toEqual(paths);
+      }
+      // And it is a UNION, not merely agreement: every entry's OWN declared
+      // files are in the one list all of them compose. Without this a
+      // regression that let the LAST matching entry win would still have every
+      // entry agreeing with every other and pass unnoticed. Compared by the
+      // whole PATH — every declared file survives composition, never merely one
+      // per basename.
+      for (const e of entries) {
+        const own = declaredFiles(e);
+        expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
+        for (const f of own) expect(paths, `${identity}: ${e[0]}/${e[1]}`).toContain(f);
+      }
+
+      const first = entries[0];
+      const last = entries[entries.length - 1];
+      for (const order of [[first, last], [last, first]] as const) {
+        const why = `${identity}: ${order[0][1]} then ${order[1][1]}`;
+        const items = addAll(order);
+        expect(items, why).toHaveLength(1);
+        expect(repertoireWorks(items), why).toHaveLength(1);
+        // ONE item, and the WHOLE work's material on it either way round.
+        expect(itemFiles(dbWith(items), items[0].id).map((f) => (f as ItemFileReference).path), why).toEqual(paths);
+        // Every level that names it shows that item as added, and no tap there
+        // claims to have created it — so no Undo can reach it.
+        for (const [stageId, key] of entries) {
+          expect(stageUnits(stage(stageId), items).find((u) => u.key === key)?.item?.id, `${why} @ ${stageId}`).toBe(
+            items[0].id,
+          );
+          const entry = catalogForStage(stageId).find((e) => e.key === key);
+          expect(
+            planCatalogAddition({ items, materials: [] }, stageId, key, entry, 'g', NOW).created,
+            `${why} @ ${stageId}`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('keeps every distinct path, even when two share a basename AND a title', () => {
+    // THE DEDUP KEY IS THE PATH, AND NOTHING WEAKER. It used to be the
+    // BASENAME, to keep the copy of one packet the course ships in each level
+    // folder that names it from appearing four times — but a basename is not a
+    // file's identity. Two genuinely different scores sharing one (two
+    // revisions of Ferrer-Ejercicio.pdf) had the second silently dropped, and
+    // nothing on the item said a score was missing. Nothing in this data
+    // establishes content identity — a CourseFile is a path, a kind and a
+    // title — so completeness wins: a repeated packet is one visible extra row,
+    // a hidden one is material the owner cannot see.
+    //
+    // Driven from the LIVE data rather than a fixture, and from the hardest
+    // shape there is: paths the old key could not tell apart even with the
+    // title added, which is exactly the counterexample's own shape.
+    const collisions = multiEntryIdentities()
+      .map(({ identity, entries }) => {
+        const byNameAndTitle = new Map<string, Set<string>>();
+        for (const e of entries) {
+          for (const f of declaredEntries(e)) {
+            const k = `${f.path.split('/').pop()}\u0000${f.title}`;
+            byNameAndTitle.set(k, (byNameAndTitle.get(k) ?? new Set()).add(f.path));
+          }
+        }
+        return { identity, entries, shared: [...byNameAndTitle.values()].filter((ps) => ps.size > 1) };
+      })
+      .filter((x) => x.shared.length > 0);
+
+    // NON-VACUITY FIRST. A regenerated course that stopped shipping duplicate
+    // basenames would otherwise pass this while asserting nothing at all.
+    expect(collisions.length, 'no basename collision left to prove anything with').toBeGreaterThan(0);
+    expect(collisions.map((x) => x.identity)).toContain('work-ferrer-ejercicio');
+
+    for (const { identity, entries, shared } of collisions) {
+      const composed = courseFilesFor(...entries[0]).map((f) => f.path);
+      // Every distinct path survives, and the ROW COUNT says so: a set
+      // comparison alone would pass a list that had quietly collapsed them.
+      for (const ps of shared) {
+        for (const path of ps) expect(composed, `${identity}: ${path}`).toContain(path);
+        expect(composed.filter((c) => ps.has(c)).length, identity).toBe(ps.size);
+      }
+      // And all the way out to the real item's Material, where each copy is its
+      // own row with its own stable id rather than a collision.
+      const items = addAll([entries[0]]);
+      const files = itemFiles(dbWith(items), items[0].id) as ItemFileReference[];
+      for (const ps of shared) for (const path of ps) expect(files.map((f) => f.path), identity).toContain(path);
+      expect(new Set(files.map((f) => f.id)).size, identity).toBe(files.length);
+    }
+  });
+
+  it('still creates it the first time, and never reuses across an ordinary per-stage key', () => {
+    const chords1B = added(STAGE_1B, 'chords');
+    const entry = catalogForStage(STAGE_1C).find((e) => e.key === 'chords');
+    const plan = planCatalogAddition({ items: [chords1B], materials: [] }, STAGE_1C, 'chords', entry, 'g', NOW);
+    expect(plan.itemId).not.toBe(chords1B.id);
+    expect(plan.items).toHaveLength(2);
+    expect(plan.created).toBe(true);
+
+    // The ordinary per-stage reuse reports the same thing, so an Undo after
+    // tapping “+” on a row that was already added deletes nothing either.
+    const again = planCatalogAddition({ items: [chords1B], materials: [] }, STAGE_1B, 'chords', entry, 'g', NOW);
+    expect(again.itemId).toBe(chords1B.id);
+    expect(again.created).toBe(false);
+  });
+});
+
+// --- ac-3 -------------------------------------------------------------------
+
+function dbWith(items: PracticeItem[]): PracticeDB {
+  return {
+    schemaVersion: 14,
+    instruments: [],
+    materials: [],
+    items,
+    blocks: [],
+    reviews: [],
+    lessons: [],
+    lessonAgenda: [],
+    pathways: [],
+    pathwayStages: [],
+    pathwayRoutines: [],
+    attachments: [],
+    archiveSources: [],
+  } as unknown as PracticeDB;
+}
+
+describe("a course item's material", () => {
+  const item = added(STAGE_1B, 'piece');
+
+  it("composes a catalogue item's course files without storing any reference on the item", () => {
+    // The item stores nothing...
+    expect(item.references ?? []).toEqual([]);
+    const files = itemFiles(dbWith([item]), item.id);
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.some((f) => f.source === 'reference' && f.kind === 'video')).toBe(true);
+    expect(files.some((f) => f.source === 'reference' && f.kind === 'pdf')).toBe(true);
+    // ...and nothing was written back onto it.
+    expect(item.references ?? []).toEqual([]);
+    // It is read out of the catalogue EVERY time, which is what makes
+    // regenerated course data reach an item that already exists.
+    expect(files.map((f) => (f as ItemFileReference).path)).toEqual(
+      courseFilesFor(STAGE_1B, 'piece').map((f) => f.path),
+    );
+  });
+
+  it('gives an item from no course nothing at all', () => {
+    const plain = createItem({ instrumentId: 'g', title: 'Scales' }, NOW);
+    expect(itemFiles(dbWith([plain]), plain.id)).toEqual([]);
+  });
+
+  it("composes it for a hand-authored level's own keys too, which name the same sections", () => {
+    // Level 1A's fourteen steps predate this course data and the contract keeps
+    // them byte for byte, so their keys are slugs of their own titles
+    // (`warm-up-stretches`) and match no course unit key (`warm-up`). Left at
+    // that, 1A was the ONE level whose items got no course material at all —
+    // on the very level the owner starts from. The keys are untouched; what is
+    // added is a reading of which course section each one names.
+    const catalog = catalogForStage(STAGE_1A);
+    expect(catalog.length).toBe(14);
+
+    // EVERY ALIAS NAMES A REAL ENTRY. A stale one would alias nothing and no
+    // test would notice, which is exactly how fourteen dead entries ship.
+    const keys = new Set(catalog.map((e) => e.key));
+    const units = new Set(group('1a').units.map((u) => u.key));
+    for (const [unitKey, legacy] of Object.entries(COURSE_LEGACY_KEYS[STAGE_1A])) {
+      expect(units.has(unitKey), `no course unit ${unitKey}`).toBe(true);
+      for (const k of legacy) expect(keys.has(k), `no 1A catalogue entry ${k}`).toBe(true);
+    }
+
+    // The Forest Glade reads the course's own Piece section, and the two
+    // right-hand steps share the one Right Hand Technique section the course
+    // writes them both from.
+    expect(courseFilesFor(STAGE_1A, 'piece-the-forest-glade')).toEqual(
+      group('1a').units.find((u) => u.key === 'piece')!.files,
+    );
+    expect(courseFilesFor(STAGE_1A, 'chunks-right-hand-only')).toEqual(
+      courseFilesFor(STAGE_1A, 'thumb-chunks-right-hand-only'),
+    );
+    // Composed, never stored, exactly as for every other level.
+    const glade = added(STAGE_1A, 'piece-the-forest-glade');
+    const files = itemFiles(dbWith([glade]), glade.id);
+    expect(files.length).toBeGreaterThan(0);
+    expect(glade.references ?? []).toEqual([]);
+
+    // Thirteen of the fourteen resolve. The one that does not is named rather
+    // than given a guessed section's videos: no course section clearly
+    // corresponds to "Technique primer — What is Technique".
+    const without = catalog.filter((e) => courseFilesFor(STAGE_1A, e.key).length === 0);
+    expect(without.map((e) => e.key)).toEqual(['technique-primer-what-is-technique']);
+  });
+});
+
+// --- ac-4, ac-5, ac-6 -------------------------------------------------------
+
+// The values the owner's own devices actually carry.
+const MAC_ARCHIVE_BASE = 'https://192.168.0.20:5010/setar-classes';
+const PHONE_ARCHIVE_BASE = 'https://ds220plus.taild1d1f7.ts.net/media/setar-classes';
+
+describe('which base a composed reference resolves against', () => {
+  const courseFile = courseFilesFor(STAGE_1B, 'scales')[0];
+  const archiveRef = { path: 'session-39-1405-06-13/01-correction.mp4' };
+
+  it('resolves a course file under the shared media root and leaves archive resolution unchanged', () => {
+    // The Mac, over the LAN.
+    expect(courseFile.path.startsWith('classical-guitar/classical-guitar-shed/Level_1B/')).toBe(true);
+    expect(resolveRecording(mediaRoot({ archiveBase: MAC_ARCHIVE_BASE }) ?? undefined, courseFile)).toEqual({
+      status: 'ok',
+      url: `https://192.168.0.20:5010/${courseFile.path}`,
+    });
+    expect(resolveRecording(MAC_ARCHIVE_BASE, archiveRef)).toEqual({
+      status: 'ok',
+      url: `${MAC_ARCHIVE_BASE}/session-39-1405-06-13/01-correction.mp4`,
+    });
+
+    // The phone, over Tailscale — each keeps its own path prefix.
+    const phoneRoot = mediaRoot({ archiveBase: PHONE_ARCHIVE_BASE });
+    expect(phoneRoot).toBe('https://ds220plus.taild1d1f7.ts.net/media');
+    expect(resolveRecording(phoneRoot ?? undefined, courseFile)).toEqual({
+      status: 'ok',
+      url: `https://ds220plus.taild1d1f7.ts.net/media/${courseFile.path}`,
+    });
+    expect(resolveRecording(PHONE_ARCHIVE_BASE, archiveRef)).toEqual({
+      status: 'ok',
+      url: `${PHONE_ARCHIVE_BASE}/session-39-1405-06-13/01-correction.mp4`,
+    });
+
+    // AND EACH COMPOSED REFERENCE PICKS ITS OWN BASE. The two resolutions
+    // above prove the arithmetic; this is what makes a real item use it —
+    // without it a course file would be pushed through the archive base and
+    // 404, and a class recording through the root, landing a folder too high.
+    const item = added(STAGE_1B, 'scales');
+    const composed = itemFiles(dbWith([item]), item.id).filter(
+      (f): f is ItemFileReference => f.source === 'reference',
+    );
+    expect(composed.length).toBeGreaterThan(0);
+    const bases = { archiveBase: MAC_ARCHIVE_BASE, mediaRoot: mediaRoot({ archiveBase: MAC_ARCHIVE_BASE }) };
+    for (const f of composed) {
+      expect(f.root).toBe('media');
+      expect(baseForItemFile(f, bases)).toBe('https://192.168.0.20:5010');
+      expect(resolveRecording(baseForItemFile(f, bases), f)).toEqual({
+        status: 'ok',
+        url: `https://192.168.0.20:5010/${f.path}`,
+      });
+    }
+    expect(baseForItemFile({ root: 'archive' } as ItemFileReference, bases)).toBe(MAC_ARCHIVE_BASE);
+  });
+});
+
+describe('a course file with no media root behind it', () => {
+  const courseFile = courseFilesFor(STAGE_1B, 'scales')[0];
+
+  it('reports no-base for a course file when no media root is derivable or set', () => {
+    // The LEGACY archive base, one folder too high: it IS the media root, so
+    // nothing is derivable from it and nothing is guessed.
+    const root = mediaRoot({ archiveBase: 'https://192.168.0.20:5010/' });
+    expect(root).toBeNull();
+    const resolution = resolveRecording(root ?? undefined, courseFile);
+    expect(resolution).toEqual({ status: 'no-base' });
+    // Honestly unavailable, never a dead link: the material row's Open is
+    // enabled only for `ok`.
+    expect(resolution.status === 'ok').toBe(false);
+    // And the same for a device with nothing configured at all.
+    expect(resolveRecording(mediaRoot({}) ?? undefined, courseFile)).toEqual({ status: 'no-base' });
+  });
+});
+
+// --- ac-7, ac-8, ac-9, ac-10 ------------------------------------------------
+
+describe('"Build one for where I am"', () => {
+  it("builds a position routine from added current-level items plus the previous level's essentials", () => {
+    const arp = added(STAGE_1C, 'arpeggios');
+    const items = [arp, added(STAGE_1C, 'scales')];
+    const segments = buildPositionRoutine(CGS_COURSE, '1c', items);
+    expect(segments.map((s) => s.label)).toEqual([
+      // 1B's essentials — the maintenance the syllabus itself carries forward.
+      '1B Arpeggios',
+      '1B Scales',
+      '1B Piece — Study #1',
+      // 1C, only what has been added.
+      '1C Arpeggios',
+      '1C Scales',
+    ]);
+    expect(segments.slice(0, 3).every((s) => s.essential)).toBe(true);
+    // Each current-level segment is bound to the item it was matched to;
+    // nothing was added in 1B, so its maintenance segments are unbound
+    // countdowns rather than fabricated bindings.
+    expect(segments.find((s) => s.label === '1C Arpeggios')?.itemId).toBe(arp.id);
+    expect(segments.find((s) => s.label === '1B Scales')?.itemId).toBeUndefined();
+  });
+
+  it('is just the added sections for the first level, which has no previous one', () => {
+    const items = [added(STAGE_1B, 'scales')];
+    expect(buildPositionRoutine(CGS_COURSE, '1a', items)).toEqual([]);
+  });
+
+  it("binds a hand-authored level's carried-forward essentials to the items that stand for them", () => {
+    // 1B's "where I am" carries 1A's essentials forward — and 1A is the level
+    // whose catalogue keys are hand-authored, so before this those three
+    // segments could NEVER bind to an item however much 1A the owner had
+    // added: unbound countdowns on the level they have actually practised.
+    const oneA = catalogForStage(STAGE_1A).map((e) => added(STAGE_1A, e.key));
+    const position = buildPositionRoutine(CGS_COURSE, '1b', oneA);
+    expect(position.map((s) => s.label)).toEqual([
+      '1A Warm Up',
+      '1A Right Hand Technique (*Most important going forward *)',
+      '1A Piece — The Forest Glade',
+    ]);
+    expect(position.every((s) => s.itemId)).toBe(true);
+    const glade = oneA.find((i) => i.catalogKey === 'piece-the-forest-glade');
+    expect(position[2].itemId).toBe(glade!.id);
+
+    // And 1A's own "where I am" is no longer EMPTY with all fourteen added,
+    // which is the shape the gap took: it had no previous level and could
+    // match none of its own sections either, so it built nothing at all.
+    const own1A = buildPositionRoutine(CGS_COURSE, '1a', oneA);
+    expect(own1A).toHaveLength(group('1a').routine.length);
+    expect(own1A.every((s) => s.itemId)).toBe(true);
+
+    // 1A's OWN routine binds the same way, and a many-to-one section takes the
+    // first of the keys it stands for that has an item — deterministic, never
+    // whichever the array happened to hold first.
+    expect(buildLevelRoutine(CGS_COURSE, '1a', oneA).every((s) => s.itemId)).toBe(true);
+    const onlyThumb = oneA.filter((i) => i.catalogKey === 'thumb-chunks-right-hand-only');
+    expect(
+      buildLevelRoutine(CGS_COURSE, '1a', onlyThumb).find((s) => /Right Hand Technique/.test(s.label))?.itemId,
+    ).toBe(onlyThumb[0].id);
+    // And an empty 1A still carries the maintenance as unbound countdowns
+    // rather than fabricating a binding.
+    expect(buildPositionRoutine(CGS_COURSE, '1b', []).every((s) => s.itemId === undefined)).toBe(true);
+  });
+});
+
+describe('a section the owner has not reached yet', () => {
+  it('omits a current-level segment whose catalogue item has not been added', () => {
+    const items = [added(STAGE_1C, 'arpeggios')];
+    const position = buildPositionRoutine(CGS_COURSE, '1c', items);
+    const full = buildLevelRoutine(CGS_COURSE, '1c', items);
+
+    expect(position.map((s) => s.label)).not.toContain('1C Sight-Reading');
+    expect(full.map((s) => s.label)).toContain('1C Sight-Reading');
+    // Absent, not skipped: the full routine keeps every one of its own segments.
+    expect(full.map((s) => s.label)).toEqual(group('1c').routine.map((s) => s.label));
+  });
+});
+
+describe('the segment-to-item join', () => {
+  it('joins a segment to its item by stage and catalogue key together, never by key alone', () => {
+    // `chords` exists in every level. An item added in 1B must not enable 1C's.
+    const chords1B = added(STAGE_1B, 'chords');
+    const segments = buildPositionRoutine(CGS_COURSE, '1c', [chords1B]);
+    expect(segments.map((s) => s.label)).not.toContain('1C Chords');
+    expect(segments.find((s) => s.label === '1B Arpeggios')?.itemId).toBeUndefined();
+
+    // And with an item under the same key in BOTH levels, each binds its own.
+    const chords1C = added(STAGE_1C, 'chords');
+    const full = buildLevelRoutine(CGS_COURSE, '1c', [chords1B, chords1C]);
+    expect(full.find((s) => s.label === '1C Chords')?.itemId).toBe(chords1C.id);
+  });
+});
+
+describe('what adding an item does and does not enable', () => {
+  it('ignores an added repertoire work when building the position routine and includes an added practice section', () => {
+    const work = added(STAGE_1C, group('1c').works[0].key);
+    expect(isWork(work)).toBe(true);
+    expect(buildPositionRoutine(CGS_COURSE, '1c', [work]).map((s) => s.label)).toEqual([
+      '1B Arpeggios',
+      '1B Scales',
+      '1B Piece — Study #1',
+    ]);
+
+    const section = added(STAGE_1C, 'rhythm-study');
+    expect(buildPositionRoutine(CGS_COURSE, '1c', [work, section]).map((s) => s.label)).toEqual([
+      '1B Arpeggios',
+      '1B Scales',
+      '1B Piece — Study #1',
+      '1C Rhythm Study',
+    ]);
+  });
+
+  it('enables nothing for an item the owner created by hand with no catalogue key', () => {
+    const byHand = createItem({ instrumentId: 'g', title: 'My own thing', stageId: STAGE_1C }, NOW);
+    expect(buildPositionRoutine(CGS_COURSE, '1c', [byHand]).map((s) => s.label)).toEqual([
+      '1B Arpeggios',
+      '1B Scales',
+      '1B Piece — Study #1',
+    ]);
+  });
+});
+
+// --- ac-13 ------------------------------------------------------------------
+
+function stage(id: string, over: Partial<PathwayStage> = {}): PathwayStage {
+  return {
+    id,
+    pathwayId: CGS_COURSE.pathwayId,
+    code: id,
+    title: id,
+    order: 0,
+    createdAt: NOW.toISOString(),
+    updatedAt: NOW.toISOString(),
+    ...over,
+  };
+}
+
+describe('"Add new levels from this course"', () => {
+  const present = ['1a', '1b', '1c'].map((k) => stage(courseStageId(CGS_COURSE, k)));
+
+  it('offers only the course levels absent from an existing pathway and never a renamed one already present', () => {
+    const offered = offeredCourseLevels(CGS_COURSE, present).map((o) => o.groupKey);
+    expect(offered).not.toContain('1a');
+    expect(offered).not.toContain('1c');
+    expect(offered).toContain('1d');
+    expect(offered.length).toBe(CGS_COURSE.groups.length - 3);
+
+    // Presence is the stage ID, never the title, so a renamed level is present.
+    const renamed = [stage(courseStageId(CGS_COURSE, '2a'), { code: 'My warm-ups', title: 'Whatever I like' })];
+    expect(offeredCourseLevels(CGS_COURSE, renamed).map((o) => o.groupKey)).not.toContain('2a');
+
+    // And only what was explicitly selected is added.
+    const next = planCourseLevels(CGS_COURSE, present, ['1d'], NOW);
+    expect(next.filter((s) => !present.includes(s)).map((s) => s.id)).toEqual([
+      courseStageId(CGS_COURSE, '1d'),
+    ]);
+    expect(next).toHaveLength(present.length + 1);
+  });
+
+  it('adds NOTHING on its own, so a deliberately deleted stage is offered but never recreated', () => {
+    // 1B deleted: it is offered again...
+    const afterDeletion = present.filter((s) => s.id !== courseStageId(CGS_COURSE, '1b'));
+    expect(offeredCourseLevels(CGS_COURSE, afterDeletion).map((o) => o.groupKey)).toContain('1b');
+    // ...but selecting nothing changes nothing, and the collection is untouched.
+    expect(planCourseLevels(CGS_COURSE, afterDeletion, [], NOW)).toBe(afterDeletion);
+  });
+
+  it('ignores a selection naming a level the pathway already has, rather than duplicating it', () => {
+    expect(planCourseLevels(CGS_COURSE, present, ['1c'], NOW)).toBe(present);
+  });
+
+  it('gives the added stage the deterministic id the catalogue is keyed by', () => {
+    const next = planCourseLevels(CGS_COURSE, present, ['3f'], NOW);
+    const addedStage = next[next.length - 1];
+    expect(addedStage.id).toBe(courseStageId(CGS_COURSE, '3f'));
+    expect(catalogForStage(addedStage.id).length).toBeGreaterThan(0);
+  });
+});
+
+// --- ac-14 ------------------------------------------------------------------
+
+describe("the course's own study source", () => {
+  it('returns an existing study source when one matches and mints one only when none does', () => {
+    // Minted on first use, and the item is grouped under it.
+    const first = planCatalogAddition({ items: [], materials: [] }, STAGE_1B, 'scales', catalogForStage(STAGE_1B).find((e) => e.key === 'scales'), 'g', NOW);
+    expect(first.materials).toHaveLength(1);
+    expect(first.materials[0].title).toBe('Classical Guitar Shed');
+    expect(first.items[0].materialId).toBe(first.materials[0].id);
+
+    // A second course item returns the SAME collection — never a duplicate.
+    const second = planCatalogAddition(
+      { items: first.items, materials: first.materials },
+      STAGE_1C,
+      'chords',
+      catalogForStage(STAGE_1C).find((e) => e.key === 'chords'),
+      'g',
+      NOW,
+    );
+    expect(second.materials).toHaveLength(1);
+    expect(second.materials).toBe(first.materials);
+    expect(second.items[1].materialId).toBe(first.materials[0].id);
+  });
+
+  it('matches on the source the owner may already have created by hand', () => {
+    const mine = createMaterial({ instrumentId: 'g', title: '  classical guitar shed ' }, NOW);
+    const r = resolveCourseSource([mine], CGS_COURSE, 'g', NOW);
+    expect(r.materialId).toBe(mine.id);
+    expect(r.materials).toHaveLength(1);
+  });
+
+  it('mints a separate one per instrument, because a source belongs to one', () => {
+    const forGuitar = resolveCourseSource([], CGS_COURSE, 'g', NOW);
+    const forOther = resolveCourseSource(forGuitar.materials, CGS_COURSE, 'other', NOW);
+    expect(forOther.materials).toHaveLength(2);
+    expect(forOther.materialId).not.toBe(forGuitar.materialId);
+  });
+});
+```
+
+### src/domain/courseSeed.ts
+
+```
+import { createItem, createMaterial, itemFromCatalogEntry } from './factories';
+import { CGS_CHECKLISTS, CGS_COURSE } from './courseData';
+import type {
+  CatalogEntry,
+  ID,
+  Material,
+  PathwayRoutine,
+  PathwayStage,
+  PracticeItem,
+  RoutineSegment,
+  StepKind,
+  StepStrand,
+} from './types';
+import { newId, nowISO } from './util';
+
+// ---------------------------------------------------------------------------
+// A COURSE the owner already owns, read as reference data in code.
+//
+// `courseData.ts` is the SCANNER'S OUTPUT (`scripts/scan-cgs-course.mjs`) and
+// is never edited by hand; this module is the hand-written reader that turns it
+// into the things the app already understands — stage seeds, catalogue entries,
+// composed material and ordinary editable routines. Nothing here is persisted:
+// no schema change, no migration, no new inbound door. That is what makes
+// re-running the scanner after a course change reach every item that already
+// exists — course material is DERIVED from the catalogue, never copied onto an
+// item.
+//
+// It is deliberately NOT the Setar archive machinery. That source grows, gets
+// renamed and carries piece identity to reconcile against existing repertoire,
+// which is why it needs a published index, a digest and a reconciler. A
+// downloaded course has none of that: it is a fixed tree whose own `notes.md`
+// and `LEVEL_GUIDE.md` already state everything, so it belongs on the rung
+// `pathwaySeed.ts` already stands on.
+//
+// The data is shaped as ordered GROUPS of UNITS, not as "levels", and how many
+// there are is data. Buying Levels 4A-5F later is therefore: re-run the
+// scanner, ship the regenerated data, and use the course-scoped "Add new levels
+// from this course" action — never a migration.
+// ---------------------------------------------------------------------------
+
+export type CourseFileKind = 'video' | 'pdf' | 'image' | 'audio' | 'doc' | 'folder';
+
+export interface CourseFile {
+  /** Path relative to the shared MEDIA ROOT, never to the archive base. */
+  path: string;
+  kind: CourseFileKind;
+  title: string;
+}
+
+export interface CourseUnit {
+  /** Catalogue key. STABLE: keys are added, never renamed. */
+  key: string;
+  title: string;
+  strand: StepStrand;
+  /**
+   * The REPERTOIRE IDENTITY of the single work this section studies, where the
+   * course names one — separate from `key`, which is the catalogue key and
+   * stays `piece`. Absent on every section that is not one work.
+   */
+  workKey?: string;
+  mediaPath: string;
+  files: CourseFile[];
+  guidance?: string;
+  /** Index into the course's deduplicated per-strand practice checklists. */
+  checklistKey?: string;
+  /** Watch once — not daily practice, and never in a routine. */
+  reference?: boolean;
+  routineMinutes?: number;
+  essential?: boolean;
+  bpm?: number;
+}
+
+/**
+ * A named work from the level's practice packet — a real piece with a real
+ * composer, the only thing besides the level's own study that may reach My
+ * repertoire.
+ *
+ * The key is derived from the WORK, not from the level, so a work carried
+ * forward across levels (Ferrer Ejercicio runs 2C-2F) is ONE entry the owner
+ * adds once.
+ */
+export interface CourseWork {
+  key: string;
+  title: string;
+  file?: string;
+  /**
+   * Set only where this entry is a work already identified under ANOTHER name
+   * — a level's own study re-listed in a later level's packet. Absent means the
+   * entry's own `key` IS its identity, which is what already joins a work
+   * carried across levels under one title.
+   */
+  workKey?: string;
+}
+
+export interface CourseRoutineSegment {
+  /** The unit this segment is FOR — its own declared catalogue key. */
+  unitKey: string;
+  label: string;
+  minutes: number;
+  essential?: boolean;
+}
+
+export interface CourseGroup {
+  key: string;
+  code: string;
+  title: string;
+  group: string;
+  mediaPath: string;
+  units: CourseUnit[];
+  works: CourseWork[];
+  routine: CourseRoutineSegment[];
+}
+
+export interface CourseData {
+  id: string;
+  /** The pathway this course's stages belong to. */
+  pathwayId: string;
+  name: string;
+  /** The study source every item created from this course is grouped under. */
+  sourceName: string;
+  /** The course's own folder beneath the shared media root. */
+  mediaPath: string;
+  /** What the scanner could not read — reported, never silently dropped. */
+  diagnostics: string[];
+  groups: CourseGroup[];
+}
+
+/** Every course the app ships data for. A second course is a second entry. */
+export const COURSES: CourseData[] = [CGS_COURSE];
+
+/** Stage ids are deterministic and byte-identical to `stageIdFor(pathwayId, code)`. */
+export function courseStageId(course: CourseData, groupKey: string): string {
+  return `${course.pathwayId}-${groupKey}`;
+}
+
+export function courseById(id: string): CourseData | undefined {
+  return COURSES.find((c) => c.id === id);
+}
+
+export function courseForPathway(pathwayId: string): CourseData | undefined {
+  return COURSES.find((c) => c.pathwayId === pathwayId);
+}
+
+function groupForStage(course: CourseData, stageId: string): CourseGroup | undefined {
+  return course.groups.find((g) => courseStageId(course, g.key) === stageId);
+}
+
+/** The course, group and stage a stage id names — or nothing, for a stage no course owns. */
+export function courseStage(stageId: string): { course: CourseData; group: CourseGroup } | undefined {
+  for (const course of COURSES) {
+    const group = groupForStage(course, stageId);
+    if (group) return { course, group };
+  }
+  return undefined;
+}
+
+// --- stage seeds -------------------------------------------------------------
+
+/** The shape `pathwaySeed.ts` expands into stages and catalogue entries. */
+export interface CourseStepSeed {
+  key: string;
+  title: string;
+  strand: StepStrand;
+  kind?: StepKind;
+  notes?: string;
+  about?: string;
+  bpm?: number;
+}
+
+export interface CourseStageSeed {
+  slug: string;
+  code: string;
+  title: string;
+  group: string;
+  intro?: string;
+  steps: CourseStepSeed[];
+}
+
+/** The level's own practice guidance plus the course's checklist for its strand. */
+function unitNotes(unit: CourseUnit): string | undefined {
+  const checklist = unit.checklistKey ? CGS_CHECKLISTS[unit.checklistKey] : undefined;
+  const parts = [
+    unit.guidance?.trim(),
+    unit.bpm ? `Syllabus target: ${unit.bpm} bpm.` : undefined,
+    checklist ? `Each session:\n${checklist}` : undefined,
+  ].filter(Boolean);
+  return parts.length ? parts.join('\n\n') : undefined;
+}
+
+const WORK_NOTE = (code: string) =>
+  `Optional repertoire from the Level ${code} practice packet. Learn it when it appeals — nothing here is a deadline.`;
+
+/**
+ * One stage seed per course group, its real sections followed by the level's
+ * named packet works.
+ *
+ * `skipCodes` is how a level whose steps are HAND-AUTHORED keeps them: Level 1A
+ * was written out from the syllabus before this scanner existed, and the
+ * contract keeps it byte-for-byte.
+ */
+export function courseStageSeeds(course: CourseData, skipCodes: string[] = []): CourseStageSeed[] {
+  const skip = new Set(skipCodes.map((c) => c.toLowerCase()));
+  return course.groups
+    .filter((g) => !skip.has(g.key))
+    .map((g) => ({
+      slug: g.key,
+      code: g.code,
+      title: g.title,
+      group: g.group,
+      intro: g.units.find((u) => u.key === 'welcome')?.guidance?.split('\n').find((l) => l.trim())?.trim(),
+      steps: [
+        ...g.units.map((u) => ({
+          key: u.key,
+          title: u.title,
+          strand: u.strand,
+          kind: u.strand === 'piece' ? ('piece' as StepKind) : undefined,
+          notes: unitNotes(u),
+          bpm: u.bpm,
+        })),
+        // The packet works. `strand: 'piece'` is what makes them — and ONLY
+        // them and the level's own study section — repertoire works. One work
+        // is one repertoire ITEM however many entries name it; that join is
+        // `courseWorkKey`, never a second entry removed here.
+        ...g.works.map((w) => ({
+          key: w.key,
+          title: w.title,
+          strand: 'piece' as StepStrand,
+          kind: 'piece' as StepKind,
+          notes: WORK_NOTE(g.code),
+        })),
+      ],
+    }));
+}
+
+// --- legacy catalogue keys the course's own sections stand for ---------------
+
+/**
+ * A HAND-AUTHORED STAGE'S OWN KEYS, MAPPED ONTO THE COURSE SECTIONS THEY NAME.
+ *
+ * Level 1A was written out from the syllabus before this scanner existed and
+ * the contract keeps its fourteen steps byte for byte — so its catalogue keys
+ * are slugs of their own titles (`warm-up-stretches`) and match no course unit
+ * key (`warm-up`). Left at that, 1A was the one level whose items got no course
+ * material at all, AND the one level whose essentials 1B's "where I am" routine
+ * carries forward — so those segments could never bind to an item either. The
+ * keys themselves are untouched: this ADDS a reading of them, exactly as the
+ * scanner's own rule adds keys and never renames one.
+ *
+ * COURSE UNIT KEY → the legacy keys it stands for, IN ORDER. Many-to-one is
+ * deliberate and is what the course itself says: the Chunks and Thumb-chunks
+ * steps are both the one Right Hand Technique section, and its videos are the
+ * material for both. Where a routine segment has to pick ONE item, it takes the
+ * first key in this list that has one, so the choice is deterministic.
+ *
+ * Every key here is asserted against the live catalogue in `courseSeed.test.ts`
+ * — a stale entry FAILS rather than quietly aliasing nothing. ONE of 1A's
+ * fourteen steps is deliberately absent, "Technique primer — What is Technique",
+ * because no course section clearly corresponds to it: it gets no composed
+ * material, which is honest, rather than a guessed section's videos. (The
+ * course's own orientation units — Welcome, First Things First, Syllabus and
+ * Materials — simply have no hand-authored step, which costs nothing: they are
+ * reached from the stage's other levels and are in no routine.)
+ */
+export const COURSE_LEGACY_KEYS: Record<string, Record<string, string[]>> = {
+  'cgs-1a': {
+    'warm-up': ['warm-up-stretches'],
+    // The course's own Finger Walking exercise lives in its LEFT hand section,
+    // whatever strand the hand-authored step was given.
+    'left-hand-exercises': ['finger-walking'],
+    'contrast-cards': ['contrast-practice-right-hand'],
+    'right-hand-technique': ['chunks-right-hand-only', 'thumb-chunks-right-hand-only'],
+    chords: ['3-note-chords', '3-note-chords-with-chunks'],
+    'rhythm-study': ['rhythm-practice-1-clap-count-aloud'],
+    'sight-reading': ['notes-on-the-1st-string', 'sight-reading-practice-1-play-along'],
+    piece: ['piece-the-forest-glade'],
+    'background-knowledge': ['reading-music-how-notes-work-musical-notation'],
+    'ready-for': ['checkpoint-ready-for-1b'],
+  },
+};
+
+/** The legacy catalogue keys one course unit stands for at one stage. */
+function legacyKeysFor(stageId: string, unitKey: string): string[] {
+  return COURSE_LEGACY_KEYS[stageId]?.[unitKey] ?? [];
+}
+
+// --- composed material -------------------------------------------------------
+
+/** A packet work's own score, as one composed file. */
+function workFile(work: CourseWork): CourseFile[] {
+  return work.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
+}
+
+/** The files ONE catalogue entry of this course declares, and nothing else. */
+function entryFiles(
+  found: { course: CourseData; group: CourseGroup },
+  stageId: string,
+  catalogKey: string,
+): CourseFile[] {
+  const unit = found.group.units.find(
+    (u) => u.key === catalogKey || legacyKeysFor(stageId, u.key).includes(catalogKey),
+  );
+  if (unit) return unit.files;
+  const work = found.group.works.find((w) => w.key === catalogKey);
+  return work ? workFile(work) : [];
+}
+
+/**
+ * The course files that belong to one catalogue entry — its section's videos,
+ * scores, images and contrast-card folder, or a packet work's own score.
+ *
+ * COMPOSED, NEVER STORED. The item holds nothing but the stage and the
+ * catalogue key it was created from; the files come from the course data every
+ * time they are read, so regenerating that data reaches every item that already
+ * exists and the owner never types a link.
+ *
+ * AND A WORK'S MATERIAL IS EVERY ENTRY THAT NAMES THAT WORK, NOT ONLY THE ONE
+ * THE ITEM HAPPENED TO BE CREATED FROM. `carriedCourseWorkItem` already makes
+ * one musical work ONE item however many entries name it — so composing from
+ * the item's own `stageId`/`catalogKey` alone made the material depend on
+ * WHICH entry was added first: take 2E's Carulli Valse section and 3F's packet
+ * score was unreachable from it; take the 3F packet entry first and 2E's own
+ * section material was. Identity governs here for the same reason it governs
+ * the tap, the row and the routine binding: the item is the work, so its
+ * material is the work's. The scan is deterministic — course order, units then
+ * works within a group — so both addition orders compose the SAME list, not
+ * merely the same set.
+ *
+ * Deduplication is by the file's OWN PATH, and by nothing weaker. It used to
+ * be by BASENAME, to keep the copy of one packet the course ships in each
+ * level's folder that names it (Ferrer Ejercicio runs 2C-2F) from appearing
+ * four times — but a basename is not a file's identity. Two genuinely
+ * different scores that happen to share one (two revisions of
+ * `Ferrer-Ejercicio.pdf`, a regenerated course that renamed a folder rather
+ * than its files) then had the second SILENTLY DROPPED from the one list the
+ * work's material is composed into, and nothing about the item said a score
+ * was missing. Nothing in this data establishes content identity — a
+ * `CourseFile` is a path, a kind and a title, with no size and no digest — so
+ * there is nothing here to collapse a copy on, and COMPLETENESS BEATS TIDINESS:
+ * a repeated packet costs the owner one extra row they can see, where a hidden
+ * one costs them material they cannot. A path IS authoritative, and it is the
+ * same reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on
+ * the full relative path). `itemFiles` keys its own rows by path too, so each
+ * copy is a distinct, stable row rather than a collision.
+ *
+ * An ORDINARY per-stage key carries no identity at all — `chords` exists in
+ * every level — so it composes only its own section, exactly as before.
+ */
+export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[] {
+  const found = courseStage(stageId);
+  if (!found) return [];
+  const identity = courseWorkKey(found, stageId, catalogKey);
+  if (!identity) return entryFiles(found, stageId, catalogKey);
+
+  const out: CourseFile[] = [];
+  const seen = new Set<string>();
+  const take = (files: CourseFile[]) => {
+    for (const f of files) {
+      if (seen.has(f.path)) continue;
+      seen.add(f.path);
+      out.push(f);
+    }
+  };
+  for (const group of found.course.groups) {
+    for (const u of group.units) if (u.workKey === identity) take(u.files);
+    for (const w of group.works) if ((w.workKey ?? w.key) === identity) take(workFile(w));
+  }
+  return out;
+}
+
+// --- routines ----------------------------------------------------------------
+
+/** A course segment bound to the item the owner created from its unit, if any. */
+function toSegment(
+  seg: CourseRoutineSegment,
+  stageId: string,
+  itemsByKey: Map<string, PracticeItem>,
+  items: PracticeItem[],
+): RoutineSegment {
+  const item = unitItem(stageId, seg.unitKey, itemsByKey, items);
+  return {
+    label: seg.label,
+    minutes: seg.minutes,
+    ...(seg.essential ? { essential: true } : {}),
+    ...(item ? { itemId: item.id } : {}),
+  };
+}
+
+/**
+ * A SEGMENT IS JOINED TO ITS ITEM BY STAGE AND CATALOGUE KEY TOGETHER.
+ * `CatalogEntry.key` is unique per stage, not globally — `chords` exists in
+ * every level — and a position routine spans two stages by construction, so a
+ * key-only lookup would silently bind the wrong level's item.
+ */
+function itemsByStageAndKey(items: PracticeItem[]): Map<string, PracticeItem> {
+  const out = new Map<string, PracticeItem>();
+  for (const i of items) {
+    if (i.stageId && i.catalogKey) out.set(`${i.stageId}\u0000${i.catalogKey}`, i);
+  }
+  return out;
+}
+
+/**
+ * The item a course unit's segment binds to: the one created from the unit's
+ * own key, else — for a hand-authored stage — the first of the legacy keys it
+ * stands for that has one. ONE resolution, used by every routine this module
+ * builds, so a level whose catalogue predates the course is not a level whose
+ * carried-forward essentials can never bind.
+ */
+function unitItem(
+  stageId: string,
+  unitKey: string,
+  itemsByKey: Map<string, PracticeItem>,
+  items: PracticeItem[],
+): PracticeItem | undefined {
+  const direct = itemsByKey.get(`${stageId}\u0000${unitKey}`);
+  if (direct) return direct;
+  for (const legacy of legacyKeysFor(stageId, unitKey)) {
+    const item = itemsByKey.get(`${stageId}\u0000${legacy}`);
+    if (item) return item;
+  }
+  // A Piece section that IS a work resolves by that work's IDENTITY too, so a
+  // study taken from the later level that re-lists it still binds here. The
+  // stage ROW already shows that item as added; a segment that left it out
+  // would be the same split resolution `carriedCourseWorkItem`'s own docstring
+  // exists to refuse, one surface further on. An ordinary section carries no
+  // identity, so nothing else widens.
+  return carriedCourseWorkItem(stageId, unitKey, items);
+}
+
+/** The level's own routine, exactly as its syllabus states it. */
+export function buildLevelRoutine(
+  course: CourseData,
+  groupKey: string,
+  items: PracticeItem[],
+): RoutineSegment[] {
+  const group = course.groups.find((g) => g.key === groupKey);
+  if (!group) return [];
+  const stageId = courseStageId(course, groupKey);
+  const byKey = itemsByStageAndKey(items);
+  return group.routine.map((s) => toSegment(s, stageId, byKey, items));
+}
+
+/**
+ * "Build one for where I am" — the PREVIOUS level's essential segments (the
+ * maintenance the syllabus itself says carries forward) followed by only the
+ * segments of the current level whose catalogue item the owner has ACTUALLY
+ * ADDED.
+ *
+ * The catalogue-to-item flow is the position marker; no new stored concept is
+ * needed and none is introduced. A segment is matched by its OWN declared
+ * catalogue key, never by how many items the stage now holds — so adding one of
+ * the level's optional repertoire works enables nothing, and an item the owner
+ * created by hand with no catalogue key is not one of the course's sections.
+ *
+ * The result is ORDINARY EDITABLE DATA: a segment the marker leaves out is one
+ * edit away from being added back.
+ */
+export function buildPositionRoutine(
+  course: CourseData,
+  groupKey: string,
+  items: PracticeItem[],
+): RoutineSegment[] {
+  const index = course.groups.findIndex((g) => g.key === groupKey);
+  if (index < 0) return [];
+  const byKey = itemsByStageAndKey(items);
+  const out: RoutineSegment[] = [];
+
+  const previous = course.groups[index - 1];
+  if (previous) {
+    const prevStageId = courseStageId(course, previous.key);
+    for (const s of previous.routine) {
+      if (s.essential) out.push(toSegment(s, prevStageId, byKey, items));
+    }
+  }
+
+  const stageId = courseStageId(course, groupKey);
+  for (const s of course.groups[index].routine) {
+    if (unitItem(stageId, s.unitKey, byKey, items)) out.push(toSegment(s, stageId, byKey, items));
+  }
+  return out;
+}
+
+export function courseRoutineName(group: CourseGroup, kind: 'level' | 'position'): string {
+  return kind === 'level'
+    ? `${group.code} · the course routine`
+    : `${group.code} · where I am`;
+}
+
+/** A whole, ordinary editable routine placed in the course's own stage. */
+export function courseRoutine(
+  course: CourseData,
+  group: CourseGroup,
+  segments: RoutineSegment[],
+  instrumentId: ID | undefined,
+  order: number,
+  kind: 'level' | 'position',
+  now: Date,
+): PathwayRoutine {
+  const ts = nowISO(now);
+  return {
+    id: newId(),
+    pathwayId: course.pathwayId,
+    stageId: courseStageId(course, group.key),
+    instrumentId,
+    name: courseRoutineName(group, kind),
+    segments,
+    order,
+    createdAt: ts,
+    updatedAt: ts,
+  };
+}
+
+// --- the study source --------------------------------------------------------
+
+export interface CourseSourceResolution {
+  /** The materials collection to install — the SAME array when none was minted. */
+  materials: Material[];
+  materialId: ID;
+}
+
+/**
+ * The course's own study source, FOUND OR CREATED — never a duplicate.
+ *
+ * A second item created from the same course must group under the same "Classical
+ * Guitar Shed" source in My repertoire, so this returns the existing Material
+ * whenever one already matches (same instrument, same title) and mints one only
+ * when none does. The caller installs `materials` in the SAME `set()` as the
+ * item, so the two can never be applied apart.
+ */
+export function resolveCourseSource(
+  materials: Material[],
+  course: CourseData,
+  instrumentId: ID,
+  now: Date,
+): CourseSourceResolution {
+  const title = course.sourceName.trim().toLowerCase();
+  const existing = materials.find(
+    (m) => m.instrumentId === instrumentId && m.title.trim().toLowerCase() === title,
+  );
+  if (existing) return { materials, materialId: existing.id };
+  const mat = createMaterial(
+    { instrumentId, title: course.sourceName, sourceType: 'course', sourceName: course.name },
+    now,
+  );
+  return { materials: [...materials, mat], materialId: mat.id };
+}
+
+// --- adding a catalogue entry ------------------------------------------------
+
+export interface CatalogAddition {
+  items: PracticeItem[];
+  materials: Material[];
+  itemId: ID;
+  /**
+   * Whether this addition actually CREATED the item, or handed back one that
+   * already existed. An Undo may only ever reach a created one: an item the
+   * owner added at an earlier level is not this tap's to delete.
+   */
+  created: boolean;
+}
+
+interface CatalogAdditionDB {
+  items: PracticeItem[];
+  materials: Material[];
+}
+
+/**
+ * Everything adding one catalogue suggestion changes, as ONE value the store
+ * applies in a single `set()`. The Node test environment cannot import the
+ * store (it pulls in Dexie through `./idb`), so the DECISION is proved here and
+ * the SHAPE is what protects the wiring — the same reason `installDatabase`
+ * returns its ephemeral resets alongside the database.
+ *
+ * Two course rules ride on top of what adding a suggestion has always done:
+ *
+ *  • A WORK CARRIED FORWARD ACROSS LEVELS IS ONE WORK. Adding Ferrer Ejercicio
+ *    from 2E reuses the item created from 2C rather than putting a second copy
+ *    in My repertoire. This lookup is deliberately CROSS-STAGE and deliberately
+ *    restricted to course works, whose keys are derived from the work itself;
+ *    the ordinary per-stage reuse below is unchanged, so a `chords` item in 1B
+ *    can never be reused by 2B's `chords`.
+ *  • A COURSE ITEM IS GROUPED UNDER THE COURSE'S OWN STUDY SOURCE, found or
+ *    created on first use.
+ */
+export function planCatalogAddition(
+  db: CatalogAdditionDB,
+  stageId: ID,
+  entryKey: string,
+  entry: CatalogEntry | undefined,
+  instrumentId: ID,
+  now: Date,
+): CatalogAddition {
+  // Reuse an existing item already created from this catalogue entry — at this
+  // stage, or, for a work the course carries across levels, wherever in the
+  // same course it was first added.
+  const existing =
+    db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey) ??
+    carriedCourseWorkItem(stageId, entryKey, db.items);
+  if (existing) {
+    return { items: db.items, materials: db.materials, itemId: existing.id, created: false };
+  }
+
+  const found = courseStage(stageId);
+  const base = entry
+    ? itemFromCatalogEntry(entry, instrumentId, now)
+    : createItem({ instrumentId, title: 'New item', stageId }, now);
+
+  if (!found) return { items: [...db.items, base], materials: db.materials, itemId: base.id, created: true };
+
+  const source = resolveCourseSource(db.materials, found.course, instrumentId, now);
+  const item = { ...base, materialId: source.materialId };
+  return { items: [...db.items, item], materials: source.materials, itemId: item.id, created: true };
+}
+
+/**
+ * THE ONE ITEM A COURSE WORK IS, WHEREVER IN THIS COURSE IT WAS FIRST ADDED.
+ *
+ * ONE MUSICAL WORK IS ONE REPERTOIRE ITEM. The course names the same work in
+ * more than one place — Ferrer Ejercicio runs 2C-2F, and a level's own study
+ * can reappear in a later level's practice packet — so adding it the second
+ * time must hand back the item created the first. This is the single rule that
+ * says so, and BOTH readers go through it: `planCatalogAddition`, so the tap
+ * reuses, and `stageUnits` (`pathways.ts`), so the row SHOWS it as added.
+ *
+ * Splitting those two apart is a defect this closes rather than the shape it
+ * keeps: the later row read as an untaken suggestion, its “+” reported “Added”
+ * for an item created weeks earlier at another level, and Undo then offered to
+ * delete it. One resolution, one answer on every surface.
+ *
+ * It is deliberately narrow, and the narrowing is `courseWorkKey` below: only
+ * an entry the CURRENT stage's own course declares to BE a work resolves at
+ * all, and only against an item sitting in a stage of that SAME course. An
+ * ordinary per-stage key carries no identity, so a `chords` item in 1B can
+ * never be reused by 2B's.
+ */
+export function carriedCourseWorkItem(
+  stageId: ID,
+  entryKey: string,
+  items: PracticeItem[],
+): PracticeItem | undefined {
+  const found = courseStage(stageId);
+  const identity = found && courseWorkKey(found, stageId, entryKey);
+  // The identity check comes FIRST, so an ordinary per-stage key — `chords`,
+  // which every level has — never reaches the item scan at all.
+  if (!found || !identity) return undefined;
+  // The course's own stage ids, as a set built once rather than resolving every
+  // item's stage through `courseStage` again.
+  const ofThisCourse = new Set(found.course.groups.map((g) => courseStageId(found.course, g.key)));
+  return items.find(
+    (i) =>
+      !!i.stageId &&
+      !!i.catalogKey &&
+      ofThisCourse.has(i.stageId) &&
+      courseWorkKey(courseStage(i.stageId)!, i.stageId, i.catalogKey) === identity,
+  );
+}
+
+/**
+ * THE REPERTOIRE IDENTITY one catalogue entry of this course carries, or
+ * nothing when it is not a work at all.
+ *
+ * A packet work's identity is its own key, which is derived from the WORK — so
+ * Ferrer Ejercicio, titled identically in 2C-2F, already slugs to one identity.
+ * Two things sit beside that, and both come from the SCANNER (the grammar lives
+ * there; the app consumes the data):
+ *
+ *  • A PIECE SECTION THE COURSE NAMES ONE STUDY FOR CARRIES THAT WORK'S
+ *    IDENTITY (`unit.workKey`), while its catalogue key stays `piece`. That is
+ *    what lets the owner take the work at the level they actually meet it —
+ *    2E's Carulli Valse is a repertoire work AT 2E, not only wherever a later
+ *    packet happens to name it.
+ *  • A PACKET ENTRY THAT IS AN EARLIER LEVEL'S STUDY UNDER ANOTHER NAME carries
+ *    that study's identity (`work.workKey`), declared in the scanner's own
+ *    WORK_ALIASES from the course's words. 3F's "Carulli Valse Op 50 No 7 1" IS
+ *    2E's study; nothing in the archive joins them (2E holds no copy of the
+ *    score), and a fuzzy title match that merged two genuinely different works
+ *    would destroy the owner's record.
+ */
+function courseWorkKey(
+  found: { course: CourseData; group: CourseGroup },
+  stageId: ID,
+  entryKey: string,
+): string | undefined {
+  const unit = found.group.units.find(
+    (u) => u.key === entryKey || legacyKeysFor(stageId, u.key).includes(entryKey),
+  );
+  if (unit) return unit.workKey;
+  const work = found.group.works.find((w) => w.key === entryKey);
+  return work && (work.workKey ?? work.key);
+}
+
+// --- adding levels the owner has just bought ---------------------------------
+
+export interface CourseLevelOffer {
+  groupKey: string;
+  code: string;
+  title: string;
+  group: string;
+}
+
+/**
+ * The course levels this pathway does NOT have.
+ *
+ * Absence is decided by the stage's deterministic ID, never by its title: a
+ * level the owner renamed is present and is never offered again, and a stage
+ * they deliberately DELETED is offered — in a list — but is never recreated
+ * unless they choose it. That is exactly why this is a separate, course-scoped
+ * action and not an extension of `reseedDefaultPathways`: making that shipped
+ * button additive would resurrect a deleted stage on its own, because a deleted
+ * stage's id is absent in precisely the same way a never-seeded one is.
+ */
+export function offeredCourseLevels(course: CourseData, stages: PathwayStage[]): CourseLevelOffer[] {
+  const have = new Set(stages.filter((s) => s.pathwayId === course.pathwayId).map((s) => s.id));
+  return course.groups
+    .filter((g) => !have.has(courseStageId(course, g.key)))
+    .map((g) => ({ groupKey: g.key, code: g.code, title: g.title, group: g.group }));
+}
+
+/**
+ * The stages collection with exactly the SELECTED levels added — as one value
+ * the store applies in a single `set()`. Nothing is added that was not
+ * explicitly selected, and a selection naming a level the pathway already has
+ * is ignored rather than duplicated.
+ */
+export function planCourseLevels(
+  course: CourseData,
+  stages: PathwayStage[],
+  selectedGroupKeys: string[],
+  now: Date,
+): PathwayStage[] {
+  const offered = new Map(offeredCourseLevels(course, stages).map((o) => [o.groupKey, o]));
+  const chosen = course.groups.filter((g) => selectedGroupKeys.includes(g.key) && offered.has(g.key));
+  if (chosen.length === 0) return stages;
+  const ts = nowISO(now);
+  let order = stages.filter((s) => s.pathwayId === course.pathwayId).length;
+  const added = chosen.map((g) => ({
+    id: courseStageId(course, g.key),
+    pathwayId: course.pathwayId,
+    code: g.code,
+    title: g.title,
+    group: g.group,
+    order: order++,
+    createdAt: ts,
+    updatedAt: ts,
+  }));
+  return [...stages, ...added];
+}
+```
+
+## Check against the contract
+
+- [ ] **ac-1** — A level's own study and its named packet works become repertoire works; every drill, exercise, rhythm, sight-reading and reading section from the same level does not. _(proof: a level's study and packet works are repertoire works and its drill sections are not)_
+- [ ] **ac-2** — A work carried forward across levels is suggested once. Adding it from a later level reuses the existing item rather than creating a second work in My repertoire. _(proof: reuses a carried-forward work when it is added from a later level instead of duplicating it)_
+- [ ] **ac-3** — Course material is composed live from the catalogue for a catalogue-linked item, and nothing is written onto the item — so regenerated course data reaches items that already exist. _(proof: composes a catalogue item's course files without storing any reference on the item)_
+- [ ] **ac-4** — A course file resolves under the shared media root joined with the course's own media path, while an archive reference resolves against the unchanged archive base — both from the real configured values. _(proof: resolves a course file under the shared media root and leaves archive resolution unchanged)_
+- [ ] **ac-5** — The media root is derived from the archive base, an explicit override wins over the derivation when set, and a base whose last segment names no known source yields no root at all rather than a guess. _(proof: prefers an explicit media root over the derived one and derives nothing from an unrecognised base)_
+- [ ] **ac-6** — With no media root derivable or set, a course file is honestly unavailable rather than a dead link: the resolver reports no-base and the material row offers no open action. _(proof: reports no-base for a course file when no media root is derivable or set)_
+- [ ] **ac-7** — The position routine is the previous level's essential segments plus only the current level's segments whose catalogue item the owner has actually added. _(proof: builds a position routine from added current-level items plus the previous level's essentials)_
+- [ ] **ac-8** — A current-level segment whose catalogue item has not been added is absent from the position routine, while the level's full routine still contains it. _(proof: omits a current-level segment whose catalogue item has not been added)_
+- [ ] **ac-9** — A segment is joined to its item by stage and catalogue key together, so an identically-keyed entry in another level is never matched. _(proof: joins a segment to its item by stage and catalogue key together, never by key alone)_
+- [ ] **ac-10** — Adding one of a level's optional repertoire works changes nothing about the position routine, while adding one of its practice sections adds that section's segments — because a segment is matched by its OWN declared catalogue key, never by how many items the stage now holds. _(proof: ignores an added repertoire work when building the position routine and includes an added practice section)_
+- [ ] **ac-11** — Fitting a routine to a target total yields minutes summing exactly to that target, and returns the routine unchanged when the target equals its authored total. _(proof: fits a routine to a target total exactly and leaves it unchanged at its authored total)_
+- [ ] **ac-12** — When the target cannot seat every segment at a one-minute floor, non-essential segments are dropped before essential ones, and every surviving segment keeps its label, note, essential flag and bound item. _(proof: drops a non-essential segment before an essential one and preserves every surviving segment's identity)_
+- [ ] **ac-13** — Adding new course levels OFFERS only the levels genuinely absent from the pathway — never one already present under a title the owner renamed — and adds nothing that was not explicitly selected, so a stage they deliberately deleted is offered again but never recreated on its own. The store applies that decision as a single set() of its result, so the shape protects the wiring the Node environment cannot import. _(proof: offers only the course levels absent from an existing pathway and never a renamed one already present)_
+- [ ] **ac-14** — Resolving a course entry's study source returns the existing Material when one already matches and mints a new one only when none does, so a second course item can never create a duplicate source. The store applies that decision as a single set() of its result. _(proof: returns an existing study source when one matches and mints one only when none does)_
+- [ ] **ac-15** — Every CGS stage id and catalogue key that existing data may reference is unchanged by the course import, so no already-added item is detached from its suggestion. _(proof: CGS stage ids and catalog keys stay stable across the course import)_
+- [ ] **ac-16** — On the owner's own Mac and iPhone: Level 1B shows its real sections, 'Build one for where I am' matches the sections already added, running it at a changed duration keeps the syllabus proportions, a course video and a score open from a practice item over both the LAN and Tailscale routes, and the level's study appears in My repertoire while no exercise does. _(proof: manual:OWNER)_
+
+## Flow impact — detected vs reported
+
+**Detected from the diff:**
+
+- **adjust-how-scheduling-works** — touched via src/pages/Settings.tsx, src/store/useStore.ts
+- **back-up-and-restore** — touched via src/store/backup.ts, src/pages/Settings.tsx, src/store/useStore.ts
+- **capture-a-practice-item** — touched via src/store/useStore.ts
+- **clear-a-due-review** — touched via src/pages/Today.tsx, src/store/useStore.ts
+- **install-the-app-and-keep-it-current** — touched via src/pages/Settings.tsx
+- **log-a-class** — touched via src/store/useStore.ts
+- **point-this-device-at-the-nas** — touched via src/pages/Settings.tsx, src/store/backup.ts
+- **practise-todays-recommendation** — touched via src/pages/Today.tsx, src/store/useStore.ts
+- **run-a-session-plan** — touched via src/pages/Today.tsx, src/store/useStore.ts
+- **see-practice-patterns** — touched via src/pages/Today.tsx
+- **sync-devices-via-github** — touched via src/pages/Settings.tsx
+- **work-a-pathway-stage** — touched via src/pages/PathwayDetail.tsx, src/pages/StageDetail.tsx, src/domain/pathways.ts, src/domain/pathwaySeed.ts, src/domain/routines.ts, src/store/useStore.ts
+
+**Possibly affected (shares a mechanic with a detected flow):**
+
+- **browse-my-repertoire** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
+- **prepare-for-the-next-class** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
+
+**What the agent reported:**
+
+## browse-my-repertoire — unchanged
+
+No change to repertoire.ts, isWork, repertoireWorks or any of the three Repertoire views; the only shared thing with this lane is the PracticeItem entity. What a course item IS was fixed upstream, in what the catalogue declares: a Classical Guitar Shed level's own study section and its named packet works now carry strand 'piece' (so isWork is true, exactly as this flow has always treated a full piece), and every drill, exercise, rhythm, sight-reading and reading section carries a non-piece strand and stays out of repertoire — where the old generic 'Piece' placeholder wrongly created a work literally titled 'Piece'. src/domain/courseSeed.test.ts's "a level's study and packet works are repertoire works and its drill sections are not" asserts that against the real generated data through this flow's own isWork/repertoireWorks. One observable consequence, considered and deliberate: a course item now carries a materialId for the found-or-created 'Classical Guitar Shed' study source, so it groups under that source here instead of under 'No study source yet'. That is this flow's existing grouping rule applied to data that finally has a source, not a change to the rule. Verified in the running app: the item's Connected-to reads 'Study source: Classical Guitar Shed'.
+
+## prepare-for-the-next-class — unchanged
+
+Nothing in this lane touches lessonAgenda.ts, questions.ts, Lessons.tsx, LessonAgenda.tsx or ClassQuestions.tsx — none of them is in the contract's allowed paths and none appears in the diff. The only link is the shared PracticeItem entity, and this lane adds no field to it and changes no field it already had: an item created from a course catalogue entry differs from one created from any other catalogue entry only in carrying a materialId for the course's study source. lessonUrgencyScore, preparationDatesByItem, detachItem and every commitment/question rule are untouched, so committing a course item to a class, asking a question about it and marking that asked all behave exactly as they did. The full lesson-agenda browser journey (tests/lesson-agenda.browser.test.ts) passes unchanged.
+
+## work-a-pathway-stage — truth-proposed
+
+This is the flow the approved Delta is about, and what a stage OFFERS genuinely changes. A Classical Guitar Shed level from 1B on now lists the level's real sections read out of the course's own tree (courseData.ts, generated by scripts/scan-cgs-course.mjs) with their guidance, the syllabus target BPM where it could be read, and the level's named packet works — instead of eight generic placeholders. An item created from one carries its section's videos, scores and contrast-card folder in Material, composed LIVE by itemFiles from the catalogue and written nowhere. A course stage also offers two new actions, 'Use this level's routine' and 'Build one for where I am', both of which write an ORDINARY EDITABLE routine rather than a live view. Every existing step and rule of the flow is intact: the item is still the only unit of work, the catalogue is still reference data in code labelled as an aid, adding is still one tap arriving honestly as 'Not practised yet' with zero statistics and a durable Undo, isLosslesslyRemovable and the Remove affordance still work, stageUnits/itemStageState/stageProgress are untouched, and a routine still records at most one block per distinct bound item. Level 1A keeps its fourteen hand-authored steps and both routines byte for byte. Every pre-import stage id and catalogue key is preserved so an already-added item stays attached to its suggestion — asserted by src/domain/pathways.test.ts's "CGS stage ids and catalog keys stay stable across the course import". Verified in the running app at localhost: 1B lists its real sections, adding 1B Scales showed its lesson video under Material resolving to https://192.168.0.20:5010/classical-guitar/classical-guitar-shed/Level_1B/05_Scales/01_80ee0462-cc7.mp4, and 'Build one for where I am' produced 1A's three essentials plus only 1B Scales.
+
+## point-this-device-at-the-nas — mechanics-updated
+
+Settings gains a second, read-mostly panel beneath the existing archive base: the SHARED MEDIA ROOT, derived as the folder above that base, shown on screen with its own Browse and an optional per-device override in localStorage (pc-media-root). The existing archive base is untouched in value and in meaning — getNasBaseUrl/setNasBaseUrl, normalizeBaseUrl, relativizeReference, archiveRootUrl, describeArchiveAccess, ReferenceEditor, Lessons and ArchiveRefresh all read and write exactly the same string they did, and every stored lesson reference resolves byte-identically (asserted in courseSeed.test.ts's "resolves a course file under the shared media root and leaves archive resolution unchanged", which checks both bases against the owner's real Mac and Tailscale values). This is NOT the second archive-specific base or the resolver fallback docs/setar-archive.md rules out: nothing resolves against two bases in turn — each composed reference carries root: 'archive' | 'media' and baseForItemFile picks exactly one — and nothing is guessed, since the derivation applies only when the base's last segment names a folder a shipped source declares and otherwise yields no root at all. A device on the LEGACY base one folder too high gets no media root, and a course file then reports no-base and offers no open action; that is not a new failure, since Setar references are already broken in that state and correcting the base once fixes both. docs/setar-archive.md now says all of this in its own words. No credential, no query, no fragment: normalizeBaseUrl still refuses them, and the root stays device-local, out of sync and out of backups.
+
+## capture-a-practice-item — mechanics-updated
+
+addFromCatalog now routes its whole decision through the pure planCatalogAddition (courseSeed.ts) and applies it as a single set() — the same shape-protects-the-wiring pattern installDatabase uses, because the Node test environment cannot import useStore.ts (Dexie via ./idb). Its existing contract is unchanged: an item still arrives status 'new' with zero statistics, still carries its catalogue key, still reuses an item already created from that (stageId, catalogKey), and stays losslessly removable. Two rules ride on top, both only for a stage a course owns: a packet work carried forward across levels is reused across stages rather than duplicated (its key is derived from the work, so the ordinary per-stage reuse is untouched and a 'chords' item in 1B can never be reused by 2B's), and the item is given the materialId of the course's found-or-created 'Classical Guitar Shed' study source. Because the source is resolved in the same pure value and installed in the same set(), a second course item can never mint a duplicate. Both are tested in courseSeed.test.ts. Quick add, the full 'Add practice item' form and every other creation path are untouched, and no required field is added anywhere.
+
+## practise-todays-recommendation — mechanics-updated
+
+Today's Routines doorway rows gain one extra affordance, 'Run it for a different length', shared with the stage and pathway routine surfaces through the single RoutineDuration component. It is COLLAPSED to one ghost button until tapped, and it sits inside the Routines card, which itself starts collapsed — so Today's layout is unchanged: both doorways stay above the recommendation, both stay at about 50px collapsed, and the primary recommendation stays above the fold at 390x844 (verified in the running app at that width: the instrument switcher, 'Plan this session · choose a length', 'Routines · 1 saved' and then PRACTISE NOW). Choosing a length starts the run with proportionally scaled segments (fitRoutineToMinutes) and navigates; the ordinary Start button and 'Short on time — essentials only' are untouched and keep their exact meanings, and doing nothing behaves exactly as before because the authored total returns the segments unchanged. Nothing about the recommendation engine, scoring, reviews or the practice totals line is touched.
+
+## adjust-how-scheduling-works — unchanged
+
+Settings.tsx and useStore.ts appear in the diff, but nothing in either change touches scheduling. scheduling.ts is forbidden by this contract and is not in the diff; decideReview, planNextReview, computeReviewOutcome, SchedulingParams, clampSchedulingParams and the 'How scheduling works' section are all untouched. Settings' only change is a new media-root panel appended after the NAS section and before ArchiveRefresh; useStore's changes are addFromCatalog's routing through a pure planner and two new course actions that write only pathwayStages and pathwayRoutines. Nothing here writes a block, a result, a review row or any SM-2 value.
+
+## clear-a-due-review — unchanged
+
+Today.tsx and useStore.ts appear in the diff but nothing in this lane touches reviews. Today's only change is adding the shared RoutineDuration control to its Routines doorway rows; the due-review row, 'Not now', snooze and the review actions are byte-identical. In the store, no new or changed action writes a Review, a nextReviewDate or any SM-2 field, and scheduling.ts is forbidden and absent from the diff. Practising stays the only thing that can complete a review or advance spacing — a routine run still records blocks with the factory-default not_logged result, and fitting a routine to a duration changes only segment minutes.
+
+## back-up-and-restore — unchanged
+
+backup.ts gains three device-local localStorage helpers for the optional media-root override (getMediaRootOverride/setMediaRootOverride/getMediaRoot) and nothing else. buildFullBackup, buildFullBackupWithRev, decodeBackupFiles, importFullBackup, replaceAllBlobs, recoverFromRefusedHydration and the archive-restore path are untouched, and SCHEMA_VERSION stays 14. Nothing new is persisted in PracticeDB, so no backup gains or loses a field; the media root is per-device environment config exactly like the archive base and stays out of exports, backups and sync. The rollback journey and the inbound journey both pass unchanged.
+
+## install-the-app-and-keep-it-current — unchanged
+
+Settings.tsx is in the diff only because the media-root panel was appended to it; the install hints, the service-worker update banner, the build stamp and every PWA concern are untouched, and vite.config.ts, the CSP and the workflows are not in the diff at all. One measured consequence worth stating plainly: the generated course data is a ~222 KB committed literal that ships in the offline bundle, so the precache grew and now stands at 42 entries / 1021.93 KiB. The app still installs and works fully offline; this is the cost the approved plan named.
+
+## log-a-class — unchanged
+
+useStore.ts is in the diff but no lesson action changed. addLesson, updateLesson, deleteLesson, unlinkItemFromLesson, the recordings/ReferenceEditor path and every LessonRecording rule are untouched, and Lessons.tsx, LessonNotes.tsx and Attachments.tsx are not in the diff. The archive base a lesson reference resolves against keeps its exact value and meaning, so every existing class recording and score opens at the identical URL. The lesson-agenda browser journey passes unchanged.
+
+## run-a-session-plan — unchanged
+
+plan.ts, SessionPlan.tsx and CloseBlock.tsx are all forbidden by this contract and none is in the diff. The Session Plan's allocator is deliberately NOT reused for routine duration — allocateMinutes allocates by bucket priority with a pinned warm-up share and a 2-25 minute clamp, which would distort a one-minute syllabus segment — so fitRoutineToMinutes is its own pure function in routines.ts. The ONLY thing shared is validateBudgetMinutes and its 5-120 bound, imported so the duration control rejects exactly what 'Plan this session' rejects. Today.tsx's Plan doorway is untouched and still sits above the recommendation, collapsed.
+
+## sync-devices-via-github — unchanged
+
+syncEngine.ts, githubSync.ts, gitRemote.ts, canonical.ts, sync.ts, io.ts and migrations.ts are all forbidden by this contract and none is in the diff. SCHEMA_VERSION stays 14 and nothing new is persisted in PracticeDB: the course catalogue, its data and the syllabus routines are reference data in code, and the media-root override is per-device localStorage, so no snapshot gains a field and no content hash changes shape. The two new store actions write only into existing collections (pathwayStages, pathwayRoutines, items, materials) through the ordinary revision-bumping middleware. The inbound sync browser journey passes unchanged.
+
+## see-practice-patterns — unchanged
+
+Insights.tsx, insights.ts, selectors.ts and scoring.ts are not in the diff. practiceTotals, practiceTotalsByInstrument, instrumentBalance and every generated observation are untouched, and nothing in this lane writes a block, a minute or a result — a routine run still records what it always did. Today's practice-totals line is unchanged.
+
+
+**Gaps between detected and reported:**
+
+_None — the report matches what was detected._
+
+## Flow truth this change touches
+
+### adjust-how-scheduling-works — Works now
+
+Touchpoints: src/pages/Settings.tsx, src/pages/CloseBlock.tsx, src/domain/scheduling.ts, src/domain/plan.ts, src/domain/types.ts, src/store/useStore.ts
+
+Evidence: 4 steps: 4 manually verified
+
+### back-up-and-restore — Works now
+
+Touchpoints: src/store/backup.ts, src/store/idb.ts, src/domain/io.ts, src/pages/Settings.tsx, src/store/useStore.ts
+
+Evidence: 5 steps: 5 manually verified
+
+### capture-a-practice-item — Works now
+
+Touchpoints: src/components/QuickAdd.tsx, src/components/ItemForm.tsx, src/components/itemKinds.ts, src/pages/NewItem.tsx, src/pages/ItemDetail.tsx, src/store/useStore.ts, src/domain/factories.ts
+
+Evidence: 4 steps: 4 manually verified
+
+### clear-a-due-review — Works now
+
+Touchpoints: src/pages/Today.tsx, src/store/useStore.ts, src/domain/scheduling.ts, src/domain/selectors.ts
+
+Evidence: 4 steps: 4 manually verified
+
+### install-the-app-and-keep-it-current — Works now
+
+Touchpoints: src/components/Layout.tsx, src/pages/Settings.tsx, vite.config.ts
+
+Evidence: 4 steps: 4 manually verified
+
+### log-a-class — Works now
+
+Touchpoints: src/pages/Lessons.tsx, src/components/Attachments.tsx, src/domain/recordings.ts, src/domain/setarClasses.ts, src/domain/files.ts, src/domain/selectors.ts, src/store/useStore.ts
+
+Evidence: 6 steps: 6 manually verified
+
+### point-this-device-at-the-nas — Works now
+
+Touchpoints: src/pages/Settings.tsx, src/pages/Lessons.tsx, src/domain/recordings.ts, src/store/backup.ts
+
+Evidence: 3 steps: 3 manually verified
+
+### practise-todays-recommendation — Works now
+
+Touchpoints: src/pages/Today.tsx, src/pages/StartBlock.tsx, src/pages/ActiveBlock.tsx, src/pages/CloseBlock.tsx, src/store/useStore.ts, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/scheduling.ts, src/domain/blocks.ts, src/domain/practiceSignal.ts, src/components/useScreenAwake.ts, src/components/screenAwake.ts
+
+Evidence: 7 steps: 7 manually verified
+
+### run-a-session-plan — Works now
+
+Touchpoints: src/pages/SessionPlan.tsx, src/pages/Today.tsx, src/pages/ActiveBlock.tsx, src/domain/plan.ts, src/domain/practiceSignal.ts, src/components/useScreenAwake.ts, src/components/screenAwake.ts, src/store/useStore.ts
+
+Evidence: 6 steps: 6 manually verified
+
+### see-practice-patterns — Works now
+
+Touchpoints: src/pages/Insights.tsx, src/pages/Today.tsx, src/domain/insights.ts, src/domain/io.ts
+
+Evidence: 3 steps: 3 manually verified
+
+### sync-devices-via-github — Works now
+
+Touchpoints: src/store/syncEngine.ts, src/store/githubSync.ts, src/store/gitRemote.ts, src/domain/sync.ts, src/domain/canonical.ts, src/store/revision.ts, src/pages/Settings.tsx, src/App.tsx
+
+Evidence: 6 steps: 6 manually verified
+
+### work-a-pathway-stage — Works now
+
+Touchpoints: src/pages/PathwayDetail.tsx, src/pages/StageDetail.tsx, src/pages/RoutineRunner.tsx, src/domain/pathways.ts, src/domain/pathwaySeed.ts, src/domain/routines.ts, src/domain/practiceSignal.ts, src/components/useScreenAwake.ts, src/components/screenAwake.ts, src/store/useStore.ts
+
+Evidence: 5 steps: 5 manually verified
+
+## Also look for
+
+- Anything outside the contract's scope or non-goals.
+- Silent failures, swallowed errors, missing edge cases.
+- Secrets, unsafe defaults, and anything risky for the tier.
+
+## How to finish
+
+Review only — change no files, run no fixes, write no records. Judge the diff
+itself: the builder's summary, an earlier review and a green test run are all
+claims about the code, not evidence about it.
+
+End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
+final line, and say why. That is a recommendation to the owner, who records
+the outcome — sealing is never the reviewer's to do.
+
+If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+
+`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260921-bring-the-classical-guitar-shed-course-i-9b18/findings.json`
+
+with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+
+Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.

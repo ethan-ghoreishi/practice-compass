@@ -1,4 +1,5 @@
 import type { AttachmentKind, AttachmentMeta, AttachmentOwnerType, ID, ISODate, LessonFileKind, PracticeDB } from './types';
+import { type CourseFileKind, courseFilesFor } from './courseSeed';
 import {
   CLASS_ROLE,
   CORRECTION_ROLE,
@@ -54,6 +55,15 @@ export interface ItemFileReference {
   path: string;
   kind: LessonFileKind;
   /**
+   * WHICH CONFIGURED BASE THIS PATH IS RELATIVE TO. A class reference is
+   * relative to the archive base, which keeps its exact value and meaning; a
+   * course file is relative to the SHARED MEDIA ROOT one folder above it. The
+   * two are never resolved against each other and no reference is ever tried
+   * against both — `baseForItemFile` is the one place the choice is made, so a
+   * component cannot get it wrong.
+   */
+  root: 'archive' | 'media';
+  /**
    * The lesson this reference belongs to. ABSENT for a resource composed from
    * the archive graph (which belongs to a session, not to a lesson record) and
    * for a direct reference the owner attached to the item itself.
@@ -85,6 +95,34 @@ export interface ItemFileAttachment {
 }
 
 export type ItemFile = ItemFileReference | ItemFileAttachment;
+
+/**
+ * A course file's own kind, narrowed to the four an item's material list knows.
+ * An image and a folder are both "open it where it lives" — `LessonFileKind` is
+ * a PERSISTED type and is not widened for a composed value that never reaches
+ * the database.
+ */
+const COURSE_KIND_TO_FILE_KIND: Record<CourseFileKind, LessonFileKind> = {
+  video: 'video',
+  pdf: 'pdf',
+  image: 'doc',
+  audio: 'audio',
+  doc: 'doc',
+  folder: 'doc',
+};
+
+/**
+ * The base a reference resolves against — the ONE place that choice is made.
+ * A component never picks, so a course file can never be pushed through the
+ * archive base (404) and a class recording can never be pushed through the
+ * media root (the wrong folder entirely).
+ */
+export function baseForItemFile(
+  file: ItemFileReference,
+  bases: { archiveBase?: string; mediaRoot?: string | null },
+): string | undefined {
+  return (file.root === 'media' ? bases.mediaRoot : bases.archiveBase) ?? undefined;
+}
 
 /** Same file, whichever lesson referenced it: `/a/b` and `a/b` resolve alike. */
 function referenceKey(path: string): string {
@@ -162,6 +200,7 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
         title: ref.title,
         path: ref.path,
         kind: ref.kind ?? 'video',
+        root: 'archive',
         archive: { sessionN: r.sessionN, date: r.sessionDate, role: r.role, group: r.group, part: r.part },
         ...(r.unavailable ? { unavailable: true } : {}),
         sizeBytes: ref.sizeBytes,
@@ -170,7 +209,35 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
     }
   }
 
-  // 2. DIRECT references the owner attached to the item itself — useful
+  // 2. WHAT THE COURSE SAYS IS MATERIAL FOR THIS SECTION.
+  //
+  // COMPOSED LIVE FROM THE CATALOGUE, NEVER STORED ON THE ITEM. The item holds
+  // only the stage and the catalogue key it was created from; its videos,
+  // scores, images and contrast-card folder are read out of the course data
+  // every time — so re-running the scanner after the course changes reaches
+  // every item that already exists, and the owner never types a link.
+  //
+  // These paths are relative to the SHARED MEDIA ROOT, not to the archive base,
+  // which is why they carry `root: 'media'`. No bytes enter the app: a course
+  // file is opened where it lives, exactly like a class recording.
+  if (item?.stageId && item.catalogKey) {
+    for (const f of courseFilesFor(item.stageId, item.catalogKey)) {
+      const key = referenceKey(f.path);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        source: 'reference',
+        id: `course:${f.path}`,
+        title: f.title,
+        path: f.path,
+        kind: COURSE_KIND_TO_FILE_KIND[f.kind],
+        root: 'media',
+        inline: false,
+      });
+    }
+  }
+
+  // 3. DIRECT references the owner attached to the item itself — useful
   //    material that needs no artificial lesson to hang from.
   for (const rec of item?.references ?? []) {
     const key = referenceKey(rec.path);
@@ -182,13 +249,14 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
       title: rec.title,
       path: rec.path,
       kind: rec.kind ?? 'video',
+      root: 'archive',
       sizeBytes: rec.sizeBytes,
       notes: rec.notes,
       inline: false,
     });
   }
 
-  // 3. Lessons the item is LINKED to. An archive-bound lesson contributes
+  // 4. Lessons the item is LINKED to. An archive-bound lesson contributes
   //    nothing here: its files reached this list above, correctly scoped.
   //    A manual, unclassified lesson still contributes all of its references —
   //    nothing knows their scope, and inventing one would be a guess.
@@ -212,6 +280,7 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
         title: rec.title,
         path: rec.path,
         kind: rec.kind ?? 'video',
+        root: 'archive',
         lessonId: lesson.id,
         sizeBytes: rec.sizeBytes,
         notes: rec.notes,
@@ -282,6 +351,7 @@ export function lessonFiles(db: PracticeDB, lessonId: ID): ItemFile[] {
         title: ref.title,
         path: ref.path,
         kind: ref.kind ?? 'video',
+        root: 'archive',
         lessonId,
         archive: { sessionN: lesson.source.sessionN, date: lesson.date, role: r.role, group: r.group, part: r.part },
         ...(r.unavailable ? { unavailable: true } : {}),

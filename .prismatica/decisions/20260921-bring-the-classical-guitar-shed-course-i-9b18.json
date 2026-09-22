@@ -1,0 +1,11 @@
+{
+  "id": "20260921-bring-the-classical-guitar-shed-course-i-9b18",
+  "contractId": "20260921-bring-the-classical-guitar-shed-course-i-9b18",
+  "patchId": "305c8fb48d7968607b290d26b669e77ee6e44155",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-09-22T18:00:07.895Z",
+  "algorithm": "ed25519",
+  "signature": "rKbIeNVf/FyQdzFKqOMxDdnmnTtdAj1JFD94I6hYDfcZ7WVoJ2nXCaWfMBci4We/hO56GO/E+ZjAGP+5QCsADQ==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

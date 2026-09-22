@@ -175,3 +175,101 @@ describe('isLosslesslyRemovable', () => {
     expect(isLosslesslyRemovable(itemIn(AFSHARI, undefined, { status: 'new' }), [])).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ac-15 — the course import adds keys, it never renames one.
+//
+// Bringing the real course into the pathway replaced eighteen levels of generic
+// placeholders with the sections the course actually teaches. An item the owner
+// had already added carries the placeholder's key, so if a real section took a
+// differently-named key that item would still show in the stage — silently
+// DETACHED from its suggestion, as a non-catalogue unit. Every stage id and
+// every key that existing data may reference is therefore recorded here as it
+// stood BEFORE the import, and must still resolve after it.
+// ---------------------------------------------------------------------------
+
+/** Exactly what `cgsOutline()` produced per level, and 1A's hand-authored keys. */
+const CGS_KEYS_BEFORE_THE_COURSE_IMPORT: Record<string, string[]> = {
+  '1A': [
+    'warm-up-stretches',
+    'finger-walking',
+    'contrast-practice-right-hand',
+    'chunks-right-hand-only',
+    'thumb-chunks-right-hand-only',
+    '3-note-chords',
+    '3-note-chords-with-chunks',
+    'rhythm-practice-1-clap-count-aloud',
+    'notes-on-the-1st-string',
+    'sight-reading-practice-1-play-along',
+    'piece-the-forest-glade',
+    'reading-music-how-notes-work-musical-notation',
+    'technique-primer-what-is-technique',
+    'checkpoint-ready-for-1b',
+  ],
+  '1B': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '1C': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '1D': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '1E': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '1F': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '2A': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '2B': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '2C': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '2D': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '2E': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '2F': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'piece', 'other-study'],
+  '3A': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'other-study'],
+  '3B': ['chords', 'arpeggios', 'scales', 'fretboard-mastery', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'other-study'],
+  '3C': ['chords', 'arpeggios', 'scales', 'fretboard-mastery', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'other-study'],
+  '3D': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'practice-skills'],
+  '3E': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'practice-skills'],
+  '3F': ['chords', 'arpeggios', 'scales', 'exercises', 'rhythm-study', 'sight-reading', 'phrasing', 'piece', 'other-study'],
+};
+
+describe('the CGS course import and what existing data may reference', () => {
+  it('CGS stage ids and catalog keys stay stable across the course import', () => {
+    for (const [code, keys] of Object.entries(CGS_KEYS_BEFORE_THE_COURSE_IMPORT)) {
+      const stageId = stageIdFor(SEED_PATHWAY_IDS.guitar, code);
+      // The stage id itself is what an item's `stageId` holds.
+      expect(seed.pathwayStages.map((s) => s.id)).toContain(stageId);
+      const present = catalogForStage(stageId).map((e) => e.key);
+      for (const key of keys) {
+        expect(present, `${stageId} lost catalog key "${key}"`).toContain(key);
+      }
+    }
+  });
+
+  it('keeps Level 1A exactly as it was hand-authored — same keys, in the same order', () => {
+    const stageId = stageIdFor(SEED_PATHWAY_IDS.guitar, '1A');
+    expect(catalogForStage(stageId).map((e) => e.key)).toEqual(CGS_KEYS_BEFORE_THE_COURSE_IMPORT['1A']);
+  });
+
+  it('gives each preserved key to the section it actually names, and never to two at once', () => {
+    // A duplicate key is two sections claiming ONE item: `stageUnits` maps a key
+    // to a single item and `addFromCatalog` takes the first entry under it. The
+    // scanner refuses to emit one, and this holds the generated data to it.
+    for (const code of Object.keys(CGS_KEYS_BEFORE_THE_COURSE_IMPORT)) {
+      const keys = catalogForStage(stageIdFor(SEED_PATHWAY_IDS.guitar, code)).map((e) => e.key);
+      expect(new Set(keys).size, `${code} has a duplicate catalog key`).toBe(keys.length);
+    }
+
+    // And where a level ships two folders of one family, the preserved key goes
+    // to the section with real content — 2E's `08_Sight_Reading` is an empty
+    // stub beside the real `09_Sight_Reading`, and first-by-ordinal would have
+    // left an already-added item attached to the titleless one while the
+    // level's own routine named the other.
+    const twoE = catalogForStage(stageIdFor(SEED_PATHWAY_IDS.guitar, '2E'));
+    expect(twoE.find((e) => e.key === 'sight-reading')?.title).toBe(
+      '2E Sight-Reading: All Strings (3 PDFs)',
+    );
+  });
+
+  it('adds real sections rather than renaming one — every level gained entries', () => {
+    for (const code of Object.keys(CGS_KEYS_BEFORE_THE_COURSE_IMPORT)) {
+      if (code === '1A') continue;
+      const stageId = stageIdFor(SEED_PATHWAY_IDS.guitar, code);
+      expect(catalogForStage(stageId).length).toBeGreaterThan(
+        CGS_KEYS_BEFORE_THE_COURSE_IMPORT[code].length,
+      );
+    }
+  });
+});

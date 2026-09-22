@@ -8,12 +8,16 @@ import {
   stageProgress,
   stagesOfPathway,
   stageUnits,
+  courseForPathway,
+  offeredCourseLevels,
+  type CourseLevelOffer,
   type PathwayRoutine,
   type PathwayStage,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
 import { Field } from '../components/ui';
+import RoutineDuration from '../components/RoutineDuration';
 import { ArrowLeftIcon, CheckIcon, ChevronRightIcon, PlayIcon, PlusIcon } from '../components/icons';
 
 export default function PathwayDetail() {
@@ -22,6 +26,7 @@ export default function PathwayDetail() {
   const updatePathway = useStore((s) => s.updatePathway);
   const deletePathway = useStore((s) => s.deletePathway);
   const addStage = useStore((s) => s.addStage);
+  const addCourseLevels = useStore((s) => s.addCourseLevels);
   const moveStage = useStore((s) => s.moveStage);
   const renameSection = useStore((s) => s.renameSection);
   const navigate = useNavigate();
@@ -186,6 +191,14 @@ export default function PathwayDetail() {
             <PlusIcon /> Add stage
           </button>
         </div>
+
+        {pathway && (
+          <CourseLevels
+            pathwayId={pathway.id}
+            stages={db.pathwayStages}
+            onAdd={(keys) => addCourseLevels(pathway.id, keys)}
+          />
+        )}
 
         {addingStage && (
           <div className="card stack-sm">
@@ -408,7 +421,91 @@ function RoutineRow({
           Short on time — essentials only
         </button>
       )}
+      <RoutineDuration routine={routine} />
     </article>
+  );
+}
+
+/**
+ * "Add new levels from this course" — a COURSE-SCOPED action, deliberately
+ * separate from "restore default pathways", which is unchanged.
+ *
+ * It adds nothing on its own: it OFFERS the levels this course has and this
+ * pathway does not, and adds only the ones ticked. That is the whole point of
+ * not folding this into `reseedDefaultPathways` — a stage the owner
+ * deliberately deleted has an absent deterministic id exactly like a
+ * never-seeded one, so an additive shipped button would silently resurrect it.
+ * Here it reappears in a LIST, never in the pathway, and only if they choose it.
+ */
+function CourseLevels({
+  pathwayId,
+  stages,
+  onAdd,
+}: {
+  pathwayId: string;
+  stages: PathwayStage[];
+  onAdd: (groupKeys: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const course = courseForPathway(pathwayId);
+  const offers: CourseLevelOffer[] = useMemo(
+    () => (course ? offeredCourseLevels(course, stages) : []),
+    [course, stages],
+  );
+  if (!course || offers.length === 0) return null;
+
+  if (!open) {
+    return (
+      <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>
+        <PlusIcon /> Add new levels from this course ({offers.length})
+      </button>
+    );
+  }
+
+  return (
+    <div className="card stack-sm">
+      <div className="tiny faint" style={{ textAlign: 'start' }}>
+        {/* Fixed English page copy, never user text — inline LTR isolate. */}
+        <span dir="ltr">
+          Levels this course has that this pathway does not. Nothing is added unless you tick it.
+        </span>
+      </div>
+      {offers.map((o) => (
+        <label key={o.groupKey} className="row" style={{ gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={picked.includes(o.groupKey)}
+            onChange={(e) =>
+              setPicked((p) => (e.target.checked ? [...p, o.groupKey] : p.filter((k) => k !== o.groupKey)))
+            }
+          />
+          {/* The course's own level code and focus line — generated reference
+              data from `courseData.ts`, never the owner's text and never
+              renameable, so it carries its own inline LTR isolate rather than
+              resolving from whatever else is on the row. */}
+          <span dir="ltr">
+            {o.code} — {o.title}
+          </span>
+        </label>
+      ))}
+      <div className="row" style={{ gap: 6 }}>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={picked.length === 0}
+          onClick={() => {
+            onAdd(picked);
+            setPicked([]);
+            setOpen(false);
+          }}
+        >
+          Add {picked.length} level{picked.length === 1 ? '' : 's'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

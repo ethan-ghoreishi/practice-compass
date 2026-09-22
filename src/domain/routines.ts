@@ -27,6 +27,116 @@ export function segmentsForRun(segments: RoutineSegment[], shortOnTime: boolean)
   return shortOnTime ? segments.filter((s) => s.essential) : segments;
 }
 
+/** A routine's authored length: the total its segments were written to fill. */
+export function routineTotalMinutes(segments: RoutineSegment[]): number {
+  return segments.reduce((n, s) => n + Math.max(0, s.minutes), 0);
+}
+
+/**
+ * A ROUTINE'S AUTHORED MINUTES ARE PROPORTIONS, NOT A FIXED LENGTH.
+ *
+ * A curriculum routine says "twice as long on the piece as on chords"; running
+ * it in the time you actually have should keep that and change nothing else. So
+ * fitting is proportional scaling, and a segment keeps its label, its note, its
+ * essential flag and its bound item — only the MINUTES ever move.
+ *
+ * Two knobs, not one: this is a TIME decision and `segmentsForRun`'s
+ * "short on time — essentials only" is a CONTENT decision. They compose (fit
+ * what essentials-only left) and neither replaces the other.
+ *
+ * Returns the input array UNCHANGED at the authored total, so doing nothing
+ * behaves exactly as it always did.
+ *
+ * Scaling alone cannot reach a short total — a one-minute floor on every
+ * segment overshoots — so DROPPING is part of the fit, and it follows the
+ * routine's OWN priority: non-essential first, latest first, so the syllabus's
+ * own `⭐`/essential marking keeps meaning what it means.
+ *
+ * The floor is applied as a REPAIR after the proportional split, never as a
+ * minute reserved before it: handing every segment one minute up front and
+ * sharing out only the remainder distorts the authored proportions for no
+ * reason (1:9 fitted to 20 gave 3:17 where 2:18 is both exact and legal). The Session Plan's
+ * bucket-priority allocator is deliberately NOT reused: it pins a warm-up share
+ * and clamps every segment to 2-25 minutes, which would distort a one-minute
+ * syllabus segment and entangle two systems the app keeps as peers.
+ */
+export function fitRoutineToMinutes(segments: RoutineSegment[], targetMinutes: number): RoutineSegment[] {
+  const target = Math.floor(targetMinutes);
+  if (segments.length === 0 || !Number.isFinite(target) || target <= 0) return [];
+  if (target === routineTotalMinutes(segments)) return segments;
+
+  // Every surviving segment needs at least its one-minute floor.
+  const kept = [...segments];
+  while (kept.length > target) {
+    let drop = kept.length - 1;
+    for (let k = kept.length - 1; k >= 0; k--) {
+      if (!kept[k].essential) {
+        drop = k;
+        break;
+      }
+    }
+    kept.splice(drop, 1);
+  }
+
+  // PROPORTIONAL OVER THE WHOLE TARGET, largest remainder first (earlier segment
+  // wins a tie). The floor is a REPAIR applied afterwards, never a minute handed
+  // out before the proportions are read: reserving one minute each and splitting
+  // only what was left over distorts every share for no reason — 1:9 fitted to
+  // 20 came out 3:17 where the authored proportion is exactly 2:18.
+  const weightTotal = routineTotalMinutes(kept);
+  const shares = kept.map((s) =>
+    weightTotal > 0 ? (target * Math.max(0, s.minutes)) / weightTotal : target / kept.length,
+  );
+  const whole = shares.map((v) => Math.floor(v));
+  let spare = target - whole.reduce((a, b) => a + b, 0);
+  const order = shares
+    .map((v, k) => ({ k, frac: v - Math.floor(v) }))
+    .sort((a, b) => b.frac - a.frac || a.k - b.k);
+  for (const { k } of order) {
+    if (spare <= 0) break;
+    whole[k] += 1;
+    spare -= 1;
+  }
+
+  // Lift any segment rounded to nothing up to its one-minute floor, taking the
+  // minute from the longest segment that can spare one (earliest on a tie). The
+  // total never moves, and it terminates: every lift removes one zero, and
+  // `kept.length <= target` guarantees a donor with 2 or more exists.
+  for (let k = 0; k < whole.length; k++) {
+    if (whole[k] > 0) continue;
+    let donor = -1;
+    for (let d = 0; d < whole.length; d++) {
+      if (whole[d] >= 2 && (donor < 0 || whole[d] > whole[donor])) donor = d;
+    }
+    if (donor < 0) break;
+    whole[donor] -= 1;
+    whole[k] += 1;
+  }
+  return kept.map((s, idx) => ({ ...s, minutes: whole[idx] }));
+}
+
+/**
+ * WHAT A FIT DROPPED, SAID HONESTLY — or null when it dropped nothing.
+ *
+ * Cutting the time far enough eventually reaches the ESSENTIAL segments too:
+ * `fitRoutineToMinutes` drops non-essential first and latest first, and only
+ * then an essential one. Reporting that as "non-essential dropped" is a plain
+ * untruth about the one distinction the syllabus's own ⭐ marking exists to
+ * make, and it is exactly what the control used to say.
+ *
+ * It is a pure FORMATTER here rather than an expression inside the component
+ * for the reason this app keeps giving: written inline it would be unreachable
+ * from a Node test, and it is the sentence, not the arithmetic, that was wrong.
+ */
+export function describeFitDrop(segments: RoutineSegment[], fitted: RoutineSegment[]): string | null {
+  const dropped = segments.length - fitted.length;
+  if (dropped <= 0) return null;
+  const essential = segments.filter((s) => s.essential).length - fitted.filter((s) => s.essential).length;
+  return essential > 0
+    ? `${dropped} segment(s) dropped, ${essential} of them essential`
+    : `${dropped} non-essential segment(s) dropped`;
+}
+
 /** Routines the session instrument may practise right now. */
 export function routinesForInstrument(routines: PathwayRoutine[], instrumentId: ID): PathwayRoutine[] {
   return routines.filter((r) => r.instrumentId === instrumentId);
