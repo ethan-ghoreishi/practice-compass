@@ -279,6 +279,14 @@ describe('what a course entry becomes in My repertoire', () => {
     // The packet's own arm of the same rule, which holds today and is what a
     // level bought later could quietly break: one score is one key, so a
     // re-titled reappearance can never become a second work.
+    //
+    // THIS ONE KEEPS ITS BASENAME READING ON PURPOSE, and is not the defect
+    // `courseFilesFor` was just fixed for. That one DROPPED a file silently;
+    // this one FAILS LOUDLY — a course that ever shipped two different scores
+    // under one basename breaks this assertion rather than hiding anything,
+    // which is exactly the visibility the sealed finding asked for. Weakening
+    // it to compare paths would let a re-titled reappearance mint a second
+    // work, which is the identity design the contract fences off.
     const byScore = new Map<string, Set<string>>();
     for (const w of CGS_COURSE.groups.flatMap((x) => x.works)) {
       const score = w.file?.split('/').pop();
