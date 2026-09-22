@@ -217,6 +217,57 @@ export function courseStageSeeds(course: CourseData, skipCodes: string[] = []): 
     }));
 }
 
+// --- legacy catalogue keys the course's own sections stand for ---------------
+
+/**
+ * A HAND-AUTHORED STAGE'S OWN KEYS, MAPPED ONTO THE COURSE SECTIONS THEY NAME.
+ *
+ * Level 1A was written out from the syllabus before this scanner existed and
+ * the contract keeps its fourteen steps byte for byte — so its catalogue keys
+ * are slugs of their own titles (`warm-up-stretches`) and match no course unit
+ * key (`warm-up`). Left at that, 1A was the one level whose items got no course
+ * material at all, AND the one level whose essentials 1B's "where I am" routine
+ * carries forward — so those segments could never bind to an item either. The
+ * keys themselves are untouched: this ADDS a reading of them, exactly as the
+ * scanner's own rule adds keys and never renames one.
+ *
+ * COURSE UNIT KEY → the legacy keys it stands for, IN ORDER. Many-to-one is
+ * deliberate and is what the course itself says: the Chunks and Thumb-chunks
+ * steps are both the one Right Hand Technique section, and its videos are the
+ * material for both. Where a routine segment has to pick ONE item, it takes the
+ * first key in this list that has one, so the choice is deterministic.
+ *
+ * Every key here is asserted against the live catalogue in `courseSeed.test.ts`
+ * — a stale entry FAILS rather than quietly aliasing nothing. ONE of 1A's
+ * fourteen steps is deliberately absent, "Technique primer — What is Technique",
+ * because no course section clearly corresponds to it: it gets no composed
+ * material, which is honest, rather than a guessed section's videos. (The
+ * course's own orientation units — Welcome, First Things First, Syllabus and
+ * Materials — simply have no hand-authored step, which costs nothing: they are
+ * reached from the stage's other levels and are in no routine.)
+ */
+export const COURSE_LEGACY_KEYS: Record<string, Record<string, string[]>> = {
+  'cgs-1a': {
+    'warm-up': ['warm-up-stretches'],
+    // The course's own Finger Walking exercise lives in its LEFT hand section,
+    // whatever strand the hand-authored step was given.
+    'left-hand-exercises': ['finger-walking'],
+    'contrast-cards': ['contrast-practice-right-hand'],
+    'right-hand-technique': ['chunks-right-hand-only', 'thumb-chunks-right-hand-only'],
+    chords: ['3-note-chords', '3-note-chords-with-chunks'],
+    'rhythm-study': ['rhythm-practice-1-clap-count-aloud'],
+    'sight-reading': ['notes-on-the-1st-string', 'sight-reading-practice-1-play-along'],
+    piece: ['piece-the-forest-glade'],
+    'background-knowledge': ['reading-music-how-notes-work-musical-notation'],
+    'ready-for': ['checkpoint-ready-for-1b'],
+  },
+};
+
+/** The legacy catalogue keys one course unit stands for at one stage. */
+function legacyKeysFor(stageId: string, unitKey: string): string[] {
+  return COURSE_LEGACY_KEYS[stageId]?.[unitKey] ?? [];
+}
+
 // --- composed material -------------------------------------------------------
 
 /**
@@ -231,7 +282,9 @@ export function courseStageSeeds(course: CourseData, skipCodes: string[] = []): 
 export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[] {
   const found = courseStage(stageId);
   if (!found) return [];
-  const unit = found.group.units.find((u) => u.key === catalogKey);
+  const unit = found.group.units.find(
+    (u) => u.key === catalogKey || legacyKeysFor(stageId, u.key).includes(catalogKey),
+  );
   if (unit) return unit.files;
   const work = found.group.works.find((w) => w.key === catalogKey);
   return work?.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
@@ -245,7 +298,7 @@ function toSegment(
   stageId: string,
   itemsByKey: Map<string, PracticeItem>,
 ): RoutineSegment {
-  const item = itemsByKey.get(`${stageId}\u0000${seg.unitKey}`);
+  const item = unitItem(stageId, seg.unitKey, itemsByKey);
   return {
     label: seg.label,
     minutes: seg.minutes,
@@ -266,6 +319,27 @@ function itemsByStageAndKey(items: PracticeItem[]): Map<string, PracticeItem> {
     if (i.stageId && i.catalogKey) out.set(`${i.stageId}\u0000${i.catalogKey}`, i);
   }
   return out;
+}
+
+/**
+ * The item a course unit's segment binds to: the one created from the unit's
+ * own key, else — for a hand-authored stage — the first of the legacy keys it
+ * stands for that has one. ONE resolution, used by every routine this module
+ * builds, so a level whose catalogue predates the course is not a level whose
+ * carried-forward essentials can never bind.
+ */
+function unitItem(
+  stageId: string,
+  unitKey: string,
+  itemsByKey: Map<string, PracticeItem>,
+): PracticeItem | undefined {
+  const direct = itemsByKey.get(`${stageId}\u0000${unitKey}`);
+  if (direct) return direct;
+  for (const legacy of legacyKeysFor(stageId, unitKey)) {
+    const item = itemsByKey.get(`${stageId}\u0000${legacy}`);
+    if (item) return item;
+  }
+  return undefined;
 }
 
 /** The level's own routine, exactly as its syllabus states it. */
@@ -316,7 +390,7 @@ export function buildPositionRoutine(
 
   const stageId = courseStageId(course, groupKey);
   for (const s of course.groups[index].routine) {
-    if (byKey.has(`${stageId}\u0000${s.unitKey}`)) out.push(toSegment(s, stageId, byKey));
+    if (unitItem(stageId, s.unitKey, byKey)) out.push(toSegment(s, stageId, byKey));
   }
   return out;
 }
@@ -392,6 +466,12 @@ export interface CatalogAddition {
   items: PracticeItem[];
   materials: Material[];
   itemId: ID;
+  /**
+   * Whether this addition actually CREATED the item, or handed back one that
+   * already existed. An Undo may only ever reach a created one: an item the
+   * owner added at an earlier level is not this tap's to delete.
+   */
+  created: boolean;
 }
 
 interface CatalogAdditionDB {
@@ -425,31 +505,60 @@ export function planCatalogAddition(
   instrumentId: ID,
   now: Date,
 ): CatalogAddition {
-  // Reuse an existing item already created from this catalogue entry.
-  const existing = db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey);
-  if (existing) return { items: db.items, materials: db.materials, itemId: existing.id };
-
-  const found = courseStage(stageId);
-  const work = found?.group.works.find((w) => w.key === entryKey);
-  if (work) {
-    const carried = db.items.find((i) => i.catalogKey === entryKey && isCourseWorkKey(i.catalogKey));
-    if (carried) return { items: db.items, materials: db.materials, itemId: carried.id };
+  // Reuse an existing item already created from this catalogue entry — at this
+  // stage, or, for a work the course carries across levels, wherever in the
+  // same course it was first added.
+  const existing =
+    db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey) ??
+    carriedCourseWorkItem(stageId, entryKey, db.items);
+  if (existing) {
+    return { items: db.items, materials: db.materials, itemId: existing.id, created: false };
   }
 
+  const found = courseStage(stageId);
   const base = entry
     ? itemFromCatalogEntry(entry, instrumentId, now)
     : createItem({ instrumentId, title: 'New item', stageId }, now);
 
-  if (!found) return { items: [...db.items, base], materials: db.materials, itemId: base.id };
+  if (!found) return { items: [...db.items, base], materials: db.materials, itemId: base.id, created: true };
 
   const source = resolveCourseSource(db.materials, found.course, instrumentId, now);
   const item = { ...base, materialId: source.materialId };
-  return { items: [...db.items, item], materials: source.materials, itemId: item.id };
+  return { items: [...db.items, item], materials: source.materials, itemId: item.id, created: true };
 }
 
-/** Course works carry a key derived from the work, so it is stable across levels. */
-function isCourseWorkKey(key: string): boolean {
-  return key.startsWith('work-');
+/**
+ * THE ONE ITEM A CARRIED-FORWARD COURSE WORK IS, WHEREVER IT WAS FIRST ADDED.
+ *
+ * A packet work's key is derived from the WORK, so Ferrer Ejercicio carries one
+ * key through 2C-2F and is ONE thing the owner adds once. This is the single
+ * rule that says so, and BOTH readers go through it: `planCatalogAddition`, so
+ * adding it from a later level reuses the existing item, and `stageUnits`
+ * (`pathways.ts`), so that later level SHOWS it as added.
+ *
+ * Splitting those two apart is the defect this closes rather than the shape it
+ * keeps: the later row read as an untaken suggestion, its “+” reported “Added”
+ * for an item created weeks earlier at another level, and Undo then offered to
+ * delete it. One resolution, one answer on every surface.
+ *
+ * It is deliberately narrow. Only a key the CURRENT stage's own course declares
+ * as a work resolves, and only against an item sitting in a stage of that SAME
+ * course — an identically-keyed item anywhere else is never adopted, and the
+ * ordinary per-stage reuse is untouched, so a `chords` item in 1B can never be
+ * reused by 2B's.
+ */
+export function carriedCourseWorkItem(
+  stageId: ID,
+  entryKey: string,
+  items: PracticeItem[],
+): PracticeItem | undefined {
+  const found = courseStage(stageId);
+  if (!found || !found.group.works.some((w) => w.key === entryKey)) return undefined;
+  // The work check comes FIRST, so an ordinary per-stage key never reaches the
+  // item scan at all — and the course's own stage ids are a set built once,
+  // rather than resolving every item's stage through `courseStage` again.
+  const ofThisCourse = new Set(found.course.groups.map((g) => courseStageId(found.course, g.key)));
+  return items.find((i) => i.catalogKey === entryKey && !!i.stageId && ofThisCourse.has(i.stageId));
 }
 
 // --- adding levels the owner has just bought ---------------------------------

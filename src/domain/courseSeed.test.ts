@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CGS_COURSE } from './courseData';
 import {
+  COURSE_LEGACY_KEYS,
   buildLevelRoutine,
   buildPositionRoutine,
   courseFilesFor,
@@ -13,6 +14,7 @@ import {
 import { createItem, createMaterial } from './factories';
 import { catalogForStage } from './pathwaySeed';
 import { isWork, repertoireWorks } from './repertoire';
+import { stageUnits } from './pathways';
 import { baseForItemFile, itemFiles, type ItemFileReference } from './itemFiles';
 import { mediaRoot } from './mediaRoots';
 import { resolveRecording } from './recordings';
@@ -29,6 +31,7 @@ const STAGE_1B = courseStageId(CGS_COURSE, '1b');
 const STAGE_1C = courseStageId(CGS_COURSE, '1c');
 const STAGE_2C = courseStageId(CGS_COURSE, '2c');
 const STAGE_2E = courseStageId(CGS_COURSE, '2e');
+const STAGE_1A = courseStageId(CGS_COURSE, '1a');
 
 function group(key: string) {
   const g = CGS_COURSE.groups.find((x) => x.key === key);
@@ -74,6 +77,43 @@ describe('what a course entry becomes in My repertoire', () => {
     const items = practice.map((k) => added(STAGE_1B, k));
     for (const item of items) expect(isWork(item), `${item.catalogKey} reached My repertoire`).toBe(false);
     expect(repertoireWorks(items)).toEqual([]);
+
+    // A PIECE SECTION THE COURSE NAMES NO SINGLE WORK FOR IS NOT A WORK
+    // EITHER. 3C ("Excerpts + Fur Elise, Minuet in G, Red is the Rose") and 3F
+    // ("Repertoire + Video Review") are practice on material named elsewhere;
+    // the scanner already DIAGNOSED that it could not name a study there and
+    // then kept the `piece` strand anyway, so both became full_piece items
+    // titled after the section. Their real works reach My repertoire as the
+    // packet works, which is the whole rule: repertoire only where the course
+    // NAMES a work.
+    for (const key of ['3c', '3f']) {
+      const stageId = courseStageId(CGS_COURSE, key);
+      const section = catalogForStage(stageId).find((e) => e.key === 'piece');
+      // The KEY is untouched — keys are added, never renamed (ac-15).
+      expect(section, `${key} lost its piece entry`).toBeDefined();
+      expect(section!.strand).not.toBe('piece');
+      expect(isWork(added(stageId, 'piece')), `${key}'s piece section reached My repertoire`).toBe(false);
+      expect(CGS_COURSE.diagnostics.some((d) => d.startsWith(`${key.toUpperCase()}: the Piece section names no single work`))).toBe(true);
+      // Its named packet works still do.
+      const works = group(key).works;
+      expect(works.length).toBeGreaterThan(0);
+      for (const w of works) expect(isWork(added(stageId, w.key)), `${w.key}`).toBe(true);
+    }
+    // Every level whose study the course DOES name keeps it a work.
+    expect(catalogForStage(courseStageId(CGS_COURSE, '2e')).find((e) => e.key === 'piece')?.strand).toBe('piece');
+
+    // AND A DOWNLOAD IN A SHEET-MUSIC LIST IS NOT AUTOMATICALLY A WORK EITHER —
+    // the same rule one level down. 3F's list carries "Here's the video review
+    // checklist" beside four real pieces, and it became a repertoire work
+    // called exactly that. It is an AID, so it is not a work; it is still
+    // reachable, because it is one of that section's own files.
+    const aid = /syllabus|materials|course notes|checklist/i;
+    for (const g of CGS_COURSE.groups) {
+      for (const w of g.works) expect(aid.test(w.title), `${g.key}: "${w.title}" reached My repertoire`).toBe(false);
+    }
+    expect(
+      courseFilesFor(courseStageId(CGS_COURSE, '3f'), 'piece').some((f) => /Video-Review-Checklist/.test(f.path)),
+    ).toBe(true);
   });
 
   it('emits no separate study entry beside the Piece section, which would repertoire it twice', () => {
@@ -100,6 +140,25 @@ describe('a work carried forward across levels', () => {
     expect(plan.itemId).toBe(first.id);
     expect(plan.items).toHaveLength(1);
     expect(repertoireWorks(plan.items)).toHaveLength(1);
+
+    // AND THE LATER LEVEL SAYS SO. Reuse that only the store could see left 2E
+    // showing an untaken suggestion: its “+” handed back the 2C item while
+    // reporting “Added”, and the Undo beside that message then offered to
+    // delete an item created at another level weeks earlier. One resolution,
+    // one answer on every surface — so the row shows the existing item...
+    const unit = stageUnits(stage(STAGE_2E), [first]).find((u) => u.key === CARRIED);
+    expect(unit?.item?.id).toBe(first.id);
+    // ...and the plan reports that it created NOTHING, which is what stops an
+    // Undo ever reaching it.
+    expect(plan.created).toBe(false);
+
+    // The reuse is bounded to the course. An identically-keyed item in a stage
+    // no course owns is never adopted.
+    const stranger = { ...added(STAGE_2C, CARRIED), id: 'stranger', stageId: 'setar-radif-mezrab' };
+    const fresh = planCatalogAddition({ items: [stranger], materials: [] }, STAGE_2E, CARRIED, entry, 'g', NOW);
+    expect(fresh.created).toBe(true);
+    expect(fresh.itemId).not.toBe('stranger');
+    expect(stageUnits(stage(STAGE_2E), [stranger]).find((u) => u.key === CARRIED)?.item).toBeUndefined();
   });
 
   it('still creates it the first time, and never reuses across an ordinary per-stage key', () => {
@@ -108,6 +167,13 @@ describe('a work carried forward across levels', () => {
     const plan = planCatalogAddition({ items: [chords1B], materials: [] }, STAGE_1C, 'chords', entry, 'g', NOW);
     expect(plan.itemId).not.toBe(chords1B.id);
     expect(plan.items).toHaveLength(2);
+    expect(plan.created).toBe(true);
+
+    // The ordinary per-stage reuse reports the same thing, so an Undo after
+    // tapping “+” on a row that was already added deletes nothing either.
+    const again = planCatalogAddition({ items: [chords1B], materials: [] }, STAGE_1B, 'chords', entry, 'g', NOW);
+    expect(again.itemId).toBe(chords1B.id);
+    expect(again.created).toBe(false);
   });
 });
 
@@ -153,6 +219,47 @@ describe("a course item's material", () => {
   it('gives an item from no course nothing at all', () => {
     const plain = createItem({ instrumentId: 'g', title: 'Scales' }, NOW);
     expect(itemFiles(dbWith([plain]), plain.id)).toEqual([]);
+  });
+
+  it("composes it for a hand-authored level's own keys too, which name the same sections", () => {
+    // Level 1A's fourteen steps predate this course data and the contract keeps
+    // them byte for byte, so their keys are slugs of their own titles
+    // (`warm-up-stretches`) and match no course unit key (`warm-up`). Left at
+    // that, 1A was the ONE level whose items got no course material at all —
+    // on the very level the owner starts from. The keys are untouched; what is
+    // added is a reading of which course section each one names.
+    const catalog = catalogForStage(STAGE_1A);
+    expect(catalog.length).toBe(14);
+
+    // EVERY ALIAS NAMES A REAL ENTRY. A stale one would alias nothing and no
+    // test would notice, which is exactly how fourteen dead entries ship.
+    const keys = new Set(catalog.map((e) => e.key));
+    const units = new Set(group('1a').units.map((u) => u.key));
+    for (const [unitKey, legacy] of Object.entries(COURSE_LEGACY_KEYS[STAGE_1A])) {
+      expect(units.has(unitKey), `no course unit ${unitKey}`).toBe(true);
+      for (const k of legacy) expect(keys.has(k), `no 1A catalogue entry ${k}`).toBe(true);
+    }
+
+    // The Forest Glade reads the course's own Piece section, and the two
+    // right-hand steps share the one Right Hand Technique section the course
+    // writes them both from.
+    expect(courseFilesFor(STAGE_1A, 'piece-the-forest-glade')).toEqual(
+      group('1a').units.find((u) => u.key === 'piece')!.files,
+    );
+    expect(courseFilesFor(STAGE_1A, 'chunks-right-hand-only')).toEqual(
+      courseFilesFor(STAGE_1A, 'thumb-chunks-right-hand-only'),
+    );
+    // Composed, never stored, exactly as for every other level.
+    const glade = added(STAGE_1A, 'piece-the-forest-glade');
+    const files = itemFiles(dbWith([glade]), glade.id);
+    expect(files.length).toBeGreaterThan(0);
+    expect(glade.references ?? []).toEqual([]);
+
+    // Thirteen of the fourteen resolve. The one that does not is named rather
+    // than given a guessed section's videos: no course section clearly
+    // corresponds to "Technique primer — What is Technique".
+    const without = catalog.filter((e) => courseFilesFor(STAGE_1A, e.key).length === 0);
+    expect(without.map((e) => e.key)).toEqual(['technique-primer-what-is-technique']);
   });
 });
 
@@ -257,6 +364,42 @@ describe('"Build one for where I am"', () => {
   it('is just the added sections for the first level, which has no previous one', () => {
     const items = [added(STAGE_1B, 'scales')];
     expect(buildPositionRoutine(CGS_COURSE, '1a', items)).toEqual([]);
+  });
+
+  it("binds a hand-authored level's carried-forward essentials to the items that stand for them", () => {
+    // 1B's "where I am" carries 1A's essentials forward — and 1A is the level
+    // whose catalogue keys are hand-authored, so before this those three
+    // segments could NEVER bind to an item however much 1A the owner had
+    // added: unbound countdowns on the level they have actually practised.
+    const oneA = catalogForStage(STAGE_1A).map((e) => added(STAGE_1A, e.key));
+    const position = buildPositionRoutine(CGS_COURSE, '1b', oneA);
+    expect(position.map((s) => s.label)).toEqual([
+      '1A Warm Up',
+      '1A Right Hand Technique (*Most important going forward *)',
+      '1A Piece — The Forest Glade',
+    ]);
+    expect(position.every((s) => s.itemId)).toBe(true);
+    const glade = oneA.find((i) => i.catalogKey === 'piece-the-forest-glade');
+    expect(position[2].itemId).toBe(glade!.id);
+
+    // And 1A's own "where I am" is no longer EMPTY with all fourteen added,
+    // which is the shape the gap took: it had no previous level and could
+    // match none of its own sections either, so it built nothing at all.
+    const own1A = buildPositionRoutine(CGS_COURSE, '1a', oneA);
+    expect(own1A).toHaveLength(group('1a').routine.length);
+    expect(own1A.every((s) => s.itemId)).toBe(true);
+
+    // 1A's OWN routine binds the same way, and a many-to-one section takes the
+    // first of the keys it stands for that has an item — deterministic, never
+    // whichever the array happened to hold first.
+    expect(buildLevelRoutine(CGS_COURSE, '1a', oneA).every((s) => s.itemId)).toBe(true);
+    const onlyThumb = oneA.filter((i) => i.catalogKey === 'thumb-chunks-right-hand-only');
+    expect(
+      buildLevelRoutine(CGS_COURSE, '1a', onlyThumb).find((s) => /Right Hand Technique/.test(s.label))?.itemId,
+    ).toBe(onlyThumb[0].id);
+    // And an empty 1A still carries the maintenance as unbound countdowns
+    // rather than fabricating a binding.
+    expect(buildPositionRoutine(CGS_COURSE, '1b', []).every((s) => s.itemId === undefined)).toBe(true);
   });
 });
 

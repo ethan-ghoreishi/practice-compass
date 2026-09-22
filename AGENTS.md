@@ -2332,9 +2332,26 @@ unit. A second section of the same family (2E's two Scales sections, 3A's two
 Arpeggios sections) gets its OWN new key rather than displacing the base one.
 `src/domain/pathways.test.ts` records every pre-import stage id and key and fails
 if one disappears. **Level 1A keeps its fourteen hand-authored steps and both of
-its routines byte for byte**, which has one honest cost: its keys do not map onto
-the course's section folders, so 1A items get no composed course material. That
-is the one known gap and it is recorded in `docs/cgs-course.md`.
+its routines byte for byte** — and a PRESERVED KEY STILL HAS TO REACH THE SECTION
+IT NAMES. 1A's keys are slugs of their own titles (`warm-up-stretches`) and match
+no course unit key (`warm-up`), so the level the owner STARTS from was the one
+level with no composed material at all and — worse — the one level whose
+essentials 1B's "where I am" routine carries forward, which could therefore never
+bind to an item however much 1A had actually been added. Byte-stable but
+unreachable is the same failure as renamed, wearing a passing test.
+`COURSE_LEGACY_KEYS` (`courseSeed.ts`, the hand-written reader — never the
+generated data) records which course section each legacy key names, and BOTH
+readers go through it: `courseFilesFor` for material and `unitItem` for the
+segment→item join. It ADDS a reading of those keys and changes none of them.
+Many-to-one is deliberate and is what the course says (Chunks and Thumb-chunks
+are both the one Right Hand Technique section); where a segment must pick ONE
+item it takes the first key in the list that has one, so the choice is
+deterministic. Every entry is asserted against the LIVE catalogue in
+`courseSeed.test.ts` — a stale alias fails rather than quietly aliasing nothing,
+the same visibility contract `direction.test.ts`'s inventories carry. Thirteen of
+the fourteen resolve; "Technique primer — What is Technique" does not, because no
+course section clearly corresponds to it, and a guessed section's videos on a real
+step is the same failure as a guessed BPM on a real section.
 
 **A COURSE ENTRY BECOMES REPERTOIRE ONLY WHERE THE COURSE NAMES A WORK, AND
 `repertoire.ts` IS UNCHANGED.** The fix is upstream, in what the catalogue
@@ -2348,6 +2365,26 @@ the title. Every drill, exercise, rhythm, sight-reading and reading section stay
 what it was and never reaches My repertoire. A separate "study" entry beside the
 Piece section is NOT emitted: it would put one study in repertoire twice.
 
+AND "NAMES A WORK" IS THE WHOLE RULE, INCLUDING WHERE THE COURSE DOES NOT. 3C's
+Piece section is a comma list ("Excerpts + Fur Elise, Minuet in G, Red is the
+Rose") and 3F's is "Repertoire + Video Review": the scanner already DIAGNOSED
+that it could not name a study there and then kept the `piece` strand anyway, so
+both still became `full_piece` items titled after the section — a repertoire work
+called "3F Piece: Repertoire + Video Review", which is the same defect as the old
+"Piece" placeholder said the other way round. Those two sections are emitted as
+practice material (`strand: 'other'`) and their REAL works reach My repertoire as
+that section's own packet works, which is where the course does name them. The
+KEY stays `piece` — keys are added, never renamed — and it is the SCANNER that
+decides this, because the grammar lives there and the app consumes the data. It
+is FORWARD-ONLY, as every catalogue change is: an item already created from that
+entry keeps the `itemType` stored on it, since regenerating the course reaches an
+item's MATERIAL and never its stored fields. AND A DOWNLOAD IN A SHEET-MUSIC
+LIST IS NOT AUTOMATICALLY A WORK EITHER — the same rule one level down. 3F's
+list carries "Here's the video review checklist" beside four real pieces and it
+became a repertoire work called exactly that; an AID (a syllabus, a materials
+list, course notes, a checklist) is skipped and stays reachable as one of that
+section's own FILES.
+
 **A WORK CARRIED FORWARD ACROSS LEVELS IS ONE WORK, AND THAT LOOKUP IS THE ONLY
 CROSS-STAGE ONE.** A packet work's key is derived from the WORK (`work-<slug>`),
 so Ferrer Ejercicio carries one key in all four levels it appears in and adding it
@@ -2356,6 +2393,25 @@ PER STAGE, not globally — `chords` exists in every level — so the ordinary r
 stays a `(stageId, catalogKey)` match and a `chords` item in 1B can never be
 reused by 2B's. Two lookups, two scopes, two tested rules; neither may leak into
 the other.
+
+THAT LOOKUP LIVES IN ONE PLACE AND EVERY SURFACE READS IT (`carriedCourseWorkItem`,
+`courseSeed.ts`). It used to be private to `planCatalogAddition`, which made the
+reuse something only the STORE could see: `stageUnits` still resolved an entry
+against that stage's own items alone, so 2E showed Ferrer Ejercicio as an untaken
+suggestion, its "+" handed back the 2C item while the banner said "Added", and the
+Undo beside that message then offered to delete an item created at another level
+weeks earlier — losslessly removable, so it would have gone. One resolution, one
+answer on every surface. It is narrow by construction: only a key the CURRENT
+stage's own course declares as a WORK resolves, and only against an item in a
+stage of that SAME course.
+
+AND AN UNDO MAY ONLY EVER REACH AN ITEM THE TAP ACTUALLY CREATED. That authority
+is structural rather than contingent on the row happening to resolve:
+`planCatalogAddition` returns `created`, `addFromCatalog` carries it out, and
+`StageDetail` raises the undo banner only on a real creation. The row's own "−"
+follows the same rule — an item that lives in ANOTHER stage is not this row's to
+delete — and `removeCatalogItem` still re-checks `isLosslesslyRemovable` against
+live blocks underneath both.
 
 **COURSE MATERIAL IS COMPOSED FROM THE CATALOGUE, NEVER STORED ON THE ITEM.** An
 item created from a course entry holds only its stage and its catalogue key;
@@ -2382,7 +2438,13 @@ segment names a folder a shipped source declares (`knownSourceFolders()`), and
 anything else — the LEGACY base one folder too high included — yields no root at
 all, so a course file reports `no-base` and offers no open action rather than
 pointing at a dead link. That state is not new: Setar references are already
-broken in it, and correcting the base once fixes both.
+broken in it, and correcting the base once fixes both. A BASE THAT CANNOT BE READ
+IS AN UNRECOGNISED BASE, NEVER A THROWN ERROR: a lone `%` is a legal URL path and
+an illegal escape, so `decodeURIComponent` on the last segment raises a URIError —
+and this runs while Settings and every material row are DRAWING, with the archive
+base read in the same expression, so an unreadable base took the whole screen down
+and ARCHIVE rows with it. A segment that will not decode is left exactly as given,
+matches no known source, and yields no root.
 
 **A ROUTINE'S AUTHORED MINUTES ARE PROPORTIONS, AND DURATION IS A SECOND
 INDEPENDENT KNOB.** `fitRoutineToMinutes` (`routines.ts`, tested) scales
@@ -2392,9 +2454,33 @@ UNCHANGED at the authored total so doing nothing behaves exactly as before, and
 when the target cannot seat every segment at a one-minute floor it DROPS using the
 routine's own priority: non-essential first, latest first, so `essential` keeps
 meaning what it means. A surviving segment keeps its label, note, essential flag
-and bound item; only the MINUTES ever move. It COMPOSES with `segmentsForRun`
-rather than replacing it — essentials-only is a CONTENT decision, duration is a
-TIME decision — and `segmentsForRun` keeps its exact meaning and signature. The
+and bound item; only the MINUTES ever move.
+
+THE FLOOR IS A REPAIR, NOT A MINUTE SPENT BEFORE THE PROPORTIONS ARE READ. Giving
+every surviving segment one minute up front and sharing out only the remainder
+distorts every share for no reason: 1:9 fitted to 20 came out 3:17, where the
+authored proportion is exactly 2:18 and already satisfies the floor. The split is
+proportional over the WHOLE target (largest remainder, earliest index on a tie),
+and only then is a segment rounded to nothing lifted to one minute, taking it from
+the longest that can spare one. The total never moves and it terminates, because
+`kept.length <= target` guarantees a donor.
+
+It COMPOSES with `segmentsForRun` rather than replacing it — essentials-only is a
+CONTENT decision, duration is a TIME decision — and `segmentsForRun` keeps its
+exact meaning and signature. COMPOSING IS SOMETHING THE OWNER CAN ACTUALLY DO:
+every surface rendered the duration control with no way to say essentials-only,
+and the separate "Short on time" button started immediately at the authored
+length, so "twenty minutes, essentials only" was the one combination two controls
+could never express. `RoutineDuration` carries both — the total, and its own
+essentials-only tick, which re-seeds the offered total because changing the
+CONTENT changes what the authored length is.
+
+AND WHAT IT DROPS, IT SAYS HONESTLY. Cutting far enough reaches the essential
+segments too, and the caption called every drop "non-essential" — a plain untruth
+about the one distinction ⭐ exists to make. `describeFitDrop` (`routines.ts`,
+tested) is that sentence, a pure FORMATTER rather than an expression inside the
+render, for the reason this file keeps giving: written inline it is unreachable
+from a Node test, and it was the sentence, not the arithmetic, that was wrong. The
 Session Plan's `allocateMinutes` is deliberately NOT reused: it allocates by bucket
 priority with a pinned warm-up share and a 2-25 minute clamp, which would distort a
 one-minute syllabus segment and entangle two systems the app keeps as peers. Only

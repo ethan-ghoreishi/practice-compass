@@ -5,6 +5,7 @@ import {
   detachIncompatibleRoutinesForPathway,
   detachRoutinesFromPathway,
   detachRoutinesFromStage,
+  describeFitDrop,
   duplicateRoutineData,
   fitRoutineToMinutes,
   locateClock,
@@ -666,6 +667,21 @@ describe('running a routine for the time you actually have', () => {
       expect(routineTotalMinutes(fitted), `target ${target}`).toBe(target);
       expect(fitted.every((s) => s.minutes >= 1)).toBe(true);
     }
+
+    // AND THE PROPORTIONS ARE READ BEFORE THE FLOOR, NOT AFTER A MINUTE PER
+    // SEGMENT HAS ALREADY BEEN SPENT. 1:9 fitted to 20 is exactly 2:18, which
+    // satisfies the floor on its own; reserving one minute each and splitting
+    // only the remaining 18 distorted it to 3:17 for no reason.
+    const lopsided: RoutineSegment[] = [
+      { label: 'a', minutes: 1 },
+      { label: 'b', minutes: 9 },
+    ];
+    expect(fitRoutineToMinutes(lopsided, 20).map((s) => s.minutes)).toEqual([2, 18]);
+    // The floor is still a floor: where the proportion alone rounds a segment
+    // to nothing, it is lifted to one minute out of the longest that can spare
+    // it, and the total does not move.
+    expect(fitRoutineToMinutes(lopsided, 3).map((s) => s.minutes)).toEqual([1, 2]);
+    expect(fitRoutineToMinutes(lopsided, 11).map((s) => s.minutes)).toEqual([1, 10]);
   });
 
   it("keeps the syllabus's own proportions — the core segments stay the longest", () => {
@@ -717,6 +733,22 @@ describe('a target too short to seat every segment', () => {
       'Piece',
     ]);
     expect(fitRoutineToMinutes(interleaved, 2).map((s) => s.label)).toEqual(['Arpeggios', 'Piece']);
+
+    // AND WHAT WAS DROPPED IS SAID HONESTLY. Cutting far enough reaches the
+    // essential segments too, and the control used to report every drop as
+    // "non-essential" — a plain untruth about the one distinction ⭐ makes.
+    expect(describeFitDrop(SYLLABUS, fitRoutineToMinutes(SYLLABUS, 65))).toBeNull();
+    expect(describeFitDrop(SYLLABUS, fitted)).toBe('3 non-essential segment(s) dropped');
+    expect(describeFitDrop(SYLLABUS, three)).toBe('5 non-essential segment(s) dropped');
+    expect(describeFitDrop(SYLLABUS, fitRoutineToMinutes(SYLLABUS, 2))).toBe(
+      '6 segment(s) dropped, 1 of them essential',
+    );
+    // It follows the CONTENT decision too: essentials-only fitted to a total
+    // shorter than the essentials themselves is still an essential drop.
+    const essentials = segmentsForRun(SYLLABUS, true);
+    expect(describeFitDrop(essentials, fitRoutineToMinutes(essentials, 2))).toBe(
+      '1 segment(s) dropped, 1 of them essential',
+    );
 
     // And nothing that survives is altered beyond its minutes.
     for (const target of [5, 12, 40, 100]) {

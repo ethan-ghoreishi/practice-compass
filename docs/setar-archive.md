@@ -326,6 +326,14 @@ fallback it rules out:
   action rather than pointing at a dead link. A device still carrying the legacy
   base — the media root itself, one folder too high — is in exactly that state,
   and correcting the base once fixes the archive and the course together.
+* **And "anything else" includes a base that cannot even be read.** A lone `%`
+  is a legal URL path and an illegal escape, so decoding the last segment to
+  compare it can THROW — and the derivation runs while Settings and every
+  material row are drawing, with the archive base read in the same expression,
+  so an unreadable base took the screen down with it and archive rows with that.
+  A segment that will not decode is left exactly as it is, matches no known
+  source, and yields no root: the same honest "no root" every other
+  unrecognisable base gets.
 
 The optional **Media root** field in Settings exists for a device whose tree
 genuinely is not laid out this way. Leave it blank and the derivation applies.

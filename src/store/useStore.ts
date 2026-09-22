@@ -417,8 +417,14 @@ interface StoreState {
   setQuestionAnswer: (id: ID, answer: string) => void;
   /** Remove an entry. Never deletes the item or its practice. */
   removeAgendaEntry: (id: ID) => void;
-  /** Create a practice item from a stage's reference catalog entry; returns its id. */
-  addFromCatalog: (stageId: ID, entryKey: string) => ID;
+  /**
+   * Create a practice item from a stage's reference catalog entry.
+   *
+   * Take one catalogue suggestion into the owner's items. Reports whether it
+   * actually CREATED one: a work the course carries across levels resolves to
+   * the item added at an earlier level, and an Undo may never reach that.
+   */
+  addFromCatalog: (stageId: ID, entryKey: string) => { id: ID; created: boolean };
   /**
    * Write one of a course stage's own routines — the level's, or one built for
    * where the owner actually is — as an ordinary editable routine. Returns its
@@ -1248,7 +1254,7 @@ export const useStore = create<StoreState>()(
         // protects the wiring.
         const plan = planCatalogAddition(db, stageId, entryKey, entry, instrumentId, new Date());
         set((s) => ({ db: { ...s.db, items: plan.items, materials: plan.materials } }));
-        return plan.itemId;
+        return { id: plan.itemId, created: plan.created };
       },
 
       addCourseRoutine: (stageId, kind) => {

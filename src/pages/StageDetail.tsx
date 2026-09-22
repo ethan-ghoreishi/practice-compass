@@ -85,10 +85,15 @@ export default function StageDetail() {
   }
 
   function addSuggestion(unit: StageUnit) {
-    const id = addFromCatalog(stage!.id, unit.key);
+    const { id, created } = addFromCatalog(stage!.id, unit.key);
     // Adding is organisation, not commitment — the undo card lingers calmly
     // until dismissed or you leave, rather than vanishing on a timer.
-    setUndo({ id, title: unit.title });
+    //
+    // AN UNDO MAY ONLY EVER REACH AN ITEM THIS TAP CREATED. A work the course
+    // carries across levels resolves to the one added at an earlier level, and
+    // offering to delete that — an item the owner made weeks ago somewhere
+    // else — is not an undo of anything that just happened.
+    setUndo(created ? { id, title: unit.title } : null);
   }
 
   function practise(unit: StageUnit) {
@@ -99,7 +104,7 @@ export default function StageDetail() {
       navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
       return;
     }
-    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key);
+    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key).id;
     startItemSession(itemId);
     navigate('/active');
   }
@@ -268,7 +273,11 @@ export default function StageDetail() {
               key={u.key}
               unit={u}
               returnTo={here}
-              removable={!!u.item && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
+              // Removing reverts a suggestion this stage's owner took. An item
+              // that lives in ANOTHER stage — a carried-forward course work
+              // added at an earlier level — is not this row's to delete, the
+              // same rule the undo banner above follows.
+              removable={!!u.item && u.item.stageId === stage.id && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
               committedItemIds={committedItemIds}
               onPractise={() => practise(u)}
               onAdd={() => addSuggestion(u)}

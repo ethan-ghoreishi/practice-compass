@@ -355,6 +355,9 @@ function readSyllabusBpm(buf, foldersByBase) {
 /** Not a specific work: a list, or a page about repertoire in general. */
 const NOT_A_WORK = /repertoire|video review|excerpt|,/i;
 
+/** A download in a Sheet Music list that is an aid, not a piece. */
+const NOT_A_PACKET_WORK = /syllabus|materials|course notes|checklist/i;
+
 /**
  * The level's OWN study, named by the course itself — "2C Piece: Study #8"
  * after the colon, else the first line of the Piece section's own text
@@ -392,7 +395,13 @@ function packetWorks(notes, sectionRel) {
     if (seen.has(file)) continue;
     seen.add(file);
     let title = link.title.replace(/\s*complete course packet\s*/i, ' ').replace(/\s+/g, ' ').trim();
-    if (/syllabus|materials|course notes/i.test(title)) continue;
+    // A DOWNLOAD IN THIS LIST IS NOT AUTOMATICALLY A WORK. The same rule the
+    // Piece section itself is held to: repertoire only where the course NAMES a
+    // work. 3F's list carries "Here's the video review checklist" beside four
+    // real pieces, and it became a repertoire work called exactly that. It is
+    // still reachable — it is one of that section's own files — just not a
+    // piece in My repertoire.
+    if (NOT_A_PACKET_WORK.test(title)) continue;
     const parts = title.split(COMPOSER_SPLIT);
     if (parts.length === 2) title = `${parts[0].trim()} — ${parts[1].trim()}`;
     out.push({ key: `work-${slug(title)}`, title, file });
@@ -553,7 +562,19 @@ function scan(root, mediaPath, diagnostics) {
         // course gives it. Emitting a separate study entry would put the same
         // study in My repertoire twice.
         const { studies, skipped } = studiesFrom(notes);
-        if (skipped) diagnostics.push(`${code}: the Piece section names no single work ("${skipped}") — its own title is kept`);
+        if (skipped) {
+          // A COURSE ENTRY BECOMES REPERTOIRE ONLY WHERE THE COURSE NAMES A
+          // WORK. `strand: 'piece'` is exactly what makes an entry a full_piece
+          // and therefore a repertoire work, so a Piece section the course does
+          // not state a single work for may not keep it: it is practice on
+          // material named elsewhere, and its real works reach My repertoire as
+          // the packet works below. The KEY stays `piece` — keys are added,
+          // never renamed — and the section keeps its own title.
+          pieceEntry.unit.strand = 'other';
+          diagnostics.push(
+            `${code}: the Piece section names no single work ("${skipped}") — its own title is kept and it is practice material, not a repertoire work`,
+          );
+        }
         for (const w of packetWorks(notes, pieceEntry.unit.mediaPath)) works.push(w);
         if (studies.length) pieceEntry.unit.title = `${code} Piece — ${studies.join(' + ')}`;
       }

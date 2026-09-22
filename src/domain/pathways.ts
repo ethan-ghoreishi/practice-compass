@@ -7,6 +7,7 @@ import type {
   StepStrand,
 } from './types';
 import { catalogForStage } from './pathwaySeed';
+import { carriedCourseWorkItem } from './courseSeed';
 
 // ---------------------------------------------------------------------------
 // A pathway is now a *view over your items*: a stage contains the items you've
@@ -69,7 +70,12 @@ export function stageUnits(stage: PathwayStage, items: PracticeItem[]): StageUni
   const shown = new Set<string>();
 
   for (const e of catalog) {
-    const item = byCatalogKey.get(e.key);
+    // A work the course carries across levels is ONE item, wherever it was
+    // first added — so a later level shows it as ADDED rather than offering a
+    // suggestion whose "+" would silently hand back an item created elsewhere.
+    // Same resolution `planCatalogAddition` uses, so the row and the tap can
+    // never disagree.
+    const item = byCatalogKey.get(e.key) ?? carriedCourseWorkItem(stage.id, e.key, items);
     if (item) shown.add(item.id);
     units.push({
       key: e.key,

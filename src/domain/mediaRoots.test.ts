@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { deriveMediaRoot, knownSourceFolders, mediaRoot } from './mediaRoots';
+import { describeMediaRoot, deriveMediaRoot, knownSourceFolders, mediaRoot } from './mediaRoots';
+import { resolveRecording } from './recordings';
 
 // ---------------------------------------------------------------------------
 // ONE MEDIA ROOT PER DEVICE, DERIVED FROM THE ARCHIVE BASE THE OWNER ALREADY SET.
@@ -33,6 +34,33 @@ describe('the shared media root', () => {
     expect(deriveMediaRoot('')).toBeNull();
     expect(deriveMediaRoot('not a url at all ://')).toBeNull();
     expect(mediaRoot({ archiveBase: 'https://192.168.0.20:5010/' })).toBeNull();
+
+    // A MALFORMED BASE IS AN UNRECOGNISED BASE, NEVER A THROWN ERROR. A lone
+    // `%` is a legal URL path and an illegal escape: `decodeURIComponent('%')`
+    // raises a URIError, and this runs while Settings and every material row
+    // are DRAWING — `getMediaRoot()` is read in the same expression that
+    // resolves an ARCHIVE reference, so a base like this took the whole screen
+    // down with it, archive rows included.
+    for (const malformed of [
+      'https://nas.test/%',
+      'https://nas.test/setar-classes/%E0%A4%A',
+      'https://nas.test/%zz',
+    ]) {
+      expect(() => deriveMediaRoot(malformed)).not.toThrow();
+      expect(deriveMediaRoot(malformed)).toBeNull();
+      expect(() => describeMediaRoot({ archiveBase: malformed })).not.toThrow();
+    }
+    // A percent-ENCODED but well-formed source folder still derives, which is
+    // what the decode is there for in the first place.
+    expect(deriveMediaRoot('https://nas.test/media/setar%2Dclasses')).toBe('https://nas.test/media');
+
+    // And the archive itself is untouched by any of this: the same malformed
+    // string is simply a bad base for a reference too, reported and not thrown.
+    expect(resolveRecording(undefined, { path: 'session-1/x.mp4' }).status).toBe('no-base');
+    expect(resolveRecording('https://nas.test/setar-classes', { path: 'session-1/x.mp4' })).toEqual({
+      status: 'ok',
+      url: 'https://nas.test/setar-classes/session-1/x.mp4',
+    });
   });
 
   it('knows the folder each shipped source declares — the archive and every course', () => {

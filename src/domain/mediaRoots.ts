@@ -51,6 +51,23 @@ export function knownSourceFolders(): string[] {
 }
 
 /**
+ * A path segment as the folder it names. A MALFORMED %-ESCAPE IS NOT AN ERROR
+ * TO THROW AT A RENDER: `decodeURIComponent('%')` raises a URIError, and this
+ * runs while Settings and every material row are drawing — including rows for
+ * ARCHIVE references, whose base is read in the same expression. The segment is
+ * left exactly as given, so it simply matches no known source and the base
+ * yields no root, which is what an unrecognisable base means anyway. Same shape
+ * as `decodeSegments` in `recordings.ts`.
+ */
+function decodeSegment(seg: string): string {
+  try {
+    return decodeURIComponent(seg);
+  } catch {
+    return seg;
+  }
+}
+
+/**
  * The shared media root implied by the configured archive base: the base minus
  * its last segment, and only when that segment names a known source.
  *
@@ -68,7 +85,7 @@ export function deriveMediaRoot(archiveBase: string | undefined): string | null 
   }
   const segments = url.pathname.split('/').filter(Boolean);
   const last = segments[segments.length - 1];
-  if (!last || !knownSourceFolders().includes(decodeURIComponent(last))) return null;
+  if (!last || !knownSourceFolders().includes(decodeSegment(last))) return null;
   url.pathname = `/${segments.slice(0, -1).join('/')}`;
   return normalizeBaseUrl(url.toString());
 }

@@ -32,7 +32,7 @@ change and no migration**.
               01_e939830c-ddf.mp4  …
       tar-classes/
 
-Currently 18 levels (1A–3F), 212 sections, 688 addressable files, 61 named
+Currently 18 levels (1A–3F), 212 sections, 688 addressable files, 60 named
 packet works. The course itself continues to roughly 5F; see §5.
 
 ## 2. The scanner
@@ -92,6 +92,25 @@ Music lists, deduplicated by file, with the composer joined into the title
 not from the level, which is what makes a work carried forward across levels
 (Ferrer Ejercicio runs 2C–2F) one entry the owner adds once.
 
+**Where the course names NO single work, the section is not a work.** 3C
+("Excerpts + Fur Elise, Minuet in G, Red is the Rose") and 3F ("Repertoire +
+Video Review") are the two, and the scanner already knew it — it diagnosed the
+ambiguity and then kept the `piece` strand anyway, which is precisely what makes
+an entry a `full_piece` and therefore a repertoire work. It now emits
+`strand: 'other'` for those two: practice on material named elsewhere, with its
+real works reaching My repertoire as that section's own PACKET works. The KEY
+stays `piece` — keys are added, never renamed — and the section keeps its own
+title. The change is FORWARD-ONLY, as every catalogue change is: an item already
+created from 3C's entry keeps the `itemType` stored on it, because regenerating
+the course reaches an item's MATERIAL and never its stored fields.
+
+The same rule applies one level down, in the Sheet Music list itself: a download
+there is not automatically a work. 3F's list carries "Here's the video review
+checklist" beside four real pieces, and it became a repertoire work called
+exactly that. Aids — a syllabus, a materials list, course notes, a checklist —
+are skipped (`NOT_A_PACKET_WORK`), and they stay fully reachable as that
+section's own FILES. 60 named packet works, not 61.
+
 **Routines** come from `LEVEL_GUIDE.md`: Core (⭐, every session) → `essential:
 true`, Rotation A/B → not essential, Reference sections → not in the routine at
 all. Minutes are the midpoint of the guide's own range ("8–12 min" → 10).
@@ -132,9 +151,10 @@ rather than worked around silently.
 Two further diagnostics are genuine facts about the course, not scanner
 failures: 3C's and 3F's Piece sections name no single work ("Excerpts + Fur
 Elise, Minuet in G, Red is the Rose"; "Repertoire + Video Review"), so those
-sections keep their own titles rather than being given a fabricated study name;
-and `Level_2E/08_Sight_Reading/` has no `notes.md`, so its title and guidance are
-unavailable while its three PDFs still reach the app.
+sections keep their own titles rather than being given a fabricated study name,
+AND are emitted as practice material rather than repertoire works (see **Works**
+above); and `Level_2E/08_Sight_Reading/` has no `notes.md`, so its title and
+guidance are unavailable while its three PDFs still reach the app.
 
 ## 3. The generated data
 
@@ -161,7 +181,9 @@ machinery.
 * **Repertoire** follows from the strand alone, and `repertoire.ts` is
   unchanged: the level's own study and the packet works carry `strand: 'piece'`
   → `itemType: 'full_piece'` → `isWork`. Every drill, exercise, rhythm,
-  sight-reading and reading section does not.
+  sight-reading and reading section does not — and neither does a Piece section
+  the course names no single work for, which is why the scanner, not the app,
+  decides that (see **Works** in §2).
 * **Material is COMPOSED, never stored.** An item holds only the stage and the
   catalogue key it was created from; `itemFiles` reads its files out of the
   course data every time. So re-running the scanner after a course change
@@ -191,7 +213,16 @@ machinery.
 * **Any routine runs at a chosen total.** `fitRoutineToMinutes` scales
   proportionally and drops non-essential segments before essential ones. The
   authored length is the default, so doing nothing behaves exactly as before,
-  and duration stays independent of "Short on time".
+  and duration stays independent of "Short on time". The one-minute floor is a
+  REPAIR applied after the proportional split, never a minute reserved before
+  it: reserving one each and sharing out only the remainder distorted every
+  share for no reason (1:9 fitted to 20 came out 3:17 where 2:18 is both exact
+  and legal). `RoutineDuration` carries BOTH knobs — the total and its own
+  essentials-only tick — so "twenty minutes, essentials only" is one choice
+  rather than two controls that could never be used together, and what it drops
+  it names honestly: cutting far enough reaches the essential segments too, and
+  `describeFitDrop` (pure, tested) says so instead of calling every drop
+  non-essential.
 
 ## 5. Buying Levels 4A–5F later
 
@@ -222,10 +253,24 @@ reappears in a list — never in the pathway — and only if they choose it.
   needs confirming before anything is imported.
 * No content for levels the owner does not own — no placeholder stage,
   catalogue entry or routine exists for 4A–5F.
-* **Level 1A's items get no composed course material**, because its catalogue is
-  hand-authored and its keys do not map onto the course's section folders. That
-  is the price of keeping 1A byte-for-byte as the contract requires, and it is
-  the one known gap.
+* **One Level 1A step gets no composed course material**, and it is named rather
+  than guessed at. 1A's fourteen steps are hand-authored and their keys are
+  slugs of their own titles (`warm-up-stretches`), matching no course unit key
+  (`warm-up`) — so the level the owner STARTS from was the one level with no
+  material and, worse, the one level whose essentials 1B's "where I am" routine
+  carries forward and could therefore never bind. `COURSE_LEGACY_KEYS`
+  (`courseSeed.ts`, the hand-written reader — not the generated data) records
+  which course section each of those keys names, and BOTH the material
+  composition and the segment→item join read it. The keys themselves are
+  untouched, exactly as the scanner's own rule ADDS keys and never renames one;
+  every entry is asserted against the live catalogue in `courseSeed.test.ts`, so
+  a stale alias fails rather than quietly aliasing nothing. Many-to-one is
+  deliberate and is what the course itself says (Chunks and Thumb-chunks are
+  both the one Right Hand Technique section); where a routine segment must pick
+  ONE item it takes the first key in the list that has one. Thirteen of the
+  fourteen resolve. "Technique primer — What is Technique" does not, because no
+  course section clearly corresponds to it, and a guessed section's videos on a
+  real step is the same failure as a guessed BPM on a real section.
 * **An existing database keeps its old stage TITLES.** Stages are ordinary
   editable data the owner may have renamed, so nothing here rewrites one: a
   device seeded before this change still reads "1B · Arpeggios begin" rather
