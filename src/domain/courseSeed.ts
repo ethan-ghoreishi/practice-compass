@@ -285,6 +285,25 @@ function legacyKeysFor(stageId: string, unitKey: string): string[] {
 
 // --- composed material -------------------------------------------------------
 
+/** A packet work's own score, as one composed file. */
+function workFile(work: CourseWork): CourseFile[] {
+  return work.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
+}
+
+/** The files ONE catalogue entry of this course declares, and nothing else. */
+function entryFiles(
+  found: { course: CourseData; group: CourseGroup },
+  stageId: string,
+  catalogKey: string,
+): CourseFile[] {
+  const unit = found.group.units.find(
+    (u) => u.key === catalogKey || legacyKeysFor(stageId, u.key).includes(catalogKey),
+  );
+  if (unit) return unit.files;
+  const work = found.group.works.find((w) => w.key === catalogKey);
+  return work ? workFile(work) : [];
+}
+
 /**
  * The course files that belong to one catalogue entry — its section's videos,
  * scores, images and contrast-card folder, or a packet work's own score.
@@ -293,16 +312,49 @@ function legacyKeysFor(stageId: string, unitKey: string): string[] {
  * catalogue key it was created from; the files come from the course data every
  * time they are read, so regenerating that data reaches every item that already
  * exists and the owner never types a link.
+ *
+ * AND A WORK'S MATERIAL IS EVERY ENTRY THAT NAMES THAT WORK, NOT ONLY THE ONE
+ * THE ITEM HAPPENED TO BE CREATED FROM. `carriedCourseWorkItem` already makes
+ * one musical work ONE item however many entries name it — so composing from
+ * the item's own `stageId`/`catalogKey` alone made the material depend on
+ * WHICH entry was added first: take 2E's Carulli Valse section and 3F's packet
+ * score was unreachable from it; take the 3F packet entry first and 2E's own
+ * section material was. Identity governs here for the same reason it governs
+ * the tap, the row and the routine binding: the item is the work, so its
+ * material is the work's. The scan is deterministic — course order, units then
+ * works within a group — so both addition orders compose the SAME list, not
+ * merely the same set.
+ *
+ * Deduplication is by the file's OWN NAME, not by its path: the course ships a
+ * copy of one packet in each level's folder that names it (Ferrer Ejercicio
+ * runs 2C-2F), and four rows of one identical score is noise, not material.
+ * That is the same reading of a score's identity the scanner's own packet
+ * dedup and `courseSeed.test.ts`'s "one score is one key" already use.
+ *
+ * An ORDINARY per-stage key carries no identity at all — `chords` exists in
+ * every level — so it composes only its own section, exactly as before.
  */
 export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[] {
   const found = courseStage(stageId);
   if (!found) return [];
-  const unit = found.group.units.find(
-    (u) => u.key === catalogKey || legacyKeysFor(stageId, u.key).includes(catalogKey),
-  );
-  if (unit) return unit.files;
-  const work = found.group.works.find((w) => w.key === catalogKey);
-  return work?.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
+  const identity = courseWorkKey(found, stageId, catalogKey);
+  if (!identity) return entryFiles(found, stageId, catalogKey);
+
+  const out: CourseFile[] = [];
+  const seen = new Set<string>();
+  const take = (files: CourseFile[]) => {
+    for (const f of files) {
+      const name = f.path.split('/').pop() ?? f.path;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      out.push(f);
+    }
+  };
+  for (const group of found.course.groups) {
+    for (const u of group.units) if (u.workKey === identity) take(u.files);
+    for (const w of group.works) if ((w.workKey ?? w.key) === identity) take(workFile(w));
+  }
+  return out;
 }
 
 // --- routines ----------------------------------------------------------------

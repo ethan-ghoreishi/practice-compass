@@ -58,6 +58,37 @@ function added(stageId: string, catalogKey: string, over: Partial<PracticeItem> 
 
 type Pair = readonly [string, string];
 
+/** The files ONE catalogue entry declares in the generated data, read directly. */
+function declaredEntries([stageId, key]: Pair): Array<{ path: string; title: string }> {
+  const g = group(stageId.replace('cgs-', ''));
+  const unit = g.units.find((u) => u.key === key);
+  if (unit) return unit.files;
+  const work = g.works.find((w) => w.key === key);
+  return work?.file ? [{ path: work.file, title: work.title }] : [];
+}
+
+function declaredFiles(entry: Pair): string[] {
+  return declaredEntries(entry).map((f) => f.path);
+}
+
+/**
+ * Every repertoire identity this course names from MORE THAN ONE catalogue
+ * entry, read out of the generated data rather than written down here — the
+ * two declared aliases and every packet work the course carries across levels.
+ */
+function multiEntryIdentities(): Array<{ identity: string; entries: Pair[] }> {
+  const byIdentity = new Map<string, Pair[]>();
+  const push = (id: string, entry: Pair) => byIdentity.set(id, [...(byIdentity.get(id) ?? []), entry]);
+  for (const g of CGS_COURSE.groups) {
+    const stageId = courseStageId(CGS_COURSE, g.key);
+    for (const u of g.units) if (u.workKey) push(u.workKey, [stageId, u.key]);
+    for (const w of g.works) push(w.workKey ?? w.key, [stageId, w.key]);
+  }
+  return [...byIdentity]
+    .filter(([, entries]) => entries.length > 1)
+    .map(([identity, entries]) => ({ identity, entries }));
+}
+
 /** Taking a list of suggestions in order, through the real addition path. */
 function addAll(pairs: readonly Pair[]): PracticeItem[] {
   let db = { items: [] as PracticeItem[], materials: [] as Material[] };
@@ -214,11 +245,36 @@ describe('what a course entry becomes in My repertoire', () => {
       expect(
         buildPositionRoutine(CGS_COURSE, levelKey, [fromPacket]).some((seg) => seg.itemId === fromPacket.id),
       ).toBe(true);
+
+      // AND ITS MATERIAL IS THE WORK'S, NEVER THE ENTRY'S. Composing from the
+      // item's own stage and catalogue key alone made the files depend on
+      // WHICH entry created it — 2E's section material or 3F's score, never
+      // both — so the one item the identity rule produces was half a work
+      // whichever way round it was added. Both entries compose the IDENTICAL
+      // list, not merely the same set: the scan is course-ordered.
+      const studyFiles = courseFilesFor(study[0], study[1]);
+      expect(courseFilesFor(packet[0], packet[1]), `${study[1]} vs ${packet[1]}`).toEqual(studyFiles);
+      // It is a UNION, not one side quietly winning: the packet's own score is
+      // in it, and so is the section's own material.
+      const packetScore = group(packet[0].replace('cgs-', '')).works.find((w) => w.key === packet[1])!.file;
+      expect(studyFiles.map((f) => f.path), packet[1]).toContain(packetScore);
+      for (const f of group(study[0].replace('cgs-', '')).units.find((u) => u.key === 'piece')!.files) {
+        expect(studyFiles, f.path).toContainEqual(f);
+      }
+      // And the ONE item composes exactly that, whichever entry created it.
+      for (const items of [studyFirst, packetFirst]) {
+        const paths = itemFiles(dbWith(items), items[0].id).map((f) => (f as ItemFileReference).path);
+        expect(paths, `created from ${items[0].catalogKey}`).toEqual(studyFiles.map((f) => f.path));
+      }
     }
 
     // AN ORDINARY PER-STAGE KEY CARRIES NO IDENTITY, so nothing above leaks
     // into it: `chords` exists at every level and is never joined across them.
     expect(carriedCourseWorkItem(STAGE_1C, 'chords', [added(STAGE_1B, 'chords')])).toBeUndefined();
+    // — including for its MATERIAL, which is the half the widening above could
+    // have leaked into: 1C's chords section composes 1C's files and no other
+    // level's, because an ordinary per-stage key names no work at all.
+    expect(courseFilesFor(STAGE_1C, 'chords')).toEqual(group('1c').units.find((u) => u.key === 'chords')!.files);
 
     // The packet's own arm of the same rule, which holds today and is what a
     // level bought later could quietly break: one score is one key, so a
@@ -291,6 +347,80 @@ describe('a work carried forward across levels', () => {
     expect(fresh.created).toBe(true);
     expect(fresh.itemId).not.toBe('stranger');
     expect(stageUnits(stage(STAGE_2E), [stranger]).find((u) => u.key === CARRIED)?.item).toBeUndefined();
+  });
+
+  it('holds for EVERY identity this course names twice, in both addition orders', () => {
+    // THE SWEEP, NOT THE COUNTEREXAMPLE. The two declared aliases are the pair
+    // a reviewer happened to name; the course names nine more identities from
+    // more than one entry, and every one of them has the same two orders and
+    // the same four consumers. Enumerating them from the DATA rather than by
+    // hand is what makes a regenerated course — a fourth Ferrer level, a new
+    // alias — swept too, instead of silently falling outside a written list.
+    const sets = multiEntryIdentities();
+    expect(sets.map((x) => x.identity)).toEqual(
+      expect.arrayContaining(['work-carulli-valse-op-50-no-7', 'work-fernando-sor-etude-1-op-44']),
+    );
+    expect(sets.length).toBeGreaterThan(2);
+
+    for (const { identity, entries } of sets) {
+      // Every entry naming this work composes the SAME material — the work's,
+      // never the entry's. This is the half that was order-dependent.
+      const paths = courseFilesFor(...entries[0]).map((f) => f.path);
+      for (const e of entries) {
+        expect(courseFilesFor(...e).map((f) => f.path), `${identity} at ${e[0]}/${e[1]}`).toEqual(paths);
+      }
+      // And it is a UNION, not merely agreement: every entry's OWN declared
+      // files are in the one list all of them compose. Without this a
+      // regression that let the LAST matching entry win would still have every
+      // entry agreeing with every other and pass unnoticed. Compared by the
+      // file's NAME, which is the identity the dedup itself uses — the course
+      // ships one packet once per level that names it.
+      const names = new Set(paths.map((f) => f.split('/').pop()));
+      // AND THE DEDUP ONLY EVER COLLAPSES COPIES OF ONE FILE. Deduplicating by
+      // NAME is what keeps four identical Ferrer packets off one item, and the
+      // risk it carries is hiding a genuinely different file that happens to
+      // share a basename — so two candidates sharing one name must share a
+      // title too. Measured across the whole course: fifteen collapses, every
+      // one between identically-titled copies. A regenerated course that broke
+      // that fails here rather than silently losing a score.
+      const titlesByName = new Map<string, Set<string>>();
+      for (const e of entries) {
+        for (const f of declaredEntries(e)) {
+          const n = f.path.split('/').pop()!;
+          titlesByName.set(n, (titlesByName.get(n) ?? new Set()).add(f.title));
+        }
+      }
+      for (const [n, titles] of titlesByName) expect([...titles], `${identity}: ${n}`).toHaveLength(1);
+
+      for (const e of entries) {
+        const own = declaredFiles(e);
+        expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
+        for (const f of own) expect([...names], `${identity}: ${e[0]}/${e[1]}`).toContain(f.split('/').pop());
+      }
+
+      const first = entries[0];
+      const last = entries[entries.length - 1];
+      for (const order of [[first, last], [last, first]] as const) {
+        const why = `${identity}: ${order[0][1]} then ${order[1][1]}`;
+        const items = addAll(order);
+        expect(items, why).toHaveLength(1);
+        expect(repertoireWorks(items), why).toHaveLength(1);
+        // ONE item, and the WHOLE work's material on it either way round.
+        expect(itemFiles(dbWith(items), items[0].id).map((f) => (f as ItemFileReference).path), why).toEqual(paths);
+        // Every level that names it shows that item as added, and no tap there
+        // claims to have created it — so no Undo can reach it.
+        for (const [stageId, key] of entries) {
+          expect(stageUnits(stage(stageId), items).find((u) => u.key === key)?.item?.id, `${why} @ ${stageId}`).toBe(
+            items[0].id,
+          );
+          const entry = catalogForStage(stageId).find((e) => e.key === key);
+          expect(
+            planCatalogAddition({ items, materials: [] }, stageId, key, entry, 'g', NOW).created,
+            `${why} @ ${stageId}`,
+          ).toBe(false);
+        }
+      }
+    }
   });
 
   it('still creates it the first time, and never reuses across an ordinary per-stage key', () => {

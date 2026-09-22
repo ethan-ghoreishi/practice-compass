@@ -2488,6 +2488,38 @@ OPENED where it lives, exactly like a class recording, and the contrast-card dec
 (1663 images) are ONE folder reference — never a viewer, a flashcard player or a
 deck-by-deck list.
 
+**AND A WORK'S MATERIAL IS THE WORK'S, NOT THE ENTRY'S — WHICH IS THE SAME
+IDENTITY, READ ONE SURFACE FURTHER ON.** `carriedCourseWorkItem` already makes
+one musical work ONE item however many entries name it, and `courseFilesFor`
+then composed from the item's own `stageId`/`catalogKey` alone — so the material
+depended on WHICH entry the owner happened to add FIRST. Take 2E's Carulli Valse
+section and 3F's packet score was unreachable from the item; take 3F's packet
+entry first and 2E's own section material was. Half a work either way round, on
+the one item the identity rule exists to produce. `courseFilesFor` resolves
+`courseWorkKey` FIRST and, where there is one, composes the files of EVERY entry
+in that course naming that work — course order, units then works within a group
+— so both addition orders compose the same LIST, not merely the same set. An
+ORDINARY per-stage key carries no identity at all, so `chords` still composes
+only its own section and nothing widens with it. Deduplication is by the file's
+own NAME rather than its path, because the course ships a copy of one packet in
+each level's folder that names it (Ferrer Ejercicio runs 2C-2F) and four rows of
+one identical score is noise, not material — the same reading of a score's
+identity the scanner's packet dedup already uses, and held to collapsing COPIES
+ONLY: two candidates sharing a name must share a title, asserted per identity
+(measured across the whole course: fifteen collapses, every one between
+identically-titled copies of one packet), so a regenerated course that introduced
+a genuine basename collision fails rather than silently losing a score. The item's own provenance is
+NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
+created them as, which is what keeps an Undo and the row's "−" bounded to the
+stage that actually created the item, and nothing new is persisted. Its TITLE
+and its Working notes still come from the entry that created it, deliberately:
+a renamed item keeps its name on every row, and regeneration reaches an item's
+material and never the notebook. `courseSeed.test.ts` sweeps EVERY identity the
+course names from more than one entry — enumerated from the generated data, not
+a written list, so a regenerated course is swept too — in both addition orders,
+for identity, composed material, stage presentation, routine binding and the
+`created: false` that keeps Undo away from an item this tap did not make.
+
 **ONE MEDIA ROOT PER DEVICE, DERIVED — NOT A SECOND BASE AND NOT A RESOLVER
 FALLBACK.** The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
 `tar-classes/` side by side, so the configured archive base is exactly

@@ -107,8 +107,9 @@ reaches an item's MATERIAL and never its stored fields.
 The section and the packet are two entries the course can name one piece by, so
 each entry that is a work carries a `workKey` — its repertoire IDENTITY, separate
 from its catalogue key. `courseWorkKey` (`courseSeed.ts`) is the one resolution
-every surface reads — the tap, the stage row and the routine binding — so they can
-never disagree, and the owner takes a work at the level they actually meet it.
+every surface reads — the tap, the stage row, the routine binding and the item's
+composed MATERIAL — so they can never disagree, and the owner takes a work at the
+level they actually meet it.
 
 | entry | identity |
 |---|---|
@@ -231,6 +232,27 @@ machinery.
   reaches every item that already exists, and the owner never types a link.
   **No bytes enter the app**: a course file is opened where it lives, exactly
   like a class recording.
+  * **A work's material is the WORK's, not the entry's.** Composed from the
+    item's own stage and catalogue key alone, the files depended on which entry
+    the owner added FIRST: take 2E's Carulli Valse section and 3F's packet score
+    was unreachable from the item; take 3F's packet entry first and 2E's own
+    section material was — half a work either way, on the one item the identity
+    rule exists to produce. `courseFilesFor` resolves `courseWorkKey` first and,
+    where there is one, composes the files of EVERY entry in that course naming
+    that work, in course order (units then works within a group), so both
+    addition orders compose the same LIST and not merely the same set. An
+    ordinary per-stage key carries no identity, so `chords` still composes only
+    its own section. Files are deduplicated by their own NAME rather than their
+    path, because the course ships a copy of one packet in each level's folder
+    that names it (Ferrer Ejercicio runs 2C–2F) — the same reading of a score's
+    identity `packetWorks` already uses, held to collapsing COPIES ONLY: two
+    candidates sharing a name must share a title (measured: fifteen collapses
+    across the course, every one between identically-titled copies). The item's provenance is NOT rewritten
+    to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
+    which is what keeps Undo and the row's "−" bounded to the stage that created
+    the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every
+    identity the course names from more than one entry — enumerated from the
+    generated data rather than a written list — in both addition orders.
   * **That claim is bounded to MATERIAL.** A section's guidance, its BPM line
     and its checklist are written into the item's own Working notes ONCE, at
     creation, by `itemFromCatalogEntry` — the same as every other catalogue
