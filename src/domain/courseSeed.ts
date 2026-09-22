@@ -1,5 +1,6 @@
 import { createItem, createMaterial, itemFromCatalogEntry } from './factories';
 import { CGS_CHECKLISTS, CGS_COURSE } from './courseData';
+import { KHONYAGAR_COURSE } from './khonyagarData';
 import type {
   CatalogEntry,
   ID,
@@ -58,6 +59,13 @@ export interface CourseUnit {
    * stays `piece`. Absent on every section that is not one work.
    */
   workKey?: string;
+  /**
+   * The WORK's own name, where this section is one part (or a performance) of
+   * a work taught across several sections. An item created from ANY of them is
+   * titled with it, so the work never enters My repertoire under a part's or a
+   * performance's label. Absent on every CGS section.
+   */
+  workTitle?: string;
   mediaPath: string;
   files: CourseFile[];
   guidance?: string;
@@ -90,6 +98,16 @@ export interface CourseWork {
    * carried across levels under one title.
    */
   workKey?: string;
+  /**
+   * A work's own files, where it is more than one score — a work taught inside
+   * a mixed section carries exactly its own lessons' videos. Absent on every
+   * CGS work, whose material stays its single packet `file`.
+   */
+  files?: CourseFile[];
+  /** The work's own practice guidance. Absent ⇒ the CGS packet note. */
+  guidance?: string;
+  /** The work's repertoire strand. Absent ⇒ `piece`. */
+  strand?: StepStrand;
 }
 
 export interface CourseRoutineSegment {
@@ -126,7 +144,7 @@ export interface CourseData {
 }
 
 /** Every course the app ships data for. A second course is a second entry. */
-export const COURSES: CourseData[] = [CGS_COURSE];
+export const COURSES: CourseData[] = [CGS_COURSE, KHONYAGAR_COURSE];
 
 /** Stage ids are deterministic and byte-identical to `stageIdFor(pathwayId, code)`. */
 export function courseStageId(course: CourseData, groupKey: string): string {
@@ -224,9 +242,9 @@ export function courseStageSeeds(course: CourseData, skipCodes: string[] = []): 
         ...g.works.map((w) => ({
           key: w.key,
           title: w.title,
-          strand: 'piece' as StepStrand,
+          strand: w.strand ?? ('piece' as StepStrand),
           kind: 'piece' as StepKind,
-          notes: WORK_NOTE(g.code),
+          notes: w.guidance ?? WORK_NOTE(g.code),
         })),
       ],
     }));
@@ -285,9 +303,9 @@ function legacyKeysFor(stageId: string, unitKey: string): string[] {
 
 // --- composed material -------------------------------------------------------
 
-/** A packet work's own score, as one composed file. */
+/** A work's own files — a packet work's one score, or the lessons a work row declares. */
 function workFile(work: CourseWork): CourseFile[] {
-  return work.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : [];
+  return work.files ?? (work.file ? [{ path: work.file, kind: 'pdf', title: work.title }] : []);
 }
 
 /** The files ONE catalogue entry of this course declares, and nothing else. */
@@ -601,9 +619,13 @@ export function planCatalogAddition(
   }
 
   const found = courseStage(stageId);
-  const base = entry
+  const created = entry
     ? itemFromCatalogEntry(entry, instrumentId, now)
     : createItem({ instrumentId, title: 'New item', stageId }, now);
+  // A section that is one part of a work is created as THE WORK: whichever of
+  // its sections is added first, the item is titled with the work's own name.
+  const workTitle = found?.group.units.find((u) => u.key === entryKey)?.workTitle;
+  const base = workTitle ? { ...created, title: workTitle } : created;
 
   if (!found) return { items: [...db.items, base], materials: db.materials, itemId: base.id, created: true };
 

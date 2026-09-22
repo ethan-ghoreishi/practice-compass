@@ -2603,7 +2603,10 @@ starts the run ITSELF before navigating — `startRoutineRun` already takes its
 segments from the caller and the runner freezes whatever it is given, so fitting
 needs no runner change at all. `RoutineRunner.tsx` is untouched.
 
-**A STAGE OFFERS TWO ROUTINES AND BOTH ARE ORDINARY EDITABLE DATA.** "Use this
+**A STAGE OF A COURSE THAT SHIPS A ROUTINE OFFERS TWO, AND BOTH ARE ORDINARY
+EDITABLE DATA.** That is every Guitar level. A course stage whose `routine` is
+empty (every Khonyagar stage — see its own section below) offers neither button and
+no caption for them; the owner can still write a routine by hand. "Use this
 level's routine" is the syllabus's own; "Build one for where I am"
 (`buildPositionRoutine`) is the PREVIOUS level's essential segments — the
 maintenance the syllabus itself carries forward — followed by only the segments of
@@ -2648,6 +2651,79 @@ materials array when nothing was minted, so a second course item can never creat
 duplicate "Classical Guitar Shed" study source. `addFromCatalog` keeps its contract
 otherwise: a catalogue item still arrives `status: 'new'` with zero statistics and
 stays losslessly removable.
+
+## The Khonyagar Tar course is a second entry in `COURSES`
+
+The owner's complete Khonyagar course («تار – آزاد میرزاپور (خنیاگر)»: 259 lesson
+videos, a 106-section index, four score books) is the SECOND course, read by
+`scripts/scan-khonyagar-course.mjs` into `src/domain/khonyagarData.ts` and presented
+as a new `tar-khonyagar` pathway BESIDE `tar-honarestan`, which is untouched.
+Everything in "A COURSE is reference data in code" above applies unchanged; this
+section records only what differs. `docs/khonyagar-course.md` is the runbook, the
+authored tables' evidence and the open questions.
+
+**A STORED PATH IS THE REAL FILENAME, NFC-NORMALISED — THE FORM THE NAS SERVES.**
+78 of the 259 filenames are decomposed on the local disk, and the decomposed name
+404s from the NAS while the composed one plays. A path in NFD looks right in the
+repository and in any local listing and opens nothing, so the scanner normalises
+every name BEFORE it becomes a path and a test holds every committed path to NFC.
+The displayed title is the INDEX title with whitespace collapsed, which is why two
+different files (lessons 148 and 149) share one title — deduplication stays by path.
+
+**WORK IDENTITY LIVES AT THE LESSON, NOT THE SECTION.** Works are taught inside
+sections about something else (پیش‌درآمد ابوعطا is lessons 124–125, in two exercise
+sections), and one section can teach two (section 17). The scanner's work table
+records each work by the LESSONS that teach it: a section all of whose lessons teach
+one work IS that work (it keeps its `sNNN` key and carries `workKey` and
+`workTitle`); a work taught inside a mixed section is its own `CourseWork` row
+carrying exactly its own lessons (`files`); a mixed section is no work and never
+carries a repertoire strand. A lesson belongs to a work only when its own index title
+names that piece or gusheh. Nothing is joined on a title, a ZWNJ or a space, and two
+works that share a name stay two; the ambiguous pairs are `diagnostics` for the
+owner, because a false split is a visible duplicate an alias can later join and a
+false merge destroys a record.
+
+**A WORK KEY IS `w` PLUS ITS ANCHOR LESSON, WRITTEN AS A LITERAL, AND NEVER CHANGES
+MEANING AFTER IT SHIPS.** Positional numbering would silently move an owner's item
+onto a different work on the first reorder. A work ROW's key is the item's
+`catalogKey`, so a shipped row is never removed (a later merge is an alias on it); a
+work that IS a section may later be pointed at another identity through its
+`workKey`, because the item holds `sNNN`. A section never moves stage. Literal
+ledgers in `khonyagarCourse.test.ts` — never derived from the data — fail if any of
+this breaks.
+
+**WHERE A MULTI-SECTION WORK IS ADDED FROM DOES NOT DECIDE WHAT IT IS CALLED.**
+`planCatalogAddition` titles an item created from a section carrying `workTitle` with
+the WORK's name, so a performance («اجرای …») or a part («… بخش سوم») added first
+never enters My repertoire under its own label; `stageUnits` already shows the item's
+title on every row of that work. This is the one creation-time change, and CGS sets
+no `workTitle`.
+
+**THE FOUR OPTIONAL FIELDS ARE ABSENT FROM EVERY CGS ENTRY.** `CourseWork.files`,
+`CourseWork.guidance`, `CourseWork.strand` and `CourseUnit.workTitle` default to
+exactly what CGS did before — a single packet PDF, the English practice-packet
+note, the `piece` strand — so CGS output is byte-identical, and a fingerprint of
+every Guitar and Honarestān stage, entry, routine and created title captured BEFORE
+this change holds that closed.
+
+**IT SHIPS NO ROUTINE, AND THE SESSION PLAN IS NOT THE GUIDE.** The course's own
+guide shapes a day by BLOCKS around the one current lesson (warm-up, technique,
+today's lesson, review, cool-down), where Khonyagar's sections are sequential lessons
+rather than CGS's concurrent strands; a section-per-segment routine fitted to 30
+minutes would drop the newest sections first and mark a whole stage practised in one
+run. So every stage has `routine: []` and StageDetail's caption takes the same
+`routine.length > 0` condition as its two buttons. The guide reaches the owner as
+TEXT, quoted as written: its daily template and Quick Win in the pathway note, and
+its paragraph for each lesson type in every section's and work's Working notes. The
+unchanged Session Plan is the nearest existing tool — warm-up first and cool-down last
+only when an item qualifies, the middle by PRIORITY rather than the guide's block
+order, minutes by its own weights — and nothing in this app may claim it follows the
+guide. Changing that would change every instrument's plan and is a separate decision.
+
+**THE DATED TEACHER FOLDERS UNDER `tar-classes/` ARE NOT THIS COURSE.** Their names,
+dates and even instrument (one carries a Setar primer) are unresolved in the source
+itself; they belong to class logging and the archive pipeline once normalised, and
+this course creates no `Lesson` record.
 
 ## Review scheduling stays explainable
 

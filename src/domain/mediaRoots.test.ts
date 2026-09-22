@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { describeMediaRoot, deriveMediaRoot, knownSourceFolders, mediaRoot } from './mediaRoots';
 import { resolveRecording } from './recordings';
+import { COURSES } from './courseSeed';
+import { KHONYAGAR_COURSE } from './khonyagarData';
 
 // ---------------------------------------------------------------------------
 // ONE MEDIA ROOT PER DEVICE, DERIVED FROM THE ARCHIVE BASE THE OWNER ALREADY SET.
@@ -64,7 +66,35 @@ describe('the shared media root', () => {
   });
 
   it('knows the folder each shipped source declares — the archive and every course', () => {
-    expect(knownSourceFolders()).toEqual(['setar-classes', 'classical-guitar']);
+    expect(knownSourceFolders()).toEqual(['setar-classes', 'classical-guitar', 'tar-classes']);
     expect(deriveMediaRoot('https://nas.example/media/classical-guitar')).toBe('https://nas.example/media');
+  });
+
+  it('registers tar-classes as a known source folder without changing the archive base', () => {
+    // DERIVED FROM THE COURSE'S OWN `mediaPath`, never a second list: the
+    // folder is known because the Khonyagar course declares it.
+    expect(KHONYAGAR_COURSE.mediaPath).toBe('tar-classes/khonyagar-mirzapour');
+    expect(COURSES).toContain(KHONYAGAR_COURSE);
+    expect(knownSourceFolders()).toContain('tar-classes');
+    expect(knownSourceFolders()[0]).toBe('setar-classes');
+
+    // The archive base the owner already set keeps its value and its meaning:
+    // the same media root on both devices, the same Setar reference URL.
+    expect(deriveMediaRoot(MAC_ARCHIVE_BASE)).toBe('https://192.168.0.20:5010');
+    expect(deriveMediaRoot(PHONE_ARCHIVE_BASE)).toBe('https://ds220plus.taild1d1f7.ts.net/media');
+    expect(resolveRecording(MAC_ARCHIVE_BASE, { path: 'session-1/x.mp4' })).toEqual({
+      status: 'ok',
+      url: 'https://192.168.0.20:5010/setar-classes/session-1/x.mp4',
+    });
+
+    // And a Khonyagar lesson opens under that SAME root on both routes, with no
+    // new device setting: `tar-classes` sits beside `setar-classes`.
+    const lesson = KHONYAGAR_COURSE.groups[0].units[0].files[0];
+    for (const base of [MAC_ARCHIVE_BASE, PHONE_ARCHIVE_BASE]) {
+      const root = mediaRoot({ archiveBase: base })!;
+      const res = resolveRecording(root, { path: lesson.path });
+      expect(res.status).toBe('ok');
+      expect(res.status === 'ok' && res.url.startsWith(`${root}/tar-classes/khonyagar-mirzapour/`)).toBe(true);
+    }
   });
 });

@@ -30,7 +30,8 @@ function itemIn(stageId: string, catalogKey: string | undefined, o: Partial<Prac
 
 describe('seeded pathways & catalog', () => {
   it('seeds Guitar, Setar and Tar with stages and routines (no persisted steps)', () => {
-    expect(seed.pathways).toHaveLength(3);
+    // Setar, Tar (Honarestān), Guitar — and the Khonyagar Tar course appended.
+    expect(seed.pathways.map((p) => p.id)).toEqual(['setar-radif', 'tar-honarestan', 'cgs', 'tar-khonyagar']);
     expect(seed.pathwayStages.length).toBeGreaterThan(30);
     expect(seed.pathwayRoutines.length).toBeGreaterThan(0);
   });
