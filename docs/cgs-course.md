@@ -32,7 +32,7 @@ change and no migration**.
               01_e939830c-ddf.mp4  …
       tar-classes/
 
-Currently 18 levels (1A–3F), 212 sections, 688 addressable files, 60 named
+Currently 18 levels (1A–3F), 212 sections, 688 addressable files, 59 named
 packet works. The course itself continues to roughly 5F; see §5.
 
 ## 2. The scanner
@@ -84,57 +84,74 @@ name. A section holding sub-folders (the contrast-card decks) is ONE folder
 reference to the section itself — never a deck-by-deck list, and never a viewer.
 
 **Works.** A level's own STUDY is its Piece section itself: the section keeps
-its `piece` key and gains the real name the course gives it ("1B Piece — Study
-#1", from the H1 after a colon, else the first line of the section's own text).
-The **packet works** come from the section's own Sheet Music lists, deduplicated
-by file, with the composer joined into the title ("Fernando Sor — Opus 35,
-no.1"). A packet work's key is derived from the WORK, not from the level, which
-is what makes a work carried forward across levels (Ferrer Ejercicio runs
-2C–2F) one entry the owner adds once.
+its `piece` key and its `piece` strand and gains the real name the course gives
+it ("1B Piece — Study #1", from the H1 after a colon, else the first line of the
+section's own text). The **packet works** come from the section's own Sheet
+Music lists, deduplicated by file, with the composer joined into the title
+("Fernando Sor — Opus 35, no.1").
 
-**ONE WORK REACHES MY REPERTOIRE ONCE.** `strand: 'piece'` is precisely what
-makes an entry a `full_piece` and therefore a repertoire work, and the section
-and the packet were two independent ways to earn it — so a piece the course
-names BOTH ways became two items. The section keeps `piece` only where it is the
-course's only naming of a work at that level. Three ways it is not:
+**Where the course names NO single work — or more than one — the section is not
+a work.** 3C ("Excerpts + Fur Elise, Minuet in G, Red is the Rose") and 3F
+("Repertoire + Video Review") name none; 3A ("Tarrega Study in C + Canon in D")
+names two, and two works cannot be one repertoire item while the packet already
+offers each of them separately. All three emit `strand: 'other'` — practice on
+material named elsewhere, with their real works reaching My repertoire as that
+section's own packet works. The KEY stays `piece` in every case — keys are added,
+never renamed — and the section keeps its own title and every file it reaches.
+The change is FORWARD-ONLY, as every catalogue change is: an item already created
+from that entry keeps the `itemType` stored on it, because regenerating the course
+reaches an item's MATERIAL and never its stored fields.
 
-| shape | level | what it was |
-|---|---|---|
-| names no single work | 3C "Excerpts + Fur Elise, Minuet in G, Red is the Rose"; 3F "Repertoire + Video Review" | diagnosed, then kept `piece` anyway |
-| names more than one | 3A "Tarrega Study in C + Canon in D" | `studiesFrom` split them; the section rejoined them into one item, while the packet already offered each |
-| the level names packet works | 3B beside `work-lecuona-malaguena` (one score, two items); 2E's Valse beside 3F's `work-carulli-valse-op-50-no-7-1` (a level apart, no shared file) | the packet is where the course names its pieces |
+### One musical work is one repertoire item
 
-3D ("Lesson for Two Lutes") and 3E ("Chester") name no packet work at all, so
-their own section IS the level's work and keeps the whole section's material.
+The section and the packet are two entries the course can name one piece by, so
+each entry that is a work carries a `workKey` — its repertoire IDENTITY, separate
+from its catalogue key. `courseWorkKey` (`courseSeed.ts`) is the one resolution
+every surface reads — the tap, the stage row and the routine binding — so they can
+never disagree, and the owner takes a work at the level they actually meet it.
 
-**The cross-level case is why this is structural and not a name match.** There
-is no file to compare, so joining those two could only be done by matching
-"Malagueña by Lecuona" to "Lecuona Malaguena" and "Fernando Sor Etude #1
-Op.44" to "Sor Etude No.1 op 44 Practice Packet" — fuzz whose false positive
-merges two genuinely different works into one repertoire item and destroys the
-owner's record. `AGENTS.md` refuses exactly this shape for the Setar archive's
-own path repair. The measured
-cost is stated instead of hidden: where the course ships packet works but not
-the study's own score (2C's "Study #8", 2E's Valse), that study reaches My
-repertoire only at the level whose packet names it, and its section is an
-ordinary practice item with all of its material.
+| entry | identity |
+|---|---|
+| a packet work | its own key, derived from the WORK — which is what already joins Ferrer Ejercicio across 2C–2F under one title |
+| a Piece section naming ONE study | that study's key (`unit.workKey`), while its catalogue key stays `piece` |
+| a packet entry that IS an earlier level's study | that study's key, declared in `WORK_ALIASES` |
+| anything else (`chords`, `scales`, …) | none — so an ordinary per-stage key is never joined across levels |
 
-In every case the KEY stays `piece` — keys are added, never renamed — and the
-section keeps its own title and every file it reaches. The change is
-FORWARD-ONLY, as every catalogue change is: an item already created from that
-entry keeps the `itemType` stored on it, because regenerating the course reaches
-an item's MATERIAL and never its stored fields.
+`WORK_ALIASES` is three lines, and the course itself states each pair: 3B's "Full
+course: Malagueña by Ernesto Lecuona" beside its single sheet entry (dropped
+outright rather than aliased — the section is already that work at that very
+level); 2E's "Full course: Carulli's Valse, Opus 50, Number 7", whose score exists
+ONLY in 3F's folder and which 3F re-lists under "Recommended pieces"; and 2F's
+"Full course: Fernando Sor, Etude #1, Opus 44", re-listed by 3F the same way.
+
+**Why it is declared and not matched.** The cross-level pairs share no file at all,
+so a match would have to join "Malagueña by Lecuona" to "Lecuona Malaguena" and
+"Fernando Sor Etude #1 Op.44" to "Sor Etude No.1 op 44 Practice Packet" — token
+fuzz whose false positive merges two genuinely different works into one repertoire
+item and destroys the owner's record. `AGENTS.md` refuses exactly this shape for
+the Setar archive's own path repair. The curation is verified AT SCAN TIME and a
+stale entry — naming a packet work the course no longer has, or pointing at a key
+that is no level's study — HARD-FAILS the scan; what `courseSeed.test.ts` holds is
+the OUTCOME, that each of the three pairs resolves to one repertoire item in either
+addition order.
+
+**Why the table is three lines and not sixty.** Studies #1–#9 (1B–2D) each carry
+their OWN score image inside their section ("Study #4 page 1"), and those sections'
+sheet lists are the course's alternatives — 2B labels its list "Other appropriate
+pieces" in so many words. "Allen Mathews — Small Etude #1" is not Study #1, and
+aliasing them would be the false merge this rule exists to prevent. Only the six
+"Full course: X" sections (2E, 2F, 3A, 3B, 3D, 3E) have no study sheet of their own,
+and only three of those are named again elsewhere.
 
 The same rule applies one level down, in the Sheet Music list itself: a download
 there is not automatically a work. 3F's list carries "Here's the video review
 checklist" beside four real pieces, and it became a repertoire work called
 exactly that. Aids — a syllabus, a materials list, course notes, a checklist —
 are skipped (`NOT_A_PACKET_WORK`), and they stay fully reachable as that
-section's own FILES. 60 named packet works, not 61. That filter's `^click here`
-is LOAD-BEARING rather than tidiness: 3D and 3E name their study's own score as
-an instruction ("Click here for the materials for Chester."), and admitting one
-as a work would both mint a repertoire item called "Click here…" and demote the
-section that is the real work.
+section's own FILES. That filter's `^click here` is LOAD-BEARING rather than
+tidiness: 3D and 3E name their study's own score as an instruction ("Click here
+for the materials for Chester."), and admitting one as a work would mint a
+repertoire item called "Click here…" beside the section that is the real work.
 
 **Routines** come from `LEVEL_GUIDE.md`: Core (⭐, every session) → `essential:
 true`, Rotation A/B → not essential, Reference sections → not in the routine at
@@ -173,11 +190,11 @@ rather than worked around silently.
    against ground truth — 1A's three positioned values (rhythm 80, sight-reading
    70, piece 60) reproduce the hand-authored seed exactly.
 
-The remaining diagnostics are genuine facts about the course, not scanner
-failures. Fifteen levels report that their Piece section is practice material
-rather than a repertoire work, each naming which of the three shapes above it is
-(see **Works**); `Level_2E/08_Sight_Reading/` has no `notes.md`, so its title and
-guidance are unavailable while its three PDFs still reach the app.
+Three further diagnostics are genuine facts about the course, not scanner
+failures: 3C's and 3F's Piece sections name no single work and 3A's names two, so
+all three are practice material rather than repertoire works (see **Works**); and
+`Level_2E/08_Sight_Reading/` has no `notes.md`, so its title and guidance are
+unavailable while its three PDFs still reach the app.
 
 ## 3. The generated data
 
@@ -202,12 +219,12 @@ machinery.
   byte; every other level is the course's own sections plus its named packet
   works.
 * **Repertoire** follows from the strand alone, and `repertoire.ts` is
-  unchanged: whatever carries `strand: 'piece'` becomes
-  `itemType: 'full_piece'` → `isWork`. Each of a level's pieces earns that
-  exactly once — as the named packet work where the course names one, else as
-  the Piece section itself. Every drill, exercise, rhythm, sight-reading and
-  reading section does not. The scanner, not the app, decides this (see
-  **Works** in §2).
+  unchanged: the level's own study and the packet works carry `strand: 'piece'`
+  → `itemType: 'full_piece'` → `isWork`. Every drill, exercise, rhythm,
+  sight-reading and reading section does not — and neither does a Piece section
+  the course names no single work, or more than one, for. One musical work is
+  one repertoire ITEM however many entries name it (`workKey`). The scanner, not
+  the app, decides all of this (see **Works** in §2).
 * **Material is COMPOSED, never stored.** An item holds only the stage and the
   catalogue key it was created from; `itemFiles` reads its files out of the
   course data every time. So re-running the scanner after a course change

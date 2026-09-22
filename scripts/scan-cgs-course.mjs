@@ -386,6 +386,48 @@ function studiesFrom(notes) {
   return { studies: cleaned.split(' + ').map((s) => s.trim()).filter(Boolean), skipped: null };
 }
 
+/**
+ * A PACKET ENTRY THAT IS A LEVEL'S OWN STUDY UNDER ANOTHER NAME.
+ *
+ * One musical work must be ONE repertoire item, and a work's identity is
+ * normally its own key (`work-<slug of the title>`), which already joins a work
+ * the course carries across levels — Ferrer Ejercicio is titled identically in
+ * 2C–2F, so it slugs identically. Three pairs are the same work under two
+ * different names, and nothing in the archive joins them: 2E's study has no
+ * score in its own folder at all (the only copy sits in 3F's), so there is not
+ * even a file to compare.
+ *
+ * Matching them by NAME is what this table exists to avoid. It would have to
+ * join "Malagueña by Lecuona" to "Lecuona Malaguena" and "Fernando Sor Etude #1
+ * Op.44" to "Sor Etude No.1 op 44 Practice Packet" — token fuzz whose false
+ * positive merges two genuinely different works into one repertoire item and
+ * destroys the owner's own record. So identity is DECLARED, from the course's
+ * own words, and verified here rather than guessed at run time.
+ *
+ * Every pair below is stated by the course itself:
+ *
+ *  • 3B `notes.md`: "Full course: Malagueña by Ernesto Lecuona", and the
+ *    section's single sheet entry is that course's packet.
+ *  • 2E: "Full course: Carulli's Valse, Opus 50, Number 7 … you'll find the
+ *    practice packet in your Level 2E materials", and 3F re-lists it under
+ *    "Recommended pieces: Carulli – Valse Op.50 No.7", holding the packet.
+ *  • 2F: "Full course: Fernando Sor, Etude #1, Opus 44", re-listed by 3F as
+ *    "Sor – Etude #1 Op.44".
+ *
+ * NOT aliased, deliberately: Studies #1–#9 (1B–2D) each carry their OWN score
+ * image in their section ("Study #4 page 1"), and their sheet lists are the
+ * course's alternatives — 2B labels its list "Other appropriate pieces" in so
+ * many words. "Allen Mathews — Small Etude #1" is not Study #1.
+ *
+ * A stale entry FAILS the scan rather than aliasing nothing, so a course change
+ * that moves one of these has to be looked at rather than silently duplicating.
+ */
+const WORK_ALIASES = {
+  'work-lecuona-malaguena': 'work-malaguena-by-lecuona',
+  'work-carulli-valse-op-50-no-7-1': 'work-carulli-valse-op-50-no-7',
+  'work-sor-etude-no-1-op-44-practice-packet': 'work-fernando-sor-etude-1-op-44',
+};
+
 const COMPOSER_SPLIT = /\s+[–—-]\s+/;
 
 /**
@@ -435,6 +477,7 @@ function scan(root, mediaPath, diagnostics) {
   if (levels.length === 0) throw new Error(`no Level_* folders under ${root}`);
   const groups = [];
   const checklists = new Map();
+  const aliasesUsed = new Set();
 
   for (const levelDir of levels) {
     const code = levelDir.replace(/^Level_/i, '');
@@ -567,48 +610,47 @@ function scan(root, mediaPath, diagnostics) {
       if (fs.existsSync(notesPath)) {
         const notes = readNotes(fs.readFileSync(notesPath, 'utf8'));
         const { studies, skipped } = studiesFrom(notes);
-        for (const w of packetWorks(notes, pieceEntry.unit.mediaPath)) works.push(w);
         if (studies.length) pieceEntry.unit.title = `${code} Piece — ${studies.join(' + ')}`;
 
-        // ONE WORK REACHES MY REPERTOIRE ONCE, UNDER THE NAME THE COURSE GIVES
-        // IT. `strand: 'piece'` is exactly what makes an entry a `full_piece`
-        // and therefore a repertoire work, so the Piece SECTION may keep it
-        // only where it is the course's ONLY naming of a work at this level.
-        // Three ways it is not, and each was a real duplicate or a wrong claim:
+        // A COURSE ENTRY BECOMES REPERTOIRE ONLY WHERE THE COURSE NAMES ONE
+        // WORK. `strand: 'piece'` is exactly what makes an entry a `full_piece`
+        // and therefore a repertoire work, so a Piece section may keep it only
+        // when the course states a SINGLE study for it. Two ways it does not:
         //
-        //  • the section names NO single work (3C's comma list, 3F's
-        //    "Repertoire + Video Review"): practice on material named
-        //    elsewhere;
+        //  • it names NO single work (3C's comma list, 3F's "Repertoire +
+        //    Video Review"): practice on material named elsewhere;
         //  • it names MORE THAN ONE (3A's "Tarrega Study in C + Canon in D"):
-        //    two works cannot be one repertoire item, and the stage already
-        //    offers both individually;
-        //  • the level NAMES PACKET WORKS: then the packet is where the course
-        //    names its pieces, and the section beside them is a second entry
-        //    for a work already there — 3B's section and
-        //    `work-lecuona-malaguena` are one score, and 2E's study reappears
-        //    as 3F's `work-carulli-valse-op-50-no-7-1`. Deciding that by NAME
-        //    would need "Malagueña by Lecuona" to match "Lecuona Malaguena" and
-        //    "Fernando Sor Etude #1 Op.44" to match "Sor Etude No.1 op 44
-        //    Practice Packet"; a fuzzy match that merges two genuinely
-        //    different works silently destroys the owner's record, so the
-        //    channel is closed structurally instead and nothing is guessed.
+        //    two works cannot be one repertoire item, and the packet already
+        //    offers each of them separately.
         //
-        // What survives: 3D and 3E name no packet work at all, so their own
-        // study IS the level's work, with the whole section's material. The KEY
-        // always stays `piece` — keys are added, never renamed — and so does
-        // the section's title and every file it reaches.
+        // Otherwise the section IS the level's study and carries that work's
+        // IDENTITY (`workKey`) — see WORK_ALIASES. The KEY always stays
+        // `piece`; keys are added, never renamed.
         const notRepertoire = skipped
           ? `it names no single work ("${skipped}")`
           : studies.length > 1
             ? `it names ${studies.length} works ("${studies.join(' + ')}"), which the packet offers separately`
-            : works.length > 0
-              ? `this level names its pieces in its practice packet`
-              : null;
+            : null;
         if (notRepertoire) {
           pieceEntry.unit.strand = 'other';
           diagnostics.push(
             `${code}: the Piece section is practice material, not a repertoire work — ${notRepertoire}`,
           );
+        } else {
+          pieceEntry.unit.workKey = `work-${slug(studies[0])}`;
+        }
+
+        // The packet works, each carrying the identity of the work it IS. One
+        // named by this level's own study is DROPPED: the section is already
+        // that work, and its score is already one of the section's files.
+        for (const w of packetWorks(notes, pieceEntry.unit.mediaPath)) {
+          const identity = WORK_ALIASES[w.key] ?? w.key;
+          if (identity !== w.key) aliasesUsed.add(w.key);
+          // Dropped only where this level's OWN study is that work. A section
+          // with no study of its own (3A, 3C, 3F) has no identity to match, so
+          // nothing is ever dropped from it.
+          if (pieceEntry.unit.workKey && identity === pieceEntry.unit.workKey) continue;
+          works.push(identity === w.key ? w : { ...w, workKey: identity });
         }
       }
     } else {
@@ -650,6 +692,16 @@ function scan(root, mediaPath, diagnostics) {
       works,
       routine,
     });
+  }
+
+  // A DECLARED IDENTITY THAT NAMES NOTHING IS UNVERIFIED CURATION. Both halves
+  // are checked: an alias whose packet entry no longer exists, and one whose
+  // canonical key is no level's study. Either means the course moved and the
+  // pair has to be looked at again — never silently duplicated.
+  const studyKeys = new Set(groups.flatMap((g) => g.units.map((u) => u.workKey)).filter(Boolean));
+  for (const [from, to] of Object.entries(WORK_ALIASES)) {
+    if (!aliasesUsed.has(from)) throw new Error(`WORK_ALIASES: no packet work "${from}" in this course any more`);
+    if (!studyKeys.has(to)) throw new Error(`WORK_ALIASES: "${from}" points at "${to}", which is no level's study`);
   }
 
   return { groups, checklists };

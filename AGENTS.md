@@ -2358,52 +2358,72 @@ step is the same failure as a guessed BPM on a real section.
 DECLARES. `STRAND_TO_ITEM_TYPE` maps `strand: 'piece'` to `full_piece`, which is
 why the old generic "Piece" placeholder created a repertoire work literally called
 "Piece": the bug was the TITLE, never the strand. The level's own study IS the
-Piece section — it keeps its `piece` key and gains the real name the course gives
-it ("1B Piece — Study #1") — and the named packet works from that section's own
-Sheet Music lists are their own entries with their composers in the title. Every
+Piece section — it keeps its `piece` key and its `piece` strand and gains the real
+name the course gives it ("1B Piece — Study #1") — and the named packet works from
+that section's own Sheet Music lists are their own entries with their composers in
+the title. Every
 drill, exercise, rhythm, sight-reading and reading section stays what it was and
 never reaches My repertoire. A separate "study" entry beside the Piece section is
 NOT emitted: it would put one study in repertoire twice.
 
-**AND ONE WORK REACHES MY REPERTOIRE ONCE, UNDER THE NAME THE COURSE GIVES IT.**
+**AND ONE MUSICAL WORK IS ONE REPERTOIRE ITEM, HOWEVER MANY ENTRIES NAME IT.**
 That was the hole the first pass left, and it is the same "one study in repertoire
 twice" the paragraph above already refuses, arriving through the OTHER channel: the
-Piece SECTION and the PACKET WORKS were two independent ways into `full_piece`, so
-where the course names one piece both ways the owner got two items for it. A sealed
-review reproduced both shapes — 3B's section ("Malagueña by Lecuona") beside
-`work-lecuona-malaguena`, which is literally the same score PDF; and 2E's study
-("Carulli Valse Op.50 No.7") beside 3F's `work-carulli-valse-op-50-no-7-1`, a level
-apart with no shared file at all. So the Piece section keeps `strand: 'piece'` ONLY
-where it is the course's only naming of a work at that level — where the level
-names PACKET WORKS, the packet is where the course names its pieces and the section
-beside them is practice material. 3D ("Lesson for Two Lutes") and 3E ("Chester")
-name none, so their own section IS the level's work and carries the whole section's
-material rather than one PDF lifted out of it.
+Piece SECTION and the PACKET WORKS are two entries the course can name one piece
+by, and each minted its own `full_piece`. A sealed review reproduced both shapes —
+3B's section ("Malagueña by Lecuona") beside `work-lecuona-malaguena`, literally the
+same score PDF; and 2E's study ("Carulli Valse Op.50 No.7") beside 3F's
+`work-carulli-valse-op-50-no-7-1`, a level apart with no shared file at all, because
+2E's own folder holds no copy of the Valse.
 
-MATCHING THE TWO BY NAME WAS THE OBVIOUS FIX AND IT IS THE ONE THIS REFUSES. The
-cross-level case has no file to compare, so it could only ever be decided by
-joining "Malagueña by Lecuona" to "Lecuona Malaguena" and "Fernando Sor Etude #1
-Op.44" to "Sor Etude No.1 op 44 Practice Packet" — token-set fuzz whose false
-positive MERGES TWO GENUINELY DIFFERENT WORKS into one repertoire item, which is
-silent destruction of the owner's own record. This file already refuses that shape
-by name for the Setar archive's own path repair ("No fuzzy matching by title, size
-or modification time"). The channel is closed STRUCTURALLY instead and nothing is guessed. The
-measured cost is stated rather than hidden, and it is a VISIBLE change to the
-approved plan's own walkthrough: at Level 1B "Add Study #1 and it appears in My
-repertoire" now means adding the PACKET entry the course names it by ("Allen
-Mathews — Small Etude #1"), not the Piece section, which is an ordinary practice
-item with all of its material. Where the course ships packet works but not the
-study's own score at all (2C's "Study #8", 2E's Valse), that study reaches My
-repertoire only at the level whose packet does name it. `NOT_A_PACKET_WORK`'s `^click
-here` is LOAD-BEARING under this rule, not tidiness: 3D and 3E name their score as
-an instruction, and an instruction admitted as a "work" would both mint a
-repertoire item called "Click here…" and demote the section that is the real work.
+**THE FIX IS AN IDENTITY, NOT A DEMOTION.** Closing the second channel — making the
+section practice material wherever the level also names packet works — was built,
+and the OWNER rejected it: a work they are learning at 2E must reach My repertoire
+AT 2E, not only if a later level's packet happens to name it. So every entry that is
+a work carries a `workKey`, and `courseWorkKey` (`courseSeed.ts`) is the ONE
+resolution every surface reads — `carriedCourseWorkItem`, therefore
+`planCatalogAddition` and `stageUnits` alike, so the tap and the row can never
+disagree:
 
-This is A MEASURED CORRECTION TO ac-1's WORDING, recorded rather than slipped past.
-"A level's own study AND its named packet works become repertoire works" is true of
-different levels, never of one work twice; the check keeps its contract name and
-asserts what actually holds. ac-1's substance — pieces reach repertoire, drills do
-not — is unchanged.
+- A packet work's identity is its own key, derived from the WORK. That already
+  joins a work the course carries across levels: Ferrer Ejercicio is titled
+  identically in 2C-2F, so it slugs identically.
+- A Piece section the course names ONE study for carries that study's identity
+  (`unit.workKey`) while its catalogue key stays `piece`.
+- A packet entry that IS an earlier level's study under another name carries that
+  study's identity, from `WORK_ALIASES` in the scanner. Three pairs, each stated by
+  the course's own words, and one of them — 3B's, where the packet entry is the
+  section's own single score — is DROPPED outright rather than aliased, since the
+  section is already that work at that very level.
+
+An ordinary per-stage key carries no identity at all, so `chords` in 1B can never be
+reused by 2B's; that narrowing is what the identity check buys, and it is asserted
+directly. Every surface reads that one resolution — the tap, the stage row, and the
+routine binding (`unitItem`) — so a work taken at 3F still binds 2E's own Piece
+segment and still counts as added when 2E's "where I am" routine is built.
+
+**MATCHING THE TWO BY NAME IS WHAT THIS REFUSES.** The cross-level pairs have no file
+to compare, so a match would have to join "Malagueña by Lecuona" to "Lecuona
+Malaguena" and "Fernando Sor Etude #1 Op.44" to "Sor Etude No.1 op 44 Practice
+Packet" — token fuzz whose false positive MERGES TWO GENUINELY DIFFERENT WORKS into
+one repertoire item, which is silent destruction of the owner's own record. This file
+already refuses that shape by name for the Setar archive's own path repair ("No fuzzy
+matching by title, size or modification time"). Identity is DECLARED instead, in the
+scanner where the grammar lives, and a stale entry — one naming a packet work the
+course no longer has, or pointing at a key that is no level's study — FAILS the scan
+rather than quietly aliasing nothing.
+
+**AND THE COURSE ITSELF SAYS WHICH PAIRS ARE REAL, WHICH IS WHY THE TABLE IS THREE
+LINES AND NOT SIXTY.** Studies #1-#9 (1B-2D) each carry their OWN score image inside
+their section ("Study #4 page 1"), and those sections' sheet lists are the course's
+alternatives — 2B labels its list "Other appropriate pieces" in so many words. "Allen
+Mathews — Small Etude #1" is NOT Study #1, and aliasing them would have been the
+false merge this whole rule exists to prevent. Only the six "Full course: X" sections
+(2E, 2F, 3A, 3B, 3D, 3E) have no study sheet of their own, and only three of those are
+named again elsewhere. `NOT_A_PACKET_WORK`'s `^click here` is LOAD-BEARING here, not
+tidiness: 3D and 3E name their study's own score as an instruction, and an instruction
+admitted as a "work" would mint a repertoire item called "Click here…" beside the
+section that is the real work.
 
 AND "NAMES A WORK" IS THE WHOLE RULE, INCLUDING WHERE THE COURSE DOES NOT — AND
 WHERE IT NAMES MORE THAN ONE. 3C's Piece section is a comma list ("Excerpts + Fur
@@ -2549,7 +2569,12 @@ Three consequences are deliberate — adding one of the level's optional reperto
 works enables no segment (the syllabus routines contain no piece segment at that
 level anyway), an item the owner created by hand with no catalogue key is not one
 of the course's sections, and a segment the marker leaves out is one edit away from
-being added back.
+being added back. The ONE widening is a work's own IDENTITY (`courseWorkKey`): a
+Piece section's segment binds to that work's item wherever in the course it was
+first taken, because the stage ROW already shows it as added there and a segment
+that left it out would be the same split resolution `carriedCourseWorkItem` exists
+to refuse, one surface further on. An ordinary section carries no identity, so
+nothing else widens with it.
 
 **BUYING LEVELS 4A-5F LATER IS A DATA CHANGE, AND THE ACTION THAT ADDS THEM ADDS
 NOTHING ON ITS OWN.** Re-run the scanner, ship the regenerated data, and use the

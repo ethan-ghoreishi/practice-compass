@@ -52,6 +52,12 @@ export interface CourseUnit {
   key: string;
   title: string;
   strand: StepStrand;
+  /**
+   * The REPERTOIRE IDENTITY of the single work this section studies, where the
+   * course names one — separate from `key`, which is the catalogue key and
+   * stays `piece`. Absent on every section that is not one work.
+   */
+  workKey?: string;
   mediaPath: string;
   files: CourseFile[];
   guidance?: string;
@@ -77,6 +83,13 @@ export interface CourseWork {
   key: string;
   title: string;
   file?: string;
+  /**
+   * Set only where this entry is a work already identified under ANOTHER name
+   * — a level's own study re-listed in a later level's packet. Absent means the
+   * entry's own `key` IS its identity, which is what already joins a work
+   * carried across levels under one title.
+   */
+  workKey?: string;
 }
 
 export interface CourseRoutineSegment {
@@ -204,11 +217,10 @@ export function courseStageSeeds(course: CourseData, skipCodes: string[] = []): 
           notes: unitNotes(u),
           bpm: u.bpm,
         })),
-        // The packet works. `strand: 'piece'` is what makes an entry a
-        // repertoire work, and each of a level's pieces earns it EXACTLY ONCE:
-        // here where the course names the work, else on the Piece section
-        // itself where it names none (the scanner decides — see AGENTS.md,
-        // "ONE WORK REACHES MY REPERTOIRE ONCE").
+        // The packet works. `strand: 'piece'` is what makes them — and ONLY
+        // them and the level's own study section — repertoire works. One work
+        // is one repertoire ITEM however many entries name it; that join is
+        // `courseWorkKey`, never a second entry removed here.
         ...g.works.map((w) => ({
           key: w.key,
           title: w.title,
@@ -300,8 +312,9 @@ function toSegment(
   seg: CourseRoutineSegment,
   stageId: string,
   itemsByKey: Map<string, PracticeItem>,
+  items: PracticeItem[],
 ): RoutineSegment {
-  const item = unitItem(stageId, seg.unitKey, itemsByKey);
+  const item = unitItem(stageId, seg.unitKey, itemsByKey, items);
   return {
     label: seg.label,
     minutes: seg.minutes,
@@ -335,6 +348,7 @@ function unitItem(
   stageId: string,
   unitKey: string,
   itemsByKey: Map<string, PracticeItem>,
+  items: PracticeItem[],
 ): PracticeItem | undefined {
   const direct = itemsByKey.get(`${stageId}\u0000${unitKey}`);
   if (direct) return direct;
@@ -342,7 +356,13 @@ function unitItem(
     const item = itemsByKey.get(`${stageId}\u0000${legacy}`);
     if (item) return item;
   }
-  return undefined;
+  // A Piece section that IS a work resolves by that work's IDENTITY too, so a
+  // study taken from the later level that re-lists it still binds here. The
+  // stage ROW already shows that item as added; a segment that left it out
+  // would be the same split resolution `carriedCourseWorkItem`'s own docstring
+  // exists to refuse, one surface further on. An ordinary section carries no
+  // identity, so nothing else widens.
+  return carriedCourseWorkItem(stageId, unitKey, items);
 }
 
 /** The level's own routine, exactly as its syllabus states it. */
@@ -355,7 +375,7 @@ export function buildLevelRoutine(
   if (!group) return [];
   const stageId = courseStageId(course, groupKey);
   const byKey = itemsByStageAndKey(items);
-  return group.routine.map((s) => toSegment(s, stageId, byKey));
+  return group.routine.map((s) => toSegment(s, stageId, byKey, items));
 }
 
 /**
@@ -387,13 +407,13 @@ export function buildPositionRoutine(
   if (previous) {
     const prevStageId = courseStageId(course, previous.key);
     for (const s of previous.routine) {
-      if (s.essential) out.push(toSegment(s, prevStageId, byKey));
+      if (s.essential) out.push(toSegment(s, prevStageId, byKey, items));
     }
   }
 
   const stageId = courseStageId(course, groupKey);
   for (const s of course.groups[index].routine) {
-    if (unitItem(stageId, s.unitKey, byKey)) out.push(toSegment(s, stageId, byKey));
+    if (unitItem(stageId, s.unitKey, byKey, items)) out.push(toSegment(s, stageId, byKey, items));
   }
   return out;
 }
@@ -531,24 +551,25 @@ export function planCatalogAddition(
 }
 
 /**
- * THE ONE ITEM A CARRIED-FORWARD COURSE WORK IS, WHEREVER IT WAS FIRST ADDED.
+ * THE ONE ITEM A COURSE WORK IS, WHEREVER IN THIS COURSE IT WAS FIRST ADDED.
  *
- * A packet work's key is derived from the WORK, so Ferrer Ejercicio carries one
- * key through 2C-2F and is ONE thing the owner adds once. This is the single
- * rule that says so, and BOTH readers go through it: `planCatalogAddition`, so
- * adding it from a later level reuses the existing item, and `stageUnits`
- * (`pathways.ts`), so that later level SHOWS it as added.
+ * ONE MUSICAL WORK IS ONE REPERTOIRE ITEM. The course names the same work in
+ * more than one place — Ferrer Ejercicio runs 2C-2F, and a level's own study
+ * can reappear in a later level's practice packet — so adding it the second
+ * time must hand back the item created the first. This is the single rule that
+ * says so, and BOTH readers go through it: `planCatalogAddition`, so the tap
+ * reuses, and `stageUnits` (`pathways.ts`), so the row SHOWS it as added.
  *
- * Splitting those two apart is the defect this closes rather than the shape it
+ * Splitting those two apart is a defect this closes rather than the shape it
  * keeps: the later row read as an untaken suggestion, its “+” reported “Added”
  * for an item created weeks earlier at another level, and Undo then offered to
  * delete it. One resolution, one answer on every surface.
  *
- * It is deliberately narrow. Only a key the CURRENT stage's own course declares
- * as a work resolves, and only against an item sitting in a stage of that SAME
- * course — an identically-keyed item anywhere else is never adopted, and the
- * ordinary per-stage reuse is untouched, so a `chords` item in 1B can never be
- * reused by 2B's.
+ * It is deliberately narrow, and the narrowing is `courseWorkKey` below: only
+ * an entry the CURRENT stage's own course declares to BE a work resolves at
+ * all, and only against an item sitting in a stage of that SAME course. An
+ * ordinary per-stage key carries no identity, so a `chords` item in 1B can
+ * never be reused by 2B's.
  */
 export function carriedCourseWorkItem(
   stageId: ID,
@@ -556,12 +577,54 @@ export function carriedCourseWorkItem(
   items: PracticeItem[],
 ): PracticeItem | undefined {
   const found = courseStage(stageId);
-  if (!found || !found.group.works.some((w) => w.key === entryKey)) return undefined;
-  // The work check comes FIRST, so an ordinary per-stage key never reaches the
-  // item scan at all — and the course's own stage ids are a set built once,
-  // rather than resolving every item's stage through `courseStage` again.
+  const identity = found && courseWorkKey(found, stageId, entryKey);
+  // The identity check comes FIRST, so an ordinary per-stage key — `chords`,
+  // which every level has — never reaches the item scan at all.
+  if (!found || !identity) return undefined;
+  // The course's own stage ids, as a set built once rather than resolving every
+  // item's stage through `courseStage` again.
   const ofThisCourse = new Set(found.course.groups.map((g) => courseStageId(found.course, g.key)));
-  return items.find((i) => i.catalogKey === entryKey && !!i.stageId && ofThisCourse.has(i.stageId));
+  return items.find(
+    (i) =>
+      !!i.stageId &&
+      !!i.catalogKey &&
+      ofThisCourse.has(i.stageId) &&
+      courseWorkKey(courseStage(i.stageId)!, i.stageId, i.catalogKey) === identity,
+  );
+}
+
+/**
+ * THE REPERTOIRE IDENTITY one catalogue entry of this course carries, or
+ * nothing when it is not a work at all.
+ *
+ * A packet work's identity is its own key, which is derived from the WORK — so
+ * Ferrer Ejercicio, titled identically in 2C-2F, already slugs to one identity.
+ * Two things sit beside that, and both come from the SCANNER (the grammar lives
+ * there; the app consumes the data):
+ *
+ *  • A PIECE SECTION THE COURSE NAMES ONE STUDY FOR CARRIES THAT WORK'S
+ *    IDENTITY (`unit.workKey`), while its catalogue key stays `piece`. That is
+ *    what lets the owner take the work at the level they actually meet it —
+ *    2E's Carulli Valse is a repertoire work AT 2E, not only wherever a later
+ *    packet happens to name it.
+ *  • A PACKET ENTRY THAT IS AN EARLIER LEVEL'S STUDY UNDER ANOTHER NAME carries
+ *    that study's identity (`work.workKey`), declared in the scanner's own
+ *    WORK_ALIASES from the course's words. 3F's "Carulli Valse Op 50 No 7 1" IS
+ *    2E's study; nothing in the archive joins them (2E holds no copy of the
+ *    score), and a fuzzy title match that merged two genuinely different works
+ *    would destroy the owner's record.
+ */
+function courseWorkKey(
+  found: { course: CourseData; group: CourseGroup },
+  stageId: ID,
+  entryKey: string,
+): string | undefined {
+  const unit = found.group.units.find(
+    (u) => u.key === entryKey || legacyKeysFor(stageId, u.key).includes(entryKey),
+  );
+  if (unit) return unit.workKey;
+  const work = found.group.works.find((w) => w.key === entryKey);
+  return work && (work.workKey ?? work.key);
 }
 
 // --- adding levels the owner has just bought ---------------------------------
