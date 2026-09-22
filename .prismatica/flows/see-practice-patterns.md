@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:56.312Z
-        commit: c9cad7f58cef1cbbc5aef59851d25d51905b8c5c
+        at: 2026-09-22T19:02:04.904Z
+        commit: a9ba77de4462ea7969300f2ffe513d7ebe957ab9
     - actor: The musician
       action: Taps an instrument to drop back into a real session for it.
       shows: Today, scoped to that instrument again.
@@ -30,8 +30,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:56.312Z
-        commit: c9cad7f58cef1cbbc5aef59851d25d51905b8c5c
+        at: 2026-09-22T19:02:04.904Z
+        commit: a9ba77de4462ea7969300f2ffe513d7ebe957ab9
     - actor: The musician
       action: Opens Insights and switches the window between 7 and 30 days.
       shows: Neutral observations generated from the logged blocks — patterns, not a
@@ -39,8 +39,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:44:56.312Z
-        commit: c9cad7f58cef1cbbc5aef59851d25d51905b8c5c
+        at: 2026-09-22T19:02:04.904Z
+        commit: a9ba77de4462ea7969300f2ffe513d7ebe957ab9
   endsWith: The musician knows where their time actually went, with no streaks,
     scores or judgement attached.
   variations: []
