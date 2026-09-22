@@ -373,29 +373,12 @@ describe('a work carried forward across levels', () => {
       // files are in the one list all of them compose. Without this a
       // regression that let the LAST matching entry win would still have every
       // entry agreeing with every other and pass unnoticed. Compared by the
-      // file's NAME, which is the identity the dedup itself uses — the course
-      // ships one packet once per level that names it.
-      const names = new Set(paths.map((f) => f.split('/').pop()));
-      // AND THE DEDUP ONLY EVER COLLAPSES COPIES OF ONE FILE. Deduplicating by
-      // NAME is what keeps four identical Ferrer packets off one item, and the
-      // risk it carries is hiding a genuinely different file that happens to
-      // share a basename — so two candidates sharing one name must share a
-      // title too. Measured across the whole course: fifteen collapses, every
-      // one between identically-titled copies. A regenerated course that broke
-      // that fails here rather than silently losing a score.
-      const titlesByName = new Map<string, Set<string>>();
-      for (const e of entries) {
-        for (const f of declaredEntries(e)) {
-          const n = f.path.split('/').pop()!;
-          titlesByName.set(n, (titlesByName.get(n) ?? new Set()).add(f.title));
-        }
-      }
-      for (const [n, titles] of titlesByName) expect([...titles], `${identity}: ${n}`).toHaveLength(1);
-
+      // whole PATH — every declared file survives composition, never merely one
+      // per basename.
       for (const e of entries) {
         const own = declaredFiles(e);
         expect(own.length, `${identity}: ${e[0]}/${e[1]} declares nothing`).toBeGreaterThan(0);
-        for (const f of own) expect([...names], `${identity}: ${e[0]}/${e[1]}`).toContain(f.split('/').pop());
+        for (const f of own) expect(paths, `${identity}: ${e[0]}/${e[1]}`).toContain(f);
       }
 
       const first = entries[0];
@@ -420,6 +403,55 @@ describe('a work carried forward across levels', () => {
           ).toBe(false);
         }
       }
+    }
+  });
+
+  it('keeps every distinct path, even when two share a basename AND a title', () => {
+    // THE DEDUP KEY IS THE PATH, AND NOTHING WEAKER. It used to be the
+    // BASENAME, to keep the copy of one packet the course ships in each level
+    // folder that names it from appearing four times — but a basename is not a
+    // file's identity. Two genuinely different scores sharing one (two
+    // revisions of Ferrer-Ejercicio.pdf) had the second silently dropped, and
+    // nothing on the item said a score was missing. Nothing in this data
+    // establishes content identity — a CourseFile is a path, a kind and a
+    // title — so completeness wins: a repeated packet is one visible extra row,
+    // a hidden one is material the owner cannot see.
+    //
+    // Driven from the LIVE data rather than a fixture, and from the hardest
+    // shape there is: paths the old key could not tell apart even with the
+    // title added, which is exactly the counterexample's own shape.
+    const collisions = multiEntryIdentities()
+      .map(({ identity, entries }) => {
+        const byNameAndTitle = new Map<string, Set<string>>();
+        for (const e of entries) {
+          for (const f of declaredEntries(e)) {
+            const k = `${f.path.split('/').pop()}\u0000${f.title}`;
+            byNameAndTitle.set(k, (byNameAndTitle.get(k) ?? new Set()).add(f.path));
+          }
+        }
+        return { identity, entries, shared: [...byNameAndTitle.values()].filter((ps) => ps.size > 1) };
+      })
+      .filter((x) => x.shared.length > 0);
+
+    // NON-VACUITY FIRST. A regenerated course that stopped shipping duplicate
+    // basenames would otherwise pass this while asserting nothing at all.
+    expect(collisions.length, 'no basename collision left to prove anything with').toBeGreaterThan(0);
+    expect(collisions.map((x) => x.identity)).toContain('work-ferrer-ejercicio');
+
+    for (const { identity, entries, shared } of collisions) {
+      const composed = courseFilesFor(...entries[0]).map((f) => f.path);
+      // Every distinct path survives, and the ROW COUNT says so: a set
+      // comparison alone would pass a list that had quietly collapsed them.
+      for (const ps of shared) {
+        for (const path of ps) expect(composed, `${identity}: ${path}`).toContain(path);
+        expect(composed.filter((c) => ps.has(c)).length, identity).toBe(ps.size);
+      }
+      // And all the way out to the real item's Material, where each copy is its
+      // own row with its own stable id rather than a collision.
+      const items = addAll([entries[0]]);
+      const files = itemFiles(dbWith(items), items[0].id) as ItemFileReference[];
+      for (const ps of shared) for (const path of ps) expect(files.map((f) => f.path), identity).toContain(path);
+      expect(new Set(files.map((f) => f.id)).size, identity).toBe(files.length);
     }
   });
 

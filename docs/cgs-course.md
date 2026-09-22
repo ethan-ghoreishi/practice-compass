@@ -242,12 +242,16 @@ machinery.
     that work, in course order (units then works within a group), so both
     addition orders compose the same LIST and not merely the same set. An
     ordinary per-stage key carries no identity, so `chords` still composes only
-    its own section. Files are deduplicated by their own NAME rather than their
-    path, because the course ships a copy of one packet in each level's folder
-    that names it (Ferrer Ejercicio runs 2C–2F) — the same reading of a score's
-    identity `packetWorks` already uses, held to collapsing COPIES ONLY: two
-    candidates sharing a name must share a title (measured: fifteen collapses
-    across the course, every one between identically-titled copies). The item's provenance is NOT rewritten
+    its own section. Files are deduplicated by their own PATH and by nothing
+    weaker. It was their BASENAME, to keep the copy of one packet the course
+    ships in each level's folder that names it (Ferrer Ejercicio runs 2C–2F)
+    from appearing four times; a sealed review found that a basename is not a
+    file's identity, so two genuinely different scores sharing one had the
+    second silently dropped with nothing on the item saying so. Nothing in this
+    data establishes content identity — a `CourseFile` is a path, a kind and a
+    title — so completeness wins over tidiness: a repeated packet is one visible
+    extra row, a hidden one is material the owner cannot see. A path is
+    authoritative and is what `packetWorks` itself dedups on. The item's provenance is NOT rewritten
     to achieve this: `stageId`/`catalogKey` stay what the tap created them as,
     which is what keeps Undo and the row's "−" bounded to the stage that created
     the item, and nothing new is persisted. `courseSeed.test.ts` sweeps every

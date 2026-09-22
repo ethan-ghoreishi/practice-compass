@@ -325,11 +325,22 @@ function entryFiles(
  * works within a group — so both addition orders compose the SAME list, not
  * merely the same set.
  *
- * Deduplication is by the file's OWN NAME, not by its path: the course ships a
- * copy of one packet in each level's folder that names it (Ferrer Ejercicio
- * runs 2C-2F), and four rows of one identical score is noise, not material.
- * That is the same reading of a score's identity the scanner's own packet
- * dedup and `courseSeed.test.ts`'s "one score is one key" already use.
+ * Deduplication is by the file's OWN PATH, and by nothing weaker. It used to
+ * be by BASENAME, to keep the copy of one packet the course ships in each
+ * level's folder that names it (Ferrer Ejercicio runs 2C-2F) from appearing
+ * four times — but a basename is not a file's identity. Two genuinely
+ * different scores that happen to share one (two revisions of
+ * `Ferrer-Ejercicio.pdf`, a regenerated course that renamed a folder rather
+ * than its files) then had the second SILENTLY DROPPED from the one list the
+ * work's material is composed into, and nothing about the item said a score
+ * was missing. Nothing in this data establishes content identity — a
+ * `CourseFile` is a path, a kind and a title, with no size and no digest — so
+ * there is nothing here to collapse a copy on, and COMPLETENESS BEATS TIDINESS:
+ * a repeated packet costs the owner one extra row they can see, where a hidden
+ * one costs them material they cannot. A path IS authoritative, and it is the
+ * same reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on
+ * the full relative path). `itemFiles` keys its own rows by path too, so each
+ * copy is a distinct, stable row rather than a collision.
  *
  * An ORDINARY per-stage key carries no identity at all — `chords` exists in
  * every level — so it composes only its own section, exactly as before.
@@ -344,9 +355,8 @@ export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[
   const seen = new Set<string>();
   const take = (files: CourseFile[]) => {
     for (const f of files) {
-      const name = f.path.split('/').pop() ?? f.path;
-      if (seen.has(name)) continue;
-      seen.add(name);
+      if (seen.has(f.path)) continue;
+      seen.add(f.path);
       out.push(f);
     }
   };

@@ -2500,15 +2500,30 @@ the one item the identity rule exists to produce. `courseFilesFor` resolves
 in that course naming that work — course order, units then works within a group
 — so both addition orders compose the same LIST, not merely the same set. An
 ORDINARY per-stage key carries no identity at all, so `chords` still composes
-only its own section and nothing widens with it. Deduplication is by the file's
-own NAME rather than its path, because the course ships a copy of one packet in
-each level's folder that names it (Ferrer Ejercicio runs 2C-2F) and four rows of
-one identical score is noise, not material — the same reading of a score's
-identity the scanner's packet dedup already uses, and held to collapsing COPIES
-ONLY: two candidates sharing a name must share a title, asserted per identity
-(measured across the whole course: fifteen collapses, every one between
-identically-titled copies of one packet), so a regenerated course that introduced
-a genuine basename collision fails rather than silently losing a score. The item's own provenance is
+only its own section and nothing widens with it. DEDUPLICATION IS BY THE FILE'S
+OWN PATH, AND BY NOTHING WEAKER. It was by BASENAME, to keep the copy of one
+packet the course ships in each level's folder that names it (Ferrer Ejercicio
+runs 2C-2F) from appearing four times — and a sealed review found what that
+bought: a basename is not a file's identity, so two genuinely different scores
+sharing one (two revisions of `Ferrer-Ejercicio.pdf`, a regenerated course that
+renamed a folder rather than its files) had the SECOND SILENTLY DROPPED from the
+one list a work's material is composed into, with nothing on the item saying a
+score was missing. Nothing in this data can establish content identity — a
+`CourseFile` is a path, a kind and a title, with no size and no digest — and
+inventing one would mean a scanner field, a regenerated `courseData.ts` and a
+new claim to keep true, machinery bought for a cosmetic. COMPLETENESS BEATS
+TIDINESS: a repeated packet costs the owner one extra row they can SEE, a hidden
+one costs them material they cannot. A path IS authoritative, it is the same
+reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on the full
+relative path — the claim that it read a basename was simply untrue), and
+`itemFiles` keys its own rows by path too, so each copy is a distinct row with
+its own stable id rather than a collision. The fifteen identical packet copies
+the old key collapsed now appear once per level that ships one.
+`courseSeed.test.ts` proves this against the LIVE data in the counterexample's
+own hardest shape — distinct paths sharing a basename AND a title, so no weaker
+key could tell them apart — and asserts that set is NON-EMPTY first, or a
+regenerated course with no such collision would pass while asserting nothing.
+The item's own provenance is
 NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
 created them as, which is what keeps an Undo and the row's "−" bounded to the
 stage that actually created the item, and nothing new is persisted. Its TITLE
