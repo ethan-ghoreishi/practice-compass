@@ -1,54 +1,32 @@
 ---
 id: 20260921-bring-the-classical-guitar-shed-course-i-9b18
 contractId: 20260921-bring-the-classical-guitar-shed-course-i-9b18
-patchId: 244f0a807ebb7cf9bff6d9454f406541be7c8449
+patchId: b771e105b84674a6c178dc94b19c91f58d15e8ee
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: carried-work identity and reversible catalogue actions
-    summary: Cross-stage reuse leaves the later suggestion unadded and gives Undo
-      authority over a pre-existing item.
-    counterexample: Add work-ferrer-ejercicio in cgs-2c, then in cgs-2e.
-      planCatalogAddition returns the 2C item; stageUnits for 2E still has no
-      item. StageDetail reports Added and Undo calls removeCatalogItem on the
-      existing 2C item, deleting it if unpractised.
-  - family: media-root validation and render safety
-    summary: Malformed percent encoding throws instead of producing an unavailable
-      media root.
-    counterexample: deriveMediaRoot('https://nas.test/%') throws URIError at
-      src/domain/mediaRoots.ts:71. Settings and ReferenceRow invoke this during
-      rendering, including for archive references.
-  - family: preserved catalogue identity across material and routine composition
-    summary: Level 1A catalogue keys never resolve to course files or generated
-      routine bindings.
-    counterexample: All 14 catalogForStage('cgs-1a') entries return zero course
-      files. Creating items from all 14 still makes
-      buildPositionRoutine(CGS_COURSE,'1a',items) return an empty array; the
-      previous-level essentials generated for 1B remain unbound.
-  - family: proportional routine duration allocation
-    summary: Allocating a one-minute base before proportional distribution distorts
-      authored proportions unnecessarily.
-    counterexample: fitRoutineToMinutes([{label:'a',minutes:1},{label:'b',minutes:9}],20)
-      returns minutes [3,17], although [2,18] preserves the proportions exactly
-      and satisfies the floor.
+    summary: Study sections and packet entries for the same work still create
+      independent repertoire items.
+    counterexample: On HEAD 742d461, planCatalogAddition creates distinct full_piece
+      items for cgs-3b/piece and cgs-3b/work-lecuona-malaguena, both referencing
+      the same score PDF. Adding cgs-2e/piece followed by
+      cgs-3f/work-carulli-valse-op-50-no-7-1 also duplicates Carulli Valse Op.50
+      No.7. courseSeed.ts:556-561 only reuses identical packet keys. Sweep both
+      addition orders, stage display, material/routine bindings and reversible
+      actions while preserving existing keys.
   - family: specific-work repertoire classification
-    summary: Sections explicitly recognised as naming no single work still become
-      full_piece items.
-    counterexample: "The generated cgs-3f piece entry titled '3F Piece: Repertoire +
-      Video Review' produces isWork=true through itemFromCatalogEntry. The
-      cgs-3c multi-work section does likewise. The scanner diagnoses ambiguity
-      but retains the piece strand."
-  - family: duration and essentials composition in user-facing controls
-    summary: No UI path combines essentials-only with a chosen duration, and dropped
-      essentials are described as non-essential.
-    counterexample: Today, StageDetail and PathwayDetail all render RoutineDuration
-      without shortOnTime, so it always fits the full routine. Their separate
-      essentials buttons start immediately at authored duration. Fitting six
-      essential segments to five minutes drops an essential segment while the
-      preview says one non-essential segment was dropped.
-createdAt: 2026-09-21T23:58:22.948Z
-sealedAt: 2026-09-22T00:06:06.474Z
+    summary: A section containing two distinct works still becomes one full_piece
+      repertoire item.
+    counterexample: On HEAD 742d461, cgs-3a/piece is titled Tarrega Study in C +
+      Canon in D and itemFromCatalogEntry makes isWork true. studiesFrom splits
+      two names, but scan-cgs-course.mjs:579 rejoins them and retains strand
+      piece because skipped is null. The stage already offers both individual
+      packet works. Apply the no-single-work rule to multi-study sections while
+      preserving the section key and material access.
+createdAt: 2026-09-22T00:41:35.948Z
+sealedAt: 2026-09-22T00:50:00.371Z
 ---
 
 # Review: Bring the Classical Guitar Shed course into the Guitar pathway with its material, works and position-aware routines
@@ -62,7 +40,7 @@ sealedAt: 2026-09-22T00:06:06.474Z
 - **Contract:** 20260921-bring-the-classical-guitar-shed-course-i-9b18
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/32
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `244f0a807ebb7cf9bff6d9454f406541be7c8449`
+- **Diff patch-id:** `b771e105b84674a6c178dc94b19c91f58d15e8ee`
 
 ## The plan the owner approved
 
@@ -479,6 +457,7 @@ Open Pathways → Classical Guitar Shed → Level 1B. Instead of eight generic r
 - src/domain/mediaRoots.ts
 - src/domain/pathwaySeed.ts
 - src/domain/pathways.test.ts
+- src/domain/pathways.ts
 - src/domain/routines.test.ts
 - src/domain/routines.ts
 - src/pages/PathwayDetail.tsx
@@ -522,7 +501,7 @@ Open Pathways → Classical Guitar Shed → Level 1B. Instead of eight generic r
 - **run-a-session-plan** — touched via src/pages/Today.tsx, src/store/useStore.ts
 - **see-practice-patterns** — touched via src/pages/Today.tsx
 - **sync-devices-via-github** — touched via src/pages/Settings.tsx
-- **work-a-pathway-stage** — touched via src/pages/PathwayDetail.tsx, src/pages/StageDetail.tsx, src/domain/pathwaySeed.ts, src/domain/routines.ts, src/store/useStore.ts
+- **work-a-pathway-stage** — touched via src/pages/PathwayDetail.tsx, src/pages/StageDetail.tsx, src/domain/pathways.ts, src/domain/pathwaySeed.ts, src/domain/routines.ts, src/store/useStore.ts
 
 **Possibly affected (shares a mechanic with a detected flow):**
 
