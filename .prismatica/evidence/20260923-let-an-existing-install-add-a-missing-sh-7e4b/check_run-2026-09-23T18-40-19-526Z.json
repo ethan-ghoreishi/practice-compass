@@ -1,0 +1,84 @@
+{
+  "contractId": "20260923-let-an-existing-install-add-a-missing-sh-7e4b",
+  "event": "check_run",
+  "at": "2026-09-23T18:40:19.526Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "8 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "9 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "docs/khonyagar-course.md",
+    "src/components/direction.test.ts",
+    "src/domain/migrations.ts",
+    "src/domain/pathwaySeed.ts",
+    "src/domain/pathways.test.ts",
+    "src/pages/Repertoire.tsx",
+    "src/store/useStore.ts"
+  ],
+  "prismaticaVersion": "0.8.0"
+}

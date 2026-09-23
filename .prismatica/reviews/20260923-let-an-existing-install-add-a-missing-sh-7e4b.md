@@ -1,25 +1,12 @@
 ---
 id: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
 contractId: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
-patchId: 3ec81b9515d41c41fb069d62c07a5d9df635f2d8
-reviewer: claude
+patchId: 5edf34f8456becbd37662293b5879c9e0c08102f
+reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: default-pathway-instrument-resolution
-    summary: seedInstrumentIds' Tar rule accepts any name containing «تار» that is
-      not /setar/i, so a Persian-named Setar («سه‌تار») resolves as Tar and Tar
-      defaults are offered and added on the Setar instrument; migrateToV3
-      carries the same rule for pre-v3 databases.
-    counterexample: "Instruments [«سه‌تار» (Setar, listed first as the seed lists
-      it), «تار»], database missing tar-khonyagar: seedInstrumentIds(...).tar is
-      «سه‌تار»'s id, so offeredDefaultPathways offers tar-khonyagar with
-      instrumentId = «سه‌تار»'s id. Repertoire then shows 'Add default pathway:
-      تار – آزاد میرزاپور (خنیاگر)' under Setar and not under Tar, and one tap
-      persists a Tar course on the Setar instrument. With «سه‌تار» and no Tar
-      instrument at all, it is still offered (on Setar) instead of not at all."
-createdAt: 2026-09-23T17:38:08.934Z
-sealedAt: 2026-09-23T18:07:04.845Z
+verdict: approve
+createdAt: 2026-09-23T18:49:07.533Z
+sealedAt: 2026-09-23T18:53:31.522Z
 ---
 
 # Review: Let an existing install add a missing shipped default pathway, such as the Khonyagar Tar course
@@ -33,7 +20,17 @@ sealedAt: 2026-09-23T18:07:04.845Z
 - **Contract:** 20260923-let-an-existing-install-add-a-missing-sh-7e4b
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/36
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `3ec81b9515d41c41fb069d62c07a5d9df635f2d8`
+- **Diff patch-id:** `5edf34f8456becbd37662293b5879c9e0c08102f`
+
+## Intent revisions — supersedes the original request only where it conflicts
+
+- **2026-09-23T18:08:01.468Z** _(Sealed review finding (family: default-pathway-instrument-resolution): the reused Tar name rule reads a Persian-named Setar («سه‌تار») as Tar, so Khonyagar and Honarestān are offered and added on the Setar instrument. migrateToV3 carries the same rule for pre-v3 databases. The fix makes a name containing «سه» never Tar, in the one shared rule that both callers use. Scope widens by migrations.ts only.)_
+
+  Resolving a default pathway's instrument must never read a Persian-named Setar («سه‌تار» or «سه تار») as Tar. seedInstrumentIds excludes any name containing «سه» from Tar, and migrateToV3 resolves through that same shared rule instead of its own copy. Everything else in the approved plan stands.
+
+- **2026-09-23T18:36:28.837Z** _(Sibling of the sealed finding (family: default-pathway-instrument-resolution): Persian «گیتار» also contains «تار», and the Guitar rule does not recognise it, so with [«سه‌تار», «گیتار»] and no Tar the Tar courses are offered, added and pre-v3-seeded on the Guitar instrument. The fix is in the one shared classification rule: «گیتار» is recognised as Guitar, and a name recognised as Setar or Guitar is never Tar. No scope change.)_
+
+  Resolving a default pathway's instrument must never read a Persian-named Setar («سه‌تار», «سه تار») or Guitar («گیتار») as Tar. seedInstrumentIds is one classification: «گیتار» is recognised as Guitar, and a name recognised as Setar or Guitar is never Tar. migrateToV3 resolves through that same shared rule instead of its own copy. Everything else in the approved plan stands.
 
 ## The plan the owner approved
 
@@ -245,6 +242,7 @@ Open Repertoire → Pathways on an install that has the Setar, Tar Honarestān a
 - AGENTS.md
 - docs/khonyagar-course.md
 - src/components/direction.test.ts
+- src/domain/migrations.ts
 - src/domain/pathwaySeed.ts
 - src/domain/pathways.test.ts
 - src/pages/Repertoire.tsx
@@ -259,6 +257,9 @@ Open Repertoire → Pathways on an install that has the Setar, Tar Honarestān a
 - [ ] **ac-5** — Re-adding a default the owner deleted appends its pathway and stages but never a second routine with an id the owner's detached routine already holds, and that routine is left exactly as it was. The fixture detaches the deleted pathway's routines with the real detachRoutinesFromPathway (routines.ts), never a hand-built shape. _(proof: never duplicates or re-places a routine the owner kept after deleting a default pathway)_
 - [ ] **ac-6** — A default whose instrument does not resolve on this device (no Classical Guitar instrument) is not offered and cannot be planned. _(proof: does not offer a default pathway whose instrument this device does not have)_
 - [ ] **ac-7** — On a real existing install, Repertoire → Pathways shows 'Add default pathway: تار – آزاد میرزاپور (خنیاگر)' under All and under Tar but not under Setar or Guitar; tapping it adds the pathway, the button disappears, the Farsi name reads right-to-left, and every existing pathway is unchanged. _(proof: manual:OWNER)_
+- [ ] **ac-8** — Instruments are «سه‌تار» (listed first, as the seed lists Setar), «تار» and Classical Guitar. seedInstrumentIds resolves setar to «سه‌تار» and tar to «تار», and the spaced spelling «سه تار» resolves the same way. On a database missing tar-khonyagar, it is offered only on «تار»'s id, and pathwaysForInstrumentFilter under «سه‌تار»'s id leaves nothing offered. With «سه‌تار» and no Tar instrument, tar-khonyagar is not offered and planDefaultPathways adds nothing. The test lives in src/domain/pathways.test.ts. _(proof: never mistakes a Persian-named Setar for Tar when offering a default pathway)_
+- [ ] **ac-9** — migrateToCurrent runs over a pre-v3 database (no pathways key) whose instruments are «سه‌تار» then «تار». It places setar-radif on «سه‌تار», and tar-honarestan and tar-khonyagar on «تار», because migrateToV3 resolves through the same seedInstrumentIds rule. The test lives in src/domain/pathways.test.ts. _(proof: seeds a pre-v3 database's Tar pathways on the real Tar, never a Persian-named Setar)_
+- [ ] **ac-10** — Instruments are «سه‌تار» and «گیتار», with no Tar. seedInstrumentIds resolves setar to «سه‌تار», guitar to «گیتار» and tar to '', and the Arabic-yeh spelling «گيتار» resolves the same way. No Tar course is offered and planDefaultPathways adds none; once «تار» is added, both Tar courses are offered on «تار»'s id only. migrateToCurrent over a pre-v3 database with «سه‌تار», «گیتار» and «تار» places cgs on «گیتار» and both Tar pathways on «تار». The test lives in src/domain/pathways.test.ts. _(proof: never mistakes a Persian-named Guitar for Tar when offering or seeding a default pathway)_
 
 ## Flow impact — detected vs reported
 
@@ -420,10 +421,22 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
 
-`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260923-let-an-existing-install-add-a-missing-sh-7e4b/findings.json`
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
 
-with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260923-let-an-existing-install-add-a-missing-sh-7e4b/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20260923-let-an-existing-install-add-a-missing-sh-7e4b' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260923-let-an-existing-install-add-a-missing-sh-7e4b/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260923-let-an-existing-install-add-a-missing-sh-7e4b/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
